@@ -1,7 +1,6 @@
 """Life Graph CLI — Cold start bootstrap and utilities."""
 
 import argparse
-import asyncio
 import json
 import sys
 import time
@@ -10,13 +9,15 @@ from pathlib import Path
 
 def cmd_cold_start(args):
     """Run cold start bootstrap on specified repositories."""
-    from life_graph.cold_start import GitAnalyzer, ConfigParser, CodeAnalyzer
+    from life_graph.cold_start.git_analyzer import GitAnalyzer
+    from life_graph.cold_start.config_parser import ConfigParser
+    from life_graph.cold_start.code_analyzer import CodeAnalyzer
 
     repos = args.repos
     author = args.author
     verbose = args.verbose
 
-    print(f"\n🧠 Life Graph Cold Start")
+    print(f"\n[*] Life Graph Cold Start")
     print(f"{'='*50}")
     print(f"Repos: {', '.join(repos)}")
     if author:
@@ -28,34 +29,34 @@ def cmd_cold_start(args):
 
     for repo_path in repos:
         repo_path = str(Path(repo_path).resolve())
-        print(f"\n📂 Analyzing: {repo_path}")
+        print(f"\n[>] Analyzing: {repo_path}")
 
         # Git analysis
         try:
             git = GitAnalyzer()
             git_memories = git.analyze(repo_path, author_filter=author)
-            print(f"  ├── Git history: {len(git_memories)} memories")
+            print(f"  +-- Git history: {len(git_memories)} memories")
             all_memories.extend(git_memories)
         except Exception as e:
-            print(f"  ├── Git history: skipped ({e})")
+            print(f"  +-- Git history: skipped ({e})")
 
         # Config parsing
         try:
             config = ConfigParser()
             config_memories = config.parse(repo_path)
-            print(f"  ├── Config files: {len(config_memories)} memories")
+            print(f"  +-- Config files: {len(config_memories)} memories")
             all_memories.extend(config_memories)
         except Exception as e:
-            print(f"  ├── Config files: skipped ({e})")
+            print(f"  +-- Config files: skipped ({e})")
 
         # Code analysis
         try:
             code = CodeAnalyzer()
             code_memories = code.analyze(repo_path)
-            print(f"  └── Code patterns: {len(code_memories)} memories")
+            print(f"  +-- Code patterns: {len(code_memories)} memories")
             all_memories.extend(code_memories)
         except Exception as e:
-            print(f"  └── Code patterns: skipped ({e})")
+            print(f"  +-- Code patterns: skipped ({e})")
 
     # Deduplicate
     seen = set()
@@ -69,14 +70,14 @@ def cmd_cold_start(args):
     elapsed = time.time() - start_time
 
     print(f"\n{'='*50}")
-    print(f"📊 Results:")
+    print(f"[=] Results:")
     print(f"  Total extracted: {len(all_memories)}")
     print(f"  After dedup: {len(unique)}")
     print(f"  Time: {elapsed:.1f}s")
     print(f"  LLM calls: 0 (all local analysis)")
 
     if verbose:
-        print(f"\n📝 Extracted Memories:")
+        print(f"\n[i] Extracted Memories:")
         for i, m in enumerate(unique, 1):
             print(f"  {i}. [{m.get('type_tag', 'unknown')}] {m.get('content', '')[:80]}")
 
@@ -85,10 +86,10 @@ def cmd_cold_start(args):
         output_path = Path(args.output)
         with open(output_path, 'w') as f:
             json.dump(unique, f, indent=2, default=str)
-        print(f"\n💾 Saved to: {output_path}")
+        print(f"\n[+] Saved to: {output_path}")
 
     if not args.dry_run:
-        print(f"\n🔌 To store these in the database, run with --store flag")
+        print(f"\n[!] To store these in the database, run with --store flag")
         print(f"   (requires docker compose up -d && alembic upgrade head first)")
 
     return unique
@@ -101,7 +102,7 @@ def cmd_stats(args):
     try:
         r = httpx.get(f"{base}/admin/stats")
         stats = r.json()
-        print(f"\n🧠 Life Graph Stats")
+        print(f"\n[*] Life Graph Stats")
         print(f"{'='*30}")
         for k, v in stats.items():
             print(f"  {k}: {v}")
@@ -114,7 +115,7 @@ def main():
     """Entry point for the life-graph CLI."""
     parser = argparse.ArgumentParser(
         prog='life-graph',
-        description='🧠 Life Graph — Personal Memory System CLI',
+        description='Life Graph -- Personal Memory System CLI',
     )
     subparsers = parser.add_subparsers(dest='command')
 

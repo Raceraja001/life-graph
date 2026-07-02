@@ -1,0 +1,183 @@
+[
+  {
+    "content": "Uses ruff linter with line-length=100",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:config_parse",
+    "tags": [
+      "preference",
+      "python",
+      "linting",
+      "ruff"
+    ]
+  },
+  {
+    "content": "Ruff lint rules selected: E, W, F, I, N, UP, B, SIM, TCH",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:config_parse",
+    "tags": [
+      "preference",
+      "python",
+      "linting",
+      "ruff"
+    ]
+  },
+  {
+    "content": "Pytest configuration: addopts=-v --tb=short, testpaths=['tests']",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:config_parse",
+    "tags": [
+      "preference",
+      "python",
+      "testing",
+      "pytest"
+    ]
+  },
+  {
+    "content": "Uses snake_case naming convention (456 snake_case, 0 camelCase)",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "naming-convention"
+    ]
+  },
+  {
+    "content": "Docstring rate: 40% of functions have docstrings (232/587)",
+    "type_tag": "pattern",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "documentation"
+    ]
+  },
+  {
+    "content": "Type hint rate: 97% of functions have type annotations (567/587)",
+    "type_tag": "pattern",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "typing"
+    ]
+  },
+  {
+    "content": "Error handling style: specific exceptions",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "error-handling"
+    ]
+  },
+  {
+    "content": "Uses pytest as the testing framework",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "testing",
+      "pytest"
+    ]
+  },
+  {
+    "content": "Uses async/await pattern (16% of functions are async, 92 total)",
+    "type_tag": "pattern",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "async"
+    ]
+  },
+  {
+    "content": "Uses Pydantic BaseModel for data validation",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "pydantic"
+    ]
+  },
+  {
+    "content": "Uses Python dataclasses for data structures",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "dataclass"
+    ]
+  },
+  {
+    "content": "Most-used Python imports: life_graph, __future__, typing, sqlalchemy, logging, datetime, uuid, pytest, re, fastapi",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "imports"
+    ]
+  },
+  {
+    "content": "Most-used decorators: staticmethod, lru_cache, dataclass, router.post, router.get",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "decorators"
+    ]
+  },
+  {
+    "content": "Uses Docker for containerization with docker-compose",
+    "type_tag": "architecture",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "architecture",
+      "docker",
+      "infrastructure"
+    ]
+  },
+  {
+    "content": "Uses GitHub Actions for CI/CD",
+    "type_tag": "architecture",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "architecture",
+      "ci",
+      "infrastructure"
+    ]
+  },
+  {
+    "content": "Uses FastAPI as backend framework",
+    "type_tag": "architecture",
+    "importance": 0.8,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "architecture",
+      "backend",
+      "fastapi",
+      "python"
+    ]
+  }
+]

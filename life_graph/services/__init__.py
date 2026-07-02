@@ -9,12 +9,25 @@ Exports the core service classes for memory retrieval and management:
   - LifeGraphBridge: agent framework integration bridge
 """
 
-from life_graph.services.agent_bridge import LifeGraphBridge
-from life_graph.services.context import ContextBuilder, ContextFingerprint
-from life_graph.services.contradiction import Contradiction, ContradictionDetector
-from life_graph.services.identity import IdentityService
-from life_graph.services.recall import RecallEngine
-from life_graph.services.triggers import TriggerMatcher
+
+def __getattr__(name):
+    """Lazy imports to avoid circular import chains."""
+    _map = {
+        "LifeGraphBridge": ("life_graph.services.agent_bridge", "LifeGraphBridge"),
+        "ContextBuilder": ("life_graph.services.context", "ContextBuilder"),
+        "ContextFingerprint": ("life_graph.services.context", "ContextFingerprint"),
+        "ContradictionDetector": ("life_graph.services.contradiction", "ContradictionDetector"),
+        "Contradiction": ("life_graph.services.contradiction", "Contradiction"),
+        "IdentityService": ("life_graph.services.identity", "IdentityService"),
+        "RecallEngine": ("life_graph.services.recall", "RecallEngine"),
+        "TriggerMatcher": ("life_graph.services.triggers", "TriggerMatcher"),
+    }
+    if name in _map:
+        import importlib
+        module = importlib.import_module(_map[name][0])
+        return getattr(module, _map[name][1])
+    raise AttributeError(f"module 'life_graph.services' has no attribute {name!r}")
+
 
 __all__ = [
     "ContextBuilder",
@@ -26,4 +39,3 @@ __all__ = [
     "RecallEngine",
     "TriggerMatcher",
 ]
-
