@@ -111,3 +111,6 @@
 - `docs/design/01_project_scope.md` — Full project scoping (phased roadmap)
 - `docs/design/02_life_graph_v2_design.md` — Life Graph v2 definitive design
 - `docs/design/03_devils_advocate_review.md` — Critical review and extensibility fixes
+- `docs/design/04_database_schema.md` — PostgreSQL + pgvector + Apache AGE schema design
+- `docs/design/05_cold_start.md` — Cold start bootstrap system (50+ memories, zero API calls)
+- `docs/design/06_proactive_recall.md` — Proactive recall engine (push-based memory surfacing)
