@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from life_graph.api import admin, intentions, memories, search
 from life_graph.config import settings
 from life_graph.storage.database import engine
 
@@ -32,6 +33,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Register API routers ─────────────────────────────────────
+app.include_router(memories.router)
+app.include_router(search.router)
+app.include_router(intentions.router)
+app.include_router(admin.router)
 
 
 @app.get("/health")
