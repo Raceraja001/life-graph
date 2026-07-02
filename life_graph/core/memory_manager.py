@@ -1,0 +1,333 @@
+"""Memory manager orchestrating ingestion with contradiction handling (T-027).
+
+Full ingestion pipeline:
+  1. Extract facts from text (via ExtractionPipeline)
+  2. Score importance for each fact
+  3. Generate embeddings (placeholder for sentence-transformers)
+  4. Check for contradictions
+  5. Handle contradictions: auto-supersede or flag for user
+  6. Store memories
+  7. Return stored memories
+
+Also manages supersession chains for belief evolution tracking.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
+from life_graph.extraction.pipeline import ExtractionPipeline
+from life_graph.extraction.rules import ExtractedFact
+from life_graph.models.db import Memory
+from life_graph.models.schemas import MemoryCreate, MemoryUpdate
+from life_graph.scoring.importance import ImportanceTagger
+from life_graph.services.contradiction import Contradiction, ContradictionDetector
+from life_graph.storage.postgres import PostgresMemoryStore
+
+logger = logging.getLogger(__name__)
+
+
+class MemoryManager:
+    """Orchestrates memory ingestion, contradiction resolution, and supersession.
+
+    This is the primary high-level interface for storing new information.
+    It coordinates extraction, scoring, embedding, contradiction detection,
+    and persistence into a single ``ingest()`` call.
+
+    Usage::
+
+        manager = MemoryManager(store, extractor, tagger, detector)
+        memories = await manager.ingest(
+            "I prefer PostgreSQL over MongoDB for everything",
+            context={"project": "life_graph"},
+        )
+    """
+
+    def __init__(
+        self,
+        store: PostgresMemoryStore,
+        extractor: ExtractionPipeline,
+        tagger: ImportanceTagger,
+        contradiction_detector: ContradictionDetector,
+    ) -> None:
+        self._store = store
+        self._extractor = extractor
+        self._tagger = tagger
+        self._contradiction_detector = contradiction_detector
+
+    async def ingest(
+        self,
+        text: str,
+        context: dict[str, Any] | None = None,
+        source: str | None = None,
+    ) -> list[Memory]:
+        """Full ingestion pipeline for new text.
+
+        Steps:
+            1. Extract facts from text
+            2. Score importance for each fact
+            3. Generate embeddings (placeholder)
+            4. Check for contradictions against existing memories
+            5. Auto-resolve contradictions where possible
+            6. Store new memories
+            7. Return list of stored Memory objects
+
+        Args:
+            text: Raw input text to process.
+            context: Optional context dict (project, module, etc.).
+            source: Source identifier (e.g. 'chat', 'git', 'manual').
+
+        Returns:
+            List of stored Memory ORM objects.
+        """
+        if not text.strip():
+            return []
+
+        # Step 1: Extract facts
+        extraction_result = await self._extractor.extract(text)
+        facts = extraction_result.facts
+
+        if not facts:
+            logger.debug("No facts extracted from text: %s", text[:80])
+            return []
+
+        logger.info("Extracted %d facts from input text", len(facts))
+
+        # Steps 2-6: Process each fact
+        stored_memories: list[Memory] = []
+        for fact in facts:
+            memory = await self._process_fact(fact, context, source)
+            if memory:
+                stored_memories.append(memory)
+
+        logger.info("Ingested %d memories from %d facts", len(stored_memories), len(facts))
+        return stored_memories
+
+    async def supersede(
+        self,
+        old_memory_id: str,
+        new_memory_id: str,
+        reason: str,
+    ) -> None:
+        """Mark an old memory as superseded by a new one.
+
+        Creates a bidirectional supersession chain:
+            - Old memory: status='superseded', superseded_by=new_id
+            - New memory: supersedes=old_id
+
+        Both memories are preserved in history for audit trail.
+
+        Args:
+            old_memory_id: UUID string of the memory being superseded.
+            new_memory_id: UUID string of the replacing memory.
+            reason: Human-readable reason for the supersession.
+        """
+        old_uuid = uuid.UUID(old_memory_id)
+        new_uuid = uuid.UUID(new_memory_id)
+
+        # Mark old as superseded
+        await self._store.update(
+            old_uuid,
+            MemoryUpdate(
+                status="superseded",
+            ),
+        )
+
+        # Update supersession chain via direct attribute patching
+        # (MemoryUpdate doesn't expose superseded_by, so we update directly)
+        from life_graph.storage.database import async_session
+        from sqlalchemy import update
+
+        async with async_session() as session:
+            # Set superseded_by on old memory
+            await session.execute(
+                update(Memory)
+                .where(Memory.id == old_uuid)
+                .values(superseded_by=new_uuid)
+            )
+            # Set supersedes on new memory
+            await session.execute(
+                update(Memory)
+                .where(Memory.id == new_uuid)
+                .values(supersedes=old_uuid)
+            )
+            await session.commit()
+
+        logger.info(
+            "Superseded memory %s → %s (reason: %s)",
+            old_memory_id[:8], new_memory_id[:8], reason,
+        )
+
+    # ── Internal Helpers ──────────────────────────────────────
+
+    async def _process_fact(
+        self,
+        fact: ExtractedFact,
+        context: dict[str, Any] | None,
+        source: str | None,
+    ) -> Memory | None:
+        """Process a single extracted fact through scoring, embedding, and storage.
+
+        Returns:
+            Stored Memory object, or None if the fact was a duplicate.
+        """
+        # Step 2: Score importance
+        importance, tier = self._tagger.score(fact.content, context)
+
+        # Step 3: Generate embedding (placeholder)
+        embedding = await self._generate_embedding(fact.content)
+
+        # Step 4: Check for contradictions
+        contradictions: list[Contradiction] = []
+        if embedding:
+            contradictions = await self._contradiction_detector.check(
+                fact.content, embedding,
+            )
+
+        # Step 5: Handle contradictions
+        auto_supersede_targets = self._resolve_contradictions(contradictions)
+
+        # Step 6: Store the new memory
+        properties: dict[str, Any] = {}
+        if context:
+            properties.update(context)
+        properties["fact_type"] = fact.fact_type
+        properties["extraction_confidence"] = fact.confidence
+        if fact.entities:
+            properties["entities"] = fact.entities
+
+        # Add contradiction info if any
+        if contradictions:
+            properties["contradictions"] = [
+                {
+                    "existing_id": c.existing_memory_id,
+                    "conflict_type": c.conflict_type,
+                    "resolution": c.resolution,
+                    "reason": c.reason,
+                }
+                for c in contradictions
+            ]
+
+        memory_create = MemoryCreate(
+            content=fact.content,
+            reasoning=fact.source_text or None,
+            tags=_infer_tags(fact, tier),
+            properties=properties,
+            importance=importance,
+            source_type=source or "inferred",
+        )
+
+        stored = await self._store.store(memory_create)
+
+        # Step 5b: Execute auto-supersessions
+        for old_id, reason in auto_supersede_targets:
+            await self.supersede(old_id, str(stored.id), reason)
+
+        return stored
+
+    def _resolve_contradictions(
+        self, contradictions: list[Contradiction],
+    ) -> list[tuple[str, str]]:
+        """Determine which contradictions to auto-resolve via supersession.
+
+        Returns:
+            List of (old_memory_id, reason) tuples for memories to supersede.
+        """
+        supersede_targets: list[tuple[str, str]] = []
+
+        for contradiction in contradictions:
+            if contradiction.resolution == "supersede":
+                supersede_targets.append((
+                    contradiction.existing_memory_id,
+                    contradiction.reason,
+                ))
+                logger.info(
+                    "Auto-superseding memory %s: %s",
+                    contradiction.existing_memory_id[:8],
+                    contradiction.reason,
+                )
+            elif contradiction.resolution == "ask_user":
+                logger.warning(
+                    "Contradiction requires user input: %s vs %s — %s",
+                    contradiction.new_content[:40],
+                    contradiction.existing_content[:40],
+                    contradiction.reason,
+                )
+            elif contradiction.resolution == "scope":
+                logger.info(
+                    "Scope-based contradiction: both valid — %s",
+                    contradiction.reason,
+                )
+
+        return supersede_targets
+
+    async def _generate_embedding(self, text: str) -> list[float] | None:
+        """Generate an embedding vector for the given text.
+
+        Placeholder implementation — will be replaced with
+        sentence-transformers model call when the embedding
+        service is wired up.
+
+        Args:
+            text: Text to embed.
+
+        Returns:
+            Embedding vector or None if generation fails.
+        """
+        try:
+            from sentence_transformers import SentenceTransformer
+
+            # Lazy-load model (cached after first call)
+            if not hasattr(self, "_embed_model"):
+                self._embed_model = SentenceTransformer("all-mpnet-base-v2")
+
+            vector = self._embed_model.encode(text).tolist()
+            return vector
+        except ImportError:
+            logger.debug(
+                "sentence-transformers not available, skipping embedding"
+            )
+            return None
+        except Exception as exc:
+            logger.warning("Embedding generation failed: %s", exc)
+            return None
+
+
+def _infer_tags(fact: ExtractedFact, importance_tier: str) -> list[str]:
+    """Infer tags from fact type, entities, and importance tier.
+
+    Args:
+        fact: The extracted fact.
+        importance_tier: Computed importance tier label.
+
+    Returns:
+        List of tag strings.
+    """
+    tags: list[str] = []
+
+    # Map fact types to tags
+    type_tag_map: dict[str, str] = {
+        "preference": "preference",
+        "anti_preference": "preference",
+        "decision": "decision",
+        "lesson": "lesson",
+        "tool_usage": "tool",
+        "constraint": "constraint",
+        "identity": "identity",
+        "experience": "experience",
+    }
+
+    mapped_tag = type_tag_map.get(fact.fact_type)
+    if mapped_tag:
+        tags.append(mapped_tag)
+    else:
+        tags.append(fact.fact_type)
+
+    # Add importance tier as tag
+    if importance_tier in ("critical", "high"):
+        tags.append(importance_tier)
+
+    return tags
