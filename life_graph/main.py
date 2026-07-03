@@ -1,9 +1,12 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from life_graph.api import admin, intentions, memories, search
 from life_graph.config import settings
@@ -40,8 +43,20 @@ app.include_router(search.router)
 app.include_router(intentions.router)
 app.include_router(admin.router)
 
+# ── Static files (Brain Viewer dashboard) ─────────────────────
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/brain", StaticFiles(directory=str(static_dir), html=True), name="static")
+
+
+@app.get("/")
+async def root():
+    """Redirect root to the Brain Viewer dashboard."""
+    return RedirectResponse(url="/brain/")
+
 
 @app.get("/health")
 async def health_check():
     """Basic health check endpoint."""
     return {"status": "healthy", "version": "0.1.0"}
+
