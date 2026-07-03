@@ -4,14 +4,17 @@
 
 FROM pgvector/pgvector:pg16
 
-# Install build dependencies, compile AGE from source, then clean up
+# Install CA certs + PG dev headers + build deps, compile AGE, clean up
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        postgresql-server-dev-16 \
         build-essential \
         libreadline-dev \
         zlib1g-dev \
         flex \
         bison \
         git \
+    && update-ca-certificates \
     && git clone --branch release/PG16/1.5.0 \
         https://github.com/apache/age.git /tmp/age \
     && cd /tmp/age \
