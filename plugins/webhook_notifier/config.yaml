@@ -1,0 +1,26 @@
+# Webhook Notifier Plugin Configuration
+# ---
+# Set the target URL and which events to forward.
+
+# The URL to POST event payloads to (JSON body)
+webhook_url: ""
+
+# List of event types to forward (see life_graph.core.events.EventType)
+# Available events:
+#   - memory:created
+#   - memory:retrieved
+#   - memory:updated
+#   - memory:deleted
+#   - session:start
+#   - session:end
+#   - intention:triggered
+#   - contradiction:detected
+#   - voice:transcribed
+#   - image:processed
+#   - document:imported
+events:
+  - memory:created
+  - memory:updated
+
+# HTTP timeout in seconds
+timeout_seconds: 5

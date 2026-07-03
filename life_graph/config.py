@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Cold Start
     cold_start_min_memories: int = 50
 
+    # Multi-Modal (Voice / Whisper)
+    whisper_model: str = "small"
+
     # MinIO / Object Storage
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "minioadmin"

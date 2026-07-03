@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -8,15 +9,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from life_graph.api import admin, intentions, memories, search
+from life_graph.api import admin, graph, intentions, memories, search
+from life_graph.api.multimodal import router as multimodal_router
 from life_graph.config import settings
+from life_graph.core.events import event_bus
+from life_graph.core.plugins import PluginManager
 from life_graph.storage.database import engine
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown."""
-    # Startup
+    # Startup — load plugins
+    plugins_dir = Path(__file__).resolve().parent.parent / "plugins"
+    plugin_manager = PluginManager(event_bus, plugins_dir=plugins_dir)
+    plugin_manager.load_all()
+    app.state.plugin_manager = plugin_manager
+    app.state.event_bus = event_bus
+    logger.info(
+        "Loaded %d plugin(s): %s",
+        len(plugin_manager.loaded),
+        list(plugin_manager.loaded.keys()),
+    )
     yield
     # Shutdown
     await engine.dispose()
@@ -42,6 +59,8 @@ app.include_router(memories.router)
 app.include_router(search.router)
 app.include_router(intentions.router)
 app.include_router(admin.router)
+app.include_router(graph.router)
+app.include_router(multimodal_router)
 
 # ── Static files (Brain Viewer dashboard) ─────────────────────
 static_dir = Path(__file__).parent / "static"

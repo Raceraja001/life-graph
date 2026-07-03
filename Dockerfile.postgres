@@ -1,0 +1,22 @@
+# Life Graph — Custom PostgreSQL with pgvector + Apache AGE
+# Base: pgvector/pgvector:pg16 (already has pgvector)
+# Added: Apache AGE 1.5.0 for graph/Cypher support
+
+FROM pgvector/pgvector:pg16
+
+# Install build dependencies, compile AGE from source, then clean up
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libreadline-dev \
+        zlib1g-dev \
+        flex \
+        bison \
+        git \
+    && git clone --branch release/PG16/1.5.0 \
+        https://github.com/apache/age.git /tmp/age \
+    && cd /tmp/age \
+    && make && make install \
+    && rm -rf /tmp/age \
+    && apt-get purge -y build-essential git flex bison \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*

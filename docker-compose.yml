@@ -2,7 +2,9 @@
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     container_name: life_graph_db
     environment:
       POSTGRES_USER: life_graph

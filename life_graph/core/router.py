@@ -21,6 +21,12 @@ _ROUTE_DEFINITIONS: list[tuple[str, list[str]]] = [
         r"what\s+do\s+i\s+(?:prefer|use|like)",
         r"what\s+(?:tools?|frameworks?|languages?|databases?)",
         r"what\s+is\s+my\s+(?:preferred|favorite|go[- ]?to)",
+        r"what\s+do\s+i\s+use\s+for",
+        r"how\s+are\s+(\w+)\s+and\s+(\w+)\s+related",
+        r"relationship\s+between",
+        r"connected\s+to",
+        r"what\s+depends\s+on",
+        r"what\s+uses",
     ]),
     ("relational", [
         r"when\s+did\s+i",
@@ -49,6 +55,13 @@ _ROUTE_DEFINITIONS: list[tuple[str, list[str]]] = [
         r"what\s+should\s+i\s+do",
         r"\bpending\b",
         r"\bupcoming\b",
+    ]),
+    ("hybrid", [
+        r"show\s+my\s+decisions?\s+about",
+        r"everything\s+(?:about|related\s+to|involving)",
+        r"context\s+(?:for|about|on)",
+        r"what\s+do\s+i\s+know\s+about",
+        r"tell\s+me\s+about",
     ]),
 ]
 
@@ -85,7 +98,7 @@ class QueryRouter:
     - **reasoning**: 'why' queries → multi-hop retrieval + reasoning
     - **vector**: similarity queries → pgvector cosine search
     - **intentions**: TODO/reminder queries → intentions store
-    - **hybrid**: everything else → combined retrieval
+    - **hybrid**: combined graph + vector retrieval (decisions, context)
     """
 
     def __init__(self) -> None:
