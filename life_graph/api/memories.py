@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from life_graph.api.dependencies import get_memory_manager, get_store
 from life_graph.core.memory_manager import MemoryManager
@@ -109,11 +109,12 @@ async def update_memory(
     "/{memory_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a memory",
+    response_class=Response,
 )
 async def delete_memory(
     memory_id: uuid.UUID,
     store: PostgresMemoryStore = Depends(get_store),
-) -> None:
+):
     """Delete a memory and cascade to association tables."""
     deleted = await store.delete(memory_id)
     if not deleted:
@@ -121,6 +122,7 @@ async def delete_memory(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Memory {memory_id} not found",
         )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
