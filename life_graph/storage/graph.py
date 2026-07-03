@@ -52,6 +52,33 @@ def _parse_agtype(raw: str) -> Any:
         return str(raw)
 
 
+def _to_cypher_props(props: dict[str, Any]) -> str:
+    """Convert a Python dict to AGE Cypher property map syntax.
+
+    AGE Cypher expects ``{key: 'value'}`` (unquoted keys, single-quoted
+    string values), not JSON-style ``{"key": "value"}``.
+    """
+    parts: list[str] = []
+    for key, value in props.items():
+        if isinstance(value, str):
+            safe = value.replace("\\", "\\\\").replace("'", "\\'")
+            parts.append(f"{key}: '{safe}'")
+        elif isinstance(value, bool):
+            parts.append(f"{key}: {'true' if value else 'false'}")
+        elif isinstance(value, (int, float)):
+            parts.append(f"{key}: {value}")
+        elif isinstance(value, list):
+            # Serialize lists as JSON string (AGE doesn't support array properties natively)
+            safe = json.dumps(value).replace("\\", "\\\\").replace("'", "\\'")
+            parts.append(f"{key}: '{safe}'")
+        elif value is None:
+            continue
+        else:
+            safe = str(value).replace("\\", "\\\\").replace("'", "\\'")
+            parts.append(f"{key}: '{safe}'")
+    return "{" + ", ".join(parts) + "}"
+
+
 class GraphStore:
     """Async graph store backed by Apache AGE (Cypher over PostgreSQL).
 
@@ -159,6 +186,13 @@ class GraphStore:
 
         pool = await self._get_pool()
         async with pool.acquire() as conn:
+            # AGE requires search_path to include ag_catalog.
+            # asyncpg resets search_path (via RESET ALL) when returning
+            # connections to the pool, so we must re-set it on every use.
+            await conn.execute("LOAD 'age'")
+            await conn.execute(
+                'SET search_path = ag_catalog, "$user", public'
+            )
             try:
                 rows = await conn.fetch(sql)
             except Exception:
@@ -189,8 +223,8 @@ class GraphStore:
         Returns:
             String representation of the vertex's graph ID.
         """
-        props_json = json.dumps(properties)
-        cypher = f"CREATE (n:{label} {props_json}) RETURN id(n)"
+        props_cypher = _to_cypher_props(properties)
+        cypher = f"CREATE (n:{label} {props_cypher}) RETURN id(n)"
         results = await self.execute_cypher(cypher)
         if results:
             return str(results[0]["v"])
@@ -259,7 +293,7 @@ class GraphStore:
         Returns:
             String representation of the edge's graph ID.
         """
-        props_str = json.dumps(properties) if properties else ""
+        props_str = _to_cypher_props(properties) if properties else ""
         edge_props = f" {props_str}" if props_str else ""
 
         cypher = (
