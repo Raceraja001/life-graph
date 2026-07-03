@@ -13,11 +13,14 @@ Prerequisites:
 from __future__ import annotations
 
 import httpx
+import os
 import pytest
 import uuid
 
 BASE = "http://localhost:8000"
 TIMEOUT = 60.0
+# For auth tests: set LIFE_GRAPH_TEST_API_KEY to match your server's LIFE_GRAPH_API_KEY
+TEST_API_KEY = os.environ.get("LIFE_GRAPH_TEST_API_KEY", "")
 
 
 @pytest.fixture(scope="module")
@@ -413,3 +416,84 @@ class TestEndToEndPipeline:
         # Verify count increased
         r = client.get("/admin/stats")
         assert r.json()["memory_count"] >= initial + new_count
+
+
+# ── API Authentication ────────────────────────────────────────
+
+
+class TestAPIAuthentication:
+    """Test API key authentication enforcement.
+
+    These tests only run when LIFE_GRAPH_TEST_API_KEY is set and the
+    server is started with LIFE_GRAPH_API_KEY set to the same value.
+    """
+
+    @pytest.fixture(autouse=True)
+    def require_api_key(self):
+        """Skip if no test API key configured."""
+        if not TEST_API_KEY:
+            pytest.skip("LIFE_GRAPH_TEST_API_KEY not set — skipping auth tests")
+
+    @pytest.fixture
+    def anon_client(self):
+        """HTTP client without API key."""
+        with httpx.Client(base_url=BASE, timeout=TIMEOUT) as c:
+            yield c
+
+    @pytest.fixture
+    def authed_client(self):
+        """HTTP client with valid API key in header."""
+        with httpx.Client(
+            base_url=BASE,
+            timeout=TIMEOUT,
+            headers={"X-API-Key": TEST_API_KEY},
+        ) as c:
+            yield c
+
+    def test_health_no_auth_required(self, anon_client):
+        """Health endpoint should always be accessible."""
+        r = anon_client.get("/health")
+        assert r.status_code == 200
+
+    def test_docs_no_auth_required(self, anon_client):
+        """Docs endpoints should always be accessible."""
+        r = anon_client.get("/docs")
+        assert r.status_code == 200
+
+    def test_brain_no_auth_required(self, anon_client):
+        """Brain dashboard should always be accessible."""
+        r = anon_client.get("/brain/")
+        assert r.status_code == 200
+
+    def test_protected_route_returns_401(self, anon_client):
+        """Protected routes should return 401 without API key."""
+        r = anon_client.get("/memories/")
+        assert r.status_code == 401
+        assert "Invalid or missing API key" in r.json()["detail"]
+
+    def test_protected_route_wrong_key(self, anon_client):
+        """Protected routes should reject invalid API keys."""
+        r = anon_client.get(
+            "/memories/",
+            headers={"X-API-Key": "wrong-key-12345"},
+        )
+        assert r.status_code == 401
+
+    def test_header_auth_works(self, authed_client):
+        """Valid API key in X-API-Key header should grant access."""
+        r = authed_client.get("/memories/")
+        assert r.status_code == 200
+
+    def test_query_param_auth_works(self, anon_client):
+        """Valid API key in ?api_key= query param should grant access."""
+        r = anon_client.get("/memories/", params={"api_key": TEST_API_KEY})
+        assert r.status_code == 200
+
+    def test_admin_requires_auth(self, anon_client, authed_client):
+        """Admin endpoints should require auth."""
+        r = anon_client.get("/admin/stats")
+        assert r.status_code == 401
+
+        r = authed_client.get("/admin/stats")
+        assert r.status_code == 200
+

@@ -17,7 +17,11 @@ yarn add @life-graph/sdk
 ```typescript
 import { LifeGraph } from '@life-graph/sdk'
 
+// Without auth (dev mode)
 const lg = new LifeGraph({ apiUrl: 'http://localhost:8000' })
+
+// With API key authentication
+const lg = new LifeGraph({ apiUrl: 'http://localhost:8000', apiKey: 'your-api-key' })
 
 // Store a memory
 const memories = await lg.remember('Had coffee with Alice at Blue Bottle today')

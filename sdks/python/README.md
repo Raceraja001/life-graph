@@ -16,7 +16,11 @@ pip install -e /path/to/sdks/python
 ```python
 from life_graph_sdk import LifeGraph
 
+# Without auth (dev mode)
 brain = LifeGraph("http://localhost:8000")
+
+# With API key authentication
+brain = LifeGraph("http://localhost:8000", api_key="your-api-key")
 
 # Store a memory
 memories = brain.remember("I prefer Python over Java for backend work")

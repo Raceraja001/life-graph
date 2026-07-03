@@ -4,12 +4,13 @@ from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from life_graph.api import admin, graph, intentions, memories, search
+from life_graph.api.auth import verify_api_key
 from life_graph.api.multimodal import router as multimodal_router
 from life_graph.config import settings
 from life_graph.core.events import event_bus
@@ -44,6 +45,7 @@ app = FastAPI(
     version="0.1.0",
     description="Brain-inspired personal memory system with proactive recall",
     lifespan=lifespan,
+    dependencies=[Depends(verify_api_key)],
 )
 
 app.add_middleware(

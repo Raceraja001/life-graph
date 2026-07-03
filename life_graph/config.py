@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
+    # Authentication
+    api_key: str | None = None  # Set LIFE_GRAPH_API_KEY to enable auth
+
     # Database
     database_url: str = "postgresql+asyncpg://life_graph:life_graph@localhost:5432/life_graph"
     database_url_sync: str = "postgresql://life_graph:life_graph@localhost:5432/life_graph"
