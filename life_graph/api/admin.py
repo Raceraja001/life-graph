@@ -118,3 +118,28 @@ async def ingest_text(
         source=body.source,
     )
     return [MemoryResponse.model_validate(m) for m in memories]
+
+
+@router.get(
+    "/export",
+    summary="Export all memories as JSON",
+)
+async def export_memories() -> dict:
+    """Export all memories for backup or migration.
+
+    Returns all memories with full metadata, suitable for
+    re-importing into another Life Graph instance.
+    """
+    async with async_session() as session:
+        result = await session.execute(select(Memory).order_by(Memory.created_at))
+        memories = result.scalars().all()
+
+    return {
+        "version": "0.1.0",
+        "memory_count": len(memories),
+        "memories": [
+            MemoryResponse.model_validate(m).model_dump(mode="json")
+            for m in memories
+        ],
+    }
+
