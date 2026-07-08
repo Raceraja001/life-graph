@@ -13,7 +13,7 @@ const STANDALONE_ROUTES = ["/login"];
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const [commandOpen, setCommandOpen] = useState(false);
-  const { status } = useWebSocket();
+  const status = useWebSocket();
 
   return (
     <>

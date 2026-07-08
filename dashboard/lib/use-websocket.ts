@@ -4,20 +4,36 @@ import { useQueryClient } from "@tanstack/react-query";
 
 type WSStatus = "connecting" | "connected" | "disconnected";
 
+// Events that should trigger a cache refresh
+const EVENT_MAP: Record<string, string[]> = {
+  "memory":       ["memories"],
+  "preference":   ["preferences"],
+  "task":         ["tasks"],
+  "kernel:task":  ["tasks"],
+  "watcher":      ["watcher-events"],
+  "notification": ["notifications"],
+  "evidence":     ["evidence"],
+  "agent":        ["agent-tasks"],
+  "identity":     ["beliefs"],
+  "belief":       ["beliefs"],
+};
+
 /**
- * WebSocket hook that connects to the Life Graph event stream.
- * On any event, invalidates the relevant React Query cache so
- * pages update in real-time without polling.
+ * WebSocket hook — connects to ws://backend/ws.
+ * Only invalidates React Query cache on actual data events,
+ * NOT on pong/heartbeat/unknown messages.
  */
 export function useWebSocket() {
   const qc = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const mountedRef = useRef(true);
   const [status, setStatus] = useState<WSStatus>("disconnected");
-  const [lastEvent, setLastEvent] = useState<any>(null);
 
   const connect = useCallback(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !mountedRef.current) return;
+    // Don't create a new connection if one is already open/connecting
+    if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
 
     const apiKey = localStorage.getItem("lg_api_key") || "dev";
     const tenantId = localStorage.getItem("lg_tenant_id") || "default";
@@ -31,51 +47,35 @@ export function useWebSocket() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setStatus("connected");
-      console.log("[ws] connected");
+      if (mountedRef.current) setStatus("connected");
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        setLastEvent(data);
+        // Skip pong/heartbeat — these are NOT data events
+        if (data.type === "pong" || data.type === "heartbeat") return;
 
-        // Invalidate relevant queries based on event type
         const type: string = data.type || "";
-        if (type.startsWith("memory")) {
-          qc.invalidateQueries({ queryKey: ["memories"] });
+        // Only invalidate if we recognize the event type
+        for (const [prefix, keys] of Object.entries(EVENT_MAP)) {
+          if (type.startsWith(prefix)) {
+            keys.forEach((key) => qc.invalidateQueries({ queryKey: [key] }));
+            return; // matched, done
+          }
         }
-        if (type.startsWith("preference")) {
-          qc.invalidateQueries({ queryKey: ["preferences"] });
-        }
-        if (type.startsWith("task") || type.startsWith("kernel")) {
-          qc.invalidateQueries({ queryKey: ["tasks"] });
-        }
-        if (type.startsWith("watcher") || type.startsWith("event")) {
-          qc.invalidateQueries({ queryKey: ["watcher-events"] });
-        }
-        if (type.startsWith("notification")) {
-          qc.invalidateQueries({ queryKey: ["notifications"] });
-        }
-        if (type.startsWith("evidence")) {
-          qc.invalidateQueries({ queryKey: ["evidence"] });
-        }
-        if (type.startsWith("agent")) {
-          qc.invalidateQueries({ queryKey: ["agent-tasks"] });
-        }
-        // Catch-all for any event: refresh beliefs, procedures
-        if (type.startsWith("identity") || type.startsWith("belief")) {
-          qc.invalidateQueries({ queryKey: ["beliefs"] });
-        }
+        // Unknown event type — do nothing (no blanket invalidation)
       } catch {
-        // Not JSON, ignore
+        // Not JSON — ignore
       }
     };
 
     ws.onclose = () => {
-      setStatus("disconnected");
-      console.log("[ws] disconnected, reconnecting in 5s...");
-      reconnectTimer.current = setTimeout(connect, 5000);
+      if (mountedRef.current) {
+        setStatus("disconnected");
+        // Reconnect with backoff — only if still mounted
+        reconnectTimer.current = setTimeout(connect, 10_000);
+      }
     };
 
     ws.onerror = () => {
@@ -84,10 +84,15 @@ export function useWebSocket() {
   }, [qc]);
 
   useEffect(() => {
+    mountedRef.current = true;
     connect();
     return () => {
+      mountedRef.current = false;
       clearTimeout(reconnectTimer.current);
-      wsRef.current?.close();
+      if (wsRef.current) {
+        wsRef.current.onclose = null; // prevent reconnect on unmount
+        wsRef.current.close();
+      }
     };
   }, [connect]);
 
@@ -101,5 +106,5 @@ export function useWebSocket() {
     return () => clearInterval(interval);
   }, []);
 
-  return { status, lastEvent };
+  return status;
 }
