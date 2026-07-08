@@ -19,11 +19,14 @@ async function request<T>(method: string, path: string, body?: unknown, params?:
     headers: getHeaders(),
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 401 && typeof window !== "undefined") {
-    window.location.href = "/login";
+  if (res.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    window.location.replace("/login");
     throw new Error("Unauthorized");
   }
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => "Unknown error");
+    throw new Error(`API ${res.status}: ${text}`);
+  }
   return res.json();
 }
 
