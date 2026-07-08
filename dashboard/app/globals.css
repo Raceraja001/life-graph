@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #09090b;
+  --emerald-accent: #059669;
+  --emerald-glow: rgba(5, 150, 105, 0.08);
+}
+
+body {
+  background: #fafafa;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1aa;
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid rgba(5, 150, 105, 0.5);
+  outline-offset: 2px;
+}
+
+/* Selection */
+::selection {
+  background: rgba(5, 150, 105, 0.15);
+  color: #09090b;
+}
+
+/* Smooth hover transitions */
+a, button, input {
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+/* Mobile: reduce padding */
+@media (max-width: 1023px) {
+  main {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    padding-top: 3.5rem !important;
+  }
+}
+
+/* Mobile: stack kanban columns */
+@media (max-width: 767px) {
+  .grid-cols-4 {
+    grid-template-columns: 1fr !important;
+  }
+  .grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+}
