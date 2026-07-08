@@ -107,5 +107,5 @@ Write-Host "  WebSocket:    ws://localhost:8000/ws" -ForegroundColor White
 Write-Host "  MCP Server:   http://localhost:8001" -ForegroundColor DarkGray
 Write-Host "  MinIO:        http://localhost:9001" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "  Stop with: .\stop.ps1" -ForegroundColor DarkGray
+Write-Host '  Stop with: .\stop.ps1' -ForegroundColor DarkGray
 Write-Host ""

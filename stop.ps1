@@ -91,5 +91,5 @@ if ($Destroy) {
     Write-Host "  ⚠️  Volumes destroyed — data wiped." -ForegroundColor Red
 }
 Write-Host ""
-Write-Host "  Start again with: .\start.ps1" -ForegroundColor DarkGray
+Write-Host '  Start again with: .\start.ps1' -ForegroundColor DarkGray
 Write-Host ""
