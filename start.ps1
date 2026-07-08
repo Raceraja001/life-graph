@@ -1,35 +1,28 @@
 <#
 .SYNOPSIS
     Start the Life Graph application (backend + dashboard).
-
-.DESCRIPTION
-    1. Rebuilds and starts the Docker backend (API, worker, Postgres, Redis, MinIO, MCP)
-    2. Runs Alembic migrations to ensure DB is up to date
-    3. Starts the Next.js dashboard dev server
-
 .EXAMPLE
     .\start.ps1           # Start everything
     .\start.ps1 -Backend  # Start only backend (Docker)
     .\start.ps1 -Dashboard # Start only dashboard (Next.js)
+    .\start.ps1 -NoBuild  # Skip Docker rebuild (faster restart)
 #>
 param(
     [switch]$Backend,
     [switch]$Dashboard,
-    [switch]$NoBuild   # Skip Docker rebuild (faster restart)
+    [switch]$NoBuild
 )
 
 $ErrorActionPreference = "Continue"
 $ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host ""
-Write-Host "  Life Graph — Starting..." -ForegroundColor Cyan
-Write-Host "  ========================" -ForegroundColor DarkCyan
+Write-Host "  Life Graph - Starting..." -ForegroundColor Cyan
 Write-Host ""
 
-# If neither flag is set, start both
 $startBoth = -not $Backend -and -not $Dashboard
 
-# ── Backend (Docker Compose) ──────────────────────────────
+# -- Backend (Docker Compose) --
 if ($Backend -or $startBoth) {
     Write-Host "[1/4] Starting Docker backend..." -ForegroundColor Yellow
 
@@ -70,14 +63,14 @@ if ($Backend -or $startBoth) {
 
     # Run migrations
     Write-Host "[3/4] Running migrations..." -ForegroundColor Yellow
-    $migResult = python -m alembic upgrade head 2>&1
+    python -m alembic upgrade head 2>&1 | Out-Null
     $currentRev = python -m alembic current 2>&1 | Select-String "^\d+" | ForEach-Object { $_.Matches[0].Value }
     Write-Host "  Database at revision: $currentRev" -ForegroundColor DarkGreen
 
     Pop-Location
 }
 
-# ── Dashboard (Next.js dev server) ────────────────────────
+# -- Dashboard (Next.js dev server) --
 if ($Dashboard -or $startBoth) {
     Write-Host "[4/4] Starting dashboard..." -ForegroundColor Yellow
 
@@ -90,15 +83,14 @@ if ($Dashboard -or $startBoth) {
         Pop-Location
     }
 
-    # Start dev server in background
     $env:TEMP = "D:\npm-tmp"; $env:TMP = "D:\npm-tmp"
     Start-Process powershell -ArgumentList "-NoProfile", "-Command", "Set-Location '$dashDir'; `$env:TEMP='D:\npm-tmp'; `$env:TMP='D:\npm-tmp'; npm run dev" -WindowStyle Minimized
     Write-Host "  Dashboard starting at http://localhost:3000" -ForegroundColor DarkGreen
 }
 
-# ── Summary ───────────────────────────────────────────────
+# -- Summary --
 Write-Host ""
-Write-Host "  ✅ Life Graph is running!" -ForegroundColor Green
+Write-Host "  Life Graph is running!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Backend API:  http://localhost:8000" -ForegroundColor White
 Write-Host "  API Docs:     http://localhost:8000/docs" -ForegroundColor White

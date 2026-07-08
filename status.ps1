@@ -6,11 +6,9 @@
 $ErrorActionPreference = "Continue"
 
 Write-Host ""
-Write-Host "  Life Graph — Status" -ForegroundColor Cyan
-Write-Host "  ====================" -ForegroundColor DarkCyan
+Write-Host "  Life Graph - Status" -ForegroundColor Cyan
 Write-Host ""
 
-# ── Check ports ──────────────────────────────────────────
 $services = @(
     @{ Name = "Backend API";  Port = 8000; Url = "http://localhost:8000/health" },
     @{ Name = "Dashboard";    Port = 3000; Url = "http://localhost:3000" },
@@ -26,13 +24,10 @@ foreach ($svc in $services) {
         $status = "RUNNING"
         $color = "Green"
 
-        # HTTP health check
         if ($svc.Url) {
             try {
                 $r = Invoke-WebRequest -Uri $svc.Url -UseBasicParsing -TimeoutSec 2
-                if ($r.StatusCode -eq 200) {
-                    $status = "HEALTHY"
-                }
+                if ($r.StatusCode -eq 200) { $status = "HEALTHY" }
             } catch {
                 $status = "LISTENING (unhealthy)"
                 $color = "Yellow"
@@ -48,7 +43,7 @@ foreach ($svc in $services) {
     Write-Host "  $label $port  $status" -ForegroundColor $color
 }
 
-# ── DB migration status ─────────────────────────────────
+# DB migration
 Write-Host ""
 try {
     Push-Location (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -58,10 +53,5 @@ try {
 } catch {
     Write-Host "  DB Migration: unknown" -ForegroundColor DarkGray
 }
-
-# ── Docker containers ────────────────────────────────────
-Write-Host ""
-Write-Host "  Docker containers:" -ForegroundColor DarkGray
-docker compose ps --format "  {{.Name}}: {{.Status}}" 2>$null
 
 Write-Host ""
