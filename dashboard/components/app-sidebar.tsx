@@ -18,7 +18,7 @@ const BOTTOM = [
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
-export function AppSidebar() {
+export function AppSidebar({ wsStatus = "disconnected" }: { wsStatus?: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -46,8 +46,13 @@ export function AppSidebar() {
       }`}>
         <div className="px-5 mb-8 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center relative">
               <Brain className="w-4.5 h-4.5 text-emerald-600" />
+              <div className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
+                wsStatus === "connected" ? "bg-emerald-400" :
+                wsStatus === "connecting" ? "bg-amber-400 animate-pulse" :
+                "bg-zinc-300"
+              }`} title={`WebSocket: ${wsStatus}`} />
             </div>
             <span className="text-sm font-semibold text-zinc-900 tracking-tight">Life Graph</span>
           </Link>
