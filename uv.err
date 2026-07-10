@@ -1,0 +1,354 @@
+INFO:     Started server process [67376]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python314\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 58: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 440, in main
+    run(
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 621, in run
+    server.run()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\server.py", line 74, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Python314\Lib\asyncio\base_events.py", line 706, in run_until_complete
+    self.run_forever()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 677, in run_forever
+    self._run_once()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 2046, in _run_once
+    handle._run()
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\anyio\_core\_tasks.py", line 278, in _run_coro
+    retval = await self._coro
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "D:\DevTools\Projects\agents\life_graph\api\middleware.py", line 172, in dispatch
+    logger.info(
+Message: '%s %s \u2192 %d (%.0fms) tenant=%s rid=%s'
+Arguments: ('GET', '/health', 200, 15.356199990492314, '-', '4d0bd206')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python314\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 68: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 440, in main
+    run(
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 621, in run
+    server.run()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\server.py", line 74, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Python314\Lib\asyncio\base_events.py", line 706, in run_until_complete
+    self.run_forever()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 677, in run_forever
+    self._run_once()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 2046, in _run_once
+    handle._run()
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\anyio\_core\_tasks.py", line 278, in _run_coro
+    retval = await self._coro
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "D:\DevTools\Projects\agents\life_graph\api\middleware.py", line 172, in dispatch
+    logger.info(
+Message: '%s %s \u2192 %d (%.0fms) tenant=%s rid=%s'
+Arguments: ('GET', '/api/v1/memories/', 200, 137.62160000624135, 'default', 'f6af342e')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python314\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 67: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 440, in main
+    run(
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 621, in run
+    server.run()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\server.py", line 74, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Python314\Lib\asyncio\base_events.py", line 706, in run_until_complete
+    self.run_forever()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 677, in run_forever
+    self._run_once()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 2046, in _run_once
+    handle._run()
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\anyio\_core\_tasks.py", line 278, in _run_coro
+    retval = await self._coro
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "D:\DevTools\Projects\agents\life_graph\api\middleware.py", line 172, in dispatch
+    logger.info(
+Message: '%s %s \u2192 %d (%.0fms) tenant=%s rid=%s'
+Arguments: ('GET', '/api/v1/capture/', 200, 23.82100000977516, 'default', '53214451')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python314\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 77: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 440, in main
+    run(
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 621, in run
+    server.run()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\server.py", line 74, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Python314\Lib\asyncio\base_events.py", line 706, in run_until_complete
+    self.run_forever()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 677, in run_forever
+    self._run_once()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 2046, in _run_once
+    handle._run()
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\anyio\_core\_tasks.py", line 278, in _run_coro
+    retval = await self._coro
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "D:\DevTools\Projects\agents\life_graph\api\middleware.py", line 172, in dispatch
+    logger.info(
+Message: '%s %s \u2192 %d (%.0fms) tenant=%s rid=%s'
+Arguments: ('GET', '/api/v1/judgment/decisions', 200, 17.844100017100573, 'default', 'ae47c812')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python314\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 73: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 440, in main
+    run(
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 621, in run
+    server.run()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\server.py", line 74, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Python314\Lib\asyncio\base_events.py", line 706, in run_until_complete
+    self.run_forever()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 677, in run_forever
+    self._run_once()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 2046, in _run_once
+    handle._run()
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\anyio\_core\_tasks.py", line 278, in _run_coro
+    retval = await self._coro
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "D:\DevTools\Projects\agents\life_graph\api\middleware.py", line 172, in dispatch
+    logger.info(
+Message: '%s %s \u2192 %d (%.0fms) tenant=%s rid=%s'
+Arguments: ('GET', '/api/v1/kernel/drivers', 200, 1.075600041076541, 'default', '4a8b75b9')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python314\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 71: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 440, in main
+    run(
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 621, in run
+    server.run()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\server.py", line 74, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Python314\Lib\asyncio\base_events.py", line 706, in run_until_complete
+    self.run_forever()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 677, in run_forever
+    self._run_once()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 2046, in _run_once
+    handle._run()
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\anyio\_core\_tasks.py", line 278, in _run_coro
+    retval = await self._coro
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "D:\DevTools\Projects\agents\life_graph\api\middleware.py", line 172, in dispatch
+    logger.info(
+Message: '%s %s \u2192 %d (%.0fms) tenant=%s rid=%s'
+Arguments: ('GET', '/api/v1/kernel/tasks', 200, 31.715799996163696, 'default', 'ff05c93c')
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Python314\Lib\logging\__init__.py", line 1154, in emit
+    stream.write(msg + self.terminator)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 71: character maps to <undefined>
+Call stack:
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\__main__.py", line 4, in <module>
+    uvicorn.main()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\click\core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 440, in main
+    run(
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\main.py", line 621, in run
+    server.run()
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\uvicorn\server.py", line 74, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+  File "C:\Python314\Lib\asyncio\base_events.py", line 706, in run_until_complete
+    self.run_forever()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 677, in run_forever
+    self._run_once()
+  File "C:\Python314\Lib\asyncio\base_events.py", line 2046, in _run_once
+    handle._run()
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\anyio\_core\_tasks.py", line 278, in _run_coro
+    retval = await self._coro
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 141, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "C:\Users\racer\AppData\Roaming\Python\Python314\site-packages\starlette\middleware\base.py", line 178, in __call__
+    response = await self.dispatch_func(request, call_next)
+  File "D:\DevTools\Projects\agents\life_graph\api\middleware.py", line 172, in dispatch
+    logger.info(
+Message: '%s %s \u2192 %d (%.0fms) tenant=%s rid=%s'
+Arguments: ('GET', '/api/v1/preferences/', 200, 17.440799972973764, 'default', '9a50f4fa')

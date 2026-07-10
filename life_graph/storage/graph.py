@@ -471,3 +471,185 @@ class GraphStore:
                 entities.append(v)
 
         return entities
+
+    # ── Knowledge Graph: Preference/Evidence Nodes ─────────────
+
+    async def create_preference_node(
+        self,
+        tenant_id: str,
+        preference_id: str,
+        topic: str,
+        choice: str,
+        confidence: float,
+    ) -> None:
+        """Create or update a Preference node in the knowledge graph.
+
+        Best-effort: failures are logged but never crash the main flow.
+        """
+        try:
+            # Check if node already exists
+            existing = await self.execute_cypher(
+                "MATCH (p:Preference) WHERE p.id = $pid AND p.tenant_id = $tid RETURN p",
+                params={"pid": preference_id, "tid": tenant_id},
+            )
+            if existing:
+                # Update existing node
+                await self.execute_cypher(
+                    "MATCH (p:Preference) WHERE p.id = $pid AND p.tenant_id = $tid "
+                    "SET p.topic = $topic, p.choice = $choice, p.confidence = $conf "
+                    "RETURN p",
+                    params={
+                        "pid": preference_id,
+                        "tid": tenant_id,
+                        "topic": topic,
+                        "choice": choice,
+                        "conf": confidence,
+                    },
+                )
+            else:
+                await self.create_vertex(
+                    "Preference",
+                    {
+                        "id": preference_id,
+                        "tenant_id": tenant_id,
+                        "name": topic,
+                        "topic": topic,
+                        "choice": choice,
+                        "confidence": confidence,
+                    },
+                )
+            logger.debug("Graph: preference node %s upserted", preference_id)
+        except Exception:
+            logger.warning(
+                "Graph: failed to create preference node %s (best-effort)",
+                preference_id,
+                exc_info=True,
+            )
+
+    async def create_evidence_node(
+        self,
+        tenant_id: str,
+        evidence_id: str,
+        preference_id: str,
+        stance: str,
+        strength: float,
+    ) -> None:
+        """Create an Evidence node and link to its parent Preference.
+
+        Best-effort: failures are logged but never crash the main flow.
+        """
+        try:
+            # Create evidence vertex
+            await self.create_vertex(
+                "Evidence",
+                {
+                    "id": evidence_id,
+                    "tenant_id": tenant_id,
+                    "name": f"evidence-{evidence_id[:8]}",
+                    "stance": stance,
+                    "strength": strength,
+                },
+            )
+            # Link to parent preference
+            edge_label = stance.upper()
+            await self.execute_cypher(
+                f"MATCH (e:Evidence), (p:Preference) "
+                f"WHERE e.id = $eid AND e.tenant_id = $tid "
+                f"AND p.id = $pid AND p.tenant_id = $tid "
+                f"CREATE (e)-[r:{edge_label}]->(p) RETURN r",
+                params={
+                    "eid": evidence_id,
+                    "tid": tenant_id,
+                    "pid": preference_id,
+                },
+            )
+            logger.debug(
+                "Graph: evidence node %s linked to preference %s",
+                evidence_id, preference_id,
+            )
+        except Exception:
+            logger.warning(
+                "Graph: failed to create evidence node %s (best-effort)",
+                evidence_id,
+                exc_info=True,
+            )
+
+    async def create_preference_relationship(
+        self,
+        tenant_id: str,
+        from_id: str,
+        to_id: str,
+        rel_type: str,
+    ) -> None:
+        """Create a relationship between two Preference nodes.
+
+        Supported rel_types: DEPENDS_ON, RELATED_TO, CONTRADICTS.
+        Best-effort: failures are logged but never crash the main flow.
+        """
+        try:
+            await self.execute_cypher(
+                f"MATCH (a:Preference), (b:Preference) "
+                f"WHERE a.id = $fid AND a.tenant_id = $tid "
+                f"AND b.id = $toid AND b.tenant_id = $tid "
+                f"CREATE (a)-[r:{rel_type}]->(b) RETURN r",
+                params={
+                    "fid": from_id,
+                    "tid": tenant_id,
+                    "toid": to_id,
+                },
+            )
+            logger.debug(
+                "Graph: preference relationship %s -> %s (%s)",
+                from_id, to_id, rel_type,
+            )
+        except Exception:
+            logger.warning(
+                "Graph: failed to create preference relationship %s -> %s (best-effort)",
+                from_id, to_id,
+                exc_info=True,
+            )
+
+    async def get_preference_graph(
+        self,
+        tenant_id: str,
+        preference_id: str,
+    ) -> dict[str, Any]:
+        """Get a preference and all connected nodes (evidence, related preferences).
+
+        Returns a dict with the preference data and a list of connections.
+        Best-effort: returns empty result on failure.
+        """
+        try:
+            # Get the preference node
+            pref_results = await self.execute_cypher(
+                "MATCH (p:Preference) WHERE p.id = $pid AND p.tenant_id = $tid RETURN p",
+                params={"pid": preference_id, "tid": tenant_id},
+            )
+            if not pref_results:
+                return {"preference": None, "connections": []}
+
+            # Get all connected nodes
+            conn_results = await self.execute_cypher(
+                "MATCH (p:Preference)-[r]-(n) "
+                "WHERE p.id = $pid AND p.tenant_id = $tid "
+                "RETURN n",
+                params={"pid": preference_id, "tid": tenant_id},
+            )
+
+            connections = []
+            for row in conn_results:
+                v = row.get("v")
+                if v and isinstance(v, dict):
+                    connections.append(v)
+
+            return {
+                "preference": pref_results[0].get("v"),
+                "connections": connections,
+            }
+        except Exception:
+            logger.warning(
+                "Graph: failed to get preference graph for %s (best-effort)",
+                preference_id,
+                exc_info=True,
+            )
+            return {"preference": None, "connections": []}

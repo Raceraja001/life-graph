@@ -18,7 +18,7 @@ export function AppTopbar({ onOpenCommand }: { onOpenCommand?: () => void }) {
   const pathname = usePathname();
   const title = TITLES[pathname] || "Life Graph";
   return (
-    <header className="h-14 bg-white/80 backdrop-blur-sm border-b border-zinc-200 flex items-center justify-between px-6 shrink-0">
+    <header className="h-14 bg-white/80 backdrop-blur-sm border-b border-zinc-200 flex items-center justify-between pl-14 pr-6 lg:px-6 shrink-0">
       <h1 className="text-sm font-semibold text-zinc-900">{title}</h1>
       <div className="flex items-center gap-2">
         <button

@@ -9,13 +9,25 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Life Graph",
-  description: "Personal AI Operating System — Memory, Judgment, Agents",
+  title: {
+    default: "Life Graph — Personal AI Operating System",
+    template: "%s | Life Graph",
+  },
+  description: "Your personal AI operating system. Memory, judgment, and autonomous agents in one self-hosted system.",
   manifest: "/manifest.json",
+  keywords: ["personal AI", "memory graph", "self-hosted AI", "life OS", "knowledge management"],
+  authors: [{ name: "Life Graph" }],
+  robots: "noindex, nofollow", // self-hosted — don't index
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Life Graph",
+  },
+  openGraph: {
+    type: "website",
+    title: "Life Graph",
+    description: "Personal AI Operating System",
+    siteName: "Life Graph",
   },
 };
 

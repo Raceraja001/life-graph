@@ -274,7 +274,7 @@ class TestRecallRanker:
         candidates = [{"semantic_score": 0.7, "importance": 0.6}]
         result = self.ranker.rank(candidates)
         sub = result[0]["_sub_scores"]
-        expected_keys = {"semantic", "context", "importance", "recency", "frequency", "trust"}
+        expected_keys = {"semantic", "context", "importance", "recency", "frequency", "trust", "impact"}
         assert set(sub.keys()) == expected_keys
 
     def test_rank_with_last_accessed_datetime(self) -> None:

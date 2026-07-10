@@ -37,7 +37,7 @@ export function useWebSocket() {
 
     const apiKey = localStorage.getItem("lg_api_key") || "dev";
     const tenantId = localStorage.getItem("lg_tenant_id") || "default";
-    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
+    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080")
       .replace("http://", "ws://")
       .replace("https://", "wss://")
       .replace("/api/v1", "")}/ws?api_key=${apiKey}&tenant_id=${tenantId}`;

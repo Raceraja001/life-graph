@@ -100,9 +100,11 @@ class LLMExtractor:
         self,
         model: str = "gemini/gemini-2.0-flash",
         max_tokens: int = 1024,
+        lm_client: Any = None,
     ) -> None:
         self._model = model
         self._max_tokens = max_tokens
+        self._lm_client = lm_client
 
         # Cumulative cost tracking
         self.total_prompt_tokens: int = 0
@@ -113,12 +115,94 @@ class LLMExtractor:
     async def extract(self, text: str) -> list[ExtractedFact]:
         """Call the LLM to extract facts from *text*.
 
+        Uses LM Studio (local) when configured, otherwise falls back
+        to LiteLLM (cloud).
+
         Args:
             text: Raw input text.
 
         Returns:
             Extracted facts with LLM-assigned confidence.
         """
+        from life_graph.config import settings
+
+        if settings.use_local_llm and self._lm_client is not None:
+            return await self._extract_local(text)
+        return await self._extract_cloud(text)
+
+    async def _extract_local(self, text: str) -> list[ExtractedFact]:
+        """Extract facts using local LM Studio model."""
+        from life_graph.config import settings
+
+        messages = [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"Extract facts from the following text:\n\n"
+                    f"---\n{text}\n---\n\n"
+                    f"Respond with JSON matching this schema:\n"
+                    f"{json.dumps(_EXTRACTION_SCHEMA, indent=2)}"
+                ),
+            },
+        ]
+
+        try:
+            raw_content = await self._lm_client.chat(
+                messages=messages,
+                model=settings.lm_extraction_model,
+                temperature=0.1,
+                max_tokens=self._max_tokens,
+                response_format={"type": "json_object"},
+            )
+        except Exception:
+            logger.exception("Local LLM extraction failed")
+            return []
+
+        self.call_count += 1
+
+        if not raw_content:
+            return []
+
+        try:
+            data = json.loads(raw_content)
+        except json.JSONDecodeError:
+            logger.warning("Local LLM returned invalid JSON: %.200s", raw_content)
+            return []
+
+        raw_facts = data.get("facts", [])
+        if not isinstance(raw_facts, list):
+            return []
+
+        facts: list[ExtractedFact] = []
+        for item in raw_facts:
+            if not isinstance(item, dict):
+                continue
+            content = item.get("content", "").strip()
+            if not content:
+                continue
+
+            fact_type = item.get("fact_type", "fact")
+            confidence = _clamp(float(item.get("confidence", 0.5)), 0.0, 1.0)
+            entities = item.get("entities", [])
+            if not isinstance(entities, list):
+                entities = []
+            entities = [str(e) for e in entities if e]
+
+            facts.append(
+                ExtractedFact(
+                    content=content,
+                    fact_type=fact_type,
+                    confidence=confidence,
+                    entities=entities,
+                    source_text=text[:500],
+                )
+            )
+
+        return facts
+
+    async def _extract_cloud(self, text: str) -> list[ExtractedFact]:
+        """Extract facts using cloud LLM via LiteLLM (original path)."""
         import litellm
 
         messages = [

@@ -1,0 +1,33 @@
+08:10:28 INFO     [life_graph.core.logging] Logging configured: format=text, level=INFO
+08:10:33 INFO     [life_graph.main] Starting Life Graph v1.0.0 [development mode]
+08:10:33 WARNING  [life_graph.main] Running in DEVELOPMENT mode — auth/tenant requirements relaxed
+08:10:33 INFO     [life_graph.tools.registry] Registered tool: calculator
+08:10:34 INFO     [life_graph.tools.registry] Registered tool: get_current_datetime
+08:10:34 INFO     [life_graph.tools.registry] Registered tool: web_search
+08:10:34 INFO     [life_graph.tools.registry] Registered tool: run_command
+08:10:34 INFO     [life_graph.tools.registry] Registered tool: git_status
+08:10:34 INFO     [life_graph.tools.registry] Registered tool: git_log
+08:10:34 INFO     [life_graph.tools.registry] Registered tool: git_diff
+08:10:34 INFO     [life_graph.tools.registry] Registered tool: git_branch
+08:10:34 INFO     [life_graph.tools.registry] Registered tool: browse_web
+08:10:34 INFO     [life_graph.tools.registry] Registered tool: browser_agent
+08:10:34 INFO     [life_graph.main] Agent tools registered: ['calculator', 'get_current_datetime', 'web_search', 'run_command', 'git_status', 'git_log', 'git_diff', 'git_branch', 'browse_web', 'browser_agent']
+08:10:34 INFO     [life_graph.core.plugins] Discovered 1 plugin(s): ['webhook_notifier']
+08:10:34 WARNING  [plugins.webhook_notifier] webhook_notifier: No webhook_url configured — plugin disabled
+08:10:34 INFO     [life_graph.core.plugins] Loaded plugin: webhook_notifier
+08:10:34 INFO     [life_graph.main] Loaded 1 plugin(s): ['webhook_notifier']
+08:10:34 INFO     [life_graph.main] WebSocket event handler registered
+08:10:34 INFO     [life_graph.storage.redis] Redis connected: redis://localhost:6379/0
+08:10:34 INFO     [life_graph.core.events] Redis bridge enabled — events will be published to Redis
+08:10:34 INFO     [life_graph.integrations.webhook] WebhookEventHandler subscribed to event bus
+08:10:34 INFO     [life_graph.main] Webhook event handler started
+08:10:34 INFO     [life_graph.integrations.webhook] WebhookEventHandler: ARQ pool configured
+08:10:34 INFO     [life_graph.main] Webhook ARQ pool connected
+08:10:34 INFO     [life_graph.services.preference_graph] PreferenceGraphService subscribed to EventBus
+08:10:34 INFO     [life_graph.main] Preference graph sync enabled (auto-sync via EventBus)
+08:10:34 INFO     [life_graph.services.capture_processors] CaptureProcessors subscribed to EventBus
+08:10:34 INFO     [life_graph.main] Capture spine processors enabled (extraction + decision detection)
+08:10:34 INFO     [life_graph.services.judgment] JudgmentService subscribed to DECISION_CANDIDATE
+08:10:34 INFO     [life_graph.main] Judgment engine enabled (decision candidate listener)
+08:10:34 INFO     [life_graph.drivers.registry] Registered driver: local
+08:10:34 INFO     [life_graph.main] Agent drivers registered: ['local']

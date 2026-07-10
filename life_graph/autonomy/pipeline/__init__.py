@@ -1,0 +1,1 @@
+"""Pipeline — action execution orchestration."""

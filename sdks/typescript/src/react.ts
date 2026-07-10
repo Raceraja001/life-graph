@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// Life Graph SDK — React Hooks
+// Life Graph SDK v1.0 — React Hooks
 // ─────────────────────────────────────────────────────────────
 //
 // Optional React integration. Import from '@life-graph/sdk/react'
@@ -17,7 +17,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { LifeGraph } from './client'
-import type { Memory, SearchResult, Stats, LifeGraphConfig } from './types'
+import type {
+  Memory,
+  SearchResult,
+  Stats,
+  Session,
+  Intention,
+  LifeGraphConfig,
+} from './types'
 
 // ── Tiny React import shim ─────────────────────────────────────
 // We dynamically import React so this module doesn't hard-fail
@@ -49,6 +56,7 @@ let _client: LifeGraph | null = null
  * Initialize the shared LifeGraph client used by all hooks.
  *
  * Call this once at the top of your app (e.g. in a provider or layout).
+ * The `tenantId` field is **required** in the configuration.
  *
  * @param config - LifeGraph connection configuration.
  * @returns The initialized client instance.
@@ -57,7 +65,11 @@ let _client: LifeGraph | null = null
  * ```tsx
  * import { initLifeGraph } from '@life-graph/sdk'
  *
- * initLifeGraph({ apiUrl: 'http://localhost:8000' })
+ * initLifeGraph({
+ *   apiUrl: 'https://api.lifegraph.app',
+ *   apiKey: 'lg_live_abc123',
+ *   tenantId: 'tenant-42',
+ * })
  * ```
  */
 export function initLifeGraph(config: LifeGraphConfig): LifeGraph {
@@ -84,7 +96,7 @@ export function useBrain(): LifeGraph {
   ensureReact()
   if (!_client) {
     throw new Error(
-      'LifeGraph client not initialized. Call initLifeGraph({ apiUrl }) first.',
+      'LifeGraph client not initialized. Call initLifeGraph({ apiUrl, tenantId }) first.',
     )
   }
   return _client
@@ -95,6 +107,9 @@ export function useBrain(): LifeGraph {
  *
  * Automatically re-runs the search when `query` changes.
  * Returns `{ results, loading, error }`.
+ *
+ * The SDK automatically unwraps the `{ data }` response envelope,
+ * so the hook receives the unwrapped search result directly.
  *
  * @param query - The search query string. Pass empty string to skip.
  * @param limit - Maximum results. Defaults to 10.
@@ -109,7 +124,7 @@ export function useBrain(): LifeGraph {
  *     <div>
  *       <input value={q} onChange={e => setQ(e.target.value)} />
  *       {loading && <p>Searching…</p>}
- *       {results.map(r => <p key={r.content}>{r.content}</p>)}
+ *       <pre>{JSON.stringify(results, null, 2)}</pre>
  *     </div>
  *   )
  * }
@@ -118,18 +133,18 @@ export function useBrain(): LifeGraph {
 export function useSearch(
   query: string,
   limit = 10,
-): { results: SearchResult[]; loading: boolean; error: Error | null } {
+): { results: SearchResult | null; loading: boolean; error: Error | null } {
   ensureReact()
 
   const { useState, useEffect } = React
 
-  const [results, setResults] = useState<SearchResult[]>([])
+  const [results, setResults] = useState<SearchResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
     if (!query.trim() || !_client) {
-      setResults([])
+      setResults(null)
       return
     }
 
@@ -139,7 +154,7 @@ export function useSearch(
 
     _client
       .search(query, { limit })
-      .then((res: SearchResult[]) => {
+      .then((res: SearchResult) => {
         if (!cancelled) setResults(res)
       })
       .catch((err: Error) => {
@@ -161,6 +176,7 @@ export function useSearch(
  * Reactive memory list hook.
  *
  * Fetches all memories on mount and provides a `refresh` function.
+ * The SDK automatically unwraps the `{ data }` response envelope.
  *
  * @example
  * ```tsx
@@ -223,6 +239,7 @@ export function useMemories(): {
  * Reactive system stats hook.
  *
  * Fetches stats on mount and provides a `refresh` function.
+ * The SDK automatically unwraps the `{ data }` response envelope.
  *
  * @example
  * ```tsx
@@ -275,4 +292,142 @@ export function useStats(): {
   }, [tick])
 
   return { stats, loading, error, refresh }
+}
+
+/**
+ * Reactive sessions hook.
+ *
+ * Fetches recent sessions on mount and provides a `refresh` function.
+ * The SDK automatically unwraps the `{ data }` response envelope.
+ *
+ * @param limit - Maximum number of sessions to fetch. Defaults to 20.
+ *
+ * @example
+ * ```tsx
+ * function SessionList() {
+ *   const { sessions, loading, refresh } = useSessions(10)
+ *   return (
+ *     <div>
+ *       <button onClick={refresh}>Refresh</button>
+ *       {sessions.map(s => (
+ *         <div key={s.id}>
+ *           <p>{s.id} — {s.summary ?? 'No summary'}</p>
+ *           <small>{s.started_at}</small>
+ *         </div>
+ *       ))}
+ *     </div>
+ *   )
+ * }
+ * ```
+ */
+export function useSessions(limit = 20): {
+  sessions: Session[]
+  loading: boolean
+  error: Error | null
+  refresh: () => void
+} {
+  ensureReact()
+
+  const { useState, useEffect, useCallback } = React
+
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const [tick, setTick] = useState(0)
+
+  const refresh = useCallback(() => setTick((t: number) => t + 1), [])
+
+  useEffect(() => {
+    if (!_client) return
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    _client
+      .sessions(limit)
+      .then((res: Session[]) => {
+        if (!cancelled) setSessions(res)
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [tick, limit])
+
+  return { sessions, loading, error, refresh }
+}
+
+/**
+ * Reactive intentions hook.
+ *
+ * Fetches all active intentions on mount and provides a `refresh` function.
+ * The SDK automatically unwraps the `{ data }` response envelope.
+ *
+ * @example
+ * ```tsx
+ * function IntentionList() {
+ *   const { intentions, loading, refresh } = useIntentions()
+ *   return (
+ *     <div>
+ *       <button onClick={refresh}>Refresh</button>
+ *       {intentions.map(i => (
+ *         <div key={i.id}>
+ *           <p>{i.content} — {i.status}</p>
+ *           <small>Priority: {i.priority}</small>
+ *         </div>
+ *       ))}
+ *     </div>
+ *   )
+ * }
+ * ```
+ */
+export function useIntentions(): {
+  intentions: Intention[]
+  loading: boolean
+  error: Error | null
+  refresh: () => void
+} {
+  ensureReact()
+
+  const { useState, useEffect, useCallback } = React
+
+  const [intentions, setIntentions] = useState<Intention[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+  const [tick, setTick] = useState(0)
+
+  const refresh = useCallback(() => setTick((t: number) => t + 1), [])
+
+  useEffect(() => {
+    if (!_client) return
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    _client
+      .intentions()
+      .then((res: Intention[]) => {
+        if (!cancelled) setIntentions(res)
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [tick])
+
+  return { intentions, loading, error, refresh }
 }

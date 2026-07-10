@@ -1,0 +1,262 @@
+[
+  {
+    "content": "Uses conventional commit style (89% conventional commits). Top prefixes: feat, docs, fix, test",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "preference",
+      "git",
+      "commit-style"
+    ]
+  },
+  {
+    "content": "Peak coding hours: 21:00, 4:00, 7:00",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "pattern",
+      "time",
+      "work-schedule"
+    ]
+  },
+  {
+    "content": "Most active coding days: Friday, Thursday, Saturday",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "pattern",
+      "time",
+      "work-schedule"
+    ]
+  },
+  {
+    "content": "Primary languages (by file changes): py, md, toml, yml, ts",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "preference",
+      "language",
+      "py",
+      "md",
+      "toml"
+    ]
+  },
+  {
+    "content": "Average commit size: 1495.4 lines changed, 9.0 files per commit",
+    "type_tag": "pattern",
+    "importance": 0.4,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "pattern",
+      "git",
+      "commit-size"
+    ]
+  },
+  {
+    "content": "Most-changed directories: life_graph, tests, sdks, docs, scripts",
+    "type_tag": "pattern",
+    "importance": 0.4,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "pattern",
+      "git",
+      "project-structure"
+    ]
+  },
+  {
+    "content": "Uses ruff linter with line-length=100",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:config_parse",
+    "tags": [
+      "preference",
+      "python",
+      "linting",
+      "ruff"
+    ]
+  },
+  {
+    "content": "Ruff lint rules selected: E, W, F, I, N, UP, B, SIM, TCH",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:config_parse",
+    "tags": [
+      "preference",
+      "python",
+      "linting",
+      "ruff"
+    ]
+  },
+  {
+    "content": "Pytest configuration: addopts=-v --tb=short, testpaths=['tests']",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:config_parse",
+    "tags": [
+      "preference",
+      "python",
+      "testing",
+      "pytest"
+    ]
+  },
+  {
+    "content": "Docker base image(s): pgvector/pgvector:pg16",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:config_parse",
+    "tags": [
+      "preference",
+      "docker",
+      "infrastructure"
+    ]
+  },
+  {
+    "content": "Uses snake_case naming convention (598 snake_case, 0 camelCase)",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "naming-convention"
+    ]
+  },
+  {
+    "content": "Docstring rate: 47% of functions have docstrings (363/772)",
+    "type_tag": "pattern",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "documentation"
+    ]
+  },
+  {
+    "content": "Type hint rate: 89% of functions have type annotations (690/772)",
+    "type_tag": "pattern",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "typing"
+    ]
+  },
+  {
+    "content": "Error handling style: specific exceptions",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "error-handling"
+    ]
+  },
+  {
+    "content": "Uses pytest as the testing framework",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "testing",
+      "pytest"
+    ]
+  },
+  {
+    "content": "Uses async/await pattern (20% of functions are async, 154 total)",
+    "type_tag": "pattern",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "async"
+    ]
+  },
+  {
+    "content": "Uses Pydantic BaseModel for data validation",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "pydantic"
+    ]
+  },
+  {
+    "content": "Uses Python dataclasses for data structures",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "dataclass"
+    ]
+  },
+  {
+    "content": "Most-used Python imports: life_graph, __future__, typing, logging, sqlalchemy, datetime, pathlib, uuid, fastapi, pytest",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "imports"
+    ]
+  },
+  {
+    "content": "Most-used decorators: staticmethod, dataclass, router.post, lru_cache, router.get",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "decorators"
+    ]
+  },
+  {
+    "content": "Uses Docker for containerization with docker-compose",
+    "type_tag": "architecture",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "architecture",
+      "docker",
+      "infrastructure"
+    ]
+  },
+  {
+    "content": "Uses GitHub Actions for CI/CD",
+    "type_tag": "architecture",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "architecture",
+      "ci",
+      "infrastructure"
+    ]
+  },
+  {
+    "content": "Uses FastAPI as backend framework",
+    "type_tag": "architecture",
+    "importance": 0.8,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "architecture",
+      "backend",
+      "fastapi",
+      "python"
+    ]
+  }
+]

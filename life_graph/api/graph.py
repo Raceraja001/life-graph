@@ -10,10 +10,13 @@ All routes are prefixed with ``/graph`` and tagged for OpenAPI docs.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
+
+from life_graph.api.responses import success_response
 
 logger = logging.getLogger(__name__)
 
@@ -100,12 +103,11 @@ def _get_hybrid_engine():
 
 @router.get(
     "/entities",
-    response_model=list[GraphEntity],
     summary="List all graph entities",
 )
 async def list_entities(
     label: str | None = Query(None, description="Filter by vertex label"),
-) -> list[GraphEntity]:
+):
     """List all entities in the knowledge graph.
 
     Optionally filter by vertex label (e.g. ``Technology``, ``Person``).
@@ -130,18 +132,18 @@ async def list_entities(
                 properties=props,
             )
         )
-    return entities
+    return success_response(data=entities)
 
 
 @router.get(
     "/entity/{name}",
     summary="Get entity detail with neighbors",
 )
-async def get_entity(name: str) -> dict[str, Any]:
+async def get_entity(name: str):
     """Get full details for an entity including graph neighbors and related memories."""
     engine = _get_hybrid_engine()
     try:
-        return await engine.entity_context(name)
+        return success_response(data=await engine.entity_context(name))
     except Exception as exc:
         logger.exception("Failed to get entity context for %s", name)
         raise HTTPException(
@@ -154,18 +156,31 @@ async def get_entity(name: str) -> dict[str, Any]:
     "/query",
     summary="Execute a Cypher query",
 )
-async def execute_cypher(body: CypherQuery) -> list[dict[str, Any]]:
+async def execute_cypher(body: CypherQuery):
     """Execute a raw Cypher query against the knowledge graph.
 
-    **Admin-level endpoint** — allows arbitrary graph queries.
+    **Admin-level endpoint** — allows arbitrary read queries.
+    Write operations (CREATE, SET, DELETE, MERGE, REMOVE, DROP) are blocked.
     """
+    # Security: block write operations
+    _WRITE_KEYWORDS = re.compile(
+        r"\b(CREATE|SET|DELETE|DETACH|MERGE|REMOVE|DROP|CALL)\b",
+        re.IGNORECASE,
+    )
+    if _WRITE_KEYWORDS.search(body.cypher):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Write operations are not allowed via the API. Use read-only Cypher.",
+        )
+
     store = _get_graph_store()
     try:
-        return await store.execute_cypher(
+        result = await store.execute_cypher(
             cypher=body.cypher,
             params=body.params,
             columns=body.columns,
         )
+        return success_response(data=result)
     except Exception as exc:
         logger.exception("Cypher query failed")
         raise HTTPException(
@@ -184,7 +199,7 @@ async def find_path(
     from_label: str = Query("Entity", description="Source vertex label"),
     to_label: str = Query("Entity", description="Target vertex label"),
     max_depth: int = Query(5, ge=1, le=10, description="Maximum path depth"),
-) -> dict[str, Any]:
+):
     """Find a connecting path between two entities in the knowledge graph."""
     store = _get_graph_store()
     try:
@@ -202,20 +217,19 @@ async def find_path(
             detail=f"Graph query failed: {exc}",
         ) from exc
 
-    return {
+    return success_response(data={
         "from": from_name,
         "to": to_name,
         "path": path,
         "found": len(path) > 0,
-    }
+    })
 
 
 @router.post(
     "/search",
-    response_model=GraphSearchResult,
     summary="Hybrid graph + vector search",
 )
-async def hybrid_search(body: GraphSearchRequest) -> GraphSearchResult:
+async def hybrid_search(body: GraphSearchRequest):
     """Run a hybrid search combining graph structure with vector similarity.
 
     The graph narrows entity scope, then vector search refines
@@ -242,8 +256,8 @@ async def hybrid_search(body: GraphSearchRequest) -> GraphSearchResult:
             detail=f"Hybrid search error: {exc}",
         ) from exc
 
-    return GraphSearchResult(
+    return success_response(data=GraphSearchResult(
         entities=result.get("entities", []),
         memories=result.get("memories", []),
         graph_context=result.get("graph_context", []),
-    )
+    ))

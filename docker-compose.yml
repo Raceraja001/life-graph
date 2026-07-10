@@ -1,15 +1,85 @@
-# Life Graph — Development Environment
+# Life Graph — Full Development Stack
+# Usage: docker compose up -d
+# Env vars: see .env.example
 
 services:
+  # ── Life Graph API Server ────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: life_graph_app
+    ports:
+      - "8000:8000"
+    environment:
+      - LIFE_GRAPH_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-life_graph}:${POSTGRES_PASSWORD:-life_graph}@postgres:5432/${POSTGRES_DB:-life_graph}
+      - LIFE_GRAPH_DATABASE_URL_SYNC=postgresql://${POSTGRES_USER:-life_graph}:${POSTGRES_PASSWORD:-life_graph}@postgres:5432/${POSTGRES_DB:-life_graph}
+      - LIFE_GRAPH_REDIS_URL=redis://redis:6379/0
+      - LIFE_GRAPH_ENVIRONMENT=${LIFE_GRAPH_ENVIRONMENT:-development}
+      - LIFE_GRAPH_LOG_FORMAT=${LIFE_GRAPH_LOG_FORMAT:-text}
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"  # Dev: run locally with uvicorn instead
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── ARQ Background Worker ────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: life_graph_worker
+    command: ["arq", "life_graph.workers.settings.WorkerSettings"]
+    environment:
+      - LIFE_GRAPH_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-life_graph}:${POSTGRES_PASSWORD:-life_graph}@postgres:5432/${POSTGRES_DB:-life_graph}
+      - LIFE_GRAPH_DATABASE_URL_SYNC=postgresql://${POSTGRES_USER:-life_graph}:${POSTGRES_PASSWORD:-life_graph}@postgres:5432/${POSTGRES_DB:-life_graph}
+      - LIFE_GRAPH_REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"  # Dev: start manually if needed
+
+  # ── MCP Server (Model Context Protocol) ──────────────
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: life_graph_mcp
+    command: ["fastmcp", "run", "life_graph/mcp_server.py", "--transport", "sse", "--port", "8001"]
+    environment:
+      - LIFE_GRAPH_API_URL=http://app:8000
+      - LIFE_GRAPH_DEFAULT_TENANT=${LIFE_GRAPH_DEFAULT_TENANT:-personal}
+    env_file:
+      - .env
+    ports:
+      - "8001:8001"
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: "no"  # Dev: start manually if needed
+
+  # ── PostgreSQL + pgvector + Apache AGE ───────────────
   postgres:
     build:
       context: .
       dockerfile: Dockerfile.postgres
     container_name: life_graph_db
     environment:
-      POSTGRES_USER: life_graph
-      POSTGRES_PASSWORD: life_graph
-      POSTGRES_DB: life_graph
+      POSTGRES_USER: ${POSTGRES_USER:-life_graph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-life_graph}
+      POSTGRES_DB: ${POSTGRES_DB:-life_graph}
     ports:
       - "5432:5432"
     volumes:
@@ -19,24 +89,43 @@ services:
       postgres
       -c shared_preload_libraries=age
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U life_graph"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-life_graph}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
+  # ── Redis (rate limiting, pub/sub, job queue) ────────
+  redis:
+    image: redis:7-alpine
+    container_name: life_graph_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── MinIO (S3-compatible object storage) ─────────────
   minio:
     image: minio/minio
     container_name: life_graph_minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio_data:/data
+    restart: unless-stopped
 
 volumes:
   pg_data:
   minio_data:
+  redis_data:

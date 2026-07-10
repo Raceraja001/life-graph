@@ -17,9 +17,10 @@ from typing import Any
 # Weight configuration
 # ---------------------------------------------------------------------------
 
-_WEIGHT_SEMANTIC: float = 0.25
-_WEIGHT_CONTEXT: float = 0.25
-_WEIGHT_IMPORTANCE: float = 0.20
+_WEIGHT_SEMANTIC: float = 0.20
+_WEIGHT_CONTEXT: float = 0.20
+_WEIGHT_IMPORTANCE: float = 0.15
+_WEIGHT_IMPACT: float = 0.15
 _WEIGHT_RECENCY: float = 0.15
 _WEIGHT_FREQUENCY: float = 0.10
 _WEIGHT_TRUST: float = 0.05
@@ -129,7 +130,7 @@ def _resolve_days_since_access(candidate: dict[str, Any]) -> float:
 class RecallRanker:
     """Multi-signal ranker for memory retrieval results.
 
-    Blends six signals into a final score and applies diversity-aware
+    Blends seven signals into a final score and applies diversity-aware
     reranking to avoid surfacing clusters of the same topic.
 
     Usage::
@@ -149,6 +150,7 @@ class RecallRanker:
         Each candidate dict should contain:
             - ``semantic_score`` (float): Pre-computed vector similarity.
             - ``importance`` (float): Importance score.
+            - ``impact_score`` (float): Learned usefulness from outcomes.
             - ``trust_score`` (float): Trust/reliability score.
             - ``access_count`` (int): Number of accesses.
             - ``days_since_access`` or ``last_accessed``: Recency info.
@@ -169,6 +171,7 @@ class RecallRanker:
             sem = float(cand.get("semantic_score", 0.0))
             ctx_score = context_similarity(cand, ctx) if ctx else 0.0
             imp = float(cand.get("importance", 0.5))
+            impact = float(cand.get("impact_score", 0.5))
             rec = _recency_score(_resolve_days_since_access(cand))
             freq = _frequency_score(int(cand.get("access_count", 1)))
             trust = float(cand.get("trust_score", 0.5))
@@ -177,6 +180,7 @@ class RecallRanker:
                 _WEIGHT_SEMANTIC * sem
                 + _WEIGHT_CONTEXT * ctx_score
                 + _WEIGHT_IMPORTANCE * imp
+                + _WEIGHT_IMPACT * impact
                 + _WEIGHT_RECENCY * rec
                 + _WEIGHT_FREQUENCY * freq
                 + _WEIGHT_TRUST * trust
@@ -188,6 +192,7 @@ class RecallRanker:
                 "semantic": round(sem, 4),
                 "context": round(ctx_score, 4),
                 "importance": round(imp, 4),
+                "impact": round(impact, 4),
                 "recency": round(rec, 4),
                 "frequency": round(freq, 4),
                 "trust": round(trust, 4),

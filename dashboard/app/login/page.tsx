@@ -1,14 +1,16 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Brain, Loader2, ArrowRight } from "lucide-react";
+import { saveCredentials } from "@/lib/auth";
 
-export default function LoginPage() {
+function LoginForm() {
   const [apiKey, setApiKey] = useState("");
   const [tenantId, setTenantId] = useState("default");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,7 +19,7 @@ export default function LoginPage() {
     try {
       // Verify credentials by hitting a simple endpoint
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"}/health`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1"}/health`,
         { headers: { "X-Tenant-ID": tenantId, "Authorization": `Bearer ${apiKey}` } }
       );
       if (!res.ok && res.status === 401) {
@@ -25,16 +27,55 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      // Store credentials
-      localStorage.setItem("lg_api_key", apiKey);
-      localStorage.setItem("lg_tenant_id", tenantId);
-      router.push("/");
+      // Store credentials + set auth cookie for middleware
+      saveCredentials(apiKey, tenantId);
+      const from = searchParams.get("from") || "/";
+      router.push(from);
     } catch {
       setError("Cannot reach API server");
       setLoading(false);
     }
   };
 
+  return (
+    <form onSubmit={handleLogin} className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm space-y-4">
+      <div>
+        <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tenant ID</label>
+        <input
+          type="text"
+          value={tenantId}
+          onChange={e => setTenantId(e.target.value)}
+          className="w-full mt-1.5 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
+          placeholder="default"
+        />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">API Key</label>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={e => setApiKey(e.target.value)}
+          className="w-full mt-1.5 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
+          placeholder="Enter your API key"
+        />
+      </div>
+
+      {error && (
+        <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
+      )}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-emerald-700 shadow-sm hover:shadow transition-all disabled:opacity-50"
+      >
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>Connect</span><ArrowRight className="w-4 h-4" /></>}
+      </button>
+    </form>
+  );
+}
+
+export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -47,41 +88,14 @@ export default function LoginPage() {
           <p className="text-sm text-zinc-500 mt-1">Personal AI Operating System</p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleLogin} className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm space-y-4">
-          <div>
-            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tenant ID</label>
-            <input
-              type="text"
-              value={tenantId}
-              onChange={e => setTenantId(e.target.value)}
-              className="w-full mt-1.5 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
-              placeholder="default"
-            />
+        {/* Form — Suspense required because LoginForm uses useSearchParams */}
+        <Suspense fallback={
+          <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm flex items-center justify-center h-48">
+            <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
           </div>
-          <div>
-            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">API Key</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              className="w-full mt-1.5 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
-              placeholder="Enter your API key"
-            />
-          </div>
-
-          {error && (
-            <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-emerald-700 shadow-sm hover:shadow transition-all disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>Connect</span><ArrowRight className="w-4 h-4" /></>}
-          </button>
-        </form>
+        }>
+          <LoginForm />
+        </Suspense>
 
         <p className="text-center text-xs text-zinc-400 mt-6">
           v0.1.0 · Self-hosted · Your data stays yours

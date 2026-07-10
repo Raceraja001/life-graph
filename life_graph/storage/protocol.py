@@ -58,8 +58,11 @@ class MemoryStore(Protocol):
         filters: dict | None = None,
         offset: int = 0,
         limit: int = 20,
-    ) -> list[Memory]:
+        cursor: str | None = None,
+    ) -> tuple[list[Memory], bool]:
         """Return memories matching optional filters, paginated.
+
+        Returns a tuple of (memories, has_more).
 
         Supported filter keys:
         - ``status`` (str)
@@ -68,6 +71,7 @@ class MemoryStore(Protocol):
         - ``created_after`` (datetime)
         - ``created_before`` (datetime)
         - ``min_importance`` (float)
+        - ``source_type`` (str)
         """
         ...
 

@@ -1,60 +1,99 @@
-"""API key authentication for Life Graph.
+"""Service-to-service API key authentication for Life Graph.
 
-Supports API key via header (X-API-Key) or query parameter (?api_key=...).
-When LIFE_GRAPH_API_KEY is not set, all requests are allowed (dev mode).
+In SaaS mode, only the SaaS backend calls Life Graph.
+Auth is via `Authorization: Bearer <key>` header.
+Tenant identity comes from `X-Tenant-ID` header (set by the SaaS app).
 """
 
-from fastapi import Request, Security, HTTPException, status
-from fastapi.security import APIKeyHeader, APIKeyQuery
+from __future__ import annotations
+
+import logging
+
+from fastapi import Request, HTTPException, status
 
 from life_graph.config import settings
 
-# Accept API key from either header or query parameter
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-api_key_query = APIKeyQuery(name="api_key", auto_error=False)
+logger = logging.getLogger(__name__)
 
-# Routes that never require authentication
+# Routes that never require authentication or tenant context
 AUTH_EXEMPT_PREFIXES = (
     "/health",
+    "/live",
+    "/ready",
+    "/metrics",
     "/docs",
     "/redoc",
     "/openapi.json",
     "/brain",
+    "/ws",
 )
-# Exact paths exempt from auth (can't use prefix matching for "/")
-AUTH_EXEMPT_EXACT = frozenset({"/"})
+AUTH_EXEMPT_EXACT = frozenset({"/", "/openapi.json"})
 
 
-async def verify_api_key(
-    request: Request,
-    header_key: str | None = Security(api_key_header),
-    query_key: str | None = Security(api_key_query),
-) -> str:
-    """Verify API key from header or query parameter.
+def is_exempt_path(path: str) -> bool:
+    """Check if a path is exempt from auth and tenant requirements."""
+    if path in AUTH_EXEMPT_EXACT:
+        return True
+    return any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES)
 
-    Auth is skipped for:
-    - Exempt paths (health, docs, dashboard)
-    - When no API key is configured (dev mode)
 
-    Returns the validated API key or "anonymous" when auth is disabled.
+def verify_service_key(request: Request) -> str | None:
+    """Verify the service API key from Authorization header.
+
+    Returns:
+        The validated API key, or None if auth is disabled (dev mode).
+
+    Raises:
+        HTTPException: 401 if the key is invalid.
     """
     # Skip auth for exempt routes
-    path = request.url.path
-    if path in AUTH_EXEMPT_EXACT or any(
-        path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES
-    ):
-        return "anonymous"
+    if is_exempt_path(request.url.path):
+        return None
 
-    # If no API key configured, allow all requests (dev mode)
-    if not settings.api_key:
-        return "anonymous"
+    # Dev mode: no auth required
+    if settings.is_development and not settings.service_api_keys_list:
+        # Also accept legacy single api_key for backward compatibility
+        if not settings.api_key:
+            return None
 
-    api_key = header_key or query_key
+    # Extract bearer token
+    auth_header = request.headers.get("Authorization", "")
+    api_key = None
 
-    if not api_key or api_key != settings.api_key:
+    if auth_header.startswith("Bearer "):
+        api_key = auth_header[7:].strip()
+    else:
+        # Fallback: X-API-Key header (backward compatibility)
+        api_key = request.headers.get("X-API-Key")
+        # Fallback: query parameter (backward compatibility)
+        if not api_key:
+            api_key = request.query_params.get("api_key")
+
+    if not api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API key",
-            headers={"WWW-Authenticate": "ApiKey"},
+            detail="Missing API key. Use Authorization: Bearer <key>",
         )
+
+    # Check against configured service keys
+    valid_keys = settings.service_api_keys_list
+    # Also accept legacy single api_key
+    if settings.api_key:
+        valid_keys = valid_keys + [settings.api_key]
+
+    if not valid_keys:
+        # No keys configured — allow in dev mode
+        if settings.is_development:
+            return api_key
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No API keys configured on server",
+        )
+
+    if api_key not in valid_keys:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+        )
+
     return api_key

@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Life Graph — Brain Viewer</title>
+    <title>Life Graph — Brain Viewer v2</title>
+    <meta name="description" content="Brain-inspired personal memory system dashboard">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -11,7 +12,9 @@
             --bg-secondary: #12121a;
             --bg-card: #1a1a26;
             --bg-card-hover: #22222f;
+            --bg-input: #14141e;
             --border: #2a2a3a;
+            --border-focus: #4a9eff55;
             --text-primary: #e8e8f0;
             --text-secondary: #8888a0;
             --text-muted: #5a5a70;
@@ -21,11 +24,15 @@
             --accent-amber: #f59e0b;
             --accent-red: #ef4444;
             --accent-cyan: #06b6d4;
+            --accent-pink: #ec4899;
             --gradient-1: linear-gradient(135deg, #4a9eff 0%, #8b5cf6 100%);
             --gradient-2: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
             --gradient-3: linear-gradient(135deg, #22c55e 0%, #06b6d4 100%);
+            --gradient-4: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
             --glow-blue: 0 0 20px rgba(74, 158, 255, 0.15);
             --glow-purple: 0 0 20px rgba(139, 92, 246, 0.15);
+            --radius: 12px;
+            --radius-sm: 8px;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -38,7 +45,6 @@
             overflow-x: hidden;
         }
 
-        /* Animated background */
         body::before {
             content: '';
             position: fixed;
@@ -51,559 +57,399 @@
             z-index: 0;
         }
 
-        .app { position: relative; z-index: 1; }
-
-        /* Header */
+        /* ── Header ─────────────────────────────────────── */
         .header {
-            padding: 24px 40px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid var(--border);
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(10, 10, 15, 0.85);
             backdrop-filter: blur(20px);
-            background: rgba(10, 10, 15, 0.8);
-            position: sticky;
-            top: 0;
-            z-index: 100;
+            border-bottom: 1px solid var(--border);
+            padding: 0 32px;
         }
-
-        .header-left {
-            display: flex;
-            align-items: center;
-            gap: 16px;
+        .header-inner {
+            max-width: 1400px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between;
+            height: 60px;
         }
-
-        .brain-icon {
-            width: 40px; height: 40px;
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo-icon { font-size: 24px; }
+        .logo-text {
+            font-size: 18px; font-weight: 700;
             background: var(--gradient-1);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            box-shadow: var(--glow-blue);
-            animation: pulse-glow 3s ease-in-out infinite;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
-
-        @keyframes pulse-glow {
-            0%, 100% { box-shadow: 0 0 20px rgba(74, 158, 255, 0.15); }
-            50% { box-shadow: 0 0 30px rgba(74, 158, 255, 0.3); }
+        .logo-version {
+            font-size: 11px; color: var(--text-muted);
+            background: var(--bg-card); border: 1px solid var(--border);
+            padding: 2px 8px; border-radius: 20px;
         }
-
-        .header h1 {
-            font-size: 20px;
-            font-weight: 600;
-            background: var(--gradient-1);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .ws-status {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 12px; color: var(--text-muted);
         }
-
-        .header-status {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            color: var(--text-secondary);
+        .ws-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent-red);
+            transition: background 0.3s;
         }
+        .ws-dot.connected { background: var(--accent-green); box-shadow: 0 0 8px rgba(34,197,94,0.5); }
 
-        .status-dot {
-            width: 8px; height: 8px;
-            border-radius: 50%;
-            background: var(--accent-green);
-            animation: blink 2s infinite;
-        }
-
-        .status-dot.offline { background: var(--accent-red); animation: none; }
-
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
-
-        /* Main layout */
-        .main {
-            display: grid;
-            grid-template-columns: 1fr 380px;
-            gap: 0;
-            min-height: calc(100vh - 73px);
-        }
-
-        .content { padding: 28px 32px; }
-        .sidebar {
-            border-left: 1px solid var(--border);
+        /* ── Tabs ───────────────────────────────────────── */
+        .tabs {
+            display: flex; gap: 4px;
             background: var(--bg-secondary);
-            padding: 28px 24px;
-            overflow-y: auto;
+            border-bottom: 1px solid var(--border);
+            padding: 0 32px;
+            overflow-x: auto;
+        }
+        .tab {
+            padding: 12px 20px;
+            font-size: 13px; font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+            background: none; border-top: none; border-left: none; border-right: none;
+            font-family: inherit;
+        }
+        .tab:hover { color: var(--text-secondary); }
+        .tab.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
         }
 
-        /* Stats cards */
+        /* ── Content ────────────────────────────────────── */
+        .content { max-width: 1400px; margin: 0 auto; padding: 24px 32px; position: relative; z-index: 1; }
+        .page { display: none; animation: fadeIn 0.3s ease; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ── Stats Cards ────────────────────────────────── */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-bottom: 28px;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px; margin-bottom: 24px;
         }
-
         .stat-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 14px;
+            border-radius: var(--radius);
             padding: 20px;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
-            border-radius: 14px 14px 0 0;
-        }
-
-        .stat-card:nth-child(1)::before { background: var(--gradient-1); }
-        .stat-card:nth-child(2)::before { background: var(--gradient-2); }
-        .stat-card:nth-child(3)::before { background: var(--gradient-3); }
-        .stat-card:nth-child(4)::before { background: linear-gradient(135deg, var(--accent-amber), var(--accent-red)); }
-
-        .stat-card:hover {
-            transform: translateY(-2px);
-            border-color: rgba(74, 158, 255, 0.3);
-            box-shadow: var(--glow-blue);
-        }
-
-        .stat-label {
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 8px;
-        }
-
-        .stat-value {
-            font-size: 32px;
-            font-weight: 700;
-            line-height: 1;
-        }
-
-        .stat-card:nth-child(1) .stat-value { color: var(--accent-blue); }
-        .stat-card:nth-child(2) .stat-value { color: var(--accent-purple); }
-        .stat-card:nth-child(3) .stat-value { color: var(--accent-green); }
-        .stat-card:nth-child(4) .stat-value { color: var(--accent-amber); }
-
-        /* Search bar */
-        .search-section { margin-bottom: 28px; }
-
-        .search-bar {
-            display: flex;
-            gap: 12px;
-        }
-
-        .search-input {
-            flex: 1;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 14px 20px;
-            color: var(--text-primary);
-            font-size: 15px;
-            font-family: inherit;
-            transition: all 0.3s;
-            outline: none;
-        }
-
-        .search-input:focus {
-            border-color: var(--accent-blue);
-            box-shadow: var(--glow-blue);
-        }
-
-        .search-input::placeholder { color: var(--text-muted); }
-
-        .search-btn {
-            background: var(--gradient-1);
-            border: none;
-            border-radius: 12px;
-            padding: 14px 28px;
-            color: white;
-            font-size: 14px;
-            font-weight: 600;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.3s;
-            white-space: nowrap;
-        }
-
-        .search-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 20px rgba(74, 158, 255, 0.3);
-        }
-
-        .search-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* Section headers */
-        .section-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 16px;
-        }
-
-        .section-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .section-badge {
-            font-size: 11px;
-            font-weight: 500;
-            padding: 4px 10px;
-            border-radius: 20px;
-            background: rgba(74, 158, 255, 0.1);
-            color: var(--accent-blue);
-            border: 1px solid rgba(74, 158, 255, 0.2);
-        }
-
-        /* Memory cards */
-        .memories-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .memory-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 16px 20px;
-            transition: all 0.25s;
-            cursor: pointer;
-            position: relative;
-        }
-
-        .memory-card:hover {
-            background: var(--bg-card-hover);
-            border-color: rgba(139, 92, 246, 0.3);
-            transform: translateX(4px);
-        }
-
-        .memory-card.selected {
-            border-color: var(--accent-purple);
-            box-shadow: var(--glow-purple);
-        }
-
-        .memory-content {
-            font-size: 14px;
-            line-height: 1.5;
-            color: var(--text-primary);
-            margin-bottom: 10px;
-        }
-
-        .memory-meta {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
-        .tag {
-            font-size: 11px;
-            font-weight: 500;
-            padding: 3px 8px;
-            border-radius: 6px;
-            letter-spacing: 0.3px;
-        }
-
-        .tag-preference { background: rgba(74, 158, 255, 0.12); color: var(--accent-blue); }
-        .tag-decision { background: rgba(139, 92, 246, 0.12); color: var(--accent-purple); }
-        .tag-intention { background: rgba(245, 158, 11, 0.12); color: var(--accent-amber); }
-        .tag-fact { background: rgba(34, 197, 94, 0.12); color: var(--accent-green); }
-        .tag-explicit_save { background: rgba(239, 68, 68, 0.12); color: var(--accent-red); }
-        .tag-anti_preference { background: rgba(239, 68, 68, 0.12); color: var(--accent-red); }
-        .tag-high { background: rgba(245, 158, 11, 0.12); color: var(--accent-amber); }
-
-        .memory-score {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-left: auto;
-        }
-
-        .memory-time {
-            font-size: 11px;
-            color: var(--text-muted);
-        }
-
-        /* Sidebar */
-        .sidebar-section { margin-bottom: 28px; }
-
-        .sidebar-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 16px;
-        }
-
-        /* Ingest form */
-        .ingest-textarea {
-            width: 100%;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 14px;
-            color: var(--text-primary);
-            font-size: 13px;
-            font-family: inherit;
-            resize: vertical;
-            min-height: 100px;
-            outline: none;
-            transition: all 0.3s;
-        }
-
-        .ingest-textarea:focus {
-            border-color: var(--accent-purple);
-            box-shadow: var(--glow-purple);
-        }
-
-        .ingest-textarea::placeholder { color: var(--text-muted); }
-
-        .ingest-btn {
-            width: 100%;
-            margin-top: 10px;
-            background: var(--gradient-2);
-            border: none;
-            border-radius: 10px;
-            padding: 12px;
-            color: white;
-            font-size: 13px;
-            font-weight: 600;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .ingest-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
-        }
-
-        .ingest-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-        /* Tag filter */
-        .filter-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-
-        .filter-tag {
-            font-size: 12px;
-            padding: 5px 12px;
-            border-radius: 8px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: inherit;
-        }
-
-        .filter-tag:hover, .filter-tag.active {
-            background: rgba(74, 158, 255, 0.12);
-            border-color: var(--accent-blue);
-            color: var(--accent-blue);
-        }
-
-        /* Detail panel */
-        .detail-panel {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px;
-        }
-
-        .detail-label {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 4px;
-            margin-top: 14px;
-        }
-
-        .detail-label:first-child { margin-top: 0; }
-
-        .detail-value {
-            font-size: 13px;
-            color: var(--text-primary);
-            line-height: 1.5;
-        }
-
-        /* Toast */
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--bg-card);
-            border: 1px solid var(--accent-green);
-            border-radius: 12px;
-            padding: 14px 20px;
-            color: var(--accent-green);
-            font-size: 13px;
-            font-weight: 500;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-            transform: translateY(100px);
-            opacity: 0;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            z-index: 1000;
-        }
-
-        .toast.show { transform: translateY(0); opacity: 1; }
-        .toast.error { border-color: var(--accent-red); color: var(--accent-red); }
-
-        /* Empty state */
-        .empty-state {
             text-align: center;
-            padding: 48px 20px;
-            color: var(--text-muted);
+            transition: all 0.2s;
         }
+        .stat-card:hover { border-color: var(--accent-blue); box-shadow: var(--glow-blue); transform: translateY(-2px); }
+        .stat-value { font-size: 28px; font-weight: 700; background: var(--gradient-1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
-        .empty-state-text { font-size: 14px; }
+        /* ── Cards ──────────────────────────────────────── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: all 0.2s;
+        }
+        .card:hover { border-color: #3a3a4a; }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .card-title { font-size: 14px; font-weight: 600; }
+        .card-meta { font-size: 11px; color: var(--text-muted); }
+        .card-content { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
 
-        /* Loading spinner */
+        /* ── Badges ─────────────────────────────────────── */
+        .badge {
+            display: inline-block; padding: 2px 10px;
+            border-radius: 20px; font-size: 11px; font-weight: 500;
+        }
+        .badge-blue { background: rgba(74,158,255,0.15); color: var(--accent-blue); }
+        .badge-purple { background: rgba(139,92,246,0.15); color: var(--accent-purple); }
+        .badge-green { background: rgba(34,197,94,0.15); color: var(--accent-green); }
+        .badge-amber { background: rgba(245,158,11,0.15); color: var(--accent-amber); }
+        .badge-red { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+        .badge-pink { background: rgba(236,72,153,0.15); color: var(--accent-pink); }
+        .importance-bar { height: 3px; border-radius: 2px; margin-top: 8px; }
+
+        /* ── Forms ──────────────────────────────────────── */
+        .input, .textarea {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 14px;
+            padding: 12px 16px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input:focus, .textarea:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(74,158,255,0.1);
+        }
+        .textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
+
+        .btn {
+            padding: 10px 20px;
+            border: none; border-radius: var(--radius-sm);
+            font-family: inherit; font-size: 13px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .btn-primary {
+            background: var(--gradient-1); color: white;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(74,158,255,0.3); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-secondary {
+            background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { border-color: var(--accent-blue); color: var(--text-primary); }
+        .btn-success { background: var(--gradient-3); color: white; }
+        .btn-danger { background: var(--accent-red); color: white; }
+
+        .form-group { margin-bottom: 16px; }
+        .form-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-row { display: flex; gap: 12px; align-items: flex-end; }
+
+        /* ── Ask Brain ─────────────────────────────────── */
+        .ask-container { max-width: 800px; }
+        .ask-input-row { display: flex; gap: 12px; margin-bottom: 24px; }
+        .ask-input-row .input { flex: 1; }
+        .answer-box {
+            background: linear-gradient(135deg, rgba(74,158,255,0.08) 0%, rgba(139,92,246,0.08) 100%);
+            border: 1px solid rgba(74,158,255,0.2);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+        .answer-text { font-size: 15px; line-height: 1.8; color: var(--text-primary); }
+        .answer-meta { display: flex; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--text-muted); }
+        .answer-meta span { display: flex; align-items: center; gap: 4px; }
+
+        /* ── Memories Grid ─────────────────────────────── */
+        .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+        .filter-chip {
+            padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500;
+            background: var(--bg-card); border: 1px solid var(--border); color: var(--text-muted);
+            cursor: pointer; transition: all 0.2s; font-family: inherit;
+        }
+        .filter-chip.active, .filter-chip:hover {
+            border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(74,158,255,0.08);
+        }
+        .memory-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+
+        /* ── Sessions ──────────────────────────────────── */
+        .session-actions { display: flex; gap: 12px; margin-bottom: 24px; }
+        .session-card { cursor: default; }
+        .session-card .badge { margin-right: 8px; }
+        .session-summary { font-style: italic; color: var(--text-secondary); margin-top: 8px; font-size: 13px; }
+
+        /* ── Identity ──────────────────────────────────── */
+        .belief-card { border-left: 3px solid var(--accent-purple); }
+        .belief-card.stale { border-left-color: var(--accent-amber); }
+        .stale-warning { color: var(--accent-amber); font-size: 12px; margin-top: 6px; }
+
+        /* ── Live Feed ─────────────────────────────────── */
+        .feed-list { max-height: 500px; overflow-y: auto; }
+        .feed-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            display: flex; gap: 12px; align-items: flex-start;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } }
+        .feed-icon { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+        .feed-body { flex: 1; }
+        .feed-time { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-icon { font-size: 48px; margin-bottom: 12px; }
+
+        /* ── Toast ──────────────────────────────────────── */
+        .toast {
+            position: fixed; bottom: 24px; right: 24px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-primary); padding: 12px 20px;
+            border-radius: var(--radius-sm); font-size: 13px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            transform: translateY(100px); opacity: 0;
+            transition: all 0.3s; z-index: 1000;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { border-color: var(--accent-red); }
+
+        /* ── Loading ────────────────────────────────────── */
         .spinner {
-            display: inline-block;
-            width: 16px; height: 16px;
-            border: 2px solid rgba(255,255,255,0.2);
-            border-top-color: white;
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid var(--border); border-top-color: var(--accent-blue);
             border-radius: 50%;
             animation: spin 0.6s linear infinite;
         }
-
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Scrollbar */
+        /* ── Responsive ─────────────────────────────────── */
+        @media (max-width: 768px) {
+            .header { padding: 0 16px; }
+            .tabs { padding: 0 16px; }
+            .content { padding: 16px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .form-row { flex-direction: column; }
+            .ask-input-row { flex-direction: column; }
+        }
+
+        /* ── Scrollbar ──────────────────────────────────── */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-
-        /* Search results highlight */
-        .search-result .memory-card { border-left: 3px solid var(--accent-blue); }
+        ::-webkit-scrollbar-thumb:hover { background: #3a3a4a; }
     </style>
 </head>
 <body>
-    <div class="app">
-        <header class="header">
-            <div class="header-left">
-                <div class="brain-icon">&#129504;</div>
-                <h1>Life Graph</h1>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-inner">
+            <div class="logo">
+                <span class="logo-icon">🧠</span>
+                <span class="logo-text">Life Graph</span>
+                <span class="logo-version" id="versionBadge">v0.2.0</span>
             </div>
-            <div class="header-status">
-                <div class="status-dot" id="statusDot"></div>
-                <span id="statusText">Connecting...</span>
+            <div class="ws-status">
+                <div class="ws-dot" id="wsDot"></div>
+                <span id="wsLabel">Disconnected</span>
             </div>
-        </header>
+        </div>
+    </div>
 
-        <div class="main">
-            <div class="content">
-                <!-- Stats -->
-                <div class="stats-grid" id="statsGrid">
-                    <div class="stat-card">
-                        <div class="stat-label">Memories</div>
-                        <div class="stat-value" id="statMemories">--</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Intentions</div>
-                        <div class="stat-value" id="statIntentions">--</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Knowledge Gaps</div>
-                        <div class="stat-value" id="statGaps">--</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-label">Sessions</div>
-                        <div class="stat-value" id="statSessions">--</div>
-                    </div>
-                </div>
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab active" data-page="dashboard" onclick="switchTab(this)">📊 Dashboard</button>
+        <button class="tab" data-page="ask" onclick="switchTab(this)">💬 Ask Brain</button>
+        <button class="tab" data-page="memories" onclick="switchTab(this)">🧩 Memories</button>
+        <button class="tab" data-page="sessions" onclick="switchTab(this)">📁 Sessions</button>
+        <button class="tab" data-page="identity" onclick="switchTab(this)">🪞 Identity</button>
+        <button class="tab" data-page="teach" onclick="switchTab(this)">📝 Teach</button>
+        <button class="tab" data-page="live" onclick="switchTab(this)">⚡ Live Feed</button>
+    </div>
 
-                <!-- Search -->
-                <div class="search-section">
-                    <div class="search-bar">
-                        <input type="text" class="search-input" id="searchInput" 
-                               placeholder="Search your brain... (e.g. 'what database do I prefer')" 
-                               onkeydown="if(event.key==='Enter') doSearch()">
-                        <button class="search-btn" id="searchBtn" onclick="doSearch()">Search</button>
-                    </div>
-                </div>
+    <!-- Content -->
+    <div class="content">
 
-                <!-- Search Results -->
-                <div id="searchResults" style="display:none; margin-bottom: 28px;">
-                    <div class="section-header">
-                        <span class="section-title">Search Results</span>
-                        <button class="filter-tag" onclick="clearSearch()">Clear</button>
-                    </div>
-                    <div class="memories-list search-result" id="searchResultsList"></div>
-                </div>
+        <!-- ═══ DASHBOARD ═══ -->
+        <div class="page active" id="page-dashboard">
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-value" id="statMemories">--</div><div class="stat-label">Memories</div></div>
+                <div class="stat-card"><div class="stat-value" id="statSessions">--</div><div class="stat-label">Sessions</div></div>
+                <div class="stat-card"><div class="stat-value" id="statIntentions">--</div><div class="stat-label">Intentions</div></div>
+                <div class="stat-card"><div class="stat-value" id="statGaps">--</div><div class="stat-label">Knowledge Gaps</div></div>
+                <div class="stat-card"><div class="stat-value" id="statBeliefs">--</div><div class="stat-label">Beliefs</div></div>
+                <div class="stat-card"><div class="stat-value" id="statStale">--</div><div class="stat-label">Stale Beliefs</div></div>
+            </div>
 
-                <!-- Filter tags -->
-                <div style="margin-bottom: 16px;">
-                    <div class="filter-tags" id="filterTags">
-                        <button class="filter-tag active" onclick="filterBy('all', this)">All</button>
-                        <button class="filter-tag" onclick="filterBy('preference', this)">Preferences</button>
-                        <button class="filter-tag" onclick="filterBy('decision', this)">Decisions</button>
-                        <button class="filter-tag" onclick="filterBy('intention', this)">Intentions</button>
-                        <button class="filter-tag" onclick="filterBy('explicit_save', this)">Saved</button>
-                        <button class="filter-tag" onclick="filterBy('fact', this)">Facts</button>
-                        <button class="filter-tag" onclick="filterBy('anti_preference', this)">Anti-Prefs</button>
-                    </div>
-                </div>
+            <h3 style="margin-bottom: 16px; font-size: 16px;">Recent Memories</h3>
+            <div id="recentMemories">
+                <div class="empty-state"><div class="spinner"></div></div>
+            </div>
+        </div>
 
-                <!-- Memories list -->
-                <div class="section-header">
-                    <span class="section-title">All Memories</span>
-                    <span class="section-badge" id="memoryCount">0 memories</span>
+        <!-- ═══ ASK BRAIN ═══ -->
+        <div class="page" id="page-ask">
+            <div class="ask-container">
+                <h3 style="margin-bottom: 16px; font-size: 16px;">Ask Your Brain</h3>
+                <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">
+                    Ask questions in natural language. Your brain searches its memories and synthesizes an answer using local AI.
+                </p>
+                <div class="ask-input-row">
+                    <input class="input" id="askInput" placeholder="What tech stack do I use? / What databases do I prefer?" 
+                           onkeydown="if(event.key==='Enter') askBrain()">
+                    <button class="btn btn-primary" id="askBtn" onclick="askBrain()">Ask</button>
                 </div>
-                <div class="memories-list" id="memoriesList">
+                <div id="answerBox" style="display:none;"></div>
+                <div id="askSources" style="display:none;">
+                    <h4 style="font-size: 14px; margin-bottom: 12px; color: var(--text-secondary);">Source Memories</h4>
+                    <div id="askSourcesList"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ MEMORIES ═══ -->
+        <div class="page" id="page-memories">
+            <div class="form-row" style="margin-bottom: 20px;">
+                <input class="input" id="searchInput" placeholder="Search memories..." style="flex:1"
+                       onkeydown="if(event.key==='Enter') searchMemories()">
+                <button class="btn btn-primary" onclick="searchMemories()">Search</button>
+                <button class="btn btn-secondary" onclick="loadMemories()">Refresh</button>
+            </div>
+            <div class="filter-bar" id="filterBar">
+                <button class="filter-chip active" onclick="filterMemories('all', this)">All</button>
+                <button class="filter-chip" onclick="filterMemories('preference', this)">Preferences</button>
+                <button class="filter-chip" onclick="filterMemories('decision', this)">Decisions</button>
+                <button class="filter-chip" onclick="filterMemories('fact', this)">Facts</button>
+                <button class="filter-chip" onclick="filterMemories('explicit_save', this)">Saved</button>
+            </div>
+            <div class="memory-grid" id="memoryGrid">
+                <div class="empty-state"><div class="spinner"></div></div>
+            </div>
+        </div>
+
+        <!-- ═══ SESSIONS ═══ -->
+        <div class="page" id="page-sessions">
+            <div class="session-actions">
+                <button class="btn btn-success" id="sessionStartBtn" onclick="startSession()">▶ Start Session</button>
+                <button class="btn btn-danger" id="sessionEndBtn" onclick="endSession()" disabled>⏹ End Session</button>
+                <span id="activeSessionLabel" style="font-size: 13px; color: var(--text-muted); align-self: center;"></span>
+            </div>
+            <h3 style="margin-bottom: 16px; font-size: 16px;">Recent Sessions</h3>
+            <div id="sessionsList">
+                <div class="empty-state"><div class="spinner"></div></div>
+            </div>
+        </div>
+
+        <!-- ═══ IDENTITY ═══ -->
+        <div class="page" id="page-identity">
+            <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                <button class="filter-chip active" onclick="loadBeliefs(this)">Current Beliefs</button>
+                <button class="filter-chip" onclick="loadStaleBeliefs(this)">Stale Beliefs</button>
+            </div>
+            <div id="beliefsList">
+                <div class="empty-state"><div class="spinner"></div></div>
+            </div>
+        </div>
+
+        <!-- ═══ TEACH ═══ -->
+        <div class="page" id="page-teach">
+            <div style="max-width: 700px;">
+                <h3 style="margin-bottom: 16px; font-size: 16px;">Teach Your Brain</h3>
+                <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">
+                    Tell your brain about your preferences, decisions, experiences, or anything you want it to remember.
+                </p>
+                <div class="form-group">
+                    <label class="form-label">What should I remember?</label>
+                    <textarea class="textarea" id="teachText" 
+                              placeholder="e.g. I prefer TypeScript over JavaScript for large projects. I always use Docker for deployments. My go-to database is PostgreSQL with pgvector."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Source (optional)</label>
+                    <input class="input" id="teachSource" placeholder="e.g. chat, manual, git">
+                </div>
+                <button class="btn btn-primary" id="teachBtn" onclick="teachBrain()">💾 Remember This</button>
+                <div id="teachResult" style="margin-top: 16px;"></div>
+            </div>
+        </div>
+
+        <!-- ═══ LIVE FEED ═══ -->
+        <div class="page" id="page-live">
+            <h3 style="margin-bottom: 16px; font-size: 16px;">
+                ⚡ Live Event Feed
+                <span class="ws-dot" id="feedDot" style="display:inline-block; width:8px; height:8px; border-radius:50%; margin-left:8px;"></span>
+            </h3>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">
+                Real-time events streamed via WebSocket. Events appear as memories are created, recalled, or consolidated.
+            </p>
+            <div class="card">
+                <div class="feed-list" id="feedList">
                     <div class="empty-state">
-                        <div class="empty-state-icon">&#129504;</div>
-                        <div class="empty-state-text">Loading memories...</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Sidebar -->
-            <div class="sidebar">
-                <!-- Teach the brain -->
-                <div class="sidebar-section">
-                    <div class="sidebar-title">Teach Your Brain</div>
-                    <textarea class="ingest-textarea" id="ingestText" 
-                              placeholder="Tell me something about yourself...&#10;&#10;e.g. I prefer TypeScript over JavaScript. I always use Docker for deployments."></textarea>
-                    <button class="ingest-btn" id="ingestBtn" onclick="doIngest()">
-                        Remember This
-                    </button>
-                </div>
-
-                <!-- Memory detail -->
-                <div class="sidebar-section" id="detailSection" style="display:none;">
-                    <div class="sidebar-title">Memory Detail</div>
-                    <div class="detail-panel" id="detailPanel"></div>
-                </div>
-
-                <!-- Recent activity -->
-                <div class="sidebar-section">
-                    <div class="sidebar-title">Brain Activity</div>
-                    <div id="activityLog" style="font-size: 12px; color: var(--text-muted); line-height: 2;">
-                        Waiting for activity...
+                        <div class="empty-icon">📡</div>
+                        <div>Waiting for events...</div>
                     </div>
                 </div>
             </div>
@@ -613,279 +459,338 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        const API = 'http://localhost:8000';
+        const API = window.location.origin;
         let allMemories = [];
         let currentFilter = 'all';
+        let activeSessionId = null;
+        let ws = null;
+        let feedEvents = [];
 
-        // ── Init ──
+        // ── Init ──────────────────────────────────────────
         async function init() {
-            await checkHealth();
-            await loadStats();
-            await loadMemories();
+            loadStats();
+            loadMemories();
+            loadSessionsList();
+            loadBeliefs();
+            connectWebSocket();
         }
 
-        // ── Health check ──
-        async function checkHealth() {
-            try {
-                const r = await fetch(`${API}/admin/stats`);
-                if (r.ok) {
-                    document.getElementById('statusDot').className = 'status-dot';
-                    document.getElementById('statusText').textContent = 'Connected';
-                }
-            } catch {
-                document.getElementById('statusDot').className = 'status-dot offline';
-                document.getElementById('statusText').textContent = 'Offline';
-            }
+        // ── Tab switching ─────────────────────────────────
+        function switchTab(el) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            el.classList.add('active');
+            document.getElementById('page-' + el.dataset.page).classList.add('active');
         }
 
-        // ── Load stats ──
+        // ── Stats ─────────────────────────────────────────
         async function loadStats() {
             try {
-                const r = await fetch(`${API}/admin/stats`);
-                const data = await r.json();
-                animateNumber('statMemories', data.memory_count || 0);
-                animateNumber('statIntentions', data.intention_count || 0);
-                animateNumber('statGaps', data.gap_count || 0);
-                animateNumber('statSessions', data.session_count || 0);
-            } catch {}
+                const stats = await api('/admin/stats');
+                animateNumber('statMemories', stats.memory_count);
+                animateNumber('statSessions', stats.session_count);
+                animateNumber('statIntentions', stats.intention_count);
+                animateNumber('statGaps', stats.gap_count);
+
+                const beliefs = await api('/identity/beliefs');
+                animateNumber('statBeliefs', beliefs.length);
+
+                const stale = await api('/identity/stale');
+                animateNumber('statStale', stale.length);
+            } catch (e) { console.error('Stats error:', e); }
         }
 
         function animateNumber(id, target) {
             const el = document.getElementById(id);
-            const start = parseInt(el.textContent) || 0;
-            const diff = target - start;
-            const duration = 600;
-            const startTime = performance.now();
-
-            function update(time) {
-                const elapsed = time - startTime;
-                const progress = Math.min(elapsed / duration, 1);
-                const eased = 1 - Math.pow(1 - progress, 3);
-                el.textContent = Math.round(start + diff * eased);
-                if (progress < 1) requestAnimationFrame(update);
-            }
-            requestAnimationFrame(update);
+            let current = 0;
+            const step = Math.max(1, Math.floor(target / 15));
+            const timer = setInterval(() => {
+                current = Math.min(current + step, target);
+                el.textContent = current;
+                if (current >= target) clearInterval(timer);
+            }, 30);
         }
 
-        // ── Load memories ──
+        // ── Memories ──────────────────────────────────────
         async function loadMemories() {
             try {
-                const r = await fetch(`${API}/memories/`);
-                allMemories = await r.json();
+                allMemories = await api('/memories/?limit=50');
                 renderMemories();
-            } catch (e) {
-                document.getElementById('memoriesList').innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">&#9888;</div>
-                        <div class="empty-state-text">Could not connect to API</div>
-                    </div>`;
-            }
+                renderRecentMemories();
+            } catch (e) { console.error('Load memories error:', e); }
         }
 
         function renderMemories() {
-            const list = document.getElementById('memoriesList');
-            let filtered = allMemories;
-
-            if (currentFilter !== 'all') {
-                filtered = allMemories.filter(m => {
-                    const tags = m.tags || [];
-                    const factType = m.properties?.fact_type || '';
-                    return tags.includes(currentFilter) || factType === currentFilter;
-                });
-            }
-
-            document.getElementById('memoryCount').textContent = `${filtered.length} memories`;
-
-            if (filtered.length === 0) {
-                list.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">&#128173;</div>
-                        <div class="empty-state-text">No memories found</div>
-                    </div>`;
+            const grid = document.getElementById('memoryGrid');
+            let filtered = currentFilter === 'all' ? allMemories : allMemories.filter(m => (m.tags || []).includes(currentFilter));
+            if (!filtered.length) {
+                grid.innerHTML = '<div class="empty-state"><div class="empty-icon">🧩</div><div>No memories found</div></div>';
                 return;
             }
-
-            list.innerHTML = filtered.map((m, i) => {
-                const tags = m.tags || [];
-                const factType = m.properties?.fact_type || '';
-                const importance = m.importance || 0;
-                const time = m.created_at ? timeAgo(m.created_at) : '';
-
-                return `
-                    <div class="memory-card" onclick="showDetail(${i})" data-index="${i}">
-                        <div class="memory-content">${escapeHtml(m.content || '')}</div>
-                        <div class="memory-meta">
-                            ${tags.map(t => `<span class="tag tag-${t}">${t}</span>`).join('')}
-                            ${factType && !tags.includes(factType) ? `<span class="tag tag-${factType}">${factType}</span>` : ''}
-                            <span class="memory-score">imp: ${(importance * 100).toFixed(0)}%</span>
-                            ${time ? `<span class="memory-time">${time}</span>` : ''}
-                        </div>
-                    </div>`;
-            }).join('');
+            grid.innerHTML = filtered.map(m => renderMemoryCard(m)).join('');
         }
 
-        // ── Search ──
-        async function doSearch() {
-            const query = document.getElementById('searchInput').value.trim();
-            if (!query) return;
-
-            const btn = document.getElementById('searchBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span>';
-
-            try {
-                const r = await fetch(`${API}/search/`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query, limit: 10 })
-                });
-                const data = await r.json();
-                const results = data.results || data || [];
-
-                const container = document.getElementById('searchResults');
-                const list = document.getElementById('searchResultsList');
-                container.style.display = 'block';
-
-                if (results.length === 0) {
-                    list.innerHTML = `<div class="empty-state"><div class="empty-state-text">No results for "${escapeHtml(query)}"</div></div>`;
-                } else {
-                    list.innerHTML = results.map(m => `
-                        <div class="memory-card">
-                            <div class="memory-content">${escapeHtml(m.content || '')}</div>
-                            <div class="memory-meta">
-                                ${(m.tags || []).map(t => `<span class="tag tag-${t}">${t}</span>`).join('')}
-                                ${m.score ? `<span class="memory-score">score: ${(m.score * 100).toFixed(0)}%</span>` : ''}
-                            </div>
-                        </div>`).join('');
-                }
-
-                logActivity(`Searched: "${query}" (${results.length} results)`);
-            } catch (e) {
-                showToast('Search failed: ' + e.message, true);
-            }
-
-            btn.disabled = false;
-            btn.textContent = 'Search';
+        function renderRecentMemories() {
+            const el = document.getElementById('recentMemories');
+            const recent = allMemories.slice(0, 5);
+            if (!recent.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🧠</div><div>No memories yet. Go to Teach tab to add some!</div></div>'; return; }
+            el.innerHTML = recent.map(m => renderMemoryCard(m)).join('');
         }
 
-        function clearSearch() {
-            document.getElementById('searchResults').style.display = 'none';
-            document.getElementById('searchInput').value = '';
+        function renderMemoryCard(m) {
+            const tags = (m.tags || []).map(t => `<span class="badge badge-blue">${esc(t)}</span>`).join(' ');
+            const imp = Math.round((m.importance || 0.5) * 100);
+            const impColor = imp >= 80 ? 'var(--accent-red)' : imp >= 60 ? 'var(--accent-amber)' : imp >= 40 ? 'var(--accent-green)' : 'var(--accent-blue)';
+            return `<div class="card">
+                <div class="card-header">
+                    <div>${tags}</div>
+                    <div class="card-meta">${timeAgo(m.created_at)}</div>
+                </div>
+                <div class="card-content">${esc(m.content)}</div>
+                ${m.reasoning ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">💡 ${esc(m.reasoning)}</div>` : ''}
+                <div class="importance-bar" style="background:linear-gradient(90deg, ${impColor} ${imp}%, var(--border) ${imp}%);" title="Importance: ${imp}%"></div>
+            </div>`;
         }
 
-        // ── Ingest ──
-        async function doIngest() {
-            const text = document.getElementById('ingestText').value.trim();
-            if (!text) return;
-
-            const btn = document.getElementById('ingestBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span> Remembering...';
-
-            try {
-                const r = await fetch(`${API}/admin/ingest`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text })
-                });
-                const data = await r.json();
-                const count = Array.isArray(data) ? data.length : 1;
-
-                showToast(`Remembered! ${count} memories created`);
-                document.getElementById('ingestText').value = '';
-                logActivity(`Ingested: "${text.substring(0, 40)}..." (${count} memories)`);
-
-                await loadStats();
-                await loadMemories();
-            } catch (e) {
-                showToast('Failed to ingest: ' + e.message, true);
-            }
-
-            btn.disabled = false;
-            btn.textContent = 'Remember This';
-        }
-
-        // ── Detail panel ──
-        function showDetail(index) {
-            const m = allMemories[index];
-            if (!m) return;
-
-            document.querySelectorAll('.memory-card').forEach(c => c.classList.remove('selected'));
-            document.querySelector(`[data-index="${index}"]`)?.classList.add('selected');
-
-            const panel = document.getElementById('detailPanel');
-            const section = document.getElementById('detailSection');
-            section.style.display = 'block';
-
-            const props = m.properties || {};
-            panel.innerHTML = `
-                <div class="detail-label">Content</div>
-                <div class="detail-value">${escapeHtml(m.content || '')}</div>
-                
-                <div class="detail-label">Source</div>
-                <div class="detail-value">${escapeHtml(m.reasoning || m.source_type || 'unknown')}</div>
-                
-                <div class="detail-label">Type</div>
-                <div class="detail-value">${props.fact_type || (m.tags || []).join(', ') || 'general'}</div>
-                
-                <div class="detail-label">Importance</div>
-                <div class="detail-value">${((m.importance || 0) * 100).toFixed(0)}%</div>
-                
-                <div class="detail-label">Confidence</div>
-                <div class="detail-value">${((props.extraction_confidence || m.confidence || 0) * 100).toFixed(0)}%</div>
-                
-                <div class="detail-label">Entities</div>
-                <div class="detail-value">${(props.entities || []).join(', ') || 'none'}</div>
-                
-                <div class="detail-label">ID</div>
-                <div class="detail-value" style="font-size:11px;color:var(--text-muted);word-break:break-all;">${m.id || 'N/A'}</div>
-                
-                <div class="detail-label">Created</div>
-                <div class="detail-value">${m.created_at ? new Date(m.created_at).toLocaleString() : 'unknown'}</div>
-            `;
-        }
-
-        // ── Filter ──
-        function filterBy(tag, btn) {
+        function filterMemories(tag, btn) {
             currentFilter = tag;
-            document.querySelectorAll('.filter-tag').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#filterBar .filter-chip').forEach(c => c.classList.remove('active'));
             btn.classList.add('active');
             renderMemories();
         }
 
-        // ── Helpers ──
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        async function searchMemories() {
+            const q = document.getElementById('searchInput').value.trim();
+            if (!q) { loadMemories(); return; }
+            try {
+                const res = await api('/search/', 'POST', { query: q, limit: 20 });
+                allMemories = res.memories || [];
+                renderMemories();
+                toast(`Found ${allMemories.length} memories`);
+            } catch (e) { toast('Search failed', true); }
+        }
+
+        // ── Ask Brain ─────────────────────────────────────
+        async function askBrain() {
+            const q = document.getElementById('askInput').value.trim();
+            if (!q) return;
+            const btn = document.getElementById('askBtn');
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
+            document.getElementById('answerBox').style.display = 'none';
+            document.getElementById('askSources').style.display = 'none';
+            try {
+                const res = await api('/search/ask', 'POST', { question: q, limit: 5 });
+                document.getElementById('answerBox').style.display = 'block';
+                document.getElementById('answerBox').innerHTML = `
+                    <div class="answer-box">
+                        <div class="answer-text">${esc(res.answer)}</div>
+                        <div class="answer-meta">
+                            <span>📚 ${res.source_count} sources</span>
+                            <span>🤖 ${res.model || 'local'}</span>
+                            <span>⏱ ${Math.round(res.query_time_ms / 1000)}s</span>
+                        </div>
+                    </div>`;
+                if (res.sources && res.sources.length) {
+                    document.getElementById('askSources').style.display = 'block';
+                    document.getElementById('askSourcesList').innerHTML = res.sources.map(s => renderMemoryCard(s)).join('');
+                }
+            } catch (e) { toast('Ask failed — is LM Studio running?', true); }
+            btn.disabled = false; btn.textContent = 'Ask';
+        }
+
+        // ── Sessions ──────────────────────────────────────
+        async function loadSessionsList() {
+            try {
+                const sessions = await api('/sessions/?limit=10');
+                const el = document.getElementById('sessionsList');
+                if (!sessions.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📁</div><div>No sessions yet</div></div>'; return; }
+                el.innerHTML = sessions.map(s => {
+                    const isActive = !s.ended_at;
+                    const status = isActive ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-purple">Ended</span>';
+                    return `<div class="card session-card">
+                        <div class="card-header">
+                            <div>${status} <span class="badge badge-blue">${s.memories_created || 0} memories</span></div>
+                            <div class="card-meta">${timeAgo(s.started_at)}</div>
+                        </div>
+                        <div class="card-meta">ID: ${s.id.slice(0,8)}...</div>
+                        ${s.summary ? `<div class="session-summary">"${esc(s.summary)}"</div>` : ''}
+                        ${s.context ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">Context: ${esc(JSON.stringify(s.context))}</div>` : ''}
+                    </div>`;
+                }).join('');
+            } catch (e) { console.error('Sessions error:', e); }
+        }
+
+        async function startSession() {
+            try {
+                const res = await api('/sessions/start', 'POST', { context: { source: 'dashboard' } });
+                activeSessionId = res.id;
+                document.getElementById('sessionStartBtn').disabled = true;
+                document.getElementById('sessionEndBtn').disabled = false;
+                document.getElementById('activeSessionLabel').textContent = `Active: ${res.id.slice(0,8)}...`;
+                toast('Session started');
+                loadSessionsList();
+                loadStats();
+            } catch (e) { toast('Failed to start session', true); }
+        }
+
+        async function endSession() {
+            if (!activeSessionId) return;
+            const btn = document.getElementById('sessionEndBtn');
+            btn.innerHTML = '<span class="spinner"></span> Ending...';
+            try {
+                await api(`/sessions/${activeSessionId}/end`, 'POST');
+                activeSessionId = null;
+                document.getElementById('sessionStartBtn').disabled = false;
+                btn.disabled = true; btn.textContent = '⏹ End Session';
+                document.getElementById('activeSessionLabel').textContent = '';
+                toast('Session ended with LLM summary');
+                loadSessionsList();
+                loadStats();
+            } catch (e) { toast('Failed to end session', true); btn.textContent = '⏹ End Session'; }
+        }
+
+        // ── Identity ──────────────────────────────────────
+        async function loadBeliefs(btn) {
+            if (btn) { document.querySelectorAll('#page-identity .filter-chip').forEach(c => c.classList.remove('active')); btn.classList.add('active'); }
+            try {
+                const beliefs = await api('/identity/beliefs');
+                const el = document.getElementById('beliefsList');
+                if (!beliefs.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🪞</div><div>No beliefs tracked yet</div></div>'; return; }
+                el.innerHTML = beliefs.map(b => `
+                    <div class="card belief-card">
+                        <div class="card-header">
+                            <div>${(b.tags||[]).map(t => `<span class="badge badge-purple">${esc(t)}</span>`).join(' ')}</div>
+                            <div class="badge badge-green">${Math.round((b.importance||0.5)*100)}% importance</div>
+                        </div>
+                        <div class="card-content">${esc(b.content)}</div>
+                        ${b.reasoning ? `<div style="margin-top:8px;font-size:12px;color:var(--text-muted);">💡 ${esc(b.reasoning)}</div>` : ''}
+                    </div>`).join('');
+            } catch (e) { console.error('Beliefs error:', e); }
+        }
+
+        async function loadStaleBeliefs(btn) {
+            if (btn) { document.querySelectorAll('#page-identity .filter-chip').forEach(c => c.classList.remove('active')); btn.classList.add('active'); }
+            try {
+                const stale = await api('/identity/stale');
+                const el = document.getElementById('beliefsList');
+                if (!stale.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div>All beliefs are fresh!</div></div>'; return; }
+                el.innerHTML = stale.map(s => `
+                    <div class="card belief-card stale">
+                        <div class="card-content">${esc(s.content || s.prompt || JSON.stringify(s))}</div>
+                        <div class="stale-warning">⚠️ This belief may be outdated</div>
+                    </div>`).join('');
+            } catch (e) { console.error('Stale error:', e); }
+        }
+
+        // ── Teach ─────────────────────────────────────────
+        async function teachBrain() {
+            const text = document.getElementById('teachText').value.trim();
+            if (!text) return;
+            const source = document.getElementById('teachSource').value.trim() || 'dashboard';
+            const btn = document.getElementById('teachBtn');
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...';
+            try {
+                const res = await api('/memories/', 'POST', { content: text, source });
+                const count = Array.isArray(res) ? res.length : 1;
+                document.getElementById('teachResult').innerHTML = `
+                    <div class="card" style="border-color: var(--accent-green);">
+                        <div class="card-content" style="color: var(--accent-green);">
+                            ✅ Stored ${count} memories from your input!
+                        </div>
+                    </div>`;
+                document.getElementById('teachText').value = '';
+                toast(`${count} memories created`);
+                loadStats();
+                loadMemories();
+            } catch (e) { toast('Teach failed', true); }
+            btn.disabled = false; btn.textContent = '💾 Remember This';
+        }
+
+        // ── WebSocket ─────────────────────────────────────
+        function connectWebSocket() {
+            try {
+                ws = new WebSocket(`ws://${window.location.host}/ws?api_key=dev`);
+                ws.onopen = () => {
+                    document.getElementById('wsDot').classList.add('connected');
+                    document.getElementById('feedDot').classList.add('connected');
+                    document.getElementById('wsLabel').textContent = 'Connected';
+                };
+                ws.onmessage = (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        addFeedEvent(data);
+                    } catch {}
+                };
+                ws.onclose = () => {
+                    document.getElementById('wsDot').classList.remove('connected');
+                    document.getElementById('feedDot').classList.remove('connected');
+                    document.getElementById('wsLabel').textContent = 'Disconnected';
+                    setTimeout(connectWebSocket, 5000);
+                };
+                ws.onerror = () => {};
+            } catch {}
+        }
+
+        function addFeedEvent(data) {
+            const icons = {
+                'memory:created': '🧩', 'memory:retrieved': '🔍', 'memory:updated': '✏️',
+                'memory:deleted': '🗑️', 'session:start': '▶️', 'session:end': '⏹️',
+                'intention:triggered': '🎯', 'contradiction:detected': '⚠️',
+                'voice:transcribed': '🎤', 'image:processed': '🖼️', 'document:imported': '📄',
+            };
+            feedEvents.unshift(data);
+            if (feedEvents.length > 50) feedEvents.pop();
+            const el = document.getElementById('feedList');
+            const icon = icons[data.event || data.type] || '📡';
+            const content = data.payload?.content?.slice(0, 100) || data.event || data.type || 'Event';
+            const time = new Date().toLocaleTimeString();
+            el.innerHTML = feedEvents.map((ev, i) => {
+                const ic = icons[ev.event || ev.type] || '📡';
+                const ct = ev.payload?.content?.slice(0, 120) || ev.event || ev.type || 'Event';
+                const t = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : time;
+                return `<div class="feed-item">
+                    <span class="feed-icon">${ic}</span>
+                    <div class="feed-body">
+                        <div style="font-weight:500;font-size:12px;color:var(--accent-blue);">${esc(ev.event || ev.type || '')}</div>
+                        <div style="color:var(--text-secondary);margin-top:2px;">${esc(ct)}</div>
+                    </div>
+                    <span class="feed-time">${t}</span>
+                </div>`;
+            }).join('');
+        }
+
+        // ── API Helper ────────────────────────────────────
+        async function api(path, method = 'GET', body = null) {
+            const opts = { method, headers: { 'Content-Type': 'application/json', 'X-API-Key': 'dev' } };
+            if (body) opts.body = JSON.stringify(body);
+            const res = await fetch(API + path, opts);
+            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+            return res.json();
+        }
+
+        // ── Helpers ───────────────────────────────────────
+        function esc(text) {
+            if (!text) return '';
+            const d = document.createElement('div'); d.textContent = text; return d.innerHTML;
         }
 
         function timeAgo(dateStr) {
-            const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
-            if (diff < 60) return 'just now';
-            if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
-            if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
-            return `${Math.floor(diff/86400)}d ago`;
+            if (!dateStr) return '';
+            const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+            if (s < 60) return 'just now';
+            if (s < 3600) return Math.floor(s/60) + 'm ago';
+            if (s < 86400) return Math.floor(s/3600) + 'h ago';
+            return Math.floor(s/86400) + 'd ago';
         }
 
-        function showToast(msg, isError = false) {
-            const toast = document.getElementById('toast');
-            toast.textContent = msg;
-            toast.className = `toast show ${isError ? 'error' : ''}`;
-            setTimeout(() => toast.className = 'toast', 3000);
+        function toast(msg, isError = false) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => el.className = 'toast', 3000);
         }
 
-        const activityLines = [];
-        function logActivity(msg) {
-            activityLines.unshift(`${new Date().toLocaleTimeString()} - ${msg}`);
-            if (activityLines.length > 10) activityLines.pop();
-            document.getElementById('activityLog').innerHTML = activityLines.join('<br>');
-        }
-
-        // Auto-refresh every 30s
-        setInterval(() => { loadStats(); }, 30000);
-
-        // Boot
+        // ── Go ────────────────────────────────────────────
         init();
     </script>
 </body>

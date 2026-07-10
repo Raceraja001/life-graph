@@ -214,7 +214,7 @@ class RecallEngine:
         if fingerprint.project:
             filters["properties"] = {"project": fingerprint.project}
 
-        memories = await self._store.list_memories(
+        memories, _has_more = await self._store.list_memories(
             filters=filters,
             limit=limit,
         )
@@ -329,11 +329,33 @@ class RecallEngine:
 
 
 def _dict_to_memory_response(mem_dict: dict[str, Any]) -> MemoryResponse | None:
-    """Safely convert a candidate dict to a MemoryResponse."""
+    """Safely convert a candidate dict to a MemoryResponse.
+
+    Includes provenance (Feature 3) and confidence verification (Feature 4).
+    """
     try:
         mem_id = mem_dict.get("id", "")
         if isinstance(mem_id, str):
             mem_id = uuid.UUID(mem_id) if mem_id else uuid.uuid4()
+
+        created_at = mem_dict.get("created_at", datetime.now(timezone.utc))
+        confidence = float(mem_dict.get("confidence", 0.5))
+        last_reinforced = mem_dict.get("last_reinforced")
+        reinforced_count = int(mem_dict.get("reinforced_count", 0))
+
+        # Compute effective confidence decay (Feature 4)
+        verify = False
+        try:
+            from life_graph.scoring.decay import DecayCalculator
+            calc = DecayCalculator()
+            verify = calc.needs_verification(
+                confidence=confidence,
+                created_at=created_at,
+                last_reinforced=last_reinforced,
+                reinforced_count=reinforced_count,
+            )
+        except Exception:
+            pass  # Graceful degradation
 
         return MemoryResponse(
             id=mem_id,
@@ -342,11 +364,21 @@ def _dict_to_memory_response(mem_dict: dict[str, Any]) -> MemoryResponse | None:
             tags=mem_dict.get("tags"),
             properties=mem_dict.get("properties", {}),
             importance=float(mem_dict.get("importance", 0.5)),
-            confidence=float(mem_dict.get("confidence", 0.5)),
+            confidence=confidence,
             source_type=mem_dict.get("source_type", "inferred"),
-            created_at=mem_dict.get("created_at", datetime.now(timezone.utc)),
+            created_at=created_at,
             status=mem_dict.get("status", "active"),
             access_count=int(mem_dict.get("access_count", 0)),
+            # Provenance (Feature 3)
+            extraction_tier=mem_dict.get("extraction_tier"),
+            extraction_confidence=mem_dict.get("extraction_confidence"),
+            last_accessed=mem_dict.get("last_accessed"),
+            supersedes=mem_dict.get("supersedes"),
+            superseded_by=mem_dict.get("superseded_by"),
+            # Confidence Decay (Feature 4)
+            reinforced_count=reinforced_count,
+            last_reinforced=last_reinforced,
+            needs_verification=verify,
         )
     except (ValueError, TypeError) as exc:
         logger.warning("Failed to convert memory dict to response: %s", exc)

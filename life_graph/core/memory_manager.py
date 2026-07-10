@@ -14,6 +14,7 @@ Also manages supersession chains for belief evolution tracking.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -63,6 +64,7 @@ class MemoryManager:
         text: str,
         context: dict[str, Any] | None = None,
         source: str | None = None,
+        skip_dedup: bool = False,
     ) -> list[Memory]:
         """Full ingestion pipeline for new text.
 
@@ -99,7 +101,7 @@ class MemoryManager:
         # Steps 2-6: Process each fact
         stored_memories: list[Memory] = []
         for fact in facts:
-            memory = await self._process_fact(fact, context, source)
+            memory = await self._process_fact(fact, context, source, skip_dedup)
             if memory:
                 stored_memories.append(memory)
 
@@ -168,6 +170,7 @@ class MemoryManager:
         fact: ExtractedFact,
         context: dict[str, Any] | None,
         source: str | None,
+        skip_dedup: bool = False,
     ) -> Memory | None:
         """Process a single extracted fact through scoring, embedding, and storage.
 
@@ -179,6 +182,63 @@ class MemoryManager:
 
         # Step 3: Generate embedding (placeholder)
         embedding = await self._generate_embedding(fact.content)
+
+        # Step 3b: Deduplication check
+        content_hash = hashlib.sha256(
+            fact.content.strip().lower().encode(),
+        ).hexdigest()
+
+        from life_graph.config import settings
+
+        if settings.dedup_enabled and not skip_dedup:
+            # Exact match (cheap, always runs first)
+            existing = await self._store.find_exact_duplicate(content_hash)
+            if existing:
+                logger.info("Dedup: exact match found for memory %s", existing.id)
+                await self._store.touch(existing.id)
+                return existing
+
+            # Near-match (expensive, only if no exact match and embedding available)
+            if embedding:
+                similar = await self._store.find_similar(
+                    embedding, threshold=settings.dedup_threshold,
+                )
+                if similar:
+                    existing_memory, score = similar[0]  # highest similarity
+                    logger.info(
+                        "Dedup: near-match (%.2f) found, merging with %s",
+                        score, existing_memory.id,
+                    )
+
+                    # Merge: higher importance wins, union tags, merge properties
+                    merged_importance = max(
+                        existing_memory.importance,
+                        importance or 0.5,
+                    )
+                    merged_tags = list(set(
+                        (existing_memory.tags or []) + _infer_tags(fact, tier),
+                    ))
+
+                    new_props: dict[str, Any] = {}
+                    if context:
+                        new_props.update(context)
+                    new_props["fact_type"] = fact.fact_type
+                    new_props["extraction_confidence"] = fact.confidence
+                    if fact.entities:
+                        new_props["entities"] = fact.entities
+                    merged_props = {
+                        **(existing_memory.properties or {}),
+                        **new_props,
+                    }
+
+                    update = MemoryUpdate(
+                        importance=merged_importance,
+                        tags=merged_tags,
+                        properties=merged_props,
+                    )
+                    updated = await self._store.update(existing_memory.id, update)
+                    await self._store.touch(existing_memory.id)
+                    return updated
 
         # Step 4: Check for contradictions
         contradictions: list[Contradiction] = []
@@ -220,7 +280,9 @@ class MemoryManager:
             source_type=source or "inferred",
         )
 
-        stored = await self._store.store(memory_create)
+        stored = await self._store.store(
+            memory_create, embedding=embedding,
+        )
 
         # Step 5b: Execute auto-supersessions
         for old_id, reason in auto_supersede_targets:
@@ -267,9 +329,8 @@ class MemoryManager:
     async def _generate_embedding(self, text: str) -> list[float] | None:
         """Generate an embedding vector for the given text.
 
-        Placeholder implementation — will be replaced with
-        sentence-transformers model call when the embedding
-        service is wired up.
+        Uses LM Studio (local) when configured, otherwise falls back
+        to sentence-transformers.
 
         Args:
             text: Text to embed.
@@ -277,6 +338,21 @@ class MemoryManager:
         Returns:
             Embedding vector or None if generation fails.
         """
+        from life_graph.config import settings
+
+        if settings.use_local_llm:
+            try:
+                from life_graph.services.llm_client import LMStudioClient
+
+                if not hasattr(self, "_lm_client"):
+                    self._lm_client = LMStudioClient()
+
+                vector = await self._lm_client.embed(text)
+                return vector if vector else None
+            except Exception as exc:
+                logger.warning("LM Studio embedding failed: %s", exc)
+                return None
+
         try:
             from sentence_transformers import SentenceTransformer
 

@@ -134,3 +134,83 @@ class DecayCalculator:
         raise TypeError(
             f"last_accessed must be datetime or float, got {type(last_accessed).__name__}"
         )
+
+    # ------------------------------------------------------------------
+    # Confidence decay (Feature 4)
+    # ------------------------------------------------------------------
+
+    def effective_confidence(
+        self,
+        confidence: float,
+        created_at: datetime,
+        last_reinforced: datetime | None = None,
+        reinforced_count: int = 0,
+        confidence_decay_rate: float = 0.03,
+    ) -> float:
+        """Calculate the effective confidence of a memory.
+
+        Confidence decays if the memory has not been reinforced. The decay
+        rate is slower than importance decay (default 0.03 vs 0.1) because
+        facts don't become false quickly — they just become less certain.
+
+        Reinforced memories decay slower (proportional to reinforcement count).
+
+        Args:
+            confidence: Base confidence score ∈ [0.0, 1.0].
+            created_at: When the memory was created.
+            last_reinforced: When the user last confirmed this memory.
+            reinforced_count: How many times the user confirmed.
+            confidence_decay_rate: Lambda for exponential decay (default 0.03).
+
+        Returns:
+            Effective confidence score ∈ [0.0, 1.0].
+        """
+        now = datetime.now(timezone.utc)
+        anchor = last_reinforced or created_at
+
+        days = self._resolve_days_since(anchor, now)
+
+        # Reinforced memories decay slower — each reinforcement halves the rate
+        adjusted_rate = confidence_decay_rate / max(1 + reinforced_count * 0.5, 1.0)
+
+        return confidence * math.exp(-adjusted_rate * days)
+
+    def needs_verification(
+        self,
+        confidence: float,
+        created_at: datetime,
+        last_reinforced: datetime | None = None,
+        reinforced_count: int = 0,
+        threshold: float = 0.4,
+    ) -> bool:
+        """Check if a memory's confidence has decayed enough to need verification.
+
+        Args:
+            confidence: Base confidence score.
+            created_at: When created.
+            last_reinforced: When last confirmed.
+            reinforced_count: Times confirmed.
+            threshold: Below this effective confidence, ask for verification.
+
+        Returns:
+            ``True`` if the memory should be verified with the user.
+        """
+        eff = self.effective_confidence(
+            confidence, created_at, last_reinforced, reinforced_count
+        )
+        return eff < threshold
+
+    def verification_prompt(self, content: str, days_stale: int) -> str:
+        """Generate a human-readable verification prompt.
+
+        Args:
+            content: The memory content.
+            days_stale: Days since last reinforcement.
+
+        Returns:
+            A prompt string like "I remember you prefer X — is that still true?"
+        """
+        # Truncate long content for the prompt
+        short = content[:80] + "..." if len(content) > 80 else content
+        return f'I remember: "{short}" ({days_stale}d ago) — is that still true?'
+

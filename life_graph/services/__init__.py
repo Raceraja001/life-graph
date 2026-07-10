@@ -1,4 +1,4 @@
-"""Life Graph services — proactive recall, triggers, context, identity, and agent bridge.
+"""Life Graph services — proactive recall, triggers, context, identity, agent bridge, and graph sync.
 
 Exports the core service classes for memory retrieval and management:
   - ContextBuilder / ContextFingerprint: session context matching
@@ -7,6 +7,7 @@ Exports the core service classes for memory retrieval and management:
   - ContradictionDetector / Contradiction: memory consistency checks
   - IdentityService: identity timeline and belief state management
   - LifeGraphBridge: agent framework integration bridge
+  - PreferenceGraphService: preference ↔ knowledge graph sync
 """
 
 
@@ -21,6 +22,7 @@ def __getattr__(name):
         "IdentityService": ("life_graph.services.identity", "IdentityService"),
         "RecallEngine": ("life_graph.services.recall", "RecallEngine"),
         "TriggerMatcher": ("life_graph.services.triggers", "TriggerMatcher"),
+        "PreferenceGraphService": ("life_graph.services.preference_graph", "PreferenceGraphService"),
     }
     if name in _map:
         import importlib
@@ -38,4 +40,5 @@ __all__ = [
     "LifeGraphBridge",
     "RecallEngine",
     "TriggerMatcher",
+    "PreferenceGraphService",
 ]

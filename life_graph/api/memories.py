@@ -11,10 +11,14 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, Field
 
 from life_graph.api.dependencies import get_memory_manager, get_store
+from life_graph.api.openapi_examples import MEMORY_CREATED, MEMORY_DETAIL, PAGINATED_MEMORIES
+from life_graph.api.responses import success_response, paginated_response, encode_cursor
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.models.schemas import MemoryCreate, MemoryResponse, MemoryUpdate
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.postgres import PostgresMemoryStore
 
 router = APIRouter(prefix="/memories", tags=["memories"])
@@ -22,15 +26,15 @@ router = APIRouter(prefix="/memories", tags=["memories"])
 
 @router.post(
     "/",
-    response_model=list[MemoryResponse],
     status_code=status.HTTP_201_CREATED,
     summary="Create memories from text or structured input",
+    responses=MEMORY_CREATED,
 )
 async def create_memory(
     body: MemoryCreate,
     manager: MemoryManager = Depends(get_memory_manager),
     store: PostgresMemoryStore = Depends(get_store),
-) -> list[MemoryResponse]:
+):
     """Create one or more memories.
 
     If the body contains free-form text, it is routed through the
@@ -62,18 +66,19 @@ async def create_memory(
         row = await store.store(body)
         return [MemoryResponse.model_validate(row)]
 
-    return [MemoryResponse.model_validate(m) for m in memories]
+    return success_response(
+        data=[MemoryResponse.model_validate(m) for m in memories],
+    )
 
 
 @router.get(
     "/{memory_id}",
-    response_model=MemoryResponse,
     summary="Get a memory by ID",
 )
 async def get_memory(
     memory_id: uuid.UUID,
     store: PostgresMemoryStore = Depends(get_store),
-) -> MemoryResponse:
+):
     """Retrieve a single memory by its UUID."""
     row = await store.retrieve(memory_id)
     if row is None:
@@ -81,19 +86,18 @@ async def get_memory(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Memory {memory_id} not found",
         )
-    return MemoryResponse.model_validate(row)
+    return success_response(data=MemoryResponse.model_validate(row))
 
 
 @router.patch(
     "/{memory_id}",
-    response_model=MemoryResponse,
     summary="Update a memory",
 )
 async def update_memory(
     memory_id: uuid.UUID,
     body: MemoryUpdate,
     store: PostgresMemoryStore = Depends(get_store),
-) -> MemoryResponse:
+):
     """Apply a partial update to an existing memory."""
     try:
         row = await store.update(memory_id, body)
@@ -102,7 +106,7 @@ async def update_memory(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Memory {memory_id} not found",
         )
-    return MemoryResponse.model_validate(row)
+    return success_response(data=MemoryResponse.model_validate(row))
 
 
 @router.delete(
@@ -125,9 +129,37 @@ async def delete_memory(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post(
+    "/{memory_id}/unarchive",
+    summary="Unarchive a memory",
+)
+async def unarchive_memory(
+    memory_id: uuid.UUID,
+    store: PostgresMemoryStore = Depends(get_store),
+):
+    """Restore an archived memory back to active status.
+
+    Changes the memory's status from 'archived' to 'active',
+    making it available for search and recall again.
+    """
+    try:
+        row = await store.unarchive(memory_id)
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Memory {memory_id} not found",
+            )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Memory {memory_id} not found",
+        )
+    return success_response(data=MemoryResponse.model_validate(row))
+
+
+
 @router.get(
     "/",
-    response_model=list[MemoryResponse],
     summary="List memories with optional filters",
 )
 async def list_memories(
@@ -137,8 +169,15 @@ async def list_memories(
     min_importance: float | None = Query(None, ge=0.0, le=1.0, description="Minimum importance"),
     limit: int = Query(20, ge=1, le=100, description="Max results"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-) -> list[MemoryResponse]:
-    """List memories with optional status, tag, and importance filters."""
+    cursor: str | None = Query(None, description="Cursor for keyset pagination"),
+    include_total: bool = Query(False, description="Include total count (may be slow)"),
+):
+    """List memories with optional status, tag, and importance filters.
+
+    Supports both offset and cursor-based pagination. When a cursor is
+    provided, offset is ignored and keyset pagination is used for
+    consistent performance on large datasets.
+    """
     filters: dict = {}
 
     if memory_status is not None:
@@ -148,9 +187,97 @@ async def list_memories(
     if min_importance is not None:
         filters["min_importance"] = min_importance
 
-    rows = await store.list_memories(
+    rows, has_more = await store.list_memories(
         filters=filters or None,
         offset=offset,
         limit=limit,
+        cursor=cursor,
     )
-    return [MemoryResponse.model_validate(r) for r in rows]
+    memories = [MemoryResponse.model_validate(r) for r in rows]
+
+    # Build next cursor from last item
+    next_cursor = None
+    if has_more and memories:
+        last = memories[-1]
+        next_cursor = encode_cursor(
+            last.created_at.isoformat(),
+            str(last.id),
+        )
+
+    # Optional total count
+    total = None
+    if include_total:
+        total = await store.count_memories(filters=filters or None)
+
+    return paginated_response(
+        data=memories,
+        total=total,
+        page_size=limit,
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
+# ── Confidence Decay (Feature 4) ─────────────────────────────────────────────
+
+
+class DenyRequest(BaseModel):
+    """Payload for denying a memory — optionally replacing it with a new fact."""
+    replacement: str | None = Field(
+        None, description="New content that replaces the denied memory"
+    )
+
+
+@router.post(
+    "/{memory_id}/reinforce",
+    summary="Reinforce a memory — confirm it is still accurate",
+)
+async def reinforce_memory(
+    memory_id: uuid.UUID,
+    store: PostgresMemoryStore = Depends(get_store),
+):
+    """Confirm that a memory is still accurate.
+
+    Resets confidence to 0.9, updates last_reinforced timestamp,
+    and increments the reinforcement counter. Use this when the
+    system asks "is this still true?" and the user confirms.
+    """
+    try:
+        row = await store.reinforce(memory_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Memory {memory_id} not found",
+        )
+    return success_response(data=MemoryResponse.model_validate(row))
+
+
+@router.post(
+    "/{memory_id}/deny",
+    summary="Deny a memory — mark as no longer accurate",
+)
+async def deny_memory(
+    memory_id: uuid.UUID,
+    body: DenyRequest = DenyRequest(),
+    store: PostgresMemoryStore = Depends(get_store),
+):
+    """Mark a memory as superseded because the user says it is no longer true.
+
+    If a replacement string is provided, creates a new memory that
+    supersedes the old one (with full provenance chain). The old memory
+    is kept in the supersession chain for history.
+    """
+    try:
+        denied, replacement = await store.deny(memory_id, body.replacement)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Memory {memory_id} not found",
+        )
+
+    result = {
+        "denied": MemoryResponse.model_validate(denied),
+        "replacement": MemoryResponse.model_validate(replacement) if replacement else None,
+    }
+    return success_response(data=result)
+

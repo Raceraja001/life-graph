@@ -21,21 +21,28 @@ class EmbeddingService:
     until embeddings are actually needed.
     """
 
-    def __init__(self, model_name: str = "all-mpnet-base-v2") -> None:
+    def __init__(self, model_name: str = "all-mpnet-base-v2", lm_client: Any = None) -> None:
         self._model_name = model_name
         self._model: Any = None
         self._dimension: int = 768
         self._available: bool = True
+        self._lm_client = lm_client
 
         # Quick availability check without loading the model
-        try:
-            import sentence_transformers  # noqa: F401
-        except ImportError:
-            self._available = False
-            logger.warning(
-                "sentence-transformers not installed — "
-                "EmbeddingService will return empty vectors"
-            )
+        if not self._use_local():
+            try:
+                import sentence_transformers  # noqa: F401
+            except ImportError:
+                self._available = False
+                logger.warning(
+                    "sentence-transformers not installed — "
+                    "EmbeddingService will return empty vectors"
+                )
+
+    def _use_local(self) -> bool:
+        """Check if local LM Studio should be used for embeddings."""
+        from life_graph.config import settings
+        return settings.use_local_llm and self._lm_client is not None
 
     # ── Public API ────────────────────────────────────────────
 
@@ -45,6 +52,18 @@ class EmbeddingService:
         Returns an empty list if sentence-transformers is unavailable
         or the model fails to load.
         """
+        if self._use_local():
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We're inside an async context, can't use run()
+                    # Return empty and let async callers use embed_async
+                    return []
+            except RuntimeError:
+                pass
+            return asyncio.run(self._lm_client.embed(text))
+
         if not self._available:
             return []
 
@@ -58,6 +77,18 @@ class EmbeddingService:
         except Exception:
             logger.exception("Failed to embed text")
             return []
+
+    async def embed_async(self, text: str) -> list[float]:
+        """Async embed using LM Studio. Falls back to sync embed."""
+        if self._use_local():
+            return await self._lm_client.embed(text)
+        return self.embed(text)
+
+    async def embed_batch_async(self, texts: list[str]) -> list[list[float]]:
+        """Async batch embed using LM Studio. Falls back to sync embed_batch."""
+        if self._use_local():
+            return await self._lm_client.embed_batch(texts)
+        return self.embed_batch(texts)
 
     def embed_batch(
         self, texts: list[str], batch_size: int = 32
@@ -98,7 +129,20 @@ class EmbeddingService:
             "dimension": self._dimension,
             "loaded": self._model is not None,
             "available": self._available,
+            "using_local": self._use_local(),
         }
+
+    async def embed_async(self, text: str) -> list[float]:
+        """Async embed — uses LM Studio when available, else sync fallback."""
+        if self._use_local():
+            return await self._lm_client.embed(text)
+        return self.embed(text)
+
+    async def embed_batch_async(self, texts: list[str]) -> list[list[float]]:
+        """Async batch embed — uses LM Studio when available, else sync fallback."""
+        if self._use_local():
+            return await self._lm_client.embed_batch(texts)
+        return self.embed_batch(texts)
 
     # ── Private ───────────────────────────────────────────────
 

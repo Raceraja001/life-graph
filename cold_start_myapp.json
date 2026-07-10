@@ -1,0 +1,214 @@
+[
+  {
+    "content": "Uses conventional commit style (100% conventional commits). Top prefixes: feat",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "preference",
+      "git",
+      "commit-style"
+    ]
+  },
+  {
+    "content": "Peak coding hours: 6:00",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "pattern",
+      "time",
+      "work-schedule"
+    ]
+  },
+  {
+    "content": "Most active coding days: Thursday",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "pattern",
+      "time",
+      "work-schedule"
+    ]
+  },
+  {
+    "content": "Primary languages (by file changes): py, dart, js, png, xml",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "preference",
+      "language",
+      "py",
+      "dart",
+      "js"
+    ]
+  },
+  {
+    "content": "Average commit size: 61271.0 lines changed, 200.0 files per commit",
+    "type_tag": "pattern",
+    "importance": 0.4,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "pattern",
+      "git",
+      "commit-size"
+    ]
+  },
+  {
+    "content": "Most-changed directories: mediagrab_app, mediagrab_backend, nexus_hub, nexus_extension, .github",
+    "type_tag": "pattern",
+    "importance": 0.4,
+    "source": "cold_start:git_analysis",
+    "tags": [
+      "pattern",
+      "git",
+      "project-structure"
+    ]
+  },
+  {
+    "content": "Docker base image(s): python:3.12-slim, python:3.12-slim (multi-stage build, slim-based)",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:config_parse",
+    "tags": [
+      "preference",
+      "docker",
+      "infrastructure"
+    ]
+  },
+  {
+    "content": "Uses snake_case naming convention (375 snake_case, 0 camelCase)",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "naming-convention"
+    ]
+  },
+  {
+    "content": "Docstring rate: 81% of functions have docstrings (421/521)",
+    "type_tag": "pattern",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "documentation"
+    ]
+  },
+  {
+    "content": "Type hint rate: 90% of functions have type annotations (470/521)",
+    "type_tag": "pattern",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "typing"
+    ]
+  },
+  {
+    "content": "Error handling style: specific exceptions",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "error-handling"
+    ]
+  },
+  {
+    "content": "Uses pytest as the testing framework",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "testing",
+      "pytest"
+    ]
+  },
+  {
+    "content": "Uses async/await pattern (47% of functions are async, 246 total)",
+    "type_tag": "pattern",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "async"
+    ]
+  },
+  {
+    "content": "Uses Pydantic BaseModel for data validation",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "pydantic"
+    ]
+  },
+  {
+    "content": "Uses Python dataclasses for data structures",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "dataclass"
+    ]
+  },
+  {
+    "content": "Most-used Python imports: services, __future__, logging, fastapi, models, typing, os, asyncio, json, re",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "imports"
+    ]
+  },
+  {
+    "content": "Most-used decorators: router.get, router.post, staticmethod, property, router.delete",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "decorators"
+    ]
+  },
+  {
+    "content": "Uses Docker for containerization with docker-compose",
+    "type_tag": "architecture",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "architecture",
+      "docker",
+      "infrastructure"
+    ]
+  },
+  {
+    "content": "Uses GitHub Actions for CI/CD",
+    "type_tag": "architecture",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "architecture",
+      "ci",
+      "infrastructure"
+    ]
+  }
+]

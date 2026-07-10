@@ -184,6 +184,149 @@ class HybridQueryEngine:
             ],
         }
 
+    # ── Tri-Signal Hybrid Search (Feature 2) ──────────────────
+
+    async def tri_search(
+        self,
+        query: str,
+        limit: int = 10,
+        vector_weight: float = 0.50,
+        bm25_weight: float = 0.30,
+        graph_weight: float = 0.20,
+    ) -> dict[str, Any]:
+        """Three-signal hybrid search: Vector + BM25 + Graph Proximity.
+
+        Combines:
+        1. **Vector similarity** (pgvector cosine) — semantic meaning
+        2. **BM25 keyword match** (tsvector/GIN) — exact keyword relevance
+        3. **Graph proximity** (Apache AGE) — entity relationship distance
+
+        This is the most comprehensive search mode. It catches:
+        - Semantic matches vector search finds ("web framework" → "FastAPI")
+        - Exact keyword matches BM25 finds ("FastAPI" → FastAPI mentions)
+        - Entity relationships graph finds ("FastAPI" → related: async, Starlette)
+
+        Args:
+            query: Natural language search query.
+            limit: Max results.
+            vector_weight: Weight for cosine similarity (0-1).
+            bm25_weight: Weight for BM25 keyword score (0-1).
+            graph_weight: Weight for graph proximity boost (0-1).
+
+        Returns:
+            Dict with ``memories`` (scored and ranked), ``entities`` (graph hits),
+            ``search_mode`` ("tri_hybrid"), and score breakdown.
+        """
+        # ── Step 1: Vector + BM25 hybrid (from PostgresMemoryStore) ──
+        scored_memories: list[dict[str, Any]] = []
+        try:
+            from life_graph.services.embeddings import EmbeddingService
+
+            embedding_service = EmbeddingService()
+            embedding = embedding_service.embed(query)
+
+            if embedding:
+                hybrid_results = await self.memory_store.hybrid_search(
+                    embedding=embedding,
+                    query_text=query,
+                    limit=limit * 2,  # Over-fetch for reranking
+                    vector_weight=vector_weight / (vector_weight + bm25_weight),
+                    bm25_weight=bm25_weight / (vector_weight + bm25_weight),
+                )
+
+                for memory, base_score in hybrid_results:
+                    scored_memories.append({
+                        "id": str(memory.id),
+                        "content": memory.content,
+                        "tags": memory.tags,
+                        "importance": memory.importance,
+                        "confidence": memory.confidence,
+                        "source_type": memory.source_type,
+                        "created_at": memory.created_at.isoformat() if memory.created_at else None,
+                        "access_count": memory.access_count,
+                        "extraction_tier": memory.extraction_tier,
+                        "base_score": base_score,
+                        "graph_boost": 0.0,
+                        "final_score": base_score,
+                    })
+
+        except Exception:
+            logger.warning(
+                "Hybrid search failed — falling back to graph-only",
+                exc_info=True,
+            )
+
+        # ── Step 2: Graph entity lookup for proximity boosting ──
+        graph_entities: list[dict[str, Any]] = []
+        entity_names: set[str] = set()
+
+        try:
+            entity_results = await self.graph_store.search_entities(query)
+            graph_entities = [e.get("properties", {}) for e in entity_results[:10]]
+            entity_names = {
+                e.get("name", "").lower()
+                for e in graph_entities
+                if e.get("name")
+            }
+
+            # Get neighbor names for extended graph context
+            neighbor_names: set[str] = set()
+            for entity in entity_results[:5]:
+                props = entity.get("properties", {})
+                name = props.get("name", "")
+                if name:
+                    neighbors = await self.graph_store.get_neighbors(
+                        vertex_name=name,
+                        vertex_label="Entity",
+                        depth=1,
+                    )
+                    for n in neighbors[:5]:
+                        n_name = n.get("properties", {}).get("name", "").lower()
+                        if n_name:
+                            neighbor_names.add(n_name)
+
+            # Boost memories that mention graph entities or their neighbors
+            for mem in scored_memories:
+                content_lower = mem["content"].lower()
+                tags_lower = {t.lower() for t in (mem["tags"] or [])}
+
+                # Direct entity match → full graph boost
+                for ename in entity_names:
+                    if ename in content_lower or ename in tags_lower:
+                        mem["graph_boost"] = graph_weight
+                        break
+
+                # Neighbor match → partial graph boost
+                if mem["graph_boost"] == 0.0:
+                    for nname in neighbor_names:
+                        if nname in content_lower or nname in tags_lower:
+                            mem["graph_boost"] = graph_weight * 0.5
+                            break
+
+                # Recalculate final score with graph boost
+                mem["final_score"] = mem["base_score"] + mem["graph_boost"]
+
+        except Exception:
+            logger.warning(
+                "Graph search failed — returning vector+BM25 only",
+                exc_info=True,
+            )
+
+        # ── Step 3: Sort by final score and trim ──
+        scored_memories.sort(key=lambda m: m["final_score"], reverse=True)
+        scored_memories = scored_memories[:limit]
+
+        return {
+            "memories": scored_memories,
+            "entities": graph_entities,
+            "search_mode": "tri_hybrid",
+            "signals": {
+                "vector_weight": vector_weight,
+                "bm25_weight": bm25_weight,
+                "graph_weight": graph_weight,
+            },
+        }
+
     # ── Entity Context ────────────────────────────────────────
 
     async def entity_context(
@@ -232,7 +375,7 @@ class HybridQueryEngine:
         # Memory lookup — find memories that reference this entity
         memories: list[dict[str, Any]] = []
         try:
-            rows = await self.memory_store.list_memories(
+            rows, _has_more = await self.memory_store.list_memories(
                 filters={"tags": [entity_name]},
                 limit=20,
             )
@@ -248,7 +391,7 @@ class HybridQueryEngine:
             ]
 
             # Also search by properties.entities
-            prop_rows = await self.memory_store.list_memories(
+            prop_rows, _has_more = await self.memory_store.list_memories(
                 filters={"properties": {"entities": [entity_name]}},
                 limit=20,
             )

@@ -1,0 +1,90 @@
+[
+  {
+    "content": "Uses snake_case naming convention (13 snake_case, 0 camelCase)",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "naming-convention"
+    ]
+  },
+  {
+    "content": "Docstring rate: 47% of functions have docstrings (8/17)",
+    "type_tag": "pattern",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "documentation"
+    ]
+  },
+  {
+    "content": "Type hint rate: 6% of functions have type annotations (1/17)",
+    "type_tag": "pattern",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "typing"
+    ]
+  },
+  {
+    "content": "Error handling style: specific exceptions",
+    "type_tag": "preference",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "error-handling"
+    ]
+  },
+  {
+    "content": "Uses async/await pattern (6% of functions are async, 1 total)",
+    "type_tag": "pattern",
+    "importance": 0.6,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "async"
+    ]
+  },
+  {
+    "content": "Uses Pydantic BaseModel for data validation",
+    "type_tag": "preference",
+    "importance": 0.7,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "pydantic"
+    ]
+  },
+  {
+    "content": "Most-used Python imports: langchain_community, os, pathlib, requests, tqdm, bs4, time, urllib, google, dotenv",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "imports"
+    ]
+  },
+  {
+    "content": "Most-used decorators: app.on_event, app.get, app.post",
+    "type_tag": "pattern",
+    "importance": 0.5,
+    "source": "cold_start:code_analysis",
+    "tags": [
+      "preference",
+      "python",
+      "decorators"
+    ]
+  }
+]

@@ -1,7 +1,7 @@
 [project]
 name = "life-graph"
-version = "0.1.0"
-description = "Brain-inspired personal memory system with proactive recall"
+version = "1.0.0"
+description = "Brain-inspired memory microservice for SaaS applications"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "racer"}]
@@ -38,6 +38,16 @@ dependencies = [
 
     # Object Storage
     "minio>=7.2",
+
+    # Redis & Background Jobs (SaaS)
+    "redis[hiredis]>=5.0",
+    "arq>=0.26",
+
+    # Observability
+    "prometheus-client>=0.20",
+
+    # MCP Server (Model Context Protocol)
+    "fastmcp>=2.0",
 ]
 
 [project.optional-dependencies]

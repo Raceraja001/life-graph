@@ -7,15 +7,31 @@ Exports routers for inclusion in the main application:
   - admin: Health, stats, gaps, and raw ingestion (T-048)
   - graph: Knowledge graph queries via Apache AGE (T-071)
   - multimodal: Multi-modal ingest (T-077, T-078)
+  - sessions: Session lifecycle management (Phase B)
+  - identity: Identity timeline and belief management (Phase B)
+  - agent: Agent framework bridge (Phase B)
 """
 
-from life_graph.api import admin, graph, intentions, memories, multimodal, search
+from life_graph.api import (
+    admin,
+    agent,
+    graph,
+    identity,
+    intentions,
+    memories,
+    multimodal,
+    search,
+    sessions,
+)
 
 __all__ = [
     "admin",
+    "agent",
     "graph",
+    "identity",
     "intentions",
     "memories",
     "multimodal",
     "search",
+    "sessions",
 ]
