@@ -36,13 +36,14 @@ class Agent:
         )
         self._queue = CaptureQueue(default_config_path().parent / "queue.db")
         self._tray: Tray | None = None
+        self._replay_lock = threading.Lock()
 
     # ── capture flows ────────────────────────────────────────
     def _deliver(self, payload: dict, ok_msg: str) -> None:
         result = self._client.send(payload)
         if result.status == SendStatus.SENT:
             self._notify("Life Graph", ok_msg)
-            self._queue.replay(self._client.send)
+            self._drain_queue()
         elif result.status == SendStatus.AUTH:
             self._notify("Life Graph", "Auth failed — check settings")
         elif result.status == SendStatus.BAD:
@@ -53,10 +54,10 @@ class Agent:
 
     def capture_popup(self) -> None:
         text, source = grab_current()
+        win = read_active_window()  # read source window BEFORE the popup steals focus
         draft = show_popup(prefill=text)
         if draft is None:
             return
-        win = read_active_window()
         payload = build_payload(
             content=draft.content, app=win.app, window_title=win.title,
             source=source if draft.content == text else "note",
@@ -82,12 +83,16 @@ class Agent:
             self._tray.notify(title, msg)
         logger.info("%s: %s", title, msg)
 
-    def _replay_loop(self) -> None:
-        while True:
+    def _drain_queue(self) -> None:
+        with self._replay_lock:
             try:
                 self._queue.replay(self._client.send)
             except Exception:
-                logger.exception("Replay loop error")
+                logger.exception("Queue replay error")
+
+    def _replay_loop(self) -> None:
+        while True:
+            self._drain_queue()
             time.sleep(self._cfg.replay_interval_seconds)
 
     def run(self) -> None:
@@ -119,7 +124,10 @@ def install_autostart() -> None:
         os.environ["APPDATA"],
         r"Microsoft\Windows\Start Menu\Programs\Startup",
     )
-    target = f'"{sys.executable}" -m clients.desktop.app'
+    pythonw = sys.executable
+    if pythonw.lower().endswith("python.exe"):
+        pythonw = pythonw[: -len("python.exe")] + "pythonw.exe"
+    target = f'"{pythonw}" -m clients.desktop.app'
     bat = os.path.join(startup, "life-graph-capture.bat")
     with open(bat, "w", encoding="utf-8") as f:
         f.write(f"@echo off\nstart \"\" {target}\n")

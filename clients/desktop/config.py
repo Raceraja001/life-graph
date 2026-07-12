@@ -52,6 +52,8 @@ def load_config(path=None, *, keyring_module=keyring) -> Config:
             data = tomllib.load(f)
     except FileNotFoundError as e:
         raise ConfigError(f"Config file not found: {path}") from e
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(f"Invalid TOML in {path}: {e}") from e
 
     try:
         backend_url = data["backend_url"]

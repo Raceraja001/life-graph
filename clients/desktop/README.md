@@ -32,3 +32,5 @@ to Life Graph's Capture Spine (`POST /api/v1/capture/`).
 - [ ] Auth: set a wrong key → capture shows "Auth failed — check settings" and is NOT queued.
 - [ ] Redaction: capture text containing `api_key=sk-...` → stored `content` shows `[REDACTED]`.
 - [ ] Tray: Pause disables both hotkeys; Resume re-enables; Quit exits.
+- [ ] Popup context: open the popup from Chrome, then VS Code, then a PDF — each capture's `app`/`window_title` reflects the SOURCE app, not the popup/python.
+- [ ] Popup stability: open and save the popup 3× in a row from different apps — no hang or crash (the popup runs tkinter from the hotkey listener thread; watch for lockups).

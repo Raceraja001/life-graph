@@ -66,3 +66,10 @@ def test_set_api_key_stores_in_keyring():
     kr = FakeKeyring()
     set_api_key("tenant-x", "the-key", keyring_module=kr)
     assert kr.set_calls == [(KEYRING_SERVICE, "tenant-x", "the-key")]
+
+
+def test_malformed_toml_raises_config_error(tmp_path):
+    p = tmp_path / "config.toml"
+    p.write_text("this is = = not valid toml ==", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        load_config(p, keyring_module=FakeKeyring(secret="k"))
