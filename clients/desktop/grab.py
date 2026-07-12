@@ -27,21 +27,17 @@ def grab_selection(*, copy_fn, read_clipboard, write_clipboard, sleep_fn) -> tup
     clipboard, else "clipboard" (nothing was selected; we use prior contents).
     """
     prior = read_clipboard() or ""
-    # Sentinel so we can detect whether Ctrl+C actually replaced the clipboard.
-    write_clipboard("")
-    copy_fn()
-    sleep_fn(0.12)  # give the foreground app time to service the copy
-    grabbed = read_clipboard() or ""
-
-    if grabbed:
-        source = "selection"
-        text = grabbed
-    else:
-        source = "clipboard"
-        text = prior
-
-    write_clipboard(prior)  # always restore the user's clipboard
-    return text, source
+    try:
+        # Sentinel so we can detect whether Ctrl+C actually replaced the clipboard.
+        write_clipboard("")
+        copy_fn()
+        sleep_fn(0.12)  # give the foreground app time to service the copy
+        grabbed = read_clipboard() or ""
+        if grabbed:
+            return grabbed, "selection"
+        return prior, "clipboard"
+    finally:
+        write_clipboard(prior)  # always restore the user's clipboard
 
 
 # ── Real OS wiring (Windows; manual verification) ─────────────────────

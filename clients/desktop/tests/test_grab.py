@@ -1,3 +1,5 @@
+import pytest
+
 from clients.desktop.grab import WindowInfo, grab_selection, normalize_window
 
 
@@ -44,3 +46,20 @@ def test_grab_selection_falls_back_to_clipboard_when_no_selection():
     )
     assert text == "CLIP ONLY"
     assert source == "clipboard"
+    assert clip["v"] == "CLIP ONLY"  # prior clipboard restored on fallback path
+
+
+def test_grab_selection_restores_clipboard_on_error():
+    clip = {"v": "IMPORTANT"}
+
+    def copy_fn():
+        raise RuntimeError("clipboard access denied")
+
+    with pytest.raises(RuntimeError):
+        grab_selection(
+            copy_fn=copy_fn,
+            read_clipboard=lambda: clip["v"],
+            write_clipboard=lambda v: clip.__setitem__("v", v),
+            sleep_fn=lambda _s: None,
+        )
+    assert clip["v"] == "IMPORTANT"  # restored despite the error
