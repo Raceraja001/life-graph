@@ -59,6 +59,8 @@ class WorkerSettings:
         "life_graph.workers.tasks.decay_trust_scores",
         "life_graph.workers.tasks.check_approval_timeouts",
         "life_graph.workers.tasks.send_approval_escalations",
+        "life_graph.workers.tasks.run_daily_brief",
+        "life_graph.workers.tasks.failure_pattern_mining",
     ]
 
     cron_jobs = [
@@ -117,6 +119,21 @@ class WorkerSettings:
             "life_graph.workers.tasks.send_approval_escalations",
             hour={0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
             minute={0, 30},
+            run_at_startup=False,
+        ),
+        # ── Capture Spine: Daily Brief (Phase G) ─────────
+        cron(
+            "life_graph.workers.tasks.run_daily_brief",
+            hour=settings.brief_hour_utc,
+            minute=0,
+            run_at_startup=False,
+        ),
+        # ── Judgment Engine: Monthly Failure-Pattern Mining (Phase H) ──
+        cron(
+            "life_graph.workers.tasks.failure_pattern_mining",
+            day=1,
+            hour=2,
+            minute=30,
             run_at_startup=False,
         ),
     ]

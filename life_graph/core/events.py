@@ -117,6 +117,7 @@ class EventType(str, Enum):
     DRIVER_RESULT = "driver:result"
     VERIFICATION_PASSED = "driver:verification:passed"
     VERIFICATION_FAILED = "driver:verification:failed"
+    SECOND_OPINION_DISSENT = "driver:second_opinion:dissent"
     TASK_BOUNCED = "driver:task:bounced"
     PIPELINE_TASK_ORIGINATED = "driver:pipeline:task_originated"
 

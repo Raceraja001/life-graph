@@ -11,6 +11,7 @@ Follows the CaptureService pattern: operates on a caller-provided
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -22,6 +23,59 @@ from life_graph.models.db import Decision, Prediction
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
+
+# ── Big-decision detection ─────────────────────────────────────────
+# High-importance signals (judgment-engine spec Story 6): money,
+# commitments longer than ~2 weeks, and irreversibility keywords. A
+# candidate matching any category is "big" and earns a one-time challenge
+# suggestion in the daily brief — small decisions are never challenged.
+BIG_DECISION_TAG = "big_decision"
+BIG_DECISION_IMPORTANCE = 0.85
+
+_BIG_DECISION_SIGNALS: list[tuple[str, re.Pattern[str]]] = [
+    (
+        "money",
+        re.compile(
+            r"(?i)(\$\s*\d|₹\s*\d|\b\d+\s*(?:k|lakh|crore|dollars?|usd|rupees?)\b"
+            r"|\b(?:budget|invest(?:ment)?|funding|salary|raise|mortgage|loan|"
+            r"revenue|price|pay)\b)"
+        ),
+    ),
+    (
+        "commitment",
+        re.compile(
+            r"(?i)(\b\d+\s*(?:months?|years?|quarters?)\b|\b(?:months?|years?|"
+            r"quarter|long[- ]term|lease|contract|full[- ]time|permanent(?:ly)?)\b)"
+        ),
+    ),
+    (
+        "irreversible",
+        re.compile(
+            r"(?i)\b(irreversible|can'?t\s+undo|no\s+going\s+back|quit|resign|"
+            r"hire|fire|lay\s*off|sell|buy\s+a|relocat|move\s+to|shut\s+down|"
+            r"delete|migrat|rewrite|rebuild|marriage|marry|divorce)\b"
+        ),
+    ),
+]
+
+
+def detect_big_decision(
+    title: str | None, reasoning: str | None = None
+) -> tuple[bool, list[str]]:
+    """Heuristically decide whether a decision is "big".
+
+    Args:
+        title: Decision title / statement.
+        reasoning: Optional reasoning text (also scanned).
+
+    Returns:
+        ``(is_big, matched_signal_categories)``.
+    """
+    text = " ".join(p for p in (title, reasoning) if p).strip()
+    if not text:
+        return False, []
+    matched = [name for name, pat in _BIG_DECISION_SIGNALS if pat.search(text)]
+    return bool(matched), matched
 
 
 class JudgmentService:
@@ -351,6 +405,8 @@ class _DecisionCandidateListener:
             logger.warning("DECISION_CANDIDATE missing tenant_id or title: %s", payload)
             return
 
+        is_big, signals = detect_big_decision(title, reasoning)
+
         try:
             async with async_session() as session:
                 svc = JudgmentService(session, self._bus)
@@ -360,12 +416,17 @@ class _DecisionCandidateListener:
                     reasoning=reasoning,
                     status="candidate",
                     source=source,
+                    domain_tags=[BIG_DECISION_TAG] if is_big else None,
+                    importance=BIG_DECISION_IMPORTANCE if is_big else 0.5,
                     capture_event_id=(
                         uuid.UUID(capture_event_id) if capture_event_id else None
                     ),
                 )
                 await session.commit()
-                logger.info("Auto-created candidate decision: %s", title[:80])
+                logger.info(
+                    "Auto-created %scandidate decision: %s",
+                    "BIG " if is_big else "", title[:80],
+                )
         except Exception:
             logger.error(
                 "Failed to auto-create decision from DECISION_CANDIDATE",

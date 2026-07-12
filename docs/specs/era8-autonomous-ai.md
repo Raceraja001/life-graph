@@ -1,5 +1,7 @@
 # Era 8 — Autonomous AI
 
+> ✅ **STATUS: IMPLEMENTED (July 2026).** Migration `018_autonomous_ai.py`; package `life_graph/autonomy/` (levels, safety classifier, trust calculator, approvals, audit, pipeline executor); tests `tests/integration/test_autonomy.py`. The task checklist below was not ticked during implementation — treat the code as the source of truth. **Do not rebuild.**
+
 > **Purpose**: AI that makes safe decisions and takes safe actions without asking for permission. The highest level of trust — only for well-tested, low-risk operations. Covers risk classification, auto-fix pipelines, trust scoring, approval workflows, audit logging, and progressive autonomy.
 >
 > **Context**: Life Graph is a brain-inspired memory microservice (FastAPI + PostgreSQL). Autonomous AI extends the agent layer with self-executing capabilities — rotating logs, fixing lint, clearing caches — without human approval, while maintaining full auditability and rollback capability.

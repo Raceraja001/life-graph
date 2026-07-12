@@ -175,6 +175,18 @@ class Settings(BaseSettings):
     autonomy_max_blast_radius: int = 3  # Max files/services affected per auto-action
     autonomy_default_level: str = "L0"  # L0=ask everything, L1=safe auto, L2=moderate auto, L3=full
 
+    # ── Agent Drivers ───────────────────────────────────
+    driver_claude_code_bin: str = "claude"  # Claude Code CLI binary for the claude_code driver
+    # Dissenting cheap-model review before an auto-verified task lands.
+    # Off by default — pure LLM overhead until agents run unattended.
+    driver_second_opinion_enabled: bool = False
+    driver_second_opinion_model: str | None = None  # cheap model; None = client default
+
+    # ── Capture Spine: Interview + Daily Brief ─────────
+    interview_max_questions_per_day: int = 3  # Hard daily budget — never nag
+    interview_question_ttl_days: int = 7  # Unanswered questions expire after this
+    brief_hour_utc: int = 2  # Daily brief composition hour (02:00 UTC ≈ 07:30 IST)
+
     # ── Derived Properties ─────────────────────────────
 
     @property

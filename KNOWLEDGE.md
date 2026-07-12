@@ -220,9 +220,24 @@ Events → RedisBridge (cross-instance) → WebhookEventHandler (HMAC delivery) 
 | Job | Schedule | What |
 |-----|----------|------|
 | Consolidation | 03:00 UTC nightly | 7-step "sleep cycle": gather → cluster → dedup → score → distill → decay → audit |
+| Nightly self-heal | 03:30 UTC nightly | Era 5 self-improving loop (eval + prompt optimization) |
 | Decay sweep | 04:00 UTC nightly | Archive memories below threshold via bulk SQL |
+| Trust decay | 05:00 UTC nightly | Era 8: decay trust scores for inactive agents |
+| Daily brief | 02:00 UTC daily (`LIFE_GRAPH_BRIEF_HOUR_UTC`) | Interview expire sweep + generation, held notifications, capture summary, watcher digest → one notification (`run_daily_brief`) |
+| Watchers | Hourly | Era 6 ambient watchers (server health, deps, code quality, tech radar) |
+| Watcher digest | 08:00 UTC daily | Compile digest-pending watch events into one notification |
+| Approval timeouts | Every 5 min | Era 8: expire unapproved actions |
+| Approval escalations | Every 30 min | Era 8: escalate pending approvals |
+| Research refresh | Sunday 02:00 UTC | Era 4: refresh stale research topics |
 | Embedding gen | On-demand | Batch embeddings for bulk import (chunks of 32) |
 | Webhook delivery | On-demand | HMAC-signed HTTP POST with circuit breaker (10 failures → deactivate) |
+
+**Lifeline (backup sidecar container, not ARQ — see `docs/OPERATIONS.md`):**
+
+| Job | Schedule | What |
+|-----|----------|------|
+| Nightly backup | 02:00 UTC | `pg_dump` + optional restic off-site; logged to `job_runs` |
+| Restore drill | Sunday 06:00 UTC | Restore latest dump into scratch DB, verify row counts + embeddings; logged to `job_runs` |
 
 ---
 
@@ -294,12 +309,18 @@ All env vars prefixed `LIFE_GRAPH_`:
 
 ## What's Next
 
-- [ ] **Era 4: Personal AI** — Preference store, multi-model advisor
-- [ ] **Era 5: Self-Improving** — Eval + DSPy optimization loop
-- [ ] **Era 6: Ambient AI** — Watchers: deps, server, tech radar
-- [ ] **Frontend dashboard** (Next.js) — memory browser, search UI, identity timeline
+Eras 4–8, Capture Spine (incl. interview + daily brief), Judgment Engine,
+Agent Drivers (incl. `claude_code`), the dashboard, and the Lifeline are
+**built** — see START_HERE.md for the verified status table. Remaining gaps:
+
+- [ ] **Tool-observation hook** — tool registry post-execution → capture spine (secret redaction, daily cap)
+- [ ] **Correction-triple NDJSON export** — capture spine export endpoint
+- [ ] **Monthly failure-pattern mining** — judgment engine cron (instances-cited-or-dropped rule)
+- [ ] **Big-decision detection** — heuristic → brief suggestion (once, never nagging)
+- [ ] **Second-opinion reviewer** — dissenting cheap-model pass in the verifier chain
+- [ ] **Seed personas** — `uzhavu-ops` + `dependency-updater` rows (agent-drivers Story 5)
+- [ ] **Watcher→task origination** — watcher findings + scheduler originate kernel tasks
 - [ ] **SDK documentation** — Python + TypeScript SDK usage examples
-- [ ] **Deployment guide** — production Docker/K8s/VPS instructions
 
 ---
 

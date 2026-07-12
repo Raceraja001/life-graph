@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.core.events import EventBus, EventType
 from life_graph.models.db import CaptureEvent, Correction
+from life_graph.storage.database import async_session
 
 
 class CaptureService:
@@ -212,6 +213,74 @@ class CaptureService:
             stmt = stmt.where(Correction.kind == kind)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    # ── Correction Export (you-model training triples) ────────
+
+    @staticmethod
+    def to_triple(correction: Correction) -> dict:
+        """Shape a correction into an ``(original, corrected, context)`` triple.
+
+        Args:
+            correction: A ``Correction`` row (or duck-typed equivalent).
+
+        Returns:
+            Dict with original/corrected/context/domain_tags/kind/created_at.
+        """
+        return {
+            "original": correction.original,
+            "corrected": correction.corrected,
+            "context": correction.context or {},
+            "domain_tags": correction.domain_tags or [],
+            "kind": correction.kind,
+            "created_at": (
+                correction.created_at.isoformat()
+                if correction.created_at
+                else None
+            ),
+        }
+
+    @staticmethod
+    def is_exportable(correction: Correction) -> bool:
+        """Whether a correction may appear in the training-triple export.
+
+        A usable triple needs both sides present. Corrections may opt out
+        of export by setting ``context.exportable = False`` (sensitive
+        drafts) — see capture-spine spec privacy note.
+        """
+        if (correction.context or {}).get("exportable") is False:
+            return False
+        return bool(correction.original) and bool(correction.corrected)
+
+    @classmethod
+    async def stream_export_triples(
+        cls,
+        tenant_id: str,
+        *,
+        session_factory=None,
+    ):
+        """Async-generate exportable correction triples for a tenant.
+
+        Opens its own session (so it is safe to consume inside a
+        ``StreamingResponse`` after the request handler returns) and
+        streams rows oldest-first without buffering the full table.
+
+        Args:
+            tenant_id: Tenant scope.
+            session_factory: Session factory; defaults to ``async_session``.
+
+        Yields:
+            Triple dicts (see :meth:`to_triple`).
+        """
+        factory = session_factory or async_session
+        async with factory() as session:
+            result = await session.stream_scalars(
+                select(Correction)
+                .where(Correction.tenant_id == tenant_id)
+                .order_by(Correction.created_at.asc(), Correction.id.asc())
+            )
+            async for correction in result:
+                if cls.is_exportable(correction):
+                    yield cls.to_triple(correction)
 
     # ── Yield Tracking ────────────────────────────────────────
 

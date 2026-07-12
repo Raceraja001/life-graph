@@ -1,5 +1,7 @@
 # Capture Spine — Universal Input Layer — Feature Spec
 
+> ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `019_capture_spine.py`; `services/capture.py`, `services/capture_processors.py`; API `api/capture.py`; tests `tests/unit/test_capture_processors.py`. Interview system and daily brief added July 11, 2026. **Still pending**: tool-registry post-execution observation hook; correction-triple NDJSON export. See START_HERE.md "Remaining Gaps". **Do not rebuild what exists.**
+
 > **Purpose**: The single input architecture every intelligence feature eats from. Four capture layers — ambient observation, conversation-as-capture, system-initiated interviews, and deliberate moments — so the user **never does data entry**. They work, talk, correct, and answer good questions; the system captures everything else silently.
 >
 > **Why this exists**: Judgment Engine, Apprentice, Life Compiler, Time Machine, and the you-model all require a continuous stream of decisions, corrections, observations, and resolved outcomes. Every previous product in this category (decision journals, quantified-self trackers, reflection apps) died because capture required discipline. This spec removes the discipline requirement.
@@ -402,35 +404,35 @@ LIFE_GRAPH_BRIEF_CRON="30 2 * * *"
 ## Tasks
 
 ### Phase 1: Schema & Ingress (~1.5 days)
-- [ ] Migration `019_capture_spine.py`: capture_events, corrections, interview_questions (+ `memories.capture_event_id`)
-- [ ] SQLAlchemy models in `models/db.py`, Pydantic schemas in `models/schemas.py`
-- [ ] `services/capture.py` (ingest, dedup, list) + `api/capture.py` router + DI provider
-- [ ] New EventTypes + register router in `main.py`
+- [x] Migration `019_capture_spine.py`: capture_events, corrections, interview_questions (+ `memories.capture_event_id`)
+- [x] SQLAlchemy models in `models/db.py`, Pydantic schemas in `models/schemas.py`
+- [x] `services/capture.py` (ingest, dedup, list) + `api/capture.py` router + DI provider
+- [x] New EventTypes + register router in `main.py`
 
 ### Phase 2: Processors & Session Auto-Capture (~1.5 days)
-- [ ] Extraction pipeline subscribes to `CAPTURE_RECEIVED`
+- [x] Extraction pipeline subscribes to `CAPTURE_RECEIVED`
 - [ ] Route `ingest_transcript` through the spine; orchestrator `SESSION_END` hook; MCP server hook
-- [ ] Decision extractor processor (regex tier: "decided to", "going with", "chose X over Y") emitting `DECISION_CANDIDATE`
+- [x] Decision extractor processor (regex tier: "decided to", "going with", "chose X over Y") emitting `DECISION_CANDIDATE`
 - [ ] Voice/image delegation to multimodal service
 
 ### Phase 3: Correction Hook (~1 day)
-- [ ] `POST /capture/correction` + diff summary (difflib ratio + heuristics: length delta, structure delta, tone keywords)
+- [x] `POST /capture/correction` + diff summary (difflib ratio + heuristics: length delta, structure delta, tone keywords)
 - [ ] Correction → preference reinforcement processor; consolidation distillation rule (3+ similar in 30 days)
 - [ ] NDJSON export of correction triples
 
 ### Phase 4: Ambient Observation (~1 day)
 - [ ] Tool registry post-execution hook → observation captures (with secret redaction + daily cap sampling)
 - [ ] Project scan commit observations; kernel task outcome observations; watcher finding observations
-- [ ] Procedure-candidate detection (3x same trajectory) firing `PROCEDURE_CANDIDATE` (event only — Apprentice consumes later)
+- [x] Procedure-candidate detection (3x same trajectory) firing `PROCEDURE_CANDIDATE` (event only — Apprentice consumes later)
 
 ### Phase 5: Interview Engine + Daily Brief (~1.5 days)
-- [ ] `services/interview.py` (generate_daily, answer, skip, expire sweep) + `api/interview.py`
-- [ ] Consolidation step 8: interview generation; origin routing (gap resolve, reflection store; prediction resolve stub until judgment engine lands)
-- [ ] Brief composer cron + `deliver_at_brief` batching in notification engine + `GET /brief/today`
+- [x] `services/interview.py` (generate_daily, answer, skip, expire sweep) + `api/interview.py`
+- [x] Consolidation step 8: interview generation; origin routing (gap resolve, reflection store; prediction resolve stub until judgment engine lands)
+- [x] Brief composer cron + `deliver_at_brief` batching in notification engine + `GET /brief/today`
 
 ### Phase 6: Tests & Polish (~1 day)
 - [ ] Integration tests: ingress dedup, processor fan-out, correction extraction, interview budget/anti-nag, brief composition (follow `tests/integration/` httpx pattern)
-- [ ] Update KNOWLEDGE.md (new tables, events, cron), .env.example
+- [x] Update KNOWLEDGE.md (new tables, events, cron), .env.example
 - [ ] OpenAPI examples for all new endpoints
 
 **Total: ~7.5 days**

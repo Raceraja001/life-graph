@@ -280,6 +280,18 @@ async def run_watchers(ctx: dict) -> dict:
 
     notification_engine = get_watcher_notification_engine()
 
+    # Watcher → task origination: actionable findings become kernel tasks.
+    # Called directly (not via EventBus) because the cron runs in the ARQ
+    # worker and the Redis bridge is publish-only — an API-process subscriber
+    # would never receive worker-emitted events.
+    try:
+        from life_graph.api.dependencies import get_process_manager
+        from life_graph.watchers.origination import TaskOriginationService
+        origination = TaskOriginationService(get_process_manager())
+    except Exception:
+        logger.warning("Task origination unavailable — findings won't spawn tasks", exc_info=True)
+        origination = None
+
     # Find all tenants with watcher configs
     async with async_session() as session:
         result = await session.execute(
@@ -371,16 +383,30 @@ async def run_watchers(ctx: dict) -> dict:
 
                 tenant_events += len(events)
 
+                completed_payload = {
+                    "watcher_name": wconfig.watcher_name,
+                    "tenant_id": tid,
+                    "events_created": len(events),
+                    "duration_ms": duration_ms,
+                    # Findings carried so downstream origination can act on
+                    # them (actionable ones become tasks).
+                    "findings": list(events),
+                }
                 await event_bus.emit(
                     EventType.WATCHER_COMPLETED,
-                    {
-                        "watcher_name": wconfig.watcher_name,
-                        "tenant_id": tid,
-                        "events_created": len(events),
-                        "duration_ms": duration_ms,
-                    },
+                    completed_payload,
                     source="watcher_framework",
                 )
+
+                # Spawn kernel tasks from actionable findings.
+                if origination is not None:
+                    try:
+                        await origination.originate(completed_payload)
+                    except Exception:
+                        logger.warning(
+                            "Origination failed for watcher %s / tenant %s",
+                            wconfig.watcher_name, tid, exc_info=True,
+                        )
 
             except Exception as e:
                 logger.exception(
@@ -541,3 +567,87 @@ async def send_approval_escalations(ctx: dict) -> dict:
         return {"status": "error"}
 
 
+
+
+# ── Capture Spine: Daily Brief (Phase G) ─────────────────────────────────
+
+
+async def run_daily_brief(ctx: dict) -> dict:
+    """Daily cron: compose the daily brief for every active tenant.
+
+    Composition runs the interview expire sweep + generation first, then
+    bundles held notifications, capture summary, and watcher digest into
+    a single notification. Tenants with no content get no brief.
+    """
+    logger.info("Starting daily brief composition for all tenants")
+
+    from life_graph.core.events import event_bus
+    from life_graph.models.db import TenantConfig
+    from life_graph.services.brief import BriefComposer
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(TenantConfig.tenant_id).where(TenantConfig.status == "active")
+        )
+        tenant_ids = [row[0] for row in result.fetchall()]
+
+    composer = BriefComposer(async_session, event_bus)
+    results: dict[str, dict] = {}
+    composed = 0
+    for tid in tenant_ids:
+        try:
+            set_tenant_context(tid, "system")
+            brief = await composer.compose_daily(tid)
+            if brief:
+                composed += 1
+                results[tid] = {"status": "composed", "id": brief["id"]}
+            else:
+                results[tid] = {"status": "silent"}
+        except Exception:
+            logger.exception("Brief composition failed for tenant %s", tid)
+            results[tid] = {"status": "error"}
+
+    logger.info("Daily brief run: %d/%d tenants briefed", composed, len(tenant_ids))
+    return {"tenants": len(tenant_ids), "composed": composed, "results": results}
+
+
+# ── Judgment Engine: Monthly Failure-Pattern Mining (Phase H) ────────────
+
+
+async def failure_pattern_mining(ctx: dict) -> dict:
+    """Monthly cron: mine recurring failure patterns from resolved decisions.
+
+    One LLM pass per tenant over failed decisions (incorrect predictions or
+    reversed/superseded decisions). Patterns are stored as ``failure_pattern``
+    memories only when they cite >=3 decision instances (else dropped).
+    """
+    logger.info("Starting monthly failure-pattern mining for all tenants")
+
+    from life_graph.models.db import TenantConfig
+    from life_graph.services.failure_mining import FailurePatternMiner
+    from life_graph.services.llm_client import LMStudioClient
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(TenantConfig.tenant_id).where(TenantConfig.status == "active")
+        )
+        tenant_ids = [row[0] for row in result.fetchall()]
+
+    miner = FailurePatternMiner(session_factory=async_session, llm=LMStudioClient())
+    results: dict[str, dict] = {}
+    total_stored = 0
+    for tid in tenant_ids:
+        try:
+            set_tenant_context(tid, "system")
+            summary = await miner.run(tid)
+            total_stored += summary.get("patterns_stored", 0)
+            results[tid] = summary
+        except Exception:
+            logger.exception("Failure mining failed for tenant %s", tid)
+            results[tid] = {"status": "error"}
+
+    logger.info(
+        "Failure-pattern mining: %d tenants, %d patterns stored",
+        len(tenant_ids), total_stored,
+    )
+    return {"tenants": len(tenant_ids), "patterns_stored": total_stored, "results": results}

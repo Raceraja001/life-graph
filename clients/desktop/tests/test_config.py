@@ -52,3 +52,17 @@ def test_missing_api_key_raises(tmp_path):
     p = _write(tmp_path, 'backend_url = "http://x"\ntenant_id = "t"\n')
     with pytest.raises(ConfigError):
         load_config(p, keyring_module=FakeKeyring(secret=None))
+
+
+def test_config_repr_hides_api_key(tmp_path):
+    p = _write(tmp_path, 'backend_url = "http://x"\ntenant_id = "t"\n')
+    cfg = load_config(p, keyring_module=FakeKeyring(secret="topsecretkey"))
+    assert "topsecretkey" not in repr(cfg)
+
+
+def test_set_api_key_stores_in_keyring():
+    from clients.desktop.config import KEYRING_SERVICE, set_api_key
+
+    kr = FakeKeyring()
+    set_api_key("tenant-x", "the-key", keyring_module=kr)
+    assert kr.set_calls == [(KEYRING_SERVICE, "tenant-x", "the-key")]

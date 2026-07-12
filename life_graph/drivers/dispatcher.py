@@ -60,10 +60,29 @@ class TaskDispatcher:
         self,
         session_factory: callable,
         event_bus: EventBus | None = None,
+        reviewer=None,
     ) -> None:
         self._session_factory = session_factory
         self._event_bus = event_bus
         self._context_builder = ContextPacketBuilder()
+        self._reviewer = reviewer or self._build_default_reviewer()
+
+    @staticmethod
+    def _build_default_reviewer():
+        """Build the second-opinion reviewer from settings (off by default)."""
+        from life_graph.config import settings
+        from life_graph.services.second_opinion import SecondOpinionReviewer
+
+        enabled = settings.driver_second_opinion_enabled
+        llm = None
+        if enabled:
+            from life_graph.services.llm_client import LMStudioClient
+            llm = LMStudioClient()
+        return SecondOpinionReviewer(
+            llm=llm,
+            model=settings.driver_second_opinion_model,
+            enabled=enabled,
+        )
 
     async def dispatch_task(
         self,
@@ -219,6 +238,38 @@ class TaskDispatcher:
                         EventType.VERIFICATION_PASSED,
                         {"task_id": task_id, "driver": driver.name},
                     )
+
+                    # Step 6b: Second-opinion dissenting review before landing.
+                    verdict = await self._reviewer.review(
+                        task_type, instruction, result.output
+                    )
+                    if verdict.ran and not verdict.approved:
+                        await self._emit(
+                            EventType.SECOND_OPINION_DISSENT,
+                            {
+                                "task_id": task_id,
+                                "driver": driver.name,
+                                "concern": verdict.concern,
+                            },
+                        )
+                        await self._create_dissent_approval_entry(
+                            tenant_id, task_id, driver.name,
+                            verdict.concern, session,
+                        )
+                        result = DriverResult(
+                            success=False,
+                            output=result.output,
+                            error=(
+                                "Second-opinion dissent: "
+                                f"{verdict.concern or 'unspecified concern'}"
+                            ),
+                            cost_usd=result.cost_usd,
+                            duration_ms=result.duration_ms,
+                            metadata={
+                                "needs_human": True,
+                                "second_opinion_concern": verdict.concern,
+                            },
+                        )
 
             # Step 7: Record stats + emit result
             await self._record_stats(
@@ -538,6 +589,44 @@ class TaskDispatcher:
             return bounce_result
 
         return None
+
+    async def _create_dissent_approval_entry(
+        self,
+        tenant_id: str,
+        task_id: str,
+        driver_name: str,
+        concern: str | None,
+        session: AsyncSession,
+    ) -> None:
+        """Create an approval entry when the second-opinion reviewer dissents."""
+        try:
+            from life_graph.models.db import ApprovalQueue
+
+            entry = ApprovalQueue(
+                tenant_id=tenant_id,
+                action_type="driver_second_opinion_dissent",
+                action_description=(
+                    f"Driver '{driver_name}' output for task {task_id} passed "
+                    f"automated checks but the second-opinion reviewer dissented: "
+                    f"{concern or 'unspecified concern'}"
+                ),
+                risk_level="medium",
+                agent_id=driver_name,
+                context={
+                    "task_id": task_id,
+                    "driver": driver_name,
+                    "concern": concern,
+                },
+                status="pending",
+            )
+            session.add(entry)
+            logger.info(
+                "Created second-opinion approval entry for task %s", task_id
+            )
+        except Exception:
+            logger.warning(
+                "Failed to create dissent approval entry", exc_info=True
+            )
 
     async def _create_approval_entry(
         self,

@@ -62,6 +62,7 @@ class NotificationEngine:
         source_type: str | None = None,
         source_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        deliver_at_brief: bool = False,
     ) -> dict[str, Any]:
         """Create a new notification record.
 
@@ -75,6 +76,10 @@ class NotificationEngine:
             source_type: Origin type (e.g. 'task', 'schedule').
             source_id: UUID of the originating entity.
             metadata: Arbitrary JSONB payload.
+            deliver_at_brief: Hold this notification for the next
+                daily brief instead of delivering immediately.
+                Ignored for 'critical' priority — interrupts stay
+                immediate.
 
         Returns:
             Dict representation of the created notification.
@@ -82,6 +87,8 @@ class NotificationEngine:
         Raises:
             ValueError: If priority or channel is invalid.
         """
+        if deliver_at_brief and priority != "critical":
+            metadata = {**(metadata or {}), "deliver_at_brief": True}
         if priority not in VALID_PRIORITIES:
             raise ValueError(
                 f"Invalid priority {priority!r},"

@@ -75,6 +75,12 @@ async def lifespan(app: FastAPI):
         import life_graph.tools.browser  # noqa: F401
         from life_graph.tools.registry import registry
         logger.info("Agent tools registered: %s", registry.tool_names)
+
+        # Capture-spine tool-exhaust observation hook (secret redaction +
+        # daily-cap sampling handled inside the hook).
+        from life_graph.services.tool_observation import ToolObservationHook
+        registry.add_post_exec_hook(ToolObservationHook())
+        logger.info("Tool-exhaust observation hook registered")
     except Exception:
         logger.warning("Failed to register agent tools", exc_info=True)
 
@@ -159,7 +165,9 @@ async def lifespan(app: FastAPI):
     try:
         from life_graph.drivers.registry import driver_registry
         from life_graph.drivers.local import LocalDriver
+        from life_graph.drivers.claude_code import ClaudeCodeDriver
         driver_registry.register(LocalDriver())
+        driver_registry.register(ClaudeCodeDriver())
         logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
     except Exception:
         logger.warning("Agent drivers not available", exc_info=True)
@@ -302,6 +310,12 @@ v1_router.include_router(autonomy_router)
 
 from life_graph.api import capture as capture_api
 v1_router.include_router(capture_api.router)
+
+from life_graph.api import interview as interview_api
+v1_router.include_router(interview_api.router)
+
+from life_graph.api import brief as brief_api
+v1_router.include_router(brief_api.router)
 
 from life_graph.api import judgment as judgment_api
 v1_router.include_router(judgment_api.router)

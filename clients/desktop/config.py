@@ -30,7 +30,7 @@ class HotkeyConfig:
 class Config:
     backend_url: str
     tenant_id: str
-    api_key: str
+    api_key: str = field(repr=False)
     hotkeys: HotkeyConfig = field(default_factory=HotkeyConfig)
     replay_interval_seconds: int = 30
     redact: bool = True
