@@ -13,6 +13,7 @@ import time
 
 from clients.desktop.client import CaptureClient, SendStatus, build_payload
 from clients.desktop.config import (
+    ConfigError,
     default_config_path,
     load_config,
     set_api_key,
@@ -83,11 +84,11 @@ class Agent:
 
     def _replay_loop(self) -> None:
         while True:
-            time.sleep(self._cfg.replay_interval_seconds)
             try:
                 self._queue.replay(self._client.send)
             except Exception:
                 logger.exception("Replay loop error")
+            time.sleep(self._cfg.replay_interval_seconds)
 
     def run(self) -> None:
         hotkeys = HotkeyManager({
@@ -99,7 +100,7 @@ class Agent:
 
         self._tray = Tray(
             on_pause_toggle=hotkeys.set_enabled_inverted,
-            on_quit=lambda: os._exit(0),
+            on_quit=hotkeys.stop,
             on_settings=lambda: _open_folder(default_config_path().parent),
         )
         self._tray.run()  # blocks
@@ -146,7 +147,11 @@ def main() -> None:
         install_autostart()
         return
 
-    config = load_config()
+    try:
+        config = load_config()
+    except ConfigError as e:
+        print(e)
+        return
     Agent(config).run()
 
 
