@@ -18,7 +18,7 @@ _KV_SECRET = re.compile(
 )
 # Authorization headers: redact the whole credential (scheme + token), not
 # just the scheme word.
-_AUTH_HEADER = re.compile(r"(?i)\b(authorization)\s*:\s*\S+(?:\s+\S+)?")
+_AUTH_HEADER = re.compile(r"(?i)\b(authorization)\s*[:=]\s*\S+(?:\s+\S+)?")
 # Standalone bearer tokens.
 _BEARER = re.compile(r"(?i)\b(bearer)\s+\S+")
 _TOKEN_SHAPES = [

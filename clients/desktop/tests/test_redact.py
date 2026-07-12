@@ -42,3 +42,10 @@ def test_redacts_basic_auth_header():
 
 def test_does_not_over_redact_author():
     assert redact("author=John Doe") == "author=John Doe"
+
+
+def test_redacts_authorization_equals_form():
+    assert "supersecrettoken" not in redact("AUTHORIZATION=supersecrettoken")
+    assert "sk-abcdef123456789012" not in redact(
+        "export AUTHORIZATION=Bearer sk-abcdef123456789012"
+    )
