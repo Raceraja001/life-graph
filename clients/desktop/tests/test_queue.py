@@ -53,3 +53,15 @@ def test_replay_drops_bad_items(tmp_path):
     sent = q.replay(lambda p: SendResult(SendStatus.BAD))
     assert sent == 0
     assert q.pending_count() == 0   # both dropped, not retried forever
+
+
+def test_uses_wal_journal_mode(tmp_path):
+    import sqlite3
+    db = tmp_path / "q.db"
+    CaptureQueue(db)
+    con = sqlite3.connect(db)
+    try:
+        mode = con.execute("PRAGMA journal_mode").fetchone()[0]
+    finally:
+        con.close()
+    assert mode.lower() == "wal"

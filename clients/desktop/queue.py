@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from contextlib import closing
 from pathlib import Path
 
 from clients.desktop.client import SendStatus
@@ -20,21 +21,23 @@ class CaptureQueue:
         return sqlite3.connect(self._path)
 
     def _init(self) -> None:
-        with self._conn() as c:
-            c.execute(
-                """
-                CREATE TABLE IF NOT EXISTS pending (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    client_capture_id TEXT UNIQUE,
-                    payload TEXT NOT NULL,
-                    created_at REAL NOT NULL
+        with closing(self._conn()) as c:
+            c.execute("PRAGMA journal_mode=WAL")
+            with c:
+                c.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS pending (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        client_capture_id TEXT UNIQUE,
+                        payload TEXT NOT NULL,
+                        created_at REAL NOT NULL
+                    )
+                    """
                 )
-                """
-            )
 
     def enqueue(self, payload: dict) -> None:
         cid = payload["properties"]["client_capture_id"]
-        with self._conn() as c:
+        with closing(self._conn()) as c, c:
             c.execute(
                 "INSERT OR IGNORE INTO pending(client_capture_id, payload, created_at) "
                 "VALUES (?, ?, ?)",
@@ -42,12 +45,12 @@ class CaptureQueue:
             )
 
     def pending_count(self) -> int:
-        with self._conn() as c:
+        with closing(self._conn()) as c:
             return c.execute("SELECT COUNT(*) FROM pending").fetchone()[0]
 
     def replay(self, send_fn) -> int:
         """Drain FIFO. Returns count SENT. Stops on TRANSIENT/AUTH."""
-        with self._conn() as c:
+        with closing(self._conn()) as c:
             rows = c.execute(
                 "SELECT id, payload FROM pending ORDER BY id ASC"
             ).fetchall()
@@ -56,7 +59,7 @@ class CaptureQueue:
         for row_id, payload_json in rows:
             result = send_fn(json.loads(payload_json))
             if result.status in (SendStatus.SENT, SendStatus.BAD):
-                with self._conn() as c:
+                with closing(self._conn()) as c, c:
                     c.execute("DELETE FROM pending WHERE id = ?", (row_id,))
                 if result.status == SendStatus.SENT:
                     sent += 1
