@@ -24,3 +24,21 @@ def test_plain_text_untouched():
 def test_empty_is_safe():
     assert redact("") == ""
     assert redact(None) is None
+
+
+def test_redacts_bearer_token_in_header():
+    out = redact("Authorization: Bearer myopaquesecrettoken999")
+    assert "myopaquesecrettoken999" not in out
+    assert "[REDACTED]" in out
+
+
+def test_redacts_standalone_bearer():
+    assert "opaquetoken123" not in redact("Bearer opaquetoken123")
+
+
+def test_redacts_basic_auth_header():
+    assert "dXNlcjpwYXNz" not in redact("Authorization: Basic dXNlcjpwYXNz")
+
+
+def test_does_not_over_redact_author():
+    assert redact("author=John Doe") == "author=John Doe"
