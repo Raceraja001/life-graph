@@ -33,6 +33,10 @@ class HotkeyManager:
     def set_enabled(self, enabled: bool) -> None:
         self._enabled = enabled
 
+    def set_enabled_inverted(self, is_paused: bool) -> None:
+        """Tray passes is_paused; enabled is the inverse."""
+        self.set_enabled(not is_paused)
+
     def stop(self) -> None:
         if self._listener is not None:
             self._listener.stop()
