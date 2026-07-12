@@ -14,14 +14,20 @@ from typing import Any
 
 REDACTED = "[REDACTED]"
 
-# key=value / key: value where the KEY looks sensitive.
+# key=value / key: value where the KEY looks sensitive. (No bare "auth" — it
+# matched "author"/"Authorization" and only redacted the scheme word, leaking
+# the credential; Authorization is handled by _AUTH_HEADER below.)
 _KV_SECRET = re.compile(
     r"(?i)([\w.-]*(?:api[_-]?key|secret|token|password|passwd|pwd|"
-    r"access[_-]?key|auth)[\w.-]*)(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|\S+)"
+    r"access[_-]?key)[\w.-]*)(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|\S+)"
 )
 
-# Authorization / Bearer headers.
-_BEARER = re.compile(r"(?i)\b(bearer|authorization\s*:?)\s+\S+")
+# Authorization headers: redact the whole credential (scheme + token), for
+# both "Authorization: <cred>" and "AUTHORIZATION=<cred>" forms.
+_AUTH_HEADER = re.compile(r"(?i)\b(authorization)\s*[:=]\s*\S+(?:\s+\S+)?")
+
+# Standalone bearer tokens.
+_BEARER = re.compile(r"(?i)\b(bearer)\s+\S+")
 
 # Standalone token shapes worth redacting wherever they appear.
 _TOKEN_SHAPES: list[re.Pattern[str]] = [
@@ -41,8 +47,9 @@ def redact_secrets(text: str) -> str:
     """
     if not text:
         return text
-    text = _KV_SECRET.sub(lambda m: f"{m.group(1)}{m.group(2)}{REDACTED}", text)
+    text = _AUTH_HEADER.sub(lambda m: f"{m.group(1)}: {REDACTED}", text)
     text = _BEARER.sub(lambda m: f"{m.group(1)} {REDACTED}", text)
+    text = _KV_SECRET.sub(lambda m: f"{m.group(1)}{m.group(2)}{REDACTED}", text)
     for pat in _TOKEN_SHAPES:
         text = pat.sub(REDACTED, text)
     return text

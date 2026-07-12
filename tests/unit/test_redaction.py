@@ -24,6 +24,32 @@ def test_redacts_bearer_header():
     assert "eyJabcdefgh.ijklmnopqrst" not in out
 
 
+def test_redacts_opaque_bearer_token():
+    # Regression: an opaque token (not a known shape) after Bearer must not leak.
+    out = redact_secrets("Authorization: Bearer myopaquesecrettoken999")
+    assert "myopaquesecrettoken999" not in out
+    assert REDACTED in out
+
+
+def test_redacts_standalone_bearer():
+    assert "opaquetoken123" not in redact_secrets("Bearer opaquetoken123")
+
+
+def test_redacts_authorization_equals_form():
+    assert "supersecrettoken" not in redact_secrets("AUTHORIZATION=supersecrettoken")
+    assert "sk-abcdef123456789012" not in redact_secrets(
+        "export AUTHORIZATION=Bearer sk-abcdef123456789012"
+    )
+
+
+def test_redacts_basic_auth_header():
+    assert "dXNlcjpwYXNz" not in redact_secrets("Authorization: Basic dXNlcjpwYXNz")
+
+
+def test_does_not_over_redact_author():
+    assert redact_secrets("author=John Doe") == "author=John Doe"
+
+
 def test_redacts_standalone_token_shapes():
     assert "AKIAIOSFODNN7EXAMPLE" not in redact_secrets("key AKIAIOSFODNN7EXAMPLE here")
     assert "ghp_" not in redact_secrets("token ghp_0123456789abcdefghijklmnopqrstuv")
