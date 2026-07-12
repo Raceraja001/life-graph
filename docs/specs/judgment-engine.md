@@ -1,5 +1,7 @@
 # Judgment Engine — Calibration, Decisions & the Adversarial Advisor — Feature Spec
 
+> ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `020_judgment_engine.py`; `services/judgment.py`, `services/outcome_resolver.py`, `services/adversarial_advisor.py`, `services/multi_model_advisor.py`, `scoring/calibration.py`; API `api/judgment.py`; tests `tests/unit/test_calibration.py`. **Still pending**: monthly failure-pattern mining job; big-decision detection heuristic. See START_HERE.md "Remaining Gaps". **Do not rebuild what exists.**
+
 > **Purpose**: The system that makes the user's judgment measurably better over time. Execution is being commoditized by agents; judgment is the residual human bottleneck. The Judgment Engine closes a loop no product closes today: **Decide** (advisor challenges you with your own history) → **Predict** (confidence logged) → **Act** → **Observe** (outcomes resolved automatically) → **Recalibrate** (your personal bias model updates nightly). The flagship demo is one screen: *your calibration curve improving over months.*
 >
 > **Why nobody has this**: calibration tools (Fatebook, Metaculus) are manual and world-facing; decision journals are write-only; digital twins are enterprise vaporware. The combination requires persistent memory + belief tracking + evidence + watchers + agent execution — a substrate only Life Graph has. The moat is the accumulated, outcome-resolved personal history itself.
@@ -491,34 +493,34 @@ LIFE_GRAPH_JUDGMENT_SIMILARITY_THRESHOLD=0.75
 ## Tasks
 
 ### Phase 1: Schema & Models (~1 day)
-- [ ] Migration `020_judgment_engine.py`: decisions, predictions, calibration_snapshots, challenges
-- [ ] SQLAlchemy models + Pydantic schemas; new EventTypes
+- [x] Migration `020_judgment_engine.py`: decisions, predictions, calibration_snapshots, challenges
+- [x] SQLAlchemy models + Pydantic schemas; new EventTypes
 
 ### Phase 2: Decisions & Predictions (~1.5 days)
-- [ ] `services/judgment.py`: decision CRUD, candidate confirmation flow, dedup/merge, supersession via contradiction service
-- [ ] Prediction CRUD with confidence normalization + criteria auto-population (kernel_task/git/watcher detection)
-- [ ] `api/judgment.py` router + DI + register in `main.py`
-- [ ] Subscribe to `DECISION_CANDIDATE` from capture spine; one-question follow-up via brief
+- [x] `services/judgment.py`: decision CRUD, candidate confirmation flow, dedup/merge, supersession via contradiction service
+- [x] Prediction CRUD with confidence normalization + criteria auto-population (kernel_task/git/watcher detection)
+- [x] `api/judgment.py` router + DI + register in `main.py`
+- [x] Subscribe to `DECISION_CANDIDATE` from capture spine; one-question follow-up via brief
 
 ### Phase 3: Outcome Resolver (~1.5 days)
-- [ ] `services/outcome_resolver.py` with 4 resolver kinds + interview escalation
+- [x] `services/outcome_resolver.py` with 4 resolver kinds + interview escalation
 - [ ] Consolidation step 9 wiring; `PREDICTION_RESOLVED` events; resolution immutability
-- [ ] Interview answer routing back to predictions (completes the capture-spine stub)
+- [x] Interview answer routing back to predictions (completes the capture-spine stub)
 
 ### Phase 4: Calibration Engine (~1 day)
-- [ ] `scoring/calibration.py` pure functions (brier, buckets, multiplier, bias findings) + unit tests
+- [x] `scoring/calibration.py` pure functions (brier, buckets, multiplier, bias findings) + unit tests
 - [ ] Nightly snapshot job; `GET /calibration`, `/profile`, `/stats` endpoints; insufficient-data handling
 - [ ] Bias findings → one-time brief surfacing
 
 ### Phase 5: Adversarial Advisor (~2 days)
-- [ ] `services/adversarial_advisor.py`: local sections (similar decisions, base rates, calibration, belief conflicts) with mandatory citations
-- [ ] Forced-contrarian dissent via `multi_model_advisor`; verdict assembly; cost tracking + budget guard
-- [ ] `POST /challenge` + `/challenge/{id}/resolve`; challenge → tracked prediction (advisor accountability)
+- [x] `services/adversarial_advisor.py`: local sections (similar decisions, base rates, calibration, belief conflicts) with mandatory citations
+- [x] Forced-contrarian dissent via `multi_model_advisor`; verdict assembly; cost tracking + budget guard
+- [x] `POST /challenge` + `/challenge/{id}/resolve`; challenge → tracked prediction (advisor accountability)
 - [ ] Big-decision detection heuristic → brief suggestion (once, never nagging)
 
 ### Phase 6: Pattern Mining, CLI, Tests (~1.5 days)
 - [ ] Monthly failure-pattern mining job (instances-cited-or-dropped rule)
-- [ ] `life-graph judgment stats` CLI command
+- [x] `life-graph judgment stats` CLI command
 - [ ] Integration tests: candidate→confirm→predict→resolve→calibrate happy path; ambiguity paths; challenge grounding/degradation; tenant isolation
 - [ ] Update KNOWLEDGE.md, .env.example, OpenAPI examples
 

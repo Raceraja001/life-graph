@@ -1,5 +1,7 @@
 # Agent Drivers — Rent the Muscle, Own the Nervous System — Feature Spec
 
+> ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `021_agent_drivers.py`; package `life_graph/drivers/` (base protocol, registry, local driver, dispatcher with WIP limits + bounce-once, context packets); `services/verifiers.py`, `services/results_loop.py`; API `api/drivers.py`. **Still pending**: second-opinion reviewer pass; seed personas (`uzhavu-ops`, `dependency-updater`); watcher-finding → task origination. See START_HERE.md "Remaining Gaps". **Do not rebuild what exists.**
+
 > **Purpose**: Turn Life Graph from "one orchestrator loop with 10 tools" into an agent workforce — by wrapping best-in-class external agents (Claude Code headless, Codex CLI, browser-use) as interchangeable **drivers**, arming every dispatch with a **context packet** no external agent has, gating every result through a **verifier chain**, and feeding every outcome back into memory, trust, and calibration. Life Graph never competes with frontier executors; it employs them.
 >
 > **Strategy ref**: `docs/design/07_strategic_direction_2026-07.md` (D2). Rule of `.comms/context/strategic-decision.md` applies: wrap existing tools, don't rebuild them.
@@ -407,10 +409,10 @@ LIFE_GRAPH_CONCURRENT_TASKS_PER_TENANT=5
 ## Tasks
 
 ### Phase 1: Driver Protocol + Two Drivers (~2 days)
-- [ ] `drivers/base.py` protocol + `drivers/registry.py` (availability probing, stats surface)
-- [ ] `drivers/claude_code.py` (headless subprocess, JSON parse, worktree isolation option)
-- [ ] `drivers/local.py` wrapping `AgentOrchestrator`
-- [ ] Migration `021_agent_drivers.py`; `GET /kernel/drivers` endpoint; new EventTypes
+- [x] `drivers/base.py` protocol + `drivers/registry.py` (availability probing, stats surface)
+- [x] `drivers/claude_code.py` (headless subprocess, JSON parse, worktree isolation option)
+- [x] `drivers/local.py` wrapping `AgentOrchestrator`
+- [x] Migration `021_agent_drivers.py`; `GET /kernel/drivers` endpoint; new EventTypes
 
 ### Phase 2: Context Packets (~1.5 days)
 - [ ] Extend `services/context.py`: packet sections, token budget with priority truncation, privacy stripping
@@ -418,13 +420,13 @@ LIFE_GRAPH_CONCURRENT_TASKS_PER_TENANT=5
 - [ ] Judgment-profile section stub (activates when judgment engine ships)
 
 ### Phase 3: Verifier Chain (~2 days)
-- [ ] `services/verifiers.py`: registry decorator + built-ins (tests_pass, lint_clean, build_ok, diff_within_scope, citations_present, style_conforms, claims_evidenced)
+- [x] `services/verifiers.py`: registry decorator + built-ins (tests_pass, lint_clean, build_ok, diff_within_scope, citations_present, style_conforms, claims_evidenced)
 - [ ] One-bounce rule; wire into `autonomy/pipeline/executor.py`; `verification_runs` storage
 - [ ] Second-opinion reviewer pass (dissenting cheap model)
 
 ### Phase 4: Dispatch + Results Loop (~1.5 days)
-- [ ] `drivers/dispatcher.py`: selection (pin → cheapest capable trusted → fallback), WIP/concurrency limits, cost cap
-- [ ] `services/results_loop.py`: capture-spine observation, implicit judgment prediction, trust update, `driver_stats` upsert
+- [x] `drivers/dispatcher.py`: selection (pin → cheapest capable trusted → fallback), WIP/concurrency limits, cost cap
+- [x] `services/results_loop.py`: capture-spine observation, implicit judgment prediction, trust update, `driver_stats` upsert
 - [ ] Persona columns live: create `uzhavu-ops` and `dependency-updater` personas as rows (proof of Story 5)
 
 ### Phase 5: Standing Pipelines (~1.5 days)

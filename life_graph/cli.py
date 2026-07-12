@@ -111,6 +111,46 @@ def cmd_stats(args):
         print("Is the server running? (uvicorn life_graph.main:app)")
 
 
+def cmd_judgment_stats(args):
+    """Show judgment engine statistics and calibration summary."""
+    import httpx
+
+    base = args.url.rstrip('/')
+    headers = {'X-Tenant-ID': args.tenant}
+
+    def fetch(path):
+        r = httpx.get(f"{base}/api/v1/judgment{path}", headers=headers, timeout=10)
+        r.raise_for_status()
+        payload = r.json()
+        # Unwrap the {"success": ..., "data": ...} envelope if present
+        return payload.get('data', payload) if isinstance(payload, dict) else payload
+
+    try:
+        stats = fetch('/stats')
+        print(f"\n[*] Judgment Engine Stats (tenant: {args.tenant})")
+        print(f"{'='*40}")
+        for k, v in (stats or {}).items():
+            print(f"  {k}: {v}")
+
+        try:
+            calibration = fetch('/calibration')
+        except Exception:
+            calibration = None
+        if calibration:
+            print(f"\n[*] Calibration")
+            print(f"{'='*40}")
+            if isinstance(calibration, dict):
+                for k, v in calibration.items():
+                    print(f"  {k}: {v}")
+            else:
+                for row in calibration:
+                    print(f"  {row}")
+    except Exception as e:
+        print(f"Error: {e}")
+        print("Is the server running? (uvicorn life_graph.main:app)")
+        sys.exit(1)
+
+
 def main():
     """Entry point for the life-graph CLI."""
     parser = argparse.ArgumentParser(
@@ -133,8 +173,16 @@ def main():
     st.add_argument('--url', default='http://localhost:8000', help='API base URL')
     st.set_defaults(func=cmd_stats)
 
+    # judgment command group
+    jd = subparsers.add_parser('judgment', help='Judgment engine commands')
+    jd_sub = jd.add_subparsers(dest='judgment_command')
+    jd_stats = jd_sub.add_parser('stats', help='Show judgment stats and calibration')
+    jd_stats.add_argument('--url', default='http://localhost:8000', help='API base URL')
+    jd_stats.add_argument('--tenant', default='personal', help='Tenant ID')
+    jd_stats.set_defaults(func=cmd_judgment_stats)
+
     args = parser.parse_args()
-    if not args.command:
+    if not getattr(args, 'func', None):
         parser.print_help()
         return
 

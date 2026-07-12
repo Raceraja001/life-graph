@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.0] — 2026-07-11
+
+### Added
+
+#### The Lifeline (F0) — backup automation
+- `backup` sidecar service in `docker-compose.production.yml` (reuses the PG16 image so client tools match the server)
+- Nightly `pg_dump` at 02:00 UTC with optional restic off-site push (`scripts/backup.sh`, now logged to `job_runs`)
+- Weekly restore-verification drill Sunday 06:00 UTC: restores the latest dump into a scratch DB, verifies row counts + embedding samples (`scripts/verify_restore.sh`)
+- Operations runbook: `docs/OPERATIONS.md`
+
+#### Interview Engine (Capture Spine Phase 5)
+- `services/interview.py` — 4 question origins (outcome resolution, knowledge gaps, drift, reflection), hard daily budget (3), anti-nag (2 asks max, skip halves origin priority), 7-day TTL with ambiguous-resolution of expired predictions
+- `GET /api/v1/interview/pending`, `POST /api/v1/interview/{id}/answer`, `POST /api/v1/interview/{id}/skip`
+- Answers route back through the capture spine and resolve their origin (gap/prediction)
+
+#### Daily Brief (Capture Spine Phase 5)
+- `services/brief.py` — one daily notification: held notifications, interview questions, capture summary, watcher digest; silent when empty
+- `GET /api/v1/brief/today`, `POST /api/v1/brief/compose`
+- `run_daily_brief` ARQ cron (hour via `LIFE_GRAPH_BRIEF_HOUR_UTC`)
+- `deliver_at_brief` flag on the kernel notification engine (critical stays immediate)
+
+#### Agent Drivers
+- `drivers/claude_code.py` — Claude Code headless driver (`claude -p ... --output-format json`), graceful degradation when the binary is missing, optional git-worktree isolation, privacy stripping for external dispatch
+
+#### CLI
+- `life-graph judgment stats` — judgment engine stats + calibration summary
+
+### Fixed
+- Stripped 2,289 syntax-breaking auto-injected docstring blocks from 242 working-tree files (committed code was unaffected)
+- Docs (`START_HERE.md`, `KNOWLEDGE.md`, spec status banners) updated to match the actually-implemented state
+
+---
+
 ## [1.0.0] — 2026-07-05
 
 ### Added

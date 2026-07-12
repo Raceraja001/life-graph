@@ -10,13 +10,17 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_RESULT_CHARS = 4000
 TOOL_TIMEOUT_SECONDS = 15
+
+# A post-execution hook receives one observation dict and returns nothing.
+PostExecHook = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 @dataclass
@@ -38,6 +42,49 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, ToolEntry] = {}
+        self._post_exec_hooks: list[PostExecHook] = []
+
+    # ── Post-execution hooks ──────────────────────────────────
+
+    def add_post_exec_hook(self, hook: PostExecHook) -> None:
+        """Register an async hook fired after every tool execution.
+
+        Each hook receives an observation dict
+        ``{tool, args_summary, exit_status, duration_ms}``. Hooks are
+        best-effort — an exception in one never affects the tool result
+        or other hooks.
+        """
+        self._post_exec_hooks.append(hook)
+
+    def clear_post_exec_hooks(self) -> None:
+        """Remove all registered post-execution hooks (mainly for tests)."""
+        self._post_exec_hooks.clear()
+
+    async def _fire_post_exec(
+        self,
+        name: str,
+        args: dict[str, Any],
+        exit_status: str,
+        start: float,
+    ) -> None:
+        """Build the observation and dispatch it to all hooks."""
+        if not self._post_exec_hooks:
+            return
+        from life_graph.core.redaction import summarize_args
+
+        observation = {
+            "tool": name,
+            "args_summary": summarize_args(args),
+            "exit_status": exit_status,
+            "duration_ms": int((time.monotonic() - start) * 1000),
+        }
+        for hook in self._post_exec_hooks:
+            try:
+                await hook(observation)
+            except Exception:
+                logger.debug(
+                    "post-exec hook failed for tool %s", name, exc_info=True
+                )
 
     def register(
         self,
@@ -108,6 +155,7 @@ class ToolRegistry:
         entry = self._tools[name]
         logger.info("Executing tool: %s with args: %s", name, args)
 
+        start = time.monotonic()
         try:
             if asyncio.iscoroutinefunction(entry.handler):
                 result = await asyncio.wait_for(
@@ -118,12 +166,16 @@ class ToolRegistry:
                 result = entry.handler(**args)
         except asyncio.TimeoutError:
             logger.warning("Tool '%s' timed out after %ds", name, TOOL_TIMEOUT_SECONDS)
+            await self._fire_post_exec(name, args, "timeout", start)
             return json.dumps({"error": f"Tool '{name}' timed out after {TOOL_TIMEOUT_SECONDS}s"})
         except Exception as exc:
             logger.exception("Tool '%s' failed: %s", name, exc)
+            await self._fire_post_exec(name, args, "error", start)
             return json.dumps({
                 "error": f"Tool execution failed: {exc}",
             })
+
+        await self._fire_post_exec(name, args, "ok", start)
 
         if isinstance(result, str):
             output = result

@@ -2,8 +2,9 @@
 
 Personas define agent behavior (system prompts, tools, model settings)
 without code changes. The service handles CRUD operations, seeds
-6 built-in personas for new tenants, and enforces tenant-based
-tool permission filtering.
+built-in personas for new tenants (6 conversational + 2 operational
+agents that carry a pinned driver and verifier chain), and enforces
+tenant-based tool permission filtering.
 """
 
 from __future__ import annotations
@@ -147,6 +148,60 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "memory_search",
         ],
     },
+    # ── Operational personas (Agent Drivers spec) ─────────────
+    # These carry a pinned driver, task_types, and a verifier
+    # chain so the dispatcher can run them unattended.
+    {
+        "name": "uzhavu-ops",
+        "display_name": "Uzhavu Operations",
+        "icon": "🚜",
+        "description": (
+            "Operates the Uzhavu platform — deploy checks,"
+            " incident diagnosis, and fixes."
+        ),
+        "system_prompt": (
+            "You are Uzhavu-Ops, the operator for the Uzhavu"
+            " SaaS platform. You run deploy checks, diagnose"
+            " incidents, and apply fixes. You prioritize"
+            " reliability and safety: always explain the risk"
+            " and blast radius before any destructive or"
+            " production-affecting operation, and prefer the"
+            " smallest reversible change that resolves the"
+            " incident."
+        ),
+        "intent_tags": ["deploy", "incident", "uzhavu"],
+        "temperature": 0.2,
+        "allowed_tools": ["terminal", "docker", "ssh", "git", "web_search"],
+        "driver": "claude_code",
+        "task_types": ["deploy_check", "incident_fix"],
+        "verifier_chain": ["build_ok", "tests_pass"],
+        "context_profile": {"domains": ["uzhavu", "infra"]},
+    },
+    {
+        "name": "dependency-updater",
+        "display_name": "Dependency Updater",
+        "icon": "📦",
+        "description": (
+            "Turns dependency-watcher findings into safe upgrade"
+            " PRs, running project tests before landing."
+        ),
+        "system_prompt": (
+            "You are the Dependency Updater. You take dependency"
+            " watcher findings and prepare minimal, safe version"
+            " bumps. Prefer patch and minor upgrades; flag major"
+            " version jumps for human review with a short"
+            " migration note. Always run the project's tests and"
+            " keep each change scoped to dependency manifests and"
+            " lockfiles."
+        ),
+        "intent_tags": ["dependencies", "maintenance"],
+        "temperature": 0.2,
+        "allowed_tools": ["terminal", "git", "file_read", "file_write"],
+        "driver": "claude_code",
+        "task_types": ["dependency_update"],
+        "verifier_chain": ["tests_pass", "diff_within_scope"],
+        "context_profile": {"domains": ["dependencies", "infra"]},
+    },
 ]
 
 
@@ -257,6 +312,10 @@ class PersonaService:
                         max_tokens=4096,
                         allowed_tools=defn["allowed_tools"],
                         intent_tags=defn["intent_tags"],
+                        driver=defn.get("driver"),
+                        verifier_chain=defn.get("verifier_chain", []),
+                        context_profile=defn.get("context_profile", {}),
+                        task_types=defn.get("task_types", []),
                         is_builtin=True,
                         is_active=True,
                     )
@@ -595,6 +654,10 @@ class PersonaService:
             "max_tokens": persona.max_tokens,
             "allowed_tools": persona.allowed_tools,
             "intent_tags": persona.intent_tags,
+            "driver": persona.driver,
+            "verifier_chain": persona.verifier_chain,
+            "context_profile": persona.context_profile,
+            "task_types": persona.task_types,
             "icon": persona.icon,
             "is_builtin": persona.is_builtin,
             "is_active": persona.is_active,

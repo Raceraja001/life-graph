@@ -878,8 +878,11 @@ class AgentTask(Base):
     properties: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default="{}"
     )
-    tags: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String(50)), nullable=True
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(String(50)),
+        nullable=False,
+        server_default="{}",
+        default=list,
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

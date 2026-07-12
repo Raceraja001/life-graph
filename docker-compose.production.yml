@@ -7,6 +7,7 @@
 #   worker   → ARQ background jobs
 #   mcp      → MCP Server (internal :8001, proxied via /mcp/)
 #   postgres → PostgreSQL + pgvector + Apache AGE
+#   backup   → Nightly pg_dump + weekly restore drill (The Lifeline)
 #   redis    → Cache, rate limiting, job queue
 #   minio    → S3-compatible object storage
 
@@ -151,6 +152,37 @@ services:
         reservations:
           memory: 512M
 
+  # ── Backup Sidecar — "The Lifeline" (F0) ─────────────
+  # Nightly pg_dump (02:00 UTC) + weekly restore-verification drill
+  # (Sunday 06:00 UTC). Uses the same postgres image so pg_dump/psql
+  # match the server version. Results land in the job_runs table.
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: life_graph_backup
+    entrypoint: ["/bin/bash", "/scripts/backup_cron.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-life_graph}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-life_graph}
+      BACKUP_DIR: /backups
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+    volumes:
+      - ./scripts:/scripts:ro
+      - backup_data:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
   # ── Redis ────────────────────────────────────────────
   redis:
     image: redis:7-alpine
@@ -196,3 +228,4 @@ volumes:
   redis_data:
   certbot_data:
   certbot_certs:
+  backup_data:

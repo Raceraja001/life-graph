@@ -9,10 +9,12 @@ Tags: [capture-spine]
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import StreamingResponse
 
 from life_graph.api.responses import success_response
 from life_graph.core.events import event_bus
@@ -148,4 +150,33 @@ async def list_corrections(
     )
     return success_response(
         data=[CorrectionResponse.model_validate(c) for c in corrections],
+    )
+
+
+@router.get(
+    "/corrections/export",
+    summary="Export correction triples as NDJSON",
+)
+async def export_correction_triples(
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Stream ``(original, corrected, context)`` correction triples as NDJSON.
+
+    Feeds the self-improving you-model with training pairs. Streams
+    oldest-first; skips corrections that opted out of export
+    (``context.exportable = False``) or lack both sides.
+    """
+
+    async def _stream() -> AsyncGenerator[str, None]:
+        async for triple in CaptureService.stream_export_triples(tenant_id):
+            yield json.dumps(triple, default=str) + "\n"
+
+    return StreamingResponse(
+        _stream(),
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Disposition": (
+                "attachment; filename=correction_triples.ndjson"
+            ),
+        },
     )

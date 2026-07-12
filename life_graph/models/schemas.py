@@ -854,6 +854,12 @@ class CorrectionResponse(BaseModel):
     created_at: datetime
 
 
+class InterviewAnswerRequest(BaseModel):
+    """Payload for answering an interview question."""
+
+    answer: str = Field(..., min_length=1, description="One-line answer to the question")
+
+
 class InterviewQuestionResponse(BaseModel):
     """Serialized interview question returned by the API."""
 

@@ -1,5 +1,7 @@
 # Era 7 — Agent Networks: Feature Spec
 
+> ✅ **STATUS: IMPLEMENTED (July 2026).** Migration `017_agent_networks.py`; APIs `api/agent_workflows.py`, `api/agent_tasks.py`, `api/agent_messages.py`, `api/agent_context.py`, `api/internal_sync.py`; tests `tests/integration/test_agent_networks.py`. The task checklist below was not ticked during implementation — treat the code as the source of truth. **Do not rebuild.**
+
 > **Purpose**: Enable multiple AI agents to coordinate on complex tasks through delegation, communication, workflow orchestration, and shared context. A single agent working alone can handle simple tasks — but real-world projects require research, prototyping, review, and deployment working in concert.
 >
 > **Architecture ref**: `KNOWLEDGE.md` — extends the existing EventBus, Redis bridge, and tenant-scoped data model
