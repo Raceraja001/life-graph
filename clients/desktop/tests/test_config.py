@@ -29,7 +29,7 @@ def test_loads_minimal_config(tmp_path):
     assert cfg.tenant_id == "default"
     assert cfg.api_key == "key-123"
     # defaults
-    assert cfg.hotkeys.popup == "<ctrl>+<alt>+space"
+    assert cfg.hotkeys.popup == "<ctrl>+<alt>+<space>"
     assert cfg.hotkeys.instant == "<ctrl>+<alt>+c"
     assert cfg.replay_interval_seconds == 30
     assert cfg.redact is True

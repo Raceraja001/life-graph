@@ -22,7 +22,7 @@ class ConfigError(Exception):
 
 @dataclass
 class HotkeyConfig:
-    popup: str = "<ctrl>+<alt>+space"
+    popup: str = "<ctrl>+<alt>+<space>"
     instant: str = "<ctrl>+<alt>+c"
 
 
@@ -75,7 +75,7 @@ def load_config(path=None, *, keyring_module=keyring) -> Config:
         tenant_id=tenant_id,
         api_key=api_key,
         hotkeys=HotkeyConfig(
-            popup=hk.get("popup", "<ctrl>+<alt>+space"),
+            popup=hk.get("popup", "<ctrl>+<alt>+<space>"),
             instant=hk.get("instant", "<ctrl>+<alt>+c"),
         ),
         replay_interval_seconds=beh.get("replay_interval_seconds", 30),

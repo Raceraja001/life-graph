@@ -43,10 +43,9 @@ class Tray:
         self._icon.stop()
 
     def notify(self, title: str, message: str) -> None:
-        try:
-            self._icon.notify(message, title)
-        except Exception:
-            pass
+        from clients.desktop.notify import toast
+
+        toast(title, message, icon_fallback=self._icon)
 
     def run(self) -> None:
         self._icon.run()

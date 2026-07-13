@@ -31,8 +31,15 @@ def grab_selection(*, copy_fn, read_clipboard, write_clipboard, sleep_fn) -> tup
         # Sentinel so we can detect whether Ctrl+C actually replaced the clipboard.
         write_clipboard("")
         copy_fn()
-        sleep_fn(0.12)  # give the foreground app time to service the copy
-        grabbed = read_clipboard() or ""
+        # Poll the clipboard instead of a single fixed wait — apps service the
+        # simulated Ctrl+C at very different speeds, and a fixed sleep loses the
+        # selection (falling back to stale clipboard) whenever the copy is slow.
+        grabbed = ""
+        for _ in range(12):  # up to ~0.6s
+            sleep_fn(0.05)
+            grabbed = read_clipboard() or ""
+            if grabbed:
+                break
         if grabbed:
             return grabbed, "selection"
         return prior, "clipboard"
@@ -72,6 +79,16 @@ def grab_current() -> tuple[str, str]:  # pragma: no cover - OS call
     kb = Controller()
 
     def copy_fn():
+        # The global hotkey fires while its own modifiers (Ctrl+Alt) and trigger
+        # key are still physically held. If we simulate Ctrl+C now, the still-held
+        # Alt turns it into Ctrl+Alt+C and nothing gets copied. Release the held
+        # keys first, let the OS settle, then send a clean Ctrl+C.
+        for key in (Key.alt_l, Key.alt_r, Key.ctrl_l, Key.ctrl_r, "c", Key.space):
+            try:
+                kb.release(key)
+            except Exception:
+                pass
+        time.sleep(0.05)
         with kb.pressed(Key.ctrl):
             kb.press("c")
             kb.release("c")
