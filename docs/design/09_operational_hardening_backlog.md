@@ -43,9 +43,15 @@ brainstorming, the tests, and a real-behavior verification are all green.
       DB (no Postgres/Docker in the build env) — run `alembic upgrade head` once infra is up. Next
       Track-1 increments: egress allowlist on driver subprocesses; hash-chained audit; wiring
       untrusted memory-creation callers (multimodal/transcript ingest) to pass the tier.
-- [ ] **Track 2 — The Governor.** Unify the scattered cost caps into one budget kernel over all
+- [x] **Track 2 — The Governor.** Unify the scattered cost caps into one budget kernel over all
       spenders (research, drivers, mining, challenges): monthly cap, per-pipeline allocation,
       automatic throttling, ROI ranking in verified-tasks-per-₹. Extends `tenant_usage` metering.
+      **Code-complete 2026-07-15** (migration `023` `budget_spend`, `core/budget.py` policy,
+      `services/governor.py`, wired into `drivers/dispatcher.py` (real pre-spend gate replacing the
+      toothless post-hoc warning), `services/research_engine.py`, `services/failure_mining.py`;
+      28 unit tests). Posture: throttle autonomous / never block interactive. ⚠️ Migration `023` not
+      yet applied to a live DB. Deferred: ROI ranking (needs verification-outcomes join), per-call
+      LLM-gateway gating, per-category hard sub-caps, advisor/watcher spender wiring, dashboard tile.
 - [ ] **Track 3 — Shadow Mode.** New pipelines/personas run 2 weeks in dry-run, emitting
       "would-have-done" reports graded with one tap; grades feed the trust calculator (Era-8 ladder).
 - [ ] **Track 4 — Embedding modernization (D6).** Swap `all-mpnet-base-v2` → bge-m3-class local

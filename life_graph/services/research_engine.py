@@ -12,7 +12,7 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -21,9 +21,11 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.config import Settings
+from life_graph.core.budget import BudgetCategory
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Evidence, Preference, ResearchRun
 from life_graph.services.evidence_store import EvidenceStore
+from life_graph.services.governor import governor
 from life_graph.services.multi_model_advisor import MultiModelAdvisor
 from life_graph.services.preference_store import PreferenceStore
 
@@ -96,7 +98,17 @@ class ResearchEngine:
         Returns:
             Summary dict with run_id, preferences_researched, evidence_found.
         """
-        # Check monthly budget
+        # Governor budget gate (primary) — research is low-priority autonomous
+        # spend, throttled first when the global monthly budget runs low.
+        decision = await governor.authorize(
+            tenant_id, BudgetCategory.RESEARCH,
+            estimated_usd=self.MONTHLY_BUDGET_USD / max(1, self.MAX_PREFERENCES_PER_RUN),
+        )
+        if not decision.allowed:
+            logger.info("Research denied by Governor for %s: %s", tenant_id, decision.reason)
+            return {"status": "budget_exhausted", "reason": decision.reason}
+
+        # Secondary per-topic research budget guard.
         budget_remaining = await self._check_budget(tenant_id)
         if budget_remaining <= 0:
             logger.info(
@@ -162,7 +174,7 @@ class ResearchEngine:
                     evidence_added=total_evidence_added,
                     preferences_affected=preferences_affected,
                     sources_searched=list(set(sources_searched)),
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                 )
             )
             await session.commit()
@@ -420,7 +432,7 @@ class ResearchEngine:
                 ),
                 timeout=10,
             )
-        except (asyncio.TimeoutError, Exception) as exc:
+        except (TimeoutError, Exception) as exc:
             logger.warning("Stance detection failed: %s", exc)
             return None
 
@@ -486,13 +498,13 @@ class ResearchEngine:
             history = list(pref.confidence_history or [])
             history.append({
                 "value": new_confidence,
-                "at": datetime.now(timezone.utc).isoformat(),
+                "at": datetime.now(UTC).isoformat(),
                 "reason": "research_recalc",
             })
             pref.confidence = new_confidence
             pref.confidence_history = history
-            pref.last_validated_at = datetime.now(timezone.utc)
-            pref.updated_at = datetime.now(timezone.utc)
+            pref.last_validated_at = datetime.now(UTC)
+            pref.updated_at = datetime.now(UTC)
             await session.commit()
 
     # ── Internal: Budget Check ───────────────────────────────
@@ -505,7 +517,7 @@ class ResearchEngine:
         Returns:
             Remaining budget in USD.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         async with self._session_factory() as session:
@@ -556,6 +568,6 @@ class ResearchEngine:
             await session.execute(
                 update(Preference)
                 .where(Preference.id == preference.id)
-                .values(last_challenged_at=datetime.now(timezone.utc))
+                .values(last_challenged_at=datetime.now(UTC))
             )
             await session.commit()

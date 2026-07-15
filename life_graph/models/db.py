@@ -491,6 +491,43 @@ class TenantUsage(Base):
         return f"<TenantUsage(tenant={self.tenant_id}, period={self.period_start})>"
 
 
+class BudgetSpend(Base):
+    """Month-to-date spend per tenant per category — the Governor's ledger.
+
+    A rolling aggregate (one row per tenant/month/category) so the Governor can
+    read month-to-date spend cheaply before authorizing a new spend. See
+    ``services/governor.py`` and ``core/budget.py``.
+    """
+
+    __tablename__ = "budget_spend"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    period_month: Mapped[datetime] = mapped_column(
+        Date, nullable=False, doc="First day of the UTC month this row aggregates."
+    )
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+    spent_usd: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "period_month", "category", name="uq_budget_spend_key"
+        ),
+        Index("ix_budget_spend_lookup", "tenant_id", "period_month"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<BudgetSpend(tenant={self.tenant_id}, month={self.period_month}, "
+            f"category={self.category}, spent={self.spent_usd})>"
+        )
+
+
 class TenantConfig(Base):
     """Configuration and lifecycle status for a provisioned tenant."""
 

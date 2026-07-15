@@ -100,6 +100,13 @@ class Settings(BaseSettings):
     research_monthly_budget_usd: float = 0.60
     research_confidence_threshold: float = 0.7
 
+    # ── The Governor: unified budget kernel (D7.3) ───────
+    # One monthly cap over all autonomous spenders. Autonomous spend is
+    # throttled (low-priority first) past the soft threshold and denied at the
+    # cap; interactive/user-initiated requests are never blocked.
+    monthly_budget_usd: float = 10.0
+    budget_soft_threshold: float = 0.8
+
     # ── Impact Scoring (Feature 5) ─────────────────────
     impact_boost_on_success: float = 0.1
     impact_penalty_on_failure: float = 0.05

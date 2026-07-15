@@ -18,13 +18,18 @@ from typing import Any
 
 from sqlalchemy import or_, select
 
+from life_graph.core.budget import BudgetCategory
 from life_graph.models.db import Decision, Memory, Prediction
+from life_graph.services.governor import governor
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
 
 FAILURE_PATTERN_TAG = "failure_pattern"
 MIN_INSTANCES = 3
+# Estimated cost of the single monthly LLM mining pass (actual token cost is not
+# individually metered here; a fixed estimate keeps the Governor's ledger honest).
+ESTIMATED_MINING_COST_USD = 0.05
 _FAILURE_STATUSES = ("superseded", "abandoned", "reversed")
 
 
@@ -181,7 +186,23 @@ class FailurePatternMiner:
                 "patterns_stored": 0,
                 "reason": "insufficient_failures",
             }
+
+        # Governor budget gate — the monthly LLM mining pass is low-priority
+        # autonomous spend, so it is throttled first when the budget runs low.
+        decision = await governor.authorize(
+            tenant_id, BudgetCategory.FAILURE_MINING, estimated_usd=ESTIMATED_MINING_COST_USD,
+        )
+        if not decision.allowed:
+            logger.info("Failure mining denied by Governor for %s: %s", tenant_id, decision.reason)
+            return {
+                "tenant_id": tenant_id,
+                "failures": len(failures),
+                "patterns_stored": 0,
+                "reason": f"budget: {decision.reason}",
+            }
+
         candidates = await self.mine(failures)
+        await governor.record(tenant_id, BudgetCategory.FAILURE_MINING, ESTIMATED_MINING_COST_USD)
         kept = self.enforce_citation_rule(candidates)
         stored = await self.store_patterns(tenant_id, kept)
         logger.info(

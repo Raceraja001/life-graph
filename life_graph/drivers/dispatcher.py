@@ -16,21 +16,22 @@ One-bounce rule:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import tempfile
 import uuid
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from life_graph.core.budget import BudgetCategory
 from life_graph.core.events import EventBus, EventType
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import ContextPacketBuilder
 from life_graph.drivers.registry import driver_registry
+from life_graph.services.governor import governor
 from life_graph.services.verifiers import VerifierResult, verifier_chain
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ class TaskDispatcher:
         private: bool = False,
         cost_cap_usd: float = DEFAULT_COST_CAP_USD,
         verify_chain: list[str] | None = None,
+        interactive: bool = False,
     ) -> DriverResult:
         """Dispatch a task through the full driver pipeline.
 
@@ -155,6 +157,34 @@ class TaskDispatcher:
                 task_type, persona_name, tenant_id, session
             )
 
+            # Step 3b: Governor budget gate — refuse before spending, not after.
+            # Autonomous dispatches are throttled/denied when the monthly budget
+            # is exhausted; interactive (user-initiated) tasks are never blocked.
+            decision = await governor.authorize(
+                tenant_id,
+                BudgetCategory.DRIVER,
+                estimated_usd=driver.cost_per_task(),
+                interactive=interactive,
+            )
+            if not decision.allowed:
+                logger.warning(
+                    "Task %s denied by Governor: %s (spent $%.2f / $%.2f)",
+                    task_id, decision.reason, decision.spent_usd, decision.cap_usd,
+                )
+                await self._emit(
+                    EventType.DRIVER_DISPATCHED,
+                    {
+                        "task_id": task_id, "driver": driver.name,
+                        "task_type": task_type, "tenant_id": tenant_id,
+                        "budget_denied": True,
+                    },
+                )
+                return DriverResult(
+                    success=False,
+                    error=f"budget: {decision.reason}",
+                    metadata={"budget_throttled": True, "reason": decision.reason},
+                )
+
             # Emit dispatch event
             await self._emit(
                 EventType.DRIVER_DISPATCHED,
@@ -170,10 +200,13 @@ class TaskDispatcher:
             workdir = Path(tempfile.mkdtemp(prefix=f"lg_dispatch_{task_id[:8]}_"))
             result = await driver.dispatch(packet, workdir, timeout=300)
 
-            # Check cost cap
+            # Book the actual spend into the Governor's ledger.
+            await governor.record(tenant_id, BudgetCategory.DRIVER, result.cost_usd)
+
+            # Secondary per-task guard (the Governor is the primary budget gate).
             if result.cost_usd > cost_cap_usd:
                 logger.warning(
-                    "Task %s exceeded cost cap: $%.2f > $%.2f",
+                    "Task %s exceeded per-task cost cap: $%.2f > $%.2f",
                     task_id, result.cost_usd, cost_cap_usd,
                 )
 
@@ -481,7 +514,7 @@ class TaskDispatcher:
         try:
             from life_graph.models.db import DriverStat
 
-            today = datetime.now(timezone.utc).date()
+            today = datetime.now(UTC).date()
 
             existing = await session.execute(
                 select(DriverStat).where(
