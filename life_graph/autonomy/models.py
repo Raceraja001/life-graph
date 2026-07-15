@@ -402,6 +402,97 @@ class AuditLogEntry(Base):
         )
 
 
+class ShadowEnrollment(Base):
+    """Shadow-mode enrollment for an autonomous actor (persona/agent/pipeline).
+
+    A new actor with no track record is enrolled in ``shadow`` and its would-be
+    real actions are recorded instead of executed. Once it soaks long enough and
+    is graded well enough (see ``core/shadow.should_graduate``) it graduates to
+    acting for real. Proven actors are enrolled ``graduated`` immediately.
+    """
+
+    __tablename__ = "shadow_enrollments"
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=False)
+
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="shadow", doc="shadow | graduated"
+    )
+    graded_good: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    graded_bad: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    enrolled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    graduated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        Index("uq_se_tenant_agent", "tenant_id", "agent_id", unique=True),
+        Index("ix_se_tenant_status", "tenant_id", "status"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ShadowEnrollment(agent={self.agent_id}, status={self.status}, "
+            f"good={self.graded_good}, bad={self.graded_bad})>"
+        )
+
+
+class ShadowRun(Base):
+    """A 'would-have-done' record — a dry-run of an action that was NOT executed."""
+
+    __tablename__ = "shadow_runs"
+
+    id: Mapped[str] = mapped_column(
+        Text, primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    agent_id: Mapped[str] = mapped_column(Text, nullable=False)
+    enrollment_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("shadow_enrollments.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # ── What it would have done ───────────────────────────────
+    action_type: Mapped[str] = mapped_column(Text, nullable=False)
+    command: Mapped[str] = mapped_column(Text, nullable=False)
+    risk_level: Mapped[str | None] = mapped_column(Text, nullable=True)
+    project_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    would_have_routed: Mapped[str] = mapped_column(String(32), nullable=False)
+    rationale: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+    # ── Grade ─────────────────────────────────────────────────
+    grade: Mapped[str | None] = mapped_column(String(8), nullable=True, doc="good | bad")
+    graded_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    graded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_sr_tenant_agent", "tenant_id", "agent_id"),
+        Index("ix_sr_tenant_grade", "tenant_id", "grade"),
+        Index("ix_sr_enrollment", "enrollment_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ShadowRun(id={self.id[:8]}, agent={self.agent_id}, "
+            f"action={self.action_type}, grade={self.grade})>"
+        )
+
+
 class AutonomyLevel(Base):
     """Progressive autonomy level for a tenant–project pair.
 

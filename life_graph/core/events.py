@@ -93,6 +93,8 @@ class EventType(str, Enum):
     # ── Autonomous AI Events ─────────────────────────────
     AUTONOMOUS_ACTION_COMPLETED = "autonomy:action:completed"
     AUTONOMOUS_ACTION_PENDING = "autonomy:action:pending"
+    SHADOW_RECORDED = "autonomy:shadow:recorded"
+    SHADOW_GRADUATED = "autonomy:shadow:graduated"
 
     # ── Capture Spine Events ─────────────────────────────────
     CAPTURE_RECEIVED = "capture:received"

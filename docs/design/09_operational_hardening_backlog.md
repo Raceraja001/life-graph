@@ -52,8 +52,17 @@ brainstorming, the tests, and a real-behavior verification are all green.
       28 unit tests). Posture: throttle autonomous / never block interactive. ⚠️ Migration `023` not
       yet applied to a live DB. Deferred: ROI ranking (needs verification-outcomes join), per-call
       LLM-gateway gating, per-category hard sub-caps, advisor/watcher spender wiring, dashboard tile.
-- [ ] **Track 3 — Shadow Mode.** New pipelines/personas run 2 weeks in dry-run, emitting
+- [x] **Track 3 — Shadow Mode.** New pipelines/personas run 2 weeks in dry-run, emitting
       "would-have-done" reports graded with one tap; grades feed the trust calculator (Era-8 ladder).
+      **Code-complete 2026-07-15** (migration `024` shadow_enrollments+shadow_runs, `core/shadow.py`
+      graduation policy, `autonomy/shadow/` service+router, gate in `autonomy/pipeline/service.py`
+      intercepting the `auto_executed` branch, `SHADOW_RECORDED`/`SHADOW_GRADUATED` events; 19 unit
+      tests). Enrollment: new actors only (grandfather those with a trust record). Graduation: soak
+      (14d) + samples (5) + good-rate (0.8), all required. Also fixed a latent `models.db`↔
+      `autonomy.models` import-cycle in the test harness (conftest now loads `models.db` first).
+      ⚠️ Migration `024` not yet applied to a live DB. Deferred: dashboard one-tap UI; demotion back
+      to shadow on post-graduation failure; shadowing the approval/notify routes; full pipeline
+      integration test.
 - [ ] **Track 4 — Embedding modernization (D6).** Swap `all-mpnet-base-v2` → bge-m3-class local
       embedder; versioned re-embed job, verify recall/dedup quality vs. old. Needs a running
       Postgres+pgvector. Lowest risk to defer; highest infra requirement.

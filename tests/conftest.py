@@ -41,3 +41,9 @@ if "pgvector" not in sys.modules:
 
     sys.modules["pgvector"] = _pgvector_mock
     sys.modules["pgvector.sqlalchemy"] = _sa_mock
+
+
+# Load the ORM base module first so that the models.db <-> autonomy.models
+# re-export cycle resolves in the right order regardless of which test module
+# pytest collects first (importing autonomy.models before models.db would fail).
+import life_graph.models.db  # noqa: E402, F401

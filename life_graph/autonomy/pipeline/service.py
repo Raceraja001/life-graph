@@ -12,14 +12,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.autonomy.pipeline.executor import CommandExecutor
-from life_graph.autonomy.pipeline.schemas import AutoFixRequest, AutoFixResponse, AutoActionResponse
-from life_graph.core.events import event_bus, EventType
+from life_graph.autonomy.pipeline.schemas import AutoActionResponse, AutoFixRequest, AutoFixResponse
+from life_graph.autonomy.shadow.service import shadow_service
+from life_graph.core.events import EventType, event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class AutoFixService:
         from life_graph.models.db import AutoAction
 
         action_id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             auto_action = AutoAction(
@@ -113,8 +113,17 @@ class AutoFixService:
 
         # 5. Route based on risk + autonomy level
         if risk_level == "safe" and autonomy_level >= 1:
-            routing = "auto_executed"
-            await self._auto_execute(tenant_id, auto_action, rule)
+            # Shadow gate: a NEW actor (no trust record) records a would-have-done
+            # instead of acting for real, until it graduates (see core/shadow).
+            shadow = await shadow_service.intercept(tenant_id, request.agent_id)
+            if shadow.shadow:
+                routing = "shadow_recorded"
+                await self._record_shadow(
+                    tenant_id, auto_action, shadow.enrollment_id, classification,
+                )
+            else:
+                routing = "auto_executed"
+                await self._auto_execute(tenant_id, auto_action, rule)
         elif risk_level == "moderate" and autonomy_level >= 2:
             routing = "notify_before"
             await self._notify_before_execute(tenant_id, auto_action, rule)
@@ -159,6 +168,32 @@ class AutoFixService:
             message=f"Action {routing.replace('_', ' ')} — risk={risk_level}, level=L{autonomy_level}",
         )
 
+    async def _record_shadow(
+        self, tenant_id: str, auto_action, enrollment_id: str, classification: dict,
+    ) -> None:
+        """Shadowed actor: record what it WOULD have done; do NOT execute."""
+        from life_graph.models.db import AutoAction
+
+        await shadow_service.record_would_have_done(
+            tenant_id,
+            auto_action.agent_id,
+            enrollment_id,
+            action_type=auto_action.action_type,
+            command=auto_action.command,
+            risk_level=auto_action.risk_level,
+            project_id=auto_action.project_id,
+            would_have_routed="auto_executed",
+            rationale={"risk_level": auto_action.risk_level,
+                       "classification": classification.get("reasoning")},
+        )
+        async with self._session_factory() as session:
+            await session.execute(
+                update(AutoAction)
+                .where(AutoAction.id == auto_action.id)
+                .values(status="shadow")
+            )
+            await session.commit()
+
     async def _auto_execute(
         self, tenant_id: str, auto_action, rule,
     ) -> None:
@@ -173,7 +208,7 @@ class AutoFixService:
             )
 
             status = "success" if result.exit_code == 0 else "failed"
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             async with self._session_factory() as session:
                 await session.execute(
@@ -336,7 +371,7 @@ class AutoFixService:
             )
 
         rb_status = "rolled_back" if result.exit_code == 0 else "rollback_failed"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             await session.execute(

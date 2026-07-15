@@ -107,6 +107,14 @@ class Settings(BaseSettings):
     monthly_budget_usd: float = 10.0
     budget_soft_threshold: float = 0.8
 
+    # ── Shadow Mode: dry-run rung on the autonomy ladder (D7.4) ──
+    # New autonomous actors record 'would-have-done' reports instead of acting,
+    # until they soak long enough and are graded well enough to graduate.
+    shadow_mode_enabled: bool = True
+    shadow_min_days: int = 14
+    shadow_min_samples: int = 5
+    shadow_good_rate: float = 0.8
+
     # ── Impact Scoring (Feature 5) ─────────────────────
     impact_boost_on_success: float = 0.1
     impact_penalty_on_failure: float = 0.05
