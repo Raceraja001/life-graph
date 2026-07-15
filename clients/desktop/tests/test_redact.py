@@ -1,0 +1,51 @@
+from clients.desktop.redact import redact
+
+
+def test_redacts_key_value_secret():
+    assert "hunter2" not in redact("password=hunter2")
+    assert "abc123" not in redact("API_KEY: abc123")
+
+
+def test_keeps_key_name_hides_value():
+    out = redact("api_key=sk-abcdefghijklmnop1234")
+    assert "api_key" in out and "[REDACTED]" in out
+    assert "sk-abcdefghijklmnop1234" not in out
+
+
+def test_redacts_token_shapes():
+    assert "AKIAIOSFODNN7EXAMPLE" not in redact("k AKIAIOSFODNN7EXAMPLE")
+    assert "ghp_" not in redact("t ghp_0123456789abcdefghijklmnopqrstuv")
+
+
+def test_plain_text_untouched():
+    assert redact("git commit -m 'fix'") == "git commit -m 'fix'"
+
+
+def test_empty_is_safe():
+    assert redact("") == ""
+    assert redact(None) is None
+
+
+def test_redacts_bearer_token_in_header():
+    out = redact("Authorization: Bearer myopaquesecrettoken999")
+    assert "myopaquesecrettoken999" not in out
+    assert "[REDACTED]" in out
+
+
+def test_redacts_standalone_bearer():
+    assert "opaquetoken123" not in redact("Bearer opaquetoken123")
+
+
+def test_redacts_basic_auth_header():
+    assert "dXNlcjpwYXNz" not in redact("Authorization: Basic dXNlcjpwYXNz")
+
+
+def test_does_not_over_redact_author():
+    assert redact("author=John Doe") == "author=John Doe"
+
+
+def test_redacts_authorization_equals_form():
+    assert "supersecrettoken" not in redact("AUTHORIZATION=supersecrettoken")
+    assert "sk-abcdef123456789012" not in redact(
+        "export AUTHORIZATION=Bearer sk-abcdef123456789012"
+    )
