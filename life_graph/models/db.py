@@ -60,6 +60,12 @@ class Memory(Base):
     source_type: Mapped[str] = mapped_column(String, nullable=False, default="inferred")
     source: Mapped[str | None] = mapped_column(String, nullable=True)
     trust_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    trust_tier: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="verified", default="verified",
+        doc="Provenance trust tier: self|verified|external|hostile_possible. "
+            "Defaults to 'verified' (system-produced); untrusted origin is set "
+            "explicitly by the ingesting caller. See core/trust.py.",
+    )
 
     # ── Timestamps ────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(
@@ -1795,6 +1801,11 @@ class CaptureEvent(Base):
     content_hash: Mapped[str] = mapped_column(
         String(64), nullable=False,
         doc="SHA-256 hash of content for dedup",
+    )
+    trust_tier: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="external", default="external",
+        doc="Provenance trust tier derived from surface (default-deny: unknown "
+            "surface -> external). See core/trust.py.",
     )
 
     # ── Processing ────────────────────────────────────────────

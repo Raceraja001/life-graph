@@ -22,6 +22,7 @@ from pathlib import Path
 
 from life_graph.config import settings
 from life_graph.drivers.base import ContextPacket, DriverResult
+from life_graph.drivers.context import render_memory_block
 
 logger = logging.getLogger(__name__)
 
@@ -153,8 +154,11 @@ class ClaudeCodeDriver:
                 parts.append(f"\n## Known procedures\n{json.dumps(packet.procedures, default=str)}")
             if packet.preferences:
                 parts.append(f"\n## User preferences\n{json.dumps(packet.preferences, default=str)}")
-            if packet.memories:
-                parts.append(f"\n## Relevant memories\n{json.dumps(packet.memories, default=str)}")
+            # Immune System: memories are trust-tiered; untrusted ones are
+            # rendered inside a data fence, never as bare instructions.
+            memory_block = render_memory_block(packet.memories)
+            if memory_block:
+                parts.append(memory_block)
         return "\n".join(parts)
 
     @staticmethod

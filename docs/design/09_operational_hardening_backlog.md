@@ -33,11 +33,16 @@ calls a first-class subsystem.
 Each track: **brainstorm → write plan → TDD build → verify → integrate.** Check off only when the
 brainstorming, the tests, and a real-behavior verification are all green.
 
-- [ ] **Track 1 — Immune System foundation (trust tiers).** Add `trust_tier` at the capture-spine
+- [x] **Track 1 — Immune System foundation (trust tiers).** Add `trust_tier` at the capture-spine
       ingress (`self < verified < external < hostile-possible`), classify by surface, thread the tier
       through context packets, and enforce "untrusted content is data, never instructions." First
       increment only; egress allowlist and hash-chained audit are later increments of this same track.
       *Rationale: closes the live injection surface opened by drivers + desktop capture.*
+      **Code-complete 2026-07-15** (migration `022`, `core/trust.py`, enforcement in
+      `drivers/context.py` + `claude_code.py`, 42 unit tests). ⚠️ Migration not yet applied to a live
+      DB (no Postgres/Docker in the build env) — run `alembic upgrade head` once infra is up. Next
+      Track-1 increments: egress allowlist on driver subprocesses; hash-chained audit; wiring
+      untrusted memory-creation callers (multimodal/transcript ingest) to pass the tier.
 - [ ] **Track 2 — The Governor.** Unify the scattered cost caps into one budget kernel over all
       spenders (research, drivers, mining, challenges): monthly cap, per-pipeline allocation,
       automatic throttling, ROI ranking in verified-tasks-per-₹. Extends `tenant_usage` metering.

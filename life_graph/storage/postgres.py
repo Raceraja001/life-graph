@@ -7,14 +7,12 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select, tuple_, update
-from sqlalchemy.dialects.postgresql import array
-
-
 
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.core.trust import TrustTier, coerce_tier
 from life_graph.models.db import Memory, MemorySession, Session
 from life_graph.models.schemas import MemoryCreate, MemoryUpdate
 from life_graph.storage.database import async_session
@@ -29,8 +27,19 @@ class PostgresMemoryStore:
 
     # ── Store ─────────────────────────────────────────────────
 
-    async def store(self, memory: MemoryCreate, *, embedding: list[float] | None = None) -> Memory:
-        """Persist a new memory from a creation payload."""
+    async def store(
+        self,
+        memory: MemoryCreate,
+        *,
+        embedding: list[float] | None = None,
+        trust_tier: str | None = None,
+    ) -> Memory:
+        """Persist a new memory from a creation payload.
+
+        ``trust_tier`` is a server-side provenance argument — never part of the
+        client payload — so callers cannot self-assert a trusted tier. Defaults
+        to 'verified' (system-produced); untrusted origin is passed explicitly.
+        """
         from life_graph.config import settings
 
         content_hash = hashlib.sha256(
@@ -44,6 +53,7 @@ class PostgresMemoryStore:
             properties=memory.properties or {},
             importance=memory.importance if memory.importance is not None else 0.5,
             source_type=memory.source_type or "inferred",
+            trust_tier=coerce_tier(trust_tier, default=TrustTier.VERIFIED).value,
             content_hash=content_hash,
             tenant_id=get_current_tenant_id(),
         )
@@ -96,7 +106,7 @@ class PostgresMemoryStore:
             for field, value in patch.items():
                 setattr(row, field, value)
 
-            row.updated_at = datetime.now(timezone.utc)
+            row.updated_at = datetime.now(UTC)
             await session.commit()
             await session.refresh(row)
         return row
@@ -178,8 +188,7 @@ class PostgresMemoryStore:
         Returns:
             List of (Memory, hybrid_score) tuples, sorted by hybrid_score desc.
         """
-        from sqlalchemy import case, literal_column, text
-        from sqlalchemy.sql import func as sqlfunc
+        from sqlalchemy import text
 
         tenant_id = get_current_tenant_id()
 
@@ -327,7 +336,7 @@ class PostgresMemoryStore:
                 )
                 .values(
                     access_count=Memory.access_count + 1,
-                    last_accessed=datetime.now(timezone.utc),
+                    last_accessed=datetime.now(UTC),
                 )
             )
             await session.commit()
@@ -417,7 +426,7 @@ class PostgresMemoryStore:
             row = result.scalar_one_or_none()
             if row is None:
                 return None
-            row.ended_at = datetime.now(timezone.utc)
+            row.ended_at = datetime.now(UTC)
             if summary:
                 row.summary = summary
             await session.commit()
@@ -590,7 +599,7 @@ class PostgresMemoryStore:
             if not memory:
                 return None
             memory.status = "active"
-            memory.last_accessed = datetime.now(timezone.utc)
+            memory.last_accessed = datetime.now(UTC)
             await session.commit()
             await session.refresh(memory)
             return memory
@@ -618,7 +627,7 @@ class PostgresMemoryStore:
             if row is None:
                 raise ValueError(f"Memory {memory_id} not found")
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             row.confidence = 0.9
             row.last_reinforced = now
             row.reinforced_count = (row.reinforced_count or 0) + 1
@@ -662,7 +671,7 @@ class PostgresMemoryStore:
             if old is None:
                 raise ValueError(f"Memory {memory_id} not found")
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             old.status = "superseded"
             old.valid_until = now
             old.updated_at = now

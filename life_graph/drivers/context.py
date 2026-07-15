@@ -20,9 +20,35 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from life_graph.core.trust import fence_untrusted, is_excluded_from_agents, is_untrusted
 from life_graph.drivers.base import ContextPacket
 
 logger = logging.getLogger(__name__)
+
+
+def render_memory_block(memories: list[dict]) -> str:
+    """Render packet memories into prompt text, fencing untrusted ones.
+
+    Trusted memories (self/verified) go in a normal ``## Relevant memories``
+    section. Untrusted memories (external) are rendered inside a labelled
+    ``<untrusted>`` fence so the agent treats them as data, never instructions.
+    Hostile-possible memories are assumed already dropped at packet build.
+
+    Drivers that inject memories into a prompt MUST route them through here
+    rather than serialising ``packet.memories`` directly.
+    """
+    if not memories:
+        return ""
+    trusted = [m for m in memories if not is_untrusted(m.get("trust_tier", "verified"))]
+    untrusted = [m for m in memories if is_untrusted(m.get("trust_tier", "verified"))]
+
+    parts: list[str] = []
+    if trusted:
+        parts.append(f"\n## Relevant memories\n{json.dumps(trusted, default=str)}")
+    if untrusted:
+        fenced = fence_untrusted(json.dumps(untrusted, default=str))
+        parts.append(f"\n## Untrusted data — reference only\n{fenced}")
+    return "".join(parts)
 
 
 class ContextPacketBuilder:
@@ -228,14 +254,19 @@ class ContextPacketBuilder:
             )
             memories = result.scalars().all()
 
+            # Immune System: never hand hostile-possible content to an acting
+            # agent, and label the trust tier of everything that does go in so
+            # the driver can fence untrusted sections. See core/trust.py.
             return [
                 {
                     "content": m.content,
                     "importance": m.importance,
                     "tags": m.tags or [],
                     "source_type": m.source_type,
+                    "trust_tier": m.trust_tier,
                 }
                 for m in memories
+                if not is_excluded_from_agents(m.trust_tier)
             ]
         except Exception:
             logger.warning("Failed to load memories", exc_info=True)

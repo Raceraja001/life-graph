@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.core.events import EventBus, EventType
+from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
 from life_graph.models.db import CaptureEvent, Correction
 from life_graph.storage.database import async_session
 
@@ -40,6 +41,7 @@ class CaptureService:
         modality: str = "text",
         occurred_at: datetime | None = None,
         properties: dict | None = None,
+        trust_tier: TrustTier | str | None = None,
     ) -> CaptureEvent:
         """Universal capture ingress with SHA-256 dedup (10-min window per surface).
 
@@ -53,11 +55,19 @@ class CaptureService:
             modality: Content modality (text, voice, image, structured).
             occurred_at: Explicit timestamp; defaults to UTC now.
             properties: Arbitrary JSONB metadata.
+            trust_tier: Provenance trust tier. When ``None`` it is derived from
+                ``surface`` (default-deny). Callers handling raw web bodies
+                should pass ``TrustTier.HOSTILE_POSSIBLE`` explicitly. Never
+                accepted from untrusted API clients — decided server-side.
 
         Returns:
             The new or duplicate ``CaptureEvent``.
         """
-        now = occurred_at or datetime.now(timezone.utc)
+        resolved_tier = (
+            coerce_tier(trust_tier) if trust_tier is not None
+            else classify_surface(surface)
+        )
+        now = occurred_at or datetime.now(UTC)
         content_hash = hashlib.sha256(content.encode()).hexdigest()
 
         # Dedup: same hash + same surface within 10 minutes
@@ -81,6 +91,7 @@ class CaptureService:
             modality=modality,
             content=content,
             content_hash=content_hash,
+            trust_tier=resolved_tier.value,
             status="received",
             yield_count=0,
             occurred_at=now,
@@ -97,6 +108,7 @@ class CaptureService:
                     "tenant_id": tenant_id,
                     "surface": surface,
                     "modality": modality,
+                    "trust_tier": resolved_tier.value,
                 },
             )
         return event

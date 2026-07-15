@@ -18,8 +18,17 @@ from life_graph.models.schemas import MemoryCreate, MemoryUpdate
 class MemoryStore(Protocol):
     """Async protocol for memory persistence operations."""
 
-    async def store(self, memory: MemoryCreate) -> Memory:
-        """Persist a new memory and return the ORM instance."""
+    async def store(
+        self,
+        memory: MemoryCreate,
+        *,
+        embedding: list[float] | None = None,
+        trust_tier: str | None = None,
+    ) -> Memory:
+        """Persist a new memory and return the ORM instance.
+
+        ``trust_tier`` is a server-side provenance argument, never client-set.
+        """
         ...
 
     async def retrieve(self, memory_id: uuid.UUID) -> Memory | None:

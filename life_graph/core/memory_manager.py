@@ -65,6 +65,7 @@ class MemoryManager:
         context: dict[str, Any] | None = None,
         source: str | None = None,
         skip_dedup: bool = False,
+        trust_tier: str | None = None,
     ) -> list[Memory]:
         """Full ingestion pipeline for new text.
 
@@ -101,7 +102,7 @@ class MemoryManager:
         # Steps 2-6: Process each fact
         stored_memories: list[Memory] = []
         for fact in facts:
-            memory = await self._process_fact(fact, context, source, skip_dedup)
+            memory = await self._process_fact(fact, context, source, skip_dedup, trust_tier)
             if memory:
                 stored_memories.append(memory)
 
@@ -171,6 +172,7 @@ class MemoryManager:
         context: dict[str, Any] | None,
         source: str | None,
         skip_dedup: bool = False,
+        trust_tier: str | None = None,
     ) -> Memory | None:
         """Process a single extracted fact through scoring, embedding, and storage.
 
@@ -281,7 +283,7 @@ class MemoryManager:
         )
 
         stored = await self._store.store(
-            memory_create, embedding=embedding,
+            memory_create, embedding=embedding, trust_tier=trust_tier,
         )
 
         # Step 5b: Execute auto-supersessions
