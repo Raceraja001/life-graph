@@ -358,9 +358,11 @@ class MemoryManager:
         try:
             from sentence_transformers import SentenceTransformer
 
-            # Lazy-load model (cached after first call)
+            from life_graph.config import settings
+
+            # Lazy-load the configured model (cached after first call)
             if not hasattr(self, "_embed_model"):
-                self._embed_model = SentenceTransformer("all-mpnet-base-v2")
+                self._embed_model = SentenceTransformer(settings.embedding_model)
 
             vector = self._embed_model.encode(text).tolist()
             return vector

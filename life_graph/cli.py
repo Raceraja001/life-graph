@@ -9,15 +9,15 @@ from pathlib import Path
 
 def cmd_cold_start(args):
     """Run cold start bootstrap on specified repositories."""
-    from life_graph.cold_start.git_analyzer import GitAnalyzer
-    from life_graph.cold_start.config_parser import ConfigParser
     from life_graph.cold_start.code_analyzer import CodeAnalyzer
+    from life_graph.cold_start.config_parser import ConfigParser
+    from life_graph.cold_start.git_analyzer import GitAnalyzer
 
     repos = args.repos
     author = args.author
     verbose = args.verbose
 
-    print(f"\n[*] Life Graph Cold Start")
+    print("\n[*] Life Graph Cold Start")
     print(f"{'='*50}")
     print(f"Repos: {', '.join(repos)}")
     if author:
@@ -70,14 +70,14 @@ def cmd_cold_start(args):
     elapsed = time.time() - start_time
 
     print(f"\n{'='*50}")
-    print(f"[=] Results:")
+    print("[=] Results:")
     print(f"  Total extracted: {len(all_memories)}")
     print(f"  After dedup: {len(unique)}")
     print(f"  Time: {elapsed:.1f}s")
-    print(f"  LLM calls: 0 (all local analysis)")
+    print("  LLM calls: 0 (all local analysis)")
 
     if verbose:
-        print(f"\n[i] Extracted Memories:")
+        print("\n[i] Extracted Memories:")
         for i, m in enumerate(unique, 1):
             print(f"  {i}. [{m.get('type_tag', 'unknown')}] {m.get('content', '')[:80]}")
 
@@ -89,8 +89,8 @@ def cmd_cold_start(args):
         print(f"\n[+] Saved to: {output_path}")
 
     if not args.dry_run:
-        print(f"\n[!] To store these in the database, run with --store flag")
-        print(f"   (requires docker compose up -d && alembic upgrade head first)")
+        print("\n[!] To store these in the database, run with --store flag")
+        print("   (requires docker compose up -d && alembic upgrade head first)")
 
     return unique
 
@@ -102,13 +102,29 @@ def cmd_stats(args):
     try:
         r = httpx.get(f"{base}/admin/stats")
         stats = r.json()
-        print(f"\n[*] Life Graph Stats")
+        print("\n[*] Life Graph Stats")
         print(f"{'='*30}")
         for k, v in stats.items():
             print(f"  {k}: {v}")
     except Exception as e:
         print(f"Error: {e}")
         print("Is the server running? (uvicorn life_graph.main:app)")
+
+
+def cmd_reembed(args):
+    """Re-embed the corpus with the configured model (after a model/dim change)."""
+    import asyncio
+
+    from life_graph.config import settings
+    from life_graph.workers.reembed import reembed_all
+
+    print(f"[*] Re-embedding corpus with: {settings.embedding_model} "
+          f"(dim={settings.embedding_dimension})")
+    result = asyncio.run(reembed_all(batch_size=args.batch_size))
+    print(f"[*] Done: {result['total']} rows re-embedded across "
+          f"{len(result['tables'])} tables")
+    for t in result["tables"]:
+        print(f"    {t['table']}: {t['processed']} done, {t['failed']} failed")
 
 
 def cmd_judgment_stats(args):
@@ -137,7 +153,7 @@ def cmd_judgment_stats(args):
         except Exception:
             calibration = None
         if calibration:
-            print(f"\n[*] Calibration")
+            print("\n[*] Calibration")
             print(f"{'='*40}")
             if isinstance(calibration, dict):
                 for k, v in calibration.items():
@@ -180,6 +196,11 @@ def main():
     jd_stats.add_argument('--url', default='http://localhost:8000', help='API base URL')
     jd_stats.add_argument('--tenant', default='personal', help='Tenant ID')
     jd_stats.set_defaults(func=cmd_judgment_stats)
+
+    # reembed command
+    re = subparsers.add_parser('reembed', help='Re-embed the corpus with the configured model')
+    re.add_argument('--batch-size', type=int, default=64, help='Rows per batch')
+    re.set_defaults(func=cmd_reembed)
 
     args = parser.parse_args()
     if not getattr(args, 'func', None):

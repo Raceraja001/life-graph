@@ -8,20 +8,36 @@ Multi-tenant: every model has a `tenant_id` column.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Index, Integer,
-    Numeric, String, Text, UniqueConstraint,
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from life_graph.config import settings
+
+# Embedding vector dimension — single source of truth (config-driven). The
+# null-and-rebuild migration alters the pgvector columns to match this.
+_EMBED_DIM = settings.embedding_dimension
+
 
 def _utcnow() -> datetime:
     """Return the current UTC timestamp (timezone-aware)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -152,10 +168,10 @@ class Memory(Base):
 
     # ── Embedding ─────────────────────────────────────────────
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(768), nullable=True
+        Vector(_EMBED_DIM), nullable=True
     )
     embedding_model: Mapped[str] = mapped_column(
-        String, nullable=False, default="all-mpnet-base-v2"
+        String, nullable=False, default=settings.embedding_model
     )
 
     # ── Relationships ─────────────────────────────────────────
@@ -216,7 +232,7 @@ class Session(Base):
         doc="Session result: success, failure, or neutral",
     )
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(768), nullable=True
+        Vector(_EMBED_DIM), nullable=True
     )
 
     # ── Relationships ─────────────────────────────────────────
@@ -286,7 +302,7 @@ class Intention(Base):
 
     # ── Embedding ─────────────────────────────────────────────
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(768), nullable=True
+        Vector(_EMBED_DIM), nullable=True
     )
 
     __table_args__ = (
@@ -330,7 +346,7 @@ class KnowledgeGap(Base):
         nullable=True,
     )
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(768), nullable=True
+        Vector(_EMBED_DIM), nullable=True
     )
 
     __table_args__ = (
@@ -1325,10 +1341,10 @@ class Preference(Base):
 
     # ── Embedding ─────────────────────────────────────────────
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(768), nullable=True
+        Vector(_EMBED_DIM), nullable=True
     )
     embedding_model: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="all-mpnet-base-v2"
+        String(50), nullable=False, default=settings.embedding_model
     )
 
     # ── Status & Timestamps ───────────────────────────────────
@@ -1344,7 +1360,7 @@ class Preference(Base):
     )
 
     # ── Relationships ─────────────────────────────────────────
-    evidence_items: Mapped[list["Evidence"]] = relationship(
+    evidence_items: Mapped[list[Evidence]] = relationship(
         "Evidence", back_populates="preference",
         cascade="all, delete-orphan",
     )
@@ -1418,10 +1434,10 @@ class Evidence(Base):
 
     # ── Embedding ─────────────────────────────────────────────
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(768), nullable=True
+        Vector(_EMBED_DIM), nullable=True
     )
     embedding_model: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="all-mpnet-base-v2"
+        String(50), nullable=False, default=settings.embedding_model
     )
 
     # ── Status & Timestamps ───────────────────────────────────
@@ -1433,7 +1449,7 @@ class Evidence(Base):
     )
 
     # ── Relationships ─────────────────────────────────────────
-    preference: Mapped["Preference"] = relationship(
+    preference: Mapped[Preference] = relationship(
         "Preference", back_populates="evidence_items"
     )
 
@@ -1652,8 +1668,8 @@ class Workflow(Base):
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
 
     # Relationships
-    steps: Mapped[list["WorkflowStep"]] = relationship("WorkflowStep", back_populates="workflow", cascade="all, delete-orphan")
-    runs: Mapped[list["WorkflowRun"]] = relationship("WorkflowRun", back_populates="workflow", cascade="all, delete-orphan")
+    steps: Mapped[list[WorkflowStep]] = relationship("WorkflowStep", back_populates="workflow", cascade="all, delete-orphan")
+    runs: Mapped[list[WorkflowRun]] = relationship("WorkflowRun", back_populates="workflow", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("uq_workflows_tenant_name", "tenant_id", "name", unique=True),
@@ -1688,7 +1704,7 @@ class WorkflowStep(Base):
     on_timeout: Mapped[str] = mapped_column(String(20), nullable=False, default="abort")
     properties: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
-    workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="steps")
+    workflow: Mapped[Workflow] = relationship("Workflow", back_populates="steps")
 
     __table_args__ = (
         Index("uq_wfs_workflow_key", "workflow_id", "step_key", unique=True),
@@ -1719,8 +1735,8 @@ class WorkflowRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    workflow: Mapped["Workflow"] = relationship("Workflow", back_populates="runs")
-    step_runs: Mapped[list["WorkflowStepRun"]] = relationship("WorkflowStepRun", back_populates="run", cascade="all, delete-orphan")
+    workflow: Mapped[Workflow] = relationship("Workflow", back_populates="runs")
+    step_runs: Mapped[list[WorkflowStepRun]] = relationship("WorkflowStepRun", back_populates="run", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_wfr_tenant_status", "tenant_id", "status"),
@@ -1757,7 +1773,7 @@ class WorkflowStepRun(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     properties: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
-    run: Mapped["WorkflowRun"] = relationship("WorkflowRun", back_populates="step_runs")
+    run: Mapped[WorkflowRun] = relationship("WorkflowRun", back_populates="step_runs")
 
     __table_args__ = (
         Index("uq_wfsr_run_step", "workflow_run_id", "workflow_step_id", unique=True),
@@ -1788,7 +1804,7 @@ class SharedContext(Base):
     relevance_score: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     access_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(768), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBED_DIM), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
     last_accessed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -2034,7 +2050,7 @@ class Decision(Base):
 
     # ── Embedding ─────────────────────────────────────────────
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(768), nullable=True
+        Vector(_EMBED_DIM), nullable=True
     )
 
     # ── References ────────────────────────────────────────────
@@ -2368,13 +2384,5 @@ class VerificationRun(Base):
 
 
 # Expose autonomy models to prevent ImportErrors in downstream services/routers
-from life_graph.autonomy.models import (
-    ActionSafetyRule,
-    AutoAction,
-    TrustScore,
-    ApprovalQueueEntry as ApprovalQueue,
-    AuditLogEntry as AuditLog,
-    AutonomyLevel,
-)
 
 

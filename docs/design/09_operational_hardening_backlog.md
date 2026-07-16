@@ -63,9 +63,17 @@ brainstorming, the tests, and a real-behavior verification are all green.
       ⚠️ Migration `024` not yet applied to a live DB. Deferred: dashboard one-tap UI; demotion back
       to shadow on post-graduation failure; shadowing the approval/notify routes; full pipeline
       integration test.
-- [ ] **Track 4 — Embedding modernization (D6).** Swap `all-mpnet-base-v2` → bge-m3-class local
+- [x] **Track 4 — Embedding modernization (D6).** Swap `all-mpnet-base-v2` → bge-m3-class local
       embedder; versioned re-embed job, verify recall/dedup quality vs. old. Needs a running
       Postgres+pgvector. Lowest risk to defer; highest infra requirement.
+      **Code-complete 2026-07-15** (config → `BAAI/bge-m3`/1024-dim; config-driven `Vector`
+      dimension across all 8 embedded tables; migration `025` null-and-rebuild with index
+      drop/recreate; `workers/reembed.py` generic versioned re-embed job + `life-graph reembed`
+      CLI; `scripts/verify_embeddings.py` self-consistency harness; wired the 3 hardcoded model
+      references to config; removed a pre-existing duplicate-method bug in `services/embeddings.py`;
+      18 unit tests). ⚠️ **This track's real value — the actual re-embed + quality verification —
+      is unrealized until run against a live Postgres+pgvector.** Deferred: dual-column
+      zero-downtime swap; GPU/NPU acceleration; labelled-set benchmarking.
 
 ## Cross-cutting discipline (not a track — runs in parallel)
 
@@ -80,3 +88,8 @@ brainstorming, the tests, and a real-behavior verification are all green.
 
 - **2026-07-15** — Backlog created from verified audit. Lifeline confirmed done. Starting Track 1
   (Immune System) with a brainstorming pass.
+- **2026-07-15** — All four tracks code-complete (commits e4743fb, d2e3451, 191149a, + Track 4).
+  **Outstanding shared debt: migrations `022`–`025` are unapplied and the enforcement/embedding
+  code is unit-verified only.** Next session must bring up the dev DB (`.\start.ps1 -Infra`),
+  `alembic upgrade head`, run `life-graph reembed` + `scripts/verify_embeddings.py`, and smoke-test
+  the trust-tier, budget, and shadow paths against live Postgres before this work is trustworthy.

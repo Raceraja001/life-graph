@@ -41,8 +41,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # ── Embeddings ─────────────────────────────────────
-    embedding_model: str = "all-mpnet-base-v2"
-    embedding_dimension: int = 768
+    # Modern multilingual local embedder (D6). Dimension is the single source of
+    # truth for the pgvector columns (Vector(settings.embedding_dimension)) and
+    # the null-and-rebuild migration — keep the two in sync when swapping models.
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimension: int = 1024
 
     # ── LLM (via LiteLLM) ─────────────────────────────
     llm_model_cheap: str = "gemini/gemini-2.0-flash"

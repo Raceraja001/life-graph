@@ -21,10 +21,12 @@ class EmbeddingService:
     until embeddings are actually needed.
     """
 
-    def __init__(self, model_name: str = "all-mpnet-base-v2", lm_client: Any = None) -> None:
-        self._model_name = model_name
+    def __init__(self, model_name: str | None = None, lm_client: Any = None) -> None:
+        from life_graph.config import settings
+
+        self._model_name = model_name or settings.embedding_model
         self._model: Any = None
-        self._dimension: int = 768
+        self._dimension: int = settings.embedding_dimension
         self._available: bool = True
         self._lm_client = lm_client
 
@@ -131,18 +133,6 @@ class EmbeddingService:
             "available": self._available,
             "using_local": self._use_local(),
         }
-
-    async def embed_async(self, text: str) -> list[float]:
-        """Async embed — uses LM Studio when available, else sync fallback."""
-        if self._use_local():
-            return await self._lm_client.embed(text)
-        return self.embed(text)
-
-    async def embed_batch_async(self, texts: list[str]) -> list[list[float]]:
-        """Async batch embed — uses LM Studio when available, else sync fallback."""
-        if self._use_local():
-            return await self._lm_client.embed_batch(texts)
-        return self.embed_batch(texts)
 
     # ── Private ───────────────────────────────────────────────
 

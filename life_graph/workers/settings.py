@@ -51,6 +51,7 @@ class WorkerSettings:
         "life_graph.workers.decay.run_decay_sweep",
         "life_graph.workers.decay.run_all_decay_sweeps",
         "life_graph.workers.embeddings.generate_embeddings_batch",
+        "life_graph.workers.reembed.reembed_all",
         "life_graph.integrations.webhook.deliver_webhook",
         "life_graph.workers.tasks.run_all_research",
         "life_graph.workers.tasks.run_nightly_self_heal",
