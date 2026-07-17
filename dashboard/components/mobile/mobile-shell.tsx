@@ -3,6 +3,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Wifi, WifiOff, X } from "lucide-react";
 import { MobileTabBar } from "./mobile-tabbar";
+import { useMobileState } from "./mobile-state";
 
 const TITLES: Record<string, string> = {
   "/m": "Life Graph",
@@ -20,9 +21,8 @@ function titleFor(pathname: string) {
 
 export function MobileShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const [online, setOnline] = useState(true);
+  const { online, toggleOnline, queued } = useMobileState();
   const [installDismissed, setInstallDismissed] = useState(false);
-  const [queued] = useState(0); // Phase 3: incremented by offline captures
 
   const title = titleFor(pathname);
   const statusLine = online ? "All systems green" : `Offline mode · ${queued} queued`;
@@ -80,7 +80,7 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
           </span>
         </span>
         <button
-          onClick={() => setOnline((v) => !v)}
+          onClick={toggleOnline}
           title="Toggle connectivity (demo)"
           aria-label={online ? "Simulate going offline" : "Simulate reconnecting"}
           style={{

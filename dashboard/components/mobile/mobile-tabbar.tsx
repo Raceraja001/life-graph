@@ -2,25 +2,24 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, BookText, ClipboardCheck, Inbox, type LucideIcon } from "lucide-react";
-import { APPROVALS } from "@/lib/mobile-mock";
+import { useMobileState } from "./mobile-state";
 
 interface Tab {
   href: string;
   label: string;
   icon: LucideIcon;
-  badge?: number;
 }
 
 const TABS: Tab[] = [
   { href: "/m", label: "Home", icon: Home },
   { href: "/m/memories", label: "Memories", icon: BookText },
   { href: "/m/tasks", label: "Tasks", icon: ClipboardCheck },
-  // Phase 3 wires this to the real open-approvals count.
-  { href: "/m/approvals", label: "Approvals", icon: Inbox, badge: APPROVALS.length },
+  { href: "/m/approvals", label: "Approvals", icon: Inbox },
 ];
 
 export function MobileTabBar() {
   const pathname = usePathname();
+  const { openApprovalsCount } = useMobileState();
   const isActive = (href: string) => (href === "/m" ? pathname === "/m" : pathname.startsWith(href));
 
   return (
@@ -33,8 +32,9 @@ export function MobileTabBar() {
         padding: "6px 8px calc(6px + env(safe-area-inset-bottom))",
       }}
     >
-      {TABS.map(({ href, label, icon: Icon, badge }) => {
+      {TABS.map(({ href, label, icon: Icon }) => {
         const active = isActive(href);
+        const badge = href === "/m/approvals" && openApprovalsCount > 0 ? openApprovalsCount : 0;
         return (
           <Link
             key={href}
