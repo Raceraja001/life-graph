@@ -1,17 +1,20 @@
 "use client";
 import { useEffect, useState } from "react";
-import { MEMS, impLabel, type MemoryMock } from "@/lib/mobile-mock";
+import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
+import { useMobileMemories, useMobileMemorySearch, type MemoryVM } from "@/lib/mobile-api";
+import { impLabel } from "@/lib/mobile-mock";
 
 export default function MobileMemories() {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<MemoryMock | null>(null);
+  const [selected, setSelected] = useState<MemoryVM | null>(null);
 
-  const q = query.trim().toLowerCase();
-  const rows = MEMS.filter(
-    (m) => !q || m.content.toLowerCase().includes(q) || m.tags.some((t) => t.includes(q)),
-  );
+  const searching = query.trim().length > 2;
+  const list = useMobileMemories(50);
+  const search = useMobileMemorySearch(query);
 
-  // Close the sheet on Escape.
+  const active = searching ? search : list;
+  const rows = active.data ?? [];
+
   useEffect(() => {
     if (!selected) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSelected(null);
@@ -40,13 +43,15 @@ export default function MobileMemories() {
         }}
       />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {rows.length === 0 ? (
-          <p style={{ fontSize: "var(--text-sm)", color: "var(--text-subtle)", textAlign: "center", padding: "24px 0" }}>
-            No memories match “{query}”.
-          </p>
-        ) : (
-          rows.map((m) => (
+      {active.isLoading ? (
+        <LoadingCard label={searching ? "Searching…" : "Loading memories…"} />
+      ) : active.isError ? (
+        <ErrorCard>Can’t reach memories — is the backend running?</ErrorCard>
+      ) : rows.length === 0 ? (
+        <EmptyCard>{searching ? `No memories match “${query.trim()}”.` : "No memories yet."}</EmptyCard>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {rows.map((m) => (
             <button
               key={m.id}
               onClick={() => setSelected(m)}
@@ -96,35 +101,30 @@ export default function MobileMemories() {
                 </span>
               </div>
             </button>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
 
       {selected && <MemorySheet mem={selected} onClose={() => setSelected(null)} />}
     </>
   );
 }
 
-function MemorySheet({ mem, onClose }: { mem: MemoryMock; onClose: () => void }) {
-  const [source, created = ""] = mem.meta.split(" · ");
+function MemorySheet({ mem, onClose }: { mem: MemoryVM; onClose: () => void }) {
   const prov = [
-    `Captured via ${source}`,
-    "Extracted · embedded bge-m3 1024-d",
-    "Re-consolidated in nightly sleep cycle",
-  ];
+    `Captured via ${mem.source}`,
+    mem.created ? `First seen ${mem.created}` : null,
+    `Importance ${impLabel(mem.imp)} · decays over time`,
+  ].filter(Boolean) as string[];
 
   return (
     <>
-      <div
-        onClick={onClose}
-        style={{ position: "fixed", inset: 0, background: "var(--overlay)", zIndex: 30 }}
-      />
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--overlay)", zIndex: 30 }} />
       <aside
         role="dialog"
         aria-modal="true"
         style={{
           position: "fixed",
-          insetInline: 0,
           bottom: 0,
           left: "50%",
           transform: "translateX(-50%)",
@@ -142,7 +142,7 @@ function MemorySheet({ mem, onClose }: { mem: MemoryMock; onClose: () => void })
       >
         <div style={{ width: "38px", height: "4px", borderRadius: "var(--radius-pill)", background: "var(--border-strong)", margin: "6px auto 14px" }} />
 
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
           {mem.tags.map((t) => (
             <span
               key={t}
@@ -177,8 +177,8 @@ function MemorySheet({ mem, onClose }: { mem: MemoryMock; onClose: () => void })
         <p style={{ margin: "0 0 16px", fontSize: "var(--text-md)", lineHeight: 1.55 }}>{mem.content}</p>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
-          <SheetTile label="Source" value={source} />
-          <SheetTile label="Captured" value={created} />
+          <SheetTile label="Source" value={mem.source} />
+          <SheetTile label="Captured" value={mem.created || "—"} />
         </div>
 
         <div
@@ -210,7 +210,7 @@ function SheetTile({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "10px 12px" }}>
       <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", marginBottom: "3px" }}>{label}</div>
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: "var(--fw-semibold)" }}>{value}</div>
+      <div style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: "var(--fw-semibold)", overflowWrap: "anywhere" }}>{value}</div>
     </div>
   );
 }

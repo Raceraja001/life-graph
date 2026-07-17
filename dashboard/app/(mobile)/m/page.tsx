@@ -2,14 +2,18 @@
 import Link from "next/link";
 import { ChevronRight, Inbox } from "lucide-react";
 import { MobileCapture } from "@/components/mobile/mobile-capture";
-import { SectionEyebrow, TaskRow } from "@/components/mobile/parts";
+import { SectionEyebrow, TaskRow, LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
 import { useMobileState } from "@/components/mobile/mobile-state";
-import { MEMS, TASKS, impLabel } from "@/lib/mobile-mock";
+import { useMobileMemories, useMobileTasks } from "@/lib/mobile-api";
+import { impLabel } from "@/lib/mobile-mock";
 
 export default function MobileHome() {
   const { openApprovalsCount } = useMobileState();
-  const todayTasks = TASKS.filter((t) => t.group === "inflight");
-  const recent = MEMS.slice(0, 3);
+  const tasks = useMobileTasks();
+  const memories = useMobileMemories(20);
+
+  const todayTasks = (tasks.data ?? []).filter((t) => t.group === "inflight");
+  const recent = (memories.data ?? []).slice(0, 3);
 
   return (
     <>
@@ -75,48 +79,64 @@ export default function MobileHome() {
             All tasks →
           </Link>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {todayTasks.map((t) => (
-            <TaskRow key={t.id} task={t} showStatus />
-          ))}
-        </div>
+        {tasks.isLoading ? (
+          <LoadingCard label="Loading tasks…" />
+        ) : tasks.isError ? (
+          <ErrorCard>Can’t reach the task board — is the backend running?</ErrorCard>
+        ) : todayTasks.length === 0 ? (
+          <EmptyCard>Nothing in flight right now.</EmptyCard>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {todayTasks.map((t) => (
+              <TaskRow key={t.id} task={t} showStatus />
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
         <div style={{ margin: "4px 0 8px" }}>
           <SectionEyebrow>Remembered today</SectionEyebrow>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          {recent.map((m) => (
-            <div
-              key={m.id}
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-lg)",
-                padding: "12px 14px",
-              }}
-            >
-              <div style={{ fontSize: "var(--ui-text)", lineHeight: 1.5 }}>{m.content}</div>
-              <div style={{ display: "flex", gap: "6px", marginTop: "7px", alignItems: "center" }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
-                  {m.meta}
-                </span>
-                <span
-                  style={{
-                    marginInlineStart: "auto",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "var(--text-2xs)",
-                    fontWeight: "var(--fw-bold)",
-                    color: "var(--accent-text)",
-                  }}
-                >
-                  {impLabel(m.imp)}
-                </span>
+        {memories.isLoading ? (
+          <LoadingCard label="Loading memories…" />
+        ) : memories.isError ? (
+          <ErrorCard>Can’t reach memories.</ErrorCard>
+        ) : recent.length === 0 ? (
+          <EmptyCard>No memories yet — capture a thought above.</EmptyCard>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {recent.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "12px 14px",
+                }}
+              >
+                <div style={{ fontSize: "var(--ui-text)", lineHeight: 1.5 }}>{m.content}</div>
+                <div style={{ display: "flex", gap: "6px", marginTop: "7px", alignItems: "center" }}>
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
+                    {m.meta}
+                  </span>
+                  <span
+                    style={{
+                      marginInlineStart: "auto",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: "var(--text-2xs)",
+                      fontWeight: "var(--fw-bold)",
+                      color: "var(--accent-text)",
+                    }}
+                  >
+                    {impLabel(m.imp)}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
     </>
   );

@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Wifi, WifiOff, X } from "lucide-react";
 import { MobileTabBar } from "./mobile-tabbar";
 import { useMobileState } from "./mobile-state";
+import { useWebSocket } from "@/lib/use-websocket";
 
 const TITLES: Record<string, string> = {
   "/m": "Life Graph",
@@ -23,9 +24,16 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { online, toggleOnline, queued } = useMobileState();
   const [installDismissed, setInstallDismissed] = useState(false);
+  const ws = useWebSocket(); // opens the live connection + refreshes query cache on events
 
   const title = titleFor(pathname);
-  const statusLine = online ? "All systems green" : `Offline mode · ${queued} queued`;
+  const statusLine = !online
+    ? `Offline mode · ${queued} queued`
+    : ws === "connected"
+      ? "All systems green"
+      : ws === "connecting"
+        ? "Connecting…"
+        : "Reconnecting…";
   const showInstall = online && !installDismissed;
 
   return (

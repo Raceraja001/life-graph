@@ -1,5 +1,7 @@
 "use client";
 import { useState, type CSSProperties } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRoute } from "@/lib/hooks";
 import { useMobileState } from "./mobile-state";
 
 const KINDS: Array<[string, string]> = [
@@ -28,19 +30,42 @@ const chipOn: CSSProperties = {
   color: "var(--accent-soft-fg)",
 };
 
+type Result = { kind: "captured"; routedTo: string } | { kind: "queued" } | { kind: "error" } | null;
+
+function routedTarget(res: any, fallback: string): string {
+  return res?.route?.target || res?.target || res?.kind || res?.classification || fallback;
+}
+
 export function MobileCapture() {
   const { online, addToQueue } = useMobileState();
+  const route = useRoute();
+  const qc = useQueryClient();
   const [text, setText] = useState("");
   const [kind, setKind] = useState("auto");
-  const [captured, setCaptured] = useState(false);
-  const [capturedKind, setCapturedKind] = useState("memory");
+  const [result, setResult] = useState<Result>(null);
 
-  const submit = () => {
-    if (!text.trim()) return;
-    setCapturedKind(kind === "auto" ? "memory" : kind);
-    setCaptured(true);
+  const submit = async () => {
+    const content = text.trim();
+    if (!content || route.isPending) return;
+    const fallbackKind = kind === "auto" ? "memory" : kind;
     setText("");
-    if (!online) addToQueue();
+
+    // Offline: hand off to the queue (persisted + flushed on reconnect in a later step).
+    if (!online) {
+      addToQueue();
+      setResult({ kind: "queued" });
+      return;
+    }
+
+    try {
+      const res = await route.mutateAsync(content);
+      setResult({ kind: "captured", routedTo: routedTarget(res, fallbackKind) });
+      qc.invalidateQueries({ queryKey: ["memories"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    } catch {
+      setResult({ kind: "error" });
+      setText(content); // let the user retry without retyping
+    }
   };
 
   return (
@@ -57,7 +82,7 @@ export function MobileCapture() {
         value={text}
         onChange={(e) => {
           setText(e.target.value);
-          setCaptured(false);
+          setResult(null);
         }}
         rows={3}
         placeholder="Capture a thought… it becomes a memory, task or intention."
@@ -82,7 +107,7 @@ export function MobileCapture() {
         ))}
         <button
           onClick={submit}
-          disabled={!text.trim()}
+          disabled={!text.trim() || route.isPending}
           style={{
             marginInlineStart: "auto",
             height: "34px",
@@ -94,29 +119,48 @@ export function MobileCapture() {
             fontFamily: "inherit",
             fontSize: "var(--text-sm)",
             fontWeight: "var(--fw-bold)",
-            cursor: text.trim() ? "pointer" : "not-allowed",
-            opacity: text.trim() ? 1 : 0.5,
+            cursor: text.trim() && !route.isPending ? "pointer" : "not-allowed",
+            opacity: text.trim() && !route.isPending ? 1 : 0.5,
           }}
         >
-          Capture
+          {route.isPending ? "Routing…" : "Capture"}
         </button>
       </div>
-      {captured && (
-        <div
-          role="status"
-          style={{
-            marginTop: "10px",
-            padding: "9px 12px",
-            borderRadius: "var(--radius-md)",
-            background: "var(--success-soft)",
-            color: "var(--success)",
-            fontSize: "var(--text-xs)",
-            fontWeight: "var(--fw-semibold)",
-          }}
-        >
-          Captured — routed to {capturedKind} · extraction queued
-        </div>
+
+      {result?.kind === "captured" && (
+        <Toast bg="var(--success-soft)" fg="var(--success)">
+          Captured — routed to {result.routedTo} · extraction queued
+        </Toast>
+      )}
+      {result?.kind === "queued" && (
+        <Toast bg="var(--warning-soft)" fg="var(--warning)">
+          Saved offline — will sync when you reconnect
+        </Toast>
+      )}
+      {result?.kind === "error" && (
+        <Toast bg="var(--danger-soft)" fg="var(--danger)">
+          Couldn’t reach the server — your text is kept, try again
+        </Toast>
       )}
     </section>
+  );
+}
+
+function Toast({ bg, fg, children }: { bg: string; fg: string; children: React.ReactNode }) {
+  return (
+    <div
+      role="status"
+      style={{
+        marginTop: "10px",
+        padding: "9px 12px",
+        borderRadius: "var(--radius-md)",
+        background: bg,
+        color: fg,
+        fontSize: "var(--text-xs)",
+        fontWeight: "var(--fw-semibold)",
+      }}
+    >
+      {children}
+    </div>
   );
 }

@@ -1,6 +1,45 @@
 // Shared presentational parts for the mobile screens. Pure (no hooks), so they
 // work in both server and client components.
+import type { CSSProperties } from "react";
 import { TONE, type TaskMock } from "@/lib/mobile-mock";
+
+const stateCard: CSSProperties = {
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-lg)",
+  padding: "28px 18px",
+  textAlign: "center",
+  fontSize: "var(--text-sm)",
+};
+
+export function LoadingCard({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div className="animate-pulse" style={{ ...stateCard, color: "var(--text-subtle)" }}>
+      {label}
+    </div>
+  );
+}
+
+export function EmptyCard({ children }: { children: React.ReactNode }) {
+  return <div style={{ ...stateCard, color: "var(--text-muted)" }}>{children}</div>;
+}
+
+export function ErrorCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      role="alert"
+      style={{
+        ...stateCard,
+        background: "var(--danger-soft)",
+        border: "1px solid var(--danger)",
+        color: "var(--danger)",
+        fontWeight: "var(--fw-semibold)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export function SectionEyebrow({ children }: { children: React.ReactNode }) {
   return (
