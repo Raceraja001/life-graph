@@ -37,7 +37,7 @@ function routedTarget(res: any, fallback: string): string {
 }
 
 export function MobileCapture() {
-  const { online, addToQueue } = useMobileState();
+  const { online, enqueueCapture } = useMobileState();
   const route = useRoute();
   const qc = useQueryClient();
   const [text, setText] = useState("");
@@ -50,9 +50,9 @@ export function MobileCapture() {
     const fallbackKind = kind === "auto" ? "memory" : kind;
     setText("");
 
-    // Offline: hand off to the queue (persisted + flushed on reconnect in a later step).
+    // Offline: persist to the IndexedDB queue; the provider flushes on reconnect.
     if (!online) {
-      addToQueue();
+      await enqueueCapture(content);
       setResult({ kind: "queued" });
       return;
     }
@@ -99,7 +99,7 @@ export function MobileCapture() {
           boxSizing: "border-box",
         }}
       />
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px", rowGap: "8px", marginTop: "8px" }}>
         {KINDS.map(([id, label]) => (
           <button key={id} onClick={() => setKind(id)} style={kind === id ? chipOn : chipBase}>
             {label}

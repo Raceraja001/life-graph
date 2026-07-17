@@ -1,14 +1,17 @@
 "use client";
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { count, enqueue, getAll, remove } from "@/lib/offline-queue";
 import { APPROVALS } from "@/lib/mobile-mock";
 
 type Verdict = "approved" | "rejected";
 
 interface MobileStateValue {
   online: boolean;
-  toggleOnline: () => void;
+  toggleOnline: () => void; // manual demo override; real events also drive `online`
   queued: number;
-  addToQueue: () => void;
+  enqueueCapture: (content: string) => Promise<void>;
   approvalsDone: Record<string, Verdict>;
   resolveApproval: (id: string, verdict: Verdict) => void;
   openApprovalsCount: number;
@@ -17,25 +20,76 @@ interface MobileStateValue {
 const Ctx = createContext<MobileStateValue | null>(null);
 
 export function MobileStateProvider({ children }: { children: React.ReactNode }) {
+  const qc = useQueryClient();
   const [online, setOnline] = useState(true);
   const [queued, setQueued] = useState(0);
   const [approvalsDone, setApprovalsDone] = useState<Record<string, Verdict>>({});
 
+  // Replay queued captures to the backend; stop at the first failure (still down).
+  const flush = useCallback(async () => {
+    const items = await getAll();
+    for (const item of items) {
+      try {
+        await api.kernel.route(item.content);
+        await remove(item.id);
+      } catch {
+        break;
+      }
+    }
+    setQueued(await count());
+    qc.invalidateQueries({ queryKey: ["memories"] });
+    qc.invalidateQueries({ queryKey: ["tasks"] });
+  }, [qc]);
+
+  // Keep the latest flush in a ref so the mount-only listeners never go stale.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+
+  useEffect(() => {
+    let active = true;
+    count().then((c) => active && setQueued(c));
+    if (typeof navigator !== "undefined") setOnline(navigator.onLine);
+
+    const goOnline = () => {
+      setOnline(true);
+      void flushRef.current();
+    };
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      active = false;
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  const enqueueCapture = useCallback(async (content: string) => {
+    await enqueue(content);
+    setQueued(await count());
+  }, []);
+
+  const toggleOnline = useCallback(() => {
+    setOnline((prev) => !prev);
+    if (!online) void flushRef.current(); // currently offline → going online
+  }, [online]);
+
+  const resolveApproval = useCallback(
+    (id: string, verdict: Verdict) => setApprovalsDone((d) => ({ ...d, [id]: verdict })),
+    [],
+  );
+
   const value = useMemo<MobileStateValue>(
     () => ({
       online,
-      // Reconnecting flushes the queue (mock sync); going offline keeps it.
-      toggleOnline: () => {
-        setOnline((prev) => !prev);
-        setQueued((prev) => (online ? prev : 0));
-      },
+      toggleOnline,
       queued,
-      addToQueue: () => setQueued((q) => q + 1),
+      enqueueCapture,
       approvalsDone,
-      resolveApproval: (id, verdict) => setApprovalsDone((d) => ({ ...d, [id]: verdict })),
+      resolveApproval,
       openApprovalsCount: APPROVALS.length - Object.keys(approvalsDone).length,
     }),
-    [online, queued, approvalsDone],
+    [online, toggleOnline, queued, enqueueCapture, approvalsDone, resolveApproval],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
