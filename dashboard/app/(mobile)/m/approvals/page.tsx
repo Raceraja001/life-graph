@@ -1,7 +1,7 @@
 "use client";
 import type { CSSProperties } from "react";
-import { useMobileState } from "@/components/mobile/mobile-state";
-import { APPROVALS } from "@/lib/mobile-mock";
+import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
+import { useApprovals, useResolveApproval } from "@/lib/mobile-api";
 
 const actionBtn: CSSProperties = {
   flex: 1,
@@ -12,25 +12,21 @@ const actionBtn: CSSProperties = {
   cursor: "pointer",
 };
 
-const resolvedPill = (approved: boolean): CSSProperties => ({
-  display: "inline-flex",
-  alignItems: "center",
-  height: "20px",
-  paddingInline: "8px",
-  borderRadius: "var(--radius-pill)",
-  background: approved ? "var(--success-soft)" : "var(--surface-3)",
-  color: approved ? "var(--success)" : "var(--text-muted)",
-  fontSize: "var(--text-2xs)",
-  fontWeight: "var(--fw-bold)",
-});
-
 export default function MobileApprovals() {
-  const { approvalsDone, resolveApproval } = useMobileState();
+  const approvals = useApprovals();
+  const resolve = useResolveApproval();
+  const items = approvals.data ?? [];
+
+  if (approvals.isLoading) return <LoadingCard label="Loading approvals…" />;
+  if (approvals.isError) return <ErrorCard>Can’t reach approvals — is the backend running?</ErrorCard>;
+  if (items.length === 0) return <EmptyCard>Nothing waiting on you. Inbox zero.</EmptyCard>;
+
+  const pendingId = resolve.isPending ? resolve.variables?.id : undefined;
 
   return (
     <>
-      {APPROVALS.map((ap) => {
-        const verdict = approvalsDone[ap.id];
+      {items.map((ap) => {
+        const busy = pendingId === ap.id;
         return (
           <section
             key={ap.id}
@@ -40,6 +36,7 @@ export default function MobileApprovals() {
               borderRadius: "var(--radius-lg)",
               boxShadow: "var(--shadow-xs)",
               padding: "14px",
+              opacity: busy ? 0.6 : 1,
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
@@ -49,36 +46,28 @@ export default function MobileApprovals() {
               {ap.detail}
             </div>
 
-            {!verdict && (
-              <div style={{ display: "flex", gap: "8px", marginTop: "11px" }}>
-                <button
-                  onClick={() => resolveApproval(ap.id, "approved")}
-                  style={{ ...actionBtn, border: 0, background: "var(--accent)", color: "var(--accent-fg)", fontWeight: "var(--fw-bold)" }}
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => resolveApproval(ap.id, "rejected")}
-                  style={{
-                    ...actionBtn,
-                    border: "1px solid var(--border-strong)",
-                    background: "var(--surface)",
-                    color: "var(--text)",
-                    fontWeight: "var(--fw-semibold)",
-                  }}
-                >
-                  Reject
-                </button>
-              </div>
-            )}
-
-            {verdict && (
-              <div style={{ marginTop: "11px" }}>
-                <span style={resolvedPill(verdict === "approved")}>
-                  {verdict === "approved" ? "Approved — queued for execution" : "Rejected — logged"}
-                </span>
-              </div>
-            )}
+            <div style={{ display: "flex", gap: "8px", marginTop: "11px" }}>
+              <button
+                onClick={() => resolve.mutate({ id: ap.id, decision: "approve" })}
+                disabled={busy}
+                style={{ ...actionBtn, border: 0, background: "var(--accent)", color: "var(--accent-fg)", fontWeight: "var(--fw-bold)" }}
+              >
+                {busy ? "…" : "Approve"}
+              </button>
+              <button
+                onClick={() => resolve.mutate({ id: ap.id, decision: "reject" })}
+                disabled={busy}
+                style={{
+                  ...actionBtn,
+                  border: "1px solid var(--border-strong)",
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  fontWeight: "var(--fw-semibold)",
+                }}
+              >
+                Reject
+              </button>
+            </div>
           </section>
         );
       })}

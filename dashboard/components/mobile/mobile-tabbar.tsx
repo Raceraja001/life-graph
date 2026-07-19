@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, BookText, ClipboardCheck, Inbox, type LucideIcon } from "lucide-react";
-import { useMobileState } from "./mobile-state";
+import { useApprovals } from "@/lib/mobile-api";
 
 interface Tab {
   href: string;
@@ -19,7 +19,8 @@ const TABS: Tab[] = [
 
 export function MobileTabBar() {
   const pathname = usePathname();
-  const { openApprovalsCount } = useMobileState();
+  const approvals = useApprovals();
+  const openApprovalsCount = approvals.data?.length ?? 0;
   const isActive = (href: string) => (href === "/m" ? pathname === "/m" : pathname.startsWith(href));
 
   return (

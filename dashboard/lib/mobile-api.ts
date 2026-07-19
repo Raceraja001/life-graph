@@ -1,5 +1,5 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import type { Tone } from "./mobile-mock";
 
@@ -104,5 +104,43 @@ export function useMobileTasks() {
     queryKey: ["tasks", { limit: "100" }],
     queryFn: () => api.kernel.tasks.list({ limit: "100" }),
     select: (rows: any[]) => rows.map(mapTask),
+  });
+}
+
+// ── Approvals ─────────────────────────────────────────────────
+export interface ApprovalVM {
+  id: string;
+  kind: string;
+  title: string;
+  detail: string;
+  status: string;
+  source: string;
+}
+
+export function mapApproval(raw: any): ApprovalVM {
+  return {
+    id: String(raw?.id ?? ""),
+    kind: raw?.kind ?? "",
+    title: raw?.title ?? "",
+    detail: raw?.detail ?? "",
+    status: raw?.status ?? "pending",
+    source: raw?.source ?? "",
+  };
+}
+
+export function useApprovals(status = "pending") {
+  return useQuery({
+    queryKey: ["approvals", { status }],
+    queryFn: () => api.approvals.list(status),
+    select: (rows: any[]) => rows.map(mapApproval),
+  });
+}
+
+export function useResolveApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: "approve" | "reject" }) =>
+      decision === "approve" ? api.approvals.approve(id) : api.approvals.reject(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
   });
 }

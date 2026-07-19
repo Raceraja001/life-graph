@@ -12,6 +12,7 @@ const EVENT_MAP: Record<string, string[]> = {
   "kernel:task":  ["tasks"],
   "watcher":      ["watcher-events"],
   "notification": ["notifications"],
+  "approval":     ["approvals"],
   "evidence":     ["evidence"],
   "agent":        ["agent-tasks"],
   "identity":     ["beliefs"],

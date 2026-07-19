@@ -3,18 +3,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { count, enqueue, getAll, remove } from "@/lib/offline-queue";
-import { APPROVALS } from "@/lib/mobile-mock";
-
-type Verdict = "approved" | "rejected";
 
 interface MobileStateValue {
   online: boolean;
   toggleOnline: () => void; // manual demo override; real events also drive `online`
   queued: number;
   enqueueCapture: (content: string) => Promise<void>;
-  approvalsDone: Record<string, Verdict>;
-  resolveApproval: (id: string, verdict: Verdict) => void;
-  openApprovalsCount: number;
 }
 
 const Ctx = createContext<MobileStateValue | null>(null);
@@ -23,7 +17,6 @@ export function MobileStateProvider({ children }: { children: React.ReactNode })
   const qc = useQueryClient();
   const [online, setOnline] = useState(true);
   const [queued, setQueued] = useState(0);
-  const [approvalsDone, setApprovalsDone] = useState<Record<string, Verdict>>({});
 
   // Replay queued captures to the backend; stop at the first failure (still down).
   const flush = useCallback(async () => {
@@ -74,22 +67,9 @@ export function MobileStateProvider({ children }: { children: React.ReactNode })
     if (!online) void flushRef.current(); // currently offline → going online
   }, [online]);
 
-  const resolveApproval = useCallback(
-    (id: string, verdict: Verdict) => setApprovalsDone((d) => ({ ...d, [id]: verdict })),
-    [],
-  );
-
   const value = useMemo<MobileStateValue>(
-    () => ({
-      online,
-      toggleOnline,
-      queued,
-      enqueueCapture,
-      approvalsDone,
-      resolveApproval,
-      openApprovalsCount: APPROVALS.length - Object.keys(approvalsDone).length,
-    }),
-    [online, toggleOnline, queued, enqueueCapture, approvalsDone, resolveApproval],
+    () => ({ online, toggleOnline, queued, enqueueCapture }),
+    [online, toggleOnline, queued, enqueueCapture],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

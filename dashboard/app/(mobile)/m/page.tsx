@@ -3,12 +3,11 @@ import Link from "next/link";
 import { ChevronRight, Inbox } from "lucide-react";
 import { MobileCapture } from "@/components/mobile/mobile-capture";
 import { SectionEyebrow, TaskRow, LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
-import { useMobileState } from "@/components/mobile/mobile-state";
-import { useMobileMemories, useMobileTasks } from "@/lib/mobile-api";
+import { useApprovals, useMobileMemories, useMobileTasks } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
 
 export default function MobileHome() {
-  const { openApprovalsCount } = useMobileState();
+  const openApprovalsCount = useApprovals().data?.length ?? 0;
   const tasks = useMobileTasks();
   const memories = useMobileMemories(20);
 
