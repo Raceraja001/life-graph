@@ -167,6 +167,8 @@ class ApprovalService:
             await self._apply_promotion(tenant_id, appr, approve, resolved_by)
         elif appr.kind == "merge":
             await self._apply_merge(tenant_id, appr, approve)
+        elif appr.kind == "contradiction":
+            await self._apply_contradiction(tenant_id, appr, approve)
 
         await self.session.flush()
         return self._serialize(appr)
@@ -266,6 +268,32 @@ class ApprovalService:
         loser.status = "superseded"
         loser.superseded_by = winner.id
         winner.supersedes = loser.id
+
+    async def _apply_contradiction(self, tenant_id: str, appr: Approval, approve: bool) -> None:
+        """Confirm an auto-supersede (approve, no-op) or UNDO it (reject).
+
+        Undo restores the superseded memory to active and clears the chain —
+        but only if it's still in the exact state we recorded (defensive against
+        later edits). Approving is a no-op: the supersede already happened.
+        """
+        if approve:
+            return
+        payload = appr.payload or {}
+        old_id, new_id = payload.get("memory_id_old"), payload.get("memory_id_new")
+        if not old_id:
+            return
+        try:
+            old = await self.session.get(Memory, uuid.UUID(str(old_id)))
+            new = await self.session.get(Memory, uuid.UUID(str(new_id))) if new_id else None
+        except (ValueError, TypeError):
+            return
+        if old is None or old.tenant_id != tenant_id:
+            return
+        if old.status == "superseded" and (new is None or old.superseded_by == new.id):
+            old.status = "active"
+            old.superseded_by = None
+            if new is not None and new.supersedes == old.id:
+                new.supersedes = None
 
 
 def _num(value: Any) -> str | None:
