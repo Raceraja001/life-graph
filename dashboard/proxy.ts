@@ -1,13 +1,14 @@
 /**
- * Next.js middleware — route protection.
+ * Next.js Proxy — route protection (renamed from Middleware in Next.js 16;
+ * same functionality).
  *
  * Runs on every request BEFORE the page renders (edge runtime).
  * If the user has no credentials in cookies/localStorage we can't
- * check localStorage from middleware (server-side), so we use a
+ * check localStorage from the proxy (server-side), so we use a
  * simple cookie `lg_authed=1` that the login page sets on success.
  *
  * Protected routes redirect → /login
- * /login when already authed redirects → /
+ * Phone visitors on "/" redirect → /m
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -22,7 +23,7 @@ function isMobileUserAgent(ua: string | null): boolean {
   return !!ua && MOBILE_UA.test(ua);
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths and static assets
