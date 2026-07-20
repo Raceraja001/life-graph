@@ -17,7 +17,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from life_graph.models.db import Approval
+from life_graph.models.db import Approval, Memory
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
 
 
@@ -165,6 +165,8 @@ class ApprovalService:
 
         if appr.kind == "promotion":
             await self._apply_promotion(tenant_id, appr, approve, resolved_by)
+        elif appr.kind == "merge":
+            await self._apply_merge(tenant_id, appr, approve)
 
         await self.session.flush()
         return self._serialize(appr)
@@ -227,6 +229,43 @@ class ApprovalService:
             run.reviewed_by = resolved_by
             run.reviewed_at = now
             run.status = "deployed"
+
+    async def _apply_merge(self, tenant_id: str, appr: Approval, approve: bool) -> None:
+        """Merge the two memories (approve) or leave them (reject).
+
+        Winner = higher importance (ties → newer); tags unioned, properties
+        merged (winner wins conflicts), loser superseded → winner. Defensive:
+        if either memory is missing or no longer active, resolve without acting.
+        """
+        if not approve:
+            return  # reject → keep both; the resolved row prevents re-suggestion
+        payload = appr.payload or {}
+        a_id, b_id = payload.get("memory_id_a"), payload.get("memory_id_b")
+        if not a_id or not b_id:
+            return
+        try:
+            a = await self.session.get(Memory, uuid.UUID(str(a_id)))
+            b = await self.session.get(Memory, uuid.UUID(str(b_id)))
+        except (ValueError, TypeError):
+            return
+        if a is None or b is None:
+            return
+        if a.tenant_id != tenant_id or b.tenant_id != tenant_id:
+            return
+        if a.status != "active" or b.status != "active":
+            return  # already merged/changed since the suggestion was made
+
+        winner, loser = (
+            (a, b)
+            if (a.importance or 0.5, a.created_at) >= (b.importance or 0.5, b.created_at)
+            else (b, a)
+        )
+        winner.importance = max(a.importance or 0.5, b.importance or 0.5)
+        winner.tags = sorted(set((winner.tags or []) + (loser.tags or [])))
+        winner.properties = {**(loser.properties or {}), **(winner.properties or {})}
+        loser.status = "superseded"
+        loser.superseded_by = winner.id
+        winner.supersedes = loser.id
 
 
 def _num(value: Any) -> str | None:

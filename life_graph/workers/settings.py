@@ -48,6 +48,8 @@ class WorkerSettings:
     functions = [
         "life_graph.workers.tasks.run_tenant_consolidation",
         "life_graph.workers.tasks.run_all_consolidations",
+        "life_graph.workers.tasks.run_tenant_merge_suggestions",
+        "life_graph.workers.tasks.run_all_merge_suggestions",
         "life_graph.workers.decay.run_decay_sweep",
         "life_graph.workers.decay.run_all_decay_sweeps",
         "life_graph.workers.embeddings.generate_embeddings_batch",
@@ -69,6 +71,12 @@ class WorkerSettings:
             "life_graph.workers.tasks.run_all_consolidations",
             hour=3,
             minute=0,
+            run_at_startup=False,
+        ),
+        cron(
+            "life_graph.workers.tasks.run_all_merge_suggestions",
+            hour=3,
+            minute=45,
             run_at_startup=False,
         ),
         cron(

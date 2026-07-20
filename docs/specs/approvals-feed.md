@@ -141,6 +141,6 @@ CREATE UNIQUE INDEX uq_approvals_source_ref ON approvals (tenant_id, source, sou
 
 ## Follow-up (out of scope, for later specs/producers)
 
-- **Merges**: gate dedup — at the `core/memory_manager.py` near-duplicate decision, when similarity is in a review band, write `kind='merge'` approval instead of auto-merging; approve → perform merge, reject → keep both. *Requires product decision to gate.*
+- **Merges** — ✅ IMPLEMENTED (additive, July 2026): nightly `services/merge_suggestions.py` + `workers/tasks.run_all_merge_suggestions` (cron 03:45) scans active memory pairs whose similarity lands in `[merge_review_low, dedup_threshold)` — near-dupes below the auto-merge line — and queues `kind='merge'` approvals (idempotent per pair). Approve merges them (`ApprovalService._apply_merge`: higher importance wins, tags unioned, loser superseded); reject dismisses. Changes no existing auto-merge behavior. Tests: `tests/integration/test_merge_suggestions.py`.
 - **Contradictions**: when `services/contradiction.py` resolution is `ask_user`, persist `kind='contradiction'`; approve applies the chosen resolution.
 - **Weekly review**: `services/brief.py` weekly draft persisted as `kind='weekly_review'`; approve sends/publishes, reject discards.
