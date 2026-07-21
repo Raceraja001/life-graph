@@ -73,5 +73,5 @@ async def set_autonomy_level(project_id: str, request: SetLevelRequest):
             "level": new_level,
             "level_name": LEVEL_DESCRIPTIONS.get(new_level, "Unknown"),
         },
-        message=f"Autonomy level set to L{new_level}",
+        meta={"message": f"Autonomy level set to L{new_level}"},
     )

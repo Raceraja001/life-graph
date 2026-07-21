@@ -582,6 +582,29 @@ class AutonomyLevel(Base):
         Index("ix_alvl_promo", "tenant_id", "promotion_eligible"),
     )
 
+    # ── Compatibility shims (read-only) ───────────────────────
+    # The service/API talk in integer levels (L0→0) and "count" names; the table
+    # stores an ``"L{n}"`` string and ``*_successes`` counters. These properties
+    # bridge reads only — writes still target the real columns. No schema change.
+    @property
+    def current_level(self) -> int:
+        try:
+            return int(str(self.level).lstrip("Ll"))
+        except (ValueError, TypeError):
+            return 0
+
+    @property
+    def safe_count(self) -> int:
+        return self.safe_successes or 0
+
+    @property
+    def moderate_count(self) -> int:
+        return self.moderate_successes or 0
+
+    @property
+    def failure_count(self) -> int:
+        return self.total_failures or 0
+
     def __repr__(self) -> str:
         return (
             f"<AutonomyLevel(id={self.id[:8]}, "

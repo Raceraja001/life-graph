@@ -5,6 +5,12 @@ Orchestrates the full autonomous action pipeline:
 2. Check the project's autonomy level + trust score
 3. Route: auto-execute, notify-before-execute, or queue-for-approval
 4. Record the result via AuditService
+
+Reconciled to the real ``AutoAction`` model (``action_name`` / ``action_command`` /
+``trigger_type`` / ``trigger_detail`` / ``started_at`` / ``completed_at``). The friendly
+request fields (``action_type`` / ``command`` / ``description`` / ``timeout_seconds``) are
+mapped here; ``timeout_seconds`` and ``metadata`` are not persisted (no columns for them).
+See docs/specs/era8-autonomy-reconciliation.md.
 """
 
 from __future__ import annotations
@@ -24,6 +30,32 @@ from life_graph.core.events import EventType, event_bus
 logger = logging.getLogger(__name__)
 
 
+def _to_response(action) -> AutoActionResponse:
+    """Serialize a real ``AutoAction`` ORM row into the API response shape."""
+    return AutoActionResponse(
+        id=str(action.id),
+        tenant_id=action.tenant_id,
+        agent_id=action.agent_id,
+        project_id=action.project_id,
+        action_name=action.action_name,
+        action_command=action.action_command,
+        rollback_command=action.rollback_command,
+        trigger_type=action.trigger_type,
+        trigger_detail=action.trigger_detail,
+        risk_level=action.risk_level,
+        status=action.status,
+        exit_code=action.exit_code,
+        stdout=action.stdout,
+        stderr=action.stderr,
+        error_message=action.error_message,
+        duration_ms=action.duration_ms,
+        approval_id=str(action.approval_id) if action.approval_id else None,
+        started_at=action.started_at,
+        completed_at=action.completed_at,
+        created_at=action.created_at,
+    )
+
+
 class AutoFixService:
     """Orchestrates classify → route → execute/queue for autonomous actions.
 
@@ -34,12 +66,14 @@ class AutoFixService:
     def __init__(
         self,
         session_factory,
-        classifier,
-        trust_service,
         audit_service,
         approval_service,
         level_service=None,
+        classifier=None,
+        trust_service=None,
     ):
+        # classifier is built per-request in process() (it needs a live session),
+        # so it is optional here; trust_service is likewise unused by the pipeline.
         self._session_factory = session_factory
         self._classifier = classifier
         self._trust_service = trust_service
@@ -60,28 +94,32 @@ class AutoFixService:
     ) -> AutoFixResponse:
         """Orchestrate: classify → route → execute/queue.
 
-        Args:
-            tenant_id: The tenant context.
-            request: The auto-fix request.
-
-        Returns:
-            AutoFixResponse with action details and routing decision.
+        The classifier already folds risk × autonomy level into a
+        ``recommendation`` (auto-execute / notify-before / queue-for-approval),
+        so routing keys off that. The classifier takes a live session, so it is
+        built per-request rather than injected as a singleton.
         """
-        # 1. Classify risk
-        classification = await self._classifier.classify(
-            action_type=request.action_type,
-            command=request.command,
-            metadata=request.metadata,
-        )
-        risk_level = classification.get("risk_level", "high")
+        from life_graph.autonomy.models import AutoAction
+        from life_graph.autonomy.safety.classifier import ActionClassifier, Recommendation
 
-        # 2. Find matching safety rule
-        rule = classification.get("matched_rule")
+        # 1. Classify (rule match → trust → autonomy level → recommendation)
+        async with self._session_factory() as session:
+            classifier = ActionClassifier(session)
+            classification = await classifier.classify(
+                tenant_id=tenant_id,
+                agent_id=request.agent_id,
+                action_name=request.action_type,
+                action_command=request.command,
+                project_id=request.project_id,
+            )
+            risk_level = classification.risk_level.value
+            recommendation = classification.recommendation
+            autonomy_level = classification.autonomy_level
+            rule_id = classification.matched_rule.id if classification.matched_rule else None
+            reasoning = classification.reasoning
 
-        # 3. Create the auto_action record
-        from life_graph.models.db import AutoAction
-
-        action_id = uuid.uuid4()
+        # 2. Create the auto_action record (real AutoAction fields)
+        action_id = str(uuid.uuid4())
         now = datetime.now(UTC)
 
         async with self._session_factory() as session:
@@ -90,96 +128,71 @@ class AutoFixService:
                 tenant_id=tenant_id,
                 agent_id=request.agent_id,
                 project_id=request.project_id,
-                action_type=request.action_type,
-                command=request.command,
+                action_name=request.action_type,
+                action_command=request.command,
                 rollback_command=request.rollback_command,
-                description=request.description,
+                is_reversible=bool(request.rollback_command),
+                trigger_type="manual",
+                trigger_detail=request.description or request.action_type,
                 risk_level=risk_level,
-                safety_rule_id=rule.id if rule else None,
+                safety_rule_id=rule_id,
                 status="pending",
-                timeout_seconds=request.timeout_seconds,
-                metadata=request.metadata or {},
+                queued_at=now,
                 created_at=now,
             )
             session.add(auto_action)
             await session.commit()
             await session.refresh(auto_action)
 
-        # 4. Get autonomy level for the project
-        autonomy_level = 0
-        if self._level_service:
-            level_info = await self._level_service.get_level(tenant_id, request.project_id)
-            autonomy_level = level_info.current_level
-
-        # 5. Route based on risk + autonomy level
-        if risk_level == "safe" and autonomy_level >= 1:
+        # 3. Route on the classifier's recommendation
+        if recommendation == Recommendation.AUTO_EXECUTE:
             # Shadow gate: a NEW actor (no trust record) records a would-have-done
             # instead of acting for real, until it graduates (see core/shadow).
             shadow = await shadow_service.intercept(tenant_id, request.agent_id)
             if shadow.shadow:
                 routing = "shadow_recorded"
                 await self._record_shadow(
-                    tenant_id, auto_action, shadow.enrollment_id, classification,
+                    tenant_id, auto_action, shadow.enrollment_id,
+                    {"reasoning": reasoning},
                 )
             else:
                 routing = "auto_executed"
-                await self._auto_execute(tenant_id, auto_action, rule)
-        elif risk_level == "moderate" and autonomy_level >= 2:
+                await self._auto_execute(
+                    tenant_id, auto_action, rule_id, request.timeout_seconds,
+                )
+        elif recommendation == Recommendation.NOTIFY_BEFORE:
             routing = "notify_before"
-            await self._notify_before_execute(tenant_id, auto_action, rule)
-        elif risk_level == "safe" and autonomy_level == 0:
-            routing = "queued_for_approval"
-            await self._queue_for_approval(tenant_id, auto_action, rule)
+            await self._notify_before_execute(tenant_id, auto_action, rule_id)
         else:
             routing = "queued_for_approval"
-            await self._queue_for_approval(tenant_id, auto_action, rule)
+            await self._queue_for_approval(tenant_id, auto_action, rule_id)
 
-        # 6. Refresh and return
+        # 4. Refresh and return
         async with self._session_factory() as session:
             result = await session.execute(
                 select(AutoAction).where(AutoAction.id == action_id)
             )
             refreshed = result.scalar_one()
-
-            action_resp = AutoActionResponse(
-                id=refreshed.id,
-                tenant_id=refreshed.tenant_id,
-                agent_id=refreshed.agent_id,
-                project_id=refreshed.project_id,
-                action_type=refreshed.action_type,
-                command=refreshed.command,
-                rollback_command=refreshed.rollback_command,
-                description=refreshed.description,
-                risk_level=refreshed.risk_level,
-                status=refreshed.status,
-                exit_code=refreshed.exit_code,
-                stdout=refreshed.stdout,
-                stderr=refreshed.stderr,
-                duration_ms=refreshed.duration_ms,
-                approval_id=refreshed.approval_id,
-                executed_at=refreshed.executed_at,
-                created_at=refreshed.created_at,
-                metadata=refreshed.metadata,
-            )
+            action_resp = _to_response(refreshed)
 
         return AutoFixResponse(
             action=action_resp,
             routing=routing,
-            message=f"Action {routing.replace('_', ' ')} — risk={risk_level}, level=L{autonomy_level}",
+            message=f"Action {routing.replace('_', ' ')} — risk={risk_level}, level={autonomy_level}",
         )
 
     async def _record_shadow(
         self, tenant_id: str, auto_action, enrollment_id: str, classification: dict,
     ) -> None:
         """Shadowed actor: record what it WOULD have done; do NOT execute."""
-        from life_graph.models.db import AutoAction
+        from life_graph.autonomy.models import AutoAction
 
         await shadow_service.record_would_have_done(
             tenant_id,
             auto_action.agent_id,
             enrollment_id,
-            action_type=auto_action.action_type,
-            command=auto_action.command,
+            action_type=auto_action.action_name,
+            command=auto_action.action_command,
             risk_level=auto_action.risk_level,
             project_id=auto_action.project_id,
             would_have_routed="auto_executed",
@@ -190,24 +203,25 @@ class AutoFixService:
             await session.execute(
                 update(AutoAction)
                 .where(AutoAction.id == auto_action.id)
-                .values(status="shadow")
+                .values(status="skipped")  # ck_aa_status: shadow-recorded → skipped
             )
             await session.commit()
 
     async def _auto_execute(
-        self, tenant_id: str, auto_action, rule,
+        self, tenant_id: str, auto_action, rule, timeout_seconds: int = 60,
     ) -> None:
         """L1+ safe action: execute immediately with project lock."""
-        from life_graph.models.db import AutoAction
+        from life_graph.autonomy.models import AutoAction
 
         lock = self._get_lock(auto_action.project_id)
+        started = datetime.now(UTC)
         async with lock:
             result = await self._executor.execute(
-                command=auto_action.command,
-                timeout_seconds=auto_action.timeout_seconds or 60,
+                command=auto_action.action_command,
+                timeout_seconds=timeout_seconds or 60,
             )
 
-            status = "success" if result.exit_code == 0 else "failed"
+            status = "success" if result.exit_code == 0 else "failure"
             now = datetime.now(UTC)
 
             async with self._session_factory() as session:
@@ -220,7 +234,8 @@ class AutoFixService:
                         stdout=result.stdout,
                         stderr=result.stderr,
                         duration_ms=result.duration_ms,
-                        executed_at=now,
+                        started_at=started,
+                        completed_at=now,
                     )
                 )
                 await session.commit()
@@ -231,9 +246,9 @@ class AutoFixService:
             action_id=auto_action.id,
             agent_id=auto_action.agent_id,
             project_id=auto_action.project_id,
-            action_type=auto_action.action_type,
+            action_type=auto_action.action_name,
             risk_level=auto_action.risk_level,
-            command=auto_action.command,
+            command=auto_action.action_command,
             exit_code=result.exit_code,
             duration_ms=result.duration_ms,
             result=status,
@@ -262,18 +277,19 @@ class AutoFixService:
         self, tenant_id: str, auto_action, rule,
     ) -> None:
         """L2 moderate flow: create approval entry but auto-approve after delay."""
-        from life_graph.models.db import AutoAction
+        from life_graph.autonomy.models import AutoAction
 
         approval = await self._approval_service.create(
             tenant_id=tenant_id,
             data={
-                "action_id": auto_action.id,
                 "agent_id": auto_action.agent_id,
                 "project_id": auto_action.project_id,
-                "action_type": auto_action.action_type,
+                "action_name": auto_action.action_name,
+                "action_command": auto_action.action_command,
                 "risk_level": auto_action.risk_level,
-                "command": auto_action.command,
-                "description": auto_action.description,
+                "trigger_type": auto_action.trigger_type,
+                "trigger_detail": auto_action.trigger_detail,
+                "category": "pipeline",
                 "auto_approve_minutes": 5,
             },
         )
@@ -283,7 +299,7 @@ class AutoFixService:
                 update(AutoAction)
                 .where(AutoAction.id == auto_action.id)
                 .values(
-                    status="pending_approval",
+                    status="pending",  # ck_aa_status has no 'pending_approval'
                     approval_id=approval.id,
                 )
             )
@@ -304,18 +320,19 @@ class AutoFixService:
         self, tenant_id: str, auto_action, rule,
     ) -> None:
         """Queue the action for human approval."""
-        from life_graph.models.db import AutoAction
+        from life_graph.autonomy.models import AutoAction
 
         approval = await self._approval_service.create(
             tenant_id=tenant_id,
             data={
-                "action_id": auto_action.id,
                 "agent_id": auto_action.agent_id,
                 "project_id": auto_action.project_id,
-                "action_type": auto_action.action_type,
+                "action_name": auto_action.action_name,
+                "action_command": auto_action.action_command,
                 "risk_level": auto_action.risk_level,
-                "command": auto_action.command,
-                "description": auto_action.description,
+                "trigger_type": auto_action.trigger_type,
+                "trigger_detail": auto_action.trigger_detail,
+                "category": "pipeline",
             },
         )
 
@@ -324,7 +341,7 @@ class AutoFixService:
                 update(AutoAction)
                 .where(AutoAction.id == auto_action.id)
                 .values(
-                    status="pending_approval",
+                    status="pending",  # ck_aa_status has no 'pending_approval'
                     approval_id=approval.id,
                 )
             )
@@ -341,14 +358,14 @@ class AutoFixService:
             source="autonomy_pipeline",
         )
 
-    async def rollback(self, tenant_id: str, auto_action_id: uuid.UUID) -> AutoActionResponse:
+    async def rollback(self, tenant_id: str, auto_action_id: str) -> AutoActionResponse:
         """Execute the rollback command for a previously-executed action."""
-        from life_graph.models.db import AutoAction
+        from life_graph.autonomy.models import AutoAction
 
         async with self._session_factory() as session:
             result = await session.execute(
                 select(AutoAction).where(
-                    AutoAction.id == auto_action_id,
+                    AutoAction.id == str(auto_action_id),
                     AutoAction.tenant_id == tenant_id,
                 )
             )
@@ -359,25 +376,29 @@ class AutoFixService:
             if not action.rollback_command:
                 raise ValueError("No rollback command defined for this action")
 
-            if action.status not in ("success", "failed"):
+            if action.status not in ("success", "failure"):
                 raise ValueError(f"Cannot rollback action in status: {action.status}")
 
+            project_id = action.project_id
+            agent_id = action.agent_id
+            rollback_command = action.rollback_command
+
         # Execute rollback
-        lock = self._get_lock(action.project_id)
+        lock = self._get_lock(project_id)
         async with lock:
             result = await self._executor.execute(
-                command=action.rollback_command,
-                timeout_seconds=action.timeout_seconds or 60,
+                command=rollback_command,
+                timeout_seconds=60,
             )
 
-        rb_status = "rolled_back" if result.exit_code == 0 else "rollback_failed"
+        rb_status = "rolled_back" if result.exit_code == 0 else "failure"
         now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             await session.execute(
                 update(AutoAction)
-                .where(AutoAction.id == auto_action_id)
-                .values(status=rb_status)
+                .where(AutoAction.id == str(auto_action_id))
+                .values(status=rb_status, rolled_back_at=now)
             )
             await session.commit()
 
@@ -385,35 +406,15 @@ class AutoFixService:
         await self._audit_service.log_rollback(
             tenant_id=tenant_id,
             action_id=auto_action_id,
-            agent_id=action.agent_id,
-            project_id=action.project_id,
+            agent_id=agent_id,
+            project_id=project_id,
             exit_code=result.exit_code,
             result=rb_status,
         )
 
         async with self._session_factory() as session:
             res = await session.execute(
-                select(AutoAction).where(AutoAction.id == auto_action_id)
+                select(AutoAction).where(AutoAction.id == str(auto_action_id))
             )
             refreshed = res.scalar_one()
-
-        return AutoActionResponse(
-            id=refreshed.id,
-            tenant_id=refreshed.tenant_id,
-            agent_id=refreshed.agent_id,
-            project_id=refreshed.project_id,
-            action_type=refreshed.action_type,
-            command=refreshed.command,
-            rollback_command=refreshed.rollback_command,
-            description=refreshed.description,
-            risk_level=refreshed.risk_level,
-            status=refreshed.status,
-            exit_code=refreshed.exit_code,
-            stdout=refreshed.stdout,
-            stderr=refreshed.stderr,
-            duration_ms=refreshed.duration_ms,
-            approval_id=refreshed.approval_id,
-            executed_at=refreshed.executed_at,
-            created_at=refreshed.created_at,
-            metadata=refreshed.metadata,
-        )
+            return _to_response(refreshed)

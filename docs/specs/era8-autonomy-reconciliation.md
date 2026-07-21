@@ -1,11 +1,13 @@
 # Era-8 Autonomy — Model/Code Reconciliation — Remediation Spec
 
-> 🚧 **STATUS: SPEC ONLY — NOT BUILT.** Discovered July 2026 while auditing the pre-existing
-> `/autonomy/approvals` bug during the mobile-app build. Scope grew on inspection: the entire
-> Era-8 autonomy execution path — pipeline, approvals, dispatcher producers, and their Pydantic
-> schemas — was written against **field names and model classes that do not exist**. None of it
-> can run. This spec captures the divergence and the remediation so it can be done on its own
-> branch, off the mobile work.
+> ✅ **STATUS: IMPLEMENTED (July 2026)** on branch `fix/era8-autonomy-reconciliation`. Discovered
+> while auditing the pre-existing `/autonomy/approvals` bug during the mobile-app build. Scope grew
+> on inspection: the entire Era-8 autonomy execution path — pipeline, approvals, dispatcher producers,
+> audit, levels, DI wiring, the classifier integration, and their Pydantic schemas — was written
+> against **field names, model classes, and status vocabularies that do not exist**. None of it could
+> run. It has now been reconciled to the real models (models authoritative), the app builds with all
+> 25 `/autonomy/*` routes, and pipeline + approvals + audit are verified against a live DB. See the
+> **Implementation status** section at the end for exactly what was reconciled and what remains.
 >
 > **Not to be confused with** `docs/specs/approvals-feed.md` / `api/approvals.py` (the new
 > `/api/v1/approvals` mobile HITL feed backed by the `approvals` table). That feature is healthy,
@@ -234,3 +236,47 @@ Everything below assumes models-authoritative.
 - Watch the `metadata` trap: never reintroduce it as a column.
 - Keep this **entirely separate** from `api/approvals.py` / the `approvals` table — same English word,
   different subsystem.
+
+---
+
+## Implementation status (July 2026)
+
+The reconciliation went **deeper than the original scope** — the rot extended past the field/model
+divergence into DI wiring, the classifier contract, and the DB CHECK vocabularies. All reconciled to
+the real schema (no migrations, no table changes).
+
+**Reconciled & verified against a live DB:**
+- **Models/imports** — all Era-8 sites import from `life_graph.autonomy.models` (`ApprovalQueueEntry`,
+  `AuditLogEntry`, `AutoAction`, `AutonomyLevel`); `models/db.py` carries a note explaining why they are
+  *not* re-exported (circular import). Added read-only compat properties on `AutonomyLevel`
+  (`current_level` / `safe_count` / `moderate_count` / `failure_count`) bridging the int-vs-`"L{n}"` gap.
+- **Pipeline** (`pipeline/{schemas,service,router}.py`) — real `AutoAction` fields; the classifier is now
+  built **per-request** (`ActionClassifier(session)`) and routing keys off its `recommendation`
+  (risk × autonomy matrix) instead of a re-derived level.
+- **Approvals** (`approvals/{schemas,service,router}.py`) — real `ApprovalQueueEntry`; resolve/batch/expire
+  update the linked action via the reverse FK `AutoAction.approval_id`; escalations tracked in the
+  `escalation_sent` JSONB list. Fixed a latent `f"{decision}d"` bug that produced `"rejectd"`.
+- **Audit** (`audit/{service,router}.py`) — real `AuditLogEntry` (`auto_action_id` / `action_command` /
+  `classification_reasoning`, required `actor_id` / `action_name`).
+- **Levels** (`levels/service.py`) — writes target real columns (`level`, `safe_successes`,
+  `total_failures`, …).
+- **Dispatcher** (`drivers/dispatcher.py`) — driver-review producers write valid `ApprovalQueueEntry` rows.
+- **DI** (`api/dependencies.py`) — removed the phantom `SafetyClassifier`/`TrustService`; `get_autofix_service`
+  no longer injects a classifier; `get_trust_service` uses the real `TrustScoreService`.
+- **CHECK vocabularies** (the values, not just the columns) — `auto_actions.status`
+  {pending, executing, success, failure, timeout, rolled_back, skipped}, `approval_queue.status`
+  {pending, approved, rejected, expired, stale, batch_approved}, `approval_queue.risk_level`
+  {moderate, dangerous} (safe is clamped to moderate on queue), `audit_log.result`
+  {success, failure, timeout, rejected, expired, rolled_back} (free-text outcomes coerced to `success`
+  with the raw value kept in details). `success_response()` takes `(data, meta)` — `message=` calls fixed.
+
+Tests: `tests/integration/test_autonomy_pipeline.py` + `test_autonomy_approvals.py` — **7 passed / 2
+skipped** (the 2 are the known asyncpg pool-teardown flakiness; both pass in isolation). No regressions
+in `test_autonomy.py` (4 passed / 6 skipped).
+
+**Reconciled by inspection, not yet runtime-exercised** (safe to follow up):
+- The **auto-execute** path (L1+ safe → runs a real shell command) — status writes (`failure`, `skipped`,
+  `rolled_back`) match the CHECK by inspection; tests stay at L0 (queue) to avoid executing commands.
+- **notify-before** (L2) and **levels promote/demote/set_manual** writes.
+- The **trust-decay worker** (`workers/tasks.py`) still constructs `TrustScoreService` with a factory where
+  the class wants a live session; it degrades gracefully (try/except → skip). A clean fix is its own small task.

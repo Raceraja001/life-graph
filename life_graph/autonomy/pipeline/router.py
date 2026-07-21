@@ -4,17 +4,13 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
-from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 
 from life_graph.api.responses import success_response
-from life_graph.autonomy.pipeline.schemas import (
-    AutoActionResponse,
-    AutoFixRequest,
-    AutoFixResponse,
-)
+from life_graph.autonomy.pipeline.schemas import AutoFixRequest
+from life_graph.autonomy.pipeline.service import _to_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
 
@@ -42,7 +38,7 @@ async def trigger_auto_action(request: AutoFixRequest):
         status_code=status_code,
         content=success_response(
             data=result.model_dump(mode="json"),
-            message=result.message,
+            meta={"message": result.message},
         ),
     )
 
@@ -59,7 +55,7 @@ async def list_auto_actions(
     """List auto actions with optional filters."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.models.db import AutoAction
+    from life_graph.autonomy.models import AutoAction
 
     async with async_session() as session:
         q = select(AutoAction).where(AutoAction.tenant_id == tenant_id)
@@ -78,34 +74,12 @@ async def list_auto_actions(
         actions = result.scalars().all()
 
     return success_response(
-        data=[
-            AutoActionResponse(
-                id=a.id,
-                tenant_id=a.tenant_id,
-                agent_id=a.agent_id,
-                project_id=a.project_id,
-                action_type=a.action_type,
-                command=a.command,
-                rollback_command=a.rollback_command,
-                description=a.description,
-                risk_level=a.risk_level,
-                status=a.status,
-                exit_code=a.exit_code,
-                stdout=a.stdout,
-                stderr=a.stderr,
-                duration_ms=a.duration_ms,
-                approval_id=a.approval_id,
-                executed_at=a.executed_at,
-                created_at=a.created_at,
-                metadata=a.metadata,
-            ).model_dump(mode="json")
-            for a in actions
-        ],
+        data=[_to_response(a).model_dump(mode="json") for a in actions],
     )
 
 
 @router.post("/{action_id}/rollback", response_model=None)
-async def rollback_action(action_id: UUID):
+async def rollback_action(action_id: str):
     """Rollback a previously executed auto action."""
     tenant_id = get_current_tenant_id()
 
@@ -119,5 +93,5 @@ async def rollback_action(action_id: UUID):
 
     return success_response(
         data=result.model_dump(mode="json"),
-        message="Rollback completed",
+        meta={"message": "Rollback completed"},
     )

@@ -633,23 +633,21 @@ class TaskDispatcher:
     ) -> None:
         """Create an approval entry when the second-opinion reviewer dissents."""
         try:
-            from life_graph.models.db import ApprovalQueue
+            from life_graph.autonomy.models import ApprovalQueueEntry
 
-            entry = ApprovalQueue(
+            entry = ApprovalQueueEntry(
                 tenant_id=tenant_id,
-                action_type="driver_second_opinion_dissent",
-                action_description=(
+                agent_id=driver_name,
+                action_name="driver_second_opinion_dissent",
+                action_command=f"review task {task_id}",
+                risk_level="medium",
+                category="driver",
+                trigger_type="driver_review",
+                trigger_detail=(
                     f"Driver '{driver_name}' output for task {task_id} passed "
                     f"automated checks but the second-opinion reviewer dissented: "
                     f"{concern or 'unspecified concern'}"
                 ),
-                risk_level="medium",
-                agent_id=driver_name,
-                context={
-                    "task_id": task_id,
-                    "driver": driver_name,
-                    "concern": concern,
-                },
                 status="pending",
             )
             session.add(entry)
@@ -671,27 +669,21 @@ class TaskDispatcher:
     ) -> None:
         """Create an approval queue entry for tasks that need human review."""
         try:
-            from life_graph.models.db import ApprovalQueue
+            from life_graph.autonomy.models import ApprovalQueueEntry
 
-            entry = ApprovalQueue(
+            failures = ", ".join(r.verifier for r in v_results if not r.passed)
+            entry = ApprovalQueueEntry(
                 tenant_id=tenant_id,
-                action_type="driver_verification_failed",
-                action_description=(
-                    f"Driver '{driver_name}' failed verification for task {task_id} "
-                    f"after one bounce. Failures: "
-                    + ", ".join(r.verifier for r in v_results if not r.passed)
-                ),
-                risk_level="medium",
                 agent_id=driver_name,
-                context={
-                    "task_id": task_id,
-                    "driver": driver_name,
-                    "failures": [
-                        {"verifier": r.verifier, "evidence": r.evidence}
-                        for r in v_results
-                        if not r.passed
-                    ],
-                },
+                action_name="driver_verification_failed",
+                action_command=f"review task {task_id}",
+                risk_level="medium",
+                category="driver",
+                trigger_type="driver_review",
+                trigger_detail=(
+                    f"Driver '{driver_name}' failed verification for task {task_id} "
+                    f"after one bounce. Failures: {failures}"
+                ),
                 status="pending",
             )
             session.add(entry)

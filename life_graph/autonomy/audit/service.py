@@ -29,23 +29,46 @@ class AuditService:
     def __init__(self, session_factory):
         self._session_factory = session_factory
 
-    async def _append(self, tenant_id: str, action_type: str, **kwargs) -> uuid.UUID:
-        """Internal: append a single audit entry. Returns the entry ID."""
-        from life_graph.models.db import AuditLog
+    async def _append(self, tenant_id: str, action_type: str, **kwargs) -> str:
+        """Internal: append a single audit entry. Returns the entry ID.
 
-        entry_id = uuid.uuid4()
+        Maps the callers' friendly kwargs onto real ``AuditLogEntry`` columns:
+        ``action_id`` → ``auto_action_id``, ``command`` → ``action_command``,
+        ``details`` → ``classification_reasoning`` (the generic JSONB bucket).
+        Fills the NOT NULL ``actor_id`` / ``action_name`` with sensible fallbacks.
+        """
+        from life_graph.autonomy.models import AuditLogEntry
+
+        # ck_al_result restricts `result`; coerce free-text outcomes (rule_change,
+        # trust_override, autonomy_change, …) to "success", keeping the raw value
+        # in the details bucket so nothing is lost.
+        _allowed = {"success", "failure", "timeout", "rejected", "expired", "rolled_back"}
+        raw_result = kwargs.get("result")
+        details = dict(kwargs.get("details") or {})
+        if raw_result is not None and raw_result not in _allowed:
+            details.setdefault("raw_result", raw_result)
+            result = "success"
+        else:
+            result = raw_result
+
+        entry_id = str(uuid.uuid4())
+        agent_id = kwargs.get("agent_id")
         async with self._session_factory() as session:
-            entry = AuditLog(
+            entry = AuditLogEntry(
                 id=entry_id,
                 tenant_id=tenant_id,
+                agent_id=agent_id,
+                actor_type=kwargs.get("actor_type", "agent"),
+                actor_id=agent_id or kwargs.get("actor_id") or "system",
                 action_type=action_type,
-                action_id=kwargs.get("action_id"),
-                agent_id=kwargs.get("agent_id"),
-                project_id=kwargs.get("project_id"),
+                action_name=kwargs.get("action_name") or action_type,
+                action_command=kwargs.get("command"),
                 risk_level=kwargs.get("risk_level"),
-                command=kwargs.get("command"),
-                result=kwargs.get("result"),
-                details=kwargs.get("details", {}),
+                project_id=kwargs.get("project_id"),
+                auto_action_id=str(kwargs["action_id"]) if kwargs.get("action_id") else None,
+                approval_id=str(kwargs["approval_id"]) if kwargs.get("approval_id") else None,
+                result=result,
+                classification_reasoning=details,
                 created_at=datetime.now(timezone.utc),
             )
             session.add(entry)
@@ -93,13 +116,17 @@ class AuditService:
         note: str | None = None,
     ) -> uuid.UUID:
         """Log an approval decision."""
+        # ck_al_result vocabulary: map the decision to an allowed result.
+        result = "success" if decision == "approve" else "rejected"
         return await self._append(
             tenant_id=tenant_id,
             action_type="approval_decision",
             action_id=action_id,
-            result=decision,
+            approval_id=approval_id,
+            result=result,
             details={
                 "approval_id": str(approval_id),
+                "decision": decision,
                 "resolved_by": resolved_by,
                 "note": note,
             },
@@ -201,36 +228,36 @@ class AuditService:
         filters: dict | None = None,
     ) -> list:
         """Paginated query of audit log entries."""
-        from life_graph.models.db import AuditLog
+        from life_graph.autonomy.models import AuditLogEntry
 
         filters = filters or {}
 
         async with self._session_factory() as session:
-            q = select(AuditLog).where(AuditLog.tenant_id == tenant_id)
+            q = select(AuditLogEntry).where(AuditLogEntry.tenant_id == tenant_id)
 
             if filters.get("agent_id"):
-                q = q.where(AuditLog.agent_id == filters["agent_id"])
+                q = q.where(AuditLogEntry.agent_id == filters["agent_id"])
             if filters.get("action_type"):
-                q = q.where(AuditLog.action_type == filters["action_type"])
+                q = q.where(AuditLogEntry.action_type == filters["action_type"])
             if filters.get("risk_level"):
-                q = q.where(AuditLog.risk_level == filters["risk_level"])
+                q = q.where(AuditLogEntry.risk_level == filters["risk_level"])
             if filters.get("result"):
-                q = q.where(AuditLog.result == filters["result"])
+                q = q.where(AuditLogEntry.result == filters["result"])
             if filters.get("project_id"):
-                q = q.where(AuditLog.project_id == filters["project_id"])
+                q = q.where(AuditLogEntry.project_id == filters["project_id"])
             if filters.get("start_date"):
-                q = q.where(AuditLog.created_at >= datetime.combine(
+                q = q.where(AuditLogEntry.created_at >= datetime.combine(
                     filters["start_date"], datetime.min.time(), tzinfo=timezone.utc,
                 ))
             if filters.get("end_date"):
-                q = q.where(AuditLog.created_at <= datetime.combine(
+                q = q.where(AuditLogEntry.created_at <= datetime.combine(
                     filters["end_date"], datetime.max.time(), tzinfo=timezone.utc,
                 ))
 
             limit = filters.get("limit", 50)
             offset = filters.get("offset", 0)
 
-            q = q.order_by(AuditLog.created_at.desc()).limit(limit).offset(offset)
+            q = q.order_by(AuditLogEntry.created_at.desc()).limit(limit).offset(offset)
             result = await session.execute(q)
             return result.scalars().all()
 
@@ -245,23 +272,23 @@ class AuditService:
 
         Returns newline-delimited JSON for streaming.
         """
-        from life_graph.models.db import AuditLog
+        from life_graph.autonomy.models import AuditLogEntry
 
         async with self._session_factory() as session:
-            q = select(AuditLog).where(
-                AuditLog.tenant_id == tenant_id,
-                AuditLog.created_at >= datetime.combine(
+            q = select(AuditLogEntry).where(
+                AuditLogEntry.tenant_id == tenant_id,
+                AuditLogEntry.created_at >= datetime.combine(
                     start_date, datetime.min.time(), tzinfo=timezone.utc,
                 ),
-                AuditLog.created_at <= datetime.combine(
+                AuditLogEntry.created_at <= datetime.combine(
                     end_date, datetime.max.time(), tzinfo=timezone.utc,
                 ),
             )
 
             if project_id:
-                q = q.where(AuditLog.project_id == project_id)
+                q = q.where(AuditLogEntry.project_id == project_id)
 
-            q = q.order_by(AuditLog.created_at.asc())
+            q = q.order_by(AuditLogEntry.created_at.asc())
             result = await session.execute(q)
             entries = result.scalars().all()
 
@@ -271,13 +298,13 @@ class AuditService:
                 "id": str(entry.id),
                 "tenant_id": entry.tenant_id,
                 "action_type": entry.action_type,
-                "action_id": str(entry.action_id) if entry.action_id else None,
+                "action_id": str(entry.auto_action_id) if entry.auto_action_id else None,
                 "agent_id": entry.agent_id,
                 "project_id": entry.project_id,
                 "risk_level": entry.risk_level,
-                "command": entry.command,
+                "command": entry.action_command,
                 "result": entry.result,
-                "details": entry.details,
+                "details": entry.classification_reasoning,
                 "created_at": entry.created_at.isoformat(),
             })
             lines.append(line)

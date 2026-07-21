@@ -425,28 +425,28 @@ def get_autonomy_level_service():
     )
 
 
-@lru_cache(maxsize=1)
-def get_safety_classifier():
-    """Return the singleton safety classifier."""
-    from life_graph.autonomy.safety.classifier import SafetyClassifier
-    return SafetyClassifier(session_factory=async_session)
-
-
-@lru_cache(maxsize=1)
 def get_trust_service():
-    """Return the singleton trust service."""
-    from life_graph.autonomy.trust.service import TrustService
-    return TrustService(session_factory=async_session)
+    """Return a trust-score service bound to a fresh session.
+
+    ``TrustScoreService`` takes a live ``AsyncSession`` (not a factory), so this
+    is not an lru-cached singleton — callers use it within their own session
+    scope. Currently used by the trust-decay worker (which degrades gracefully
+    if unavailable).
+    """
+    from life_graph.autonomy.trust.service import TrustScoreService
+    return TrustScoreService(async_session())
 
 
 @lru_cache(maxsize=1)
 def get_autofix_service():
-    """Return the singleton autofix pipeline service."""
+    """Return the singleton autofix pipeline service.
+
+    The safety classifier is constructed per-request inside ``process`` (it needs
+    a live session), so it is not injected here.
+    """
     from life_graph.autonomy.pipeline.service import AutoFixService
     return AutoFixService(
         session_factory=async_session,
-        classifier=get_safety_classifier(),
-        trust_service=get_trust_service(),
         audit_service=get_audit_service(),
         approval_service=get_approval_service(),
         level_service=get_autonomy_level_service(),
