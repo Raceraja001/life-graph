@@ -653,8 +653,8 @@ while IFS= read -r doc; do
   header="$(head -1 "$doc")"
   case "$header" in *kb:source=*) ;; *) continue ;; esac
 
-  src="$(printf '%s' "$header" | sed -n 's/.*kb:source=\([^ ]*\).*/\1/p')"
-  sha="$(printf '%s' "$header" | sed -n 's/.*kb:sha=\([^ ]*\).*/\1/p')"
+  meta="${header#*kb:source=}"; meta="${meta%% kb:*}"; src="${meta% -->}"
+  meta="${header#*kb:sha=}";    meta="${meta%% kb:*}"; sha="${meta% -->}"
   name="$(basename "$(dirname "$doc")")"
   repo="$ROOT/$src"
 
