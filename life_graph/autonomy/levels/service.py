@@ -64,7 +64,7 @@ class AutonomyLevelService:
 
         Defaults to L0 (Ask Everything) for new projects.
         """
-        from life_graph.models.db import AutonomyLevel
+        from life_graph.autonomy.models import AutonomyLevel
 
         async with self._session_factory() as session:
             result = await session.execute(
@@ -76,16 +76,11 @@ class AutonomyLevelService:
             level = result.scalar_one_or_none()
 
             if not level:
+                # Real columns default level="L0" and all counters to 0.
                 level = AutonomyLevel(
-                    id=uuid.uuid4(),
+                    id=str(uuid.uuid4()),
                     tenant_id=tenant_id,
                     project_id=project_id,
-                    current_level=0,
-                    safe_count=0,
-                    moderate_count=0,
-                    failure_count=0,
-                    created_at=datetime.now(timezone.utc),
-                    updated_at=datetime.now(timezone.utc),
                 )
                 session.add(level)
                 await session.commit()
@@ -144,7 +139,7 @@ class AutonomyLevelService:
 
     async def promote(self, tenant_id: str, project_id: str) -> int:
         """Promote the project one level (if eligible). Returns new level."""
-        from life_graph.models.db import AutonomyLevel
+        from life_graph.autonomy.models import AutonomyLevel
 
         check = await self.check_promotion(tenant_id, project_id)
         if not check.eligible:
@@ -161,9 +156,11 @@ class AutonomyLevelService:
                     AutonomyLevel.project_id == project_id,
                 )
                 .values(
-                    current_level=new_level,
-                    safe_count=0,  # Reset counters after promotion
-                    failure_count=0,
+                    level=f"L{new_level}",
+                    level_description=LEVEL_NAMES.get(new_level, ""),
+                    safe_successes=0,  # Reset counters after promotion
+                    total_failures=0,
+                    last_promotion_at=now,
                     updated_at=now,
                 )
             )
@@ -187,7 +184,7 @@ class AutonomyLevelService:
 
     async def demote(self, tenant_id: str, project_id: str, reason: str) -> int:
         """Demote the project one level. Returns new level."""
-        from life_graph.models.db import AutonomyLevel
+        from life_graph.autonomy.models import AutonomyLevel
 
         level = await self.get_level(tenant_id, project_id)
         if level.current_level <= 0:
@@ -204,8 +201,12 @@ class AutonomyLevelService:
                     AutonomyLevel.project_id == project_id,
                 )
                 .values(
-                    current_level=new_level,
-                    failure_count=0,
+                    level=f"L{new_level}",
+                    level_description=LEVEL_NAMES.get(new_level, ""),
+                    total_failures=0,
+                    demotion_count=(level.demotion_count or 0) + 1,
+                    last_demotion_at=now,
+                    last_failure_at=now,
                     updated_at=now,
                 )
             )
@@ -236,7 +237,7 @@ class AutonomyLevelService:
         by: str,
     ) -> int:
         """Manually set the autonomy level. Returns the new level."""
-        from life_graph.models.db import AutonomyLevel
+        from life_graph.autonomy.models import AutonomyLevel
 
         if level < 0 or level > 3:
             raise ValueError(f"Invalid level: {level}. Must be 0-3.")
@@ -253,7 +254,12 @@ class AutonomyLevelService:
                     AutonomyLevel.project_id == project_id,
                 )
                 .values(
-                    current_level=level,
+                    level=f"L{level}",
+                    level_description=LEVEL_NAMES.get(level, ""),
+                    manual_level=f"L{level}",
+                    manual_set_by=by,
+                    manual_reason=reason,
+                    manual_set_at=now,
                     updated_at=now,
                 )
             )
@@ -284,20 +290,24 @@ class AutonomyLevelService:
         success: bool,
     ) -> None:
         """Record an action outcome for promotion tracking."""
-        from life_graph.models.db import AutonomyLevel
+        from life_graph.autonomy.models import AutonomyLevel
 
         level = await self.get_level(tenant_id, project_id)
         now = datetime.now(timezone.utc)
 
-        updates = {"updated_at": now}
+        updates = {"updated_at": now, "last_audit_at": now}
 
         if success:
+            updates["total_successes"] = (level.total_successes or 0) + 1
             if risk_level == "safe":
-                updates["safe_count"] = level.safe_count + 1
+                updates["safe_successes"] = level.safe_count + 1
             elif risk_level == "moderate":
-                updates["moderate_count"] = level.moderate_count + 1
+                updates["moderate_successes"] = level.moderate_count + 1
         else:
-            updates["failure_count"] = level.failure_count + 1
+            updates["total_failures"] = level.failure_count + 1
+            updates["last_failure_at"] = now
+
+        updates["total_auto_actions"] = (level.total_auto_actions or 0) + 1
 
         async with self._session_factory() as session:
             await session.execute(

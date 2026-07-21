@@ -2443,6 +2443,12 @@ class VerificationRun(Base):
         )
 
 
-# Expose autonomy models to prevent ImportErrors in downstream services/routers
+# NOTE: The Era-8 autonomy models (AutoAction, ApprovalQueueEntry, AuditLogEntry,
+# AutonomyLevel, TrustScore, ActionSafetyRule, ShadowEnrollment, ShadowRun) live in
+# life_graph/autonomy/models.py and must be imported from there directly. Do NOT
+# re-export them here at module level: autonomy/models.py imports Base/_utcnow from
+# this module, so a top-level `from life_graph.autonomy.models import ...` would create
+# an import-order-dependent circular import. Downstream code uses function-local imports
+# from life_graph.autonomy.models instead.
 
 

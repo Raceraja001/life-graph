@@ -53,16 +53,16 @@ async def query_audit_log(
     return success_response(
         data=[
             AuditEntryResponse(
-                id=e.id,
+                id=str(e.id),
                 tenant_id=e.tenant_id,
                 action_type=e.action_type,
-                action_id=e.action_id,
+                action_id=e.auto_action_id,
                 agent_id=e.agent_id,
                 project_id=e.project_id,
                 risk_level=e.risk_level,
-                command=e.command,
+                command=e.action_command,
                 result=e.result,
-                details=e.details,
+                details=e.classification_reasoning,
                 created_at=e.created_at,
             ).model_dump(mode="json")
             for e in entries
@@ -106,5 +106,5 @@ async def rollback_from_audit(action_id: UUID):
 
     return success_response(
         data=result.model_dump(mode="json"),
-        message="Rollback completed from audit",
+        meta={"message": "Rollback completed from audit"},
     )

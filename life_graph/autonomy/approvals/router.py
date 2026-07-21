@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
-from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
@@ -16,6 +15,7 @@ from life_graph.autonomy.approvals.schemas import (
     BatchResolveResponse,
     ResolveRequest,
 )
+from life_graph.autonomy.approvals.service import _serialize
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
 
@@ -35,49 +35,32 @@ async def list_approvals(
     """List approval queue entries with optional filters."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.models.db import ApprovalQueue
+    from life_graph.autonomy.models import ApprovalQueueEntry
 
     async with async_session() as session:
-        q = select(ApprovalQueue).where(ApprovalQueue.tenant_id == tenant_id)
+        q = select(ApprovalQueueEntry).where(ApprovalQueueEntry.tenant_id == tenant_id)
 
         if status:
-            q = q.where(ApprovalQueue.status == status)
+            q = q.where(ApprovalQueueEntry.status == status)
         if risk_level:
-            q = q.where(ApprovalQueue.risk_level == risk_level)
+            q = q.where(ApprovalQueueEntry.risk_level == risk_level)
         if agent_id:
-            q = q.where(ApprovalQueue.agent_id == agent_id)
+            q = q.where(ApprovalQueueEntry.agent_id == agent_id)
 
-        q = q.order_by(ApprovalQueue.created_at.desc()).limit(limit).offset(offset)
+        q = q.order_by(ApprovalQueueEntry.created_at.desc()).limit(limit).offset(offset)
         result = await session.execute(q)
         entries = result.scalars().all()
 
     return success_response(
         data=[
-            ApprovalResponse(
-                id=e.id,
-                tenant_id=e.tenant_id,
-                action_id=e.action_id,
-                agent_id=e.agent_id,
-                project_id=e.project_id,
-                action_type=e.action_type,
-                risk_level=e.risk_level,
-                command=e.command,
-                description=e.description,
-                status=e.status,
-                resolved_by=e.resolved_by,
-                resolved_at=e.resolved_at,
-                decision_note=e.decision_note,
-                expires_at=e.expires_at,
-                escalation_level=e.escalation_level or 0,
-                created_at=e.created_at,
-            ).model_dump(mode="json")
+            ApprovalResponse(**_serialize(e)).model_dump(mode="json")
             for e in entries
         ],
     )
 
 
 @router.post("/{approval_id}/resolve", response_model=None)
-async def resolve_approval(approval_id: UUID, request: ResolveRequest):
+async def resolve_approval(approval_id: str, request: ResolveRequest):
     """Resolve (approve/reject) an approval entry."""
     tenant_id = get_current_tenant_id()
 
@@ -96,7 +79,10 @@ async def resolve_approval(approval_id: UUID, request: ResolveRequest):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    return success_response(message=f"Approval {request.decision}d")
+    resolved_status = "approved" if request.decision == "approve" else "rejected"
+    return success_response(
+        data={"id": approval_id, "status": resolved_status},
+    )
 
 
 @router.post("/batch", response_model=None)

@@ -1,31 +1,38 @@
-"""Pydantic schemas for approval queue."""
+"""Pydantic schemas for the Era-8 autonomy approval queue.
+
+Aligned to the real ``ApprovalQueueEntry`` model (table ``approval_queue``).
+See docs/specs/era8-autonomy-reconciliation.md.
+"""
 
 from __future__ import annotations
 
 from datetime import datetime
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
 class ApprovalResponse(BaseModel):
-    """Response for a single approval queue entry."""
+    """Response for a single approval queue entry (real fields)."""
 
-    id: UUID
+    id: str
     tenant_id: str
-    action_id: UUID
     agent_id: str
-    project_id: str
-    action_type: str
-    risk_level: str
-    command: str
-    description: str = ""
+    project_id: str | None = None
+    action_name: str
+    action_command: str
+    risk_level: str | None = None
+    category: str = "general"
+    trigger_type: str
+    trigger_detail: str
+    estimated_impact: str | None = None
     status: str
+    priority: int = 100
     resolved_by: str | None = None
+    resolution_note: str | None = None
     resolved_at: datetime | None = None
-    decision_note: str | None = None
     expires_at: datetime | None = None
-    escalation_level: int = 0
+    timeout_hours: int = 24
+    escalation_sent: list = Field(default_factory=list)
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -43,7 +50,7 @@ class ResolveRequest(BaseModel):
 class BatchResolveRequest(BaseModel):
     """Request to batch resolve approvals."""
 
-    approval_ids: list[UUID] | None = Field(None, description="Specific IDs, or use filters")
+    approval_ids: list[str] | None = Field(None, description="Specific IDs, or use filters")
     agent_id: str | None = None
     project_id: str | None = None
     risk_level: str | None = None
@@ -56,4 +63,4 @@ class BatchResolveResponse(BaseModel):
     """Response from batch resolve."""
 
     resolved_count: int
-    resolved_ids: list[UUID]
+    resolved_ids: list[str]
