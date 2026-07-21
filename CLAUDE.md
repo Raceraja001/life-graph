@@ -12,6 +12,8 @@ the deeper onboarding docs, which are kept current and authoritative:
 - **KNOWLEDGE.md** — full architecture, DB schema, event list, design decisions, "you want to… look at…" file map.
 - **AGENTS.md** — developer preferences, code conventions, spec-driven build order, inter-agent `.comms/` protocol.
 - **docs/specs/** — Kiro-style specs (SQL, API contracts, code, task checklists) for each phase/era.
+- **docs/knowledge/00-index.md** — orientation card: 60-second version, architecture sketch,
+  and the traps that bite newcomers first. Mirrored to the private `knowledge-base` hub.
 
 Note the two names: the Python **package** is `life_graph/` (underscore); the git repo root is `life-graph/`
 (hyphen). The untracked `life-graph/` subfolder is a stray `.claude` dir — ignore it.

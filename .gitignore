@@ -51,3 +51,7 @@ docker-compose.override.yml
 # life-graph is PUBLIC and this directory has held candid analysis of client
 # codebases. Never track it here. See docs/superpowers/specs/2026-07-21-codebase-knowledge-base-design.md
 knowledge/
+# Exception: docs/knowledge/ holds this repo's own T1 orientation card (own-repo,
+# non-sensitive, mirrored to the private hub) — it belongs in version control.
+!docs/knowledge/
+!docs/knowledge/**
