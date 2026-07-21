@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Sora, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { RootShell } from "@/components/root-shell";
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
+// uzhavu type roles — display / body / mono. Self-hosted via next/font (no
+// runtime Google Fonts calls); variable fonts, so the full weight range is available.
+const sora = Sora({ variable: "--font-sora", subsets: ["latin"], display: "swap" });
+const jakarta = Plus_Jakarta_Sans({ variable: "--font-jakarta", subsets: ["latin"], display: "swap" });
+const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
   title: {
@@ -32,7 +33,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#059669",
+  themeColor: "#0e8a4d",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -44,11 +45,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full`}>
+    <html
+      lang="en"
+      data-theme="light"
+      data-accent="emerald"
+      data-density="comfortable"
+      className={`${sora.variable} ${jakarta.variable} ${jetbrainsMono.variable} h-full`}
+    >
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
-      <body className="min-h-full bg-[#fafafa] text-zinc-900 font-[family-name:var(--font-inter)] antialiased">
+      <body className="min-h-full antialiased">
         <RootShell>{children}</RootShell>
         <script
           dangerouslySetInnerHTML={{

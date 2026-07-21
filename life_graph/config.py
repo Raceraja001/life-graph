@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     dedup_enabled: bool = True
     dedup_threshold: float = 0.92  # cosine similarity threshold for near-duplicate detection
 
+    # Merge suggestions: nightly, additive. Active pairs whose similarity lands in
+    # [merge_review_low, dedup_threshold) coexist today (below the auto-merge line);
+    # the producer queues them as merge approvals for the user to confirm.
+    merge_review_low: float = 0.85
+    merge_suggest_scan_limit: int = 200  # max active memories scanned per tenant per run
+
     # ── Cold Start ─────────────────────────────────────
     cold_start_min_memories: int = 50
 

@@ -17,7 +17,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 from life_graph.extraction.pipeline import ExtractionPipeline
@@ -141,27 +140,26 @@ class MemoryManager:
 
         # Update supersession chain via direct attribute patching
         # (MemoryUpdate doesn't expose superseded_by, so we update directly)
-        from life_graph.storage.database import async_session
         from sqlalchemy import update
+
+        from life_graph.storage.database import async_session
 
         async with async_session() as session:
             # Set superseded_by on old memory
             await session.execute(
-                update(Memory)
-                .where(Memory.id == old_uuid)
-                .values(superseded_by=new_uuid)
+                update(Memory).where(Memory.id == old_uuid).values(superseded_by=new_uuid)
             )
             # Set supersedes on new memory
             await session.execute(
-                update(Memory)
-                .where(Memory.id == new_uuid)
-                .values(supersedes=old_uuid)
+                update(Memory).where(Memory.id == new_uuid).values(supersedes=old_uuid)
             )
             await session.commit()
 
         logger.info(
             "Superseded memory %s → %s (reason: %s)",
-            old_memory_id[:8], new_memory_id[:8], reason,
+            old_memory_id[:8],
+            new_memory_id[:8],
+            reason,
         )
 
     # ── Internal Helpers ──────────────────────────────────────
@@ -203,13 +201,15 @@ class MemoryManager:
             # Near-match (expensive, only if no exact match and embedding available)
             if embedding:
                 similar = await self._store.find_similar(
-                    embedding, threshold=settings.dedup_threshold,
+                    embedding,
+                    threshold=settings.dedup_threshold,
                 )
                 if similar:
                     existing_memory, score = similar[0]  # highest similarity
                     logger.info(
                         "Dedup: near-match (%.2f) found, merging with %s",
-                        score, existing_memory.id,
+                        score,
+                        existing_memory.id,
                     )
 
                     # Merge: higher importance wins, union tags, merge properties
@@ -217,9 +217,11 @@ class MemoryManager:
                         existing_memory.importance,
                         importance or 0.5,
                     )
-                    merged_tags = list(set(
-                        (existing_memory.tags or []) + _infer_tags(fact, tier),
-                    ))
+                    merged_tags = list(
+                        set(
+                            (existing_memory.tags or []) + _infer_tags(fact, tier),
+                        )
+                    )
 
                     new_props: dict[str, Any] = {}
                     if context:
@@ -246,7 +248,8 @@ class MemoryManager:
         contradictions: list[Contradiction] = []
         if embedding:
             contradictions = await self._contradiction_detector.check(
-                fact.content, embedding,
+                fact.content,
+                embedding,
             )
 
         # Step 5: Handle contradictions
@@ -283,17 +286,73 @@ class MemoryManager:
         )
 
         stored = await self._store.store(
-            memory_create, embedding=embedding, trust_tier=trust_tier,
+            memory_create,
+            embedding=embedding,
+            trust_tier=trust_tier,
         )
 
-        # Step 5b: Execute auto-supersessions
+        # Step 5b: Execute auto-supersessions, queuing an approval for each so
+        # the user can confirm or undo it (additive — the supersede still happens).
         for old_id, reason in auto_supersede_targets:
             await self.supersede(old_id, str(stored.id), reason)
+            await self._queue_contradiction_approval(old_id, str(stored.id), reason)
 
         return stored
 
+    async def _queue_contradiction_approval(
+        self,
+        old_id: str,
+        new_id: str,
+        reason: str,
+    ) -> None:
+        """Record an auto-supersede as a contradiction approval (confirm/undo).
+
+        Additive and non-blocking: any failure here is logged, never raised,
+        so contradiction handling can't break ingestion.
+        """
+        from sqlalchemy import select
+
+        from life_graph.core.tenant import get_current_tenant_id
+        from life_graph.models.db import Approval
+        from life_graph.storage.database import async_session
+
+        try:
+            tenant_id = get_current_tenant_id()
+            ref = f"{old_id}|{new_id}"
+            async with async_session() as session:
+                exists = (
+                    await session.execute(
+                        select(Approval.id).where(
+                            Approval.tenant_id == tenant_id,
+                            Approval.source == "judgment",
+                            Approval.source_ref == ref,
+                        )
+                    )
+                ).first()
+                if exists:
+                    return
+                session.add(
+                    Approval(
+                        tenant_id=tenant_id,
+                        kind="contradiction",
+                        source="judgment",
+                        source_ref=ref,
+                        title="Review a resolved contradiction",
+                        detail=reason,
+                        payload={"memory_id_old": str(old_id), "memory_id_new": str(new_id)},
+                    )
+                )
+                await session.commit()
+        except Exception:
+            logger.warning(
+                "Failed to queue contradiction approval for %s→%s",
+                str(old_id)[:8],
+                str(new_id)[:8],
+            )
+
     def _resolve_contradictions(
-        self, contradictions: list[Contradiction],
+        self,
+        contradictions: list[Contradiction],
     ) -> list[tuple[str, str]]:
         """Determine which contradictions to auto-resolve via supersession.
 
@@ -304,10 +363,12 @@ class MemoryManager:
 
         for contradiction in contradictions:
             if contradiction.resolution == "supersede":
-                supersede_targets.append((
-                    contradiction.existing_memory_id,
-                    contradiction.reason,
-                ))
+                supersede_targets.append(
+                    (
+                        contradiction.existing_memory_id,
+                        contradiction.reason,
+                    )
+                )
                 logger.info(
                     "Auto-superseding memory %s: %s",
                     contradiction.existing_memory_id[:8],
@@ -367,9 +428,7 @@ class MemoryManager:
             vector = self._embed_model.encode(text).tolist()
             return vector
         except ImportError:
-            logger.debug(
-                "sentence-transformers not available, skipping embedding"
-            )
+            logger.debug("sentence-transformers not available, skipping embedding")
             return None
         except Exception as exc:
             logger.warning("Embedding generation failed: %s", exc)

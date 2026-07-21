@@ -114,6 +114,10 @@ class EventType(str, Enum):
     DECISION_CHALLENGED = "judgment:decision:challenged"
     BIAS_DETECTED = "judgment:bias:detected"
 
+    # ── Approvals (unified human-in-the-loop) ─────────────────
+    APPROVAL_REQUESTED = "approval:requested"
+    APPROVAL_RESOLVED = "approval:resolved"
+
     # ── Agent Driver Events ──────────────────────────────────
     DRIVER_DISPATCHED = "driver:dispatched"
     DRIVER_RESULT = "driver:result"

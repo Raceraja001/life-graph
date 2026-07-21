@@ -1,20 +1,29 @@
 /**
- * Next.js middleware — route protection.
+ * Next.js Proxy — route protection (renamed from Middleware in Next.js 16;
+ * same functionality).
  *
  * Runs on every request BEFORE the page renders (edge runtime).
  * If the user has no credentials in cookies/localStorage we can't
- * check localStorage from middleware (server-side), so we use a
+ * check localStorage from the proxy (server-side), so we use a
  * simple cookie `lg_authed=1` that the login page sets on success.
  *
  * Protected routes redirect → /login
- * /login when already authed redirects → /
+ * Phone visitors on "/" redirect → /m
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/api/webhooks"];
 
-export function middleware(request: NextRequest) {
+// Phones/tablets get the mobile app; iPadOS increasingly reports a desktop UA,
+// which is fine — those users keep the desktop dashboard.
+const MOBILE_UA = /Android|iPhone|iPod|Opera Mini|IEMobile|BlackBerry|Mobile Safari/i;
+
+function isMobileUserAgent(ua: string | null): boolean {
+  return !!ua && MOBILE_UA.test(ua);
+}
+
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths and static assets
@@ -36,6 +45,11 @@ export function middleware(request: NextRequest) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Send phone visitors landing on the desktop root to the mobile app.
+  if (pathname === "/" && isMobileUserAgent(request.headers.get("user-agent"))) {
+    return NextResponse.redirect(new URL("/m", request.url));
   }
 
   return NextResponse.next();
