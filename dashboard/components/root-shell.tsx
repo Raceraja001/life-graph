@@ -11,6 +11,12 @@ import { useWebSocket } from "@/lib/use-websocket";
 
 const STANDALONE_ROUTES = ["/login"];
 
+// The mobile app (/m and its subroutes) brings its own shell, so it must bypass
+// the desktop sidebar/topbar/chat chrome. Guard against matching "/memories" etc.
+function isStandalone(pathname: string) {
+  return STANDALONE_ROUTES.includes(pathname) || pathname === "/m" || pathname.startsWith("/m/");
+}
+
 function AppShell({ children }: { children: React.ReactNode }) {
   const [commandOpen, setCommandOpen] = useState(false);
   const status = useWebSocket();
@@ -33,7 +39,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
 export function RootShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  if (STANDALONE_ROUTES.includes(pathname)) {
+  if (isStandalone(pathname)) {
     return <Providers>{children}</Providers>;
   }
 

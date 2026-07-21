@@ -14,6 +14,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -24,6 +25,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -2277,6 +2279,64 @@ class Challenge(Base):
 
     def __repr__(self) -> str:
         return f"<Challenge(id={self.id!s:.8}, verdict={self.verdict})>"
+
+
+class Approval(Base):
+    """A unified human-in-the-loop item awaiting an approve/reject decision.
+
+    Polymorphic across subsystems via ``kind``/``source``: promotions
+    (self-improving) today; merges, contradictions, and weekly-review drafts
+    as producers are added. Distinct from the autonomy ``approval_queue``
+    (shell-command HITL). Multi-tenant — every query filters by ``tenant_id``.
+    """
+
+    __tablename__ = "approvals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
+
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    resolved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','approved','rejected')",
+            name="ck_approvals_status",
+        ),
+        Index("ix_approvals_tenant_status", "tenant_id", "status"),
+        Index(
+            "uq_approvals_source_ref",
+            "tenant_id",
+            "source",
+            "source_ref",
+            unique=True,
+            postgresql_where=text("source_ref IS NOT NULL"),
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Approval(id={self.id!s:.8}, kind={self.kind}, status={self.status})>"
 
 
 # ── Agent Driver Models ────────────────────────────────────────────

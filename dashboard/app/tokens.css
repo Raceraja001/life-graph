@@ -1,0 +1,213 @@
+/* ============================================================================
+ * uzhavu design tokens — ported from the Life Graph design handoff.
+ * Pure custom-property declarations only (no reset, no @font-face) so this is
+ * safe to layer under Tailwind preflight. Font families are supplied by
+ * next/font and mapped to --font-* in globals.css.
+ *
+ * Theme axes compose as attributes on <html>:
+ *   data-theme="light | dark"   data-accent="emerald | amber | coral | indigo | magenta | ocean"
+ *   data-contrast="normal | high"   data-density="comfortable | compact"   dir="ltr | rtl"
+ * Components reference SEMANTIC tokens only (--bg, --surface, --text, --accent…).
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------- COLOR --- */
+:root {
+  /* Warm neutral ramp (stone) */
+  --neutral-0:#ffffff; --neutral-50:#f8f7f4; --neutral-100:#efede8; --neutral-200:#e1ddd5;
+  --neutral-300:#ccc6ba; --neutral-400:#a8a092; --neutral-500:#837b6d; --neutral-600:#635c50;
+  --neutral-700:#49443b; --neutral-800:#302c26; --neutral-900:#1d1a15; --neutral-950:#110f0b;
+
+  /* Fixed status colors (independent of accent axis) */
+  --success:#18a85f; --success-fg:#ffffff;
+  --warning:#db8009; --warning-fg:#ffffff;
+  --danger:#ed2e44;  --danger-fg:#ffffff;
+  --info:#2f6fed;    --info-fg:#ffffff;
+  --success-soft: color-mix(in srgb, var(--success) 12%, transparent);
+  --warning-soft: color-mix(in srgb, var(--warning) 14%, transparent);
+  --danger-soft:  color-mix(in srgb, var(--danger)  12%, transparent);
+  --info-soft:    color-mix(in srgb, var(--info)    12%, transparent);
+}
+
+/* Accent axis — raw ramps. Life Graph defaults to emerald. */
+:root, [data-accent="emerald"] {
+  --accent-50:#ecfdf2; --accent-100:#d2f7e0; --accent-200:#a7edc4; --accent-300:#6fdda1;
+  --accent-400:#38c47b; --accent-500:#18a85f; --accent-600:#0e8a4d; --accent-700:#0d6e40;
+  --accent-800:#0e5736; --accent-900:#0a3a24;
+}
+[data-accent="amber"] {
+  --accent-50:#fff8eb; --accent-100:#fdecc8; --accent-200:#fbd88d; --accent-300:#f7c04f;
+  --accent-400:#f0a020; --accent-500:#db8009; --accent-600:#b85f06; --accent-700:#934c08;
+  --accent-800:#76400d; --accent-900:#62360f;
+}
+[data-accent="coral"] {
+  --accent-50:#fff0f1; --accent-100:#ffdcdf; --accent-200:#ffbcc2; --accent-300:#ff8b96;
+  --accent-400:#fb5564; --accent-500:#ed2e44; --accent-600:#d31334; --accent-700:#b00b2d;
+  --accent-800:#930e2c; --accent-900:#7d122b;
+}
+[data-accent="indigo"] {
+  --accent-50:#eef0ff; --accent-100:#e0e3ff; --accent-200:#c6ccff; --accent-300:#a3a8ff;
+  --accent-400:#8079ff; --accent-500:#6451f6; --accent-600:#5436e0; --accent-700:#4729bd;
+  --accent-800:#3b2599; --accent-900:#34237a;
+}
+[data-accent="magenta"] {
+  --accent-50:#fbf0ff; --accent-100:#f6ddff; --accent-200:#efbcff; --accent-300:#e58bff;
+  --accent-400:#d653ff; --accent-500:#c026e8; --accent-600:#a313c4; --accent-700:#8612a0;
+  --accent-800:#6f1483; --accent-900:#5d156c;
+}
+[data-accent="ocean"] {
+  --accent-50:#ecfdfa; --accent-100:#cdf6ee; --accent-200:#9ce9dd; --accent-300:#5fd6c7;
+  --accent-400:#2bbcaa; --accent-500:#119e90; --accent-600:#0c7f76; --accent-700:#0e655f;
+  --accent-800:#0f514d; --accent-900:#103f3d;
+}
+
+/* Mode axis — LIGHT (default) semantic surfaces / ink / accent roles */
+:root {
+  --bg: var(--neutral-50); --bg-pattern: var(--neutral-100);
+  --surface: var(--neutral-0); --surface-2: var(--neutral-50);
+  --surface-3: var(--neutral-100); --surface-inset: var(--neutral-100);
+  --text: var(--neutral-900); --text-muted: var(--neutral-600);
+  --text-subtle: var(--neutral-500); --text-inverse: var(--neutral-0);
+  --border: var(--neutral-200); --border-strong: var(--neutral-300);
+  --accent: var(--accent-600); --accent-hover: var(--accent-700); --accent-active: var(--accent-800);
+  --accent-fg:#ffffff; --accent-soft: var(--accent-50); --accent-soft-hover: var(--accent-100);
+  --accent-soft-fg: var(--accent-700); --accent-border: var(--accent-200); --accent-text: var(--accent-700);
+  --ring: color-mix(in srgb, var(--accent-500) 55%, transparent); --ring-width:3px;
+  --overlay: color-mix(in srgb, var(--neutral-950) 45%, transparent);
+  color-scheme: light;
+}
+
+/* Elements switching accent must re-derive semantic roles from their own ramp. */
+[data-accent] {
+  --accent: var(--accent-600); --accent-hover: var(--accent-700); --accent-active: var(--accent-800);
+  --accent-fg:#ffffff; --accent-soft: var(--accent-50); --accent-soft-hover: var(--accent-100);
+  --accent-soft-fg: var(--accent-700); --accent-border: var(--accent-200); --accent-text: var(--accent-700);
+  --ring: color-mix(in srgb, var(--accent-500) 55%, transparent);
+}
+
+/* Mode axis — DARK */
+[data-theme="dark"] {
+  --bg: var(--neutral-950); --bg-pattern: var(--neutral-900);
+  --surface:#1a1712; --surface-2:#221e18; --surface-3:#2c2720; --surface-inset:#14110d;
+  --text: var(--neutral-50); --text-muted: var(--neutral-400);
+  --text-subtle: var(--neutral-500); --text-inverse: var(--neutral-950);
+  --border:#332e26; --border-strong:#494238;
+  --accent: var(--accent-500); --accent-hover: var(--accent-400); --accent-active: var(--accent-300);
+  --accent-fg:#0c0a07; --accent-soft: color-mix(in srgb, var(--accent-500) 16%, transparent);
+  --accent-soft-hover: color-mix(in srgb, var(--accent-500) 24%, transparent);
+  --accent-soft-fg: var(--accent-200); --accent-border: color-mix(in srgb, var(--accent-500) 32%, transparent);
+  --accent-text: var(--accent-300);
+  --ring: color-mix(in srgb, var(--accent-400) 60%, transparent);
+  --overlay: color-mix(in srgb, #000000 62%, transparent);
+  color-scheme: dark;
+  --success-soft: color-mix(in srgb, var(--success) 20%, transparent);
+  --warning-soft: color-mix(in srgb, var(--warning) 22%, transparent);
+  --danger-soft:  color-mix(in srgb, var(--danger)  20%, transparent);
+  --info-soft:    color-mix(in srgb, var(--info)    20%, transparent);
+}
+[data-accent][data-theme="dark"] {
+  --accent: var(--accent-500); --accent-hover: var(--accent-400); --accent-active: var(--accent-300);
+  --accent-fg:#0c0a07; --accent-soft: color-mix(in srgb, var(--accent-500) 16%, transparent);
+  --accent-soft-hover: color-mix(in srgb, var(--accent-500) 24%, transparent);
+  --accent-soft-fg: var(--accent-200); --accent-border: color-mix(in srgb, var(--accent-500) 32%, transparent);
+  --accent-text: var(--accent-300);
+  --ring: color-mix(in srgb, var(--accent-400) 60%, transparent);
+}
+[data-accent="amber"][data-theme="dark"] { --accent-fg:#2a1a02; }
+
+/* Contrast axis — high-contrast a11y boost, composes with either mode */
+[data-contrast="high"] {
+  --border: var(--neutral-500); --border-strong: var(--neutral-700);
+  --text-muted: var(--neutral-800); --text-subtle: var(--neutral-700);
+  --ring-width:4px; --ring: var(--accent-600);
+}
+[data-contrast="high"][data-theme="dark"] {
+  --border: var(--neutral-400); --border-strong: var(--neutral-300);
+  --text-muted: var(--neutral-200); --text-subtle: var(--neutral-300);
+  --ring: var(--accent-300);
+}
+
+/* ----------------------------------------------------------- TYPOGRAPHY --- */
+:root {
+  --fw-regular:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700; --fw-extrabold:800;
+
+  --text-2xs:11px; --text-xs:12px; --text-sm:13px; --text-base:14px; --text-md:16px;
+  --text-lg:18px; --text-xl:22px; --text-2xl:28px; --text-3xl:36px; --text-4xl:46px;
+  --text-5xl:60px; --text-6xl:76px;
+
+  --leading-tight:1.1; --leading-snug:1.25; --leading-normal:1.5; --leading-relaxed:1.65;
+
+  --tracking-tight:-0.02em; --tracking-snug:-0.01em; --tracking-normal:0;
+  --tracking-wide:0.02em; --tracking-caps:0.08em;
+
+  --display-font: var(--font-display); --display-weight: var(--fw-extrabold); --display-tracking: var(--tracking-tight);
+  --heading-font: var(--font-display); --heading-weight: var(--fw-bold);
+  --body-font: var(--font-sans); --body-weight: var(--fw-regular);
+  --label-font: var(--font-sans); --label-weight: var(--fw-semibold);
+  --mono-font: var(--font-mono);
+
+  --eyebrow-size: var(--text-xs); --eyebrow-weight: var(--fw-bold); --eyebrow-tracking: var(--tracking-caps);
+}
+:root[lang="ta"], [lang="ta"] {
+  --body-font: var(--font-tamil); --heading-font: var(--font-tamil); --display-font: var(--font-tamil);
+}
+
+/* --------------------------------------------------- SPACING / DENSITY --- */
+:root {
+  --space-0:0; --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:20px;
+  --space-6:24px; --space-7:32px; --space-8:40px; --space-9:48px; --space-10:64px;
+  --space-11:80px; --space-12:96px; --space-13:128px;
+
+  --container-sm:640px; --container-md:820px; --container-lg:1080px; --container-xl:1280px; --container-2xl:1480px;
+
+  --control-h:40px; --control-h-sm:32px; --control-h-lg:48px; --control-px:16px; --control-gap:8px;
+  --field-gap:16px; --card-pad:20px; --section-gap:24px; --stack-gap:16px; --row-h:52px;
+  --ui-text: var(--text-base);
+}
+[data-density="compact"] {
+  --control-h:32px; --control-h-sm:26px; --control-h-lg:40px; --control-px:12px; --control-gap:6px;
+  --field-gap:10px; --card-pad:14px; --section-gap:16px; --stack-gap:10px; --row-h:40px;
+  --ui-text: var(--text-sm);
+}
+
+/* ---------------------------------------------------------------- RADIUS --- */
+:root {
+  --radius-none:0; --radius-xs:4px; --radius-sm:6px; --radius-md:10px; --radius-lg:14px;
+  --radius-xl:20px; --radius-2xl:28px; --radius-pill:999px; --radius-circle:50%;
+  --radius-control: var(--radius-md); --radius-card: var(--radius-lg);
+  --radius-field: var(--radius-md); --radius-chip: var(--radius-pill);
+}
+
+/* --------------------------------------------------------------- SHADOWS --- */
+:root {
+  --shadow-color:30 28% 20%;
+  --shadow-xs:0 1px 2px hsl(var(--shadow-color)/0.06);
+  --shadow-sm:0 1px 2px hsl(var(--shadow-color)/0.06), 0 2px 6px hsl(var(--shadow-color)/0.07);
+  --shadow-md:0 2px 4px hsl(var(--shadow-color)/0.06), 0 6px 16px hsl(var(--shadow-color)/0.10);
+  --shadow-lg:0 4px 8px hsl(var(--shadow-color)/0.07), 0 14px 34px hsl(var(--shadow-color)/0.13);
+  --shadow-xl:0 8px 16px hsl(var(--shadow-color)/0.10), 0 28px 60px hsl(var(--shadow-color)/0.18);
+  --shadow-inset: inset 0 1px 2px hsl(var(--shadow-color)/0.08);
+  --shadow-accent:0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+[data-theme="dark"] {
+  --shadow-color:30 30% 2%;
+  --shadow-xs:0 1px 2px hsl(var(--shadow-color)/0.5);
+  --shadow-sm:0 1px 2px hsl(var(--shadow-color)/0.5), 0 2px 6px hsl(var(--shadow-color)/0.5);
+  --shadow-md:0 2px 4px hsl(var(--shadow-color)/0.5), 0 6px 16px hsl(var(--shadow-color)/0.55);
+  --shadow-lg:0 4px 8px hsl(var(--shadow-color)/0.55), 0 14px 34px hsl(var(--shadow-color)/0.6);
+  --shadow-xl:0 8px 16px hsl(var(--shadow-color)/0.6), 0 28px 60px hsl(var(--shadow-color)/0.7);
+  --shadow-accent:0 4px 18px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* ---------------------------------------------------------------- MOTION --- */
+:root {
+  --dur-instant:80ms; --dur-fast:130ms; --dur-base:200ms; --dur-slow:320ms; --dur-slower:480ms;
+  --ease-out: cubic-bezier(0.22,1,0.36,1); --ease-in-out: cubic-bezier(0.65,0,0.35,1);
+  --ease-spring: cubic-bezier(0.34,1.56,0.64,1); --ease-standard: cubic-bezier(0.4,0,0.2,1);
+  --press-scale:0.97; --lift-y:-2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant:0ms; --dur-fast:0ms; --dur-base:0ms; --dur-slow:0ms; --dur-slower:0ms;
+    --press-scale:1; --lift-y:0px;
+  }
+}

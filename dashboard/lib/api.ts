@@ -126,4 +126,14 @@ export const api = {
   advisor: {
     ask: (question: string) => POST<any>("/advisor/ask", { question }),
   },
+
+  // ── Approvals (unified human-in-the-loop feed) ──
+  approvals: {
+    list: (status: string = "pending") =>
+      listRequest<any>("/approvals", { status }),
+    approve: (id: string, body?: { note?: string; resolved_by?: string }) =>
+      POST<any>(`/approvals/${id}/approve`, body ?? {}),
+    reject: (id: string, body?: { note?: string; resolved_by?: string }) =>
+      POST<any>(`/approvals/${id}/reject`, body ?? {}),
+  },
 };

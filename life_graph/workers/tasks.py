@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
-from life_graph.config import settings
 from life_graph.core.tenant import set_tenant_context
 from life_graph.models.db import JobRun, Memory
 from life_graph.storage.database import async_session
@@ -55,7 +54,7 @@ async def run_tenant_consolidation(ctx: dict, tenant_id: str) -> dict:
             tenant_id=tenant_id,
             job_name="consolidation",
             status="running",
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
         session.add(job)
         await session.commit()
@@ -81,7 +80,7 @@ async def run_tenant_consolidation(ctx: dict, tenant_id: str) -> dict:
                 .where(JobRun.id == job_id)
                 .values(
                     status="success",
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                     result=result_data,
                 )
             )
@@ -98,7 +97,7 @@ async def run_tenant_consolidation(ctx: dict, tenant_id: str) -> dict:
                 .where(JobRun.id == job_id)
                 .values(
                     status="failed",
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                     error=str(e),
                 )
             )
@@ -140,6 +139,7 @@ async def run_all_consolidations(ctx: dict) -> dict:
     redis = ctx.get("redis")
     if redis:
         from arq import create_pool
+
         from life_graph.workers.settings import parse_redis_settings
 
         pool = await create_pool(parse_redis_settings())
@@ -152,6 +152,36 @@ async def run_all_consolidations(ctx: dict) -> dict:
             await run_tenant_consolidation(ctx, tid)
 
     return {"tenants": len(tenant_ids), "tenant_ids": tenant_ids}
+
+
+async def run_tenant_merge_suggestions(ctx: dict, tenant_id: str) -> dict:
+    """Queue merge-suggestion approvals for near-duplicate memories (one tenant)."""
+    set_tenant_context(tenant_id, "system")
+    from life_graph.services.merge_suggestions import MergeSuggestionService
+    from life_graph.storage.postgres import PostgresMemoryStore
+
+    store = PostgresMemoryStore()
+    async with async_session() as session:
+        queued = await MergeSuggestionService(session, store).scan_and_queue(tenant_id)
+        await session.commit()
+    logger.info("Merge suggestions for tenant %s: queued %d", tenant_id, queued)
+    return {"tenant_id": tenant_id, "queued": queued}
+
+
+async def run_all_merge_suggestions(ctx: dict) -> dict:
+    """Nightly cron: queue merge suggestions across all tenants."""
+    async with async_session() as session:
+        result = await session.execute(select(Memory.tenant_id).distinct())
+        tenant_ids = [row[0] for row in result.fetchall()]
+
+    total = 0
+    for tid in tenant_ids:
+        try:
+            res = await run_tenant_merge_suggestions(ctx, tid)
+            total += res.get("queued", 0)
+        except Exception:
+            logger.exception("Merge suggestions failed for tenant %s", tid)
+    return {"tenants": len(tenant_ids), "queued": total}
 
 
 async def run_all_research(ctx: dict) -> dict:
@@ -205,13 +235,13 @@ async def run_nightly_self_heal(ctx: dict) -> dict:
     """
     logger.info("Starting nightly self-heal for all tenants")
 
-    from life_graph.self_improving.models import EvalSuite
-    from life_graph.self_improving.nightly_cron import nightly_self_heal
     from life_graph.api.dependencies import (
         get_eval_service,
-        get_prompt_version_service,
         get_optimizer_service,
+        get_prompt_version_service,
     )
+    from life_graph.self_improving.models import EvalSuite
+    from life_graph.self_improving.nightly_cron import nightly_self_heal
 
     # Find all tenants with eval suites
     async with async_session() as session:
@@ -263,15 +293,15 @@ async def run_watchers(ctx: dict) -> dict:
     logger.info("Starting hourly watcher run for all tenants")
 
     try:
-        from life_graph.watchers.models import WatchConfig, WatchEvent, WatcherRun
+        from life_graph.watchers.models import WatchConfig, WatcherRun, WatchEvent
     except ImportError:
         logger.warning("Watcher models not available — skipping watcher run")
         return {"status": "skipped", "reason": "models_unavailable"}
 
-    from life_graph.watchers.server_health_watcher import ServerHealthWatcher
-    from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
     from life_graph.api.dependencies import get_watcher_notification_engine
-    from life_graph.core.events import event_bus, EventType
+    from life_graph.core.events import EventType, event_bus
+    from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
+    from life_graph.watchers.server_health_watcher import ServerHealthWatcher
 
     WATCHER_MAP = {
         "server_health": ServerHealthWatcher,
@@ -336,7 +366,7 @@ async def run_watchers(ctx: dict) -> dict:
                     tenant_id=tid,
                     watcher_name=wconfig.watcher_name,
                     status="running",
-                    started_at=datetime.now(timezone.utc),
+                    started_at=datetime.now(UTC),
                 )
                 session.add(run)
                 await session.commit()
@@ -374,7 +404,7 @@ async def run_watchers(ctx: dict) -> dict:
                         .where(WatcherRun.id == run_id)
                         .values(
                             status="success",
-                            completed_at=datetime.now(timezone.utc),
+                            completed_at=datetime.now(UTC),
                             events_created=len(events),
                             duration_ms=duration_ms,
                         )
@@ -420,7 +450,7 @@ async def run_watchers(ctx: dict) -> dict:
                         .where(WatcherRun.id == run_id)
                         .values(
                             status="failed",
-                            completed_at=datetime.now(timezone.utc),
+                            completed_at=datetime.now(UTC),
                             error=str(e),
                         )
                     )

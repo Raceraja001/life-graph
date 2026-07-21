@@ -1,50 +1,59 @@
 @import "tailwindcss";
+@import "./tokens.css";
 
+/* Map uzhavu type roles onto the next/font variables set in layout.tsx.
+ * Custom-property indirection resolves at use-time, so tokens.css (which reads
+ * --font-display / --font-sans / --font-mono) picks these up regardless of order. */
 :root {
-  --background: #ffffff;
-  --foreground: #09090b;
-  --emerald-accent: #059669;
-  --emerald-glow: rgba(5, 150, 105, 0.08);
+  --font-display: var(--font-sora), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: var(--font-jakarta), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-tamil: var(--font-jakarta), system-ui, sans-serif; /* Tamil face not loaded yet */
+
+  /* Retained from the original theme in case anything still references them. */
+  --background: var(--surface);
+  --foreground: var(--text);
+  --emerald-accent: var(--accent);
+  --emerald-glow: var(--accent-soft);
 }
 
+/* Document defaults (token-driven). Tailwind preflight already handles the reset. */
 body {
-  background: #fafafa;
+  font-family: var(--body-font);
+  font-weight: var(--body-weight);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv05" 1, "ss01" 1;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1aa;
+h1, h2, h3, h4, h5 {
+  font-family: var(--heading-font);
+  letter-spacing: var(--tracking-snug);
 }
 
-/* Focus styles */
+code, pre, kbd, samp { font-family: var(--mono-font); }
+
+/* Focus + selection driven by accent tokens */
 :focus-visible {
-  outline: 2px solid rgba(5, 150, 105, 0.5);
+  outline: var(--ring-width) solid var(--ring);
   outline-offset: 2px;
 }
+::selection { background: var(--accent-soft); color: var(--accent-soft-fg); }
 
-/* Selection */
-::selection {
-  background: rgba(5, 150, 105, 0.15);
-  color: #09090b;
-}
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--radius-pill); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
 
 /* Smooth hover transitions */
 a, button, input {
   transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
 
-/* Mobile: reduce padding */
+/* Mobile: reduce padding on the desktop shell's main region */
 @media (max-width: 1023px) {
   main {
     padding-left: 1rem !important;
@@ -55,10 +64,6 @@ a, button, input {
 
 /* Mobile: stack kanban columns */
 @media (max-width: 767px) {
-  .grid-cols-4 {
-    grid-template-columns: 1fr !important;
-  }
-  .grid-cols-3 {
-    grid-template-columns: 1fr !important;
-  }
+  .grid-cols-4 { grid-template-columns: 1fr !important; }
+  .grid-cols-3 { grid-template-columns: 1fr !important; }
 }
