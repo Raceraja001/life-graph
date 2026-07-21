@@ -46,3 +46,8 @@ models_cache/
 # Alembic
 alembic/versions/__pycache__/
 docker-compose.override.yml
+
+# Cross-repo knowledge base — lives in the private ../knowledge-base repo.
+# life-graph is PUBLIC and this directory has held candid analysis of client
+# codebases. Never track it here. See docs/superpowers/specs/2026-07-21-codebase-knowledge-base-design.md
+knowledge/
