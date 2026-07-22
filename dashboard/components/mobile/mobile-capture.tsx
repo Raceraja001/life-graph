@@ -33,7 +33,11 @@ const chipOn: CSSProperties = {
   color: "var(--accent-soft-fg)",
 };
 
-type Result = { kind: "captured"; routedTo: string } | { kind: "queued" } | { kind: "error" } | null;
+type Result =
+  | { kind: "captured"; routedTo: string }
+  | { kind: "queued" }
+  | { kind: "error"; message?: string }
+  | null;
 
 function routedTarget(res: any, fallback: string): string {
   return res?.route?.target || res?.target || res?.kind || res?.classification || fallback;
@@ -68,7 +72,7 @@ export function MobileCapture() {
         await api.ingest.voice(blob, `note.${recorder.mimeExt}`);
         afterIngest("voice memory");
       } catch {
-        setResult({ kind: "error" });
+        setResult({ kind: "error", message: "Couldn't transcribe — try again" });
       } finally {
         setBusy(null);
       }
@@ -80,7 +84,7 @@ export function MobileCapture() {
   const onFilePicked = async (f: File | undefined) => {
     if (!f) return;
     if (f.size > MAX_FILE_BYTES) {
-      setResult({ kind: "error" });
+      setResult({ kind: "error", message: "File is too large (max 20 MB)" });
       return;
     }
     setBusy("file");
@@ -93,7 +97,7 @@ export function MobileCapture() {
         afterIngest("photo memory");
       }
     } catch {
-      setResult({ kind: "error" });
+      setResult({ kind: "error", message: "Upload failed — try again" });
     } finally {
       setBusy(null);
     }
@@ -268,7 +272,7 @@ export function MobileCapture() {
       )}
       {result?.kind === "error" && (
         <Toast bg="var(--danger-soft)" fg="var(--danger)">
-          Couldn’t reach the server — your text is kept, try again
+          {result.message ?? "Couldn’t reach the server — your text is kept, try again"}
         </Toast>
       )}
     </section>

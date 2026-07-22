@@ -53,7 +53,20 @@ export function useRecorder() {
     });
   }, []);
 
-  useEffect(() => () => clearInterval(timerRef.current), []);
+  useEffect(() => {
+    return () => {
+      clearInterval(timerRef.current);
+      try {
+        const rec = mediaRef.current;
+        if (rec && rec.state !== "inactive") {
+          rec.stop();
+          rec.stream.getTracks().forEach((t) => t.stop());
+        }
+      } catch {
+        // best-effort — component is unmounting either way
+      }
+    };
+  }, []);
 
   return { recording, seconds, error, start, stop, mimeExt: MIME.ext };
 }
