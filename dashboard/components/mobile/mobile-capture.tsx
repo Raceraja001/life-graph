@@ -1,7 +1,7 @@
 "use client";
 import { useState, type CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRoute } from "@/lib/hooks";
+import { useCreateMemory } from "@/lib/hooks";
 import { useMobileState } from "./mobile-state";
 
 const KINDS: Array<[string, string]> = [
@@ -38,7 +38,7 @@ function routedTarget(res: any, fallback: string): string {
 
 export function MobileCapture() {
   const { online, enqueueCapture } = useMobileState();
-  const route = useRoute();
+  const route = useCreateMemory();
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const [kind, setKind] = useState("auto");

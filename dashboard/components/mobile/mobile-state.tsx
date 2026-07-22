@@ -23,7 +23,7 @@ export function MobileStateProvider({ children }: { children: React.ReactNode })
     const items = await getAll();
     for (const item of items) {
       try {
-        await api.kernel.route(item.content);
+        await api.memories.create(item.content);
         await remove(item.id);
       } catch {
         break;

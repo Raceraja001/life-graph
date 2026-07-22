@@ -47,6 +47,7 @@ export const api = {
   memories: {
     list: (params?: { limit?: string; offset?: string }) =>
       listRequest<any>("/memories/", params),
+    create: (content: string) => POST<any>("/memories/", { content }),
     get: (id: string) => GET<any>(`/memories/${id}`),
     search: (query: string) =>
       POST<any>("/search/", { query, limit: 50 }).then((r: any) =>

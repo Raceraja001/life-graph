@@ -41,6 +41,9 @@ export function useTasks(params?: { status?: string; limit?: string }) {
 export function useRoute() {
   return useMutation({ mutationFn: (message: string) => api.kernel.route(message) });
 }
+export function useCreateMemory() {
+  return useMutation({ mutationFn: (content: string) => api.memories.create(content) });
+}
 export function useNotifications(params?: { limit?: string }) {
   return useQuery({ queryKey: ["notifications", params], queryFn: () => api.kernel.notifications(params) });
 }
