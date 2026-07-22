@@ -13,7 +13,7 @@ export default function TasksPage() {
   const tasks = useTasks({ limit: "100" });
   const grouped = COLUMNS.map(col => ({
     ...col,
-    tasks: (tasks.data ?? []).filter((t: any) => t.status === col.key),
+    tasks: (tasks.data ?? []).filter((t: any) => t.status === col.key || (col.key === "landed" && ["completed", "done"].includes(t.status))),
   }));
 
   return (
@@ -34,8 +34,8 @@ export default function TasksPage() {
               <div className="space-y-2">
                 {col.tasks.map((t: any) => (
                   <div key={t.id} className="p-3 bg-zinc-50 rounded-lg border border-zinc-100 hover:border-zinc-200 transition-colors">
-                    <p className="text-sm text-zinc-700 font-medium line-clamp-2">{t.description || t.intent || t.id}</p>
-                    <p className="text-xs text-zinc-400 mt-1">{t.persona || "system"}</p>
+                    <p className="text-sm text-zinc-700 font-medium line-clamp-2">{t.description || t.intent || t.task_name || t.id}</p>
+                    <p className="text-xs text-zinc-400 mt-1">{t.persona || t.agent_name || "system"}</p>
                   </div>
                 ))}
               </div>

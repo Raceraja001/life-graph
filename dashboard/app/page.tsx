@@ -17,7 +17,7 @@ export default function OverviewPage() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatsCard label="Memories" value={memCount} subtitle="Total stored" icon={Brain} />
-        <StatsCard label="Tasks" value={taskCount} subtitle="Active kernel tasks" icon={ClipboardList} />
+        <StatsCard label="Tasks" value={taskCount} subtitle="Kernel tasks" icon={ClipboardList} />
         <StatsCard label="Preferences" value={prefCount} subtitle="Learned preferences" icon={BookOpen} />
         <StatsCard label="Events" value={events.isLoading ? "—" : (events.data?.length ?? 0)} subtitle="Recent watcher events" icon={Bell} />
       </div>

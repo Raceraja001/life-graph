@@ -54,6 +54,7 @@ const STATUS_MAP: Record<string, { tone: Tone; group: TaskGroup; label: string }
   queued: { tone: "neutral", group: "queued", label: "queued" },
   running: { tone: "info", group: "inflight", label: "running" },
   verifying: { tone: "warning", group: "inflight", label: "verifying" },
+  completed: { tone: "success", group: "done", label: "done" },
   landed: { tone: "success", group: "done", label: "done" },
   done: { tone: "success", group: "done", label: "done" },
   failed: { tone: "danger", group: "inflight", label: "failed" },
