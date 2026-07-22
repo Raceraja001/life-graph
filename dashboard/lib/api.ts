@@ -30,6 +30,27 @@ async function request<T>(method: string, path: string, body?: unknown, params?:
   return res.json();
 }
 
+// Multipart upload — mirrors request()'s auth headers but lets the browser
+// set the multipart boundary (no explicit Content-Type).
+async function uploadRequest<T>(path: string, file: Blob, filename: string): Promise<T> {
+  const url = new URL(`${API_BASE}${path}`);
+  const form = new FormData();
+  form.append("file", file, filename);
+  const headers: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    const tenantId = localStorage.getItem("lg_tenant_id") || process.env.NEXT_PUBLIC_TENANT_ID || "default";
+    const apiKey = localStorage.getItem("lg_api_key") || "";
+    headers["X-Tenant-ID"] = tenantId;
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+  const res = await fetch(url.toString(), { method: "POST", headers, body: form });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "Unknown error");
+    throw new Error(`API ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
 // Unwrap paginated responses: {data: [...], meta: {...}} → [...]
 async function listRequest<T>(path: string, params?: Record<string, string>): Promise<T[]> {
   const result = await request<any>("GET", path, undefined, params);
@@ -136,5 +157,12 @@ export const api = {
       POST<any>(`/approvals/${id}/approve`, body ?? {}),
     reject: (id: string, body?: { note?: string; resolved_by?: string }) =>
       POST<any>(`/approvals/${id}/reject`, body ?? {}),
+  },
+
+  // ── Multi-modal ingest ──────────────────────────
+  ingest: {
+    voice: (blob: Blob, filename: string) => uploadRequest<any>("/ingest/voice", blob, filename),
+    image: (file: File) => uploadRequest<any>("/ingest/image", file, file.name),
+    document: (file: File) => uploadRequest<any>("/ingest/document", file, file.name),
   },
 };
