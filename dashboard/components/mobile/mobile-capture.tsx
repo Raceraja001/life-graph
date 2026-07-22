@@ -67,6 +67,10 @@ export function MobileCapture() {
     if (recorder.recording) {
       const blob = await recorder.stop();
       if (!blob || blob.size === 0) return;
+      if (blob.size > MAX_FILE_BYTES) {
+        setResult({ kind: "error", message: "File is too large (max 20 MB)" });
+        return;
+      }
       setBusy("voice");
       try {
         await api.ingest.voice(blob, `note.${recorder.mimeExt}`);

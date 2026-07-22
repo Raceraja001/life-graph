@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 from life_graph.core.events import EventBus, EventType
 from life_graph.extraction.pipeline import ExtractionPipeline
+from life_graph.models.schemas import MemoryCreate
 from life_graph.storage.minio_client import MinIOStorage
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,23 @@ class MultiModalService:
         self.event_bus = event_bus
         self.pipeline = pipeline or ExtractionPipeline()
         self._whisper_model: Any = None
+
+    @staticmethod
+    async def _ingest_or_fallback(
+        manager: "MemoryManager", text: str, source: str
+    ) -> list[Any]:
+        """Run text through the ingestion pipeline; if nothing was extracted,
+        persist the raw text directly so it isn't silently dropped.
+
+        Mirrors the fallback in ``life_graph.api.memories.create_memory``:
+        when the extraction pipeline finds no facts, store the original
+        text as-is rather than lose the user's input.
+        """
+        memories = await manager.ingest(text, source=source)
+        if not memories:
+            row = await manager.store.store(MemoryCreate(content=text, source_type=source))
+            memories = [row]
+        return memories
 
     # ── Voice ─────────────────────────────────────────────────
 
@@ -181,7 +199,9 @@ class MultiModalService:
         # 3. Persist through the full ingestion pipeline (extraction →
         #    scoring → dedup → embedding → storage). NOTE: pipeline.extract
         #    alone does NOT persist — that was the pre-existing bug here.
-        memories = await manager.ingest(transcript, source="voice")
+        # If nothing was extracted, fall back to storing the raw transcript
+        # so the user's voice note isn't silently dropped.
+        memories = await self._ingest_or_fallback(manager, transcript, "voice")
         memories_created = len(memories)
 
         # 4. Emit event
@@ -249,7 +269,9 @@ class MultiModalService:
         if not ocr_text.strip():
             raise ValueError("No text found in the image — nothing to remember")
 
-        memories = await manager.ingest(ocr_text, source="image")
+        # If nothing was extracted, fall back to storing the raw OCR text
+        # so the captured text isn't silently dropped.
+        memories = await self._ingest_or_fallback(manager, ocr_text, "image")
         memories_created = len(memories)
 
         await self.event_bus.emit(
@@ -320,9 +342,11 @@ class MultiModalService:
         if not chunks:
             raise ValueError("No text found in the document — nothing to remember")
 
+        # If a chunk yields no extracted facts, fall back to storing the
+        # raw chunk text so no part of the document is silently dropped.
         total_memories = 0
         for chunk in chunks:
-            memories = await manager.ingest(chunk, source="document")
+            memories = await self._ingest_or_fallback(manager, chunk, "document")
             total_memories += len(memories)
 
         await self.event_bus.emit(

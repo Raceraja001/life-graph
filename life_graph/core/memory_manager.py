@@ -58,6 +58,13 @@ class MemoryManager:
         self._tagger = tagger
         self._contradiction_detector = contradiction_detector
 
+    @property
+    def store(self) -> PostgresMemoryStore:
+        """The underlying memory store — for callers that need a raw-persist
+        fallback (e.g. when ``ingest()`` extracts no facts and the caller
+        wants to save the original text as-is rather than lose it)."""
+        return self._store
+
     async def ingest(
         self,
         text: str,
