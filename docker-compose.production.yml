@@ -91,7 +91,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          # 2G: the worker loads the sentence-transformers embedding model
+          # (reembed/backfill jobs); 1G gets OOM-killed mid-job.
+          memory: 2G
         reservations:
           memory: 256M
 
