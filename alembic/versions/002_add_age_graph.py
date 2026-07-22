@@ -49,6 +49,7 @@ def upgrade() -> None:
 
     # -- Create the graph --
     op.execute("SELECT create_graph('life_graph')")
+    op.execute("SET search_path = public, ag_catalog")
 
     # -- Create vertex labels --
     for label in VERTEX_LABELS:
