@@ -20,7 +20,10 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from life_graph.core.memory_manager import MemoryManager
 
 from life_graph.core.events import EventBus, EventType
 from life_graph.extraction.pipeline import ExtractionPipeline
@@ -142,15 +145,21 @@ class MultiModalService:
         logger.info("Cloudflare transcribed %s: %d characters", filename, len(text))
         return text.strip()
 
-    async def process_voice(self, audio_bytes: bytes, filename: str) -> dict[str, Any]:
-        """Transcribe audio using faster-whisper, store in MinIO, extract memories.
+    async def process_voice(
+        self, audio_bytes: bytes, filename: str, manager: "MemoryManager"
+    ) -> dict[str, Any]:
+        """Transcribe audio, store the original in MinIO, persist memories.
 
         Args:
             audio_bytes: Raw audio file bytes.
             filename: Original filename (used for content type and key).
+            manager: Tenant-scoped memory manager that persists the transcript.
 
         Returns:
             Dict with ``transcript``, ``memories_created``, and ``minio_key``.
+
+        Raises:
+            ValueError: If transcription produces no text (nothing persisted).
         """
         # 1. Store original in MinIO
         key = f"{uuid.uuid4()}/{filename}"
@@ -168,9 +177,11 @@ class MultiModalService:
         if not transcript.strip():
             raise ValueError("Transcription produced no text — nothing to remember")
 
-        # 3. Run transcription through extraction pipeline
-        result = await self.pipeline.extract(transcript)
-        memories_created = len(result.facts)
+        # 3. Persist through the full ingestion pipeline (extraction →
+        #    scoring → dedup → embedding → storage). NOTE: pipeline.extract
+        #    alone does NOT persist — that was the pre-existing bug here.
+        memories = await manager.ingest(transcript, source="voice")
+        memories_created = len(memories)
 
         # 4. Emit event
         await self.event_bus.emit(
@@ -213,29 +224,33 @@ class MultiModalService:
 
     # ── Image ─────────────────────────────────────────────────
 
-    async def process_image(self, image_bytes: bytes, filename: str) -> dict[str, Any]:
-        """OCR an image using pytesseract, store in MinIO, extract memories.
+    async def process_image(
+        self, image_bytes: bytes, filename: str, manager: "MemoryManager"
+    ) -> dict[str, Any]:
+        """OCR an image, store the original in MinIO, persist memories.
 
         Args:
             image_bytes: Raw image file bytes.
             filename: Original filename.
+            manager: Tenant-scoped memory manager that persists the OCR text.
 
         Returns:
             Dict with ``ocr_text``, ``memories_created``, and ``minio_key``.
+
+        Raises:
+            ValueError: If OCR finds no text (nothing persisted).
         """
-        # 1. Store original in MinIO
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
         self.minio.upload(_IMAGE_BUCKET, key, image_bytes, content_type)
 
-        # 2. OCR using pytesseract (run in thread)
         ocr_text = await asyncio.to_thread(self._ocr_image, image_bytes)
+        if not ocr_text.strip():
+            raise ValueError("No text found in the image — nothing to remember")
 
-        # 3. Run extracted text through extraction pipeline
-        result = await self.pipeline.extract(ocr_text)
-        memories_created = len(result.facts)
+        memories = await manager.ingest(ocr_text, source="image")
+        memories_created = len(memories)
 
-        # 4. Emit event
         await self.event_bus.emit(
             EventType.IMAGE_PROCESSED,
             {
@@ -273,40 +288,42 @@ class MultiModalService:
 
     # ── Document ──────────────────────────────────────────────
 
-    async def process_document(self, doc_bytes: bytes, filename: str) -> dict[str, Any]:
-        """Extract text from PDF/markdown/text, store in MinIO, extract memories.
+    async def process_document(
+        self, doc_bytes: bytes, filename: str, manager: "MemoryManager"
+    ) -> dict[str, Any]:
+        """Extract text from a document, store the original, persist memories.
 
         Args:
             doc_bytes: Raw document bytes.
             filename: Original filename.
+            manager: Tenant-scoped memory manager that persists each chunk.
 
         Returns:
             Dict with ``text_length``, ``chunks``, ``memories_created``,
             and ``minio_key``.
+
+        Raises:
+            ValueError: If no text could be extracted (nothing persisted).
         """
-        # 1. Store original in MinIO
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
         self.minio.upload(_DOCUMENT_BUCKET, key, doc_bytes, content_type)
 
-        # 2. Extract text
         ext = Path(filename).suffix.lower()
         if ext == ".pdf":
             text = await asyncio.to_thread(self._extract_pdf_text, doc_bytes)
         else:
-            # .md, .txt, and other text formats
             text = doc_bytes.decode("utf-8", errors="replace")
 
-        # 3. Split into chunks if long
         chunks = self._split_into_chunks(text, max_words=_MAX_CHUNK_WORDS)
+        if not chunks:
+            raise ValueError("No text found in the document — nothing to remember")
 
-        # 4. Run each chunk through extraction pipeline
         total_memories = 0
         for chunk in chunks:
-            result = await self.pipeline.extract(chunk)
-            total_memories += len(result.facts)
+            memories = await manager.ingest(chunk, source="document")
+            total_memories += len(memories)
 
-        # 5. Emit event
         await self.event_bus.emit(
             EventType.DOCUMENT_IMPORTED,
             {

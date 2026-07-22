@@ -72,3 +72,71 @@ async def test_cloudflare_error_body_raises(monkeypatch):
 
     with pytest.raises(RuntimeError):
         await svc._transcribe_cloudflare(b"x", "note.webm")
+
+
+@pytest.mark.asyncio
+async def test_process_voice_persists_via_manager(monkeypatch):
+    svc, minio, _bus = _service()
+    monkeypatch.setattr(settings, "cf_account_id", "acct123", raising=False)
+    monkeypatch.setattr(settings, "cf_ai_token", "tok", raising=False)
+    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
+    _FakeAsyncClient.body = {"success": True, "result": {"text": "call amma tonight"}}
+    manager = AsyncMock()
+    manager.ingest.return_value = [MagicMock()]
+
+    result = await svc.process_voice(b"RIFFfake", "note.webm", manager)
+
+    assert result["transcript"] == "call amma tonight"
+    assert result["memories_created"] == 1
+    manager.ingest.assert_awaited_once_with("call amma tonight", source="voice")
+    minio.upload.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_process_voice_empty_transcript_raises_and_persists_nothing(monkeypatch):
+    svc, _minio, _bus = _service()
+    monkeypatch.setattr(settings, "cf_account_id", "acct123", raising=False)
+    monkeypatch.setattr(settings, "cf_ai_token", "tok", raising=False)
+    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
+    _FakeAsyncClient.body = {"success": True, "result": {"text": "   "}}
+    manager = AsyncMock()
+
+    with pytest.raises(ValueError):
+        await svc.process_voice(b"x", "note.webm", manager)
+    manager.ingest.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_image_persists_ocr_text():
+    svc, minio, _bus = _service()
+    svc._ocr_image = MagicMock(return_value="Receipt total Rs 450")
+    manager = AsyncMock()
+    manager.ingest.return_value = [MagicMock(), MagicMock()]
+
+    result = await svc.process_image(b"pngbytes", "receipt.png", manager)
+
+    assert result["memories_created"] == 2
+    manager.ingest.assert_awaited_once_with("Receipt total Rs 450", source="image")
+
+
+@pytest.mark.asyncio
+async def test_process_image_empty_ocr_raises():
+    svc, _minio, _bus = _service()
+    svc._ocr_image = MagicMock(return_value="")
+    manager = AsyncMock()
+
+    with pytest.raises(ValueError):
+        await svc.process_image(b"pngbytes", "blank.png", manager)
+    manager.ingest.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_document_persists_each_chunk():
+    svc, _minio, _bus = _service()
+    manager = AsyncMock()
+    manager.ingest.return_value = [MagicMock()]
+
+    result = await svc.process_document(b"hello world text", "note.txt", manager)
+
+    assert result["memories_created"] == 1
+    manager.ingest.assert_awaited_once_with("hello world text", source="document")
