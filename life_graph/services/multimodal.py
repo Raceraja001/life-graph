@@ -38,6 +38,7 @@ _VOICE_BUCKET = "voice-notes"
 _IMAGE_BUCKET = "images"
 _DOCUMENT_BUCKET = "documents"
 _MAX_CHUNK_WORDS = 500
+_OCR_LANGUAGES = "eng+tam"
 
 
 def _content_type_for(filename: str) -> str:
@@ -283,7 +284,7 @@ class MultiModalService:
         import io
 
         image = Image.open(io.BytesIO(image_bytes))
-        text = pytesseract.image_to_string(image)
+        text = pytesseract.image_to_string(image, lang=_OCR_LANGUAGES)
         return text.strip()
 
     # ── Document ──────────────────────────────────────────────

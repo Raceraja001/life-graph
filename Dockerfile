@@ -18,14 +18,14 @@ COPY life_graph/ ./life_graph/
 RUN pip install --no-cache-dir --prefix=/install \
     --extra-index-url https://pypi.org/simple \
     --index-url https://download.pytorch.org/whl/cpu \
-    . psycopg2-binary
+    ".[multimodal]" psycopg2-binary
 
 # ── Production image ─────────────────────────────────────────
 FROM python:3.11-slim
 
 # Runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 bash && \
+    libpq5 bash tesseract-ocr tesseract-ocr-eng tesseract-ocr-tam && \
     rm -rf /var/lib/apt/lists/*
 
 # Non-root user
