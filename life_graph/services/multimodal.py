@@ -19,7 +19,6 @@ import asyncio
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────
 
+_CF_WHISPER_MODEL = "@cf/openai/whisper-large-v3-turbo"
 _VOICE_BUCKET = "voice-notes"
 _IMAGE_BUCKET = "images"
 _DOCUMENT_BUCKET = "documents"
@@ -103,6 +103,45 @@ class MultiModalService:
             logger.info("Whisper model loaded: %s", model_name)
         return self._whisper_model
 
+    async def _transcribe_cloudflare(self, audio_bytes: bytes, filename: str) -> str:
+        """Transcribe audio via Cloudflare Workers AI (whisper-large-v3-turbo).
+
+        Args:
+            audio_bytes: Raw audio file bytes.
+            filename: Original filename (for logging only).
+
+        Returns:
+            The transcript text (stripped).
+
+        Raises:
+            RuntimeError: If the API reports failure.
+            httpx.HTTPStatusError: On non-2xx responses.
+        """
+        import base64
+
+        import httpx
+
+        from life_graph.config import settings
+
+        url = (
+            "https://api.cloudflare.com/client/v4/accounts/"
+            f"{settings.cf_account_id}/ai/run/{_CF_WHISPER_MODEL}"
+        )
+        payload = {"audio": base64.b64encode(audio_bytes).decode("ascii")}
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                url,
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.cf_ai_token}"},
+            )
+        resp.raise_for_status()
+        body = resp.json()
+        if not body.get("success", False):
+            raise RuntimeError(f"Cloudflare AI transcription failed: {body.get('errors')}")
+        text = str((body.get("result") or {}).get("text", ""))
+        logger.info("Cloudflare transcribed %s: %d characters", filename, len(text))
+        return text.strip()
+
     async def process_voice(self, audio_bytes: bytes, filename: str) -> dict[str, Any]:
         """Transcribe audio using faster-whisper, store in MinIO, extract memories.
 
@@ -118,8 +157,16 @@ class MultiModalService:
         content_type = _content_type_for(filename)
         self.minio.upload(_VOICE_BUCKET, key, audio_bytes, content_type)
 
-        # 2. Transcribe using faster-whisper (run in thread to avoid blocking)
-        transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
+        # 2. Transcribe — Cloudflare Workers AI when configured (better
+        #    Tamil/English code-switching), else local faster-whisper.
+        from life_graph.config import settings
+
+        if settings.cf_account_id and settings.cf_ai_token:
+            transcript = await self._transcribe_cloudflare(audio_bytes, filename)
+        else:
+            transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
+        if not transcript.strip():
+            raise ValueError("Transcription produced no text — nothing to remember")
 
         # 3. Run transcription through extraction pipeline
         result = await self.pipeline.extract(transcript)
