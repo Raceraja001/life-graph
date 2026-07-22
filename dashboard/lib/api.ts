@@ -44,6 +44,10 @@ async function uploadRequest<T>(path: string, file: Blob, filename: string): Pro
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
   }
   const res = await fetch(url.toString(), { method: "POST", headers, body: form });
+  if (res.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    window.location.replace("/login");
+    throw new Error("Unauthorized");
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "Unknown error");
     throw new Error(`API ${res.status}: ${text}`);
