@@ -136,6 +136,7 @@ async def semantic_search(
             result = await engine.tri_search(
                 query=body.query,
                 limit=body.limit,
+                statuses=("active", "pending"),
             )
             # Convert scored dicts to MemoryResponse
             for mem_dict in result.get("memories", []):
@@ -158,6 +159,7 @@ async def semantic_search(
                 query_text=body.query,
                 limit=body.limit,
                 filters=filters or None,
+                statuses=("active", "pending"),
             )
             memories = [MemoryResponse.model_validate(mem) for mem, _score in hybrid_results]
         except Exception:

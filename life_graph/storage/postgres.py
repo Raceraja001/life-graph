@@ -192,6 +192,7 @@ class PostgresMemoryStore:
         filters: dict | None = None,
         vector_weight: float = 0.6,
         bm25_weight: float = 0.4,
+        statuses: tuple[str, ...] = ("active",),
     ) -> list[tuple[Memory, float]]:
         """Hybrid search combining vector similarity with BM25 keyword matching.
 
@@ -209,6 +210,9 @@ class PostgresMemoryStore:
             filters: Optional filter criteria (same as search_similar).
             vector_weight: Weight for cosine similarity score (0-1).
             bm25_weight: Weight for BM25 keyword score (0-1).
+            statuses: Memory statuses to include. Defaults to active-only for
+                automation callers; the dashboard search route widens this to
+                include ``"pending"`` so the user can see and approve new memories.
 
         Returns:
             List of (Memory, hybrid_score) tuples, sorted by hybrid_score desc.
@@ -229,7 +233,7 @@ class PostgresMemoryStore:
                 FROM memories
                 WHERE embedding IS NOT NULL
                   AND tenant_id = :tenant_id
-                  AND status = 'active'
+                  AND status = ANY(:statuses)
                 ORDER BY embedding <=> :query_embedding
                 LIMIT 100
             ),
@@ -238,7 +242,7 @@ class PostgresMemoryStore:
                        ts_rank(content_tsv, plainto_tsquery('english', :query_text)) AS b_score
                 FROM memories
                 WHERE tenant_id = :tenant_id
-                  AND status = 'active'
+                  AND status = ANY(:statuses)
                   AND content_tsv @@ plainto_tsquery('english', :query_text)
             )
             SELECT
@@ -277,6 +281,7 @@ class PostgresMemoryStore:
                     "vw": vector_weight,
                     "bw": bm25_weight,
                     "result_limit": limit,
+                    "statuses": list(statuses),
                 },
             )
             scored_ids = [(row[0], float(row[1])) for row in result.fetchall()]
@@ -385,6 +390,7 @@ class PostgresMemoryStore:
         Supported keys
         ──────────────
         - ``status`` (str)            – exact match
+        - ``statuses`` (list[str])    – IN-clause (any of the given statuses)
         - ``tags`` (list[str])        – PostgreSQL array overlap (``&&``)
         - ``properties`` (dict)       – JSONB containment (``@>``)
         - ``created_after`` (datetime)
@@ -397,6 +403,9 @@ class PostgresMemoryStore:
 
         if "status" in filters:
             stmt = stmt.where(model.status == filters["status"])
+
+        if "statuses" in filters:
+            stmt = stmt.where(model.status.in_(tuple(filters["statuses"])))
 
         if "tags" in filters:
             tag_list = filters["tags"]

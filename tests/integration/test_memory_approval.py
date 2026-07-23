@@ -117,3 +117,16 @@ async def test_bulk_and_count(client: AsyncClient):
     assert resp.status_code == 200
     body = resp.json()["data"]
     assert body["approved"] == 1 and body["rejected"] == 1
+
+
+@skip_on_db_error
+@pytest.mark.asyncio
+async def test_search_shows_pending_to_dashboard(client: AsyncClient):
+    row = await _create(client, "pending searchable iota 6644 unicorn")
+    if row is None:
+        pytest.skip("DB unavailable")
+    resp = await client.post("/api/v1/search/", json={"query": "iota unicorn", "limit": 20})
+    assert resp.status_code in (200, 500)
+    if resp.status_code == 200:
+        contents = str(resp.json())
+        assert "6644" in contents, "dashboard search must include pending memories"

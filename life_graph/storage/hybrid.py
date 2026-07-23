@@ -193,6 +193,7 @@ class HybridQueryEngine:
         vector_weight: float = 0.50,
         bm25_weight: float = 0.30,
         graph_weight: float = 0.20,
+        statuses: tuple[str, ...] = ("active",),
     ) -> dict[str, Any]:
         """Three-signal hybrid search: Vector + BM25 + Graph Proximity.
 
@@ -212,6 +213,9 @@ class HybridQueryEngine:
             vector_weight: Weight for cosine similarity (0-1).
             bm25_weight: Weight for BM25 keyword score (0-1).
             graph_weight: Weight for graph proximity boost (0-1).
+            statuses: Memory statuses to include. Defaults to active-only for
+                automation callers; the dashboard search route widens this to
+                include ``"pending"`` so the user can see and approve new memories.
 
         Returns:
             Dict with ``memories`` (scored and ranked), ``entities`` (graph hits),
@@ -232,6 +236,7 @@ class HybridQueryEngine:
                     limit=limit * 2,  # Over-fetch for reranking
                     vector_weight=vector_weight / (vector_weight + bm25_weight),
                     bm25_weight=bm25_weight / (vector_weight + bm25_weight),
+                    statuses=statuses,
                 )
 
                 for memory, base_score in hybrid_results:
@@ -376,7 +381,7 @@ class HybridQueryEngine:
         memories: list[dict[str, Any]] = []
         try:
             rows, _has_more = await self.memory_store.list_memories(
-                filters={"tags": [entity_name]},
+                filters={"tags": [entity_name], "status": "active"},
                 limit=20,
             )
             memories = [
@@ -392,7 +397,7 @@ class HybridQueryEngine:
 
             # Also search by properties.entities
             prop_rows, _has_more = await self.memory_store.list_memories(
-                filters={"properties": {"entities": [entity_name]}},
+                filters={"properties": {"entities": [entity_name]}, "status": "active"},
                 limit=20,
             )
             seen_ids = {m["id"] for m in memories}
