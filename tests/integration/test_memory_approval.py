@@ -47,3 +47,18 @@ async def test_patch_cannot_set_approval_statuses(client: AsyncClient):
             f"/api/v1/memories/{row['id']}", json={"status": forbidden}
         )
         assert resp.status_code == 422, f"PATCH status={forbidden} must be rejected"
+
+
+@skip_on_db_error
+@pytest.mark.asyncio
+async def test_duplicate_of_pending_is_deduped(client: AsyncClient):
+    text = "approval dedup probe gamma 7731"
+    first = await client.post("/api/v1/memories/", json={"content": text})
+    if first.status_code not in (200, 201):
+        pytest.skip("DB unavailable")
+    second = await client.post("/api/v1/memories/", json={"content": text})
+    assert second.status_code in (200, 201)
+    listing = await client.get("/api/v1/memories/", params={"status": "pending", "limit": "50"})
+    if listing.status_code == 200:
+        rows = [r for r in listing.json()["data"] if r["content"] == text]
+        assert len(rows) == 1, "second capture must dedup against the pending row"

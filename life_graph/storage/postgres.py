@@ -739,7 +739,7 @@ class PostgresMemoryStore:
             query = select(Memory).where(
                 Memory.tenant_id == get_current_tenant_id(),
                 Memory.content_hash == content_hash,
-                Memory.status == "active",
+                Memory.status.in_(("active", "pending")),
             ).limit(1)
             result = await session.execute(query)
             return result.scalar_one_or_none()
@@ -753,8 +753,8 @@ class PostgresMemoryStore:
         """Find memories above cosine similarity threshold.
 
         Uses pgvector's cosine distance operator and converts to
-        similarity (``1 - distance``).  Only active memories with
-        an embedding are considered.
+        similarity (``1 - distance``).  Only active and pending memories with
+        an embedding are considered. Rejected memories are excluded.
 
         Returns:
             List of ``(memory, similarity_score)`` tuples ordered
@@ -768,7 +768,7 @@ class PostgresMemoryStore:
                 .where(
                     Memory.tenant_id == get_current_tenant_id(),
                     Memory.embedding.isnot(None),
-                    Memory.status == "active",
+                    Memory.status.in_(("active", "pending")),
                     (1 - distance) >= threshold,
                 )
                 .order_by(distance)
