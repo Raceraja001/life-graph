@@ -266,7 +266,7 @@ export function MobileCapture() {
 
       {result?.kind === "captured" && (
         <Toast bg="var(--success-soft)" fg="var(--success)">
-          Captured — routed to {result.routedTo} · extraction queued
+          Captured — routed to {result.routedTo} · pending your approval
         </Toast>
       )}
       {result?.kind === "queued" && (

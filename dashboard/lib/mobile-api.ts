@@ -15,6 +15,7 @@ export interface MemoryVM {
   created: string; // "Jul 10"
   meta: string; // "source · Jul 10"
   properties?: Record<string, unknown>;
+  status: string; // "pending" | "active" | ...
 }
 
 export type TaskGroup = "inflight" | "queued" | "done";
@@ -46,6 +47,7 @@ export function mapMemory(raw: any): MemoryVM {
     created,
     meta: created ? `${source} · ${created}` : source,
     properties: raw?.properties,
+    status: raw?.status ?? "active",
   };
 }
 
@@ -143,5 +145,25 @@ export function useResolveApproval() {
     mutationFn: ({ id, decision }: { id: string; decision: "approve" | "reject" }) =>
       decision === "approve" ? api.approvals.approve(id) : api.approvals.reject(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["approvals"] }),
+  });
+}
+
+// ── Pending memories ──────────────────────────────────────────
+export function usePendingMemoryCount() {
+  return useQuery({
+    queryKey: ["memories", "pending-count"],
+    queryFn: () => api.memories.pendingCount().then((r) => r.data?.count ?? 0),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useResolveMemory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" }) =>
+      action === "approve" ? api.memories.approve(id) : api.memories.reject(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memories"] });
+    },
   });
 }

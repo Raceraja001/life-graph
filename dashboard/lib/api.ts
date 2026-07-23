@@ -78,6 +78,9 @@ export const api = {
       POST<any>("/search/", { query, limit: 50 }).then((r: any) =>
         Array.isArray(r?.data) ? r.data : Array.isArray(r) ? r : []
       ),
+    approve: (id: string) => POST(`/memories/${id}/approve`, {}),
+    reject: (id: string) => POST(`/memories/${id}/reject`, {}),
+    pendingCount: () => GET<{ data?: { count?: number } }>(`/memories/pending/count`),
   },
 
   // ── Preferences (proxy for "decisions" until judgment engine exists) ──

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, BookText, ClipboardCheck, Inbox, type LucideIcon } from "lucide-react";
-import { useApprovals } from "@/lib/mobile-api";
+import { useApprovals, usePendingMemoryCount } from "@/lib/mobile-api";
 
 interface Tab {
   href: string;
@@ -21,6 +21,7 @@ export function MobileTabBar() {
   const pathname = usePathname();
   const approvals = useApprovals();
   const openApprovalsCount = approvals.data?.length ?? 0;
+  const pendingMemories = usePendingMemoryCount();
   const isActive = (href: string) => (href === "/m" ? pathname === "/m" : pathname.startsWith(href));
 
   return (
@@ -35,7 +36,13 @@ export function MobileTabBar() {
     >
       {TABS.map(({ href, label, icon: Icon }) => {
         const active = isActive(href);
-        const badge = href === "/m/approvals" && openApprovalsCount > 0 ? openApprovalsCount : 0;
+        const badge =
+          href === "/m/approvals" && openApprovalsCount > 0
+            ? openApprovalsCount
+            : href === "/m/memories" && (pendingMemories.data ?? 0) > 0
+              ? pendingMemories.data
+              : 0;
+        const badgeColor = href === "/m/memories" ? "var(--warning, #b45309)" : "var(--danger)";
         return (
           <Link
             key={href}
@@ -65,7 +72,7 @@ export function MobileTabBar() {
                     minWidth: "15px",
                     height: "15px",
                     borderRadius: "var(--radius-pill)",
-                    background: "var(--danger)",
+                    background: badgeColor,
                     color: "#fff",
                     fontSize: "9px",
                     fontWeight: 800,
