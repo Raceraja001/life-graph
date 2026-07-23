@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 
-from life_graph.api.dependencies import get_extraction_pipeline
+from life_graph.api.dependencies import get_extraction_pipeline, get_memory_manager
 from life_graph.api.responses import success_response
 from life_graph.core.events import event_bus
+from life_graph.core.memory_manager import MemoryManager
 from life_graph.storage.minio_client import MinIOStorage
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,10 @@ def _get_multimodal_service():
     "/voice",
     summary="Ingest a voice recording",
 )
-async def ingest_voice(file: UploadFile = File(...)) -> dict:
+async def ingest_voice(
+    file: UploadFile = File(...),
+    manager: MemoryManager = Depends(get_memory_manager),
+) -> dict:
     """Upload an audio file for transcription and memory extraction.
 
     Supported formats: WAV, MP3, OGG, M4A, FLAC, WebM.
@@ -95,10 +99,15 @@ async def ingest_voice(file: UploadFile = File(...)) -> dict:
     filename = _validate_upload(file, audio_bytes, ALLOWED_AUDIO, "audio")
 
     try:
-        result = await service.process_voice(audio_bytes, filename)
+        result = await service.process_voice(audio_bytes, filename, manager)
     except ImportError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         )
     except Exception:
@@ -114,7 +123,10 @@ async def ingest_voice(file: UploadFile = File(...)) -> dict:
     "/image",
     summary="Ingest an image for OCR",
 )
-async def ingest_image(file: UploadFile = File(...)) -> dict:
+async def ingest_image(
+    file: UploadFile = File(...),
+    manager: MemoryManager = Depends(get_memory_manager),
+) -> dict:
     """Upload an image for OCR text extraction and memory creation.
 
     Supported formats: PNG, JPEG, GIF, BMP, TIFF, WebP.
@@ -127,10 +139,15 @@ async def ingest_image(file: UploadFile = File(...)) -> dict:
     filename = _validate_upload(file, image_bytes, ALLOWED_IMAGE, "image")
 
     try:
-        result = await service.process_image(image_bytes, filename)
+        result = await service.process_image(image_bytes, filename, manager)
     except ImportError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         )
     except Exception:
@@ -146,7 +163,10 @@ async def ingest_image(file: UploadFile = File(...)) -> dict:
     "/document",
     summary="Ingest a document",
 )
-async def ingest_document(file: UploadFile = File(...)) -> dict:
+async def ingest_document(
+    file: UploadFile = File(...),
+    manager: MemoryManager = Depends(get_memory_manager),
+) -> dict:
     """Upload a document (PDF, Markdown, or plain text) for extraction.
 
     The document is split into chunks and each chunk is processed
@@ -162,10 +182,15 @@ async def ingest_document(file: UploadFile = File(...)) -> dict:
     filename = _validate_upload(file, doc_bytes, ALLOWED_DOCUMENT, "document")
 
     try:
-        result = await service.process_document(doc_bytes, filename)
+        result = await service.process_document(doc_bytes, filename, manager)
     except ImportError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         )
     except Exception:

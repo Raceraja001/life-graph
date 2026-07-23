@@ -77,6 +77,12 @@ class Settings(BaseSettings):
 
     # ── Multi-Modal (Voice / Whisper) ──────────────────
     whisper_model: str = "small"
+    # Cloudflare Workers AI transcription — preferred when BOTH are set
+    # (handles Tamil/English code-switching via whisper-large-v3-turbo);
+    # otherwise falls back to local faster-whisper. Token needs only the
+    # "Workers AI" permission.
+    cf_account_id: str = ""  # Set LIFE_GRAPH_CF_ACCOUNT_ID
+    cf_ai_token: str = ""  # Set LIFE_GRAPH_CF_AI_TOKEN
 
     # ── MinIO / Object Storage ─────────────────────────
     minio_endpoint: str = "localhost:9000"

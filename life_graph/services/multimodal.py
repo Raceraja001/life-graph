@@ -19,22 +19,27 @@ import asyncio
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from life_graph.core.memory_manager import MemoryManager
 
 from life_graph.core.events import EventBus, EventType
 from life_graph.extraction.pipeline import ExtractionPipeline
+from life_graph.models.schemas import MemoryCreate
 from life_graph.storage.minio_client import MinIOStorage
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────
 
+_CF_WHISPER_MODEL = "@cf/openai/whisper-large-v3-turbo"
 _VOICE_BUCKET = "voice-notes"
 _IMAGE_BUCKET = "images"
 _DOCUMENT_BUCKET = "documents"
 _MAX_CHUNK_WORDS = 500
+_OCR_LANGUAGES = "eng+tam"
 
 
 def _content_type_for(filename: str) -> str:
@@ -81,6 +86,26 @@ class MultiModalService:
         self.pipeline = pipeline or ExtractionPipeline()
         self._whisper_model: Any = None
 
+    @staticmethod
+    async def _ingest_or_fallback(
+        manager: "MemoryManager", text: str, source: str
+    ) -> list[Any]:
+        """Run text through the ingestion pipeline; if nothing was extracted,
+        persist the raw text directly so it isn't silently dropped.
+
+        Mirrors the fallback in ``life_graph.api.memories.create_memory``:
+        when the extraction pipeline finds no facts, store the original
+        text as-is rather than lose the user's input.
+        """
+        memories = await manager.ingest(text, source=source)
+        if not memories:
+            embedding = await manager.generate_embedding(text)
+            row = await manager.store.store(
+                MemoryCreate(content=text, source_type=source), embedding=embedding
+            )
+            memories = [row]
+        return memories
+
     # ── Voice ─────────────────────────────────────────────────
 
     def _get_whisper_model(self) -> Any:
@@ -103,27 +128,84 @@ class MultiModalService:
             logger.info("Whisper model loaded: %s", model_name)
         return self._whisper_model
 
-    async def process_voice(self, audio_bytes: bytes, filename: str) -> dict[str, Any]:
-        """Transcribe audio using faster-whisper, store in MinIO, extract memories.
+    async def _transcribe_cloudflare(self, audio_bytes: bytes, filename: str) -> str:
+        """Transcribe audio via Cloudflare Workers AI (whisper-large-v3-turbo).
+
+        Args:
+            audio_bytes: Raw audio file bytes.
+            filename: Original filename (for logging only).
+
+        Returns:
+            The transcript text (stripped).
+
+        Raises:
+            RuntimeError: If the API reports failure.
+            httpx.HTTPStatusError: On non-2xx responses.
+        """
+        import base64
+
+        import httpx
+
+        from life_graph.config import settings
+
+        url = (
+            "https://api.cloudflare.com/client/v4/accounts/"
+            f"{settings.cf_account_id}/ai/run/{_CF_WHISPER_MODEL}"
+        )
+        payload = {"audio": base64.b64encode(audio_bytes).decode("ascii")}
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                url,
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.cf_ai_token}"},
+            )
+        resp.raise_for_status()
+        body = resp.json()
+        if not body.get("success", False):
+            raise RuntimeError(f"Cloudflare AI transcription failed: {body.get('errors')}")
+        text = str((body.get("result") or {}).get("text", ""))
+        logger.info("Cloudflare transcribed %s: %d characters", filename, len(text))
+        return text.strip()
+
+    async def process_voice(
+        self, audio_bytes: bytes, filename: str, manager: "MemoryManager"
+    ) -> dict[str, Any]:
+        """Transcribe audio, store the original in MinIO, persist memories.
 
         Args:
             audio_bytes: Raw audio file bytes.
             filename: Original filename (used for content type and key).
+            manager: Tenant-scoped memory manager that persists the transcript.
 
         Returns:
             Dict with ``transcript``, ``memories_created``, and ``minio_key``.
+
+        Raises:
+            ValueError: If transcription produces no text (nothing persisted).
         """
         # 1. Store original in MinIO
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
         self.minio.upload(_VOICE_BUCKET, key, audio_bytes, content_type)
 
-        # 2. Transcribe using faster-whisper (run in thread to avoid blocking)
-        transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
+        # 2. Transcribe — Cloudflare Workers AI when configured (better
+        #    Tamil/English code-switching), else local faster-whisper.
+        from life_graph.config import settings
 
-        # 3. Run transcription through extraction pipeline
-        result = await self.pipeline.extract(transcript)
-        memories_created = len(result.facts)
+        if settings.cf_account_id and settings.cf_ai_token:
+            transcript = await self._transcribe_cloudflare(audio_bytes, filename)
+        else:
+            transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
+        if not transcript.strip():
+            raise ValueError("Transcription produced no text — nothing to remember")
+
+        # 3. Persist through the full ingestion pipeline (extraction →
+        #    scoring → dedup → embedding → storage). NOTE: pipeline.extract
+        #    alone does NOT persist — that was the pre-existing bug here.
+        # If nothing was extracted, fall back to storing the raw transcript
+        # so the user's voice note isn't silently dropped.
+        memories = await self._ingest_or_fallback(manager, transcript, "voice")
+        memories_created = len(memories)
 
         # 4. Emit event
         await self.event_bus.emit(
@@ -166,29 +248,35 @@ class MultiModalService:
 
     # ── Image ─────────────────────────────────────────────────
 
-    async def process_image(self, image_bytes: bytes, filename: str) -> dict[str, Any]:
-        """OCR an image using pytesseract, store in MinIO, extract memories.
+    async def process_image(
+        self, image_bytes: bytes, filename: str, manager: "MemoryManager"
+    ) -> dict[str, Any]:
+        """OCR an image, store the original in MinIO, persist memories.
 
         Args:
             image_bytes: Raw image file bytes.
             filename: Original filename.
+            manager: Tenant-scoped memory manager that persists the OCR text.
 
         Returns:
             Dict with ``ocr_text``, ``memories_created``, and ``minio_key``.
+
+        Raises:
+            ValueError: If OCR finds no text (nothing persisted).
         """
-        # 1. Store original in MinIO
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
         self.minio.upload(_IMAGE_BUCKET, key, image_bytes, content_type)
 
-        # 2. OCR using pytesseract (run in thread)
         ocr_text = await asyncio.to_thread(self._ocr_image, image_bytes)
+        if not ocr_text.strip():
+            raise ValueError("No text found in the image — nothing to remember")
 
-        # 3. Run extracted text through extraction pipeline
-        result = await self.pipeline.extract(ocr_text)
-        memories_created = len(result.facts)
+        # If nothing was extracted, fall back to storing the raw OCR text
+        # so the captured text isn't silently dropped.
+        memories = await self._ingest_or_fallback(manager, ocr_text, "image")
+        memories_created = len(memories)
 
-        # 4. Emit event
         await self.event_bus.emit(
             EventType.IMAGE_PROCESSED,
             {
@@ -221,45 +309,49 @@ class MultiModalService:
         import io
 
         image = Image.open(io.BytesIO(image_bytes))
-        text = pytesseract.image_to_string(image)
+        text = pytesseract.image_to_string(image, lang=_OCR_LANGUAGES)
         return text.strip()
 
     # ── Document ──────────────────────────────────────────────
 
-    async def process_document(self, doc_bytes: bytes, filename: str) -> dict[str, Any]:
-        """Extract text from PDF/markdown/text, store in MinIO, extract memories.
+    async def process_document(
+        self, doc_bytes: bytes, filename: str, manager: "MemoryManager"
+    ) -> dict[str, Any]:
+        """Extract text from a document, store the original, persist memories.
 
         Args:
             doc_bytes: Raw document bytes.
             filename: Original filename.
+            manager: Tenant-scoped memory manager that persists each chunk.
 
         Returns:
             Dict with ``text_length``, ``chunks``, ``memories_created``,
             and ``minio_key``.
+
+        Raises:
+            ValueError: If no text could be extracted (nothing persisted).
         """
-        # 1. Store original in MinIO
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
         self.minio.upload(_DOCUMENT_BUCKET, key, doc_bytes, content_type)
 
-        # 2. Extract text
         ext = Path(filename).suffix.lower()
         if ext == ".pdf":
             text = await asyncio.to_thread(self._extract_pdf_text, doc_bytes)
         else:
-            # .md, .txt, and other text formats
             text = doc_bytes.decode("utf-8", errors="replace")
 
-        # 3. Split into chunks if long
         chunks = self._split_into_chunks(text, max_words=_MAX_CHUNK_WORDS)
+        if not chunks:
+            raise ValueError("No text found in the document — nothing to remember")
 
-        # 4. Run each chunk through extraction pipeline
+        # If a chunk yields no extracted facts, fall back to storing the
+        # raw chunk text so no part of the document is silently dropped.
         total_memories = 0
         for chunk in chunks:
-            result = await self.pipeline.extract(chunk)
-            total_memories += len(result.facts)
+            memories = await self._ingest_or_fallback(manager, chunk, "document")
+            total_memories += len(memories)
 
-        # 5. Emit event
         await self.event_bus.emit(
             EventType.DOCUMENT_IMPORTED,
             {
