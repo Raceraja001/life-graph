@@ -44,6 +44,16 @@ _DOCUMENT_BUCKET = "documents"
 _MAX_CHUNK_WORDS = 500
 _OCR_LANGUAGES = "eng+tam"
 
+# ARQ registers ``WorkerSettings.functions`` entries (import strings) under
+# their FULL dotted path, not the bare function name — enqueue_job() must
+# use the same string it's registered as, or the worker logs "'<name>' not
+# found" and the job silently never runs. (This repo has already hit this
+# once: life_graph.workers.reembed.reembed_all is enqueued by its full path
+# too. The short-name enqueue for run_tenant_consolidation in
+# life_graph/workers/tasks.py / api/admin.py predates this fix and is
+# tracked separately — out of scope here.)
+INGEST_CAPTURE_JOB_NAME = "life_graph.workers.ingest_capture.ingest_capture_text"
+
 
 async def ingest_or_fallback(manager: "MemoryManager", text: str, source: str) -> list[Any]:
     """Run text through the ingestion pipeline; if nothing was extracted,
@@ -90,7 +100,7 @@ async def _enqueue_ingest_job(
 
     pool = await create_pool(parse_redis_settings())
     try:
-        await pool.enqueue_job("ingest_capture_text", text, source, tenant_id, meta or {})
+        await pool.enqueue_job(INGEST_CAPTURE_JOB_NAME, text, source, tenant_id, meta or {})
     finally:
         await pool.close()
 

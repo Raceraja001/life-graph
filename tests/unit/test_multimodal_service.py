@@ -310,7 +310,11 @@ async def test_process_voice_uses_local_whisper_when_no_cf_credentials(monkeypat
 @pytest.mark.asyncio
 async def test_enqueue_ingest_job_passes_meta_to_pool(monkeypatch):
     """``_enqueue_ingest_job`` forwards meta (filename/minio_key) as the
-    4th enqueue_job arg so the worker can rebuild the event payload."""
+    5th enqueue_job arg so the worker can rebuild the event payload, and
+    enqueues under the job's FULL dotted import path — ARQ registers
+    string ``functions`` entries under that full path, not the bare
+    function name, so a short name silently never runs (arq logs
+    "'<name>' not found" and the job is dropped)."""
     import life_graph.services.multimodal as multimodal_module
 
     fake_pool = AsyncMock()
@@ -325,10 +329,21 @@ async def test_enqueue_ingest_job_passes_meta_to_pool(monkeypatch):
     )
 
     fake_pool.enqueue_job.assert_awaited_once_with(
-        "ingest_capture_text", "some text", "voice", TENANT_ID,
+        multimodal_module.INGEST_CAPTURE_JOB_NAME, "some text", "voice", TENANT_ID,
         {"filename": "note.webm", "minio_key": "abc/note.webm"},
     )
     fake_pool.close.assert_awaited_once()
+
+
+def test_ingest_capture_job_name_matches_registration():
+    """The enqueue name must exactly match the string registered in
+    ``WorkerSettings.functions`` (workers/settings.py), since ARQ names
+    string-registered jobs by their full import path."""
+    from life_graph.services.multimodal import INGEST_CAPTURE_JOB_NAME
+    from life_graph.workers.settings import WorkerSettings
+
+    assert INGEST_CAPTURE_JOB_NAME in WorkerSettings.functions
+    assert INGEST_CAPTURE_JOB_NAME == "life_graph.workers.ingest_capture.ingest_capture_text"
 
 
 # ── ingest_or_fallback / split_into_chunks (module-level, shared with the
