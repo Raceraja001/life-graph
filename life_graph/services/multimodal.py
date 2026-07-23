@@ -99,7 +99,10 @@ class MultiModalService:
         """
         memories = await manager.ingest(text, source=source)
         if not memories:
-            row = await manager.store.store(MemoryCreate(content=text, source_type=source))
+            embedding = await manager.generate_embedding(text)
+            row = await manager.store.store(
+                MemoryCreate(content=text, source_type=source), embedding=embedding
+            )
             memories = [row]
         return memories
 

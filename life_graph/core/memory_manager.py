@@ -169,6 +169,10 @@ class MemoryManager:
             reason,
         )
 
+    async def generate_embedding(self, text: str) -> list[float] | None:
+        """Public wrapper for embedding generation (used by fallback persistence paths)."""
+        return await self._generate_embedding(text)
+
     # ── Internal Helpers ──────────────────────────────────────
 
     async def _process_fact(

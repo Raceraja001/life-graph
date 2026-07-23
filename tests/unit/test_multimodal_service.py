@@ -154,14 +154,17 @@ async def test_process_voice_falls_back_to_raw_text_when_nothing_extracted(monke
     _FakeAsyncClient.body = {"success": True, "result": {"text": "just rambling, no facts here"}}
     manager = AsyncMock()
     manager.ingest.return_value = []  # extraction pipeline found nothing
+    manager.generate_embedding.return_value = [0.1] * 3
 
     result = await svc.process_voice(b"RIFFfake", "note.webm", manager)
 
     manager.ingest.assert_awaited_once_with("just rambling, no facts here", source="voice")
+    manager.generate_embedding.assert_awaited_once_with("just rambling, no facts here")
     manager.store.store.assert_awaited_once()
     fallback_body = manager.store.store.await_args.args[0]
     assert fallback_body.content == "just rambling, no facts here"
     assert fallback_body.source_type == "voice"
+    assert manager.store.store.await_args.kwargs["embedding"] == [0.1] * 3
     assert result["memories_created"] >= 1
 
 
@@ -171,13 +174,16 @@ async def test_process_image_falls_back_to_raw_text_when_nothing_extracted():
     svc._ocr_image = MagicMock(return_value="some scrawled note")
     manager = AsyncMock()
     manager.ingest.return_value = []
+    manager.generate_embedding.return_value = [0.1] * 3
 
     result = await svc.process_image(b"pngbytes", "note.png", manager)
 
+    manager.generate_embedding.assert_awaited_once_with("some scrawled note")
     manager.store.store.assert_awaited_once()
     fallback_body = manager.store.store.await_args.args[0]
     assert fallback_body.content == "some scrawled note"
     assert fallback_body.source_type == "image"
+    assert manager.store.store.await_args.kwargs["embedding"] == [0.1] * 3
     assert result["memories_created"] >= 1
 
 
@@ -186,13 +192,18 @@ async def test_process_document_falls_back_to_raw_text_when_nothing_extracted():
     svc, _minio, _bus = _service()
     manager = AsyncMock()
     manager.ingest.return_value = []
+    # No embedding backend configured — embedding generation returns None,
+    # but the fallback must still store (with embedding=None).
+    manager.generate_embedding.return_value = None
 
     result = await svc.process_document(b"hello world text", "note.txt", manager)
 
+    manager.generate_embedding.assert_awaited_once_with("hello world text")
     manager.store.store.assert_awaited_once()
     fallback_body = manager.store.store.await_args.args[0]
     assert fallback_body.content == "hello world text"
     assert fallback_body.source_type == "document"
+    assert manager.store.store.await_args.kwargs["embedding"] is None
     assert result["memories_created"] >= 1
 
 

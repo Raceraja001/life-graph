@@ -63,7 +63,8 @@ async def create_memory(
 
     if not memories:
         # Nothing extracted — store as-is so the user's input isn't lost
-        row = await store.store(body)
+        embedding = await manager.generate_embedding(body.content)
+        row = await store.store(body, embedding=embedding)
         return [MemoryResponse.model_validate(row)]
 
     return success_response(
