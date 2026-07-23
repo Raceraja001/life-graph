@@ -100,6 +100,11 @@ async def update_memory(
     store: PostgresMemoryStore = Depends(get_store),
 ):
     """Apply a partial update to an existing memory."""
+    if body.status in ("pending", "rejected", "active"):
+        raise HTTPException(
+            status_code=422,
+            detail="Approval status changes must use the approve/reject endpoints",
+        )
     try:
         row = await store.update(memory_id, body)
     except ValueError:

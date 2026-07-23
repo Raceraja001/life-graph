@@ -6,6 +6,7 @@ similarity search via cosine distance (``<=>``)."""
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -16,6 +17,8 @@ from life_graph.core.trust import TrustTier, coerce_tier
 from life_graph.models.db import Memory, MemorySession, Session
 from life_graph.models.schemas import MemoryCreate, MemoryUpdate
 from life_graph.storage.database import async_session
+
+logger = logging.getLogger(__name__)
 
 
 class PostgresMemoryStore:
@@ -33,12 +36,16 @@ class PostgresMemoryStore:
         *,
         embedding: list[float] | None = None,
         trust_tier: str | None = None,
+        status: str = "pending",
     ) -> Memory:
         """Persist a new memory from a creation payload.
 
         ``trust_tier`` is a server-side provenance argument — never part of the
         client payload — so callers cannot self-assert a trusted tier. Defaults
         to 'verified' (system-produced); untrusted origin is passed explicitly.
+
+        ``status`` defaults to ``"pending"`` — every newly stored memory waits
+        for user approval before becoming ``"active"``.
         """
         from life_graph.config import settings
 
@@ -56,6 +63,7 @@ class PostgresMemoryStore:
             trust_tier=coerce_tier(trust_tier, default=TrustTier.VERIFIED).value,
             content_hash=content_hash,
             tenant_id=get_current_tenant_id(),
+            status=status,
         )
         if embedding:
             row.embedding = embedding
@@ -67,6 +75,23 @@ class PostgresMemoryStore:
             session.add(row)
             await session.commit()
             await session.refresh(row)
+
+        if status == "pending":
+            try:
+                from life_graph.core.events import EventType, event_bus
+
+                await event_bus.emit(
+                    EventType.MEMORY_PENDING,
+                    {
+                        "id": str(row.id),
+                        "source_type": row.source_type,
+                        "preview": row.content[:80],
+                        "tenant_id": row.tenant_id,
+                    },
+                    source="memory_store",
+                )
+            except Exception:  # pragma: no cover - events must never break writes
+                logger.warning("MEMORY_PENDING emit failed", exc_info=True)
         return row
 
     # ── Retrieve ──────────────────────────────────────────────
