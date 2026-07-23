@@ -38,9 +38,17 @@ pollute the graph; the gate must exist first.
 
 ### Data model
 
-- `memories.status: str` — `'pending' | 'approved' | 'rejected'`, server default `'pending'`,
-  NOT NULL. Alembic migration 022 adds the column with default, backfills **all existing
-  rows to `'approved'`** (they predate the gate), and adds index `(tenant_id, status)`.
+- **Reuse the existing lifecycle column.** `memories.status` already exists (values in use:
+  `active`, `archived`, `superseded`, `uncertain`, `retired`) and **every automation
+  consumer already filters `status == "active"`** (context builder, recall, consolidation,
+  decay, dedup, hybrid-search SQL). The gate adds two lifecycle values:
+  - `'pending'` — newly created, awaiting approval (**"approved" in this spec = `'active'`**)
+  - `'rejected'` — user said no; excluded everywhere
+- Approval is the `pending → active` transition; rejection is `pending → rejected`.
+- **No migration needed**: no schema change, existing rows are already `active` (= approved),
+  and the `(tenant_id, status)` index already exists. Automation exclusion is inherited from
+  the existing `active`-only filters rather than swept in — pending rows are invisible to
+  agents by the same mechanism that already hides archived ones.
 - No new table. The memory row *is* the approval item; approval is a status transition.
 
 ### Ingest paths (all create `pending`)
