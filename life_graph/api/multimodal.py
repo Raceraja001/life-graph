@@ -12,10 +12,10 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 
-from life_graph.api.dependencies import get_extraction_pipeline, get_memory_manager
+from life_graph.api.dependencies import get_extraction_pipeline
 from life_graph.api.responses import success_response
 from life_graph.core.events import event_bus
-from life_graph.core.memory_manager import MemoryManager
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.minio_client import MinIOStorage
 
 logger = logging.getLogger(__name__)
@@ -85,21 +85,22 @@ def _get_multimodal_service():
 )
 async def ingest_voice(
     file: UploadFile = File(...),
-    manager: MemoryManager = Depends(get_memory_manager),
+    tenant_id: str = Depends(get_current_tenant_id),
 ) -> dict:
-    """Upload an audio file for transcription and memory extraction.
+    """Upload an audio file for transcription; ingestion runs in the background.
 
     Supported formats: WAV, MP3, OGG, M4A, FLAC, WebM.
 
-    Returns the transcript, number of memories created, and the
-    MinIO storage key.
+    Transcription happens inline and is returned immediately. The slow
+    extraction/scoring/dedup/embedding work is queued to the ARQ worker
+    (see ``ingest`` field in the response — ``"queued"``).
     """
     service = _get_multimodal_service()
     audio_bytes = await file.read()
     filename = _validate_upload(file, audio_bytes, ALLOWED_AUDIO, "audio")
 
     try:
-        result = await service.process_voice(audio_bytes, filename, manager)
+        result = await service.process_voice(audio_bytes, filename, tenant_id)
     except ImportError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -125,21 +126,22 @@ async def ingest_voice(
 )
 async def ingest_image(
     file: UploadFile = File(...),
-    manager: MemoryManager = Depends(get_memory_manager),
+    tenant_id: str = Depends(get_current_tenant_id),
 ) -> dict:
-    """Upload an image for OCR text extraction and memory creation.
+    """Upload an image for OCR; ingestion runs in the background.
 
     Supported formats: PNG, JPEG, GIF, BMP, TIFF, WebP.
 
-    Returns the extracted OCR text, number of memories created, and
-    the MinIO storage key.
+    OCR happens inline and is returned immediately. The slow
+    extraction/scoring/dedup/embedding work is queued to the ARQ worker
+    (see ``ingest`` field in the response — ``"queued"``).
     """
     service = _get_multimodal_service()
     image_bytes = await file.read()
     filename = _validate_upload(file, image_bytes, ALLOWED_IMAGE, "image")
 
     try:
-        result = await service.process_image(image_bytes, filename, manager)
+        result = await service.process_image(image_bytes, filename, tenant_id)
     except ImportError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -165,24 +167,23 @@ async def ingest_image(
 )
 async def ingest_document(
     file: UploadFile = File(...),
-    manager: MemoryManager = Depends(get_memory_manager),
+    tenant_id: str = Depends(get_current_tenant_id),
 ) -> dict:
-    """Upload a document (PDF, Markdown, or plain text) for extraction.
+    """Upload a document (PDF, Markdown, or plain text); ingestion runs in the background.
 
-    The document is split into chunks and each chunk is processed
-    through the extraction pipeline.
+    Text extraction and chunk-count happen inline and are returned
+    immediately. The per-chunk extraction/scoring/dedup/embedding work
+    is queued as a single ARQ job that loops over the chunks (see
+    ``ingest`` field in the response — ``"queued"``).
 
     Supported formats: PDF, Markdown (.md), plain text (.txt).
-
-    Returns the text length, number of chunks, memories created,
-    and the MinIO storage key.
     """
     service = _get_multimodal_service()
     doc_bytes = await file.read()
     filename = _validate_upload(file, doc_bytes, ALLOWED_DOCUMENT, "document")
 
     try:
-        result = await service.process_document(doc_bytes, filename, manager)
+        result = await service.process_document(doc_bytes, filename, tenant_id)
     except ImportError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

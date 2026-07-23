@@ -64,6 +64,7 @@ class WorkerSettings:
         "life_graph.workers.tasks.send_approval_escalations",
         "life_graph.workers.tasks.run_daily_brief",
         "life_graph.workers.tasks.failure_pattern_mining",
+        "life_graph.workers.ingest_capture.ingest_capture_text",
     ]
 
     cron_jobs = [
