@@ -20,6 +20,7 @@ export default function MemoriesPage() {
     try {
       await (action === "approve" ? api.memories.approve(id) : api.memories.reject(id));
       queryClient.invalidateQueries({ queryKey: ["memories"] });
+      queryClient.invalidateQueries({ queryKey: ["memory-search"] });
     } finally {
       setResolvingId(null);
     }

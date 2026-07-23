@@ -164,6 +164,7 @@ export function useResolveMemory() {
       action === "approve" ? api.memories.approve(id) : api.memories.reject(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["memories"] });
+      qc.invalidateQueries({ queryKey: ["memory-search"] });
     },
   });
 }
