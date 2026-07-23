@@ -62,3 +62,58 @@ async def test_duplicate_of_pending_is_deduped(client: AsyncClient):
     if listing.status_code == 200:
         rows = [r for r in listing.json()["data"] if r["content"] == text]
         assert len(rows) == 1, "second capture must dedup against the pending row"
+
+
+async def _create(client: AsyncClient, text: str) -> dict | None:
+    resp = await client.post("/api/v1/memories/", json={"content": text})
+    if resp.status_code not in (200, 201):
+        return None
+    data = resp.json()["data"]
+    return data[0] if isinstance(data, list) else data
+
+
+@skip_on_db_error
+@pytest.mark.asyncio
+async def test_approve_transitions_pending_to_active(client: AsyncClient):
+    row = await _create(client, "approve me delta 1188")
+    if row is None:
+        pytest.skip("DB unavailable")
+    resp = await client.post(f"/api/v1/memories/{row['id']}/approve")
+    assert resp.status_code == 200
+    assert resp.json()["data"]["status"] == "active"
+    again = await client.post(f"/api/v1/memories/{row['id']}/approve")
+    assert again.status_code == 200  # idempotent
+
+
+@skip_on_db_error
+@pytest.mark.asyncio
+async def test_reject_and_active_reject_conflict(client: AsyncClient):
+    row = await _create(client, "reject me epsilon 2299")
+    if row is None:
+        pytest.skip("DB unavailable")
+    resp = await client.post(f"/api/v1/memories/{row['id']}/reject")
+    assert resp.status_code == 200
+    assert resp.json()["data"]["status"] == "rejected"
+    row2 = await _create(client, "active then reject zeta 3311")
+    await client.post(f"/api/v1/memories/{row2['id']}/approve")
+    conflict = await client.post(f"/api/v1/memories/{row2['id']}/reject")
+    assert conflict.status_code == 409
+
+
+@skip_on_db_error
+@pytest.mark.asyncio
+async def test_bulk_and_count(client: AsyncClient):
+    a = await _create(client, "bulk approval eta 4422")
+    b = await _create(client, "bulk rejection theta 5533")
+    if a is None or b is None:
+        pytest.skip("DB unavailable")
+    count_before = await client.get("/api/v1/memories/pending/count")
+    assert count_before.status_code == 200
+    assert count_before.json()["data"]["count"] >= 2
+    resp = await client.post(
+        "/api/v1/memories/approvals/bulk",
+        json={"approve": [a["id"]], "reject": [b["id"]]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["approved"] == 1 and body["rejected"] == 1
