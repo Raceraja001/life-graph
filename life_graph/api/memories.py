@@ -296,6 +296,16 @@ async def list_memories(
 
     if memory_status is not None:
         filters["status"] = memory_status
+    else:
+        # No explicit status filter: show everything except rejected.
+        filters["statuses"] = (
+            "active",
+            "pending",
+            "archived",
+            "superseded",
+            "uncertain",
+            "retired",
+        )
     if tags is not None:
         filters["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
     if min_importance is not None:

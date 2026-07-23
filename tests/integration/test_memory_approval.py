@@ -130,3 +130,19 @@ async def test_search_shows_pending_to_dashboard(client: AsyncClient):
     if resp.status_code == 200:
         contents = str(resp.json())
         assert "6644" in contents, "dashboard search must include pending memories"
+
+
+@skip_on_db_error
+@pytest.mark.asyncio
+async def test_default_list_hides_rejected(client: AsyncClient):
+    row = await _create(client, "rejected hidden kappa 7755")
+    if row is None:
+        pytest.skip("DB unavailable")
+    await client.post(f"/api/v1/memories/{row['id']}/reject")
+    listing = await client.get("/api/v1/memories/", params={"limit": "100"})
+    assert listing.status_code == 200
+    ids = [r["id"] for r in listing.json()["data"]]
+    assert row["id"] not in ids
+    explicit = await client.get("/api/v1/memories/", params={"status": "rejected", "limit": "100"})
+    assert explicit.status_code == 200
+    assert row["id"] in [r["id"] for r in explicit.json()["data"]]
