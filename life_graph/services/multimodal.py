@@ -167,6 +167,44 @@ class MultiModalService:
         logger.info("Cloudflare transcribed %s: %d characters", filename, len(text))
         return text.strip()
 
+    async def _transcribe_groq(self, audio_bytes: bytes, filename: str) -> str:
+        """Transcribe audio via Groq (whisper-large-v3-turbo).
+
+        Groq's inference is the fastest of the available backends, so it
+        is tried first when an API key is configured.
+
+        Args:
+            audio_bytes: Raw audio file bytes.
+            filename: Original filename (passed through in the multipart
+                upload; used for logging only).
+
+        Returns:
+            The transcript text (stripped).
+
+        Raises:
+            RuntimeError: If the API reports a non-2xx response.
+        """
+        import httpx
+
+        from life_graph.config import settings
+
+        url = "https://api.groq.com/openai/v1/audio/transcriptions"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                url,
+                headers={"Authorization": f"Bearer {settings.groq_api_key}"},
+                files={"file": (filename, audio_bytes)},
+                data={"model": "whisper-large-v3-turbo"},
+            )
+        if response.status_code < 200 or response.status_code >= 300:
+            raise RuntimeError(
+                f"Groq transcription error: {response.status_code} {response.text[:200]}"
+            )
+        data = response.json()
+        text = str(data.get("text", ""))
+        logger.info("Groq transcribed %s: %d characters", filename, len(text))
+        return text.strip()
+
     async def process_voice(
         self, audio_bytes: bytes, filename: str, manager: "MemoryManager"
     ) -> dict[str, Any]:
@@ -188,11 +226,14 @@ class MultiModalService:
         content_type = _content_type_for(filename)
         self.minio.upload(_VOICE_BUCKET, key, audio_bytes, content_type)
 
-        # 2. Transcribe — Cloudflare Workers AI when configured (better
-        #    Tamil/English code-switching), else local faster-whisper.
+        # 2. Transcribe — Groq when configured (fastest), else Cloudflare
+        #    Workers AI when configured (better Tamil/English code-switching),
+        #    else local faster-whisper.
         from life_graph.config import settings
 
-        if settings.cf_account_id and settings.cf_ai_token:
+        if settings.groq_api_key:
+            transcript = await self._transcribe_groq(audio_bytes, filename)
+        elif settings.cf_account_id and settings.cf_ai_token:
             transcript = await self._transcribe_cloudflare(audio_bytes, filename)
         else:
             transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
