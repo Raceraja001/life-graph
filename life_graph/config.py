@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     # "Workers AI" permission.
     cf_account_id: str = ""  # Set LIFE_GRAPH_CF_ACCOUNT_ID
     cf_ai_token: str = ""  # Set LIFE_GRAPH_CF_AI_TOKEN
+    groq_api_key: str = ""  # LIFE_GRAPH_GROQ_API_KEY — Groq speech-to-text (fastest)
 
     # ── MinIO / Object Storage ─────────────────────────
     minio_endpoint: str = "localhost:9000"

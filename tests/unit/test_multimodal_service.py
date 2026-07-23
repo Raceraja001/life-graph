@@ -207,6 +207,82 @@ async def test_process_document_falls_back_to_raw_text_when_nothing_extracted():
     assert result["memories_created"] >= 1
 
 
+# ── Groq transcription backend (fastest, tried first) ────────────────
+
+
+class _FakeGroqResponse:
+    def __init__(self, status_code: int, body: dict | None = None, text: str = "") -> None:
+        self.status_code = status_code
+        self._body = body or {}
+        self.text = text
+
+    def json(self) -> dict:
+        return self._body
+
+
+class _FakeGroqAsyncClient:
+    last_request: dict | None = None
+    response: "_FakeGroqResponse" = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def post(self, url, headers=None, files=None, data=None):
+        _FakeGroqAsyncClient.last_request = {
+            "url": url,
+            "headers": headers,
+            "files": files,
+            "data": data,
+        }
+        return _FakeGroqAsyncClient.response
+
+
+@pytest.mark.asyncio
+async def test_groq_backend_used_when_configured(monkeypatch):
+    svc, minio, _bus = _service()
+    # CF creds are also set — Groq must win the selection.
+    monkeypatch.setattr(settings, "cf_account_id", "acct123", raising=False)
+    monkeypatch.setattr(settings, "cf_ai_token", "tok", raising=False)
+    monkeypatch.setattr(settings, "groq_api_key", "groqkey", raising=False)
+    monkeypatch.setattr("httpx.AsyncClient", _FakeGroqAsyncClient)
+    _FakeGroqAsyncClient.response = _FakeGroqResponse(200, {"text": "hello from groq"})
+    cf_spy = AsyncMock()
+    monkeypatch.setattr(svc, "_transcribe_cloudflare", cf_spy)
+    manager = AsyncMock()
+    manager.ingest.return_value = [MagicMock()]
+
+    result = await svc.process_voice(b"RIFFfake", "note.webm", manager)
+
+    cf_spy.assert_not_awaited()
+    assert result["transcript"] == "hello from groq"
+    req = _FakeGroqAsyncClient.last_request
+    assert req["url"] == "https://api.groq.com/openai/v1/audio/transcriptions"
+    assert req["headers"]["Authorization"] == "Bearer groqkey"
+    assert "file" in req["files"]
+    assert req["data"]["model"] == "whisper-large-v3-turbo"
+    manager.ingest.assert_awaited_once_with("hello from groq", source="voice")
+    minio.upload.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_groq_error_raises(monkeypatch):
+    svc, _minio, _bus = _service()
+    monkeypatch.setattr(settings, "groq_api_key", "groqkey", raising=False)
+    monkeypatch.setattr("httpx.AsyncClient", _FakeGroqAsyncClient)
+    _FakeGroqAsyncClient.response = _FakeGroqResponse(500, text="internal error")
+    manager = AsyncMock()
+
+    with pytest.raises(RuntimeError):
+        await svc.process_voice(b"RIFFfake", "note.webm", manager)
+    manager.ingest.assert_not_awaited()
+
+
 # ── Finding 2: local faster-whisper branch (no CF credentials) ──────
 
 
