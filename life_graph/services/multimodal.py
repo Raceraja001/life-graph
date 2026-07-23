@@ -5,8 +5,11 @@ Life Graph. Each modality follows the same pattern:
 
 1. Store the original file in MinIO.
 2. Extract text (transcribe / OCR / parse).
-3. Run extracted text through the extraction pipeline.
-4. Emit the appropriate event.
+3. Queue the extracted text for the ``ingest_capture_text`` ARQ job, which
+   runs it through the extraction pipeline and emits the domain event
+   (``voice:transcribed`` / ``image:processed`` / ``document:imported``)
+   once, on completion, with the real memory count — not here, since the
+   count isn't known until the job runs.
 
 Heavy dependencies (faster-whisper, pytesseract, pymupdf) are
 imported lazily so the module can be loaded even when they are
@@ -25,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from life_graph.core.memory_manager import MemoryManager
 
-from life_graph.core.events import EventBus, EventType
+from life_graph.core.events import EventBus
 from life_graph.extraction.pipeline import ExtractionPipeline
 from life_graph.models.schemas import MemoryCreate
 from life_graph.storage.minio_client import MinIOStorage
@@ -64,12 +67,22 @@ async def ingest_or_fallback(manager: "MemoryManager", text: str, source: str) -
     return memories
 
 
-async def _enqueue_ingest_job(text: str, source: str, tenant_id: str) -> None:
+async def _enqueue_ingest_job(
+    text: str, source: str, tenant_id: str, meta: dict[str, Any] | None = None
+) -> None:
     """Enqueue the background ingestion job via the ARQ pool.
 
     Mirrors the enqueue pattern already used in ``life_graph.api.admin``
     (bulk import / manual consolidation trigger): create a short-lived
     pool, enqueue, close.
+
+    Args:
+        text: The extracted text to ingest.
+        source: ``"voice"`` / ``"image"`` / ``"document"``.
+        tenant_id: Owning tenant.
+        meta: Extra fields the job needs to rebuild the old sync-emit
+            event payload once ingestion completes — ``filename`` and
+            ``minio_key``.
     """
     from arq import create_pool
 
@@ -77,7 +90,7 @@ async def _enqueue_ingest_job(text: str, source: str, tenant_id: str) -> None:
 
     pool = await create_pool(parse_redis_settings())
     try:
-        await pool.enqueue_job("ingest_capture_text", text, source, tenant_id)
+        await pool.enqueue_job("ingest_capture_text", text, source, tenant_id, meta or {})
     finally:
         await pool.close()
 
@@ -340,19 +353,12 @@ class MultiModalService:
             raise ValueError("Transcription produced no text — nothing to remember")
 
         # 3. Queue the slow ingestion work (extraction/scoring/dedup/embedding)
-        #    for the ARQ worker instead of running it inline.
-        await _enqueue_ingest_job(transcript, "voice", tenant_id)
-
-        # 4. Emit event — memory count is not known yet (ingestion is queued).
-        await self.event_bus.emit(
-            EventType.VOICE_TRANSCRIBED,
-            {
-                "filename": filename,
-                "minio_key": key,
-                "transcript_length": len(transcript),
-                "ingest": "queued",
-            },
-            source="multimodal",
+        #    for the ARQ worker instead of running it inline. The domain
+        #    event (VOICE_TRANSCRIBED) is emitted by the job on completion,
+        #    with the real memory count — not here, since the count isn't
+        #    known yet.
+        await _enqueue_ingest_job(
+            transcript, "voice", tenant_id, meta={"filename": filename, "minio_key": key}
         )
 
         return {
@@ -408,18 +414,11 @@ class MultiModalService:
         if not ocr_text.strip():
             raise ValueError("No text found in the image — nothing to remember")
 
-        # Queue the slow ingestion work instead of running it inline.
-        await _enqueue_ingest_job(ocr_text, "image", tenant_id)
-
-        await self.event_bus.emit(
-            EventType.IMAGE_PROCESSED,
-            {
-                "filename": filename,
-                "minio_key": key,
-                "ocr_text_length": len(ocr_text),
-                "ingest": "queued",
-            },
-            source="multimodal",
+        # Queue the slow ingestion work instead of running it inline. The
+        # domain event (IMAGE_PROCESSED) is emitted by the job on
+        # completion, with the real memory count.
+        await _enqueue_ingest_job(
+            ocr_text, "image", tenant_id, meta={"filename": filename, "minio_key": key}
         )
 
         return {
@@ -487,19 +486,10 @@ class MultiModalService:
             raise ValueError("No text found in the document — nothing to remember")
 
         # Queue the full text; the worker re-chunks and loops (see
-        # life_graph.workers.ingest_capture.ingest_capture_text).
-        await _enqueue_ingest_job(text, "document", tenant_id)
-
-        await self.event_bus.emit(
-            EventType.DOCUMENT_IMPORTED,
-            {
-                "filename": filename,
-                "minio_key": key,
-                "text_length": len(text),
-                "chunks": len(chunks),
-                "ingest": "queued",
-            },
-            source="multimodal",
+        # life_graph.workers.ingest_capture.ingest_capture_text), and emits
+        # DOCUMENT_IMPORTED on completion with the real memory count.
+        await _enqueue_ingest_job(
+            text, "document", tenant_id, meta={"filename": filename, "minio_key": key}
         )
 
         return {
