@@ -397,6 +397,9 @@ class PostgresMemoryStore:
         - ``created_before`` (datetime)
         - ``min_importance`` (float)
         - ``source_type`` (str)       – exact match on source_type column
+
+        Note: ``status`` and ``statuses`` are independent clauses — if both
+        keys are present they are ANDed together, not merged.
         """
         if not filters:
             return stmt

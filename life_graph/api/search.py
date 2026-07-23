@@ -122,8 +122,17 @@ async def semantic_search(
         filters["created_before"] = body.created_before
     if body.source_type:
         filters["source_type"] = body.source_type
-    if body.status:
+    if body.status != "active":
+        # User explicitly narrowed to a non-default status — honor it as-is.
         filters["status"] = body.status
+    else:
+        # Default case: this route serves the dashboard, so unless the user
+        # explicitly narrowed the status, widen visibility to include pending
+        # rows too (not just active) — otherwise the vector-mode fallback
+        # below (and any other _apply_filters consumer) would silently drop
+        # pending memories even though the primary hybrid/tri_hybrid paths
+        # pass statuses=("active", "pending") directly.
+        filters["statuses"] = ["active", "pending"]
 
     search_mode = body.search_mode
     memories: list[MemoryResponse] = []
