@@ -108,7 +108,10 @@ async def test_process_voice_queues_ingestion(monkeypatch):
     assert result["transcript"] == "call amma tonight"
     assert result["ingest"] == "queued"
     assert "memories_created" not in result
-    enqueue.assert_awaited_once_with("call amma tonight", "voice", TENANT_ID)
+    enqueue.assert_awaited_once_with(
+        "call amma tonight", "voice", TENANT_ID,
+        meta={"filename": "note.webm", "minio_key": result["minio_key"]},
+    )
     minio.upload.assert_called_once()
 
 
@@ -136,7 +139,10 @@ async def test_process_image_queues_ocr_text(monkeypatch):
 
     assert result["ingest"] == "queued"
     assert "memories_created" not in result
-    enqueue.assert_awaited_once_with("Receipt total Rs 450", "image", TENANT_ID)
+    enqueue.assert_awaited_once_with(
+        "Receipt total Rs 450", "image", TENANT_ID,
+        meta={"filename": "receipt.png", "minio_key": result["minio_key"]},
+    )
 
 
 @pytest.mark.asyncio
@@ -160,7 +166,10 @@ async def test_process_document_queues_full_text_as_one_job(monkeypatch):
     assert result["ingest"] == "queued"
     assert result["chunks"] == 1
     assert "memories_created" not in result
-    enqueue.assert_awaited_once_with("hello world text", "document", TENANT_ID)
+    enqueue.assert_awaited_once_with(
+        "hello world text", "document", TENANT_ID,
+        meta={"filename": "note.txt", "minio_key": result["minio_key"]},
+    )
 
 
 @pytest.mark.asyncio
@@ -190,6 +199,9 @@ async def test_process_document_multi_chunk_still_enqueues_one_job(monkeypatch):
     assert args[0] == long_text  # full text, not a single chunk
     assert args[1] == "document"
     assert args[2] == TENANT_ID
+    assert enqueue.await_args.kwargs["meta"] == {
+        "filename": "big.txt", "minio_key": result["minio_key"],
+    }
 
 
 # ── Groq transcription backend (fastest, tried first) ────────────────
@@ -250,7 +262,10 @@ async def test_groq_backend_used_when_configured(monkeypatch):
     assert req["headers"]["Authorization"] == "Bearer groqkey"
     assert "file" in req["files"]
     assert req["data"]["model"] == "whisper-large-v3-turbo"
-    enqueue.assert_awaited_once_with("hello from groq", "voice", TENANT_ID)
+    enqueue.assert_awaited_once_with(
+        "hello from groq", "voice", TENANT_ID,
+        meta={"filename": "note.webm", "minio_key": result["minio_key"]},
+    )
     minio.upload.assert_called_once()
 
 
@@ -285,8 +300,35 @@ async def test_process_voice_uses_local_whisper_when_no_cf_credentials(monkeypat
     cf_spy.assert_not_awaited()
     svc._transcribe_audio.assert_called_once_with(b"RIFFfake", "note.wav")
     assert result["transcript"] == "local whisper transcript"
-    enqueue.assert_awaited_once_with("local whisper transcript", "voice", TENANT_ID)
+    enqueue.assert_awaited_once_with(
+        "local whisper transcript", "voice", TENANT_ID,
+        meta={"filename": "note.wav", "minio_key": result["minio_key"]},
+    )
     minio.upload.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_enqueue_ingest_job_passes_meta_to_pool(monkeypatch):
+    """``_enqueue_ingest_job`` forwards meta (filename/minio_key) as the
+    4th enqueue_job arg so the worker can rebuild the event payload."""
+    import life_graph.services.multimodal as multimodal_module
+
+    fake_pool = AsyncMock()
+
+    async def fake_create_pool(*_args, **_kwargs):
+        return fake_pool
+
+    monkeypatch.setattr("arq.create_pool", fake_create_pool)
+
+    await multimodal_module._enqueue_ingest_job(
+        "some text", "voice", TENANT_ID, meta={"filename": "note.webm", "minio_key": "abc/note.webm"}
+    )
+
+    fake_pool.enqueue_job.assert_awaited_once_with(
+        "ingest_capture_text", "some text", "voice", TENANT_ID,
+        {"filename": "note.webm", "minio_key": "abc/note.webm"},
+    )
+    fake_pool.close.assert_awaited_once()
 
 
 # ── ingest_or_fallback / split_into_chunks (module-level, shared with the

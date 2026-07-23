@@ -38,6 +38,19 @@ class _QueuingService:
         self.calls.append((audio_bytes, filename, tenant_id))
         return {"transcript": "hello", "ingest": "queued", "minio_key": "k/note.wav"}
 
+    async def process_image(self, image_bytes, filename, tenant_id):
+        self.calls.append((image_bytes, filename, tenant_id))
+        return {"ocr_text": "hello", "ingest": "queued", "minio_key": "k/receipt.png"}
+
+    async def process_document(self, doc_bytes, filename, tenant_id):
+        self.calls.append((doc_bytes, filename, tenant_id))
+        return {
+            "text_length": 5,
+            "chunks": 1,
+            "ingest": "queued",
+            "minio_key": "k/note.txt",
+        }
+
 
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
@@ -80,6 +93,46 @@ async def test_ingest_voice_passes_request_tenant_id_to_service(client: AsyncCli
     assert response.status_code == 200
     assert len(fake_service.calls) == 1
     _audio_bytes, _filename, tenant_id = fake_service.calls[0]
+    assert tenant_id == TENANT_HEADERS["X-Tenant-ID"]
+    body = response.json()
+    assert body["data"]["ingest"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_ingest_image_passes_request_tenant_id_to_service(client: AsyncClient, monkeypatch):
+    """Mirrors the voice test above for POST /ingest/image."""
+    fake_service = _QueuingService()
+    monkeypatch.setattr(multimodal_api, "_get_multimodal_service", lambda: fake_service)
+
+    response = await client.post(
+        "/api/v1/ingest/image",
+        files={"file": ("receipt.png", b"pngbytes", "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert len(fake_service.calls) == 1
+    _image_bytes, _filename, tenant_id = fake_service.calls[0]
+    assert tenant_id == TENANT_HEADERS["X-Tenant-ID"]
+    body = response.json()
+    assert body["data"]["ingest"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_ingest_document_passes_request_tenant_id_to_service(
+    client: AsyncClient, monkeypatch
+):
+    """Mirrors the voice test above for POST /ingest/document."""
+    fake_service = _QueuingService()
+    monkeypatch.setattr(multimodal_api, "_get_multimodal_service", lambda: fake_service)
+
+    response = await client.post(
+        "/api/v1/ingest/document",
+        files={"file": ("note.txt", b"hello world text", "text/plain")},
+    )
+
+    assert response.status_code == 200
+    assert len(fake_service.calls) == 1
+    _doc_bytes, _filename, tenant_id = fake_service.calls[0]
     assert tenant_id == TENANT_HEADERS["X-Tenant-ID"]
     body = response.json()
     assert body["data"]["ingest"] == "queued"
