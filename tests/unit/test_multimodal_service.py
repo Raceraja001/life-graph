@@ -1,4 +1,13 @@
-"""Unit tests for MultiModalService: transcription backend selection."""
+"""Unit tests for MultiModalService: transcription backend selection and
+background-ingestion enqueueing.
+
+``process_voice``/``process_image``/``process_document`` no longer call
+``MemoryManager.ingest`` inline — the slow ingestion work is handed off to
+the ``ingest_capture_text`` ARQ job. These tests mock the enqueue
+mechanism (``life_graph.services.multimodal._enqueue_ingest_job``) and
+assert the queued text/source/tenant args, instead of asserting on a
+``MemoryManager`` mock.
+"""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -7,12 +16,23 @@ import pytest
 from life_graph.config import settings
 from life_graph.services.multimodal import MultiModalService
 
+TENANT_ID = "tenant-multimodal-svc"
+
 
 def _service() -> tuple[MultiModalService, MagicMock, AsyncMock]:
     minio = MagicMock()
     bus = AsyncMock()
     svc = MultiModalService(minio=minio, event_bus=bus, pipeline=MagicMock())
     return svc, minio, bus
+
+
+def _mock_enqueue(monkeypatch) -> AsyncMock:
+    """Patch the module-level enqueue function and return the mock."""
+    import life_graph.services.multimodal as multimodal_module
+
+    mock = AsyncMock()
+    monkeypatch.setattr(multimodal_module, "_enqueue_ingest_job", mock)
+    return mock
 
 
 class _FakeResponse:
@@ -75,136 +95,101 @@ async def test_cloudflare_error_body_raises(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_process_voice_persists_via_manager(monkeypatch):
+async def test_process_voice_queues_ingestion(monkeypatch):
     svc, minio, _bus = _service()
     monkeypatch.setattr(settings, "cf_account_id", "acct123", raising=False)
     monkeypatch.setattr(settings, "cf_ai_token", "tok", raising=False)
     monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
     _FakeAsyncClient.body = {"success": True, "result": {"text": "call amma tonight"}}
-    manager = AsyncMock()
-    manager.ingest.return_value = [MagicMock()]
+    enqueue = _mock_enqueue(monkeypatch)
 
-    result = await svc.process_voice(b"RIFFfake", "note.webm", manager)
+    result = await svc.process_voice(b"RIFFfake", "note.webm", TENANT_ID)
 
     assert result["transcript"] == "call amma tonight"
-    assert result["memories_created"] == 1
-    manager.ingest.assert_awaited_once_with("call amma tonight", source="voice")
+    assert result["ingest"] == "queued"
+    assert "memories_created" not in result
+    enqueue.assert_awaited_once_with("call amma tonight", "voice", TENANT_ID)
     minio.upload.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_process_voice_empty_transcript_raises_and_persists_nothing(monkeypatch):
+async def test_process_voice_empty_transcript_raises_and_enqueues_nothing(monkeypatch):
     svc, _minio, _bus = _service()
     monkeypatch.setattr(settings, "cf_account_id", "acct123", raising=False)
     monkeypatch.setattr(settings, "cf_ai_token", "tok", raising=False)
     monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
     _FakeAsyncClient.body = {"success": True, "result": {"text": "   "}}
-    manager = AsyncMock()
+    enqueue = _mock_enqueue(monkeypatch)
 
     with pytest.raises(ValueError):
-        await svc.process_voice(b"x", "note.webm", manager)
-    manager.ingest.assert_not_awaited()
+        await svc.process_voice(b"x", "note.webm", TENANT_ID)
+    enqueue.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_process_image_persists_ocr_text():
+async def test_process_image_queues_ocr_text(monkeypatch):
     svc, minio, _bus = _service()
     svc._ocr_image = MagicMock(return_value="Receipt total Rs 450")
-    manager = AsyncMock()
-    manager.ingest.return_value = [MagicMock(), MagicMock()]
+    enqueue = _mock_enqueue(monkeypatch)
 
-    result = await svc.process_image(b"pngbytes", "receipt.png", manager)
+    result = await svc.process_image(b"pngbytes", "receipt.png", TENANT_ID)
 
-    assert result["memories_created"] == 2
-    manager.ingest.assert_awaited_once_with("Receipt total Rs 450", source="image")
+    assert result["ingest"] == "queued"
+    assert "memories_created" not in result
+    enqueue.assert_awaited_once_with("Receipt total Rs 450", "image", TENANT_ID)
 
 
 @pytest.mark.asyncio
-async def test_process_image_empty_ocr_raises():
+async def test_process_image_empty_ocr_raises_and_enqueues_nothing(monkeypatch):
     svc, _minio, _bus = _service()
     svc._ocr_image = MagicMock(return_value="")
-    manager = AsyncMock()
+    enqueue = _mock_enqueue(monkeypatch)
 
     with pytest.raises(ValueError):
-        await svc.process_image(b"pngbytes", "blank.png", manager)
-    manager.ingest.assert_not_awaited()
+        await svc.process_image(b"pngbytes", "blank.png", TENANT_ID)
+    enqueue.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_process_document_persists_each_chunk():
+async def test_process_document_queues_full_text_as_one_job(monkeypatch):
     svc, _minio, _bus = _service()
-    manager = AsyncMock()
-    manager.ingest.return_value = [MagicMock()]
+    enqueue = _mock_enqueue(monkeypatch)
 
-    result = await svc.process_document(b"hello world text", "note.txt", manager)
+    result = await svc.process_document(b"hello world text", "note.txt", TENANT_ID)
 
-    assert result["memories_created"] == 1
-    manager.ingest.assert_awaited_once_with("hello world text", source="document")
-
-
-# ── Finding 1: zero-fact extraction must not drop the raw text ──────
+    assert result["ingest"] == "queued"
+    assert result["chunks"] == 1
+    assert "memories_created" not in result
+    enqueue.assert_awaited_once_with("hello world text", "document", TENANT_ID)
 
 
 @pytest.mark.asyncio
-async def test_process_voice_falls_back_to_raw_text_when_nothing_extracted(monkeypatch):
+async def test_process_document_empty_text_raises_and_enqueues_nothing(monkeypatch):
     svc, _minio, _bus = _service()
-    monkeypatch.setattr(settings, "cf_account_id", "acct123", raising=False)
-    monkeypatch.setattr(settings, "cf_ai_token", "tok", raising=False)
-    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
-    _FakeAsyncClient.body = {"success": True, "result": {"text": "just rambling, no facts here"}}
-    manager = AsyncMock()
-    manager.ingest.return_value = []  # extraction pipeline found nothing
-    manager.generate_embedding.return_value = [0.1] * 3
+    enqueue = _mock_enqueue(monkeypatch)
 
-    result = await svc.process_voice(b"RIFFfake", "note.webm", manager)
-
-    manager.ingest.assert_awaited_once_with("just rambling, no facts here", source="voice")
-    manager.generate_embedding.assert_awaited_once_with("just rambling, no facts here")
-    manager.store.store.assert_awaited_once()
-    fallback_body = manager.store.store.await_args.args[0]
-    assert fallback_body.content == "just rambling, no facts here"
-    assert fallback_body.source_type == "voice"
-    assert manager.store.store.await_args.kwargs["embedding"] == [0.1] * 3
-    assert result["memories_created"] >= 1
+    with pytest.raises(ValueError):
+        await svc.process_document(b"   \n\n  ", "blank.txt", TENANT_ID)
+    enqueue.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_process_image_falls_back_to_raw_text_when_nothing_extracted():
+async def test_process_document_multi_chunk_still_enqueues_one_job(monkeypatch):
+    """Even when the document would split into multiple chunks, exactly
+    one job is enqueued with the full text — the chunking loop moved
+    into the worker job."""
     svc, _minio, _bus = _service()
-    svc._ocr_image = MagicMock(return_value="some scrawled note")
-    manager = AsyncMock()
-    manager.ingest.return_value = []
-    manager.generate_embedding.return_value = [0.1] * 3
+    enqueue = _mock_enqueue(monkeypatch)
+    long_text = " ".join(f"word{i}" for i in range(1200))  # > _MAX_CHUNK_WORDS (500)
 
-    result = await svc.process_image(b"pngbytes", "note.png", manager)
+    result = await svc.process_document(long_text.encode(), "big.txt", TENANT_ID)
 
-    manager.generate_embedding.assert_awaited_once_with("some scrawled note")
-    manager.store.store.assert_awaited_once()
-    fallback_body = manager.store.store.await_args.args[0]
-    assert fallback_body.content == "some scrawled note"
-    assert fallback_body.source_type == "image"
-    assert manager.store.store.await_args.kwargs["embedding"] == [0.1] * 3
-    assert result["memories_created"] >= 1
-
-
-@pytest.mark.asyncio
-async def test_process_document_falls_back_to_raw_text_when_nothing_extracted():
-    svc, _minio, _bus = _service()
-    manager = AsyncMock()
-    manager.ingest.return_value = []
-    # No embedding backend configured — embedding generation returns None,
-    # but the fallback must still store (with embedding=None).
-    manager.generate_embedding.return_value = None
-
-    result = await svc.process_document(b"hello world text", "note.txt", manager)
-
-    manager.generate_embedding.assert_awaited_once_with("hello world text")
-    manager.store.store.assert_awaited_once()
-    fallback_body = manager.store.store.await_args.args[0]
-    assert fallback_body.content == "hello world text"
-    assert fallback_body.source_type == "document"
-    assert manager.store.store.await_args.kwargs["embedding"] is None
-    assert result["memories_created"] >= 1
+    assert result["chunks"] > 1  # reported count reflects multiple chunks
+    enqueue.assert_awaited_once()
+    args = enqueue.await_args.args
+    assert args[0] == long_text  # full text, not a single chunk
+    assert args[1] == "document"
+    assert args[2] == TENANT_ID
 
 
 # ── Groq transcription backend (fastest, tried first) ────────────────
@@ -254,10 +239,9 @@ async def test_groq_backend_used_when_configured(monkeypatch):
     _FakeGroqAsyncClient.response = _FakeGroqResponse(200, {"text": "hello from groq"})
     cf_spy = AsyncMock()
     monkeypatch.setattr(svc, "_transcribe_cloudflare", cf_spy)
-    manager = AsyncMock()
-    manager.ingest.return_value = [MagicMock()]
+    enqueue = _mock_enqueue(monkeypatch)
 
-    result = await svc.process_voice(b"RIFFfake", "note.webm", manager)
+    result = await svc.process_voice(b"RIFFfake", "note.webm", TENANT_ID)
 
     cf_spy.assert_not_awaited()
     assert result["transcript"] == "hello from groq"
@@ -266,7 +250,7 @@ async def test_groq_backend_used_when_configured(monkeypatch):
     assert req["headers"]["Authorization"] == "Bearer groqkey"
     assert "file" in req["files"]
     assert req["data"]["model"] == "whisper-large-v3-turbo"
-    manager.ingest.assert_awaited_once_with("hello from groq", source="voice")
+    enqueue.assert_awaited_once_with("hello from groq", "voice", TENANT_ID)
     minio.upload.assert_called_once()
 
 
@@ -276,11 +260,11 @@ async def test_groq_error_raises(monkeypatch):
     monkeypatch.setattr(settings, "groq_api_key", "groqkey", raising=False)
     monkeypatch.setattr("httpx.AsyncClient", _FakeGroqAsyncClient)
     _FakeGroqAsyncClient.response = _FakeGroqResponse(500, text="internal error")
-    manager = AsyncMock()
+    enqueue = _mock_enqueue(monkeypatch)
 
     with pytest.raises(RuntimeError):
-        await svc.process_voice(b"RIFFfake", "note.webm", manager)
-    manager.ingest.assert_not_awaited()
+        await svc.process_voice(b"RIFFfake", "note.webm", TENANT_ID)
+    enqueue.assert_not_awaited()
 
 
 # ── Finding 2: local faster-whisper branch (no CF credentials) ──────
@@ -294,13 +278,61 @@ async def test_process_voice_uses_local_whisper_when_no_cf_credentials(monkeypat
     cf_spy = AsyncMock()
     monkeypatch.setattr(svc, "_transcribe_cloudflare", cf_spy)
     svc._transcribe_audio = MagicMock(return_value="local whisper transcript")
-    manager = AsyncMock()
-    manager.ingest.return_value = [MagicMock()]
+    enqueue = _mock_enqueue(monkeypatch)
 
-    result = await svc.process_voice(b"RIFFfake", "note.wav", manager)
+    result = await svc.process_voice(b"RIFFfake", "note.wav", TENANT_ID)
 
     cf_spy.assert_not_awaited()
     svc._transcribe_audio.assert_called_once_with(b"RIFFfake", "note.wav")
     assert result["transcript"] == "local whisper transcript"
-    manager.ingest.assert_awaited_once_with("local whisper transcript", source="voice")
+    enqueue.assert_awaited_once_with("local whisper transcript", "voice", TENANT_ID)
     minio.upload.assert_called_once()
+
+
+# ── ingest_or_fallback / split_into_chunks (module-level, shared with the
+#    ingest_capture ARQ job) ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_ingest_or_fallback_returns_ingest_result_when_nonempty():
+    from life_graph.services.multimodal import ingest_or_fallback
+
+    manager = AsyncMock()
+    manager.ingest.return_value = [MagicMock(), MagicMock()]
+
+    result = await ingest_or_fallback(manager, "some text", "voice")
+
+    assert len(result) == 2
+    manager.ingest.assert_awaited_once_with("some text", source="voice")
+    manager.store.store.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ingest_or_fallback_stores_raw_text_with_embedding_when_empty():
+    from life_graph.services.multimodal import ingest_or_fallback
+
+    manager = AsyncMock()
+    manager.ingest.return_value = []
+    manager.generate_embedding.return_value = [0.1, 0.1, 0.1]
+
+    result = await ingest_or_fallback(manager, "just rambling, no facts here", "voice")
+
+    manager.generate_embedding.assert_awaited_once_with("just rambling, no facts here")
+    manager.store.store.assert_awaited_once()
+    fallback_body = manager.store.store.await_args.args[0]
+    assert fallback_body.content == "just rambling, no facts here"
+    assert fallback_body.source_type == "voice"
+    assert manager.store.store.await_args.kwargs["embedding"] == [0.1, 0.1, 0.1]
+    assert len(result) == 1
+
+
+def test_split_into_chunks_matches_service_method():
+    from life_graph.services.multimodal import split_into_chunks
+
+    text = " ".join(f"word{i}" for i in range(1200))
+    module_chunks = split_into_chunks(text)
+    svc, _minio, _bus = _service()
+    static_chunks = svc._split_into_chunks(text)
+
+    assert module_chunks == static_chunks
+    assert len(module_chunks) > 1

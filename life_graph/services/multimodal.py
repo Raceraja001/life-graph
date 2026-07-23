@@ -42,6 +42,105 @@ _MAX_CHUNK_WORDS = 500
 _OCR_LANGUAGES = "eng+tam"
 
 
+async def ingest_or_fallback(manager: "MemoryManager", text: str, source: str) -> list[Any]:
+    """Run text through the ingestion pipeline; if nothing was extracted,
+    persist the raw text directly so it isn't silently dropped.
+
+    Module-level so both ``MultiModalService`` (legacy/sync callers) and
+    the background ARQ job (``life_graph.workers.ingest_capture``) share
+    one implementation instead of duplicating the fallback logic.
+
+    Mirrors the fallback in ``life_graph.api.memories.create_memory``:
+    when the extraction pipeline finds no facts, store the original
+    text as-is rather than lose the user's input.
+    """
+    memories = await manager.ingest(text, source=source)
+    if not memories:
+        embedding = await manager.generate_embedding(text)
+        row = await manager.store.store(
+            MemoryCreate(content=text, source_type=source), embedding=embedding
+        )
+        memories = [row]
+    return memories
+
+
+async def _enqueue_ingest_job(text: str, source: str, tenant_id: str) -> None:
+    """Enqueue the background ingestion job via the ARQ pool.
+
+    Mirrors the enqueue pattern already used in ``life_graph.api.admin``
+    (bulk import / manual consolidation trigger): create a short-lived
+    pool, enqueue, close.
+    """
+    from arq import create_pool
+
+    from life_graph.workers.settings import parse_redis_settings
+
+    pool = await create_pool(parse_redis_settings())
+    try:
+        await pool.enqueue_job("ingest_capture_text", text, source, tenant_id)
+    finally:
+        await pool.close()
+
+
+def split_into_chunks(text: str, max_words: int = _MAX_CHUNK_WORDS) -> list[str]:
+    """Split text into chunks of at most *max_words* words.
+
+    Module-level so the background job (which does the actual chunking
+    loop for documents) can reuse the exact same splitting logic as the
+    synchronous chunk-count computed by ``MultiModalService.process_document``.
+
+    Splits on paragraph boundaries (double newlines) first, then falls
+    back to word-level splitting for very long paragraphs.
+
+    Args:
+        text: The full text to split.
+        max_words: Maximum words per chunk.
+
+    Returns:
+        List of text chunks.
+    """
+    text = text.strip()
+    if not text:
+        return []
+
+    words = text.split()
+    if len(words) <= max_words:
+        return [text]
+
+    # Try paragraph-aware splitting first
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+
+    chunks: list[str] = []
+    current_chunk: list[str] = []
+    current_word_count = 0
+
+    for para in paragraphs:
+        para_words = len(para.split())
+        if current_word_count + para_words > max_words and current_chunk:
+            chunks.append("\n\n".join(current_chunk))
+            current_chunk = []
+            current_word_count = 0
+
+        # Handle paragraphs longer than max_words
+        if para_words > max_words:
+            if current_chunk:
+                chunks.append("\n\n".join(current_chunk))
+                current_chunk = []
+                current_word_count = 0
+            # Word-level splitting for very long paragraphs
+            para_word_list = para.split()
+            for i in range(0, len(para_word_list), max_words):
+                chunks.append(" ".join(para_word_list[i : i + max_words]))
+        else:
+            current_chunk.append(para)
+            current_word_count += para_words
+
+    if current_chunk:
+        chunks.append("\n\n".join(current_chunk))
+
+    return chunks
+
+
 def _content_type_for(filename: str) -> str:
     """Guess MIME type from file extension."""
     ext = Path(filename).suffix.lower()
@@ -90,21 +189,14 @@ class MultiModalService:
     async def _ingest_or_fallback(
         manager: "MemoryManager", text: str, source: str
     ) -> list[Any]:
-        """Run text through the ingestion pipeline; if nothing was extracted,
-        persist the raw text directly so it isn't silently dropped.
+        """Thin wrapper over the module-level ``ingest_or_fallback``.
 
-        Mirrors the fallback in ``life_graph.api.memories.create_memory``:
-        when the extraction pipeline finds no facts, store the original
-        text as-is rather than lose the user's input.
+        Kept for backward compatibility with any external caller that
+        still reaches into the service for this helper; the request path
+        (``process_voice``/``process_image``/``process_document``) no
+        longer calls this synchronously — see ``_enqueue_ingest_job``.
         """
-        memories = await manager.ingest(text, source=source)
-        if not memories:
-            embedding = await manager.generate_embedding(text)
-            row = await manager.store.store(
-                MemoryCreate(content=text, source_type=source), embedding=embedding
-            )
-            memories = [row]
-        return memories
+        return await ingest_or_fallback(manager, text, source)
 
     # ── Voice ─────────────────────────────────────────────────
 
@@ -206,20 +298,27 @@ class MultiModalService:
         return text.strip()
 
     async def process_voice(
-        self, audio_bytes: bytes, filename: str, manager: "MemoryManager"
+        self, audio_bytes: bytes, filename: str, tenant_id: str
     ) -> dict[str, Any]:
-        """Transcribe audio, store the original in MinIO, persist memories.
+        """Transcribe audio, store the original in MinIO, queue ingestion.
+
+        The slow part (extraction → scoring → dedup → embedding → storage,
+        via ``MemoryManager.ingest``) is NOT run inline — it is handed off
+        to the ``ingest_capture_text`` ARQ job so the request returns as
+        soon as transcription is done.
 
         Args:
             audio_bytes: Raw audio file bytes.
             filename: Original filename (used for content type and key).
-            manager: Tenant-scoped memory manager that persists the transcript.
+            tenant_id: Owning tenant, propagated to the queued job (the
+                worker process has no request-scoped tenant contextvar).
 
         Returns:
-            Dict with ``transcript``, ``memories_created``, and ``minio_key``.
+            Dict with ``transcript``, ``ingest`` (``"queued"``), and ``minio_key``.
 
         Raises:
-            ValueError: If transcription produces no text (nothing persisted).
+            ValueError: If transcription produces no text (nothing persisted,
+                nothing queued).
         """
         # 1. Store original in MinIO
         key = f"{uuid.uuid4()}/{filename}"
@@ -240,29 +339,25 @@ class MultiModalService:
         if not transcript.strip():
             raise ValueError("Transcription produced no text — nothing to remember")
 
-        # 3. Persist through the full ingestion pipeline (extraction →
-        #    scoring → dedup → embedding → storage). NOTE: pipeline.extract
-        #    alone does NOT persist — that was the pre-existing bug here.
-        # If nothing was extracted, fall back to storing the raw transcript
-        # so the user's voice note isn't silently dropped.
-        memories = await self._ingest_or_fallback(manager, transcript, "voice")
-        memories_created = len(memories)
+        # 3. Queue the slow ingestion work (extraction/scoring/dedup/embedding)
+        #    for the ARQ worker instead of running it inline.
+        await _enqueue_ingest_job(transcript, "voice", tenant_id)
 
-        # 4. Emit event
+        # 4. Emit event — memory count is not known yet (ingestion is queued).
         await self.event_bus.emit(
             EventType.VOICE_TRANSCRIBED,
             {
                 "filename": filename,
                 "minio_key": key,
                 "transcript_length": len(transcript),
-                "memories_created": memories_created,
+                "ingest": "queued",
             },
             source="multimodal",
         )
 
         return {
             "transcript": transcript,
-            "memories_created": memories_created,
+            "ingest": "queued",
             "minio_key": key,
         }
 
@@ -290,20 +385,20 @@ class MultiModalService:
     # ── Image ─────────────────────────────────────────────────
 
     async def process_image(
-        self, image_bytes: bytes, filename: str, manager: "MemoryManager"
+        self, image_bytes: bytes, filename: str, tenant_id: str
     ) -> dict[str, Any]:
-        """OCR an image, store the original in MinIO, persist memories.
+        """OCR an image, store the original in MinIO, queue ingestion.
 
         Args:
             image_bytes: Raw image file bytes.
             filename: Original filename.
-            manager: Tenant-scoped memory manager that persists the OCR text.
+            tenant_id: Owning tenant, propagated to the queued job.
 
         Returns:
-            Dict with ``ocr_text``, ``memories_created``, and ``minio_key``.
+            Dict with ``ocr_text``, ``ingest`` (``"queued"``), and ``minio_key``.
 
         Raises:
-            ValueError: If OCR finds no text (nothing persisted).
+            ValueError: If OCR finds no text (nothing persisted, nothing queued).
         """
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
@@ -313,10 +408,8 @@ class MultiModalService:
         if not ocr_text.strip():
             raise ValueError("No text found in the image — nothing to remember")
 
-        # If nothing was extracted, fall back to storing the raw OCR text
-        # so the captured text isn't silently dropped.
-        memories = await self._ingest_or_fallback(manager, ocr_text, "image")
-        memories_created = len(memories)
+        # Queue the slow ingestion work instead of running it inline.
+        await _enqueue_ingest_job(ocr_text, "image", tenant_id)
 
         await self.event_bus.emit(
             EventType.IMAGE_PROCESSED,
@@ -324,14 +417,14 @@ class MultiModalService:
                 "filename": filename,
                 "minio_key": key,
                 "ocr_text_length": len(ocr_text),
-                "memories_created": memories_created,
+                "ingest": "queued",
             },
             source="multimodal",
         )
 
         return {
             "ocr_text": ocr_text,
-            "memories_created": memories_created,
+            "ingest": "queued",
             "minio_key": key,
         }
 
@@ -356,21 +449,28 @@ class MultiModalService:
     # ── Document ──────────────────────────────────────────────
 
     async def process_document(
-        self, doc_bytes: bytes, filename: str, manager: "MemoryManager"
+        self, doc_bytes: bytes, filename: str, tenant_id: str
     ) -> dict[str, Any]:
-        """Extract text from a document, store the original, persist memories.
+        """Extract text from a document, store the original, queue ingestion.
+
+        A single job is enqueued with the *full* extracted text — the
+        chunking loop over ``_MAX_CHUNK_WORDS``-sized pieces (and the
+        fallback-per-chunk logic) runs inside the ARQ worker
+        (``ingest_capture_text``), not here, so ordering and dedup for a
+        multi-chunk document stay in one place.
 
         Args:
             doc_bytes: Raw document bytes.
             filename: Original filename.
-            manager: Tenant-scoped memory manager that persists each chunk.
+            tenant_id: Owning tenant, propagated to the queued job.
 
         Returns:
-            Dict with ``text_length``, ``chunks``, ``memories_created``,
+            Dict with ``text_length``, ``chunks``, ``ingest`` (``"queued"``),
             and ``minio_key``.
 
         Raises:
-            ValueError: If no text could be extracted (nothing persisted).
+            ValueError: If no text could be extracted (nothing persisted,
+                nothing queued).
         """
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
@@ -386,12 +486,9 @@ class MultiModalService:
         if not chunks:
             raise ValueError("No text found in the document — nothing to remember")
 
-        # If a chunk yields no extracted facts, fall back to storing the
-        # raw chunk text so no part of the document is silently dropped.
-        total_memories = 0
-        for chunk in chunks:
-            memories = await self._ingest_or_fallback(manager, chunk, "document")
-            total_memories += len(memories)
+        # Queue the full text; the worker re-chunks and loops (see
+        # life_graph.workers.ingest_capture.ingest_capture_text).
+        await _enqueue_ingest_job(text, "document", tenant_id)
 
         await self.event_bus.emit(
             EventType.DOCUMENT_IMPORTED,
@@ -400,7 +497,7 @@ class MultiModalService:
                 "minio_key": key,
                 "text_length": len(text),
                 "chunks": len(chunks),
-                "memories_created": total_memories,
+                "ingest": "queued",
             },
             source="multimodal",
         )
@@ -408,7 +505,7 @@ class MultiModalService:
         return {
             "text_length": len(text),
             "chunks": len(chunks),
-            "memories_created": total_memories,
+            "ingest": "queued",
             "minio_key": key,
         }
 
@@ -432,55 +529,11 @@ class MultiModalService:
 
     @staticmethod
     def _split_into_chunks(text: str, max_words: int = _MAX_CHUNK_WORDS) -> list[str]:
-        """Split text into chunks of at most *max_words* words.
+        """Thin wrapper over the module-level ``split_into_chunks``.
 
-        Splits on paragraph boundaries (double newlines) first, then
-        falls back to word-level splitting for very long paragraphs.
-
-        Args:
-            text: The full text to split.
-            max_words: Maximum words per chunk.
-
-        Returns:
-            List of text chunks.
+        Kept so ``process_document`` can still compute a chunk count
+        synchronously for the response; the actual per-chunk ingest loop
+        now runs inside the ARQ worker (see ``ingest_capture_text``),
+        which imports and calls the module-level function directly.
         """
-        text = text.strip()
-        if not text:
-            return []
-
-        words = text.split()
-        if len(words) <= max_words:
-            return [text]
-
-        # Try paragraph-aware splitting first
-        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-
-        chunks: list[str] = []
-        current_chunk: list[str] = []
-        current_word_count = 0
-
-        for para in paragraphs:
-            para_words = len(para.split())
-            if current_word_count + para_words > max_words and current_chunk:
-                chunks.append("\n\n".join(current_chunk))
-                current_chunk = []
-                current_word_count = 0
-
-            # Handle paragraphs longer than max_words
-            if para_words > max_words:
-                if current_chunk:
-                    chunks.append("\n\n".join(current_chunk))
-                    current_chunk = []
-                    current_word_count = 0
-                # Word-level splitting for very long paragraphs
-                para_word_list = para.split()
-                for i in range(0, len(para_word_list), max_words):
-                    chunks.append(" ".join(para_word_list[i : i + max_words]))
-            else:
-                current_chunk.append(para)
-                current_word_count += para_words
-
-        if current_chunk:
-            chunks.append("\n\n".join(current_chunk))
-
-        return chunks
+        return split_into_chunks(text, max_words=max_words)
