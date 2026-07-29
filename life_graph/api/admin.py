@@ -692,7 +692,9 @@ async def bulk_import(body: BulkImportRequest):
                 tags=item.tags,
                 importance=item.importance or 0.5,
                 source_type=item.source_type or "bulk_import",
-                status="active",
+                # gate: bulk-imported content is user content, not system-derived —
+                # see docs/superpowers/specs/2026-07-23-memory-approval-gate-design.md
+                status="pending",
             )
             session.add(memory)
             memory_ids.append(memory.id)

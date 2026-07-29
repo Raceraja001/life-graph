@@ -26,6 +26,11 @@ pollute the graph; the gate must exist first.
   backlog count. (Kernel approval timeouts remain for agent actions — unrelated.)
 - **Reject is soft.** Rejected rows keep `status='rejected'`, excluded everywhere; no
   hard delete in v1.
+- **Gate scope ruling (2026-07-23):** user content only. Bulk-import rows are created
+  `pending`. System-derived writers (consolidation summaries, identity facts,
+  failure-mining lessons, cross-system sync, supersede replacements) stay `active` —
+  they derive exclusively from already-approved memories; gating them would fill the
+  queue with nightly machine output.
 
 ## Non-goals (v1)
 
