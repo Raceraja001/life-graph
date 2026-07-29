@@ -9,12 +9,14 @@ import { useWebSocket } from "@/lib/use-websocket";
 const TITLES: Record<string, string> = {
   "/m": "Life Graph",
   "/m/memories": "Memories",
+  "/m/chat": "Ask",
   "/m/tasks": "Tasks",
   "/m/approvals": "Approvals",
 };
 
 function titleFor(pathname: string) {
   if (pathname.startsWith("/m/memories")) return TITLES["/m/memories"];
+  if (pathname.startsWith("/m/chat")) return TITLES["/m/chat"];
   if (pathname.startsWith("/m/tasks")) return TITLES["/m/tasks"];
   if (pathname.startsWith("/m/approvals")) return TITLES["/m/approvals"];
   return TITLES["/m"];

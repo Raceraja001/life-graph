@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, BookText, ClipboardCheck, Inbox, type LucideIcon } from "lucide-react";
+import { Home, BookText, ClipboardCheck, Inbox, MessageCircle, type LucideIcon } from "lucide-react";
 import { useApprovals, usePendingMemoryCount } from "@/lib/mobile-api";
 
 interface Tab {
@@ -13,6 +13,7 @@ interface Tab {
 const TABS: Tab[] = [
   { href: "/m", label: "Home", icon: Home },
   { href: "/m/memories", label: "Memories", icon: BookText },
+  { href: "/m/chat", label: "Ask", icon: MessageCircle },
   { href: "/m/tasks", label: "Tasks", icon: ClipboardCheck },
   { href: "/m/approvals", label: "Approvals", icon: Inbox },
 ];
@@ -28,7 +29,7 @@ export function MobileTabBar() {
     <nav
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
+        gridTemplateColumns: "repeat(5, 1fr)",
         borderTop: "1px solid var(--border)",
         background: "var(--surface)",
         padding: "6px 8px calc(6px + env(safe-area-inset-bottom))",
