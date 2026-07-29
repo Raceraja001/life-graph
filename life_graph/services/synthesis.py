@@ -35,6 +35,39 @@ def parse_citations(answer: str, memory_ids: list[str]) -> list[str]:
     return seen
 
 
+def renumber_citations(answer: str, memory_ids: list[str]) -> tuple[str, list[str]]:
+    """Rewrite an answer's [Memory K] tags (K 1-based against `memory_ids`,
+    the order memories were given to the model) into sequential [Memory J]
+    tags matching first-appearance order, and return
+    ``(renumbered_answer, ordered_unique_ids)``.
+
+    This is what makes the citation contract 1:1: after renumbering,
+    ``[Memory J]`` in the returned answer always refers to
+    ``ordered_unique_ids[J-1]`` — no gaps, no dedup mismatches. Without this,
+    an answer citing "[Memory 1] ... [Memory 3]" over a 3-memory context
+    would carry a *2*-element ids list (deduped, first-appearance order),
+    but the raw "[Memory 3]" token stored in the answer text has no matching
+    index in that 2-element list.
+
+    Two different K's that resolve to the same memory get the same J.
+    K's that don't resolve to any memory (out of range) are stripped —
+    a dead citation token is worse than a plain sentence.
+    """
+    ordered_ids = parse_citations(answer, memory_ids)
+    id_to_j = {mid: i + 1 for i, mid in enumerate(ordered_ids)}
+
+    def _replace(match: re.Match[str]) -> str:
+        idx = int(match.group(1)) - 1
+        mid = memory_ids[idx] if 0 <= idx < len(memory_ids) else None
+        j = id_to_j.get(mid) if mid is not None else None
+        return f"[Memory {j}]" if j is not None else ""
+
+    renumbered = _CITATION_RE.sub(_replace, answer)
+    # Stripped tokens can leave doubled spaces behind (e.g. "Y  Z") — tidy up.
+    renumbered = re.sub(r"[ \t]{2,}", " ", renumbered)
+    return renumbered, ordered_ids
+
+
 _SYNTHESIS_SYSTEM_PROMPT = """\
 You are a personal memory assistant. The user has a brain (memory system)
 that stores facts, preferences, decisions, and experiences.
@@ -137,9 +170,12 @@ class SynthesisService:
             answer = self._rule_based_answer(question, memories)
             model_used = "rule-based"
 
-        # The rule-based fallback never emits [Memory N] tags, so this is
-        # naturally [] on that path.
-        citations = parse_citations(answer, memory_ids)
+        # Renumber [Memory K] tags to a gap-free 1..M sequence matching
+        # `citations`, so `answer`'s [Memory J] <-> citations[J-1] always
+        # holds for callers (e.g. the chat citation chips). The rule-based
+        # fallback never emits [Memory N] tags, so `citations` is naturally
+        # [] and `answer` passes through unchanged on that path.
+        answer, citations = renumber_citations(answer, memory_ids)
 
         return {
             "answer": answer,

@@ -56,6 +56,7 @@ export default function MobileChat() {
   const { online } = useMobileState();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState(false);
   const [draft, setDraft] = useState("");
   const [selectedMem, setSelectedMem] = useState<MemoryVM | null>(null);
   const [lastSent, setLastSent] = useState<{ messageId: string; citations: MemoryVM[] } | null>(null);
@@ -84,12 +85,16 @@ export default function MobileChat() {
   }, [msgs.length, sendMessage.isPending]);
 
   const startNewChat = async () => {
-    if (creating) return;
+    if (creating || !online) return;
     setCreating(true);
+    setCreateError(false);
     try {
       const res = await api.conversations.create();
       const id = res?.data?.id;
       if (id) setConversationId(id);
+      else setCreateError(true);
+    } catch {
+      setCreateError(true);
     } finally {
       setCreating(false);
     }
@@ -137,7 +142,7 @@ export default function MobileChat() {
       <>
         <button
           onClick={() => void startNewChat()}
-          disabled={creating}
+          disabled={creating || !online}
           style={{
             display: "flex",
             alignItems: "center",
@@ -151,12 +156,22 @@ export default function MobileChat() {
             fontFamily: "inherit",
             fontSize: "var(--ui-text)",
             fontWeight: "var(--fw-bold)",
-            cursor: creating ? "default" : "pointer",
-            opacity: creating ? 0.6 : 1,
+            cursor: creating || !online ? "default" : "pointer",
+            opacity: creating || !online ? 0.6 : 1,
           }}
         >
           <Plus width={16} height={16} /> {creating ? "Starting…" : "New chat"}
         </button>
+        {!online && (
+          <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", textAlign: "center", margin: 0 }}>
+            You’re offline — starting a chat needs a connection.
+          </p>
+        )}
+        {createError && (
+          <p style={{ fontSize: "var(--text-2xs)", color: "var(--danger, #d33)", textAlign: "center", margin: 0 }}>
+            Couldn’t start a new chat — try again.
+          </p>
+        )}
 
         {conversations.isLoading ? (
           <LoadingCard label="Loading conversations…" />
