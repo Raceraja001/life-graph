@@ -142,10 +142,10 @@ class SynthesisService:
         memory_ids = [str(mem.get("id", "")) for mem in memories]
         context_parts = []
         for i, mem in enumerate(memories, 1):
-            content = mem.get("content", "")
-            tags = ", ".join(mem.get("tags", []))
-            importance = mem.get("importance", 0)
-            created = mem.get("created_at", "unknown")
+            content = mem.get("content") or ""
+            tags = ", ".join(mem.get("tags") or [])
+            importance = mem.get("importance") or 0
+            created = mem.get("created_at") or "unknown"
             context_parts.append(
                 f"[Memory {i}] (tags: {tags}, importance: {importance:.1f}, date: {created})\n{content}"
             )

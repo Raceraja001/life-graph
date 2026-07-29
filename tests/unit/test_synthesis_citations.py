@@ -121,3 +121,27 @@ async def test_synthesize_renumbers_answer_to_match_citations():
     result = await svc.synthesize("what's due this week?", memories)
     assert result["citations"] == ["id-a", "id-c"]
     assert result["answer"] == "Car Monday [Memory 1]; insurance Friday [Memory 2]."
+
+
+@pytest.mark.asyncio
+async def test_synthesize_handles_none_tags_from_tri_search():
+    """Regression: tri_search returns memory dicts with tags=None; must not crash."""
+    svc = SynthesisService(
+        client=_FakeClient("Your memory [Memory 1] is tagged but without explicit tags.")
+    )
+    # This is the exact shape tri_search produces: tags, importance, created_at
+    # are all present but can be None.
+    memories = [
+        {
+            "id": "id-a",
+            "content": "car service Monday",
+            "tags": None,  # The bug: tri_search can return tags=None
+            "importance": None,
+            "created_at": None,
+        }
+    ]
+    result = await svc.synthesize("tell me about my car?", memories)
+    # Must not raise TypeError; must return valid result
+    assert result["answer"] is not None
+    assert result["source_count"] == 1
+    assert result["citations"] == ["id-a"]
