@@ -326,6 +326,9 @@ v1_router.include_router(drivers_api.router)
 from life_graph.api import approvals as approvals_api
 v1_router.include_router(approvals_api.router)
 
+from life_graph.api import conversations as conversations_api
+v1_router.include_router(conversations_api.router)
+
 app.include_router(v1_router)
 
 
