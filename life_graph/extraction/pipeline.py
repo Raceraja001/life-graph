@@ -15,6 +15,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from life_graph.config import settings
 from life_graph.extraction.llm import LLMExtractor
 from life_graph.extraction.nlp import SpacyExtractor
 from life_graph.extraction.rules import ExtractedFact, RuleBasedExtractor
@@ -76,14 +77,22 @@ class ExtractionPipeline:
         spacy_extractor: SpacyExtractor | None = None,
         llm_extractor: LLMExtractor | None = None,
         *,
-        confidence_threshold: float = _LLM_CONFIDENCE_THRESHOLD,
-        min_words_for_llm: int = _MIN_WORDS_FOR_LLM,
+        confidence_threshold: float | None = None,
+        min_words_for_llm: int | None = None,
     ) -> None:
         self._rules = rules_extractor or RuleBasedExtractor()
         self._spacy = spacy_extractor or SpacyExtractor()
         self._llm = llm_extractor or LLMExtractor()
-        self._confidence_threshold = confidence_threshold
-        self._min_words_for_llm = min_words_for_llm
+        self._confidence_threshold = (
+            confidence_threshold
+            if confidence_threshold is not None
+            else settings.extraction_llm_confidence_threshold
+        )
+        self._min_words_for_llm = (
+            min_words_for_llm
+            if min_words_for_llm is not None
+            else settings.extraction_llm_min_words
+        )
         self.stats = PipelineStats()
 
     async def extract(self, text: str) -> ExtractionResult:
