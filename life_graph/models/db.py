@@ -2339,6 +2339,69 @@ class Approval(Base):
         return f"<Approval(id={self.id!s:.8}, kind={self.kind}, status={self.status})>"
 
 
+# ── Conversation Models ────────────────────────────────────────────
+
+
+class Conversation(Base):
+    """A multi-turn chat thread between the user and their memories."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_conversations_tenant_updated", "tenant_id", "updated_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Conversation(id={self.id!s:.8}, title={self.title})>"
+
+
+class ConversationMessage(Base):
+    """One turn (user question or assistant answer) in a conversation."""
+
+    __tablename__ = "conversation_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    cited_memory_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=False, default=list
+    )
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint("role IN ('user','assistant')", name="ck_conv_msg_role"),
+        Index("ix_conv_messages_conversation_created", "conversation_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ConversationMessage(id={self.id!s:.8}, role={self.role})>"
+
+
 # ── Agent Driver Models ────────────────────────────────────────────
 
 
