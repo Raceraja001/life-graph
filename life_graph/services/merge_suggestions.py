@@ -70,6 +70,12 @@ class MergeSuggestionService:
             for other, score in neighbors:
                 if str(other.id) == str(mem.id) or score >= high:
                     continue  # itself, or already handled by auto-merge
+                if other.status != "active":
+                    # find_similar() also matches pending/archived/etc rows;
+                    # only active-active pairs may become merge candidates —
+                    # otherwise approving a merge could fold unapproved
+                    # content into canon.
+                    continue
                 ref = _pair_key(str(mem.id), str(other.id))
                 if ref in seen:
                     continue

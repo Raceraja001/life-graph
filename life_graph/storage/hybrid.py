@@ -125,6 +125,10 @@ class HybridQueryEngine:
             if "min_importance" in graph_filter:
                 filters["min_importance"] = graph_filter["min_importance"]
 
+        # This path explores canon (graph-anchored context) — always active
+        # only. Never surface pending/rejected/archived memories here.
+        filters["status"] = "active"
+
         # Step 4 — Vector search (with or without graph filters)
         memories: list[dict[str, Any]] = []
         try:
@@ -137,7 +141,7 @@ class HybridQueryEngine:
                 rows = await self.memory_store.search_similar(
                     embedding=embedding,
                     limit=limit,
-                    filters=filters if entity_names else None,
+                    filters=filters,
                 )
                 memories = [
                     {
@@ -155,6 +159,7 @@ class HybridQueryEngine:
                     broad_rows = await self.memory_store.search_similar(
                         embedding=embedding,
                         limit=limit,
+                        filters={"status": "active"},
                     )
                     seen_ids = {m["id"] for m in memories}
                     for r in broad_rows:

@@ -125,11 +125,84 @@ async def test_search_shows_pending_to_dashboard(client: AsyncClient):
     row = await _create(client, "pending searchable iota 6644 unicorn")
     if row is None:
         pytest.skip("DB unavailable")
-    resp = await client.post("/api/v1/search/", json={"query": "iota unicorn", "limit": 20})
+    resp = await client.post(
+        "/api/v1/search/",
+        json={"query": "iota unicorn", "limit": 20, "include_pending": True},
+    )
     assert resp.status_code in (200, 500)
     if resp.status_code == 200:
         contents = str(resp.json())
-        assert "6644" in contents, "dashboard search must include pending memories"
+        assert "6644" in contents, "dashboard search (include_pending=true) must include pending memories"
+
+
+@skip_on_db_error
+@pytest.mark.asyncio
+async def test_search_without_include_pending_hides_pending(client: AsyncClient):
+    """Agent contract: the MCP `search` tool never sets include_pending, so a
+    pending memory must never reach it — that's the core approval-gate
+    invariant (see docs/superpowers/specs/2026-07-23-memory-approval-gate-design.md).
+    """
+    row = await _create(client, "pending hidden from agents mu 9977 narwhal")
+    if row is None:
+        pytest.skip("DB unavailable")
+    resp = await client.post("/api/v1/search/", json={"query": "mu narwhal", "limit": 20})
+    assert resp.status_code in (200, 500)
+    if resp.status_code == 200:
+        contents = str(resp.json())
+        assert "9977" not in contents, "default (agent) search must NOT include pending memories"
+
+
+@skip_on_db_error
+@pytest.mark.asyncio
+async def test_search_include_pending_shows_pending(client: AsyncClient):
+    """Explicit opt-in (the dashboard's contract) must surface pending rows."""
+    row = await _create(client, "pending visible with opt in nu 1234 platypus")
+    if row is None:
+        pytest.skip("DB unavailable")
+    resp = await client.post(
+        "/api/v1/search/",
+        json={"query": "nu platypus", "limit": 20, "include_pending": True},
+    )
+    assert resp.status_code in (200, 500)
+    if resp.status_code == 200:
+        contents = str(resp.json())
+        assert "1234" in contents, "include_pending=true search must include pending memories"
+
+
+@skip_on_db_error
+@pytest.mark.asyncio
+async def test_bulk_import_is_pending(client: AsyncClient):
+    """Bulk-imported rows must be gated like any other user content.
+
+    Only user content is gated (2026-07-23 ruling); system-derived writers
+    stay active. Bulk import is external/imported content, so it starts
+    pending — see docs/superpowers/specs/2026-07-23-memory-approval-gate-design.md.
+    """
+    text = "bulk import gate probe lambda 8866"
+    resp = await client.post(
+        "/api/v1/admin/bulk/import",
+        json={"memories": [{"content": text}], "generate_embeddings": False},
+    )
+    assert resp.status_code in (201, 500)
+    if resp.status_code != 201:
+        pytest.skip("DB unavailable")
+    assert resp.json()["data"]["imported"] == 1
+
+    pending = await client.get(
+        "/api/v1/memories/", params={"status": "pending", "limit": "100"}
+    )
+    assert pending.status_code == 200
+    assert any(r["content"] == text for r in pending.json()["data"]), (
+        "bulk-imported memory must land in the pending queue"
+    )
+
+    # Default listing shows pending + active (excludes only rejected), so the
+    # row IS visible here too — but it must not have status="active".
+    default_listing = await client.get("/api/v1/memories/", params={"limit": "100"})
+    assert default_listing.status_code == 200
+    matches = [r for r in default_listing.json()["data"] if r["content"] == text]
+    if matches:
+        assert matches[0]["status"] == "pending"
 
 
 @skip_on_db_error

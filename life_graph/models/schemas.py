@@ -256,6 +256,14 @@ class SearchQuery(BaseModel):
     created_before: datetime | None = Field(None, description="Only memories created before this timestamp")
     source_type: str | None = Field(None, description="Filter by source type (e.g. explicit, inferred, chat)")
     status: str = Field("active", description="Memory status filter (default: active only)")
+    include_pending: bool = Field(
+        False,
+        description=(
+            "Opt-in: also include 'pending' (unapproved) memories. Off by default so "
+            "agent/automation callers (e.g. the MCP search tool) never see unapproved "
+            "content; the dashboard sets this explicitly to show pending items (badged)."
+        ),
+    )
     search_mode: str = Field(
         "hybrid",
         description="Search strategy: 'vector' (cosine only), 'hybrid' (vector+BM25), 'tri_hybrid' (vector+BM25+graph)",

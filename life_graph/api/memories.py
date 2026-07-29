@@ -8,6 +8,7 @@ creation goes directly to the store.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -22,6 +23,8 @@ from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryResponse, MemoryUpdate
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.postgres import PostgresMemoryStore
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 
@@ -96,25 +99,31 @@ async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemorySt
         if row.status not in ("pending", "rejected"):
             raise HTTPException(status_code=409, detail=f"Cannot approve a {row.status} memory")
         updated = await store.update(memory_id, MemoryUpdate(status="active"))
-        await event_bus.emit(
-            EventType.MEMORY_APPROVED,
-            {"id": str(memory_id), "tenant_id": get_current_tenant_id()},
-            source="memories",
-        )
+        try:
+            await event_bus.emit(
+                EventType.MEMORY_APPROVED,
+                {"id": str(memory_id), "tenant_id": get_current_tenant_id()},
+                source="memories",
+            )
+        except Exception:
+            logger.warning("Failed to emit MEMORY_APPROVED for %s", memory_id, exc_info=True)
         return updated
     # reject
     if row.status == "rejected":
         return row  # idempotent
     if row.status != "pending":
         raise HTTPException(
-            status_code=409, detail=f"Cannot reject a {row.status} memory — use /deny for active ones"
+            status_code=409, detail=f"Cannot reject a {row.status} memory"
         )
     updated = await store.update(memory_id, MemoryUpdate(status="rejected"))
-    await event_bus.emit(
-        EventType.MEMORY_REJECTED,
-        {"id": str(memory_id), "tenant_id": get_current_tenant_id()},
-        source="memories",
-    )
+    try:
+        await event_bus.emit(
+            EventType.MEMORY_REJECTED,
+            {"id": str(memory_id), "tenant_id": get_current_tenant_id()},
+            source="memories",
+        )
+    except Exception:
+        logger.warning("Failed to emit MEMORY_REJECTED for %s", memory_id, exc_info=True)
     return updated
 
 
