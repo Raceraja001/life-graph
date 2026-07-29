@@ -1,15 +1,30 @@
 "use client";
 import { useState } from "react";
-import { Search, Brain } from "lucide-react";
+import { Search, Brain, Check, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMemories, useMemorySearch } from "@/lib/hooks";
+import { api } from "@/lib/api";
 import { MemoryDetail } from "@/components/memory-detail";
 
 export default function MemoriesPage() {
   const [query, setQuery] = useState("");
   const [searchActive, setSearchActive] = useState(false);
   const [selected, setSelected] = useState<any>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const memories = useMemories({ limit: "50" });
   const search = useMemorySearch(searchActive ? query : "");
+  const queryClient = useQueryClient();
+
+  const resolveMemory = async (id: string, action: "approve" | "reject") => {
+    setResolvingId(id);
+    try {
+      await (action === "approve" ? api.memories.approve(id) : api.memories.reject(id));
+      queryClient.invalidateQueries({ queryKey: ["memories"] });
+      queryClient.invalidateQueries({ queryKey: ["memory-search"] });
+    } finally {
+      setResolvingId(null);
+    }
+  };
 
   const data = searchActive && query.length > 2 ? search.data : memories.data;
   const isLoading = searchActive ? search.isLoading : memories.isLoading;
@@ -51,6 +66,8 @@ export default function MemoriesPage() {
                 <th className="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider w-24">Importance</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider w-32">Tags</th>
                 <th className="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider w-36">Created</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider w-24">Status</th>
+                <th className="text-left px-5 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider w-24">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -80,6 +97,33 @@ export default function MemoriesPage() {
                   </td>
                   <td className="px-5 py-3.5 text-xs text-zinc-400">
                     {new Date(m.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {m.status === "pending" ? (
+                      <span className="text-amber-600 bg-amber-50 rounded-full px-2 text-xs">pending</span>
+                    ) : null}
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {m.status === "pending" && (
+                      <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => resolveMemory(m.id, "approve")}
+                          disabled={resolvingId === m.id}
+                          className="w-6 h-6 flex items-center justify-center rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-50"
+                          aria-label="Approve"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => resolveMemory(m.id, "reject")}
+                          disabled={resolvingId === m.id}
+                          className="w-6 h-6 flex items-center justify-center rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-50"
+                          aria-label="Reject"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

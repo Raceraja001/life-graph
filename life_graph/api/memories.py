@@ -8,6 +8,7 @@ creation goes directly to the store.
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -16,10 +17,14 @@ from pydantic import BaseModel, Field
 from life_graph.api.dependencies import get_memory_manager, get_store
 from life_graph.api.openapi_examples import MEMORY_CREATED, MEMORY_DETAIL, PAGINATED_MEMORIES
 from life_graph.api.responses import success_response, paginated_response, encode_cursor
+from life_graph.core.events import EventType, event_bus
 from life_graph.core.memory_manager import MemoryManager
+from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryResponse, MemoryUpdate
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.postgres import PostgresMemoryStore
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 
@@ -72,6 +77,118 @@ async def create_memory(
     )
 
 
+class BulkApprovalBody(BaseModel):
+    """Payload for batch-approving/rejecting pending memories."""
+
+    approve: list[uuid.UUID] = []
+    reject: list[uuid.UUID] = []
+
+
+async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemoryStore) -> Memory:
+    """Move a memory between pending/rejected/active, emitting the matching event.
+
+    Idempotent when already in the target status; 404 if missing; 409 if the
+    requested transition isn't valid from the memory's current status.
+    """
+    row = await store.retrieve(memory_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    if action == "approve":
+        if row.status == "active":
+            return row  # idempotent
+        if row.status not in ("pending", "rejected"):
+            raise HTTPException(status_code=409, detail=f"Cannot approve a {row.status} memory")
+        updated = await store.update(memory_id, MemoryUpdate(status="active"))
+        try:
+            await event_bus.emit(
+                EventType.MEMORY_APPROVED,
+                {"id": str(memory_id), "tenant_id": get_current_tenant_id()},
+                source="memories",
+            )
+        except Exception:
+            logger.warning("Failed to emit MEMORY_APPROVED for %s", memory_id, exc_info=True)
+        return updated
+    # reject
+    if row.status == "rejected":
+        return row  # idempotent
+    if row.status != "pending":
+        raise HTTPException(
+            status_code=409, detail=f"Cannot reject a {row.status} memory"
+        )
+    updated = await store.update(memory_id, MemoryUpdate(status="rejected"))
+    try:
+        await event_bus.emit(
+            EventType.MEMORY_REJECTED,
+            {"id": str(memory_id), "tenant_id": get_current_tenant_id()},
+            source="memories",
+        )
+    except Exception:
+        logger.warning("Failed to emit MEMORY_REJECTED for %s", memory_id, exc_info=True)
+    return updated
+
+
+@router.get(
+    "/pending/count",
+    summary="Count memories awaiting approval",
+)
+async def pending_count(store: PostgresMemoryStore = Depends(get_store)):
+    """Number of memories awaiting approval for this tenant."""
+    count = await store.count_memories(filters={"status": "pending"})
+    return success_response(data={"count": count})
+
+
+@router.post(
+    "/approvals/bulk",
+    summary="Approve/reject memories in batch",
+)
+async def bulk_approvals(
+    body: BulkApprovalBody,
+    store: PostgresMemoryStore = Depends(get_store),
+):
+    """Approve/reject memories in batch (distillation review will lean on this)."""
+    approved = rejected = 0
+    errors: list[str] = []
+    for mid in body.approve:
+        try:
+            await _transition(mid, "approve", store)
+            approved += 1
+        except HTTPException:
+            errors.append(str(mid))
+    for mid in body.reject:
+        try:
+            await _transition(mid, "reject", store)
+            rejected += 1
+        except HTTPException:
+            errors.append(str(mid))
+    return success_response(data={"approved": approved, "rejected": rejected, "errors": errors})
+
+
+@router.post(
+    "/{memory_id}/approve",
+    summary="Approve a memory",
+)
+async def approve_memory(
+    memory_id: uuid.UUID,
+    store: PostgresMemoryStore = Depends(get_store),
+):
+    """Approve a pending (or rejected) memory — it becomes active/usable."""
+    row = await _transition(memory_id, "approve", store)
+    return success_response(data=MemoryResponse.model_validate(row))
+
+
+@router.post(
+    "/{memory_id}/reject",
+    summary="Reject a memory",
+)
+async def reject_memory(
+    memory_id: uuid.UUID,
+    store: PostgresMemoryStore = Depends(get_store),
+):
+    """Reject a pending memory — hidden everywhere, re-capture allowed."""
+    row = await _transition(memory_id, "reject", store)
+    return success_response(data=MemoryResponse.model_validate(row))
+
+
 @router.get(
     "/{memory_id}",
     summary="Get a memory by ID",
@@ -100,6 +217,11 @@ async def update_memory(
     store: PostgresMemoryStore = Depends(get_store),
 ):
     """Apply a partial update to an existing memory."""
+    if body.status in ("pending", "rejected", "active"):
+        raise HTTPException(
+            status_code=422,
+            detail="Approval status changes must use the approve/reject endpoints",
+        )
     try:
         row = await store.update(memory_id, body)
     except ValueError:
@@ -183,6 +305,16 @@ async def list_memories(
 
     if memory_status is not None:
         filters["status"] = memory_status
+    else:
+        # No explicit status filter: show everything except rejected.
+        filters["statuses"] = (
+            "active",
+            "pending",
+            "archived",
+            "superseded",
+            "uncertain",
+            "retired",
+        )
     if tags is not None:
         filters["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
     if min_importance is not None:

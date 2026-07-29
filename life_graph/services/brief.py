@@ -220,12 +220,18 @@ class BriefComposer:
                     Decision.created_at >= since,
                 )
             )
+            pending = await session.scalar(
+                select(func.count())
+                .select_from(Memory)
+                .where(Memory.tenant_id == tenant_id, Memory.status == "pending")
+            )
         summary = {
             "captures": captures or 0,
             "memories": memories or 0,
             "decisions": decisions or 0,
         }
         summary["total"] = sum(summary.values())
+        summary["pending_approval"] = int(pending or 0)
         return summary
 
     async def _big_decisions(
@@ -310,6 +316,10 @@ class BriefComposer:
                 f"{capture_summary['decisions']} decisions."
             )
             lines.append("")
+        if capture_summary.get("pending_approval"):
+            lines.append(
+                f"{capture_summary['pending_approval']} memories are waiting for your approval."
+            )
         if watcher_summary:
             parts = ", ".join(f"{name}: {n}" for name, n in sorted(watcher_summary.items()))
             lines.append(f"Watchers (24h): {parts}")

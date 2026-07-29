@@ -122,8 +122,21 @@ async def semantic_search(
         filters["created_before"] = body.created_before
     if body.source_type:
         filters["source_type"] = body.source_type
-    if body.status:
+    # Pending visibility is opt-in only. Agents/automation (e.g. the MCP
+    # `search` tool) never pass include_pending, so they stay active-only —
+    # the core approval-gate invariant. The dashboard sets include_pending=true
+    # explicitly so it can still show pending items (badged).
+    statuses: tuple[str, ...] = ("active", "pending") if body.include_pending else ("active",)
+
+    if body.status != "active":
+        # User explicitly narrowed to a non-default status (e.g. "archived") —
+        # honor it as-is for the vector/filters path; this does NOT widen to
+        # pending even if include_pending was also set.
         filters["status"] = body.status
+    else:
+        # Keep the vector-mode fallback (below) and any other _apply_filters
+        # consumer in sync with the same status set used by hybrid/tri_hybrid.
+        filters["statuses"] = list(statuses)
 
     search_mode = body.search_mode
     memories: list[MemoryResponse] = []
@@ -136,6 +149,7 @@ async def semantic_search(
             result = await engine.tri_search(
                 query=body.query,
                 limit=body.limit,
+                statuses=statuses,
             )
             # Convert scored dicts to MemoryResponse
             for mem_dict in result.get("memories", []):
@@ -158,6 +172,7 @@ async def semantic_search(
                 query_text=body.query,
                 limit=body.limit,
                 filters=filters or None,
+                statuses=statuses,
             )
             memories = [MemoryResponse.model_validate(mem) for mem, _score in hybrid_results]
         except Exception:

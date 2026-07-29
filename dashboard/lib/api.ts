@@ -75,9 +75,14 @@ export const api = {
     create: (content: string) => POST<any>("/memories/", { content }),
     get: (id: string) => GET<any>(`/memories/${id}`),
     search: (query: string) =>
-      POST<any>("/search/", { query, limit: 50 }).then((r: any) =>
+      // include_pending: the dashboard is allowed to see pending (badged) —
+      // agent/automation callers (e.g. the MCP search tool) must NOT set this.
+      POST<any>("/search/", { query, limit: 50, include_pending: true }).then((r: any) =>
         Array.isArray(r?.data) ? r.data : Array.isArray(r) ? r : []
       ),
+    approve: (id: string) => POST(`/memories/${id}/approve`, {}),
+    reject: (id: string) => POST(`/memories/${id}/reject`, {}),
+    pendingCount: () => GET<{ data?: { count?: number } }>(`/memories/pending/count`),
   },
 
   // ── Preferences (proxy for "decisions" until judgment engine exists) ──

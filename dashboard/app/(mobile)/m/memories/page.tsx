@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
-import { useMobileMemories, useMobileMemorySearch, type MemoryVM } from "@/lib/mobile-api";
+import { useMobileMemories, useMobileMemorySearch, useResolveMemory, type MemoryVM } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
 
 export default function MobileMemories() {
@@ -11,6 +11,7 @@ export default function MobileMemories() {
   const searching = query.trim().length > 2;
   const list = useMobileMemories(50);
   const search = useMobileMemorySearch(query);
+  const resolve = useResolveMemory();
 
   const active = searching ? search : list;
   const rows = active.data ?? [];
@@ -52,65 +53,134 @@ export default function MobileMemories() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {rows.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setSelected(m)}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "start",
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-lg)",
-                padding: "12px 14px",
-                cursor: "pointer",
-                fontFamily: "inherit",
-                color: "var(--text)",
-              }}
-            >
-              <div style={{ fontSize: "var(--ui-text)", lineHeight: 1.5 }}>{m.content}</div>
-              <div style={{ display: "flex", gap: "6px", marginTop: "7px", alignItems: "center", flexWrap: "wrap" }}>
-                {m.tags.map((t) => (
+            <div key={m.id}>
+              <button
+                onClick={() => setSelected(m)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "start",
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "12px 14px",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  color: "var(--text)",
+                }}
+              >
+                <div style={{ fontSize: "var(--ui-text)", lineHeight: 1.5 }}>{m.content}</div>
+                <div style={{ display: "flex", gap: "6px", marginTop: "7px", alignItems: "center", flexWrap: "wrap" }}>
+                  {m.status === "pending" && (
+                    <span
+                      style={{
+                        background: "var(--warning-soft, #fef3c7)",
+                        color: "var(--warning, #b45309)",
+                        borderRadius: 999,
+                        padding: "1px 8px",
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    >
+                      pending
+                    </span>
+                  )}
+                  {m.tags.map((t) => (
+                    <span
+                      key={t}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        height: "19px",
+                        paddingInline: "8px",
+                        borderRadius: "var(--radius-pill)",
+                        background: "var(--surface-3)",
+                        color: "var(--text-muted)",
+                        fontSize: "var(--text-2xs)",
+                        fontWeight: "var(--fw-semibold)",
+                      }}
+                    >
+                      {t}
+                    </span>
+                  ))}
                   <span
-                    key={t}
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      height: "19px",
-                      paddingInline: "8px",
-                      borderRadius: "var(--radius-pill)",
-                      background: "var(--surface-3)",
-                      color: "var(--text-muted)",
+                      marginInlineStart: "auto",
+                      fontFamily: "var(--font-mono)",
                       fontSize: "var(--text-2xs)",
-                      fontWeight: "var(--fw-semibold)",
+                      fontWeight: "var(--fw-bold)",
+                      color: "var(--accent-text)",
                     }}
                   >
-                    {t}
+                    {impLabel(m.imp)}
                   </span>
-                ))}
-                <span
-                  style={{
-                    marginInlineStart: "auto",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "var(--text-2xs)",
-                    fontWeight: "var(--fw-bold)",
-                    color: "var(--accent-text)",
-                  }}
-                >
-                  {impLabel(m.imp)}
-                </span>
-              </div>
-            </button>
+                </div>
+              </button>
+              {m.status === "pending" && (
+                <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+                  <button
+                    onClick={() => resolve.mutate({ id: m.id, action: "approve" })}
+                    disabled={resolve.isPending}
+                    style={{
+                      flex: 1,
+                      background: "var(--success-soft)",
+                      color: "var(--success)",
+                      border: "none",
+                      borderRadius: "var(--radius-md)",
+                      padding: "6px 0",
+                      fontSize: "var(--text-sm)",
+                      fontWeight: "var(--fw-bold)",
+                      cursor: resolve.isPending ? "default" : "pointer",
+                      opacity: resolve.isPending ? 0.6 : 1,
+                    }}
+                  >
+                    ✓ Approve
+                  </button>
+                  <button
+                    onClick={() => resolve.mutate({ id: m.id, action: "reject" })}
+                    disabled={resolve.isPending}
+                    style={{
+                      flex: 1,
+                      background: "var(--danger-soft)",
+                      color: "var(--danger)",
+                      border: "none",
+                      borderRadius: "var(--radius-md)",
+                      padding: "6px 0",
+                      fontSize: "var(--text-sm)",
+                      fontWeight: "var(--fw-bold)",
+                      cursor: resolve.isPending ? "default" : "pointer",
+                      opacity: resolve.isPending ? 0.6 : 1,
+                    }}
+                  >
+                    ✕ Reject
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
 
-      {selected && <MemorySheet mem={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <MemorySheet
+          mem={selected}
+          onClose={() => setSelected(null)}
+          resolve={resolve}
+        />
+      )}
     </>
   );
 }
 
-function MemorySheet({ mem, onClose }: { mem: MemoryVM; onClose: () => void }) {
+function MemorySheet({
+  mem,
+  onClose,
+  resolve,
+}: {
+  mem: MemoryVM;
+  onClose: () => void;
+  resolve: ReturnType<typeof useResolveMemory>;
+}) {
   const prov = [
     `Captured via ${mem.source}`,
     mem.created ? `First seen ${mem.created}` : null,
@@ -143,6 +213,20 @@ function MemorySheet({ mem, onClose }: { mem: MemoryVM; onClose: () => void }) {
         <div style={{ width: "38px", height: "4px", borderRadius: "var(--radius-pill)", background: "var(--border-strong)", margin: "6px auto 14px" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
+          {mem.status === "pending" && (
+            <span
+              style={{
+                background: "var(--warning-soft, #fef3c7)",
+                color: "var(--warning, #b45309)",
+                borderRadius: 999,
+                padding: "1px 8px",
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              pending
+            </span>
+          )}
           {mem.tags.map((t) => (
             <span
               key={t}
@@ -175,6 +259,47 @@ function MemorySheet({ mem, onClose }: { mem: MemoryVM; onClose: () => void }) {
         </div>
 
         <p style={{ margin: "0 0 16px", fontSize: "var(--text-md)", lineHeight: 1.55 }}>{mem.content}</p>
+
+        {mem.status === "pending" && (
+          <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+            <button
+              onClick={() => resolve.mutate({ id: mem.id, action: "approve" }, { onSuccess: onClose })}
+              disabled={resolve.isPending}
+              style={{
+                flex: 1,
+                background: "var(--success-soft)",
+                color: "var(--success)",
+                border: "none",
+                borderRadius: "var(--radius-md)",
+                padding: "8px 0",
+                fontSize: "var(--text-sm)",
+                fontWeight: "var(--fw-bold)",
+                cursor: resolve.isPending ? "default" : "pointer",
+                opacity: resolve.isPending ? 0.6 : 1,
+              }}
+            >
+              ✓ Approve
+            </button>
+            <button
+              onClick={() => resolve.mutate({ id: mem.id, action: "reject" }, { onSuccess: onClose })}
+              disabled={resolve.isPending}
+              style={{
+                flex: 1,
+                background: "var(--danger-soft)",
+                color: "var(--danger)",
+                border: "none",
+                borderRadius: "var(--radius-md)",
+                padding: "8px 0",
+                fontSize: "var(--text-sm)",
+                fontWeight: "var(--fw-bold)",
+                cursor: resolve.isPending ? "default" : "pointer",
+                opacity: resolve.isPending ? 0.6 : 1,
+              }}
+            >
+              ✕ Reject
+            </button>
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "16px" }}>
           <SheetTile label="Source" value={mem.source} />
