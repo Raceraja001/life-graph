@@ -82,21 +82,28 @@ class ConversationService:
             if conv is None or conv.tenant_id != tenant_id:
                 raise ValueError("Conversation not found")
 
-            # prior turns → history for the LLM
+            # prior turns → history for the LLM (most recent _HISTORY_TURNS,
+            # restored to chronological order)
             prior = await session.execute(
                 select(ConversationMessage)
                 .where(ConversationMessage.conversation_id == conversation_id)
-                .order_by(ConversationMessage.created_at.asc())
+                .order_by(ConversationMessage.created_at.desc())
+                .limit(_HISTORY_TURNS)
             )
             history = [
                 {"role": m.role, "content": m.content}
-                for m in prior.scalars().all()
+                for m in reversed(prior.scalars().all())
             ]
 
             # 2. synthesize
             result = await self._synthesis.synthesize(
                 question, memories, history=history or None
             )
+
+            # citations must be non-empty strings — cited_memory_ids is a
+            # Postgres UUID array column, and a blank id (e.g. a memory dict
+            # missing "id") would fail the insert.
+            citations = [c for c in result.get("citations", []) if c]
 
             # 3. persist both turns
             user_turn = ConversationMessage(
@@ -106,7 +113,7 @@ class ConversationService:
             assistant_turn = ConversationMessage(
                 conversation_id=conversation_id, tenant_id=tenant_id,
                 role="assistant", content=result["answer"],
-                cited_memory_ids=result.get("citations", []),
+                cited_memory_ids=citations,
                 model=result.get("model"),
             )
             session.add(user_turn)
@@ -126,4 +133,4 @@ class ConversationService:
         except Exception:  # pragma: no cover - events must never break the reply
             pass
 
-        return {"message": assistant_turn, "citations": result.get("citations", [])}
+        return {"message": assistant_turn, "citations": citations}
