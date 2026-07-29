@@ -10,7 +10,7 @@ from pydantic import BaseModel, field_validator
 from life_graph.api.dependencies import get_conversation_service, get_store
 from life_graph.api.responses import success_response
 from life_graph.models.schemas import MemoryResponse
-from life_graph.services.conversation import ConversationService
+from life_graph.services.conversation import ConversationNotFound, ConversationService
 from life_graph.storage.postgres import PostgresMemoryStore
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -82,7 +82,7 @@ async def post_message(
 ):
     try:
         result = await svc.ask(conversation_id, body.content)
-    except ValueError:
+    except ConversationNotFound:
         raise HTTPException(status_code=404, detail="Conversation not found")
     msg = result["message"]
     # resolve citation ids to full memories for chips

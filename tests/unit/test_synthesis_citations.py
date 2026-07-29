@@ -71,6 +71,44 @@ async def test_synthesize_returns_citations():
 
 
 @pytest.mark.asyncio
+async def test_synthesize_excludes_memory_with_missing_id_from_numbering():
+    # A memory dict lacking "id" can never be safely cited (cited_memory_ids
+    # is a Postgres UUID array column), so it must be filtered out BEFORE
+    # numbering — not post-hoc after the model's [Memory N] tags are already
+    # aligned to it. Here the model (stubbed) cites what it's told is
+    # "[Memory 2]" — the *filtered* list's 2nd entry (id-c) — proving the
+    # id-less memory never occupied a number at all.
+    svc = SynthesisService(
+        client=_FakeClient("Car Monday [Memory 1]; insurance Friday [Memory 2].")
+    )
+    memories = [
+        {"id": "id-a", "content": "car service Monday"},
+        {"content": "no id here — must be excluded"},
+        {"id": "id-c", "content": "insurance due Friday"},
+    ]
+    result = await svc.synthesize("what's due this week?", memories)
+
+    assert result["citations"] == ["id-a", "id-c"]
+    assert result["answer"] == "Car Monday [Memory 1]; insurance Friday [Memory 2]."
+    assert result["source_count"] == 2  # the id-less memory doesn't count
+    # invariant: [Memory J] <-> citations[J-1]
+    for j, cited_id in enumerate(result["citations"], 1):
+        assert f"[Memory {j}]" in result["answer"]
+        assert cited_id != ""
+
+
+@pytest.mark.asyncio
+async def test_synthesize_all_memories_missing_id_yields_no_citations():
+    svc = SynthesisService(client=_FakeClient("Should never be reached."))
+    memories = [{"content": "no id"}, {"content": "also no id"}]
+    result = await svc.synthesize("anything?", memories)
+
+    assert result["citations"] == []
+    assert result["source_count"] == 0
+    assert result["answer"] == "I don't have any memories related to your question."
+
+
+@pytest.mark.asyncio
 async def test_synthesize_renumbers_answer_to_match_citations():
     svc = SynthesisService(
         client=_FakeClient("Car Monday [Memory 1]; insurance Friday [Memory 3].")

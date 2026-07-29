@@ -123,6 +123,21 @@ class SynthesisService:
                 "citations": [],
             }
 
+        # Drop memories with no usable id BEFORE numbering — cited_memory_ids
+        # is a Postgres UUID array column, so a blank id can never be a valid
+        # citation. Filtering here (rather than post-hoc on the returned
+        # citations list) keeps the answer's [Memory J] tokens and the
+        # returned ids in lockstep: such a memory never gets a number in the
+        # first place, so it can never be cited.
+        memories = [mem for mem in memories if mem.get("id")]
+        if not memories:
+            return {
+                "answer": "I don't have any memories related to your question.",
+                "source_count": 0,
+                "model": None,
+                "citations": [],
+            }
+
         # Format memories as context
         memory_ids = [str(mem.get("id", "")) for mem in memories]
         context_parts = []

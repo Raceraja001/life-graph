@@ -9,11 +9,15 @@ from sqlalchemy import select
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.models.db import Conversation, ConversationMessage
+from life_graph.models.db import Conversation, ConversationMessage, _utcnow
 
 _TITLE_MAX = 60
 _HISTORY_TURNS = 6
 _RETRIEVE_LIMIT = 8
+
+
+class ConversationNotFound(Exception):
+    """Raised when a conversation doesn't exist or belongs to another tenant."""
 
 
 class ConversationService:
@@ -71,16 +75,19 @@ class ConversationService:
     async def ask(self, conversation_id: uuid.UUID, question: str) -> dict[str, Any]:
         tenant_id = get_current_tenant_id()
 
-        # 1. retrieve approved-only
-        retrieval = await self._engine.tri_search(
-            question, limit=_RETRIEVE_LIMIT, statuses=("active",)
-        )
-        memories = retrieval.get("memories", [])
-
         async with self._session_factory() as session:
+            # 0. ownership/existence check FIRST — fail fast before spending
+            # a retrieval (embedding + DB search) on a conversation we're
+            # about to reject anyway.
             conv = await session.get(Conversation, conversation_id)
             if conv is None or conv.tenant_id != tenant_id:
-                raise ValueError("Conversation not found")
+                raise ConversationNotFound("Conversation not found")
+
+            # 1. retrieve approved-only
+            retrieval = await self._engine.tri_search(
+                question, limit=_RETRIEVE_LIMIT, statuses=("active",)
+            )
+            memories = retrieval.get("memories", [])
 
             # prior turns → history for the LLM (most recent _HISTORY_TURNS,
             # restored to chronological order)
@@ -95,15 +102,14 @@ class ConversationService:
                 for m in reversed(prior.scalars().all())
             ]
 
-            # 2. synthesize
+            # 2. synthesize — synthesis.py filters memories with empty/missing
+            # ids BEFORE numbering, so the citations it returns are already
+            # in lockstep with the [Memory J] tokens in the answer text; no
+            # post-hoc filtering needed (or safe to do) here.
             result = await self._synthesis.synthesize(
                 question, memories, history=history or None
             )
-
-            # citations must be non-empty strings — cited_memory_ids is a
-            # Postgres UUID array column, and a blank id (e.g. a memory dict
-            # missing "id") would fail the insert.
-            citations = [c for c in result.get("citations", []) if c]
+            citations = result.get("citations", [])
 
             # 3. persist both turns
             user_turn = ConversationMessage(
@@ -120,6 +126,11 @@ class ConversationService:
             session.add(assistant_turn)
             if not conv.title:
                 conv.title = question[:_TITLE_MAX]
+            # Every turn touches the conversation, so ordering by
+            # updated_at (list_recent) reflects recent activity — not just
+            # the first turn, which is the only mutation onupdate would
+            # otherwise catch.
+            conv.updated_at = _utcnow()
             await session.commit()
             await session.refresh(assistant_turn)
 
