@@ -67,7 +67,7 @@ async def test_ingest_capture_text_voice_is_a_single_chunk(monkeypatch):
 
     total = await ingest_capture_text({}, "call amma tonight", "voice", TENANT_ID)
 
-    manager.ingest.assert_awaited_once_with("call amma tonight", source="voice")
+    manager.ingest.assert_awaited_once_with("call amma tonight", source="voice", capture=True)
     assert total == 2
 
 
@@ -80,7 +80,7 @@ async def test_ingest_capture_text_image_is_a_single_chunk(monkeypatch):
 
     total = await ingest_capture_text({}, "Receipt total Rs 450", "image", TENANT_ID)
 
-    manager.ingest.assert_awaited_once_with("Receipt total Rs 450", source="image")
+    manager.ingest.assert_awaited_once_with("Receipt total Rs 450", source="image", capture=True)
     assert total == 1
 
 
@@ -114,7 +114,7 @@ async def test_ingest_capture_text_document_loops_over_real_chunks(monkeypatch):
     itself (real split_into_chunks, not mocked) and ingests each one."""
     monkeypatch.setattr(ingest_capture_module, "set_tenant_context", MagicMock())
     manager = AsyncMock()
-    manager.ingest.side_effect = lambda text, source: [MagicMock()]  # 1 memory/chunk
+    manager.ingest.side_effect = lambda text, source, capture: [MagicMock()]  # 1 memory/chunk
     _patch_manager(monkeypatch, manager)
 
     long_text = " ".join(f"word{i}" for i in range(1200))  # > _MAX_CHUNK_WORDS (500)
@@ -123,9 +123,10 @@ async def test_ingest_capture_text_document_loops_over_real_chunks(monkeypatch):
 
     assert manager.ingest.await_count > 1  # multiple chunks were looped over
     assert total == manager.ingest.await_count
-    # every call used source="document"
+    # every call used source="document" and capture=True
     for call in manager.ingest.await_args_list:
         assert call.kwargs["source"] == "document"
+        assert call.kwargs["capture"] is True
 
 
 @pytest.mark.asyncio
@@ -137,7 +138,7 @@ async def test_ingest_capture_text_document_single_chunk_short_text(monkeypatch)
 
     total = await ingest_capture_text({}, "short document text", "document", TENANT_ID)
 
-    manager.ingest.assert_awaited_once_with("short document text", source="document")
+    manager.ingest.assert_awaited_once_with("short document text", source="document", capture=True)
     assert total == 1
 
 
@@ -203,7 +204,7 @@ async def test_ingest_capture_text_emits_document_imported_with_chunks_and_real_
 ):
     monkeypatch.setattr(ingest_capture_module, "set_tenant_context", MagicMock())
     manager = AsyncMock()
-    manager.ingest.side_effect = lambda text, source: [MagicMock()]  # 1 memory/chunk
+    manager.ingest.side_effect = lambda text, source, capture: [MagicMock()]  # 1 memory/chunk
     _patch_manager(monkeypatch, manager)
     emit_mock = _patch_event_bus(monkeypatch)
 
