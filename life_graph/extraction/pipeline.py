@@ -95,7 +95,7 @@ class ExtractionPipeline:
         )
         self.stats = PipelineStats()
 
-    async def extract(self, text: str) -> ExtractionResult:
+    async def extract(self, text: str, *, capture: bool = False) -> ExtractionResult:
         """Run the full extraction pipeline on *text*.
 
         Steps:
@@ -108,6 +108,11 @@ class ExtractionPipeline:
 
         Args:
             text: Raw input text to extract facts from.
+            capture: When True and ``settings.capture_llm_clean`` is enabled,
+                the LLM is tried FIRST as the primary extractor (clean,
+                single-fact output) — rules/nlp only run as a fallback when
+                the LLM path returns no facts or raises. Non-capture calls
+                are unaffected and always run the tier1/tier2/gate pipeline.
 
         Returns:
             ExtractionResult with deduplicated facts and tier counts.
@@ -115,6 +120,28 @@ class ExtractionPipeline:
         text = text.strip()
         if not text:
             return ExtractionResult()
+
+        if capture and settings.capture_llm_clean:
+            try:
+                llm_facts = await self._llm.extract(text)
+            except Exception:
+                logger.warning(
+                    "LLM capture extraction failed; falling back to rules/nlp",
+                    exc_info=True,
+                )
+                llm_facts = []
+            if llm_facts:
+                merged = _deduplicate(llm_facts)
+                merged.sort(key=lambda f: f.confidence, reverse=True)
+                result = ExtractionResult(
+                    facts=merged,
+                    tier1_count=0,
+                    tier2_count=0,
+                    tier3_count=len(llm_facts),
+                    llm_invoked=True,
+                )
+                self._update_stats(result)
+                return result
 
         # Tier 1 — regex
         tier1_facts = self._rules.extract(text)
@@ -168,7 +195,7 @@ class ExtractionPipeline:
         self.stats.total_extractions += len(result.facts)
         if result.llm_invoked:
             self.stats.llm_calls += 1
-            self.stats.total_cost_usd = self._llm.total_cost_usd
+            self.stats.total_cost_usd = getattr(self._llm, "total_cost_usd", 0.0)
 
     def get_stats(self) -> dict[str, Any]:
         """Return cumulative pipeline statistics."""
