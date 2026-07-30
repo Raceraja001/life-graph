@@ -140,10 +140,28 @@ class SpacyExtractor:
         nlp = self._load_model()
         doc = nlp(text)
 
-        facts: list[ExtractedFact] = []
-        facts.extend(self._extract_entities(doc))
-        facts.extend(self._extract_tech_mentions(doc))
-        facts.extend(self._extract_relations(doc))
+        entity_facts = self._extract_entities(doc)
+        tech_facts = self._extract_tech_mentions(doc)
+        relation_facts = self._extract_relations(doc)
+
+        facts: list[ExtractedFact]
+
+        if settings.extraction_tag_only_entities:
+            # Entities/tech terms alone are noise (fan-out of one memory per
+            # name). Fold their names into the substantive relation facts as
+            # tags instead of emitting them as standalone facts. Bare entity
+            # lists with no relation fact become nothing here — the LLM path
+            # (or raw text) handles genuinely content-free captures.
+            tag_names = [n for f in (*entity_facts, *tech_facts) for n in f.entities]
+            for rf in relation_facts:
+                seen = {e.lower() for e in rf.entities}
+                for name in tag_names:
+                    if name.lower() not in seen:
+                        rf.entities.append(name)
+                        seen.add(name.lower())
+            facts = relation_facts
+        else:
+            facts = [*entity_facts, *tech_facts, *relation_facts]
 
         facts.sort(key=lambda f: f.confidence, reverse=True)
         return facts

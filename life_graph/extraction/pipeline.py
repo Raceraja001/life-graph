@@ -132,6 +132,7 @@ class ExtractionPipeline:
                 llm_facts = []
             if llm_facts:
                 merged = _deduplicate(llm_facts)
+                merged = _drop_low_confidence(merged, settings.extraction_min_confidence)
                 merged.sort(key=lambda f: f.confidence, reverse=True)
                 result = ExtractionResult(
                     facts=merged,
@@ -171,6 +172,8 @@ class ExtractionPipeline:
             llm_invoked = True
             logger.debug("Tier 3 extracted %d facts", len(tier3_facts))
             merged = _deduplicate(merged + tier3_facts)
+
+        merged = _drop_low_confidence(merged, settings.extraction_min_confidence)
 
         # Sort by confidence descending
         merged.sort(key=lambda f: f.confidence, reverse=True)
@@ -227,3 +230,13 @@ def _deduplicate(facts: list[ExtractedFact]) -> list[ExtractedFact]:
 def _normalise_key(content: str) -> str:
     """Create a stable dedup key from content."""
     return content.strip().lower()
+
+
+def _drop_low_confidence(facts: list[ExtractedFact], floor: float) -> list[ExtractedFact]:
+    """Drop facts whose confidence is below *floor*.
+
+    Applied as the last step before every ``ExtractionResult`` is returned,
+    so low-signal facts never reach storage regardless of which tier(s)
+    produced them.
+    """
+    return [f for f in facts if f.confidence >= floor]
