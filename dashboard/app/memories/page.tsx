@@ -139,7 +139,7 @@ export default function MemoriesPage() {
         </div>
       )}
 
-      {selected && <MemoryDetail memory={selected} onClose={() => setSelected(null)} />}
+      {selected && <MemoryDetail key={selected.id} memory={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }

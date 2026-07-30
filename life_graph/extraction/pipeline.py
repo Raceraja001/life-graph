@@ -22,9 +22,6 @@ from life_graph.extraction.rules import ExtractedFact, RuleBasedExtractor
 
 logger = logging.getLogger(__name__)
 
-_LLM_CONFIDENCE_THRESHOLD: float = 0.5
-_MIN_WORDS_FOR_LLM: int = 20
-
 
 @dataclass
 class PipelineStats:
