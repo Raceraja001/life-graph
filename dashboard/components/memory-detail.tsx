@@ -1,11 +1,37 @@
 "use client";
-import { X, Clock, Tag, BarChart2, Link2 } from "lucide-react";
+import { useState } from "react";
+import { X, Clock, Tag, BarChart2, Link2, Pencil } from "lucide-react";
+import { useUpdateMemory } from "@/lib/mobile-api";
 
 export function MemoryDetail({ memory, onClose }: {
   memory: any;
   onClose: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [content, setContent] = useState(memory?.content ?? "");
+  const [tagsText, setTagsText] = useState(Array.isArray(memory?.tags) ? memory.tags.join(", ") : "");
+  const currentTags = tagsText.split(",").map((t: string) => t.trim()).filter(Boolean);
+  const update = useUpdateMemory();
+
   if (!memory) return null;
+
+  const startEdit = () => {
+    setContent(memory.content ?? "");
+    setTagsText(Array.isArray(memory.tags) ? memory.tags.join(", ") : "");
+    setEditing(true);
+  };
+  const cancelEdit = () => {
+    setContent(memory.content ?? "");
+    setTagsText(Array.isArray(memory.tags) ? memory.tags.join(", ") : "");
+    setEditing(false);
+  };
+  const saveEdit = () => {
+    update.mutate(
+      { id: memory.id, content, tags: currentTags },
+      { onSuccess: () => setEditing(false) }
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-40">
       <div className="absolute inset-0 bg-black/10" onClick={onClose} />
@@ -19,8 +45,55 @@ export function MemoryDetail({ memory, onClose }: {
         <div className="p-6 space-y-6">
           {/* Content */}
           <div>
-            <label className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">Content</label>
-            <p className="text-sm text-zinc-700 mt-2 leading-relaxed whitespace-pre-wrap">{memory.content}</p>
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">Content</label>
+              {!editing && (
+                <button
+                  onClick={startEdit}
+                  className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:text-emerald-700"
+                >
+                  <Pencil className="w-3 h-3" /> Edit
+                </button>
+              )}
+            </div>
+            {editing ? (
+              <div className="mt-2 space-y-2">
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  rows={5}
+                  autoFocus
+                  className="w-full text-sm text-zinc-700 leading-relaxed rounded-lg border border-zinc-200 bg-zinc-50 p-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 resize-y"
+                />
+                <input
+                  value={tagsText}
+                  onChange={(e) => setTagsText(e.target.value)}
+                  placeholder="tags, comma, separated"
+                  className="w-full text-xs text-zinc-700 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
+                />
+                {update.isError && (
+                  <p className="text-xs text-red-500">Couldn&apos;t save — try again.</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={saveEdit}
+                    disabled={update.isPending || !content.trim()}
+                    className="flex-1 text-xs font-semibold rounded-lg bg-emerald-600 text-white py-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-700 transition-colors"
+                  >
+                    {update.isPending ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    onClick={cancelEdit}
+                    disabled={update.isPending}
+                    className="flex-1 text-xs font-semibold rounded-lg border border-zinc-200 text-zinc-600 py-2 disabled:opacity-50 hover:bg-zinc-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-700 mt-2 leading-relaxed whitespace-pre-wrap">{content}</p>
+            )}
           </div>
 
           {/* Meta grid */}
@@ -49,14 +122,14 @@ export function MemoryDetail({ memory, onClose }: {
           </div>
 
           {/* Tags */}
-          {memory.tags && memory.tags.length > 0 && (
+          {currentTags.length > 0 && (
             <div>
               <div className="flex items-center gap-1.5 mb-2">
                 <Tag className="w-3 h-3 text-zinc-400" />
                 <span className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider">Tags</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {memory.tags.map((t: string) => (
+                {currentTags.map((t: string) => (
                   <span key={t} className="text-xs px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg">{t}</span>
                 ))}
               </div>

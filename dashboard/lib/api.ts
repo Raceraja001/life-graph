@@ -93,6 +93,9 @@ export const api = {
       ),
     approve: (id: string) => POST(`/memories/${id}/approve`, {}),
     reject: (id: string) => POST(`/memories/${id}/reject`, {}),
+    update: (id: string, body: { content?: string; tags?: string[] }) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload shape matches the rest of this file's untyped API surface.
+      request<any>("PATCH", `/memories/${id}`, body),
     pendingCount: () => GET<{ data?: { count?: number } }>(`/memories/pending/count`),
   },
 
