@@ -218,6 +218,11 @@ class Settings(BaseSettings):
     interview_question_ttl_days: int = 7  # Unanswered questions expire after this
     brief_hour_utc: int = 2  # Daily brief composition hour (02:00 UTC ≈ 07:30 IST)
 
+    # ── Web Push Notifications ──────────────────────────
+    vapid_public_key: str = ""  # Set LIFE_GRAPH_VAPID_PUBLIC_KEY
+    vapid_private_key: str = ""  # Set LIFE_GRAPH_VAPID_PRIVATE_KEY (VM only, never git)
+    vapid_subject: str = "mailto:tolokanathan@gmail.com"  # VAPID contact
+
     # ── Derived Properties ─────────────────────────────
 
     @property
