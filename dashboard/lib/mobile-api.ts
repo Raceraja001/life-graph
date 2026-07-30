@@ -168,3 +168,31 @@ export function useResolveMemory() {
     },
   });
 }
+
+// ── Conversations (ask-your-memories chat) ────────────────────
+export function useConversations() {
+  return useQuery({
+    queryKey: ["conversations"],
+    queryFn: () => api.conversations.list(),
+  });
+}
+
+export function useConversation(id: string | null) {
+  return useQuery({
+    queryKey: ["conversation", id],
+    queryFn: () => api.conversations.get(id as string).then((r) => r.data),
+    enabled: !!id,
+  });
+}
+
+export function useSendMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      api.conversations.ask(id, content).then((r) => r.data),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["conversation", vars.id] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}

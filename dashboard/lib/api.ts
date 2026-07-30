@@ -68,6 +68,17 @@ const GET = <T>(path: string, params?: Record<string, string>) => request<T>("GE
 const POST = <T>(path: string, body?: unknown) => request<T>("POST", path, body);
 
 export const api = {
+  // ── Conversations (ask-your-memories chat) ──────
+  /* eslint-disable @typescript-eslint/no-explicit-any -- payload shapes match the rest of this file's untyped API surface. */
+  conversations: {
+    create: () => POST<any>("/conversations", {}),
+    list: () => listRequest<any>("/conversations"),
+    get: (id: string) => GET<any>(`/conversations/${id}`),
+    ask: (id: string, content: string) => POST<any>(`/conversations/${id}/messages`, { content }),
+    remove: (id: string) => request<any>("DELETE", `/conversations/${id}`),
+  },
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+
   // ── Memories ──────────────────────────────
   memories: {
     list: (params?: { limit?: string; offset?: string }) =>

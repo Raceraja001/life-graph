@@ -473,3 +473,16 @@ def get_results_loop():
     from life_graph.services.results_loop import ResultsLoop
     return ResultsLoop(session_factory=async_session)
 
+
+# ── Conversation (ask-your-memories chat) ────────────────────
+
+
+@lru_cache(maxsize=1)
+def get_conversation_service():
+    """Return the singleton conversation service."""
+    from life_graph.services.conversation import ConversationService
+    from life_graph.storage.hybrid import HybridQueryEngine
+
+    engine = HybridQueryEngine()
+    return ConversationService(async_session, engine, get_synthesis_service())
+

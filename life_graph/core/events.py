@@ -121,6 +121,9 @@ class EventType(str, Enum):
     APPROVAL_REQUESTED = "approval:requested"
     APPROVAL_RESOLVED = "approval:resolved"
 
+    # ── Conversation Events ──────────────────────────────────
+    CONVERSATION_MESSAGE = "conversation:message"
+
     # ── Agent Driver Events ──────────────────────────────────
     DRIVER_DISPATCHED = "driver:dispatched"
     DRIVER_RESULT = "driver:result"

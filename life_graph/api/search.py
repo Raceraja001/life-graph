@@ -278,6 +278,7 @@ async def ask_brain(
     # Synthesize answer
     memory_dicts = [
         {
+            "id": str(m.id),
             "content": m.content,
             "tags": m.tags,
             "importance": m.importance,
