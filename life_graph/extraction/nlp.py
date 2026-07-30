@@ -21,6 +21,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Language detection (guard against non-Latin text)
+# ---------------------------------------------------------------------------
+
+
+def is_predominantly_non_latin(text: str, threshold: float = 0.3) -> bool:
+    """True if more than `threshold` of the letters fall outside Basic Latin.
+
+    Romanized text (Tanglish written in ASCII) stays Latin and is NOT skipped;
+    only genuine non-Latin scripts (Tamil, Devanagari, CJK, …) trip this.
+    """
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return False
+    non_latin = sum(1 for c in letters if ord(c) > 0x24F)  # beyond Latin Extended-B
+    return (non_latin / len(letters)) > threshold
+
+
 # ---------------------------------------------------------------------------
 # Curated technology vocabulary
 # ---------------------------------------------------------------------------
@@ -113,6 +132,11 @@ class SpacyExtractor:
         Returns:
             List of extracted facts with moderate confidence.
         """
+        from life_graph.config import settings
+
+        if settings.extraction_language_guard and is_predominantly_non_latin(text):
+            return []
+
         nlp = self._load_model()
         doc = nlp(text)
 
