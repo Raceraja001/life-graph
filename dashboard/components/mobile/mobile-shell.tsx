@@ -203,6 +203,7 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
 
       {/* Content */}
       <main
+        data-scroll-root
         style={{
           flex: 1,
           overflowY: "auto",

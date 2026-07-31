@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { EmptyCard, ErrorCard, SkeletonList } from "@/components/mobile/parts";
+import { usePullToRefresh } from "@/lib/use-pull-to-refresh";
 import { MemorySheet } from "@/components/mobile/memory-sheet";
 import { useMobileMemories, useMobileMemorySearch, useResolveMemory, type MemoryVM } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
@@ -14,6 +15,10 @@ export default function MobileMemories() {
   const search = useMobileMemorySearch(query);
   const resolve = useResolveMemory();
 
+  const { refreshing, distance } = usePullToRefresh({
+    onRefresh: () => (searching ? search.refetch() : list.refetch()),
+  });
+
   const active = searching ? search : list;
   const rows = active.data ?? [];
 
@@ -26,6 +31,23 @@ export default function MobileMemories() {
 
   return (
     <>
+      {(distance > 0 || refreshing) && (
+        <div
+          role="status"
+          style={{
+            height: refreshing ? 28 : distance,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-subtle)",
+            fontSize: "var(--text-2xs)",
+            overflow: "hidden",
+            transition: refreshing ? "height 0.15s" : undefined,
+          }}
+        >
+          {refreshing ? "Refreshing…" : distance >= 64 ? "Release to refresh" : "Pull to refresh"}
+        </div>
+      )}
       <input
         type="search"
         value={query}

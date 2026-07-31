@@ -5,17 +5,41 @@ import { MobileCapture } from "@/components/mobile/mobile-capture";
 import { SectionEyebrow, TaskRow, EmptyCard, ErrorCard, SkeletonList } from "@/components/mobile/parts";
 import { useApprovals, useMobileMemories, useMobileTasks } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
+import { usePullToRefresh } from "@/lib/use-pull-to-refresh";
 
 export default function MobileHome() {
   const openApprovalsCount = useApprovals().data?.length ?? 0;
   const tasks = useMobileTasks();
   const memories = useMobileMemories(20);
 
+  const { refreshing, distance } = usePullToRefresh({
+    onRefresh: async () => {
+      await Promise.all([tasks.refetch(), memories.refetch()]);
+    },
+  });
+
   const todayTasks = (tasks.data ?? []).filter((t) => t.group === "inflight");
   const recent = (memories.data ?? []).slice(0, 3);
 
   return (
     <>
+      {(distance > 0 || refreshing) && (
+        <div
+          role="status"
+          style={{
+            height: refreshing ? 28 : distance,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-subtle)",
+            fontSize: "var(--text-2xs)",
+            overflow: "hidden",
+            transition: refreshing ? "height 0.15s" : undefined,
+          }}
+        >
+          {refreshing ? "Refreshing…" : distance >= 64 ? "Release to refresh" : "Pull to refresh"}
+        </div>
+      )}
       <MobileCapture />
 
       {openApprovalsCount > 0 && (
