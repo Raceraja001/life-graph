@@ -39,6 +39,11 @@ class ProcessManager:
         persona_service: PersonaService to validate agent names.
     """
 
+    # Coupled with settings.kernel_max_concurrent_tasks (see config.py):
+    # a delegate_to_persona(wait=True) chain at full depth holds one
+    # semaphore permit per hop for the duration of the wait, so the
+    # concurrency limit must exceed this depth or a single delegation
+    # chain can deadlock waiting on its own last permit.
     MAX_DELEGATION_DEPTH = 5
 
     def __init__(
@@ -51,6 +56,15 @@ class ProcessManager:
         self._max_concurrent = settings.kernel_max_concurrent_tasks
         self._default_timeout = settings.kernel_default_timeout
         self._default_max_retries = settings.kernel_default_max_retries
+        if self._max_concurrent <= self.MAX_DELEGATION_DEPTH:
+            raise ValueError(
+                "kernel_max_concurrent_tasks"
+                f" ({self._max_concurrent}) must be greater than"
+                f" ProcessManager.MAX_DELEGATION_DEPTH"
+                f" ({self.MAX_DELEGATION_DEPTH}), otherwise a full-depth"
+                " delegate_to_persona(wait=True) chain can deadlock on"
+                " the concurrency semaphore."
+            )
         self._semaphore = asyncio.Semaphore(self._max_concurrent)
         # task_id → asyncio.Task for cancellation support
         self._running: dict[uuid.UUID, asyncio.Task[None]] = {}

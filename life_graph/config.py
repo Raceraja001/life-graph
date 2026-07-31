@@ -151,7 +151,12 @@ class Settings(BaseSettings):
     agent_max_iterations: int = 5
 
     # ── OS Kernel ──────────────────────────────────────────
-    kernel_max_concurrent_tasks: int = 5
+    # Must stay > ProcessManager.MAX_DELEGATION_DEPTH (currently 5): each
+    # delegate_to_persona(wait=True) hop blocks its parent's semaphore
+    # permit while waiting on the child, so a full-depth delegation chain
+    # needs depth+1 permits held simultaneously to avoid deadlocking until
+    # the ~600s delegate timeout. ProcessManager asserts this at startup.
+    kernel_max_concurrent_tasks: int = 8
     kernel_default_timeout: int = 300  # seconds
     kernel_default_max_retries: int = 2
     kernel_task_cleanup_days: int = 30  # archive tasks older than this

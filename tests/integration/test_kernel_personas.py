@@ -517,6 +517,41 @@ class TestSeedBuiltinsIdempotency:
         probe = await svc.get_by_name(tenant, fake_new_persona["name"])
         assert probe is not None
 
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_concurrent_seed_calls_do_not_lose_personas(
+        self, client: AsyncClient,
+    ):
+        """Two overlapping seed_builtins() calls for the same tenant
+        (e.g. two instances starting up at once) race on the unique
+        (tenant_id, name) index. A duplicate hit for one persona must
+        only discard that one persona's insert — not roll back every
+        other persona already flushed earlier in the same call's
+        transaction.
+        """
+        import asyncio
+
+        from life_graph.api.dependencies import get_persona_service
+        from life_graph.kernel import personas as personas_module
+
+        svc = get_persona_service()
+        tenant = f"test_concurrent_seed_{uuid.uuid4().hex[:6]}"
+
+        await asyncio.gather(
+            svc.seed_builtins(tenant),
+            svc.seed_builtins(tenant),
+        )
+
+        personas, total = await svc.list_all(tenant)
+        seeded_names = {p["name"] for p in personas}
+        expected_names = {defn["name"] for defn in personas_module._BUILTIN_PERSONAS}
+
+        assert expected_names <= seeded_names, (
+            f"missing personas after concurrent seed: {expected_names - seeded_names}"
+        )
+        # No duplicate rows for any name either.
+        assert total == len(personas_module._BUILTIN_PERSONAS)
+
 
 # ── The five new personal-roles personas ────────────────────
 

@@ -350,33 +350,39 @@ class PersonaService:
                 if defn["name"] in existing_names:
                     continue
                 try:
-                    persona = AgentPersona(
-                        id=uuid.uuid4(),
-                        tenant_id=tenant_id,
-                        name=defn["name"],
-                        display_name=defn["display_name"],
-                        icon=defn["icon"],
-                        description=defn["description"],
-                        system_prompt=defn["system_prompt"],
-                        model="gemini/gemini-2.5-flash",
-                        temperature=defn["temperature"],
-                        max_tokens=4096,
-                        allowed_tools=defn["allowed_tools"],
-                        intent_tags=defn["intent_tags"],
-                        driver=defn.get("driver"),
-                        verifier_chain=defn.get("verifier_chain", []),
-                        context_profile=defn.get("context_profile", {}),
-                        task_types=defn.get("task_types", []),
-                        is_builtin=True,
-                        is_active=True,
-                    )
-                    session.add(persona)
-                    await session.flush()
+                    # A SAVEPOINT scoped to this one persona: if the
+                    # insert fails (e.g. a concurrent seed call for the
+                    # same tenant beat us to this name), only this
+                    # SAVEPOINT rolls back — not the whole transaction,
+                    # which would otherwise discard every persona
+                    # already flushed earlier in this loop.
+                    async with session.begin_nested():
+                        persona = AgentPersona(
+                            id=uuid.uuid4(),
+                            tenant_id=tenant_id,
+                            name=defn["name"],
+                            display_name=defn["display_name"],
+                            icon=defn["icon"],
+                            description=defn["description"],
+                            system_prompt=defn["system_prompt"],
+                            model="gemini/gemini-2.5-flash",
+                            temperature=defn["temperature"],
+                            max_tokens=4096,
+                            allowed_tools=defn["allowed_tools"],
+                            intent_tags=defn["intent_tags"],
+                            driver=defn.get("driver"),
+                            verifier_chain=defn.get("verifier_chain", []),
+                            context_profile=defn.get("context_profile", {}),
+                            task_types=defn.get("task_types", []),
+                            is_builtin=True,
+                            is_active=True,
+                        )
+                        session.add(persona)
+                        await session.flush()
                     count += 1
                 except Exception:
                     # Duplicate — a concurrent seed call beat us to
                     # this one name. Skip it, keep seeding the rest.
-                    await session.rollback()
                     logger.debug(
                         "Persona %s already exists for tenant %s — skip",
                         defn["name"],
