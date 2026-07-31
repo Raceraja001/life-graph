@@ -56,7 +56,7 @@ export default function MobileMemories() {
           {rows.map((m) => (
             <div key={m.id}>
               <button
-                onClick={() => setSelected(m)}
+                onClick={() => { if (!m._optimistic) setSelected(m); }}
                 style={{
                   display: "block",
                   width: "100%",
@@ -65,14 +65,15 @@ export default function MobileMemories() {
                   border: "1px solid var(--border)",
                   borderRadius: "var(--radius-lg)",
                   padding: "12px 14px",
-                  cursor: "pointer",
+                  cursor: m._optimistic ? "default" : "pointer",
+                  opacity: m._optimistic ? 0.7 : 1,
                   fontFamily: "inherit",
                   color: "var(--text)",
                 }}
               >
                 <div style={{ fontSize: "var(--ui-text)", lineHeight: 1.5 }}>{m.content}</div>
                 <div style={{ display: "flex", gap: "6px", marginTop: "7px", alignItems: "center", flexWrap: "wrap" }}>
-                  {m.status === "pending" && (
+                  {(m._optimistic || m.status === "pending") && (
                     <span
                       style={{
                         background: "var(--warning-soft, #fef3c7)",
@@ -83,7 +84,7 @@ export default function MobileMemories() {
                         fontWeight: 600,
                       }}
                     >
-                      pending
+                      {m._optimistic ? "saving…" : "pending"}
                     </span>
                   )}
                   {m.tags.map((t) => (
@@ -117,7 +118,7 @@ export default function MobileMemories() {
                   </span>
                 </div>
               </button>
-              {m.status === "pending" && (
+              {m.status === "pending" && !m._optimistic && (
                 <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
                   <button
                     onClick={() => resolve.mutate({ id: m.id, action: "approve" })}
