@@ -516,3 +516,76 @@ class TestSeedBuiltinsIdempotency:
         assert second_count == 1  # only the new one was inserted
         probe = await svc.get_by_name(tenant, fake_new_persona["name"])
         assert probe is not None
+
+
+# ── The five new personal-roles personas ────────────────────
+
+
+class TestNewPersonalRolesPersonas:
+    """The five new personas from docs/specs/personal-roles.md."""
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_seeding_creates_all_five_new_personas(
+        self, client: AsyncClient,
+    ):
+        from life_graph.api.dependencies import get_persona_service
+
+        svc = get_persona_service()
+        tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        for name in ("tutor", "scout", "admin", "swe-lead", "jarvis"):
+            persona = await svc.get_by_name(tenant, name)
+            assert persona is not None, f"{name} was not seeded"
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_scout_and_admin_have_no_action_tools(
+        self, client: AsyncClient,
+    ):
+        from life_graph.api.dependencies import get_persona_service
+
+        svc = get_persona_service()
+        tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        forbidden = {"delegate_to_persona", "terminal", "git", "run_command"}
+        for name in ("scout", "admin"):
+            persona = await svc.get_by_name(tenant, name)
+            assert persona is not None
+            allowed = set(persona["allowed_tools"] or [])
+            assert not (allowed & forbidden), (
+                f"{name} has a forbidden tool: {allowed & forbidden}"
+            )
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_swe_lead_and_jarvis_can_delegate(
+        self, client: AsyncClient,
+    ):
+        from life_graph.api.dependencies import get_persona_service
+
+        svc = get_persona_service()
+        tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        for name in ("swe-lead", "jarvis"):
+            persona = await svc.get_by_name(tenant, name)
+            assert persona is not None
+            assert "delegate_to_persona" in (persona["allowed_tools"] or [])
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_swe_lead_has_verifier_chain(
+        self, client: AsyncClient,
+    ):
+        from life_graph.api.dependencies import get_persona_service
+
+        svc = get_persona_service()
+        tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        persona = await svc.get_by_name(tenant, "swe-lead")
+        assert persona is not None
+        assert persona["verifier_chain"] == ["tests_pass", "diff_within_scope"]
