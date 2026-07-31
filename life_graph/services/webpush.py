@@ -51,9 +51,13 @@ class PushService:
             await session.commit()
 
     async def delete_subscription(self, endpoint: str) -> None:
+        tenant_id = get_current_tenant_id()
         async with self._session_factory() as session:
             await session.execute(
-                delete(PushSubscription).where(PushSubscription.endpoint == endpoint)
+                delete(PushSubscription).where(
+                    PushSubscription.endpoint == endpoint,
+                    PushSubscription.tenant_id == tenant_id,
+                )
             )
             await session.commit()
 

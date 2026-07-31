@@ -54,14 +54,18 @@ class _FakeSession:
 
         where = stmt.whereclause
         if where is not None:
-            col_name = getattr(where.left, "key", None)
-            op_name = getattr(where.operator, "__name__", "")
-            value = getattr(where.right, "value", None)
-            if col_name is not None:
-                if op_name == "in_op":
-                    rows = [o for o in rows if getattr(o, col_name, None) in value]
-                else:
-                    rows = [o for o in rows if getattr(o, col_name, None) == value]
+            # A single `.where(a == b)` gives a plain BinaryExpression; `.where(a == b, c == d)`
+            # (or chained `.where()` calls) combines them into a BooleanClauseList — walk its
+            # `.clauses` and AND-filter through each so multi-condition where()s work too.
+            for clause in getattr(where, "clauses", [where]):
+                col_name = getattr(clause.left, "key", None)
+                op_name = getattr(clause.operator, "__name__", "")
+                value = getattr(clause.right, "value", None)
+                if col_name is not None:
+                    if op_name == "in_op":
+                        rows = [o for o in rows if getattr(o, col_name, None) in value]
+                    else:
+                        rows = [o for o in rows if getattr(o, col_name, None) == value]
 
         if type(stmt).__name__ == "Delete":
             for row in list(rows):
@@ -105,10 +109,33 @@ async def test_delete_subscription_removes_by_endpoint(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
+    monkeypatch.setattr("life_graph.services.webpush.get_current_tenant_id", lambda: "t1")
+
     svc = PushService(session_factory)
     await svc.delete_subscription("https://push.example/a")
 
     assert [s.endpoint for s in store] == ["https://push.example/b"]
+
+
+@pytest.mark.asyncio
+async def test_delete_subscription_is_tenant_scoped(monkeypatch):
+    """A subscription owned by t1 must not be deletable while acting as t2 — even if the
+    (unguessable, but let's not rely on that) endpoint is known — and must delete cleanly
+    when acting as its actual owner, t1."""
+    store = [PushSubscription(tenant_id="t1", endpoint="https://push.example/a", p256dh="p", auth="a", user_agent=None)]
+
+    def session_factory():
+        return _FakeSession(store)
+
+    svc = PushService(session_factory)
+
+    monkeypatch.setattr("life_graph.services.webpush.get_current_tenant_id", lambda: "t2")
+    await svc.delete_subscription("https://push.example/a")
+    assert [s.endpoint for s in store] == ["https://push.example/a"]  # not owned by t2 — untouched
+
+    monkeypatch.setattr("life_graph.services.webpush.get_current_tenant_id", lambda: "t1")
+    await svc.delete_subscription("https://push.example/a")
+    assert store == []  # owned by t1 — deleted
 
 
 @pytest.mark.asyncio
