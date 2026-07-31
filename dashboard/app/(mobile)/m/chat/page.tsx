@@ -109,6 +109,7 @@ export default function MobileChat() {
     setRenderedConversationId(conversationId);
     setLastSent(null);
     setDraft("");
+    setDistillMsg(null);
   }
 
   useEffect(() => {
