@@ -104,10 +104,10 @@ class AgentOrchestrator:
             logger.debug("Agent iteration %d/%d", iteration + 1, self.MAX_ITERATIONS)
 
             try:
+                from life_graph.api.dependencies import get_resilient_llm
+
                 # Build completion kwargs.
                 completion_kwargs: dict[str, Any] = {
-                    "model": self.model,
-                    "messages": working_messages,
                     "temperature": self.temperature,
                     "max_tokens": self.max_tokens,
                     "stream": True,
@@ -116,8 +116,10 @@ class AgentOrchestrator:
                     completion_kwargs["tools"] = resolved_tools
                     completion_kwargs["tool_choice"] = "auto"
 
-                response = await litellm.acompletion(
-                    **completion_kwargs
+                response = await get_resilient_llm().acompletion(
+                    messages=working_messages,
+                    model=self.model,
+                    **completion_kwargs,
                 )
 
                 # Accumulate content and tool calls from the stream.

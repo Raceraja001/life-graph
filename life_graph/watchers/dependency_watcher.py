@@ -101,7 +101,7 @@ async def _get_impact_analysis(
 ) -> str | None:
     """Optional LLM-based impact analysis via litellm."""
     try:
-        import litellm
+        from life_graph.api.dependencies import get_resilient_llm
 
         prompt = (
             f"Analyze the impact of upgrading the package '{package}' "
@@ -112,9 +112,9 @@ async def _get_impact_analysis(
             f"2. Security implications\n"
             f"3. Recommended action"
         )
-        response = await litellm.acompletion(
-            model="gemini/gemini-2.5-flash",
+        response = await get_resilient_llm().acompletion(
             messages=[{"role": "user", "content": prompt}],
+            model="gemini/gemini-2.5-flash",
             max_tokens=200,
             temperature=0.3,
         )

@@ -203,7 +203,7 @@ class LLMExtractor:
 
     async def _extract_cloud(self, text: str) -> list[ExtractedFact]:
         """Extract facts using cloud LLM via LiteLLM (original path)."""
-        import litellm
+        from life_graph.api.dependencies import get_resilient_llm
 
         messages = [
             {"role": "system", "content": _SYSTEM_PROMPT},
@@ -219,9 +219,9 @@ class LLMExtractor:
         ]
 
         try:
-            response = await litellm.acompletion(
-                model=self._model,
+            response = await get_resilient_llm().acompletion(
                 messages=messages,
+                model=self._model,
                 max_tokens=self._max_tokens,
                 temperature=0.1,
                 response_format={"type": "json_object"},
