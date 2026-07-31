@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
+import { EmptyCard, ErrorCard, SkeletonList } from "@/components/mobile/parts";
 import { MemorySheet } from "@/components/mobile/memory-sheet";
 import { useMobileMemories, useMobileMemorySearch, useResolveMemory, type MemoryVM } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
@@ -46,7 +46,7 @@ export default function MobileMemories() {
       />
 
       {active.isLoading ? (
-        <LoadingCard label={searching ? "Searching…" : "Loading memories…"} />
+        <SkeletonList count={5} />
       ) : active.isError ? (
         <ErrorCard>Can’t reach memories — is the backend running?</ErrorCard>
       ) : rows.length === 0 ? (
