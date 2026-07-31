@@ -73,9 +73,13 @@ export function useCreateMemory() {
       );
     },
     onSettled: () => {
-      // Refetch replaces the temp card with server truth (success)
-      // or reconciles after a rollback (error).
-      qc.invalidateQueries({ queryKey: ["memories"] });
+      // Belt-and-suspenders: strip any lingering optimistic ghost from every
+      // list cache (covers inactive lists that refetchOnMount:false won't refetch,
+      // and the un-guarded desktop memories page), then refetch server truth.
+      qc.setQueriesData<unknown>({ queryKey: ["memories"] }, (old: unknown) =>
+        Array.isArray(old) ? old.filter((m) => !(m as { _optimistic?: boolean })?._optimistic) : old
+      );
+      qc.invalidateQueries({ queryKey: ["memories"], refetchType: "all" });
       qc.invalidateQueries({ queryKey: ["tasks"] });
     },
   });
