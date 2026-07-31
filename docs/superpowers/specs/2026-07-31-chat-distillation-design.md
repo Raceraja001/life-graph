@@ -35,7 +35,9 @@ reuse outside the DB.
 - **Incremental facts, whole-thread archive.** `Conversation.last_distilled_at` marks the last
   run. Fact extraction processes only user turns created *after* that marker (cheap, no duplicate
   LLM work, no duplicate facts). The archive file is *overwritten* each run with the complete
-  current thread.
+  current thread. The marker is **advanced on every run, including a no-op** (no new turns), so the
+  idle cron cannot re-enqueue the same conversation forever; a new chat message bumps `updated_at`,
+  which re-makes the conversation eligible.
 - **Both triggers.** A manual "Distill this chat" action AND an auto cron that distills
   conversations idle >30 min with new activity since the last distill.
 - **Facts are gated; the archive is not.** New facts wait for approval; the backup file is
@@ -174,7 +176,7 @@ reuse outside the DB.
 
 | Case | Behaviour |
 |---|---|
-| No new user turns since last distill | Clean no-op: no LLM call, no archive rewrite, `last_distilled_at` unchanged; manual tap toast "Nothing new to distill" |
+| No new user turns since last distill | Clean no-op: no LLM call, no archive rewrite; `last_distilled_at` still advanced to now (prevents cron re-enqueue); manual tap toast "Nothing new to distill" |
 | Conversation continued after a prior distill | Only turns after `last_distilled_at` are extracted; archive rewritten with the full current thread |
 | Duplicate fact already a memory | Dropped by the existing dedup pipeline (SHA-256 + pgvector ≥ 0.92); no duplicate pending memory |
 | MinIO unreachable | Facts still created; archive upload failure logged, `archived=False`; job still succeeds |
