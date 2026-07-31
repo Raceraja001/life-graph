@@ -50,9 +50,7 @@ class ProcessManager:
         self._persona_service = persona_service
         self._max_concurrent = settings.kernel_max_concurrent_tasks
         self._default_timeout = settings.kernel_default_timeout
-        self._default_max_retries = (
-            settings.kernel_default_max_retries
-        )
+        self._default_max_retries = settings.kernel_default_max_retries
         self._semaphore = asyncio.Semaphore(self._max_concurrent)
         # task_id → asyncio.Task for cancellation support
         self._running: dict[uuid.UUID, asyncio.Task[None]] = {}
@@ -114,21 +112,13 @@ class ProcessManager:
             )
 
         # Validate persona exists
-        persona = await self._persona_service.get_by_name(
-            tenant_id, agent_name
-        )
+        persona = await self._persona_service.get_by_name(tenant_id, agent_name)
         if persona is None:
-            raise ValueError(
-                f"Unknown agent persona: {agent_name!r}"
-            )
+            raise ValueError(f"Unknown agent persona: {agent_name!r}")
 
         task_id = uuid.uuid4()
         timeout = timeout_seconds or self._default_timeout
-        retries = (
-            max_retries
-            if max_retries is not None
-            else self._default_max_retries
-        )
+        retries = max_retries if max_retries is not None else self._default_max_retries
 
         # Create DB record
         async with self._session_factory() as session:
@@ -155,17 +145,19 @@ class ProcessManager:
         # Launch background execution
         bg_task = asyncio.create_task(
             self._execute_task(
-                task_id, tenant_id, agent_name, input_data,
-                persona, timeout,
+                task_id,
+                tenant_id,
+                agent_name,
+                input_data,
+                persona,
+                timeout,
             ),
             name=f"task-{task_id!s:.8}",
         )
         self._running[task_id] = bg_task
 
         # Fire-and-forget cleanup when done
-        bg_task.add_done_callback(
-            lambda _t: self._running.pop(task_id, None)
-        )
+        bg_task.add_done_callback(lambda _t: self._running.pop(task_id, None))
 
         await event_bus.emit(
             EventType.TASK_SPAWNED,
@@ -180,7 +172,9 @@ class ProcessManager:
 
         logger.info(
             "Spawned task %s for agent %s (tenant=%s)",
-            task_id, agent_name, tenant_id,
+            task_id,
+            agent_name,
+            tenant_id,
         )
 
         return {
@@ -189,9 +183,7 @@ class ProcessManager:
             "status": "queued",
         }
 
-    async def cancel(
-        self, task_id: uuid.UUID, tenant_id: str
-    ) -> bool:
+    async def cancel(self, task_id: uuid.UUID, tenant_id: str) -> bool:
         """Cancel a running or queued task.
 
         Args:
@@ -207,7 +199,8 @@ class ProcessManager:
             self._running.pop(task_id, None)
 
         await self._update_task_status(
-            task_id, "cancelled",
+            task_id,
+            "cancelled",
             completed_at=datetime.now(timezone.utc),
         )
 
@@ -234,7 +227,9 @@ class ProcessManager:
         return max(0, self._max_concurrent - len(self._running))
 
     async def get_task(
-        self, tenant_id: str, task_id: str,
+        self,
+        tenant_id: str,
+        task_id: str,
     ) -> Any | None:
         """Get a task record by tenant and ID.
 
@@ -279,9 +274,7 @@ class ProcessManager:
                 AgentTask.tenant_id == tenant_id,
             )
             count_base = (
-                select(func.count())
-                .select_from(AgentTask)
-                .where(AgentTask.tenant_id == tenant_id)
+                select(func.count()).select_from(AgentTask).where(AgentTask.tenant_id == tenant_id)
             )
 
             if status:
@@ -302,17 +295,14 @@ class ProcessManager:
             count_result = await session.execute(count_base)
             total = count_result.scalar() or 0
 
-            stmt = (
-                base.order_by(AgentTask.created_at.desc())
-                .limit(limit)
-                .offset(offset)
-            )
+            stmt = base.order_by(AgentTask.created_at.desc()).limit(limit).offset(offset)
             result = await session.execute(stmt)
             tasks = list(result.scalars().all())
             return tasks, total
 
     async def cancel_queued(
-        self, task_id: str,
+        self,
+        task_id: str,
     ) -> None:
         """Cancel a queued (not-yet-running) task.
 
@@ -348,29 +338,35 @@ class ProcessManager:
             set_task_context(task_id=task_id, tenant_id=tenant_id)
 
             await self._update_task_status(
-                task_id, "running",
+                task_id,
+                "running",
                 started_at=datetime.now(timezone.utc),
             )
 
             try:
                 async with asyncio.timeout(timeout):
                     result = await self._run_agent(
-                        tenant_id, agent_name,
-                        input_data, persona,
+                        tenant_id,
+                        agent_name,
+                        input_data,
+                        persona,
                     )
                 await self._complete_task(
-                    task_id, tenant_id, agent_name, result,
+                    task_id,
+                    tenant_id,
+                    agent_name,
+                    result,
                 )
 
             except TimeoutError:
-                error_msg = (
-                    f"Task {task_id} timed out after"
-                    f" {timeout}s"
-                )
+                error_msg = f"Task {task_id} timed out after {timeout}s"
                 logger.warning(error_msg)
                 await self._fail_task(
-                    task_id, tenant_id, agent_name,
-                    error_msg, timed_out=True,
+                    task_id,
+                    tenant_id,
+                    agent_name,
+                    error_msg,
+                    timed_out=True,
                 )
 
             except asyncio.CancelledError:
@@ -381,10 +377,15 @@ class ProcessManager:
                 error_msg = f"{type(exc).__name__}: {exc}"
                 logger.error(
                     "Task %s failed: %s",
-                    task_id, error_msg, exc_info=True,
+                    task_id,
+                    error_msg,
+                    exc_info=True,
                 )
                 await self._fail_task(
-                    task_id, tenant_id, agent_name, error_msg,
+                    task_id,
+                    tenant_id,
+                    agent_name,
+                    error_msg,
                 )
 
     async def _run_agent(
@@ -410,6 +411,7 @@ class ProcessManager:
         from life_graph.agents.orchestrator import (
             AgentOrchestrator,
         )
+        from life_graph.tools.registry import registry as tool_registry
 
         orchestrator = AgentOrchestrator(
             model=persona.get("model"),
@@ -418,28 +420,29 @@ class ProcessManager:
         )
 
         messages = [
-            {"role": "user", "content": input_data.get(
-                "message", str(input_data)
-            )},
+            {"role": "user", "content": input_data.get("message", str(input_data))},
         ]
         system_prompt = persona.get("system_prompt")
+
+        allowed_tools = persona.get("allowed_tools")
+        if allowed_tools is not None:
+            allowed_set = set(allowed_tools)
+            tools = [t for t in tool_registry.get_tools() if t["function"]["name"] in allowed_set]
+        else:
+            tools = None
 
         # Collect streamed output
         response_parts: list[str] = []
         token_count = 0
 
-        async for event_str in orchestrator.run(
-            messages, system_prompt=system_prompt
-        ):
+        async for event_str in orchestrator.run(messages, system_prompt=system_prompt, tools=tools):
             # Each event is an SSE string; extract content
             if '"type": "token"' in event_str:
                 # Quick extraction without full JSON parse
                 import json as _json
 
                 try:
-                    data = _json.loads(
-                        event_str.removeprefix("data: ")
-                    )
+                    data = _json.loads(event_str.removeprefix("data: "))
                     if data.get("type") == "token":
                         content = data.get("content", "")
                         response_parts.append(content)
@@ -492,9 +495,7 @@ class ProcessManager:
             },
             source="process_manager",
         )
-        logger.info(
-            "Task %s completed (agent=%s)", task_id, agent_name
-        )
+        logger.info("Task %s completed (agent=%s)", task_id, agent_name)
 
     async def _fail_task(
         self,
@@ -508,11 +509,7 @@ class ProcessManager:
         """Mark a task as failed, attempt retry if eligible."""
         now = datetime.now(timezone.utc)
         status = "timeout" if timed_out else "failed"
-        event_type = (
-            EventType.TASK_TIMEOUT
-            if timed_out
-            else EventType.TASK_FAILED
-        )
+        event_type = EventType.TASK_TIMEOUT if timed_out else EventType.TASK_FAILED
 
         # Read current retry state
         retry_count = 0
@@ -520,9 +517,7 @@ class ProcessManager:
         input_data: dict[str, Any] = {}
 
         async with self._session_factory() as session:
-            stmt = select(AgentTask).where(
-                AgentTask.id == task_id
-            )
+            stmt = select(AgentTask).where(AgentTask.id == task_id)
             result = await session.execute(stmt)
             task = result.scalar_one_or_none()
             if task is not None:
@@ -559,8 +554,11 @@ class ProcessManager:
         # Attempt retry
         if retry_count < max_retries and not timed_out:
             await self._retry_task(
-                task_id, tenant_id, agent_name,
-                input_data, retry_count,
+                task_id,
+                tenant_id,
+                agent_name,
+                input_data,
+                retry_count,
             )
 
     async def _retry_task(
@@ -576,12 +574,14 @@ class ProcessManager:
         Creates a new task linked to the original via
         parent_task_id. Backoff delay = 2^retry_count seconds.
         """
-        delay = 2 ** retry_count
+        delay = 2**retry_count
         new_retry = retry_count + 1
 
         logger.info(
             "Retrying task %s (attempt %d) in %ds",
-            original_task_id, new_retry, delay,
+            original_task_id,
+            new_retry,
+            delay,
         )
 
         await asyncio.sleep(delay)
@@ -629,10 +629,6 @@ class ProcessManager:
             values["completed_at"] = completed_at
 
         async with self._session_factory() as session:
-            stmt = (
-                update(AgentTask)
-                .where(AgentTask.id == task_id)
-                .values(**values)
-            )
+            stmt = update(AgentTask).where(AgentTask.id == task_id).values(**values)
             await session.execute(stmt)
             await session.commit()

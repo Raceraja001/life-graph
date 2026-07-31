@@ -6,6 +6,7 @@ import uuid
 import pytest
 import pytest_asyncio
 
+import life_graph.tools.datetime_tool  # noqa: F401
 from life_graph.api.dependencies import get_process_manager
 from tests.integration.conftest import skip_on_db_error
 
@@ -65,3 +66,73 @@ class TestSpawnDelegationTree:
                 input_data={"message": "too deep"},
                 depth=pm.MAX_DELEGATION_DEPTH + 1,
             )
+
+
+from unittest.mock import AsyncMock, patch
+
+from life_graph.kernel.process_manager import ProcessManager
+
+
+class TestAllowedToolsEnforcement:
+    """_run_agent() must filter tools by persona.allowed_tools."""
+
+    @pytest.mark.asyncio
+    async def test_run_agent_filters_tools_by_allowed_list(self):
+        pm = ProcessManager(session_factory=None, persona_service=None)
+        persona = {
+            "model": "gemini/gemini-2.5-flash",
+            "temperature": 0.5,
+            "max_tokens": 1024,
+            "system_prompt": "You are a test persona.",
+            "allowed_tools": ["get_current_datetime"],
+        }
+
+        captured_kwargs = {}
+
+        async def fake_run(self, messages, system_prompt=None, tools=None):
+            captured_kwargs["tools"] = tools
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        with patch(
+            "life_graph.agents.orchestrator.AgentOrchestrator.run",
+            fake_run,
+        ):
+            await pm._run_agent(
+                "test_tenant", "test_persona",
+                {"message": "hi"}, persona,
+            )
+
+        tool_names = {
+            t["function"]["name"] for t in captured_kwargs["tools"]
+        }
+        assert tool_names == {"get_current_datetime"}
+
+    @pytest.mark.asyncio
+    async def test_run_agent_passes_none_when_allowed_tools_unset(self):
+        pm = ProcessManager(session_factory=None, persona_service=None)
+        persona = {
+            "model": "gemini/gemini-2.5-flash",
+            "temperature": 0.5,
+            "max_tokens": 1024,
+            "system_prompt": "You are chief.",
+            "allowed_tools": None,
+        }
+
+        captured_kwargs = {}
+
+        async def fake_run(self, messages, system_prompt=None, tools=None):
+            captured_kwargs["tools"] = tools
+            return
+            yield  # pragma: no cover
+
+        with patch(
+            "life_graph.agents.orchestrator.AgentOrchestrator.run",
+            fake_run,
+        ):
+            await pm._run_agent(
+                "test_tenant", "chief",
+                {"message": "hi"}, persona,
+            )
+
+        assert captured_kwargs["tools"] is None
