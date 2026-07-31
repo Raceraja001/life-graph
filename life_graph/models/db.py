@@ -2359,6 +2359,7 @@ class Conversation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
+    last_distilled_at: Mapped[datetime | None] = mapped_column(default=None)
 
     __table_args__ = (
         Index("ix_conversations_tenant_updated", "tenant_id", "updated_at"),

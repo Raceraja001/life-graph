@@ -123,6 +123,7 @@ class EventType(str, Enum):
 
     # ── Conversation Events ──────────────────────────────────
     CONVERSATION_MESSAGE = "conversation:message"
+    CONVERSATION_DISTILLED = "conversation:distilled"
 
     # ── Agent Driver Events ──────────────────────────────────
     DRIVER_DISPATCHED = "driver:dispatched"
