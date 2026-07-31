@@ -29,10 +29,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "name": "chief",
         "display_name": "Command Router",
         "icon": "🧠",
-        "description": (
-            "Classifies user intent and routes to the best"
-            " specialist agent."
-        ),
+        "description": ("Classifies user intent and routes to the best specialist agent."),
         "system_prompt": (
             "You are the Chief Router for Life Graph. Your job"
             " is to classify the user's intent and route their"
@@ -49,9 +46,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "name": "cody",
         "display_name": "Code Specialist",
         "icon": "🧑‍💻",
-        "description": (
-            "Writes, reviews, debugs, and refactors code."
-        ),
+        "description": ("Writes, reviews, debugs, and refactors code."),
         "system_prompt": (
             "You are Cody, a senior software engineer. You"
             " write clean, tested, production-ready code. You"
@@ -71,10 +66,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "name": "rex",
         "display_name": "Research Analyst",
         "icon": "🔬",
-        "description": (
-            "Researches topics, answers questions, and"
-            " synthesizes information."
-        ),
+        "description": ("Researches topics, answers questions, and synthesizes information."),
         "system_prompt": (
             "You are Rex, a research analyst. You search for"
             " information, synthesize findings, and provide"
@@ -89,10 +81,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "name": "ops",
         "display_name": "DevOps Engineer",
         "icon": "⚙️",
-        "description": (
-            "Manages deployments, infrastructure, and"
-            " monitoring."
-        ),
+        "description": ("Manages deployments, infrastructure, and monitoring."),
         "system_prompt": (
             "You are Ops, a DevOps engineer. You manage"
             " deployments, containers, servers, and monitoring."
@@ -108,10 +97,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "name": "penny",
         "display_name": "Data Analyst",
         "icon": "📊",
-        "description": (
-            "Analyzes data, queries databases, and builds"
-            " analytics."
-        ),
+        "description": ("Analyzes data, queries databases, and builds analytics."),
         "system_prompt": (
             "You are Penny, a data analyst. You query"
             " databases, analyze datasets, build"
@@ -130,10 +116,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "name": "scribe",
         "display_name": "Documentation Writer",
         "icon": "📝",
-        "description": (
-            "Writes and maintains documentation, READMEs, and"
-            " guides."
-        ),
+        "description": ("Writes and maintains documentation, READMEs, and guides."),
         "system_prompt": (
             "You are Scribe, a technical writer. You create"
             " clear, well-structured documentation. You write"
@@ -156,8 +139,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "display_name": "Uzhavu Operations",
         "icon": "🚜",
         "description": (
-            "Operates the Uzhavu platform — deploy checks,"
-            " incident diagnosis, and fixes."
+            "Operates the Uzhavu platform — deploy checks, incident diagnosis, and fixes."
         ),
         "system_prompt": (
             "You are Uzhavu-Ops, the operator for the Uzhavu"
@@ -218,9 +200,7 @@ class PersonaService:
     ) -> None:
         self._session_factory = session_factory
 
-    async def get_by_name(
-        self, tenant_id: str, name: str
-    ) -> dict[str, Any] | None:
+    async def get_by_name(self, tenant_id: str, name: str) -> dict[str, Any] | None:
         """Look up a persona by tenant and unique name.
 
         Args:
@@ -242,9 +222,7 @@ class PersonaService:
                 return None
             return self._persona_to_dict(persona)
 
-    async def get_by_intent(
-        self, tenant_id: str, intent: str
-    ) -> dict[str, Any] | None:
+    async def get_by_intent(self, tenant_id: str, intent: str) -> dict[str, Any] | None:
         """Find the first active persona matching *intent*.
 
         Queries personas whose intent_tags array contains the
@@ -270,34 +248,31 @@ class PersonaService:
             return self._persona_to_dict(persona)
 
     async def seed_builtins(self, tenant_id: str) -> int:
-        """Insert built-in personas if none exist for this tenant.
+        """Insert any built-in personas missing for this tenant.
 
-        Uses INSERT with conflict handling to be idempotent — safe to
-        call on every startup without crashing on duplicates.
+        Checks existing persona names (not just "does the tenant
+        have any persona at all") so that newly-added built-ins
+        reach tenants that were already seeded under an older
+        version of _BUILTIN_PERSONAS — safe to call on every
+        startup.
 
         Args:
             tenant_id: The tenant to seed personas for.
 
         Returns:
-            Number of personas inserted (0 if already seeded).
+            Number of personas inserted (0 if nothing new).
         """
         async with self._session_factory() as session:
-            # Check if tenant already has personas
-            check = (
-                select(AgentPersona.id)
-                .where(AgentPersona.tenant_id == tenant_id)
-                .limit(1)
+            existing_stmt = select(AgentPersona.name).where(
+                AgentPersona.tenant_id == tenant_id,
             )
-            existing = await session.execute(check)
-            if existing.scalar_one_or_none() is not None:
-                logger.debug(
-                    "Tenant %s already has personas — skip seed",
-                    tenant_id,
-                )
-                return 0
+            existing_result = await session.execute(existing_stmt)
+            existing_names = {row[0] for row in existing_result.all()}
 
             count = 0
             for defn in _BUILTIN_PERSONAS:
+                if defn["name"] in existing_names:
+                    continue
                 try:
                     persona = AgentPersona(
                         id=uuid.uuid4(),
@@ -323,14 +298,15 @@ class PersonaService:
                     await session.flush()
                     count += 1
                 except Exception:
-                    # Duplicate — already exists, skip
+                    # Duplicate — a concurrent seed call beat us to
+                    # this one name. Skip it, keep seeding the rest.
                     await session.rollback()
                     logger.debug(
                         "Persona %s already exists for tenant %s — skip",
                         defn["name"],
                         tenant_id,
                     )
-                    return 0
+                    continue
 
             await session.commit()
             logger.info(
@@ -370,9 +346,7 @@ class PersonaService:
                 )
             )
             if existing.scalar_one_or_none() is not None:
-                raise ValueError(
-                    f"Persona '{name}' already exists"
-                )
+                raise ValueError(f"Persona '{name}' already exists")
 
             persona = AgentPersona(
                 id=uuid.uuid4(),
@@ -381,9 +355,7 @@ class PersonaService:
                 display_name=data.get("display_name"),
                 description=data.get("description"),
                 system_prompt=data["system_prompt"],
-                model=data.get(
-                    "model", "gemini/gemini-2.5-flash"
-                ),
+                model=data.get("model", "gemini/gemini-2.5-flash"),
                 temperature=data.get("temperature", 0.7),
                 max_tokens=data.get("max_tokens", 4096),
                 allowed_tools=data.get("allowed_tools"),
@@ -399,7 +371,8 @@ class PersonaService:
 
             logger.info(
                 "Created persona '%s' for tenant %s",
-                name, tenant_id,
+                name,
+                tenant_id,
             )
             return self._persona_to_dict(persona)
 
@@ -444,14 +417,13 @@ class PersonaService:
                 AgentPersona.name.asc(),
             )
             result = await session.execute(stmt)
-            personas = [
-                self._persona_to_dict(p)
-                for p in result.scalars().all()
-            ]
+            personas = [self._persona_to_dict(p) for p in result.scalars().all()]
             return personas, total
 
     async def get_by_id(
-        self, tenant_id: str, persona_id: str,
+        self,
+        tenant_id: str,
+        persona_id: str,
     ) -> dict[str, Any] | None:
         """Get a persona by UUID.
 
@@ -491,18 +463,22 @@ class PersonaService:
         """
         # Whitelist of updatable fields
         allowed_fields = {
-            "display_name", "description", "system_prompt",
-            "model", "temperature", "max_tokens",
-            "allowed_tools", "intent_tags", "icon",
+            "display_name",
+            "description",
+            "system_prompt",
+            "model",
+            "temperature",
+            "max_tokens",
+            "allowed_tools",
+            "intent_tags",
+            "icon",
             "properties",
         }
-        values = {
-            k: v for k, v in data.items()
-            if k in allowed_fields
-        }
+        values = {k: v for k, v in data.items() if k in allowed_fields}
         if not values:
             return await self.get_by_id(
-                tenant_id, persona_id,
+                tenant_id,
+                persona_id,
             )
 
         values["updated_at"] = datetime.now(timezone.utc)
@@ -531,7 +507,9 @@ class PersonaService:
         return await self.get_by_id(tenant_id, persona_id)
 
     async def delete(
-        self, tenant_id: str, persona_id: str,
+        self,
+        tenant_id: str,
+        persona_id: str,
     ) -> dict[str, Any] | None:
         """Soft-delete a persona (set is_active=False).
 
@@ -548,16 +526,14 @@ class PersonaService:
             PermissionError: If persona is built-in.
         """
         persona = await self.get_by_id(
-            tenant_id, persona_id,
+            tenant_id,
+            persona_id,
         )
         if persona is None:
             return None
 
         if persona["is_builtin"]:
-            raise PermissionError(
-                f"Cannot delete built-in persona "
-                f"'{persona['name']}'"
-            )
+            raise PermissionError(f"Cannot delete built-in persona '{persona['name']}'")
 
         async with self._session_factory() as session:
             await session.execute(
@@ -575,7 +551,8 @@ class PersonaService:
 
         logger.info(
             "Soft-deleted persona '%s' (%s)",
-            persona["name"], persona_id,
+            persona["name"],
+            persona_id,
         )
         return {
             "id": persona_id,
@@ -587,12 +564,19 @@ class PersonaService:
 
     # Tools restricted to admin/personal tenants only.
     SYSTEM_TOOLS = {
-        "terminal", "git", "docker", "ssh", "file_write",
+        "terminal",
+        "git",
+        "docker",
+        "ssh",
+        "file_write",
     }
     # Tools available to all tenants.
     SAFE_TOOLS = {
-        "memory_search", "knowledge_query", "file_read",
-        "web_search", "calculator",
+        "memory_search",
+        "knowledge_query",
+        "file_read",
+        "web_search",
+        "calculator",
     }
 
     def resolve_tools(
@@ -622,20 +606,18 @@ class PersonaService:
             return list(tools)
 
         # Customer tenants: strip system tools
-        return [
-            t for t in tools
-            if t not in self.SYSTEM_TOOLS
-        ]
+        return [t for t in tools if t not in self.SYSTEM_TOOLS]
 
     @staticmethod
     def _is_admin_tenant(tenant_id: str) -> bool:
         """Check if a tenant has admin-level tool access."""
         admin_prefixes = (
-            "default", "legacy", "personal", "admin",
+            "default",
+            "legacy",
+            "personal",
+            "admin",
         )
-        return any(
-            tenant_id.startswith(p) for p in admin_prefixes
-        )
+        return any(tenant_id.startswith(p) for p in admin_prefixes)
 
     @staticmethod
     def _persona_to_dict(
@@ -663,11 +645,7 @@ class PersonaService:
             "is_active": persona.is_active,
             "properties": persona.properties,
             "use_count": persona.use_count,
-            "last_used_at": (
-                persona.last_used_at.isoformat()
-                if persona.last_used_at
-                else None
-            ),
+            "last_used_at": (persona.last_used_at.isoformat() if persona.last_used_at else None),
             "created_at": persona.created_at.isoformat(),
             "updated_at": persona.updated_at.isoformat(),
         }

@@ -470,3 +470,49 @@ class TestToolPermissions:
         persona = {"allowed_tools": None}
         tools = service.resolve_tools(persona, "default")
         assert tools == []
+
+
+# ── seed_builtins() Idempotency ─────────────────────────────
+
+
+class TestSeedBuiltinsIdempotency:
+    """seed_builtins() must backfill missing personas, not just skip entirely."""
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_seed_backfills_new_persona_for_already_seeded_tenant(
+        self, client: AsyncClient,
+    ):
+        from unittest.mock import patch
+
+        from life_graph.api.dependencies import get_persona_service
+        from life_graph.kernel import personas as personas_module
+
+        svc = get_persona_service()
+        tenant = f"test_backfill_{uuid.uuid4().hex[:6]}"
+
+        # First seed: only the real built-ins.
+        first_count = await svc.seed_builtins(tenant)
+        assert first_count == len(personas_module._BUILTIN_PERSONAS)
+
+        # Simulate a new builtin having been added to the list.
+        fake_new_persona = {
+            "name": f"probe_{uuid.uuid4().hex[:6]}",
+            "display_name": "Probe",
+            "icon": "🔍",
+            "description": "Test-only persona for backfill verification.",
+            "system_prompt": "You are a probe.",
+            "intent_tags": ["probe"],
+            "temperature": 0.5,
+            "allowed_tools": None,
+        }
+        with patch.object(
+            personas_module,
+            "_BUILTIN_PERSONAS",
+            personas_module._BUILTIN_PERSONAS + [fake_new_persona],
+        ):
+            second_count = await svc.seed_builtins(tenant)
+
+        assert second_count == 1  # only the new one was inserted
+        probe = await svc.get_by_name(tenant, fake_new_persona["name"])
+        assert probe is not None
