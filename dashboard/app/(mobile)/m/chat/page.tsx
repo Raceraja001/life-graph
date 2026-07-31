@@ -1,16 +1,18 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Send, Sparkles } from "lucide-react";
 import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
 import { MemorySheet } from "@/components/mobile/memory-sheet";
 import { useMobileState } from "@/components/mobile/mobile-state";
 import { api } from "@/lib/api";
+import { onDistillComplete } from "@/lib/distill-events";
 import {
   mapMemory,
   useConversations,
   useConversation,
   useSendMessage,
   useResolveMemory,
+  useDistillConversation,
   type MemoryVM,
 } from "@/lib/mobile-api";
 
@@ -66,6 +68,35 @@ export default function MobileChat() {
   const thread = useConversation(conversationId);
   const sendMessage = useSendMessage();
   const resolveMemory = useResolveMemory();
+  const distill = useDistillConversation();
+  const [distillMsg, setDistillMsg] = useState<string | null>(null);
+
+  // Live pointer to the open conversation, for the once-mounted WS subscription.
+  const currentConvRef = useRef<string | null>(conversationId);
+  useEffect(() => {
+    currentConvRef.current = conversationId;
+  }, [conversationId]);
+
+  useEffect(() => {
+    return onDistillComplete(({ conversationId: eventConvId, newFacts }) => {
+      if (!eventConvId || eventConvId !== currentConvRef.current) return;
+      setDistillMsg(
+        newFacts > 0
+          ? `→ ${newFacts} new ${newFacts === 1 ? "fact" : "facts"} pending your approval`
+          : "Nothing new to distill",
+      );
+    });
+  }, []);
+
+  const onDistill = async () => {
+    if (!conversationId || distill.isPending || !online) return;
+    setDistillMsg("Distilling…");
+    try {
+      await distill.mutateAsync(conversationId);
+    } catch {
+      setDistillMsg("Couldn’t distill — try again");
+    }
+  };
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const msgs: ChatMessage[] = thread.data?.messages ?? [];
@@ -270,7 +301,50 @@ export default function MobileChat() {
         >
           {thread.data?.title || "Conversation"}
         </span>
+        <button
+          onClick={() => void onDistill()}
+          disabled={distill.isPending || !online}
+          aria-label="Distill this chat into memories"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            flexShrink: 0,
+            height: "30px",
+            paddingInline: "11px",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-pill)",
+            background: "var(--surface-2)",
+            color: "var(--text-muted)",
+            fontFamily: "inherit",
+            fontSize: "var(--text-xs)",
+            fontWeight: "var(--fw-semibold)",
+            cursor: distill.isPending || !online ? "default" : "pointer",
+            opacity: distill.isPending || !online ? 0.5 : 1,
+          }}
+        >
+          <Sparkles width={13} height={13} /> {distill.isPending ? "Distilling…" : "Distill"}
+        </button>
       </div>
+
+      {distillMsg && (
+        <div
+          role="status"
+          onClick={() => setDistillMsg(null)}
+          style={{
+            flexShrink: 0,
+            margin: "2px 0 4px",
+            padding: "8px 11px",
+            borderRadius: "var(--radius-md)",
+            background: "var(--success-soft)",
+            color: "var(--success)",
+            fontSize: "var(--text-xs)",
+            fontWeight: "var(--fw-semibold)",
+          }}
+        >
+          {distillMsg}
+        </div>
+      )}
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px", padding: "4px 2px" }}>
         {thread.isLoading ? (

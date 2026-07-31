@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { emitDistillComplete } from "./distill-events";
 
 type WSStatus = "connecting" | "connected" | "disconnected";
 
@@ -17,6 +18,7 @@ const EVENT_MAP: Record<string, string[]> = {
   "agent":        ["agent-tasks"],
   "identity":     ["beliefs"],
   "belief":       ["beliefs"],
+  "conversation:distilled": ["approvals", "memories"],
 };
 
 /**
@@ -58,6 +60,12 @@ export function useWebSocket() {
         if (data.type === "pong" || data.type === "heartbeat") return;
 
         const type: string = data.type || "";
+        if (type === "conversation:distilled") {
+          emitDistillComplete({
+            conversationId: String(data?.payload?.conversation_id ?? ""),
+            newFacts: Number(data?.payload?.new_facts ?? 0),
+          });
+        }
         // Only invalidate if we recognize the event type
         for (const [prefix, keys] of Object.entries(EVENT_MAP)) {
           if (type.startsWith(prefix)) {

@@ -196,3 +196,9 @@ export function useSendMessage() {
     },
   });
 }
+
+export function useDistillConversation() {
+  return useMutation({
+    mutationFn: (id: string) => api.conversations.distill(id),
+  });
+}
