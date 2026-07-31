@@ -878,9 +878,11 @@ async def enqueue_cleanup_memories(tenant_id: str | None = None):
     from life_graph.workers.settings import parse_redis_settings
 
     pool = await create_pool(parse_redis_settings())
+    # Full dotted names — must match WorkerSettings.functions registration, or
+    # ARQ logs "<name> not found" and the job silently never runs.
     if tenant_id:
-        job = await pool.enqueue_job("cleanup_memories_tenant", tenant_id)
+        job = await pool.enqueue_job("life_graph.workers.cleanup.cleanup_memories_tenant", tenant_id)
     else:
-        job = await pool.enqueue_job("cleanup_memories_all")
+        job = await pool.enqueue_job("life_graph.workers.cleanup.cleanup_memories_all")
     await pool.close()
     return success_response(data={"job_id": job.job_id, "status": "enqueued"})
