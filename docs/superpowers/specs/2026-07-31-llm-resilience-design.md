@@ -81,11 +81,18 @@ any caller ── ResilientLLM.chat(messages, *, model=<caller's choice|None>, t
 
 ### 1. `ResilientLLM` (`services/resilient_llm.py`)
 
+- `async def acompletion(self, *, messages, model=None, tier="cheap", **kwargs) -> ModelResponse`:
+  the loop above — the **core**, a resilient drop-in for `litellm.acompletion` that returns the
+  **raw LiteLLM response object** (so the six direct call sites keep parsing `response.usage`,
+  `response._hidden_params` cost, and `response.choices` exactly as they do today). Raises
+  `ResilientLLMExhausted` (a new exception) only when every attempt (including the final
+  least-recently-failed retry) fails.
 - `async def chat(self, messages, *, model=None, tier="cheap", temperature=0.3, max_tokens=1024,
   response_format=None, **kwargs) -> str`:
-  the loop above. Returns the completion text; raises `ResilientLLMExhausted` (a new exception) only
-  when every attempt (including the final least-recently-failed retry) fails — callers catch it and
-  run their existing fallback (extraction → rules/nlp; synthesis → rule-based answer).
+  a thin convenience wrapping `acompletion` and returning `response.choices[0].message.content or ""`
+  — for text-only callers (`LMStudioClient`'s cloud path, synthesis). Callers catch
+  `ResilientLLMExhausted` and run their existing fallback (extraction → rules/nlp; synthesis →
+  rule-based answer).
 - **Chain assembly:** `[caller_model_or_tier_default] + settings.llm_fallback_chain`, de-duplicated
   preserving order. `tier="cheap"` default = `settings.llm_model_cheap`; `tier="expensive"` =
   `settings.llm_model_expensive`. A caller passing an explicit `model` puts it at the head.
@@ -126,17 +133,21 @@ any caller ── ResilientLLM.chat(messages, *, model=<caller's choice|None>, t
   `api/sessions.py`, `services/failure_mining.py`, `services/second_opinion.py`, and the
   local-extraction path in `extraction/llm.py`. Local LM Studio remains `LMStudioClient`'s terminal
   fallback when the resilient cloud chain is exhausted.
-- **Direct `litellm.acompletion` sites (6) → `ResilientLLM.chat`:** `extraction/llm.py:222`
+- **Direct `litellm.acompletion` sites (6) → `ResilientLLM.acompletion`:** `extraction/llm.py:222`
   (`_extract_cloud`), `agents/orchestrator.py:119`, `jobs/consolidation.py:321`,
   `services/research_engine.py:422`, `watchers/dependency_watcher.py:115`, and
-  `services/multi_model_advisor.py:313`. Each passes its existing model as `model=` so its choice is
-  the primary; the chain is the free tail. Response-parsing at each site is unchanged (the wrapper
-  returns the same text content the sites already extract). JSON/`response_format` calls forward
-  `response_format` through `**kwargs`.
-- **Advisor diversity preserved:** `multi_model_advisor` fans out across `advisor_models` for
-  *diverse opinions* — that fan-out stays; each opinion call simply becomes individually resilient
-  (its chosen model primary + the shared chain as backup), so one dead backend no longer drops an
-  opinion silently.
+  `services/multi_model_advisor.py:313`. Each swaps `litellm.acompletion(...)` for
+  `resilient.acompletion(...)` with its existing `model=` as the primary and **identical downstream
+  handling** — the wrapper returns the raw response object, so `response.usage`, cost, `.choices`,
+  and `response_format`/other kwargs all pass through unchanged.
+- **Advisor diversity preserved (the delicate one):** `multi_model_advisor` fans out across
+  `advisor_models` for *diverse opinions*, passing per-instance `api_key`/`api_base`, wrapping each
+  call in `asyncio.wait_for(timeout)`, and returning a fabricated `ModelResponse` on failure. The
+  fan-out stays; each opinion call becomes `resilient.acompletion(model=<opinion model>,
+  api_key=…, api_base=…, timeout=…)` (the wrapper forwards `api_key`/`api_base` via `**kwargs` and
+  applies the per-call timeout inside its attempt loop). If the chain is exhausted
+  (`ResilientLLMExhausted`), the advisor keeps its existing fabricated-`ModelResponse` fallback for
+  that opinion. This site needs individual care in its own task.
 
 ### 5. Status endpoint + mobile card
 
@@ -144,10 +155,11 @@ any caller ── ResilientLLM.chat(messages, *, model=<caller's choice|None>, t
   returns `LLMHealth.snapshot()` mapped to `[{model, state, last_seen, last_error, avg_latency_ms}]`
   where `state` = `up` (recent success, not cooling), `cooling` (cooldown_until in the future),
   `down` (only failures recently), or `unknown` (no record / TTL expired). No tenant scoping.
-- **Mobile "Model health" card** (`dashboard/app/(mobile)/m/settings` or the settings surface):
-  a compact list — colored dot (green up / amber cooling / red down / grey unknown) + model short
-  name + "last seen 2m ago" + last error. A `useModelHealth()` hook (polling ~30s; this data is
-  operational, low-frequency). Read-only.
+- **Mobile "Model health" card** — mobile has no settings page today, so add a minimal new route
+  `dashboard/app/(mobile)/m/settings/page.tsx` reached via a small gear link in the mobile shell
+  header (keeps this diagnostic off the daily home surface). The card is a compact list — colored dot
+  (green up / amber cooling / red down / grey unknown) + model short name + "last seen 2m ago" +
+  last error. A `useModelHealth()` hook (polling ~30s; operational, low-frequency). Read-only.
 
 ## Failure handling
 
