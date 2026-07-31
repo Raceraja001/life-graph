@@ -16,6 +16,17 @@ export function usePullToRefresh({ onRefresh, threshold = 64 }: Options) {
   const [refreshing, setRefreshing] = useState(false);
   const startY = useRef<number | null>(null);
   const refreshingRef = useRef(false);
+  // Keep a ref of the live distance for the touchend closure.
+  const distanceRef = useRef(0);
+  // Keep a ref of the live onRefresh so the touchend closure never goes stale
+  // (the caller's onRefresh identity/behavior can change render to render —
+  // e.g. it depends on search state — but the listener effect below only
+  // re-attaches on [threshold]).
+  const onRefreshRef = useRef(onRefresh);
+
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("ontouchstart" in window)) return;
@@ -33,11 +44,14 @@ export function usePullToRefresh({ onRefresh, threshold = 64 }: Options) {
       if (startY.current === null) return;
       const dy = e.touches[0].clientY - startY.current;
       if (dy <= 0) {
+        distanceRef.current = 0;
         setDistance(0);
         return;
       }
       // Rubber-band: dampen the pull so it feels physical.
-      setDistance(Math.min(dy * 0.5, threshold * 1.5));
+      const next = Math.min(dy * 0.5, threshold * 1.5);
+      distanceRef.current = next;
+      setDistance(next);
     };
     const onEnd = async () => {
       if (startY.current === null) return;
@@ -48,7 +62,7 @@ export function usePullToRefresh({ onRefresh, threshold = 64 }: Options) {
         refreshingRef.current = true;
         setRefreshing(true);
         try {
-          await onRefresh();
+          await onRefreshRef.current();
         } finally {
           refreshingRef.current = false;
           setRefreshing(false);
@@ -66,17 +80,8 @@ export function usePullToRefresh({ onRefresh, threshold = 64 }: Options) {
       el.removeEventListener("touchend", onEnd);
       el.removeEventListener("touchcancel", onEnd);
     };
-    // onRefresh identity may change each render; threshold is stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // onRefresh is read via onRefreshRef (always live); threshold is stable.
   }, [threshold]);
 
-  // Keep a ref of the live distance for the touchend closure.
-  const distanceRef = useRef(0);
-  useEffect(() => {
-    // Sync latest distance into the ref the touchend closure reads from.
-    // eslint-disable-next-line react-hooks/immutability
-    distanceRef.current = distance;
-  }, [distance]);
-
-  return { pulling: distance > 0, refreshing, distance };
+  return { refreshing, distance };
 }
