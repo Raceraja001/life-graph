@@ -1,10 +1,166 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Inbox } from "lucide-react";
 import { MobileCapture } from "@/components/mobile/mobile-capture";
 import { SectionEyebrow, TaskRow, LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
 import { useApprovals, useMobileMemories, useMobileTasks } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
+import { api } from "@/lib/api";
+import { enablePush, disablePush, getPushState, type PushState } from "@/lib/push";
+
+// Small pill/banner button styling shared by the two non-idle states —
+// mirrors the approvals banner's card look (surface + border + radius-lg).
+const pushCard: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  padding: "11px 14px",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-lg)",
+  background: "var(--surface)",
+  fontFamily: "inherit",
+};
+
+function PushControl() {
+  // null while we haven't yet checked permission/subscription on the client.
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    getPushState()
+      .then(setState)
+      .catch(() => setState("unsupported"));
+  }, []);
+
+  if (state === null || state === "unsupported") return null;
+
+  const onEnable = async () => {
+    setBusy(true);
+    try {
+      setState(await enablePush());
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDisable = async () => {
+    setBusy(true);
+    try {
+      setState(await disablePush());
+      setTestMsg(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onTest = async () => {
+    setBusy(true);
+    setTestMsg(null);
+    try {
+      const res = await api.push.test();
+      setTestMsg(res?.data?.delivered ? "Test sent" : "Couldn't send test");
+    } catch {
+      setTestMsg("Couldn't send test");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (state === "denied") {
+    return (
+      <div style={{ ...pushCard, color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>
+        <span aria-hidden>🔔</span>
+        Blocked — enable notifications in your browser settings
+      </div>
+    );
+  }
+
+  if (state === "subscribed") {
+    return (
+      <div style={pushCard}>
+        <span aria-hidden>🔔</span>
+        <span style={{ fontSize: "var(--ui-text)", fontWeight: "var(--fw-semibold)" }}>Notifications</span>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            height: "20px",
+            paddingInline: "8px",
+            borderRadius: "var(--radius-pill)",
+            background: "var(--success-soft)",
+            color: "var(--success)",
+            fontSize: "var(--text-2xs)",
+            fontWeight: "var(--fw-bold)",
+          }}
+        >
+          On
+        </span>
+        <span style={{ marginInlineStart: "auto", display: "flex", gap: "8px", alignItems: "center" }}>
+          {testMsg && <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>{testMsg}</span>}
+          <button
+            type="button"
+            onClick={onTest}
+            disabled={busy}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-pill)",
+              background: "var(--surface-2)",
+              color: "var(--text-muted)",
+              fontFamily: "inherit",
+              fontSize: "var(--text-2xs)",
+              fontWeight: "var(--fw-semibold)",
+              padding: "5px 10px",
+              cursor: "pointer",
+            }}
+          >
+            Send test
+          </button>
+          <button
+            type="button"
+            onClick={onDisable}
+            disabled={busy}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-pill)",
+              background: "transparent",
+              color: "var(--text-subtle)",
+              fontFamily: "inherit",
+              fontSize: "var(--text-2xs)",
+              fontWeight: "var(--fw-semibold)",
+              padding: "5px 10px",
+              cursor: "pointer",
+            }}
+          >
+            Turn off
+          </button>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onEnable}
+      disabled={busy}
+      style={{
+        ...pushCard,
+        width: "100%",
+        textAlign: "start",
+        color: "var(--text)",
+        fontSize: "var(--ui-text)",
+        fontWeight: "var(--fw-semibold)",
+        cursor: "pointer",
+      }}
+    >
+      <span aria-hidden>🔔</span>
+      Enable notifications
+    </button>
+  );
+}
 
 export default function MobileHome() {
   const openApprovalsCount = useApprovals().data?.length ?? 0;
@@ -17,6 +173,8 @@ export default function MobileHome() {
   return (
     <>
       <MobileCapture />
+
+      <PushControl />
 
       {openApprovalsCount > 0 && (
         <Link

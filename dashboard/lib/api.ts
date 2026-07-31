@@ -185,4 +185,14 @@ export const api = {
     image: (file: File) => uploadRequest<any>("/ingest/image", file, file.name),
     document: (file: File) => uploadRequest<any>("/ingest/document", file, file.name),
   },
+
+  // ── Push notifications ──────────────────────────
+  /* eslint-disable @typescript-eslint/no-explicit-any -- payload shapes match the rest of this file's untyped API surface. */
+  push: {
+    subscribe: (sub: any) => POST<any>("/push/subscriptions", sub),
+    unsubscribe: (endpoint: string) => request<any>("DELETE", "/push/subscriptions", { endpoint }),
+    test: () => POST<any>("/push/test", {}),
+    vapidKey: () => GET<any>("/push/vapid-key"),
+  },
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 };
