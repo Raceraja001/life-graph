@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     advisor_timeout_seconds: int = 10
     advisor_max_cost_per_query: float = 0.01
 
+    # ── Resilient LLM failover ────────────────────
+    llm_fallback_chain: str = "gemini/gemini-2.0-flash,openrouter/deepseek/deepseek-chat"
+    llm_cooldown_429_seconds: int = 60
+    llm_cooldown_error_seconds: int = 30
+    llm_health_ttl_seconds: int = 3600
+
     # ── Personal AI: Research ────────────────────────────
     research_stale_days: int = 30
     research_max_per_run: int = 5
@@ -239,6 +245,11 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Parse comma-separated CORS origins."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def llm_fallback_chain_list(self) -> list[str]:
+        """Parse comma-separated free-model fallback chain."""
+        return [m.strip() for m in self.llm_fallback_chain.split(",") if m.strip()]
 
     @property
     def is_development(self) -> bool:
