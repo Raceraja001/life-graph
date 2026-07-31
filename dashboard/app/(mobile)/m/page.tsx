@@ -41,6 +41,8 @@ function PushControl() {
     setBusy(true);
     try {
       setState(await enablePush());
+    } catch {
+      setTestMsg("Couldn't enable notifications");
     } finally {
       setBusy(false);
     }
@@ -51,6 +53,8 @@ function PushControl() {
     try {
       setState(await disablePush());
       setTestMsg(null);
+    } catch {
+      setTestMsg("Couldn't disable notifications");
     } finally {
       setBusy(false);
     }
@@ -142,23 +146,28 @@ function PushControl() {
   }
 
   return (
-    <button
-      type="button"
-      onClick={onEnable}
-      disabled={busy}
-      style={{
-        ...pushCard,
-        width: "100%",
-        textAlign: "start",
-        color: "var(--text)",
-        fontSize: "var(--ui-text)",
-        fontWeight: "var(--fw-semibold)",
-        cursor: "pointer",
-      }}
-    >
-      <span aria-hidden>🔔</span>
-      Enable notifications
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onEnable}
+        disabled={busy}
+        style={{
+          ...pushCard,
+          width: "100%",
+          textAlign: "start",
+          color: "var(--text)",
+          fontSize: "var(--ui-text)",
+          fontWeight: "var(--fw-semibold)",
+          cursor: "pointer",
+        }}
+      >
+        <span aria-hidden>🔔</span>
+        Enable notifications
+      </button>
+      {testMsg && (
+        <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", margin: "4px 0 0" }}>{testMsg}</p>
+      )}
+    </>
   );
 }
 

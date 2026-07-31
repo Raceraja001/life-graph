@@ -26,9 +26,14 @@ def _service() -> PushService:
     return PushService(async_session)
 
 
+class SubKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
 class SubscribeBody(BaseModel):
     endpoint: str
-    keys: dict
+    keys: SubKeys
 
 
 class UnsubscribeBody(BaseModel):

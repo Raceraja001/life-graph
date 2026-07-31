@@ -8,7 +8,6 @@ import uuid
 from sqlalchemy import select
 
 from life_graph.core.events import Event, EventType, event_bus
-from life_graph.core.tenant import set_tenant_context
 from life_graph.models.db import Notification
 from life_graph.services.webpush import PushService
 from life_graph.storage.database import async_session
@@ -37,7 +36,6 @@ class PushDeliveryHandler:
             notif_id = data.get("notification_id")
             body = title
             if notif_id and tenant_id:
-                set_tenant_context(tenant_id, "system")
                 async with async_session() as session:
                     row = (
                         await session.execute(
