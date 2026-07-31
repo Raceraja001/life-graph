@@ -185,3 +185,36 @@ async def test_send_to_tenant_swallows_non_prune_errors(monkeypatch):
 
     assert delivered == 0
     assert len(store) == 1  # not pruned — transient error
+
+
+@pytest.mark.asyncio
+async def test_send_to_tenant_continues_after_transport_error(monkeypatch):
+    """A non-WebPushException transport failure (ConnectionError, Timeout, DNS, ...) on one
+    subscription must not abort delivery to the rest of the tenant's subscriptions."""
+    store = [
+        _sub(endpoint="https://push.example/flaky-transport"),
+        _sub(endpoint="https://push.example/live"),
+    ]
+
+    def session_factory():
+        return _FakeSession(store)
+
+    monkeypatch.setattr("life_graph.services.webpush.settings.vapid_private_key", "server-key")
+
+    with patch("life_graph.services.webpush.webpush") as mock_webpush:
+
+        def side_effect(subscription_info, data, **kw):
+            if "flaky-transport" in subscription_info["endpoint"]:
+                raise ConnectionError("DNS resolution failed")
+
+        mock_webpush.side_effect = side_effect
+
+        svc = PushService(session_factory)
+        delivered = await svc.send_to_tenant("t1", "T", "B")
+
+    assert delivered == 1  # only the live one
+    # transport error is not 404/410 — must NOT be pruned
+    assert {s.endpoint for s in store} == {
+        "https://push.example/flaky-transport",
+        "https://push.example/live",
+    }
