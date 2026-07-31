@@ -196,3 +196,57 @@ export function useSendMessage() {
     },
   });
 }
+
+// ── Model health (LLM resilience) ─────────────────────────────
+export type ModelHealthState = "up" | "cooling" | "down" | "unknown";
+
+export interface ModelHealthVM {
+  model: string;
+  shortName: string;
+  state: ModelHealthState;
+  lastSuccessAt: number | null;
+  lastFailureAt: number | null;
+  lastError: string | null;
+  avgLatencyMs: number | null;
+  cooldownUntil: number | null;
+}
+
+const KNOWN_STATES: ModelHealthState[] = ["up", "cooling", "down", "unknown"];
+
+// Loosely-typed shape of one row from GET /health/models — mirrors the
+// backend contract without pulling `any` into this file (mapped to
+// ModelHealthVM below, same pattern as mapMemory/mapTask).
+interface RawModelHealth {
+  model?: string;
+  state?: string;
+  last_success_at?: number | null;
+  last_failure_at?: number | null;
+  last_error?: string | null;
+  avg_latency_ms?: number | null;
+  cooldown_until?: number | null;
+}
+
+export function mapModelHealth(raw: RawModelHealth): ModelHealthVM {
+  const model = String(raw?.model ?? "");
+  const segments = model.split("/");
+  const state = KNOWN_STATES.includes(raw?.state as ModelHealthState) ? (raw.state as ModelHealthState) : "unknown";
+  return {
+    model,
+    shortName: segments[segments.length - 1] || model,
+    state,
+    lastSuccessAt: typeof raw?.last_success_at === "number" ? raw.last_success_at : null,
+    lastFailureAt: typeof raw?.last_failure_at === "number" ? raw.last_failure_at : null,
+    lastError: raw?.last_error ?? null,
+    avgLatencyMs: typeof raw?.avg_latency_ms === "number" ? raw.avg_latency_ms : null,
+    cooldownUntil: typeof raw?.cooldown_until === "number" ? raw.cooldown_until : null,
+  };
+}
+
+export function useModelHealth() {
+  return useQuery({
+    queryKey: ["model-health"],
+    queryFn: () => api.health.models().then((r) => r.data ?? []),
+    refetchInterval: 30_000,
+    select: (rows: RawModelHealth[]) => rows.map(mapModelHealth),
+  });
+}

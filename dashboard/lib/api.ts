@@ -185,4 +185,11 @@ export const api = {
     image: (file: File) => uploadRequest<any>("/ingest/image", file, file.name),
     document: (file: File) => uploadRequest<any>("/ingest/document", file, file.name),
   },
+
+  // ── Health (backend/LLM resilience status) ──────
+  /* eslint-disable @typescript-eslint/no-explicit-any -- payload shape mapped to ModelHealthVM by the caller. */
+  health: {
+    models: () => GET<any>("/health/models"),
+  },
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 };

@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Wifi, WifiOff, X } from "lucide-react";
+import Link from "next/link";
+import { Settings, Wifi, WifiOff, X } from "lucide-react";
 import { MobileTabBar } from "./mobile-tabbar";
 import { useMobileState } from "./mobile-state";
 import { useWebSocket } from "@/lib/use-websocket";
@@ -109,6 +110,21 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
         >
           {online ? <Wifi width={15} height={15} /> : <WifiOff width={15} height={15} />}
         </button>
+        <Link
+          href="/m/settings"
+          aria-label="Settings"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "30px",
+            height: "30px",
+            color: "var(--text-subtle)",
+            flexShrink: 0,
+          }}
+        >
+          <Settings width={15} height={15} />
+        </Link>
       </header>
 
       {/* Offline banner */}
