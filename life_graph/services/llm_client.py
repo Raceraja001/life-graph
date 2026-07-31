@@ -18,6 +18,18 @@ from life_graph.config import settings
 logger = logging.getLogger(__name__)
 
 
+def get_resilient_llm():
+    """Return the resilient LLM singleton.
+
+    Imported lazily (call time, not module load time) because
+    ``life_graph.api.dependencies`` imports ``LMStudioClient`` at module
+    scope — a top-level import here would create a circular import.
+    """
+    from life_graph.api.dependencies import get_resilient_llm as _get_resilient_llm
+
+    return _get_resilient_llm()
+
+
 class LMStudioClient:
     """Hybrid LLM client — local embeddings + optional cloud synthesis.
 
@@ -86,14 +98,20 @@ class LMStudioClient:
     ) -> str:
         """Send a chat completion request.
 
-        Routes to OpenRouter when hybrid mode is active,
-        falls back to LM Studio on failure.
+        Routes to the resilient cloud chain (OpenRouter + fallbacks) when
+        hybrid mode is active, falling back to local LM Studio when the
+        cloud chain is exhausted.
         """
         if self._use_cloud:
-            result = await self._cloud_chat(messages, model, temperature, max_tokens, response_format)
-            if result:
-                return result
-            logger.warning("OpenRouter failed, falling back to local LLM")
+            try:
+                return await self._cloud_chat(
+                    messages, model, temperature, max_tokens, response_format
+                )
+            except Exception:
+                logger.warning(
+                    "Resilient cloud chat exhausted, falling back to local LLM",
+                    exc_info=True,
+                )
 
         return await self._local_chat(messages, model, temperature, max_tokens, response_format)
 
@@ -105,27 +123,14 @@ class LMStudioClient:
         max_tokens: int,
         response_format: dict | None,
     ) -> str:
-        """Chat via OpenRouter (cloud)."""
-        cloud_model = model or settings.openrouter_model
-        client = self._get_cloud_client()
-
-        kwargs: dict[str, Any] = {
-            "model": cloud_model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-        if response_format:
-            kwargs["response_format"] = response_format
-
-        try:
-            response = await client.chat.completions.create(**kwargs)
-            content = response.choices[0].message.content or ""
-            logger.info("OpenRouter chat OK (model=%s, len=%d)", cloud_model, len(content))
-            return content
-        except Exception:
-            logger.exception("OpenRouter chat request failed (model=%s)", cloud_model)
-            return ""
+        """Chat via the resilient cloud chain (OpenRouter/Gemini/... with failover)."""
+        return await get_resilient_llm().chat(
+            messages,
+            model=model,  # None -> wrapper picks the tier default
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
 
     async def _local_chat(
         self,
