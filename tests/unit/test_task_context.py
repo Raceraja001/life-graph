@@ -10,6 +10,16 @@ from life_graph.core.task_context import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _reset_task_context():
+    """Reset task context ContextVar before each test to ensure isolation."""
+    from life_graph.core import task_context
+
+    token = task_context._task_context_var.set(None)
+    yield
+    task_context._task_context_var.reset(token)
+
+
 def test_get_current_task_context_returns_none_when_unset():
     assert get_current_task_context() is None
 
