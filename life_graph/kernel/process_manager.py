@@ -39,6 +39,8 @@ class ProcessManager:
         persona_service: PersonaService to validate agent names.
     """
 
+    MAX_DELEGATION_DEPTH = 5
+
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
@@ -68,6 +70,8 @@ class ProcessManager:
         timeout_seconds: int | None = None,
         max_retries: int | None = None,
         parent_task_id: uuid.UUID | None = None,
+        root_task_id: uuid.UUID | None = None,
+        depth: int = 0,
         session_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
@@ -86,6 +90,13 @@ class ProcessManager:
             timeout_seconds: Override default timeout.
             max_retries: Override default max retries.
             parent_task_id: Parent task for sub-task trees.
+            root_task_id: The top-level task in this delegation
+                tree. Callers building a delegation chain (see
+                delegate_to_persona) should pass the parent's own
+                root_task_id (or the parent's id, if the parent
+                is itself the root).
+            depth: How many delegation hops deep this task is.
+                0 = root. Raises ValueError past MAX_DELEGATION_DEPTH.
             session_id: Associated agent session.
             project_id: Associated project.
 
@@ -93,8 +104,15 @@ class ProcessManager:
             Dict with the created task's id and status.
 
         Raises:
-            ValueError: If the persona doesn't exist.
+            ValueError: If the persona doesn't exist, or depth
+                exceeds MAX_DELEGATION_DEPTH.
         """
+        if depth > self.MAX_DELEGATION_DEPTH:
+            raise ValueError(
+                f"Maximum delegation depth ({self.MAX_DELEGATION_DEPTH})"
+                f" exceeded: attempted depth {depth}"
+            )
+
         # Validate persona exists
         persona = await self._persona_service.get_by_name(
             tenant_id, agent_name
@@ -125,6 +143,8 @@ class ProcessManager:
                 timeout_seconds=timeout,
                 max_retries=retries,
                 parent_task_id=parent_task_id,
+                root_task_id=root_task_id,
+                depth=depth,
                 session_id=session_id,
                 project_id=project_id,
                 model_used=persona.get("model"),
@@ -323,6 +343,10 @@ class ProcessManager:
     ) -> None:
         """Run the agent under semaphore + timeout control."""
         async with self._semaphore:
+            from life_graph.core.task_context import set_task_context
+
+            set_task_context(task_id=task_id, tenant_id=tenant_id)
+
             await self._update_task_status(
                 task_id, "running",
                 started_at=datetime.now(timezone.utc),
