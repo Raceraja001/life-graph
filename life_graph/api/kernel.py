@@ -218,12 +218,8 @@ async def create_task(
     summary="List agent tasks with optional filters",
 )
 async def list_tasks(
-    status_filter: str | None = Query(
-        None, alias="status", description="Filter by status"
-    ),
-    agent_name: str | None = Query(
-        None, description="Filter by agent/persona name"
-    ),
+    status_filter: str | None = Query(None, alias="status", description="Filter by status"),
+    agent_name: str | None = Query(None, description="Filter by agent/persona name"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     pm: Any = Depends(get_process_manager),
@@ -318,19 +314,24 @@ class PersonaCreate(BaseModel):
     """Request body for creating a new persona."""
 
     name: str = Field(
-        ..., min_length=1, max_length=100,
+        ...,
+        min_length=1,
+        max_length=100,
         description="Unique persona name (e.g., 'analyst')",
     )
     system_prompt: str = Field(
-        ..., min_length=1,
+        ...,
+        min_length=1,
         description="System prompt defining agent behavior",
     )
     display_name: str | None = Field(
-        None, max_length=200,
+        None,
+        max_length=200,
     )
     description: str | None = None
     model: str = Field(
-        "gemini/gemini-2.5-flash", max_length=100,
+        "gemini/gemini-2.5-flash",
+        max_length=100,
     )
     temperature: float = Field(0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(4096, ge=1, le=128000)
@@ -424,7 +425,8 @@ async def create_persona(
 )
 async def list_personas(
     include_inactive: bool = Query(
-        False, description="Include soft-deleted personas",
+        False,
+        description="Include soft-deleted personas",
     ),
     svc: Any = Depends(get_persona_service),
 ):
@@ -432,14 +434,13 @@ async def list_personas(
     tenant_id = get_current_tenant_id()
 
     personas, total = await svc.list_all(
-        tenant_id, include_inactive=include_inactive,
+        tenant_id,
+        include_inactive=include_inactive,
     )
 
     return success_response(
         data={
-            "personas": [
-                _persona_to_summary(p) for p in personas
-            ],
+            "personas": [_persona_to_summary(p) for p in personas],
             "total": total,
         }
     )
@@ -457,7 +458,8 @@ async def get_persona(
     tenant_id = get_current_tenant_id()
 
     persona = await svc.get_by_id(
-        tenant_id, str(persona_id),
+        tenant_id,
+        str(persona_id),
     )
     if not persona:
         raise HTTPException(
@@ -500,10 +502,7 @@ async def update_persona(
             "id": updated["id"],
             "name": updated["name"],
             "updated_at": updated["updated_at"],
-            "message": (
-                "Persona updated. Changes take effect"
-                " on next task spawn."
-            ),
+            "message": ("Persona updated. Changes take effect on next task spawn."),
         }
     )
 
@@ -524,7 +523,8 @@ async def delete_persona(
 
     try:
         result = await svc.delete(
-            tenant_id, str(persona_id),
+            tenant_id,
+            str(persona_id),
         )
     except PermissionError as exc:
         raise HTTPException(
@@ -548,17 +548,27 @@ class RouteRequest(BaseModel):
     """Request body for routing a message."""
 
     message: str = Field(
-        ..., min_length=1,
+        ...,
+        min_length=1,
         description="User message to classify and route",
     )
     project_id: uuid.UUID | None = None
+    target_agent: str | None = Field(
+        default=None,
+        description=(
+            "If set, route directly to this persona and skip"
+            " classification (explicit multi-role invocation, e.g."
+            " selecting 'jarvis')."
+        ),
+    )
 
 
 class ClassifyRequest(BaseModel):
     """Request body for intent classification only."""
 
     message: str = Field(
-        ..., min_length=1,
+        ...,
+        min_length=1,
         description="Message to classify",
     )
 
@@ -587,6 +597,7 @@ async def route_message(
             tenant_id=tenant_id,
             message=body.message,
             project_id=body.project_id,
+            target_agent=body.target_agent,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -620,10 +631,12 @@ async def classify_message(
 )
 async def list_sessions(
     intent: str | None = Query(
-        None, description="Filter by classified intent",
+        None,
+        description="Filter by classified intent",
     ),
     session_status: str | None = Query(
-        None, alias="status",
+        None,
+        alias="status",
         description="Filter by session status",
     ),
     limit: int = Query(20, ge=1, le=100),
@@ -656,23 +669,32 @@ class ScheduleCreate(BaseModel):
     """Request body for creating a scheduled job."""
 
     name: str = Field(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
         description="Human-readable job name",
     )
     cron_expression: str = Field(
-        ..., min_length=5, max_length=100,
+        ...,
+        min_length=5,
+        max_length=100,
         description="Standard 5-field cron expression",
     )
     agent_name: str = Field(
-        ..., min_length=1, max_length=100,
+        ...,
+        min_length=1,
+        max_length=100,
         description="Persona to run this job",
     )
     description: str | None = None
     input: dict[str, Any] | None = Field(
-        None, description="Task input for the agent",
+        None,
+        description="Task input for the agent",
     )
     timeout_seconds: int = Field(
-        600, ge=1, le=86400,
+        600,
+        ge=1,
+        le=86400,
     )
     max_retries: int = Field(3, ge=0, le=10)
     properties: dict[str, Any] | None = None
@@ -687,7 +709,9 @@ class ScheduleUpdate(BaseModel):
     input: dict[str, Any] | None = None
     is_active: bool | None = None
     timeout_seconds: int | None = Field(
-        None, ge=1, le=86400,
+        None,
+        ge=1,
+        le=86400,
     )
     max_retries: int | None = Field(None, ge=0, le=10)
     properties: dict[str, Any] | None = None
@@ -719,12 +743,11 @@ async def create_schedule(
     except ValueError as exc:
         detail = str(exc)
         code = (
-            status.HTTP_409_CONFLICT
-            if "already exists" in detail
-            else status.HTTP_400_BAD_REQUEST
+            status.HTTP_409_CONFLICT if "already exists" in detail else status.HTTP_400_BAD_REQUEST
         )
         raise HTTPException(
-            status_code=code, detail=detail,
+            status_code=code,
+            detail=detail,
         )
 
     return success_response(data=job)
@@ -766,7 +789,8 @@ async def get_schedule(
     tenant_id = get_current_tenant_id()
 
     job = await svc.get_by_id(
-        tenant_id, str(schedule_id),
+        tenant_id,
+        str(schedule_id),
     )
     if not job:
         raise HTTPException(
@@ -833,7 +857,8 @@ async def delete_schedule(
     tenant_id = get_current_tenant_id()
 
     result = await svc.delete(
-        tenant_id, str(schedule_id),
+        tenant_id,
+        str(schedule_id),
     )
     if result is None:
         raise HTTPException(
@@ -851,11 +876,14 @@ class ProjectRegister(BaseModel):
     """Request body for registering a project."""
 
     name: str = Field(
-        ..., min_length=1, max_length=200,
+        ...,
+        min_length=1,
+        max_length=200,
         description="Project name (e.g., 'life-graph')",
     )
     path: str = Field(
-        ..., min_length=1,
+        ...,
+        min_length=1,
         description="Absolute path on host",
     )
     description: str | None = None
@@ -889,12 +917,11 @@ async def register_project(
     except ValueError as exc:
         detail = str(exc)
         code = (
-            status.HTTP_409_CONFLICT
-            if "already exists" in detail
-            else status.HTTP_400_BAD_REQUEST
+            status.HTTP_409_CONFLICT if "already exists" in detail else status.HTTP_400_BAD_REQUEST
         )
         raise HTTPException(
-            status_code=code, detail=detail,
+            status_code=code,
+            detail=detail,
         )
 
     return success_response(data=project)
@@ -912,7 +939,8 @@ async def scan_project(
     tenant_id = get_current_tenant_id()
 
     result = await svc.scan(
-        tenant_id, str(project_id),
+        tenant_id,
+        str(project_id),
     )
     if result is None:
         raise HTTPException(
@@ -929,7 +957,8 @@ async def scan_project(
 )
 async def list_projects(
     language: str | None = Query(
-        None, description="Filter by language",
+        None,
+        description="Filter by language",
     ),
     svc: Any = Depends(get_project_registry),
 ):
@@ -937,7 +966,8 @@ async def list_projects(
     tenant_id = get_current_tenant_id()
 
     projects, total = await svc.list_all(
-        tenant_id, language=language,
+        tenant_id,
+        language=language,
     )
 
     return success_response(
@@ -957,7 +987,8 @@ async def get_project(
     tenant_id = get_current_tenant_id()
 
     project = await svc.get_by_id(
-        tenant_id, str(project_id),
+        tenant_id,
+        str(project_id),
     )
     if not project:
         raise HTTPException(
@@ -980,7 +1011,8 @@ async def delete_project(
     tenant_id = get_current_tenant_id()
 
     result = await svc.delete(
-        tenant_id, str(project_id),
+        tenant_id,
+        str(project_id),
     )
     if result is None:
         raise HTTPException(
@@ -1000,10 +1032,12 @@ async def delete_project(
 )
 async def list_notifications(
     priority: str | None = Query(
-        None, description="Filter: critical|important|info",
+        None,
+        description="Filter: critical|important|info",
     ),
     read: bool | None = Query(
-        None, description="Filter by read status",
+        None,
+        description="Filter by read status",
     ),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -1042,15 +1076,13 @@ async def mark_notification_read(
     tenant_id = get_current_tenant_id()
 
     result = await svc.mark_read(
-        tenant_id, str(notification_id),
+        tenant_id,
+        str(notification_id),
     )
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"Notification {notification_id}"
-                " not found"
-            ),
+            detail=(f"Notification {notification_id} not found"),
         )
 
     return success_response(data=result)
@@ -1074,4 +1106,3 @@ async def mark_all_read(
             "message": f"{count} notifications marked as read",
         },
     )
-

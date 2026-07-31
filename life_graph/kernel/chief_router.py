@@ -32,96 +32,117 @@ logger = logging.getLogger(__name__)
 # ── Intent Pattern Definitions ─────────────────────────────
 
 _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
-    ("code", [
-        r"\bcode\b",
-        r"\bimplement\b",
-        r"\brefactor\b",
-        r"\bdebug\b",
-        r"\bfix\s+bug\b",
-        r"\badd\s+feature\b",
-        r"\bfunction\b",
-        r"\bclass\b",
-        r"\bendpoint\b",
-        r"\b(?:write|create)\s+(?:a\s+)?"
-        r"(?:script|module|service|api|test)\b",
-        r"\bpull\s+request\b",
-        r"\bpr\b",
-        r"\bcode\s+review\b",
-        r"\bsyntax\b",
-        r"\bcompile\b",
-        r"\bbuild\b",
-        r"\btype\s*(?:error|hint)\b",
-        r"\blint\b",
-    ]),
-    ("research", [
-        r"\bresearch\b",
-        r"\binvestigate\b",
-        r"\bcompare\b",
-        r"\bevaluate\b",
-        r"\banalyze\b",
-        r"\bwhat\s+is\b",
-        r"\bhow\s+does\b",
-        r"\bbest\s+practice\b",
-        r"\bpros\s+and\s+cons\b",
-        r"\blearn\s+about\b",
-        r"\bexplore\b",
-        r"\bstudy\b",
-    ]),
-    ("deploy", [
-        r"\bdeploy\b",
-        r"\brelease\b",
-        r"\brollback\b",
-        r"\bdocker\b",
-        r"\bkubernetes\b",
-        r"\bk8s\b",
-        r"\bci/?cd\b",
-        r"\bship\b",
-        r"\bpush\s+to\b",
-        r"\bproduction\b",
-        r"\bstaging\b",
-        r"\bnginx\b",
-        r"\bhelm\b",
-    ]),
-    ("monitor", [
-        r"\bmonitor\b",
-        r"\balert\b",
-        r"\bhealth\b",
-        r"\bstatus\b",
-        r"\buptime\b",
-        r"\bmetrics?\b",
-        r"\blogs?\b",
-        r"\bdashboard\b",
-        r"\bobservability\b",
-    ]),
-    ("data", [
-        r"\bdata\b",
-        r"\bdatabase\b",
-        r"\bquery\b",
-        r"\bsql\b",
-        r"\bmigration\b",
-        r"\bcsv\b",
-        r"\banalyze\s+data\b",
-        r"\bstatistics?\b",
-        r"\breport\b",
-        r"\betl\b",
-        r"\bschema\b",
-    ]),
-    ("docs", [
-        r"\bdocument(?:ation)?\b",
-        r"\breadme\b",
-        r"\bspec\b",
-        r"\bchangelog\b",
-        r"\bapi\s+docs?\b",
-        r"\bopenapi\b",
-        r"\bswagger\b",
-        r"\btutorial\b",
-        r"\bguide\b",
-    ]),
-    ("question", [
-        r"^(?:what|how|why|when|where|who)\s",
-        r"^(?:can\s+you|do\s+you|is\s+there)\s",
-        r"^(?:tell\s+me|explain|describe)\s",
-    ]),
+    (
+        "code",
+        [
+            r"\bcode\b",
+            r"\bimplement\b",
+            r"\brefactor\b",
+            r"\bdebug\b",
+            r"\bfix\s+bug\b",
+            r"\badd\s+feature\b",
+            r"\bfunction\b",
+            r"\bclass\b",
+            r"\bendpoint\b",
+            r"\b(?:write|create)\s+(?:a\s+)?"
+            r"(?:script|module|service|api|test)\b",
+            r"\bpull\s+request\b",
+            r"\bpr\b",
+            r"\bcode\s+review\b",
+            r"\bsyntax\b",
+            r"\bcompile\b",
+            r"\bbuild\b",
+            r"\btype\s*(?:error|hint)\b",
+            r"\blint\b",
+        ],
+    ),
+    (
+        "research",
+        [
+            r"\bresearch\b",
+            r"\binvestigate\b",
+            r"\bcompare\b",
+            r"\bevaluate\b",
+            r"\banalyze\b",
+            r"\bwhat\s+is\b",
+            r"\bhow\s+does\b",
+            r"\bbest\s+practice\b",
+            r"\bpros\s+and\s+cons\b",
+            r"\blearn\s+about\b",
+            r"\bexplore\b",
+            r"\bstudy\b",
+        ],
+    ),
+    (
+        "deploy",
+        [
+            r"\bdeploy\b",
+            r"\brelease\b",
+            r"\brollback\b",
+            r"\bdocker\b",
+            r"\bkubernetes\b",
+            r"\bk8s\b",
+            r"\bci/?cd\b",
+            r"\bship\b",
+            r"\bpush\s+to\b",
+            r"\bproduction\b",
+            r"\bstaging\b",
+            r"\bnginx\b",
+            r"\bhelm\b",
+        ],
+    ),
+    (
+        "monitor",
+        [
+            r"\bmonitor\b",
+            r"\balert\b",
+            r"\bhealth\b",
+            r"\bstatus\b",
+            r"\buptime\b",
+            r"\bmetrics?\b",
+            r"\blogs?\b",
+            r"\bdashboard\b",
+            r"\bobservability\b",
+        ],
+    ),
+    (
+        "data",
+        [
+            r"\bdata\b",
+            r"\bdatabase\b",
+            r"\bquery\b",
+            r"\bsql\b",
+            r"\bmigration\b",
+            r"\bcsv\b",
+            r"\banalyze\s+data\b",
+            r"\bstatistics?\b",
+            r"\breport\b",
+            r"\betl\b",
+            r"\bschema\b",
+        ],
+    ),
+    (
+        "docs",
+        [
+            r"\bdocument(?:ation)?\b",
+            r"\breadme\b",
+            r"\bspec\b",
+            r"\bchangelog\b",
+            r"\bapi\s+docs?\b",
+            r"\bopenapi\b",
+            r"\bswagger\b",
+            r"\btutorial\b",
+            r"\bguide\b",
+        ],
+    ),
+    (
+        "question",
+        [
+            r"^(?:what|how|why|when|where|who)\s",
+            r"^(?:can\s+you|do\s+you|is\s+there)\s",
+            r"^(?:tell\s+me|explain|describe)\s",
+        ],
+    ),
 ]
 
 # Default intent → persona mapping
@@ -146,24 +167,21 @@ class _IntentRoute:
     __slots__ = ("intent", "patterns")
 
     def __init__(
-        self, intent: str, raw: list[str],
+        self,
+        intent: str,
+        raw: list[str],
     ) -> None:
         self.intent = intent
-        self.patterns: list[re.Pattern[str]] = [
-            re.compile(p, re.IGNORECASE) for p in raw
-        ]
+        self.patterns: list[re.Pattern[str]] = [re.compile(p, re.IGNORECASE) for p in raw]
 
     def score(self, text: str) -> int:
         """Count how many patterns match the text."""
-        return sum(
-            1 for p in self.patterns if p.search(text)
-        )
+        return sum(1 for p in self.patterns if p.search(text))
 
 
 # Pre-compile at module load
 _COMPILED_INTENTS: list[_IntentRoute] = [
-    _IntentRoute(intent, patterns)
-    for intent, patterns in _INTENT_PATTERNS
+    _IntentRoute(intent, patterns) for intent, patterns in _INTENT_PATTERNS
 ]
 
 
@@ -203,10 +221,12 @@ class ChiefRouter:
         *,
         session_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
+        target_agent: str | None = None,
     ) -> dict[str, Any]:
         """Classify intent and route to the best agent.
 
-        1. Classify user intent via regex patterns
+        1. Classify user intent via regex patterns (skipped if
+           target_agent is given — an explicit override)
         2. Resolve the best persona for the intent
         3. Create an AgentSession record
         4. Spawn a task via ProcessManager
@@ -216,19 +236,26 @@ class ChiefRouter:
             message: The user's message to classify.
             session_id: Optional existing session to continue.
             project_id: Optional project context.
+            target_agent: If set, route directly to this persona
+                and skip classification entirely (e.g. an explicit
+                "use Jarvis" selection in the UI).
 
         Returns:
             Dict with session_id, intent, agent, task info.
         """
         start = datetime.now(timezone.utc)
 
-        # 1. Classify
-        intent, confidence = self.classify(message)
-
-        # 2. Resolve persona
-        agent_name = await self._resolve_agent(
-            tenant_id, intent,
-        )
+        if target_agent:
+            intent, confidence = "override", 1.0
+            agent_name = target_agent
+        else:
+            # 1. Classify
+            intent, confidence = self.classify(message)
+            # 2. Resolve persona
+            agent_name = await self._resolve_agent(
+                tenant_id,
+                intent,
+            )
 
         # 3. Create/update session
         agent_session_id = await self._create_session(
@@ -254,26 +281,23 @@ class ChiefRouter:
             project_id=project_id,
         )
 
-        elapsed_ms = int(
-            (datetime.now(timezone.utc) - start)
-            .total_seconds() * 1000
-        )
+        elapsed_ms = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
 
         return {
             "session_id": str(agent_session_id),
             "classified_intent": intent,
             "classification_confidence": confidence,
             "routed_to": agent_name,
-            "task_id": spawn_result.get(
-                "task_id", str(spawn_result)
-            ) if isinstance(spawn_result, dict)
+            "task_id": spawn_result.get("task_id", str(spawn_result))
+            if isinstance(spawn_result, dict)
             else str(spawn_result),
             "task_status": "queued",
             "routing_duration_ms": elapsed_ms,
         }
 
     def classify(
-        self, message: str,
+        self,
+        message: str,
     ) -> tuple[str, float]:
         """Classify a message's intent using regex patterns.
 
@@ -290,7 +314,8 @@ class ChiefRouter:
         return self._classify_by_regex(message)
 
     async def classify_detailed(
-        self, message: str,
+        self,
+        message: str,
     ) -> dict[str, Any]:
         """Classify with full metadata for debugging.
 
@@ -346,7 +371,9 @@ class ChiefRouter:
     # ── Persona Resolution ────────────────────────────────
 
     async def _resolve_agent(
-        self, tenant_id: str, intent: str,
+        self,
+        tenant_id: str,
+        intent: str,
     ) -> str:
         """Resolve the best agent persona for an intent.
 
@@ -362,10 +389,9 @@ class ChiefRouter:
         """
         # Try DB-configured personas first
         try:
-            persona = await (
-                self._persona_service.get_by_intent(
-                    tenant_id, intent,
-                )
+            persona = await self._persona_service.get_by_intent(
+                tenant_id,
+                intent,
             )
             if persona is not None:
                 return persona["name"]
@@ -419,10 +445,7 @@ class ChiefRouter:
                 ],
                 status="active",
                 context={
-                    "project_id": (
-                        str(project_id)
-                        if project_id else None
-                    ),
+                    "project_id": (str(project_id) if project_id else None),
                 },
             )
             db.add(session_record)
@@ -496,10 +519,7 @@ class ChiefRouter:
                 .offset(offset)
             )
             result = await db.execute(stmt)
-            sessions = [
-                self._session_to_dict(s)
-                for s in result.scalars().all()
-            ]
+            sessions = [self._session_to_dict(s) for s in result.scalars().all()]
             return sessions, total
 
     @staticmethod
@@ -512,21 +532,14 @@ class ChiefRouter:
             "tenant_id": session.tenant_id,
             "user_message": session.user_message,
             "classified_intent": session.classified_intent,
-            "classification_conf": (
-                session.classification_conf
-            ),
+            "classification_conf": (session.classification_conf),
             "routed_to": session.routed_to,
             "handoff_chain": session.handoff_chain or [],
             "total_duration_ms": session.total_duration_ms,
             "total_tokens": session.total_tokens,
-            "total_cost_usd": float(
-                session.total_cost_usd or 0
-            ),
+            "total_cost_usd": float(session.total_cost_usd or 0),
             "status": session.status,
             "context": session.context or {},
             "created_at": session.created_at.isoformat(),
-            "completed_at": (
-                session.completed_at.isoformat()
-                if session.completed_at else None
-            ),
+            "completed_at": (session.completed_at.isoformat() if session.completed_at else None),
         }

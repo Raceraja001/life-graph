@@ -368,3 +368,53 @@ class TestSessionsEndpoint:
         if response.status_code == 200:
             meta = response.json()["meta"]
             assert meta["page_size"] == 5
+
+
+# ── Target Agent Override ────────────────────────────────────
+
+
+class TestTargetAgentOverride:
+    """POST /api/v1/kernel/route with an explicit target_agent."""
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_target_agent_bypasses_classification(
+        self, client: AsyncClient,
+    ):
+        response = await client.post(
+            "/api/v1/kernel/route",
+            json={
+                "message": "this text is irrelevant to routing",
+                "target_agent": "jarvis",
+            },
+        )
+        assert response.status_code in (200, 201, 500)
+        if response.status_code in (200, 201):
+            data = response.json()["data"]
+            assert data["routed_to"] == "jarvis"
+            assert data["classified_intent"] == "override"
+
+    @pytest.mark.asyncio
+    async def test_route_unit_skips_classify_when_target_agent_set(self):
+        import uuid as _uuid
+        from unittest.mock import AsyncMock
+
+        from life_graph.kernel.chief_router import ChiefRouter
+
+        router = ChiefRouter(
+            session_factory=None, persona_service=None, process_manager=None,
+        )
+        router.classify = AsyncMock()  # type: ignore[method-assign]
+        router._create_session = AsyncMock(return_value=_uuid.uuid4())  # type: ignore[method-assign]
+        router._process_manager = AsyncMock()
+        router._process_manager.spawn = AsyncMock(
+            return_value={"task_id": str(_uuid.uuid4())},
+        )
+
+        await router.route(
+            tenant_id="test_tenant",
+            message="anything",
+            target_agent="jarvis",
+        )
+
+        router.classify.assert_not_called()
