@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,6 +13,8 @@ from life_graph.api.responses import success_response
 from life_graph.models.schemas import MemoryResponse
 from life_graph.services.conversation import ConversationNotFound, ConversationService
 from life_graph.storage.postgres import PostgresMemoryStore
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -143,7 +146,12 @@ async def distill_conversation_endpoint(
             await pool.enqueue_job(DISTILL_JOB_NAME, str(conversation_id), tenant_id)
         finally:
             await pool.close()
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            "ARQ enqueue failed for distill of conversation %s: %s — running inline",
+            conversation_id,
+            e,
+        )
         # Redis/pool unavailable — run inline so a manual tap still works.
         from life_graph.api.dependencies import get_distillation_service
 
