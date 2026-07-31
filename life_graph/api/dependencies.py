@@ -486,3 +486,12 @@ def get_conversation_service():
     engine = HybridQueryEngine()
     return ConversationService(async_session, engine, get_synthesis_service())
 
+
+@lru_cache(maxsize=1)
+def get_distillation_service():
+    """Return the singleton conversation distiller."""
+    from life_graph.services.distillation import ConversationDistiller
+    from life_graph.storage.minio_client import MinIOStorage
+
+    return ConversationDistiller(async_session, get_memory_manager(), MinIOStorage(), get_store())
+
