@@ -72,6 +72,12 @@ manually orchestrate multi-step engineering work myself.
 - GIVEN a delegation chain WHEN a user views `GET /api/v1/agent-tasks/:rootTaskId/tree` (existing
   endpoint) THEN they see swe-lead and all delegated sub-tasks with status — this is the
   observability surface for "who did what," reusing Era 7's tree endpoint rather than a new one
+- GIVEN `swe-lead` has a `verifier_chain = ["tests_pass", "diff_within_scope"]` (reusing the
+  Agent-Drivers-era column that `uzhavu-ops`/`dependency-updater` already use, currently unset for
+  swe-lead) WHEN a delegated child task completes THEN the verifier chain runs before swe-lead
+  treats the result as final, rather than trusting a delegated persona's self-reported success —
+  the same producer/verifier separation pattern documented in other agentic systems (e.g. a
+  decompose→produce→verify loop), applied here via infrastructure this codebase already has
 
 ---
 
@@ -248,6 +254,7 @@ existing dict shape exactly):
     "intent_tags": ["team", "build", "project"],
     "temperature": 0.4,
     "allowed_tools": ["delegate_to_persona", "file_read", "file_write", "terminal", "git"],
+    "verifier_chain": ["tests_pass", "diff_within_scope"],
 },
 {
     "name": "jarvis",
@@ -398,7 +405,11 @@ overlooked:
   likely heuristic (conjunction cues, multi-label regex) would probably miss the motivating example
   ("learn Kubernetes by building a project" has no lexical compound-cue), so it would add
   complexity without reliably delivering the capability it exists for. Revisit once there's real
-  usage data on how multi-role requests actually get phrased.
+  usage data on how multi-role requests actually get phrased. When it is revisited: model the
+  router itself as its own swappable, LLM-backed agent (config-driven, replaceable independently
+  of `ChiefRouter`'s regex path) rather than hardcoding new heuristics into `chief_router.py` —
+  this mirrors how Qwen-Agent's `GroupChatAutoRouter` is a first-class agent, not glue code, and
+  keeps the eventual smart-routing logic testable and replaceable on its own.
 - **A generic `AgentRole` table/abstraction.** Three of four new roles are single-persona; adding a
   grouping table now would be pure indirection for them. `swe-lead` proves out the one real
   multi-persona case directly. If a second role later needs the same team pattern, extract a shared
