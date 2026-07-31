@@ -41,7 +41,10 @@ class PushDeliveryHandler:
                 async with async_session() as session:
                     row = (
                         await session.execute(
-                            select(Notification).where(Notification.id == uuid.UUID(str(notif_id)))
+                            select(Notification).where(
+                                Notification.id == uuid.UUID(str(notif_id)),
+                                Notification.tenant_id == tenant_id,
+                            )
                         )
                     ).scalar_one_or_none()
                     if row and row.body:
