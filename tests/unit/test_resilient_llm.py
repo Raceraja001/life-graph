@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -100,3 +101,43 @@ async def test_all_cooling_tries_least_recently_failed(monkeypatch):
     out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
     assert out == "hi"
     assert call.await_count == 1  # exactly one forced attempt
+
+
+def test_bridge_sets_env_from_settings_when_unset(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_BASE", raising=False)
+    monkeypatch.setattr(rl.settings, "openrouter_api_key", "sk-or-test", raising=False)
+    monkeypatch.setattr(
+        rl.settings, "openrouter_url", "https://openrouter.ai/api/v1", raising=False
+    )
+
+    rl._bridge_provider_credentials()
+
+    assert os.environ["OPENROUTER_API_KEY"] == "sk-or-test"
+    assert os.environ["OPENROUTER_API_BASE"] == "https://openrouter.ai/api/v1"
+
+
+def test_bridge_does_not_overwrite_existing_env(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "pre-existing-key")
+    monkeypatch.setenv("OPENROUTER_API_BASE", "https://pre-existing.example/v1")
+    monkeypatch.setattr(rl.settings, "openrouter_api_key", "sk-or-should-not-win", raising=False)
+    monkeypatch.setattr(
+        rl.settings, "openrouter_url", "https://should-not-win.example", raising=False
+    )
+
+    rl._bridge_provider_credentials()
+
+    assert os.environ["OPENROUTER_API_KEY"] == "pre-existing-key"
+    assert os.environ["OPENROUTER_API_BASE"] == "https://pre-existing.example/v1"
+
+
+def test_bridge_noop_when_settings_empty(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_BASE", raising=False)
+    monkeypatch.setattr(rl.settings, "openrouter_api_key", "", raising=False)
+    monkeypatch.setattr(rl.settings, "openrouter_url", "", raising=False)
+
+    rl._bridge_provider_credentials()
+
+    assert "OPENROUTER_API_KEY" not in os.environ
+    assert "OPENROUTER_API_BASE" not in os.environ

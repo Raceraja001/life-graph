@@ -11,6 +11,7 @@ retry also fails) it raises ResilientLLMExhausted; callers run their own fallbac
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -24,6 +25,26 @@ logger = logging.getLogger(__name__)
 
 class ResilientLLMExhausted(Exception):
     """Raised when every model in the chain failed or is unavailable."""
+
+
+def _bridge_provider_credentials() -> None:
+    """Export LIFE_GRAPH_-configured provider creds to the env var names LiteLLM
+    expects, so every provider in the fallback chain authenticates.
+
+    Per-provider only — never forward one provider's credentials to another's
+    attempt. Idempotent: only sets a var when settings has a value AND the env
+    var isn't already set, so repeated construction (e.g. via the `lru_cache`d
+    `get_resilient_llm()`) is harmless and an operator's own env wins.
+
+    Gemini is intentionally left untouched: it already resolves via ambient
+    `GEMINI_API_KEY` pre-branch (extraction called it with no explicit key), so
+    only OpenRouter — previously passed explicitly by `LMStudioClient._cloud_chat`
+    — needs bridging now that synthesis routes through this wrapper.
+    """
+    if settings.openrouter_api_key and not os.environ.get("OPENROUTER_API_KEY"):
+        os.environ["OPENROUTER_API_KEY"] = settings.openrouter_api_key
+    if settings.openrouter_url and not os.environ.get("OPENROUTER_API_BASE"):
+        os.environ["OPENROUTER_API_BASE"] = settings.openrouter_url
 
 
 def _classify(exc: Exception) -> str:
@@ -53,6 +74,7 @@ class ResilientLLM:
     """Ordered failover wrapper around `litellm.acompletion` with health-aware skipping."""
 
     def __init__(self, health: LLMHealth | None = None) -> None:
+        _bridge_provider_credentials()
         self._health = health or LLMHealth()
 
     def _chain(self, model: str | None, tier: str) -> list[str]:
