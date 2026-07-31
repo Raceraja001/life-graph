@@ -711,9 +711,9 @@ async def bulk_import(body: BulkImportRequest):
 
             pool = await create_pool(parse_redis_settings())
             job = await pool.enqueue_job(
-                "generate_bulk_embeddings",
-                tenant_id,
+                "life_graph.workers.embeddings.generate_embeddings_batch",
                 [str(mid) for mid in memory_ids],
+                tenant_id,
             )
             embedding_job_id = job.job_id
             await pool.close()
@@ -848,9 +848,11 @@ async def enqueue_consolidation(tenant_id: str | None = None):
 
         pool = await create_pool(parse_redis_settings())
         if tenant_id:
-            job = await pool.enqueue_job("run_tenant_consolidation", tenant_id)
+            job = await pool.enqueue_job(
+                "life_graph.workers.tasks.run_tenant_consolidation", tenant_id
+            )
         else:
-            job = await pool.enqueue_job("run_all_consolidations")
+            job = await pool.enqueue_job("life_graph.workers.tasks.run_all_consolidations")
         await pool.close()
         return success_response(data={"job_id": job.job_id, "status": "enqueued"})
     except Exception:

@@ -144,7 +144,7 @@ async def run_all_consolidations(ctx: dict) -> dict:
 
         pool = await create_pool(parse_redis_settings())
         for tid in tenant_ids:
-            await pool.enqueue_job("run_tenant_consolidation", tid)
+            await pool.enqueue_job("life_graph.workers.tasks.run_tenant_consolidation", tid)
         await pool.close()
     else:
         # Fallback: run sequentially
