@@ -470,3 +470,157 @@ class TestToolPermissions:
         persona = {"allowed_tools": None}
         tools = service.resolve_tools(persona, "default")
         assert tools == []
+
+
+# ── seed_builtins() Idempotency ─────────────────────────────
+
+
+class TestSeedBuiltinsIdempotency:
+    """seed_builtins() must backfill missing personas, not just skip entirely."""
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_seed_backfills_new_persona_for_already_seeded_tenant(
+        self, client: AsyncClient,
+    ):
+        from unittest.mock import patch
+
+        from life_graph.api.dependencies import get_persona_service
+        from life_graph.kernel import personas as personas_module
+
+        svc = get_persona_service()
+        tenant = f"test_backfill_{uuid.uuid4().hex[:6]}"
+
+        # First seed: only the real built-ins.
+        first_count = await svc.seed_builtins(tenant)
+        assert first_count == len(personas_module._BUILTIN_PERSONAS)
+
+        # Simulate a new builtin having been added to the list.
+        fake_new_persona = {
+            "name": f"probe_{uuid.uuid4().hex[:6]}",
+            "display_name": "Probe",
+            "icon": "🔍",
+            "description": "Test-only persona for backfill verification.",
+            "system_prompt": "You are a probe.",
+            "intent_tags": ["probe"],
+            "temperature": 0.5,
+            "allowed_tools": None,
+        }
+        with patch.object(
+            personas_module,
+            "_BUILTIN_PERSONAS",
+            personas_module._BUILTIN_PERSONAS + [fake_new_persona],
+        ):
+            second_count = await svc.seed_builtins(tenant)
+
+        assert second_count == 1  # only the new one was inserted
+        probe = await svc.get_by_name(tenant, fake_new_persona["name"])
+        assert probe is not None
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_concurrent_seed_calls_do_not_lose_personas(
+        self, client: AsyncClient,
+    ):
+        """Two overlapping seed_builtins() calls for the same tenant
+        (e.g. two instances starting up at once) race on the unique
+        (tenant_id, name) index. A duplicate hit for one persona must
+        only discard that one persona's insert — not roll back every
+        other persona already flushed earlier in the same call's
+        transaction.
+        """
+        import asyncio
+
+        from life_graph.api.dependencies import get_persona_service
+        from life_graph.kernel import personas as personas_module
+
+        svc = get_persona_service()
+        tenant = f"test_concurrent_seed_{uuid.uuid4().hex[:6]}"
+
+        await asyncio.gather(
+            svc.seed_builtins(tenant),
+            svc.seed_builtins(tenant),
+        )
+
+        personas, total = await svc.list_all(tenant)
+        seeded_names = {p["name"] for p in personas}
+        expected_names = {defn["name"] for defn in personas_module._BUILTIN_PERSONAS}
+
+        assert expected_names <= seeded_names, (
+            f"missing personas after concurrent seed: {expected_names - seeded_names}"
+        )
+        # No duplicate rows for any name either.
+        assert total == len(personas_module._BUILTIN_PERSONAS)
+
+
+# ── The five new personal-roles personas ────────────────────
+
+
+class TestNewPersonalRolesPersonas:
+    """The five new personas from docs/specs/personal-roles.md."""
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_seeding_creates_all_five_new_personas(
+        self, client: AsyncClient,
+    ):
+        from life_graph.api.dependencies import get_persona_service
+
+        svc = get_persona_service()
+        tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        for name in ("tutor", "scout", "admin", "swe-lead", "jarvis"):
+            persona = await svc.get_by_name(tenant, name)
+            assert persona is not None, f"{name} was not seeded"
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_scout_and_admin_have_no_action_tools(
+        self, client: AsyncClient,
+    ):
+        from life_graph.api.dependencies import get_persona_service
+
+        svc = get_persona_service()
+        tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        forbidden = {"delegate_to_persona", "terminal", "git", "run_command"}
+        for name in ("scout", "admin"):
+            persona = await svc.get_by_name(tenant, name)
+            assert persona is not None
+            allowed = set(persona["allowed_tools"] or [])
+            assert not (allowed & forbidden), (
+                f"{name} has a forbidden tool: {allowed & forbidden}"
+            )
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_swe_lead_and_jarvis_can_delegate(
+        self, client: AsyncClient,
+    ):
+        from life_graph.api.dependencies import get_persona_service
+
+        svc = get_persona_service()
+        tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        for name in ("swe-lead", "jarvis"):
+            persona = await svc.get_by_name(tenant, name)
+            assert persona is not None
+            assert "delegate_to_persona" in (persona["allowed_tools"] or [])
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_swe_lead_has_verifier_chain(
+        self, client: AsyncClient,
+    ):
+        from life_graph.api.dependencies import get_persona_service
+
+        svc = get_persona_service()
+        tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        persona = await svc.get_by_name(tenant, "swe-lead")
+        assert persona is not None
+        assert persona["verifier_chain"] == ["tests_pass", "diff_within_scope"]

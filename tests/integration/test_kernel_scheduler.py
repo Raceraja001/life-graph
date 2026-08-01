@@ -13,6 +13,7 @@ cron validation (unit tests, no DB needed).
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
@@ -413,3 +414,44 @@ class TestDeleteSchedule:
         assert del_resp.status_code in (200, 500)
         data = del_resp.json()["data"]
         assert data["message"] == "Schedule removed"
+
+
+# ── Ambient Role Scheduling (Story 4) ────────────────────────
+
+
+class TestAmbientRoleScheduling:
+    """Story 4: scout/admin can be scheduled via the existing SchedulerService."""
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_scheduled_job_fires_scout_task(self, client: AsyncClient):
+        from life_graph.api.dependencies import (
+            get_persona_service,
+            get_process_manager,
+            get_scheduler_service,
+        )
+
+        tenant = f"test_ambient_{uuid.uuid4().hex[:6]}"
+        await get_persona_service().seed_builtins(tenant)
+
+        scheduler = get_scheduler_service()
+        job = await scheduler.create(
+            tenant,
+            {
+                "name": "scout-daily-digest",
+                "cron_expression": "0 8 * * *",
+                "agent_name": "scout",
+                "input": {
+                    "message": (
+                        "Review your tracked topics and surface anything new."
+                    ),
+                },
+            },
+        )
+
+        fire_result = await scheduler.fire_job(tenant, job["id"])
+        assert fire_result is not None
+
+        pm = get_process_manager()
+        tasks, _total = await pm.list_tasks(tenant, agent_name="scout")
+        assert len(tasks) >= 1

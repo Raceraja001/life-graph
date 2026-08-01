@@ -80,6 +80,13 @@ class AgentOrchestrator:
         # Resolve tools from registry if not provided.
         resolved_tools = tools if tools is not None else registry.get_tools()
         has_tools = bool(resolved_tools)
+        # The exact set of tool names advertised to the LLM this run —
+        # also the enforcement boundary at execute time (see below), so a
+        # persona's allowed_tools filtering can't be bypassed by a model
+        # emitting a tool_call for a tool it was never shown.
+        allowed_tool_names = {
+            t["function"]["name"] for t in resolved_tools
+        }
 
         # Build working message list.
         working_messages: list[dict[str, Any]] = []
@@ -227,15 +234,34 @@ class AgentOrchestrator:
                         "status": "running",
                     })
 
-                    # Execute the tool.
-                    try:
-                        result = await registry.execute(
-                            tool_name, tool_args
+                    # Execute the tool — but only if it's within the set
+                    # advertised for this run. This is the actual
+                    # enforcement point: filtering what's shown to the
+                    # model (above) is advisory only until execution is
+                    # gated the same way, otherwise a persona could still
+                    # invoke a disallowed tool (e.g. delegate_to_persona)
+                    # if the model emits it, such as via prompt injection.
+                    if tool_name not in allowed_tool_names:
+                        logger.warning(
+                            "Blocked disallowed tool call: %s is not in"
+                            " the allowed tool set for this run",
+                            tool_name,
                         )
-                    except KeyError:
                         result = json.dumps({
-                            "error": f"Unknown tool: {tool_name}",
+                            "error": (
+                                f"tool '{tool_name}' is not permitted for"
+                                " this persona"
+                            ),
                         })
+                    else:
+                        try:
+                            result = await registry.execute(
+                                tool_name, tool_args
+                            )
+                        except KeyError:
+                            result = json.dumps({
+                                "error": f"Unknown tool: {tool_name}",
+                            })
 
                     # Signal tool execution result.
                     yield _sse({
