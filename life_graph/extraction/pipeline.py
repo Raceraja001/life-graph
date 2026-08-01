@@ -15,14 +15,12 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from life_graph.config import settings
 from life_graph.extraction.llm import LLMExtractor
 from life_graph.extraction.nlp import SpacyExtractor
 from life_graph.extraction.rules import ExtractedFact, RuleBasedExtractor
 
 logger = logging.getLogger(__name__)
-
-_LLM_CONFIDENCE_THRESHOLD: float = 0.5
-_MIN_WORDS_FOR_LLM: int = 20
 
 
 @dataclass
@@ -76,17 +74,25 @@ class ExtractionPipeline:
         spacy_extractor: SpacyExtractor | None = None,
         llm_extractor: LLMExtractor | None = None,
         *,
-        confidence_threshold: float = _LLM_CONFIDENCE_THRESHOLD,
-        min_words_for_llm: int = _MIN_WORDS_FOR_LLM,
+        confidence_threshold: float | None = None,
+        min_words_for_llm: int | None = None,
     ) -> None:
         self._rules = rules_extractor or RuleBasedExtractor()
         self._spacy = spacy_extractor or SpacyExtractor()
         self._llm = llm_extractor or LLMExtractor()
-        self._confidence_threshold = confidence_threshold
-        self._min_words_for_llm = min_words_for_llm
+        self._confidence_threshold = (
+            confidence_threshold
+            if confidence_threshold is not None
+            else settings.extraction_llm_confidence_threshold
+        )
+        self._min_words_for_llm = (
+            min_words_for_llm
+            if min_words_for_llm is not None
+            else settings.extraction_llm_min_words
+        )
         self.stats = PipelineStats()
 
-    async def extract(self, text: str) -> ExtractionResult:
+    async def extract(self, text: str, *, capture: bool = False) -> ExtractionResult:
         """Run the full extraction pipeline on *text*.
 
         Steps:
@@ -99,6 +105,11 @@ class ExtractionPipeline:
 
         Args:
             text: Raw input text to extract facts from.
+            capture: When True and ``settings.capture_llm_clean`` is enabled,
+                the LLM is tried FIRST as the primary extractor (clean,
+                single-fact output) — rules/nlp only run as a fallback when
+                the LLM path returns no facts or raises. Non-capture calls
+                are unaffected and always run the tier1/tier2/gate pipeline.
 
         Returns:
             ExtractionResult with deduplicated facts and tier counts.
@@ -106,6 +117,29 @@ class ExtractionPipeline:
         text = text.strip()
         if not text:
             return ExtractionResult()
+
+        if capture and settings.capture_llm_clean:
+            try:
+                llm_facts = await self._llm.extract(text)
+            except Exception:
+                logger.warning(
+                    "LLM capture extraction failed; falling back to rules/nlp",
+                    exc_info=True,
+                )
+                llm_facts = []
+            if llm_facts:
+                merged = _deduplicate(llm_facts)
+                merged = _drop_low_confidence(merged, settings.extraction_min_confidence)
+                merged.sort(key=lambda f: f.confidence, reverse=True)
+                result = ExtractionResult(
+                    facts=merged,
+                    tier1_count=0,
+                    tier2_count=0,
+                    tier3_count=len(llm_facts),
+                    llm_invoked=True,
+                )
+                self._update_stats(result)
+                return result
 
         # Tier 1 — regex
         tier1_facts = self._rules.extract(text)
@@ -136,6 +170,8 @@ class ExtractionPipeline:
             logger.debug("Tier 3 extracted %d facts", len(tier3_facts))
             merged = _deduplicate(merged + tier3_facts)
 
+        merged = _drop_low_confidence(merged, settings.extraction_min_confidence)
+
         # Sort by confidence descending
         merged.sort(key=lambda f: f.confidence, reverse=True)
 
@@ -159,7 +195,7 @@ class ExtractionPipeline:
         self.stats.total_extractions += len(result.facts)
         if result.llm_invoked:
             self.stats.llm_calls += 1
-            self.stats.total_cost_usd = self._llm.total_cost_usd
+            self.stats.total_cost_usd = getattr(self._llm, "total_cost_usd", 0.0)
 
     def get_stats(self) -> dict[str, Any]:
         """Return cumulative pipeline statistics."""
@@ -191,3 +227,13 @@ def _deduplicate(facts: list[ExtractedFact]) -> list[ExtractedFact]:
 def _normalise_key(content: str) -> str:
     """Create a stable dedup key from content."""
     return content.strip().lower()
+
+
+def _drop_low_confidence(facts: list[ExtractedFact], floor: float) -> list[ExtractedFact]:
+    """Drop facts whose confidence is below *floor*.
+
+    Applied as the last step before every ``ExtractionResult`` is returned,
+    so low-signal facts never reach storage regardless of which tier(s)
+    produced them.
+    """
+    return [f for f in facts if f.confidence >= floor]

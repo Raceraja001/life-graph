@@ -346,7 +346,7 @@ export default function MobileChat() {
         </p>
       )}
 
-      {selectedMem && <MemorySheet mem={selectedMem} onClose={() => setSelectedMem(null)} resolve={resolveMemory} />}
+      {selectedMem && <MemorySheet key={selectedMem.id} mem={selectedMem} onClose={() => setSelectedMem(null)} resolve={resolveMemory} />}
     </div>
   );
 }

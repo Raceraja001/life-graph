@@ -72,6 +72,7 @@ class MemoryManager:
         source: str | None = None,
         skip_dedup: bool = False,
         trust_tier: str | None = None,
+        capture: bool = False,
     ) -> list[Memory]:
         """Full ingestion pipeline for new text.
 
@@ -88,6 +89,10 @@ class MemoryManager:
             text: Raw input text to process.
             context: Optional context dict (project, module, etc.).
             source: Source identifier (e.g. 'chat', 'git', 'manual').
+            capture: True when *text* is a genuine user capture (voice,
+                image, document, or manually-typed memory). Passed through
+                to the extractor so the LLM can be used as the primary
+                extractor instead of the rules/nlp tiers.
 
         Returns:
             List of stored Memory ORM objects.
@@ -96,7 +101,7 @@ class MemoryManager:
             return []
 
         # Step 1: Extract facts
-        extraction_result = await self._extractor.extract(text)
+        extraction_result = await self._extractor.extract(text, capture=capture)
         facts = extraction_result.facts
 
         if not facts:

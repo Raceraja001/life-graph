@@ -859,3 +859,30 @@ async def enqueue_consolidation(tenant_id: str | None = None):
         scheduler = get_job_scheduler()
         report = await scheduler.run_consolidation()
         return success_response(data={"status": "completed_sync", "gathered": report.gathered})
+
+
+@router.post(
+    "/jobs/cleanup-memories",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Enqueue one-time memory cleanup job",
+)
+async def enqueue_cleanup_memories(tenant_id: str | None = None):
+    """Enqueue the fragment/duplicate cleanup job via ARQ (async, non-blocking).
+
+    Queues merge approvals for same-utterance fragments/duplicates (near-dup
+    similarity band or overlapping ``properties.entities``) — never
+    auto-merges or auto-deletes; resolution goes through the existing
+    approvals queue. Idempotent, so it's safe to trigger repeatedly.
+    """
+    from arq import create_pool
+    from life_graph.workers.settings import parse_redis_settings
+
+    pool = await create_pool(parse_redis_settings())
+    # Full dotted names — must match WorkerSettings.functions registration, or
+    # ARQ logs "<name> not found" and the job silently never runs.
+    if tenant_id:
+        job = await pool.enqueue_job("life_graph.workers.cleanup.cleanup_memories_tenant", tenant_id)
+    else:
+        job = await pool.enqueue_job("life_graph.workers.cleanup.cleanup_memories_all")
+    await pool.close()
+    return success_response(data={"job_id": job.job_id, "status": "enqueued"})

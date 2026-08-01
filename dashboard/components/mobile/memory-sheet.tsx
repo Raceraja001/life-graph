@@ -1,5 +1,6 @@
 "use client";
-import type { MemoryVM, useResolveMemory } from "@/lib/mobile-api";
+import { useState } from "react";
+import { useUpdateMemory, type MemoryVM, type useResolveMemory } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
 
 export function MemorySheet({
@@ -16,6 +17,29 @@ export function MemorySheet({
     mem.created ? `First seen ${mem.created}` : null,
     `Importance ${impLabel(mem.imp)} · decays over time`,
   ].filter(Boolean) as string[];
+
+  const [editing, setEditing] = useState(false);
+  const [content, setContent] = useState(mem.content);
+  const [tagsText, setTagsText] = useState(mem.tags.join(", "));
+  const currentTags = tagsText.split(",").map((t) => t.trim()).filter(Boolean);
+  const update = useUpdateMemory();
+
+  const startEdit = () => {
+    setContent(mem.content);
+    setTagsText(mem.tags.join(", "));
+    setEditing(true);
+  };
+  const cancelEdit = () => {
+    setContent(mem.content);
+    setTagsText(mem.tags.join(", "));
+    setEditing(false);
+  };
+  const saveEdit = () => {
+    update.mutate(
+      { id: mem.id, content, tags: currentTags },
+      { onSuccess: () => setEditing(false) }
+    );
+  };
 
   return (
     <>
@@ -57,7 +81,7 @@ export function MemorySheet({
               pending
             </span>
           )}
-          {mem.tags.map((t) => (
+          {currentTags.map((t) => (
             <span
               key={t}
               style={{
@@ -88,7 +112,110 @@ export function MemorySheet({
           </span>
         </div>
 
-        <p style={{ margin: "0 0 16px", fontSize: "var(--text-md)", lineHeight: 1.55 }}>{mem.content}</p>
+        {editing ? (
+          <div style={{ marginBottom: "16px" }}>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={4}
+              autoFocus
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-md)",
+                background: "var(--surface-2)",
+                color: "var(--text)",
+                fontFamily: "inherit",
+                fontSize: "var(--text-md)",
+                lineHeight: 1.55,
+                padding: "10px 12px",
+                resize: "vertical",
+                marginBottom: "8px",
+              }}
+            />
+            <input
+              value={tagsText}
+              onChange={(e) => setTagsText(e.target.value)}
+              placeholder="tags, comma, separated"
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-md)",
+                background: "var(--surface-2)",
+                color: "var(--text)",
+                fontFamily: "inherit",
+                fontSize: "var(--text-sm)",
+                padding: "8px 12px",
+                marginBottom: "10px",
+              }}
+            />
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                onClick={saveEdit}
+                disabled={update.isPending || !content.trim()}
+                style={{
+                  flex: 1,
+                  background: "var(--accent)",
+                  color: "var(--accent-fg)",
+                  border: "none",
+                  borderRadius: "var(--radius-md)",
+                  padding: "8px 0",
+                  fontSize: "var(--text-sm)",
+                  fontWeight: "var(--fw-bold)",
+                  cursor: update.isPending ? "default" : "pointer",
+                  opacity: update.isPending || !content.trim() ? 0.6 : 1,
+                }}
+              >
+                {update.isPending ? "Saving…" : "Save"}
+              </button>
+              <button
+                onClick={cancelEdit}
+                disabled={update.isPending}
+                style={{
+                  flex: 1,
+                  background: "var(--surface-2)",
+                  color: "var(--text-muted)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-md)",
+                  padding: "8px 0",
+                  fontSize: "var(--text-sm)",
+                  fontWeight: "var(--fw-bold)",
+                  cursor: update.isPending ? "default" : "pointer",
+                  opacity: update.isPending ? 0.6 : 1,
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+            {update.isError && (
+              <p style={{ margin: "8px 0 0", fontSize: "var(--text-xs)", color: "var(--danger, #d33)" }}>
+                Couldn’t save — try again.
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            <p style={{ margin: "0 0 8px", fontSize: "var(--text-md)", lineHeight: 1.55 }}>{content}</p>
+            <button
+              onClick={startEdit}
+              style={{
+                display: "block",
+                background: "none",
+                border: "none",
+                padding: 0,
+                marginBottom: "16px",
+                fontSize: "var(--text-sm)",
+                fontWeight: "var(--fw-semibold)",
+                color: "var(--accent-text)",
+                cursor: "pointer",
+              }}
+            >
+              ✎ Edit
+            </button>
+          </>
+        )}
 
         {mem.status === "pending" && (
           <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>

@@ -50,6 +50,8 @@ class WorkerSettings:
         "life_graph.workers.tasks.run_all_consolidations",
         "life_graph.workers.tasks.run_tenant_merge_suggestions",
         "life_graph.workers.tasks.run_all_merge_suggestions",
+        "life_graph.workers.cleanup.cleanup_memories_tenant",
+        "life_graph.workers.cleanup.cleanup_memories_all",
         "life_graph.workers.decay.run_decay_sweep",
         "life_graph.workers.decay.run_all_decay_sweeps",
         "life_graph.workers.embeddings.generate_embeddings_batch",

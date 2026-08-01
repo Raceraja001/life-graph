@@ -67,7 +67,7 @@ async def ingest_or_fallback(manager: "MemoryManager", text: str, source: str) -
     when the extraction pipeline finds no facts, store the original
     text as-is rather than lose the user's input.
     """
-    memories = await manager.ingest(text, source=source)
+    memories = await manager.ingest(text, source=source, capture=True)
     if not memories:
         embedding = await manager.generate_embedding(text)
         row = await manager.store.store(

@@ -360,7 +360,7 @@ async def test_ingest_or_fallback_returns_ingest_result_when_nonempty():
     result = await ingest_or_fallback(manager, "some text", "voice")
 
     assert len(result) == 2
-    manager.ingest.assert_awaited_once_with("some text", source="voice")
+    manager.ingest.assert_awaited_once_with("some text", source="voice", capture=True)
     manager.store.store.assert_not_awaited()
 
 

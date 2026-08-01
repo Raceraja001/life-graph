@@ -64,6 +64,7 @@ async def create_memory(
         text=body.content,
         context=body.properties,
         source=body.source_type,
+        capture=True,
     )
 
     if not memories:

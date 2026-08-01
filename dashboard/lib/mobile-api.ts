@@ -169,6 +169,18 @@ export function useResolveMemory() {
   });
 }
 
+export function useUpdateMemory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, content, tags }: { id: string; content?: string; tags?: string[] }) =>
+      api.memories.update(id, { content, tags }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["memories"] });
+      qc.invalidateQueries({ queryKey: ["memory-search"] });
+    },
+  });
+}
+
 // ── Conversations (ask-your-memories chat) ────────────────────
 export function useConversations() {
   return useQuery({

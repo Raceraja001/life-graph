@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     merge_review_low: float = 0.85
     merge_suggest_scan_limit: int = 200  # max active memories scanned per tenant per run
 
+    # ── Capture Quality ──────────────────────────────────────
+    capture_llm_clean: bool = True  # LLM as primary extractor on the capture path
+    extraction_language_guard: bool = True  # skip English NER on non-Latin text
+    extraction_tag_only_entities: bool = True  # entities/tech become tags, not memories
+    extraction_min_confidence: float = 0.45  # drop facts below this before storing
+    extraction_llm_min_words: int = 20  # legacy 3-tier LLM gate (non-capture callers)
+    extraction_llm_confidence_threshold: float = 0.5  # legacy 3-tier LLM gate
+
     # ── Cold Start ─────────────────────────────────────
     cold_start_min_memories: int = 50
 

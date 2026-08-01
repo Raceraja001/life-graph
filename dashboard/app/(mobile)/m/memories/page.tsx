@@ -164,6 +164,7 @@ export default function MobileMemories() {
 
       {selected && (
         <MemorySheet
+          key={selected.id}
           mem={selected}
           onClose={() => setSelected(null)}
           resolve={resolve}
