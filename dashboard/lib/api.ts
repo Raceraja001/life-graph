@@ -75,6 +75,7 @@ export const api = {
     list: () => listRequest<any>("/conversations"),
     get: (id: string) => GET<any>(`/conversations/${id}`),
     ask: (id: string, content: string) => POST<any>(`/conversations/${id}/messages`, { content }),
+    distill: (id: string) => POST<any>(`/conversations/${id}/distill`, {}),
     remove: (id: string) => request<any>("DELETE", `/conversations/${id}`),
   },
   /* eslint-enable @typescript-eslint/no-explicit-any */

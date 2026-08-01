@@ -67,6 +67,8 @@ class WorkerSettings:
         "life_graph.workers.tasks.run_daily_brief",
         "life_graph.workers.tasks.failure_pattern_mining",
         "life_graph.workers.ingest_capture.ingest_capture_text",
+        "life_graph.workers.distill.distill_conversation",
+        "life_graph.workers.distill.distill_idle_conversations",
     ]
 
     cron_jobs = [
@@ -146,6 +148,12 @@ class WorkerSettings:
             day=1,
             hour=2,
             minute=30,
+            run_at_startup=False,
+        ),
+        # ── Chat distillation: idle sweep every 15 min ──
+        cron(
+            "life_graph.workers.distill.distill_idle_conversations",
+            minute={0, 15, 30, 45},
             run_at_startup=False,
         ),
     ]

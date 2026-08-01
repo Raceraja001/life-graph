@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,6 +13,8 @@ from life_graph.api.responses import success_response
 from life_graph.models.schemas import MemoryResponse
 from life_graph.services.conversation import ConversationNotFound, ConversationService
 from life_graph.storage.postgres import PostgresMemoryStore
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -112,3 +115,46 @@ async def delete_conversation(
 ):
     deleted = await svc.delete(conversation_id)
     return success_response(data={"deleted": deleted})
+
+
+@router.post("/{conversation_id}/distill")
+async def distill_conversation_endpoint(
+    conversation_id: UUID,
+    svc: ConversationService = Depends(get_conversation_service),
+):
+    """Distill this conversation's new facts into pending memories + archive.
+
+    Enqueues a background job (results arrive via the CONVERSATION_DISTILLED
+    event); falls back to running inline if the ARQ pool is unavailable so a
+    manual tap still works.
+    """
+    from life_graph.core.tenant import get_current_tenant_id
+    from life_graph.workers.distill import DISTILL_JOB_NAME
+
+    thread = await svc.get_thread(conversation_id)
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    tenant_id = get_current_tenant_id()
+    try:
+        from arq import create_pool
+
+        from life_graph.workers.settings import parse_redis_settings
+
+        pool = await create_pool(parse_redis_settings())
+        try:
+            await pool.enqueue_job(DISTILL_JOB_NAME, str(conversation_id), tenant_id)
+        finally:
+            await pool.close()
+    except Exception as e:
+        logger.warning(
+            "ARQ enqueue failed for distill of conversation %s: %s — running inline",
+            conversation_id,
+            e,
+        )
+        # Redis/pool unavailable — run inline so a manual tap still works.
+        from life_graph.api.dependencies import get_distillation_service
+
+        await get_distillation_service().distill(conversation_id)
+
+    return success_response({"status": "distilling"})
