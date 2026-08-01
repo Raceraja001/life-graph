@@ -20,6 +20,46 @@ export function LoadingCard({ label = "Loading…" }: { label?: string }) {
   );
 }
 
+export function MemoryCardSkeleton() {
+  const bar = (w: string, h = 12): CSSProperties => ({
+    width: w,
+    height: h,
+    borderRadius: "var(--radius-sm, 6px)",
+    background: "var(--surface-3)",
+  });
+  return (
+    <div
+      className="animate-pulse"
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-lg)",
+        padding: "12px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+      }}
+    >
+      <div style={bar("85%")} />
+      <div style={bar("60%")} />
+      <div style={{ display: "flex", gap: "6px", marginTop: "2px" }}>
+        <div style={bar("52px", 19)} />
+        <div style={bar("44px", 19)} />
+      </div>
+    </div>
+  );
+}
+
+export function SkeletonList({ count = 4 }: { count?: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {Array.from({ length: count }, (_, i) => (
+        <MemoryCardSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
 export function EmptyCard({ children }: { children: React.ReactNode }) {
   return <div style={{ ...stateCard, color: "var(--text-muted)" }}>{children}</div>;
 }

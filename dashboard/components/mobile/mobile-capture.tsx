@@ -1,11 +1,12 @@
 "use client";
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Mic, Square, Camera, Paperclip, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCreateMemory } from "@/lib/hooks";
 import { useMobileState } from "./mobile-state";
 import { useRecorder } from "./use-recorder";
+import { onCaptureComplete, type CaptureSource } from "@/lib/capture-events";
 
 const KINDS: Array<[string, string]> = [
   ["auto", "Auto"],
@@ -36,8 +37,16 @@ const chipOn: CSSProperties = {
 type Result =
   | { kind: "captured"; routedTo: string }
   | { kind: "queued" }
+  | { kind: "processing"; source: CaptureSource }
+  | { kind: "done-async"; source: CaptureSource; count: number }
   | { kind: "error"; message?: string }
   | null;
+
+const SOURCE_LABEL: Record<CaptureSource, string> = {
+  voice: "Voice note",
+  image: "Photo",
+  document: "Document",
+};
 
 function routedTarget(res: any, fallback: string): string {
   return res?.route?.target || res?.target || res?.kind || res?.classification || fallback;
@@ -51,15 +60,22 @@ export function MobileCapture() {
   const [kind, setKind] = useState("auto");
   const [result, setResult] = useState<Result>(null);
 
+  useEffect(() => {
+    return onCaptureComplete(({ source, memoriesCreated }) => {
+      setResult({ kind: "done-async", source, count: memoriesCreated });
+    });
+  }, []);
+
   const recorder = useRecorder();
   const [busy, setBusy] = useState<null | "voice" | "file">(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const MAX_FILE_BYTES = 20 * 1024 * 1024; // stay far below Cloudflare's 100MB
 
-  const afterIngest = (label: string) => {
-    setResult({ kind: "captured", routedTo: label });
-    qc.invalidateQueries({ queryKey: ["memories"] });
+  const afterIngest = (source: CaptureSource) => {
+    setResult({ kind: "processing", source });
+    // The memories list refreshes live on the completion WS event; still
+    // nudge tasks in case the capture routed to one.
     qc.invalidateQueries({ queryKey: ["tasks"] });
   };
 
@@ -74,7 +90,7 @@ export function MobileCapture() {
       setBusy("voice");
       try {
         await api.ingest.voice(blob, `note.${recorder.mimeExt}`);
-        afterIngest("voice memory");
+        afterIngest("voice");
       } catch {
         setResult({ kind: "error", message: "Couldn't transcribe — try again" });
       } finally {
@@ -98,7 +114,7 @@ export function MobileCapture() {
         afterIngest("document");
       } else {
         await api.ingest.image(f);
-        afterIngest("photo memory");
+        afterIngest("image");
       }
     } catch {
       setResult({ kind: "error", message: "Upload failed — try again" });
@@ -123,8 +139,6 @@ export function MobileCapture() {
     try {
       const res = await route.mutateAsync(content);
       setResult({ kind: "captured", routedTo: routedTarget(res, fallbackKind) });
-      qc.invalidateQueries({ queryKey: ["memories"] });
-      qc.invalidateQueries({ queryKey: ["tasks"] });
     } catch {
       setResult({ kind: "error" });
       setText(content); // let the user retry without retyping
@@ -272,6 +286,16 @@ export function MobileCapture() {
       {result?.kind === "queued" && (
         <Toast bg="var(--warning-soft)" fg="var(--warning)">
           Saved offline — will sync when you reconnect
+        </Toast>
+      )}
+      {result?.kind === "processing" && (
+        <Toast bg="var(--surface-2)" fg="var(--text-muted)">
+          {SOURCE_LABEL[result.source]} uploaded — processing…
+        </Toast>
+      )}
+      {result?.kind === "done-async" && (
+        <Toast bg="var(--success-soft)" fg="var(--success)">
+          {SOURCE_LABEL[result.source]} → {result.count} {result.count === 1 ? "memory" : "memories"}
         </Toast>
       )}
       {result?.kind === "error" && (

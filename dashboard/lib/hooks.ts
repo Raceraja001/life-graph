@@ -42,7 +42,47 @@ export function useRoute() {
   return useMutation({ mutationFn: (message: string) => api.kernel.route(message) });
 }
 export function useCreateMemory() {
-  return useMutation({ mutationFn: (content: string) => api.memories.create(content) });
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (content: string) => api.memories.create(content),
+    onMutate: async (content: string) => {
+      // Instant optimistic card: prepend to every cached memories list.
+      await qc.cancelQueries({ queryKey: ["memories"] });
+      const snapshots = qc.getQueriesData<unknown>({ queryKey: ["memories"] });
+      const optimistic = {
+        id: "optimistic-" + Date.now(),
+        content,
+        tags: [],
+        status: "pending",
+        importance: 0.5,
+        source: "capture",
+        created_at: new Date().toISOString(),
+        _optimistic: true,
+      };
+      // Only touch list caches (arrays); leave single-memory objects and
+      // the pending-count number untouched.
+      qc.setQueriesData<unknown>({ queryKey: ["memories"] }, (old: unknown) =>
+        Array.isArray(old) ? [optimistic, ...old] : old
+      );
+      return { snapshots };
+    },
+    onError: (_err, _content, ctx) => {
+      // Roll every list back to its pre-mutation snapshot.
+      ctx?.snapshots?.forEach(([key, data]: [readonly unknown[], unknown]) =>
+        qc.setQueryData(key, data)
+      );
+    },
+    onSettled: () => {
+      // Belt-and-suspenders: strip any lingering optimistic ghost from every
+      // list cache (covers inactive lists that refetchOnMount:false won't refetch,
+      // and the un-guarded desktop memories page), then refetch server truth.
+      qc.setQueriesData<unknown>({ queryKey: ["memories"] }, (old: unknown) =>
+        Array.isArray(old) ? old.filter((m) => !(m as { _optimistic?: boolean })?._optimistic) : old
+      );
+      qc.invalidateQueries({ queryKey: ["memories"], refetchType: "all" });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
 }
 export function useNotifications(params?: { limit?: string }) {
   return useQuery({ queryKey: ["notifications", params], queryFn: () => api.kernel.notifications(params) });

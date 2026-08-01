@@ -16,6 +16,7 @@ export interface MemoryVM {
   meta: string; // "source · Jul 10"
   properties?: Record<string, unknown>;
   status: string; // "pending" | "active" | ...
+  _optimistic?: boolean; // true = local optimistic card, not yet persisted
 }
 
 export type TaskGroup = "inflight" | "queued" | "done";
@@ -48,6 +49,7 @@ export function mapMemory(raw: any): MemoryVM {
     meta: created ? `${source} · ${created}` : source,
     properties: raw?.properties,
     status: raw?.status ?? "active",
+    _optimistic: raw?._optimistic === true,
   };
 }
 

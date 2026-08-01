@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
+import { EmptyCard, ErrorCard, SkeletonList } from "@/components/mobile/parts";
+import { usePullToRefresh } from "@/lib/use-pull-to-refresh";
 import { MemorySheet } from "@/components/mobile/memory-sheet";
 import { useMobileMemories, useMobileMemorySearch, useResolveMemory, type MemoryVM } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
@@ -14,6 +15,10 @@ export default function MobileMemories() {
   const search = useMobileMemorySearch(query);
   const resolve = useResolveMemory();
 
+  const { refreshing, distance } = usePullToRefresh({
+    onRefresh: () => (searching ? search.refetch() : list.refetch()),
+  });
+
   const active = searching ? search : list;
   const rows = active.data ?? [];
 
@@ -26,6 +31,23 @@ export default function MobileMemories() {
 
   return (
     <>
+      {(distance > 0 || refreshing) && (
+        <div
+          role="status"
+          style={{
+            height: refreshing ? 28 : distance,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-subtle)",
+            fontSize: "var(--text-2xs)",
+            overflow: "hidden",
+            transition: refreshing ? "height 0.15s" : undefined,
+          }}
+        >
+          {refreshing ? "Refreshing…" : distance >= 64 ? "Release to refresh" : "Pull to refresh"}
+        </div>
+      )}
       <input
         type="search"
         value={query}
@@ -46,7 +68,7 @@ export default function MobileMemories() {
       />
 
       {active.isLoading ? (
-        <LoadingCard label={searching ? "Searching…" : "Loading memories…"} />
+        <SkeletonList count={5} />
       ) : active.isError ? (
         <ErrorCard>Can’t reach memories — is the backend running?</ErrorCard>
       ) : rows.length === 0 ? (
@@ -56,7 +78,7 @@ export default function MobileMemories() {
           {rows.map((m) => (
             <div key={m.id}>
               <button
-                onClick={() => setSelected(m)}
+                onClick={() => { if (!m._optimistic) setSelected(m); }}
                 style={{
                   display: "block",
                   width: "100%",
@@ -65,14 +87,15 @@ export default function MobileMemories() {
                   border: "1px solid var(--border)",
                   borderRadius: "var(--radius-lg)",
                   padding: "12px 14px",
-                  cursor: "pointer",
+                  cursor: m._optimistic ? "default" : "pointer",
+                  opacity: m._optimistic ? 0.7 : 1,
                   fontFamily: "inherit",
                   color: "var(--text)",
                 }}
               >
                 <div style={{ fontSize: "var(--ui-text)", lineHeight: 1.5 }}>{m.content}</div>
                 <div style={{ display: "flex", gap: "6px", marginTop: "7px", alignItems: "center", flexWrap: "wrap" }}>
-                  {m.status === "pending" && (
+                  {(m._optimistic || m.status === "pending") && (
                     <span
                       style={{
                         background: "var(--warning-soft, #fef3c7)",
@@ -83,7 +106,7 @@ export default function MobileMemories() {
                         fontWeight: 600,
                       }}
                     >
-                      pending
+                      {m._optimistic ? "saving…" : "pending"}
                     </span>
                   )}
                   {m.tags.map((t) => (
@@ -117,7 +140,7 @@ export default function MobileMemories() {
                   </span>
                 </div>
               </button>
-              {m.status === "pending" && (
+              {m.status === "pending" && !m._optimistic && (
                 <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
                   <button
                     onClick={() => resolve.mutate({ id: m.id, action: "approve" })}

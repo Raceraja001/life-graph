@@ -3,11 +3,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Inbox } from "lucide-react";
 import { MobileCapture } from "@/components/mobile/mobile-capture";
-import { SectionEyebrow, TaskRow, LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
+import { SectionEyebrow, TaskRow, EmptyCard, ErrorCard, SkeletonList } from "@/components/mobile/parts";
 import { useApprovals, useMobileMemories, useMobileTasks } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
 import { api } from "@/lib/api";
 import { enablePush, disablePush, getPushState, type PushState } from "@/lib/push";
+import { usePullToRefresh } from "@/lib/use-pull-to-refresh";
 
 // Small pill/banner button styling shared by the two non-idle states —
 // mirrors the approvals banner's card look (surface + border + radius-lg).
@@ -176,11 +177,34 @@ export default function MobileHome() {
   const tasks = useMobileTasks();
   const memories = useMobileMemories(20);
 
+  const { refreshing, distance } = usePullToRefresh({
+    onRefresh: async () => {
+      await Promise.all([tasks.refetch(), memories.refetch()]);
+    },
+  });
+
   const todayTasks = (tasks.data ?? []).filter((t) => t.group === "inflight");
   const recent = (memories.data ?? []).slice(0, 3);
 
   return (
     <>
+      {(distance > 0 || refreshing) && (
+        <div
+          role="status"
+          style={{
+            height: refreshing ? 28 : distance,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--text-subtle)",
+            fontSize: "var(--text-2xs)",
+            overflow: "hidden",
+            transition: refreshing ? "height 0.15s" : undefined,
+          }}
+        >
+          {refreshing ? "Refreshing…" : distance >= 64 ? "Release to refresh" : "Pull to refresh"}
+        </div>
+      )}
       <MobileCapture />
 
       <PushControl />
@@ -246,7 +270,7 @@ export default function MobileHome() {
           </Link>
         </div>
         {tasks.isLoading ? (
-          <LoadingCard label="Loading tasks…" />
+          <SkeletonList count={2} />
         ) : tasks.isError ? (
           <ErrorCard>Can’t reach the task board — is the backend running?</ErrorCard>
         ) : todayTasks.length === 0 ? (
@@ -265,7 +289,7 @@ export default function MobileHome() {
           <SectionEyebrow>Remembered today</SectionEyebrow>
         </div>
         {memories.isLoading ? (
-          <LoadingCard label="Loading memories…" />
+          <SkeletonList count={3} />
         ) : memories.isError ? (
           <ErrorCard>Can’t reach memories.</ErrorCard>
         ) : recent.length === 0 ? (

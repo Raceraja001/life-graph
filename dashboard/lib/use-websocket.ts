@@ -2,12 +2,16 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { emitDistillComplete } from "./distill-events";
+import { emitCaptureComplete, type CaptureSource } from "./capture-events";
 
 type WSStatus = "connecting" | "connected" | "disconnected";
 
 // Events that should trigger a cache refresh
 const EVENT_MAP: Record<string, string[]> = {
   "memory":       ["memories"],
+  "voice":        ["memories"],
+  "image":        ["memories"],
+  "document":     ["memories"],
   "preference":   ["preferences"],
   "task":         ["tasks"],
   "kernel:task":  ["tasks"],
@@ -65,6 +69,15 @@ export function useWebSocket() {
             conversationId: String(data?.payload?.conversation_id ?? ""),
             newFacts: Number(data?.payload?.new_facts ?? 0),
           });
+        }
+        // Capture-completion events additionally carry a memory count.
+        const captureSrc: CaptureSource | null =
+          type.startsWith("voice") ? "voice" :
+          type.startsWith("image") ? "image" :
+          type.startsWith("document") ? "document" : null;
+        if (captureSrc) {
+          const count = Number(data?.payload?.memories_created ?? 0);
+          emitCaptureComplete({ source: captureSrc, memoriesCreated: count });
         }
         // Only invalidate if we recognize the event type
         for (const [prefix, keys] of Object.entries(EVENT_MAP)) {
