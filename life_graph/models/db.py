@@ -2402,6 +2402,33 @@ class ConversationMessage(Base):
         return f"<ConversationMessage(id={self.id!s:.8}, role={self.role})>"
 
 
+class PushSubscription(Base):
+    """A browser/device Web Push subscription for a tenant."""
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
+    endpoint: Mapped[str] = mapped_column(Text, nullable=False)
+    p256dh: Mapped[str] = mapped_column(Text, nullable=False)
+    auth: Mapped[str] = mapped_column(Text, nullable=False)
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("uq_push_sub_endpoint", "endpoint", unique=True),
+        Index("ix_push_sub_tenant", "tenant_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<PushSubscription(id={self.id!s:.8}, tenant={self.tenant_id})>"
+
+
 # ── Agent Driver Models ────────────────────────────────────────────
 
 

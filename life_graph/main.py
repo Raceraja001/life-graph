@@ -173,6 +173,14 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Judgment engine not available", exc_info=True)
 
+    # Startup — wire daily brief -> Web Push delivery
+    try:
+        from life_graph.services.push_delivery import push_delivery_handler
+        push_delivery_handler.subscribe()
+        logger.info("Web push brief delivery enabled")
+    except Exception:
+        logger.warning("Push delivery handler not available", exc_info=True)
+
     # Startup — register agent drivers
     try:
         from life_graph.drivers.registry import driver_registry
@@ -360,6 +368,9 @@ v1_router.include_router(drivers_api.router)
 from life_graph.api import approvals as approvals_api
 
 v1_router.include_router(approvals_api.router)
+
+from life_graph.api import push as push_api
+v1_router.include_router(push_api.router)
 
 from life_graph.api import conversations as conversations_api
 

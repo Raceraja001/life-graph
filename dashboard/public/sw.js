@@ -4,7 +4,7 @@
 // Network-first pages mean deploys are visible immediately; the runtime
 // cache still serves the last-seen copy when offline.
 // Bump CACHE_NAME on strategy changes so old caches are purged on activate.
-const CACHE_NAME = 'lifegraph-v2';
+const CACHE_NAME = 'lifegraph-v3';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -48,4 +48,33 @@ self.addEventListener('fetch', (event) => {
   } else {
     event.respondWith(networkThenCache(request));
   }
+});
+
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  const title = data.title || "Life Graph";
+  const body = data.body || "";
+  const url = data.url || "/m";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/m";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if ("focus" in w) { w.navigate(url); return w.focus(); }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
 });
