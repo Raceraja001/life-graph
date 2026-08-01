@@ -264,7 +264,7 @@ class WebhookEventHandler:
 
             try:
                 await self._arq_pool.enqueue_job(
-                    "deliver_webhook",
+                    "life_graph.integrations.webhook.deliver_webhook",
                     str(webhook.id),
                     event_str,
                     event.payload,

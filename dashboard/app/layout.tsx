@@ -61,8 +61,26 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               if ('serviceWorker' in navigator) {
+                let refreshing = false;
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                  if (refreshing) return;
+                  refreshing = true;
+                  window.location.reload();
+                });
                 window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js');
+                  navigator.serviceWorker.register('/sw.js').then((reg) => {
+                    reg.addEventListener('updatefound', () => {
+                      const nw = reg.installing;
+                      if (nw) nw.addEventListener('statechange', () => {
+                        // new SW installed while an old one controls the page → it will
+                        // skipWaiting + claim, firing controllerchange above → reload.
+                      });
+                    });
+                    // Poll for updates when the tab regains focus.
+                    document.addEventListener('visibilitychange', () => {
+                      if (document.visibilityState === 'visible') reg.update();
+                    });
+                  });
                 });
               }
             `,
