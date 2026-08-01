@@ -16,13 +16,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-import litellm
-
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.config import settings
 from life_graph.models.db import AdvisorSession, Preference
+from life_graph.services.resilient_llm import ResilientLLMExhausted
 
 logger = logging.getLogger(__name__)
 
@@ -307,15 +306,17 @@ class MultiModelAdvisor:
             '"confidence": 0.0-1.0, "reasoning": "..."}'
         )
 
+        from life_graph.api.dependencies import get_resilient_llm
+
         t0 = time.monotonic()
         try:
             response = await asyncio.wait_for(
-                litellm.acompletion(
-                    model=model,
+                get_resilient_llm().acompletion(
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": question},
                     ],
+                    model=model,
                     api_key=self._api_key,
                     api_base=self._api_base,
                     response_format={"type": "json_object"},
@@ -323,7 +324,7 @@ class MultiModelAdvisor:
                 ),
                 timeout=self._timeout,
             )
-        except asyncio.TimeoutError:
+        except (TimeoutError, ResilientLLMExhausted):
             latency = int((time.monotonic() - t0) * 1000)
             logger.warning("Model %s timed out after %dms", model, latency)
             return ModelResponse(

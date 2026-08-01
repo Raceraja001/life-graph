@@ -198,5 +198,9 @@ export const api = {
     test: () => POST<any>("/push/test", {}),
     vapidKey: () => GET<any>("/push/vapid-key"),
   },
+  // ── Health (backend/LLM resilience status) ──────
+  health: {
+    models: () => GET<any>("/health/models"),
+  },
   /* eslint-enable @typescript-eslint/no-explicit-any */
 };

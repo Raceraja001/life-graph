@@ -314,13 +314,12 @@ class ConsolidationPipeline:
             )
 
             try:
-                import litellm
-
+                from life_graph.api.dependencies import get_resilient_llm
                 from life_graph.config import settings
 
-                response = await litellm.acompletion(
-                    model=settings.llm_model_cheap,
+                response = await get_resilient_llm().acompletion(
                     messages=[{"role": "user", "content": prompt}],
+                    model=settings.llm_model_cheap,
                     max_tokens=150,
                     temperature=0.3,
                 )

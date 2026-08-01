@@ -16,7 +16,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-import litellm
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -417,14 +416,16 @@ class ResearchEngine:
             f"Article content: {article_content[:1000]}"
         )
 
+        from life_graph.api.dependencies import get_resilient_llm
+
         try:
             response = await asyncio.wait_for(
-                litellm.acompletion(
-                    model="openrouter/openai/gpt-4o-mini",
+                get_resilient_llm().acompletion(
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
+                    model="openrouter/openai/gpt-4o-mini",
                     api_key=self._advisor._api_key,
                     api_base=self._advisor._api_base,
                     response_format={"type": "json_object"},

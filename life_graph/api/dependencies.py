@@ -47,6 +47,14 @@ def get_lm_client() -> LMStudioClient:
 
 
 @lru_cache(maxsize=1)
+def get_resilient_llm():
+    """Singleton resilient LLM wrapper (shared health record)."""
+    from life_graph.services.resilient_llm import ResilientLLM
+
+    return ResilientLLM()
+
+
+@lru_cache(maxsize=1)
 def get_extraction_pipeline() -> ExtractionPipeline:
     """Return the singleton extraction pipeline (rules → spaCy → LLM)."""
     from life_graph.config import settings

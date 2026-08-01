@@ -13,10 +13,9 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
-import litellm
-
 from life_graph.tools.registry import registry
 from life_graph.config import Settings
+from life_graph.services.resilient_llm import ResilientLLMExhausted
 
 logger = logging.getLogger(__name__)
 
@@ -111,10 +110,10 @@ class AgentOrchestrator:
             logger.debug("Agent iteration %d/%d", iteration + 1, self.MAX_ITERATIONS)
 
             try:
+                from life_graph.api.dependencies import get_resilient_llm
+
                 # Build completion kwargs.
                 completion_kwargs: dict[str, Any] = {
-                    "model": self.model,
-                    "messages": working_messages,
                     "temperature": self.temperature,
                     "max_tokens": self.max_tokens,
                     "stream": True,
@@ -123,8 +122,10 @@ class AgentOrchestrator:
                     completion_kwargs["tools"] = resolved_tools
                     completion_kwargs["tool_choice"] = "auto"
 
-                response = await litellm.acompletion(
-                    **completion_kwargs
+                response = await get_resilient_llm().acompletion(
+                    messages=working_messages,
+                    model=self.model,
+                    **completion_kwargs,
                 )
 
                 # Accumulate content and tool calls from the stream.
@@ -283,56 +284,18 @@ class AgentOrchestrator:
                 )
                 self._retry_count = 0  # reset on success
 
-            except (litellm.RateLimitError, litellm.Timeout) as exc:
-                # Retryable errors — wait and retry, then fallback model
-                retry_count = self._retry_count
-                self._retry_count = retry_count + 1
-
-                if retry_count < self.MAX_RETRIES:
-                    delay = self.RETRY_DELAY_BASE * (2 ** retry_count)
-                    logger.warning(
-                        "Retryable error (attempt %d/%d): %s. Retrying in %.1fs",
-                        retry_count + 1, self.MAX_RETRIES, exc, delay,
-                    )
-                    yield _sse({
-                        "type": "status",
-                        "message": f"Retrying... (attempt {retry_count + 2})",
-                    })
-                    await asyncio.sleep(delay)
-                    continue  # retry the iteration
-
-                # Max retries exhausted — try fallback model
-                if self.model != self.FALLBACK_MODEL:
-                    logger.warning(
-                        "Switching to fallback model %s after %d retries",
-                        self.FALLBACK_MODEL, self.MAX_RETRIES,
-                    )
-                    self.model = self.FALLBACK_MODEL
-                    self._retry_count = 0  # reset for fallback
-                    yield _sse({
-                        "type": "status",
-                        "content": "Switching to a faster model due to temporary issues",
-                    })
-                    yield _sse({
-                        "type": "status",
-                        "message": "Switching to fallback model...",
-                    })
-                    continue  # retry with fallback
-
-                # Fallback also failed
-                logger.error("All retries and fallback exhausted: %s", exc)
+            except ResilientLLMExhausted as exc:
+                # ResilientLLM already tried the caller's model plus the whole
+                # configured fallback chain (with cooldown-aware skipping) and
+                # every attempt failed — nothing left for the orchestrator to
+                # retry or switch to. Surface one clear terminal error.
+                logger.error("All models exhausted for agent run: %s", exc)
                 yield _sse({
                     "type": "partial_error",
-                    "message": "Service temporarily unavailable. Please try again.",
+                    "message": "All models are currently unavailable. Please try again shortly.",
                     "retryable": True,
                 })
                 yield _sse({"type": "done", "model": self.model, "tokens": total_tokens})
-                return
-
-            except litellm.AuthenticationError as exc:
-                # Non-retryable — bad API key, no point retrying
-                logger.error("Auth error during agent run: %s", exc)
-                yield _sse_error("Authentication error. Check your API key.")
                 return
 
             except Exception as exc:
@@ -383,8 +346,3 @@ class AgentOrchestrator:
 def _sse(data: dict[str, Any]) -> str:
     """Format a dictionary as an SSE data line."""
     return f"data: {json.dumps(data)}\n\n"
-
-
-def _sse_error(message: str) -> str:
-    """Format an error as an SSE data line."""
-    return _sse({"type": "error", "message": message})
