@@ -48,7 +48,10 @@ class Settings(BaseSettings):
     embedding_dimension: int = 1024
 
     # ── LLM (via LiteLLM) ─────────────────────────────
-    llm_model_cheap: str = "gemini/gemini-2.0-flash"
+    # Primary "cheap" model for extraction + synthesis. A free OpenRouter model
+    # is the default so a keyless self-host works out of the box; ResilientLLM
+    # fails over to `llm_fallback_chain` from here. Override via LIFE_GRAPH_LLM_MODEL_CHEAP.
+    llm_model_cheap: str = "openrouter/openai/gpt-oss-20b:free"
     llm_model_expensive: str = "gemini/gemini-2.5-pro"
     llm_daily_budget_usd: float = 1.0
 
@@ -119,7 +122,7 @@ class Settings(BaseSettings):
     advisor_max_cost_per_query: float = 0.01
 
     # ── Resilient LLM failover ────────────────────
-    llm_fallback_chain: str = "gemini/gemini-2.0-flash,openrouter/deepseek/deepseek-chat"
+    llm_fallback_chain: str = "openrouter/deepseek/deepseek-chat,gemini/gemini-2.0-flash"
     llm_cooldown_429_seconds: int = 60
     llm_cooldown_error_seconds: int = 30
     llm_health_ttl_seconds: int = 3600

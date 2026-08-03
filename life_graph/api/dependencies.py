@@ -60,7 +60,10 @@ def get_extraction_pipeline() -> ExtractionPipeline:
     from life_graph.config import settings
     from life_graph.extraction.llm import LLMExtractor
     lm_client = get_lm_client() if settings.use_local_llm else None
-    llm_extractor = LLMExtractor(lm_client=lm_client)
+    # Steer the cloud extraction primary off the configurable cheap-tier model
+    # (default: a free OpenRouter model) instead of LLMExtractor's hardcoded
+    # gemini default, so a keyless self-host doesn't bench Gemini every cycle.
+    llm_extractor = LLMExtractor(lm_client=lm_client, model=settings.llm_model_cheap)
     return ExtractionPipeline(llm_extractor=llm_extractor)
 
 
