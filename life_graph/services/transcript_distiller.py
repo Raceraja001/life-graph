@@ -7,7 +7,6 @@ Progress is tracked by turn index (robust to tools that lack clean timestamps).
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 from typing import Any
@@ -118,7 +117,7 @@ class TranscriptDistiller:
             es.last_distilled_at = _utcnow()
             await session.commit()
 
-        with contextlib.suppress(Exception):
+        try:
             await event_bus.emit(
                 EventType.TRANSCRIPT_DISTILLED,
                 {
@@ -129,5 +128,7 @@ class TranscriptDistiller:
                 },
                 source="transcript_distiller",
             )
+        except Exception:
+            logger.debug("TRANSCRIPT_DISTILLED emit failed for %s", session_id, exc_info=True)
 
         return {"new_facts": len(memories), "archived": archived, "skipped": False}

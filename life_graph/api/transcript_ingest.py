@@ -76,6 +76,11 @@ async def ingest_external_transcript(payload: TranscriptSessionIngest) -> dict:
                 if exc.code != "NoSuchKey":
                     raise
         appended = existing + ("".join(line + "\n" for line in payload.lines)).encode("utf-8")
+        # SECURITY: this staging object holds RAW, UNREDACTED transcript lines —
+        # redaction only happens later, in the distiller (extracted facts + archive).
+        # This bucket MUST remain private. It can't be truncated after a distill
+        # pass today, since the distiller re-parses the whole object and indexes by
+        # turn count; a future byte/line-offset marker would allow safe truncation.
         minio.upload(ARCHIVE_BUCKET, es.raw_key, appended, content_type="application/x-ndjson")
         es.line_count = (es.line_count or 0) + len(payload.lines)
 
