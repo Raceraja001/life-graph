@@ -309,6 +309,10 @@ from life_graph.api import ingest_transcript as ingest_transcript_api
 
 v1_router.include_router(ingest_transcript_api.router)
 
+from life_graph.api import transcript_ingest as transcript_ingest_api
+
+v1_router.include_router(transcript_ingest_api.router)
+
 from life_graph.api import research as research_api
 
 v1_router.include_router(research_api.router)

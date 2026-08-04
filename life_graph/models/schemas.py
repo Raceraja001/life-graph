@@ -1075,3 +1075,18 @@ class VerificationRunResponse(BaseModel):
     passed: bool
     results: list[dict[str, Any]]
     created_at: datetime
+
+
+# ── External transcript session ingestion (distillation pipeline) ─────────────
+# NOTE: distinct from `TranscriptIngest` above (which feeds the Era4 preference
+# extractor at POST /api/v1/ingest/transcript). This one feeds the raw-session
+# staging + distill pipeline for external AI-tool transcripts (Claude Code, etc).
+
+
+class TranscriptSessionIngest(BaseModel):
+    """A batch of raw transcript lines from one external AI-tool session."""
+
+    tool: str
+    session_id: str
+    source_path: str
+    lines: list[str]
