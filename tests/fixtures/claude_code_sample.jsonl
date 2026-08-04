@@ -1,0 +1,6 @@
+{"type":"user","userType":"external","isSidechain":false,"timestamp":"2026-08-01T10:00:00Z","message":{"role":"user","content":"I always deploy with free OpenRouter models to keep costs at zero."}}
+{"type":"assistant","timestamp":"2026-08-01T10:00:05Z","message":{"role":"assistant","content":[{"type":"text","text":"Got it."}]}}
+{"type":"user","userType":"external","isSidechain":false,"timestamp":"2026-08-01T10:01:00Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"file contents here"}]}}
+{"type":"user","userType":"external","isSidechain":false,"timestamp":"2026-08-01T10:02:00Z","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>ambient context</system-reminder>"}]}}
+{"type":"user","userType":"external","isSidechain":true,"timestamp":"2026-08-01T10:03:00Z","message":{"role":"user","content":"subagent side thread prompt"}}
+{"type":"attachment","timestamp":"2026-08-01T10:04:00Z","attachment":{"foo":"bar"}}
