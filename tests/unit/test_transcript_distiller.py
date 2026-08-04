@@ -91,6 +91,8 @@ async def test_distill_extracts_new_turns_and_archives(monkeypatch):
     assert "sk-abcDEF1234567890abcdef" not in passed_text
     # Archive uploaded to the transcripts bucket, redacted.
     assert minio.upload.call_args.args[0] == "transcripts"
+    archived_bytes = minio.upload.call_args.args[2]
+    assert b"sk-abcDEF1234567890abcdef" not in archived_bytes
     assert sess.last_turn_index == 2
 
 
@@ -103,3 +105,24 @@ async def test_missing_session_raises(monkeypatch):
     monkeypatch.setattr(d, "_load_session", AsyncMock(return_value=None))
     with pytest.raises(ExternalSessionNotFound):
         await d.distill("nope")
+
+
+@pytest.mark.asyncio
+async def test_download_failure_does_not_regress_marker(monkeypatch):
+    """A failed MinIO read must propagate, not silently reset last_turn_index to 0."""
+    from life_graph.services import transcript_distiller as td
+
+    monkeypatch.setattr(td, "get_current_tenant_id", lambda: TENANT)
+
+    sess = _session_obj()
+    sess.last_turn_index = 5
+    d, manager, minio, store, session = _distiller(sess, [])
+    monkeypatch.setattr(d, "_load_session", AsyncMock(return_value=sess))
+    minio.download = MagicMock(side_effect=Exception("boom"))
+
+    with pytest.raises(Exception, match="boom"):
+        await d.distill("sess-1")
+
+    # Marker must be untouched, and the transaction must never have committed.
+    assert sess.last_turn_index == 5
+    session.commit.assert_not_awaited()

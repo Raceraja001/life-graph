@@ -73,8 +73,10 @@ class TranscriptDistiller:
 
             raw = b""
             if es.raw_key:
-                with contextlib.suppress(Exception):
-                    raw = self._minio.download(ARCHIVE_BUCKET, es.raw_key)
+                # Do NOT suppress: a failed read must propagate and abort before
+                # session.commit() runs, so last_turn_index is never regressed to 0.
+                # The caller (ARQ job) retries; the marker stays untouched.
+                raw = self._minio.download(ARCHIVE_BUCKET, es.raw_key)
             lines = raw.decode("utf-8", errors="replace").splitlines()
             turns = parser.parse(lines)
 
