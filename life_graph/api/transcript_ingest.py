@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException
+from minio.error import S3Error
 from sqlalchemy import select
 
 from life_graph.api.dependencies import async_session
@@ -64,11 +65,16 @@ async def ingest_external_transcript(payload: TranscriptSessionIngest) -> dict:
             es.updated_at = _utcnow()
 
         # Read-append-write the raw staging object (sequential per session).
+        # Only a missing object (first write for this session) may fall back to
+        # an empty base — any other download failure must propagate, or a
+        # transient outage would silently overwrite previously staged lines.
         existing = b""
-        try:
-            existing = minio.download(ARCHIVE_BUCKET, es.raw_key)
-        except Exception:
-            existing = b""
+        if es.raw_key:
+            try:
+                existing = minio.download(ARCHIVE_BUCKET, es.raw_key)
+            except S3Error as exc:
+                if exc.code != "NoSuchKey":
+                    raise
         appended = existing + ("".join(line + "\n" for line in payload.lines)).encode("utf-8")
         minio.upload(ARCHIVE_BUCKET, es.raw_key, appended, content_type="application/x-ndjson")
         es.line_count = (es.line_count or 0) + len(payload.lines)
@@ -92,7 +98,10 @@ async def ingest_external_transcript(payload: TranscriptSessionIngest) -> dict:
             from life_graph.workers.settings import parse_redis_settings
 
             pool = await create_pool(parse_redis_settings())
-            await pool.enqueue_job(DISTILL_JOB, payload.session_id, tenant_id)
+            try:
+                await pool.enqueue_job(DISTILL_JOB, payload.session_id, tenant_id)
+            finally:
+                await pool.close()
         except Exception:  # pragma: no cover - enqueue best-effort
             logger.exception("Failed to enqueue distill_transcript for %s", payload.session_id)
 
