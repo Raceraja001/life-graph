@@ -69,6 +69,7 @@ class WorkerSettings:
         "life_graph.workers.ingest_capture.ingest_capture_text",
         "life_graph.workers.distill.distill_conversation",
         "life_graph.workers.distill.distill_idle_conversations",
+        "life_graph.workers.distill_transcript.distill_transcript",
     ]
 
     cron_jobs = [

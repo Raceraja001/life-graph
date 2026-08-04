@@ -506,3 +506,15 @@ def get_distillation_service():
 
     return ConversationDistiller(async_session, get_memory_manager(), MinIOStorage(), get_store())
 
+
+@lru_cache(maxsize=1)
+def get_transcript_distiller():
+    """Return the singleton transcript distiller."""
+    from life_graph.extraction.transcript_parsers import PARSERS
+    from life_graph.services.transcript_distiller import TranscriptDistiller
+    from life_graph.storage.minio_client import MinIOStorage
+
+    return TranscriptDistiller(
+        async_session, get_memory_manager(), MinIOStorage(), get_store(), PARSERS
+    )
+
