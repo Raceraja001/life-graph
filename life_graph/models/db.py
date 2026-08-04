@@ -2405,6 +2405,40 @@ class ConversationMessage(Base):
         return f"<ConversationMessage(id={self.id!s:.8}, role={self.role})>"
 
 
+class ExternalSession(Base):
+    """One external AI-tool session (e.g. a Claude Code transcript file)."""
+
+    __tablename__ = "external_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
+    tool: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    line_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_turn_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_distilled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "tool", "external_id", name="uq_external_session"),
+        Index("ix_external_sessions_tenant_tool", "tenant_id", "tool"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ExternalSession(tool={self.tool}, external_id={self.external_id})>"
+
+
 class PushSubscription(Base):
     """A browser/device Web Push subscription for a tenant."""
 
