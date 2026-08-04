@@ -112,3 +112,30 @@ async def test_not_found_download_error_is_swallowed_and_upload_proceeds(monkeyp
     uploaded_bytes = fake_minio.upload.call_args.args[2]
     assert uploaded_bytes == b"line-one\n"
     fake_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_missing_bucket_is_swallowed_and_upload_proceeds(monkeypatch):
+    """NoSuchBucket (fresh deploy — the `transcripts` bucket doesn't exist yet)
+    is also swallowed: we proceed to upload, whose ensure_bucket creates the
+    bucket on the write. Without this, the very first ingest on a fresh deploy
+    would 500 and never bootstrap the bucket."""
+    set_tenant_context("test-tenant")
+
+    fake_session = _FakeSession()
+    monkeypatch.setattr(transcript_ingest, "async_session", _fake_session_factory(fake_session))
+
+    fake_minio = MagicMock()
+    fake_minio.download.side_effect = _s3_error("NoSuchBucket")
+    monkeypatch.setattr(transcript_ingest, "MinIOStorage", lambda: fake_minio)
+
+    fake_redis = MagicMock()
+    fake_redis.set = AsyncMock(return_value=False)
+    monkeypatch.setattr(transcript_ingest, "get_redis", lambda: fake_redis)
+
+    result = await transcript_ingest.ingest_external_transcript(PAYLOAD)
+
+    assert result["data"]["session_id"] == "sess-abc"
+    fake_minio.upload.assert_called_once()
+    assert fake_minio.upload.call_args.args[2] == b"line-one\n"
+    fake_session.commit.assert_awaited_once()
