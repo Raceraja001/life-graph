@@ -65,15 +65,18 @@ async def ingest_external_transcript(payload: TranscriptSessionIngest) -> dict:
             es.updated_at = _utcnow()
 
         # Read-append-write the raw staging object (sequential per session).
-        # Only a missing object (first write for this session) may fall back to
-        # an empty base — any other download failure must propagate, or a
-        # transient outage would silently overwrite previously staged lines.
+        # Only a genuinely-absent staging object (first write for this session)
+        # may fall back to an empty base — any other download failure must
+        # propagate, or a transient outage would silently overwrite previously
+        # staged lines. NoSuchKey = object not written yet; NoSuchBucket = the
+        # bucket doesn't exist yet on a fresh deploy (upload()'s ensure_bucket
+        # creates it on the write below), so both mean "nothing staged yet".
         existing = b""
         if es.raw_key:
             try:
                 existing = minio.download(ARCHIVE_BUCKET, es.raw_key)
             except S3Error as exc:
-                if exc.code != "NoSuchKey":
+                if exc.code not in ("NoSuchKey", "NoSuchBucket"):
                     raise
         appended = existing + ("".join(line + "\n" for line in payload.lines)).encode("utf-8")
         # SECURITY: this staging object holds RAW, UNREDACTED transcript lines —
