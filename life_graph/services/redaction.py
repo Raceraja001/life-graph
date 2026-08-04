@@ -19,11 +19,11 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("openrouter_key", re.compile(r"sk-or-[A-Za-z0-9\-]{20,}")),
     ("openai_key", re.compile(r"sk-[A-Za-z0-9\-]{20,}")),
     ("aws_key", re.compile(r"AKIA[0-9A-Z]{16}")),
-    ("google_key", re.compile(r"AIza[0-9A-Za-z\-_]{35}")),
+    ("google_key", re.compile(r"AIza[0-9A-Za-z\-_]{35,}")),
     (
         "env_secret",
         re.compile(
-            r"(?im)^(\s*[A-Z0-9_]*"
+            r"(?m)^(\s*[A-Z0-9_]*"
             r"(?:SECRET|TOKEN|PASSWORD|API[_-]?KEY|PRIVATE[_-]?KEY)[A-Z0-9_]*\s*[=:]\s*)\S+"
         ),
     ),

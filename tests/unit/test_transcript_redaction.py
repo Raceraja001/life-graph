@@ -28,7 +28,13 @@ def test_redacts_aws_access_key():
 
 def test_redacts_google_api_key():
     key = "AIzaSyA1234567890abcdefghijklmnopqrstuvw"
-    assert key not in redact(f"key={key}")
+    out = redact(f"key={key}")
+    assert key not in out
+    # Regression: an exact-length {35} pattern only consumed the first 39 of
+    # this 40-char key, leaving the trailing "w" dangling right after the
+    # marker (a substring check on the full key alone wouldn't catch that).
+    # The whole "key=<key>" text must collapse to exactly one marker.
+    assert out == "key=«REDACTED:google_key»"
 
 
 def test_redacts_pem_private_key():
@@ -45,6 +51,16 @@ def test_redacts_env_secret_assignment():
 def test_leaves_ordinary_code_intact():
     code = "def add(a, b):\n    return a + b  # simple helper"
     assert redact(code) == code
+
+
+def test_does_not_redact_lowercase_secret_shaped_code():
+    # Regression: the env_secret pattern previously used (?i), which made it
+    # match ordinary lowercase code that merely mentions "token"/"password"/
+    # "api_key" as an identifier, not just real UPPER_CASE env-var
+    # assignments.
+    assert redact("token = get_token()") == "token = get_token()"
+    assert redact("password = hash(pw)") == "password = hash(pw)"
+    assert redact("api_key = load_from_vault()") == "api_key = load_from_vault()"
 
 
 def test_non_string_safe():
