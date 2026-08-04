@@ -36,6 +36,18 @@ def new_lines(data: bytes, offset: int) -> tuple[list[str], int]:
     return lines, offset + len(complete)
 
 
+def start_offset(size: int, stored: int) -> int | None:
+    """Byte offset to read from, or None to skip (nothing new).
+
+    Truncation/rotation (file shrank at/below the stored offset) => re-read from 0.
+    """
+    if size < stored:
+        return 0  # truncated/rotated -> re-read whole file
+    if size == stored:
+        return None  # nothing new
+    return stored  # file grew -> read from stored
+
+
 def batched(seq: list, size: int) -> Iterator[list]:
     for i in range(0, len(seq), size):
         yield seq[i : i + size]
@@ -90,11 +102,12 @@ def main() -> None:
         for path in glob.glob(pattern, recursive=True):
             size = os.path.getsize(path)
             entry = state.get(path, {"offset": 0})
-            if size <= entry["offset"]:
+            start = start_offset(size, entry["offset"])
+            if start is None:
                 continue
             with open(path, "rb") as fh:
                 data = fh.read()
-            lines, new_offset = new_lines(data, entry["offset"])
+            lines, new_offset = new_lines(data, start)
             if not lines:
                 continue
             sid = session_id_for(path)
@@ -104,6 +117,9 @@ def main() -> None:
                     ok = False
                     break
             if ok:
+                # A mid-file batch failure leaves the offset unadvanced, so the next
+                # run resends earlier successful batches too; safe because the
+                # backend's SHA-256 dedup absorbs the resend.
                 state[path] = {"offset": new_offset, "session_id": sid}
                 STATE_PATH.write_text(json.dumps(state), encoding="utf-8")
                 print(f"  ✓ {sid}: shipped {len(lines)} lines")

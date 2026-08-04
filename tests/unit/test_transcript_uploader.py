@@ -43,6 +43,22 @@ def test_new_lines_truncation_resets():
     assert offset == len(data)
 
 
+def test_start_offset_grew():
+    assert up.start_offset(20, 10) == 10
+
+
+def test_start_offset_nothing_new():
+    assert up.start_offset(10, 10) is None
+
+
+def test_start_offset_truncated():
+    assert up.start_offset(5, 10) == 0
+
+
+def test_start_offset_first_sight():
+    assert up.start_offset(20, 0) == 0
+
+
 def test_batched():
     assert list(up.batched([1, 2, 3, 4, 5], 2)) == [[1, 2], [3, 4], [5]]
 
