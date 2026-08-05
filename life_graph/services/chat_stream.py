@@ -65,7 +65,22 @@ class ChatStreamBus:
         self._closed.discard(stream_key)
         self._subscribers.pop(stream_key, None)
 
-    async def subscribe(self, stream_key: str) -> AsyncIterator[dict]:
+    def subscribe(self, stream_key: str) -> AsyncIterator[dict]:
+        """Register a subscriber and return an async iterator over its events.
+
+        Registration is EAGER: the queue is created, the buffer replayed, and
+        the queue appended to ``self._subscribers`` synchronously, *before this
+        method returns* -- not lazily on the first ``__anext__()``. This closes
+        a race with ``discard()``: the SSE endpoint calls ``spawn()`` (which
+        schedules the producing task via ``create_task`` but doesn't run it yet)
+        and then immediately calls ``subscribe()``. Because subscription happens
+        before control returns to the event loop, the subscriber is registered
+        before the spawned task -- and its ``discard()`` in ``finally`` -- can
+        run, so ``discard()`` always sees the subscriber and no-ops. A lazy
+        async-generator ``subscribe`` would defer registration to the first
+        ``__anext__()``, letting a fast task complete + ``discard()`` first and
+        leaving the endpoint to subscribe into freed, non-closed state (hangs).
+        """
         q: asyncio.Queue = asyncio.Queue()
         # Replay anything already buffered (events fired before we subscribed).
         for ev in list(self._buffers.get(stream_key, ())):
@@ -75,6 +90,10 @@ class ChatStreamBus:
         if stream_key in self._closed:
             q.put_nowait(_END)
         self._subscribers[stream_key].append(q)
+        return self._drain(stream_key, q)
+
+    async def _drain(self, stream_key: str, q: asyncio.Queue) -> AsyncIterator[dict]:
+        """Drain one already-registered subscriber queue until end-of-stream."""
         try:
             while True:
                 ev = await q.get()

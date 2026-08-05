@@ -11,6 +11,7 @@ Phase 6: Notification Engine — priority-routed alerts.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import uuid
 from datetime import datetime
@@ -33,6 +34,12 @@ from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.chat_stream import get_chat_stream_bus, map_bus_event
 
 router = APIRouter(prefix="/kernel", tags=["kernel"])
+
+# Seconds of bus idleness after which the SSE stream emits a `: heartbeat`
+# comment to keep proxies/load-balancers from dropping an idle connection.
+# Module-level so tests can monkeypatch it to a tiny value and exercise the
+# heartbeat/idle-gap path without waiting the full production interval.
+CHAT_STREAM_HEARTBEAT_SECONDS = 15.0
 
 
 # ── Pydantic Schemas ─────────────────────────────────────────
@@ -657,8 +664,6 @@ async def chat_stream(
     task_id = spawn["task_id"]  # == root_task_id for a top-level task
     bus = get_chat_stream_bus()
 
-    heartbeat_seconds = 15.0
-
     async def gen():
         def sse(obj: dict) -> str:
             return f"data: {json.dumps(obj)}\n\n"
@@ -666,20 +671,37 @@ async def chat_stream(
         yield sse({"type": "start", "task_id": task_id, "persona": body.target_agent})
         seen: set[str] = set()
         it = bus.subscribe(task_id).__aiter__()
+        # A delegated child waiting on a slow model can leave the bus idle for
+        # well over a minute; without a periodic keep-alive, proxies/load-
+        # balancers time out and drop the connection. `: heartbeat` is an SSE
+        # comment line -- ignored by any spec-compliant client (ours only
+        # parses "data: " lines).
+        #
+        # The heartbeat MUST NOT cancel the underlying `__anext__()` wait. We
+        # keep a single persistent `pending` future and poll it with
+        # `asyncio.wait(..., timeout=...)`, which -- unlike `asyncio.wait_for`
+        # -- does NOT cancel the future when the timeout fires. So the subscribe
+        # generator's `await q.get()` survives every heartbeat and no events are
+        # lost. (`wait_for` would cancel it, throwing CancelledError into the
+        # generator, running its `finally` to unregister the subscriber, and
+        # silently ending the stream at the first >heartbeat idle gap.)
+        pending = None
         try:
             while True:
-                # A delegated child waiting on a slow model can leave the bus
-                # idle for well over a minute; without a periodic keep-alive,
-                # proxies/load-balancers time out and drop the connection.
-                # `: heartbeat` is an SSE comment line -- ignored by any
-                # spec-compliant client (ours only parses "data: " lines).
-                try:
-                    raw = await asyncio.wait_for(it.__anext__(), timeout=heartbeat_seconds)
-                except TimeoutError:
+                if pending is None:
+                    pending = asyncio.ensure_future(it.__anext__())
+                done_set, _ = await asyncio.wait(
+                    {pending}, timeout=CHAT_STREAM_HEARTBEAT_SECONDS
+                )
+                if not done_set:
                     yield ": heartbeat\n\n"
                     continue
+                try:
+                    raw = pending.result()
                 except StopAsyncIteration:
+                    pending = None
                     break
+                pending = None
 
                 mapped = map_bus_event(raw, seen)
                 if mapped is None:
@@ -713,6 +735,13 @@ async def chat_stream(
                 if mapped["type"] in ("done", "error") and raw.get("depth", 0) == 0:
                     break
         finally:
+            # Cancel any in-flight `__anext__()` and let it settle before we
+            # aclose() the generator -- awaiting a closing generator that still
+            # has a pending anext would raise "already running".
+            if pending is not None:
+                pending.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await pending
             bus.close(task_id)
             await it.aclose()
 

@@ -99,6 +99,35 @@ async def test_subscribe_after_close_and_drain_terminates():
     assert got2 == []
 
 
+@pytest.mark.asyncio
+async def test_subscribe_registers_subscriber_eagerly():
+    """subscribe() must register its subscriber SYNCHRONOUSLY -- before the
+    returned iterator is ever awaited.
+
+    Regression test for the discard()-vs-lazy-subscription race: the SSE
+    endpoint spawns the producing task, then calls subscribe(). If subscription
+    were lazy (deferred to the first __anext__(), as an async-generator
+    subscribe would be), a fast task could finish and call discard() -- which
+    frees the buffer + tombstone only when NO subscriber is attached -- before
+    the endpoint ever iterates, then the endpoint subscribes into empty,
+    non-closed state and hangs forever. Eager registration closes that window.
+    """
+    bus = ChatStreamBus()
+    bus.publish("k8", {"type": "token", "content": "x"})
+
+    it = bus.subscribe("k8")  # NOT yet iterated
+    # Registered immediately -> exactly one subscriber queue for the key.
+    assert len(bus._subscribers.get("k8", [])) == 1
+    # ...so discard() sees the subscriber and no-ops instead of freeing state.
+    bus.discard("k8")
+    assert bus.buffer_len("k8") == 1  # buffer untouched
+
+    # The iterator still drains the replayed buffer, then terminates on close.
+    bus.close("k8")
+    got = [ev async for ev in it]
+    assert got == [{"type": "token", "content": "x"}]
+
+
 def test_discard_with_no_subscriber_frees_buffer():
     """Non-streamed tasks (/route, cron, watchers) publish to the bus but
     nobody ever subscribes to drain+reap them -- discard() is how their

@@ -82,6 +82,49 @@ class _StubProcessManagerNoClose:
         return {"task_id": self._task_id}
 
 
+class _StubProcessManagerIdleGap:
+    """Publishes one delta, idles LONGER than the (patched-tiny) heartbeat
+    interval, then publishes more deltas + a top-level done and closes.
+
+    Reproduces the real-world case that Regression A broke: a delegated child
+    on a slow free model leaves the bus idle past the heartbeat interval. The
+    endpoint must keep the subscription alive across the gap (emitting only
+    keep-alive heartbeats) and still deliver the LATER deltas + done -- rather
+    than cancelling its own __anext__() wait, unregistering the subscriber, and
+    silently ending the stream at the first idle gap.
+    """
+
+    def __init__(self, task_id: str, idle_seconds: float) -> None:
+        self._task_id = task_id
+        self._idle_seconds = idle_seconds
+
+    async def spawn(self, **kwargs) -> dict:
+        bus = get_chat_stream_bus()
+        task_id = self._task_id
+        idle = self._idle_seconds
+
+        def _delta(text: str) -> dict:
+            return {
+                "task_id": task_id,
+                "agent_name": "jarvis",
+                "depth": 0,
+                "event": {"type": "token", "content": text},
+            }
+
+        async def _publish() -> None:
+            bus.publish(task_id, _delta("before"))
+            await asyncio.sleep(idle)  # idle gap > heartbeat interval
+            bus.publish(task_id, _delta(" after"))
+            bus.publish(
+                task_id,
+                {"task_id": task_id, "agent_name": "jarvis", "depth": 0, "event": {"type": "done"}},
+            )
+            bus.close(task_id)
+
+        asyncio.create_task(_publish())
+        return {"task_id": task_id}
+
+
 def _token_done_events(task_id: str) -> list[dict]:
     """A depth-0 'Hello' response streamed as two tokens then done."""
     return [
@@ -355,6 +398,64 @@ async def test_chat_stream_terminates_when_execution_ends_without_top_level_done
     types = [e["type"] for e in events]
     assert types == ["start", "assistant_delta", "assistant_delta", "error"]
     assert events[-1]["message"] == "RuntimeError: boom"
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_survives_idle_gap_and_emits_heartbeat(client, monkeypatch):
+    """Regression test for Regression A: an idle gap longer than the heartbeat
+    interval must NOT kill the stream.
+
+    We monkeypatch the heartbeat interval down to 0.05s so the producer's 0.25s
+    idle gap spans several heartbeats without a slow test. The stream must (a)
+    emit at least one `: heartbeat` comment frame during the gap and (b) still
+    deliver the deltas published AFTER the gap plus the top-level done.
+
+    The buggy implementation (asyncio.wait_for, which cancels the __anext__()
+    wait on timeout) would unregister the subscriber at the first heartbeat and
+    end the stream after only the pre-gap "before" delta -- so this test fails
+    before / passes after the fix.
+    """
+    import life_graph.api.kernel as kernel_mod
+
+    monkeypatch.setattr(kernel_mod, "CHAT_STREAM_HEARTBEAT_SECONDS", 0.05)
+
+    task_id = f"stub-{uuid.uuid4()}"
+    app.dependency_overrides[get_persona_service] = lambda: _StubPersonaService()
+    app.dependency_overrides[get_process_manager] = lambda: _StubProcessManagerIdleGap(
+        task_id, idle_seconds=0.25
+    )
+
+    data_events: list[dict] = []
+    saw_heartbeat = False
+
+    async def _consume() -> None:
+        nonlocal saw_heartbeat
+        async with client.stream(
+            "POST",
+            "/api/v1/kernel/chat/stream",
+            headers=HEADERS,
+            json={"message": "hi", "target_agent": "jarvis"},
+        ) as resp:
+            assert resp.status_code == 200
+            async for line in resp.aiter_lines():
+                if line.startswith("data: "):
+                    data_events.append(json.loads(line[6:]))
+                    if data_events[-1]["type"] == "done":
+                        break
+                elif line.startswith(":"):
+                    saw_heartbeat = True
+
+    try:
+        await asyncio.wait_for(_consume(), timeout=10)
+    finally:
+        app.dependency_overrides.pop(get_persona_service, None)
+        app.dependency_overrides.pop(get_process_manager, None)
+
+    types = [e["type"] for e in data_events]
+    assert types == ["start", "assistant_delta", "assistant_delta", "done"]
+    text = "".join(e["text"] for e in data_events if e["type"] == "assistant_delta")
+    assert text == "before after"  # the post-gap delta survived the idle gap
+    assert saw_heartbeat, "expected at least one ': heartbeat' frame during the idle gap"
 
 
 @pytest.mark.asyncio
