@@ -78,8 +78,8 @@ def _child_error_then_continues_events(task_id: str) -> list[dict]:
     """A delegated child errors out, but the delegation architecture continues:
 
     Jarvis (depth 0) keeps running and still produces a real answer + a
-    top-level done. The child's error must reach the client as an `error`
-    chat event but must NOT terminate the SSE stream.
+    top-level done. The child's error must reach the client as a non-fatal
+    `child_error` chat event but must NOT terminate the SSE stream.
     """
     return [
         {
@@ -206,12 +206,15 @@ async def test_chat_stream_expands_delegation_start_done_for_tokenless_child(
 
 @pytest.mark.asyncio
 async def test_chat_stream_continues_past_child_error_to_top_level_done(client, stub_overrides):
-    """A depth>=1 child error must surface as an `error` event but must NOT
-    end the stream -- the client keeps receiving events (here, Jarvis's own
-    tokens) up to the real top-level `done`. Regression test for a bug where
-    the endpoint broke the SSE loop on ANY mapped `error`, including a
-    delegated child's, cutting the stream off before Jarvis's continuation
-    ever reached the client.
+    """A depth>=1 child error must surface as a non-fatal `child_error` event
+    but must NOT end the stream -- the client keeps receiving events (here,
+    Jarvis's own tokens) up to the real top-level `done`. Regression test for
+    a bug where the endpoint broke the SSE loop on ANY mapped `error`,
+    including a delegated child's, cutting the stream off before Jarvis's
+    continuation ever reached the client. Also a regression test for the
+    mapper itself once mapping errors as `error` regardless of depth, which
+    would have painted a successful, recovered turn as fatally failed on the
+    frontend.
     """
     task_id = f"stub-{uuid.uuid4()}"
     stub_overrides(task_id, _child_error_then_continues_events(task_id))
@@ -231,9 +234,14 @@ async def test_chat_stream_continues_past_child_error_to_top_level_done(client, 
                     break
 
     types = [e["type"] for e in events]
-    # parent tool_call dropped; child error surfaces but does not truncate the
-    # stream; Jarvis's own deltas and final done still arrive after it.
-    assert types == ["start", "error", "assistant_delta", "assistant_delta", "done"]
+    # parent tool_call dropped; child error surfaces as non-fatal `child_error`
+    # but does not truncate the stream; Jarvis's own deltas and final done
+    # still arrive after it.
+    assert types == ["start", "child_error", "assistant_delta", "assistant_delta", "done"]
+    child_error = events[1]
+    assert child_error["child_id"] == "child-err-1"
+    assert child_error["persona"] == "scout"
+    assert child_error["message"] == "litellm.AuthenticationError"
     text = "".join(e["text"] for e in events if e["type"] == "assistant_delta")
     assert text == "Despite the failure"
 

@@ -94,10 +94,9 @@ def map_bus_event(raw: dict, seen_children: set[str]) -> dict | None:
     event = raw.get("event", {})
     etype = event.get("type")
 
-    if etype in ("error", "partial_error"):
-        return {"type": "error", "message": event.get("error") or event.get("message", "error")}
-
     if depth == 0:
+        if etype in ("error", "partial_error"):
+            return {"type": "error", "message": event.get("error") or event.get("message", "error")}
         if etype == "token":
             return {"type": "assistant_delta", "text": event.get("content", "")}
         if etype == "done":
@@ -105,6 +104,17 @@ def map_bus_event(raw: dict, seen_children: set[str]) -> dict | None:
         return None  # tool_call/tool_result/usage on the top-level task are dropped
 
     # depth >= 1 : a delegated child
+    if etype in ("error", "partial_error"):
+        # Non-fatal: the delegation architecture continues past a child failure
+        # (Jarvis keeps running and still synthesizes a real answer), so this
+        # must NOT be mapped to the same `error` type the endpoint treats as
+        # stream-ending. `child_error` marks just that one step as failed.
+        return {
+            "type": "child_error",
+            "child_id": child_id,
+            "persona": persona,
+            "message": event.get("error") or event.get("message", "error"),
+        }
     if etype == "token":
         if child_id not in seen_children:
             seen_children.add(child_id)

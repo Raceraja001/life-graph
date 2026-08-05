@@ -50,3 +50,33 @@ def test_tool_call_and_usage_are_dropped():
 def test_child_done_without_prior_token_signals_both():
     out = map_bus_event(ev(1, "scout", "done"), set())
     assert out == {"type": "delegation_start+done", "child_id": "tid-scout", "persona": "scout"}
+
+
+def test_depth0_error_maps_to_fatal_error():
+    out = map_bus_event(ev(0, "jarvis", "error", error="litellm.AuthenticationError"), set())
+    assert out == {"type": "error", "message": "litellm.AuthenticationError"}
+
+
+def test_depth0_partial_error_maps_to_fatal_error():
+    out = map_bus_event(ev(0, "jarvis", "partial_error", message="timeout"), set())
+    assert out == {"type": "error", "message": "timeout"}
+
+
+def test_child_error_maps_to_non_fatal_child_error():
+    out = map_bus_event(ev(1, "scout", "error", error="litellm.AuthenticationError"), set())
+    assert out == {
+        "type": "child_error",
+        "child_id": "tid-scout",
+        "persona": "scout",
+        "message": "litellm.AuthenticationError",
+    }
+
+
+def test_child_partial_error_maps_to_non_fatal_child_error():
+    out = map_bus_event(ev(1, "tutor", "partial_error", message="dropped connection"), set())
+    assert out == {
+        "type": "child_error",
+        "child_id": "tid-tutor",
+        "persona": "tutor",
+        "message": "dropped connection",
+    }

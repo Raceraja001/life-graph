@@ -685,11 +685,14 @@ async def chat_stream(
                     continue
                 yield sse(mapped)
                 # Only a TOP-LEVEL (depth-0) done/error ends the stream. A delegated
-                # child's error must still surface to the client as an `error` chat
-                # event, but the delegation architecture continues past child
-                # failures (tools/delegate.py, services/delegation.py default
+                # child's error surfaces to the client as the non-fatal `child_error`
+                # chat event (mapped by map_bus_event, never "error" for depth>=1),
+                # since the delegation architecture continues past child failures
+                # (tools/delegate.py, services/delegation.py default
                 # on_child_failure="continue") — Jarvis keeps running and the
                 # client should keep receiving events up to the real top-level done.
+                # `child_error` is neither "done" nor "error" so this check never
+                # breaks the stream on it, by construction.
                 if mapped["type"] in ("done", "error") and raw.get("depth", 0) == 0:
                     break
         finally:

@@ -4,11 +4,11 @@
 // bubble, driven entirely by `api.kernel.chatStream`'s SSE event callback. Visual
 // target: docs/design/mockups/jarvis-streaming-chat.html.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Check, ChevronRight, Loader2, Send, Square } from "lucide-react";
+import { Check, ChevronRight, Loader2, Send, Square, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useMobileState } from "@/components/mobile/mobile-state";
 
-type Step = { persona: string; text: string; done: boolean };
+type Step = { persona: string; text: string; done: boolean; errored: boolean; error?: string };
 type Turn = {
   user: string;
   synthesis: string;
@@ -24,7 +24,13 @@ type ChatEvent =
   | { type: "delegation_start"; child_id: string; persona: string }
   | { type: "child_delta"; child_id: string; persona: string; text: string }
   | { type: "child_done"; child_id: string; persona: string }
+  // Non-fatal: a delegated child failed, but the delegation architecture
+  // continues (Jarvis keeps running and still synthesizes a real answer).
+  // Only that one step chip is marked failed — the turn itself is untouched.
+  | { type: "child_error"; child_id: string; persona: string; message: string }
   | { type: "done" }
+  // Fatal/top-level only: the backend mapper now only emits this for a
+  // depth-0 failure, which really does end the stream.
   | { type: "error"; message: string };
 
 const PERSONAS = [
@@ -90,18 +96,39 @@ export function PersonaChat() {
                 : {
                     ...t,
                     order: [...t.order, e.child_id],
-                    steps: { ...t.steps, [e.child_id]: { persona: e.persona, text: "", done: false } },
+                    steps: { ...t.steps, [e.child_id]: { persona: e.persona, text: "", done: false, errored: false } },
                   },
             );
           } else if (e.type === "child_delta") {
             patchLast((t) => {
-              const prev = t.steps[e.child_id] ?? { persona: e.persona, text: "", done: false };
-              return { ...t, steps: { ...t.steps, [e.child_id]: { ...prev, text: prev.text + e.text } } };
+              const existing = t.steps[e.child_id];
+              const prev = existing ?? { persona: e.persona, text: "", done: false, errored: false };
+              return {
+                ...t,
+                // A delta can arrive before its delegation_start (event
+                // reordering); make sure the chip actually renders by adding
+                // it to `order` too, not just `steps`.
+                order: existing ? t.order : [...t.order, e.child_id],
+                steps: { ...t.steps, [e.child_id]: { ...prev, text: prev.text + e.text } },
+              };
             });
           } else if (e.type === "child_done") {
             patchLast((t) => {
               const prev = t.steps[e.child_id];
               return prev ? { ...t, steps: { ...t.steps, [e.child_id]: { ...prev, done: true } } } : t;
+            });
+          } else if (e.type === "child_error") {
+            // Non-fatal: only this step chip is marked failed. The turn's
+            // own `done`/`errored` are untouched — Jarvis keeps streaming and
+            // the synthesis bubble must not be painted as failed.
+            patchLast((t) => {
+              const existing = t.steps[e.child_id];
+              const prev = existing ?? { persona: e.persona, text: "", done: false, errored: false };
+              return {
+                ...t,
+                order: existing ? t.order : [...t.order, e.child_id],
+                steps: { ...t.steps, [e.child_id]: { ...prev, done: true, errored: true, error: e.message } },
+              };
             });
           } else if (e.type === "done") {
             patchLast((t) => ({ ...t, done: true }));
@@ -111,8 +138,17 @@ export function PersonaChat() {
         },
         abort.current.signal,
       );
-    } catch {
-      patchLast((t) => (t.done ? t : { ...t, synthesis: t.synthesis + "\n[connection lost]", done: true, errored: true }));
+    } catch (e) {
+      // A user-initiated Stop aborts the fetch and throws an AbortError --
+      // that's an intentional, clean stop, not a failure. Only a genuine
+      // connection drop should paint the turn as errored.
+      const aborted = typeof e === "object" && e !== null && (e as { name?: string }).name === "AbortError";
+      patchLast((t) => {
+        if (t.done) return t;
+        return aborted
+          ? { ...t, done: true }
+          : { ...t, synthesis: t.synthesis + "\n[connection lost]", done: true, errored: true };
+      });
     } finally {
       setStreaming(false);
     }
@@ -348,9 +384,18 @@ function StepChip({ step, open, onToggle }: { step: Step; open: boolean; onToggl
     color: "var(--text)",
   };
   return (
-    <div style={{ border: "1px solid var(--border)", background: "var(--surface-2)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+    <div
+      style={{
+        border: `1px solid ${step.errored ? "var(--danger)" : "var(--border)"}`,
+        background: "var(--surface-2)",
+        borderRadius: "var(--radius-md)",
+        overflow: "hidden",
+      }}
+    >
       <button onClick={onToggle} style={barStyle} aria-expanded={open}>
-        {step.done ? (
+        {step.errored ? (
+          <X width={13} height={13} style={{ color: "var(--danger)", flexShrink: 0 }} />
+        ) : step.done ? (
           <Check width={13} height={13} style={{ color: "var(--success)", flexShrink: 0 }} />
         ) : (
           <Loader2 width={13} height={13} className="animate-spin" style={{ color: "var(--accent)", flexShrink: 0 }} />
@@ -358,7 +403,7 @@ function StepChip({ step, open, onToggle }: { step: Step; open: boolean; onToggl
         <span style={{ fontWeight: "var(--fw-semibold)", fontSize: "var(--text-sm)", color: roleColor(step.persona) }}>
           {step.persona}
           <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", fontWeight: "var(--fw-regular)", marginLeft: "6px" }}>
-            {step.done ? "· done" : "· working…"}
+            {step.errored ? "· failed" : step.done ? "· done" : "· working…"}
           </span>
         </span>
         <ChevronRight
@@ -374,13 +419,13 @@ function StepChip({ step, open, onToggle }: { step: Step; open: boolean; onToggl
             padding: "0 13px 12px",
             borderTop: "1px solid var(--border)",
             paddingTop: "11px",
-            color: "var(--text-muted)",
+            color: step.errored ? "var(--danger)" : "var(--text-muted)",
             fontSize: "var(--text-sm)",
             whiteSpace: "pre-wrap",
             fontFamily: "inherit",
           }}
         >
-          {step.text || "…"}
+          {step.errored ? step.error + (step.text ? `\n\n${step.text}` : "") : step.text || "…"}
         </pre>
       )}
     </div>
