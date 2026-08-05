@@ -7,6 +7,15 @@
 > and the prioritized path to an actual "Jarvis-like always-on personal assistant." Supersedes the roadmap
 > view in START_HERE until those are refreshed (see §5).
 
+> **⚠️ CORRECTION (2026-08-05, verified live).** An earlier draft of this doc said the Jarvis persona
+> layer was "unmerged / ~40% built." **That was wrong** — it was based on stale local git refs (local
+> `master` was 91 commits behind `origin/master`). Verified against origin/master and by testing the live
+> VM: **all 5 personas (`jarvis, tutor, scout, admin, swe-lead`) + `delegate_to_persona` + the router
+> `target_agent` override are merged, deployed, and working.** A live test had Jarvis delegate to `tutor`,
+> get real answers, and synthesize a final result (~4 min). The real gap is **surfacing** it in a chat UI,
+> now spec'd as `docs/superpowers/specs/2026-08-05-jarvis-streaming-chat-design.md` (Sub-project A) with UI
+> mockup `docs/design/mockups/jarvis-streaming-chat.html`. Sections below are corrected accordingly.
+
 ## 0. The mental model
 
 A Jarvis-style assistant is five layers. Life Graph has an unusually complete backend for all five; the
@@ -40,17 +49,11 @@ gaps are in **closing loops** and **reach into the real world**, not in core plu
 
 ## 2. Built but NOT usable / partial
 
-1. **Jarvis multi-persona layer — spec'd, ~40% built, UNMERGED.**
-   - Spec `docs/specs/personal-roles.md` + plan `docs/superpowers/plans/2026-07-31-personal-roles.md`
-     (9 TDD tasks). Vision: a `jarvis` coordinator persona delegating to `tutor / scout / admin / swe-lead`
-     via `delegate_to_persona`, reusing the Era-7 task tree. V1 is deliberately descoped: multi-role is
-     **user-triggered** (no auto-detection); ambient roles are **advisory-only**.
-   - Reality: on `master` only **8** personas exist (`kernel/personas.py`) — none of the 5 new ones. The
-     new personas + `delegate_to_persona` tool + `ChiefRouter.route(target_agent=...)` override are
-     committed on branch **`worktree-personal-roles`** (rolled into `batch-merge`), **not merged to master**.
-   - Even on that branch the SDD ledger shows only **~2 of 9 tasks** complete: the dashboard persona-picker
-     was never built, and delegation-blocking behavior, ambient scout/admin scheduling wiring, and the test
-     suite are unfinished. **Not reachable by end users.**
+1. **Jarvis multi-persona layer — MERGED, DEPLOYED, WORKING (was wrongly listed here as unmerged).**
+   The 5 personas + `delegate_to_persona` + `ChiefRouter.route(target_agent=...)` override are on
+   origin/master and live on the VM; a live test confirmed end-to-end delegation + synthesis. The only
+   thing missing is the **chat surface** to see/use it — that's Sub-project A (spec'd 2026-08-05). Ambient
+   scout/admin *scheduling* (Story 4 of `personal-roles.md`) is the remaining unbuilt piece → Sub-project B.
 2. **Chat is a router, not a conversation.** `dashboard/components/chat-bar.tsx` calls `POST /kernel/route`
    and renders `JSON.stringify(response)` — but `ChiefRouter.route()` returns only routing metadata
    (`{classified_intent, routed_to, task_id, task_status:"queued"}`), no assistant text. It fires a
@@ -73,11 +76,13 @@ gaps are in **closing loops** and **reach into the real world**, not in core plu
 
 Ordered by (payoff ÷ effort). Each is a separate brainstorm → spec → plan → build cycle.
 
-1. **Merge + finish the persona layer.** It's already ~40% built on a branch — highest ROI. Finish the 7
-   remaining plan tasks (delegation-blocking, ambient scout/admin scheduling, dashboard persona-picker,
-   tests), rebase/merge to master, deploy. Unlocks real `jarvis` delegation.
-2. **Close the chat→reply loop.** Wire `chat-bar.tsx` to the advisor endpoint (or poll the spawned kernel
-   task and stream its result). Small change, large "it's alive" payoff — turns the router into a conversation.
+1. **Build the streaming Jarvis chat surface (Sub-project A).** The persona layer already works and is
+   deployed — the highest-ROI move is *surfacing* it: SSE token streaming + a persona picker + collapsible
+   delegation steps, plus a small Jarvis coordination-prompt tune-up. This also closes the chat→reply loop
+   (the chat consumes the persona's streamed reply instead of routing JSON). Spec:
+   `docs/superpowers/specs/2026-08-05-jarvis-streaming-chat-design.md`.
+2. **Ambient roles (Sub-project B).** Create `ScheduledJob`s for `scout`/`admin` so they run daily and post
+   `Notification`s (Story 4 of `personal-roles.md`) — the remaining unbuilt piece of the persona layer.
 3. **Confirm ambient roles + push reach the phone.** Verify the pending E2Es: web push + daily brief,
    reactive capture, distill button, model-health card. Then schedule `scout`/`admin` jobs so they surface
    things proactively.

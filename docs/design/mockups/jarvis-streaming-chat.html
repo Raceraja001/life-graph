@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jarvis Streaming Chat — mockup</title>
+<style>
+  :root {
+    --bg: #0b0d10; --panel: #14181d; --panel2: #1b2027; --line: #262d36;
+    --text: #e6e9ee; --dim: #9aa4b2; --accent: #6ea8fe; --accent2: #8b7bfb;
+    --ok: #4ec98a; --chip: #1e2530; --user: #223046;
+    --tutor: #4ec98a; --swe: #6ea8fe; --scout: #e0b64a; --jarvis: #8b7bfb;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f6f9; --panel:#fff; --panel2:#f0f3f7; --line:#e2e8f0;
+      --text:#0e1116; --dim:#5b6675; --chip:#eef2f7; --user:#dbeafe; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; min-height:100vh; display:flex; flex-direction:column; }
+  header { padding:14px 18px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:12px; position:sticky; top:0; background:var(--bg); z-index:5; }
+  .brand { font-weight:700; letter-spacing:.2px; }
+  .brand small { color:var(--dim); font-weight:400; margin-left:6px; }
+  .picker { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .picker select { background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:9px; padding:7px 10px; font-size:14px; }
+  .who { display:inline-flex; align-items:center; gap:7px; padding:3px 9px; border-radius:999px;
+    background:var(--panel2); border:1px solid var(--line); font-size:12px; color:var(--dim); }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--jarvis); }
+  .thread { flex:1; padding:20px 18px 120px; display:flex; flex-direction:column; gap:18px; }
+  .row { display:flex; gap:12px; }
+  .row.user { justify-content:flex-end; }
+  .bubble { padding:11px 14px; border-radius:14px; max-width:78%; }
+  .user .bubble { background:var(--user); border:1px solid var(--line); }
+  .avatar { width:30px; height:30px; border-radius:9px; flex:none; display:grid; place-items:center;
+    font-size:15px; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; }
+  .assistant { flex-direction:column; gap:10px; }
+  .assistant .head { display:flex; align-items:center; gap:9px; color:var(--dim); font-size:13px; }
+  .steps { display:flex; flex-direction:column; gap:7px; }
+  .chip { border:1px solid var(--line); background:var(--chip); border-radius:11px; overflow:hidden; }
+  .chip > .bar { display:flex; align-items:center; gap:9px; padding:9px 12px; cursor:pointer; user-select:none; }
+  .chip .role { font-weight:600; font-size:13px; }
+  .chip .role .tag { font-size:11px; color:var(--dim); font-weight:400; margin-left:6px; }
+  .chip .spin { width:13px; height:13px; border:2px solid var(--line); border-top-color:var(--accent);
+    border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .chip .tick { color:var(--ok); font-weight:700; }
+  .chip .caret { margin-left:auto; color:var(--dim); transition:transform .15s; font-size:12px; }
+  .chip.open .caret { transform:rotate(90deg); }
+  .chip .body { display:none; padding:0 13px 12px; border-top:1px solid var(--line); color:var(--dim);
+    font-size:13.5px; white-space:pre-wrap; }
+  .chip.open .body { display:block; padding-top:11px; }
+  .role.tutor { color:var(--tutor); } .role.swe { color:var(--swe); } .role.scout { color:var(--scout); }
+  .synth { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+  .synth h4 { margin:.2em 0 .5em; font-size:15px; }
+  .synth pre { background:var(--panel2); border:1px solid var(--line); border-radius:9px; padding:11px;
+    overflow:auto; font-size:12.5px; margin:.6em 0; }
+  .synth code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .cursor { display:inline-block; width:8px; height:1.05em; background:var(--accent); vertical-align:-2px;
+    margin-left:1px; animation:blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+  .composer { position:fixed; bottom:0; left:0; right:0; background:linear-gradient(transparent,var(--bg) 22%); }
+  .composer .inner { max-width:760px; margin:0 auto; padding:12px 18px 18px; display:flex; gap:10px; }
+  .composer input { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text);
+    border-radius:12px; padding:12px 14px; font-size:15px; }
+  .composer button { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; border:0;
+    border-radius:12px; padding:0 16px; font-weight:600; cursor:pointer; }
+  .replay { font-size:12px; color:var(--accent); cursor:pointer; background:none; border:0; }
+  .note { text-align:center; color:var(--dim); font-size:12px; padding:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Life&nbsp;Graph <small>chat</small></div>
+    <div class="picker">
+      <span class="who"><span class="dot"></span> Talking to</span>
+      <select id="persona">
+        <option>Jarvis · coordinator</option>
+        <option>Ask my memories</option>
+        <option>Tutor</option><option>SWE-Lead</option>
+        <option>Scout</option><option>Admin</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="thread" id="thread">
+    <div class="row user"><div class="bubble">Use the tutor and swe-lead to help me learn FastAPI dependency injection by building a tiny example.</div></div>
+
+    <div class="row assistant" id="a">
+      <div class="head"><div class="avatar">◆</div> <span id="status">Jarvis is coordinating…</span>
+        <button class="replay" onclick="run()">↺ replay</button></div>
+
+      <div class="steps" id="steps"></div>
+
+      <div class="synth" id="synth" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="composer"><div class="inner">
+    <input placeholder="Message Jarvis…  (mockup — press replay to watch it stream)" />
+    <button>Send</button>
+  </div></div>
+  <div class="note">Mockup · default view is compact steps + streaming synthesis · tap a step to expand that role's full answer</div>
+</div>
+
+<script>
+const steps = document.getElementById('steps');
+const synth = document.getElementById('synth');
+const statusEl = document.getElementById('status');
+
+const tutorAnswer = `FastAPI DI — the "what, why & how"
+
+A dependency is just a callable. You wrap it in Depends() and FastAPI resolves it,
+injects the return value, and caches it for the request.
+
+  def get_current_time() -> datetime:
+      return datetime.utcnow()
+
+  @app.get("/greet")
+  def greet(now = Depends(get_current_time)):
+      return {"time": now}
+
+Scopes: request-scoped by default; use yield for setup/teardown (e.g. DB sessions).`;
+
+const sweAnswer = `SWE-Lead notes — best practices & pitfalls
+
+• Keep dependencies pure & typed — they're easiest to test that way.
+• Use yield-dependencies for resources (DB, files); teardown runs after response.
+• Don't do heavy work in a dependency that runs on every request — cache it.
+• Sub-dependencies compose: a dep can itself Depend() on another.`;
+
+const finalHTML = `<h4>FastAPI Dependency Injection — a tiny project</h4>
+Below is a mini-project that demonstrates FastAPI's DI system, with best-practice notes from the SWE lead.
+<h4>1. The core idea</h4>
+DI is built on Python callables. Declare a param with <code>Depends()</code> and FastAPI resolves, injects, and caches it for the request — keeping code modular and lifecycle-safe.
+<h4>2. A tiny example</h4>
+<pre><code># main.py
+from datetime import datetime
+from fastapi import FastAPI, Depends
+
+app = FastAPI()
+
+def get_current_time() -> datetime:
+    return datetime.utcnow()
+
+def greeting(now = Depends(get_current_time)) -> str:
+    return f"Hello! It is {now:%H:%M}."
+
+@app.get("/greet")
+def greet(msg: str = Depends(greeting)):
+    return {"message": msg}</code></pre>
+<h4>3. SWE-Lead's guardrails</h4>
+Use <code>yield</code> deps for DB sessions (teardown after response), keep deps pure &amp; typed, and cache anything expensive.`;
+
+function chip(id, role, cls, tag, answer) {
+  const el = document.createElement('div');
+  el.className = 'chip'; el.id = id;
+  el.innerHTML = `<div class="bar" onclick="this.parentNode.classList.toggle('open')">
+      <span class="spin" data-spin></span>
+      <span class="role ${cls}">${role}<span class="tag">${tag}</span></span>
+      <span class="caret">▶</span></div>
+    <div class="body">${answer.replace(/</g,'&lt;')}</div>`;
+  steps.appendChild(el);
+  return el;
+}
+function done(el){ el.querySelector('[data-spin]').outerHTML = '<span class="tick">✓</span>'; }
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+async function stream(target, html, speed){
+  target.style.display='block';
+  const tokens = html.match(/(<[^>]+>|\s+|[^\s<]+)/g) || [];
+  target.innerHTML='';
+  let buf='';
+  for(const t of tokens){ buf+=t; target.innerHTML = buf + '<span class="cursor"></span>'; await sleep(speed); }
+  target.innerHTML = buf;
+}
+
+async function run(){
+  steps.innerHTML=''; synth.style.display='none'; synth.innerHTML='';
+  statusEl.textContent = 'Jarvis is coordinating…';
+  await sleep(500);
+
+  const t = chip('c1','Tutor','tutor','· drafting explanation', tutorAnswer);
+  await sleep(1400); done(t);
+
+  const s = chip('c2','SWE-Lead','swe','· reviewing for best practices', sweAnswer);
+  await sleep(1500); done(s);
+
+  statusEl.textContent = 'Jarvis · synthesizing answer';
+  await stream(synth, finalHTML, 12);
+  statusEl.textContent = 'Jarvis · done';
+}
+run();
+</script>
+</body>
+</html>
