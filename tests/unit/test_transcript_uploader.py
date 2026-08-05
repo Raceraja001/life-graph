@@ -65,3 +65,28 @@ def test_batched():
 
 def test_session_id_for():
     assert up.session_id_for("/x/y/5db24295-1788.jsonl") == "5db24295-1788"
+
+
+def test_post_sends_browser_user_agent(monkeypatch):
+    """The POST must carry a browser-like User-Agent, or Cloudflare's
+    bot/browser-integrity protection 403s the raw Python-urllib signature."""
+    captured = {}
+
+    class _FakeResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def _fake_urlopen(req, timeout=None):
+        captured["ua"] = req.get_header("User-agent")
+        return _FakeResp()
+
+    monkeypatch.setattr(up.urllib.request, "urlopen", _fake_urlopen)
+    cfg = {"backend_url": "https://x.example", "api_key": "k", "tenant_id": "personal"}
+    ok = up._post(cfg, "claude-code", "sid", "path", ["{}"])
+    assert ok is True
+    assert captured["ua"] and "Mozilla" in captured["ua"]
