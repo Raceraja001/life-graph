@@ -15,6 +15,8 @@ from sqlalchemy import select
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.extraction.transcript_extract import extract_transcript_facts
+from life_graph.extraction.transcript_parsers.base import Turn
 from life_graph.models.db import ExternalSession, _utcnow
 from life_graph.models.schemas import MemoryUpdate
 from life_graph.services.redaction import redact
@@ -22,6 +24,10 @@ from life_graph.services.redaction import redact
 logger = logging.getLogger(__name__)
 
 ARCHIVE_BUCKET = "transcripts"
+
+# New turns are extracted with a few preceding turns for context (dedup collapses
+# the overlap), so the LLM sees who the user was replying to.
+CONTEXT_LOOKBACK = 4
 
 
 class ExternalSessionNotFound(Exception):
@@ -42,12 +48,13 @@ def build_transcript_snapshot(session: Any, turns: list[dict], memory_ids: list)
 
 
 class TranscriptDistiller:
-    def __init__(self, session_factory, memory_manager, minio, store, parsers) -> None:
+    def __init__(self, session_factory, memory_manager, minio, store, parsers, resilient_llm) -> None:
         self._session_factory = session_factory
         self._manager = memory_manager
         self._minio = minio
         self._store = store
         self._parsers = parsers
+        self._llm = resilient_llm
 
     async def _load_session(self, session, tenant_id: str, external_id: str):
         rows = await session.execute(
@@ -88,9 +95,15 @@ class TranscriptDistiller:
                 await session.commit()
                 return {"new_facts": 0, "archived": False, "skipped": True}
 
-            text = "\n".join(redact(t["text"]) for t in new_user_turns)
-            memories = await self._manager.ingest(
-                text,
+            # Extraction window: new turns + a small lookback for context, redacted.
+            start = max(0, es.last_turn_index - CONTEXT_LOOKBACK)
+            window = [
+                Turn(role=t["role"], text=redact(t["text"]), ts=t.get("ts"))
+                for t in turns[start:]
+            ]
+            facts = await extract_transcript_facts(window, resilient_llm=self._llm)
+            memories = await self._manager.store_facts(
+                facts,
                 context={"source_session": session_id, "tool": es.tool},
                 source="transcript",
             )

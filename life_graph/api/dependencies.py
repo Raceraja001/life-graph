@@ -515,6 +515,11 @@ def get_transcript_distiller():
     from life_graph.storage.minio_client import MinIOStorage
 
     return TranscriptDistiller(
-        async_session, get_memory_manager(), MinIOStorage(), get_store(), PARSERS
+        async_session,
+        get_memory_manager(),
+        MinIOStorage(),
+        get_store(),
+        PARSERS,
+        get_resilient_llm(),
     )
 

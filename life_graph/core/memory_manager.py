@@ -120,6 +120,26 @@ class MemoryManager:
         logger.info("Ingested %d memories from %d facts", len(stored_memories), len(facts))
         return stored_memories
 
+    async def store_facts(
+        self,
+        facts: list[ExtractedFact],
+        context: dict[str, Any] | None = None,
+        source: str | None = None,
+    ) -> list[Memory]:
+        """Persist already-extracted facts through the store-side path (embed,
+        dedup, score, pending) — bypassing the note-tuned extraction tiers.
+
+        Used by transcript distillation, which extracts facts itself.
+        """
+        stored: list[Memory] = []
+        for fact in facts:
+            memory = await self._process_fact(
+                fact, context, source, skip_dedup=False, trust_tier=None
+            )
+            if memory:
+                stored.append(memory)
+        return stored
+
     async def supersede(
         self,
         old_memory_id: str,
