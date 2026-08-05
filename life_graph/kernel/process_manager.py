@@ -165,6 +165,8 @@ class ProcessManager:
                 input_data,
                 persona,
                 timeout,
+                root_task_id=root_task_id or task_id,
+                depth=depth,
             ),
             name=f"task-{task_id!s:.8}",
         )
@@ -344,12 +346,19 @@ class ProcessManager:
         input_data: dict[str, Any],
         persona: dict[str, Any],
         timeout: int,
+        root_task_id: uuid.UUID | None = None,
+        depth: int = 0,
     ) -> None:
         """Run the agent under semaphore + timeout control."""
         async with self._semaphore:
             from life_graph.core.task_context import set_task_context
 
-            set_task_context(task_id=task_id, tenant_id=tenant_id)
+            set_task_context(
+                task_id=task_id,
+                tenant_id=tenant_id,
+                root_task_id=root_task_id or task_id,
+                depth=depth,
+            )
 
             await self._update_task_status(
                 task_id,
@@ -445,24 +454,36 @@ class ProcessManager:
         else:
             tools = None
 
+        import json as _json
+
+        from life_graph.core.task_context import get_current_task_context
+        from life_graph.services.chat_stream import get_chat_stream_bus
+
+        ctx = get_current_task_context()
+        bus = get_chat_stream_bus()
+        stream_key = str(ctx.root_task_id or ctx.task_id) if ctx else None
+        meta = (
+            {"task_id": str(ctx.task_id), "agent_name": agent_name, "depth": ctx.depth}
+            if ctx
+            else None
+        )
+
         # Collect streamed output
         response_parts: list[str] = []
         token_count = 0
 
         async for event_str in orchestrator.run(messages, system_prompt=system_prompt, tools=tools):
             # Each event is an SSE string; extract content
-            if '"type": "token"' in event_str:
-                # Quick extraction without full JSON parse
-                import json as _json
-
-                try:
-                    data = _json.loads(event_str.removeprefix("data: "))
-                    if data.get("type") == "token":
-                        content = data.get("content", "")
-                        response_parts.append(content)
-                        token_count += 1
-                except (ValueError, KeyError):
-                    pass
+            try:
+                data = _json.loads(event_str.removeprefix("data: ").strip())
+            except (ValueError, KeyError):
+                continue
+            if stream_key is not None:
+                bus.publish(stream_key, {**meta, "event": data})
+            if data.get("type") == "token":
+                content = data.get("content", "")
+                response_parts.append(content)
+                token_count += 1
 
         return {
             "response": "".join(response_parts),

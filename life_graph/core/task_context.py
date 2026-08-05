@@ -12,9 +12,7 @@ import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-_task_context_var: ContextVar["TaskContext | None"] = ContextVar(
-    "task_context", default=None
-)
+_task_context_var: ContextVar["TaskContext | None"] = ContextVar("task_context", default=None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +21,8 @@ class TaskContext:
 
     task_id: uuid.UUID
     tenant_id: str
+    root_task_id: uuid.UUID | None = None
+    depth: int = 0
 
 
 def get_current_task_context() -> TaskContext | None:
@@ -30,10 +30,17 @@ def get_current_task_context() -> TaskContext | None:
     return _task_context_var.get()
 
 
-def set_task_context(task_id: uuid.UUID, tenant_id: str) -> None:
+def set_task_context(
+    task_id: uuid.UUID,
+    tenant_id: str,
+    root_task_id: uuid.UUID | None = None,
+    depth: int = 0,
+) -> None:
     """Set task context for the current coroutine tree.
 
     Called by ProcessManager._execute_task. Should not be called
     directly by application code.
     """
-    _task_context_var.set(TaskContext(task_id=task_id, tenant_id=tenant_id))
+    _task_context_var.set(
+        TaskContext(task_id=task_id, tenant_id=tenant_id, root_task_id=root_task_id, depth=depth)
+    )
