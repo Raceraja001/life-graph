@@ -74,6 +74,14 @@ def _post(cfg: dict, tool: str, session_id: str, source_path: str, lines: list[s
         method="POST",
         headers={
             "Content-Type": "application/json",
+            # Cloudflare's bot/browser-integrity protection 403s the raw
+            # "Python-urllib" signature, so send a normal browser User-Agent
+            # (overridable via config for environments that need a different one).
+            "User-Agent": cfg.get(
+                "user_agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+            ),
             "Authorization": f"Bearer {cfg['api_key']}",
             "X-Tenant-ID": cfg.get("tenant_id", "personal"),
             "CF-Access-Client-Id": cfg.get("cf_access_client_id", ""),
