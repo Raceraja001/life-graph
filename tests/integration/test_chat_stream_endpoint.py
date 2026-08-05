@@ -74,6 +74,42 @@ def _token_done_events(task_id: str) -> list[dict]:
     ]
 
 
+def _child_error_then_continues_events(task_id: str) -> list[dict]:
+    """A delegated child errors out, but the delegation architecture continues:
+
+    Jarvis (depth 0) keeps running and still produces a real answer + a
+    top-level done. The child's error must reach the client as an `error`
+    chat event but must NOT terminate the SSE stream.
+    """
+    return [
+        {
+            "task_id": task_id,
+            "agent_name": "jarvis",
+            "depth": 0,
+            "event": {"type": "tool_call", "name": "delegate_to_persona"},
+        },
+        {
+            "task_id": "child-err-1",
+            "agent_name": "scout",
+            "depth": 1,
+            "event": {"type": "error", "error": "litellm.AuthenticationError"},
+        },
+        {
+            "task_id": task_id,
+            "agent_name": "jarvis",
+            "depth": 0,
+            "event": {"type": "token", "content": "Despite"},
+        },
+        {
+            "task_id": task_id,
+            "agent_name": "jarvis",
+            "depth": 0,
+            "event": {"type": "token", "content": " the failure"},
+        },
+        {"task_id": task_id, "agent_name": "jarvis", "depth": 0, "event": {"type": "done"}},
+    ]
+
+
 def _delegation_events(task_id: str) -> list[dict]:
     """Parent tool_call/usage (dropped) + a child that only ever emits done."""
     return [
@@ -166,6 +202,40 @@ async def test_chat_stream_expands_delegation_start_done_for_tokenless_child(
     assert events[1]["child_id"] == "child-1"
     assert events[1]["persona"] == "scout"
     assert events[2]["child_id"] == "child-1"
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_continues_past_child_error_to_top_level_done(client, stub_overrides):
+    """A depth>=1 child error must surface as an `error` event but must NOT
+    end the stream -- the client keeps receiving events (here, Jarvis's own
+    tokens) up to the real top-level `done`. Regression test for a bug where
+    the endpoint broke the SSE loop on ANY mapped `error`, including a
+    delegated child's, cutting the stream off before Jarvis's continuation
+    ever reached the client.
+    """
+    task_id = f"stub-{uuid.uuid4()}"
+    stub_overrides(task_id, _child_error_then_continues_events(task_id))
+
+    async with client.stream(
+        "POST",
+        "/api/v1/kernel/chat/stream",
+        headers=HEADERS,
+        json={"message": "delegate and recover", "target_agent": "jarvis"},
+    ) as resp:
+        assert resp.status_code == 200
+        events = []
+        async for line in resp.aiter_lines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+                if events[-1]["type"] == "done":
+                    break
+
+    types = [e["type"] for e in events]
+    # parent tool_call dropped; child error surfaces but does not truncate the
+    # stream; Jarvis's own deltas and final done still arrive after it.
+    assert types == ["start", "error", "assistant_delta", "assistant_delta", "done"]
+    text = "".join(e["text"] for e in events if e["type"] == "assistant_delta")
+    assert text == "Despite the failure"
 
 
 @pytest.mark.asyncio

@@ -630,7 +630,6 @@ async def chat_stream(
     personas: Any = Depends(get_persona_service),
 ):
     """Spawn a persona task and stream its tokens (and any delegated
-
     children's tokens) back as Server-Sent Events.
 
     Chat protocol events: start, assistant_delta{text},
@@ -685,7 +684,13 @@ async def chat_stream(
                     )
                     continue
                 yield sse(mapped)
-                if mapped["type"] in ("done", "error"):
+                # Only a TOP-LEVEL (depth-0) done/error ends the stream. A delegated
+                # child's error must still surface to the client as an `error` chat
+                # event, but the delegation architecture continues past child
+                # failures (tools/delegate.py, services/delegation.py default
+                # on_child_failure="continue") — Jarvis keeps running and the
+                # client should keep receiving events up to the real top-level done.
+                if mapped["type"] in ("done", "error") and raw.get("depth", 0) == 0:
                     break
         finally:
             bus.close(task_id)
