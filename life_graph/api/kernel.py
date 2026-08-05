@@ -10,11 +10,13 @@ Phase 6: Notification Engine — priority-routed alerts.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from life_graph.api.dependencies import (
@@ -27,6 +29,7 @@ from life_graph.api.dependencies import (
 )
 from life_graph.api.responses import paginated_response, success_response
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.services.chat_stream import get_chat_stream_bus, map_bus_event
 
 router = APIRouter(prefix="/kernel", tags=["kernel"])
 
@@ -606,6 +609,88 @@ async def route_message(
         )
 
     return success_response(data=result)
+
+
+class ChatStreamRequest(BaseModel):
+    """Request body for a streaming persona chat turn."""
+
+    message: str = Field(..., min_length=1, description="User message to send to the persona")
+    target_agent: str = Field(default="jarvis", description="Persona to converse with")
+    project_id: uuid.UUID | None = None
+    session_id: uuid.UUID | None = None
+
+
+@router.post(
+    "/chat/stream",
+    summary="Stream a persona chat response (SSE)",
+)
+async def chat_stream(
+    body: ChatStreamRequest,
+    pm: Any = Depends(get_process_manager),
+    personas: Any = Depends(get_persona_service),
+):
+    """Spawn a persona task and stream its tokens (and any delegated
+
+    children's tokens) back as Server-Sent Events.
+
+    Chat protocol events: start, assistant_delta{text},
+    delegation_start{child_id,persona}, child_delta{child_id,persona,text},
+    child_done{child_id,persona}, done{}, error{message}.
+    """
+    tenant_id = get_current_tenant_id()
+
+    persona = await personas.get_by_name(tenant_id, body.target_agent)
+    if persona is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown persona: {body.target_agent!r}",
+        )
+
+    spawn = await pm.spawn(
+        tenant_id=tenant_id,
+        agent_name=body.target_agent,
+        input_data={"message": body.message},
+        task_name=f"chat:{body.target_agent}",
+        session_id=body.session_id,
+        project_id=body.project_id,
+    )
+    task_id = spawn["task_id"]  # == root_task_id for a top-level task
+    bus = get_chat_stream_bus()
+
+    async def gen():
+        def sse(obj: dict) -> str:
+            return f"data: {json.dumps(obj)}\n\n"
+
+        yield sse({"type": "start", "task_id": task_id, "persona": body.target_agent})
+        seen: set[str] = set()
+        try:
+            async for raw in bus.subscribe(task_id):
+                mapped = map_bus_event(raw, seen)
+                if mapped is None:
+                    continue
+                if mapped["type"] == "delegation_start+done":
+                    yield sse(
+                        {
+                            "type": "delegation_start",
+                            "child_id": mapped["child_id"],
+                            "persona": mapped["persona"],
+                        }
+                    )
+                    yield sse(
+                        {
+                            "type": "child_done",
+                            "child_id": mapped["child_id"],
+                            "persona": mapped["persona"],
+                        }
+                    )
+                    continue
+                yield sse(mapped)
+                if mapped["type"] in ("done", "error"):
+                    break
+        finally:
+            bus.close(task_id)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 @router.post(

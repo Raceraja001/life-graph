@@ -77,3 +77,47 @@ def get_chat_stream_bus() -> ChatStreamBus:
     if _bus is None:
         _bus = ChatStreamBus()
     return _bus
+
+
+def map_bus_event(raw: dict, seen_children: set[str]) -> dict | None:
+    """Map one raw bus event to a chat-protocol event, or None to drop it.
+
+    seen_children is caller-owned mutable state tracking which child task_ids
+    have already emitted their delegation_start. A child whose first streamed
+    event is `done` (no prior token) needs both delegation_start and child_done;
+    that case returns the compound marker ``delegation_start+done`` for the
+    caller (the SSE endpoint) to expand into two frames.
+    """
+    depth = raw.get("depth", 0)
+    persona = raw.get("agent_name", "")
+    child_id = raw.get("task_id", "")
+    event = raw.get("event", {})
+    etype = event.get("type")
+
+    if etype in ("error", "partial_error"):
+        return {"type": "error", "message": event.get("error") or event.get("message", "error")}
+
+    if depth == 0:
+        if etype == "token":
+            return {"type": "assistant_delta", "text": event.get("content", "")}
+        if etype == "done":
+            return {"type": "done"}
+        return None  # tool_call/tool_result/usage on the top-level task are dropped
+
+    # depth >= 1 : a delegated child
+    if etype == "token":
+        if child_id not in seen_children:
+            seen_children.add(child_id)
+            return {"type": "delegation_start", "child_id": child_id, "persona": persona}
+        return {
+            "type": "child_delta",
+            "child_id": child_id,
+            "persona": persona,
+            "text": event.get("content", ""),
+        }
+    if etype == "done":
+        if child_id not in seen_children:
+            seen_children.add(child_id)
+            return {"type": "delegation_start+done", "child_id": child_id, "persona": persona}
+        return {"type": "child_done", "child_id": child_id, "persona": persona}
+    return None
