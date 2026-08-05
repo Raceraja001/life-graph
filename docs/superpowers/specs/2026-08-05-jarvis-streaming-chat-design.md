@@ -196,19 +196,21 @@ user named. Add a coordination unit test asserting no duplicate-persona delegati
   for multi-replica infra, not a V1 dependency.
 - **Expose the orchestrator's existing stream** rather than building streaming anew.
 - **Collapsible steps**, default compact, expand-to-nest.
+- **Live child-token streaming** — child loops publish deltas to the session bus as they generate.
 - Backend coordination/delegation/task-tree **reused unchanged**; only streaming + surfacing added.
-- Unify the chat surface (persona picker) rather than a separate Jarvis page.
+- **Unify** the chat surface (one screen + persona picker, default Jarvis), mode-branched rendering.
 
 ## Open questions (resolve in plan)
 
 - **(resolved)** Seam = a new endpoint mirroring `process_manager._run_agent`'s orchestrator build
   (`process_manager.py:425-449`) but forwarding `orchestrator.run()` events instead of discarding them.
-- Whether `child_delta` streams **live** into the hidden buffer (child orchestrators publish to the session
-  bus) or the child's full text is attached only on `child_done` (arrives as the `delegate_to_persona`
-  `tool_result` — simplest, no child-side plumbing). **Default:** live buffering; **fallback:** on-done if
-  wiring child loops to the session bus proves fiddly. Note `delegate_to_persona` currently **busy-polls**
-  the child every 2s (`tools/delegate.py:24`) — live child streaming needs the child loop to publish
-  deltas, independent of the parent's poll.
-- Frontend: extend `m/chat` + `chat-bar` or introduce a shared `<PersonaChat>` component.
-- The existing memory-chat SSE-lessness: the "Ask my memories" path stays on its current non-streaming
-  `conversations` pipeline unless we later unify both under the streaming surface.
+- **(resolved — LIVE) `child_delta` streams live.** Child persona loops publish their token deltas to the
+  session bus (tagged `child_id`+`persona`) as they generate, independent of the parent's poll. Note
+  `delegate_to_persona` currently **busy-polls** the child every 2s (`tools/delegate.py:24`) for the *final
+  result*; live streaming is a separate, additive publish from inside the child's orchestrator loop and does
+  not change delegation semantics.
+- **(resolved — UNIFY) One chat surface, mode-branched.** A single chat screen with the persona picker;
+  default = **Jarvis**. Selecting "Ask my memories" uses the existing non-streaming `conversations`
+  pipeline; selecting any persona uses `POST /kernel/chat/stream` with delegation-step rendering. Reuses
+  `m/chat`/`chat-bar` rather than a separate Jarvis page. (Exact component factoring — shared
+  `<PersonaChat>` vs. inline branch — is a plan detail.)
