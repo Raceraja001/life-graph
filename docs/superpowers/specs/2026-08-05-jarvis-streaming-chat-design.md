@@ -24,9 +24,21 @@ Confirmed by direct test on 2026-08-05 against `https://brain.raceraja001.in` (o
 - **The entire tree + results live only in the DB / task endpoints — no chat UI shows any of it.** The
   desktop `chat-bar` renders the route call's routing JSON; the mobile `m/chat` is memory-Q&A only.
 
-**Design consequence:** we are *not* building or merging backend coordination. We are (1) making the
-persona loop **stream tokens**, (2) **relaying** those tokens from the worker process to the browser,
-(3) building the **chat surface** that renders it, and (4) a small **coordination-prompt tune-up**.
+**Two code-verified facts that shape the design** (origin/master @ `6bee0fa`):
+- Persona tasks run **in-process** — `ProcessManager.spawn` does `asyncio.create_task(_execute_task(...))`
+  inside the **FastAPI web process** (`kernel/process_manager.py:159`). ARQ workers only run cron. So the
+  persona loop and any SSE endpoint live in the **same process** — no cross-process bridge is required.
+- The agent loop **already streams**: `AgentOrchestrator.run()` is an async generator that sets
+  `stream=True` and yields SSE-formatted events (`token`, `tool_call`, `tool_result`, `status`, `done`)
+  via `get_resilient_llm().acompletion(...)` (`agents/orchestrator.py:58,118,128`). Today
+  `process_manager._run_agent` (`process_manager.py:452`) **consumes that stream and throws the tokens
+  away**, keeping only the final text. We just need to *not* throw them away, and expose them.
+
+**Design consequence:** we are *not* building or merging backend coordination, and *not* building
+streaming from scratch. We are (1) **exposing** the orchestrator's existing token stream over HTTP SSE,
+(2) making delegated child tokens reachable via an **in-process session bus** (an `asyncio.Queue` registry
+keyed by `session_id` — Redis only if/when multiple web replicas exist), (3) building the **chat surface**
+that renders it, and (4) a small **coordination-prompt tune-up**.
 
 ## Scope
 
@@ -46,42 +58,50 @@ persona loop **stream tokens**, (2) **relaying** those tokens from the worker pr
   user-triggered via the picker/`target_agent`).
 - Changing the delegation/verifier/task-tree mechanics — reused unchanged.
 
-## Architecture — streaming relay
+## Architecture — in-process streaming (single web process)
 
 ```
 Browser (chat UI)
-  │  1. POST /api/v1/kernel/route {message, target_agent:"jarvis"}  ──►  web process
-  │                                                    ◄── {session_id, task_id}
-  │  2. EventSource GET /api/v1/kernel/chat/stream?session_id=…      ──►  web process (SSE)
-  │                                                                        │  subscribes
-  ▼                                                                        ▼
- renders  ◄──────────── SSE events ────────────────────  Redis channel  chat:stream:{session_id}
-                                                                         ▲  publishes
-                                                                         │
-                              ARQ worker: jarvis agent loop (streaming LLM) ──┐
-                                 │  delegate_to_persona → child task           │ each token / event
-                                 └─ child persona loops (streaming LLM) ───────┘
+  │  POST /api/v1/kernel/chat/stream {message, target_agent:"jarvis"}   ──►  web process
+  │      (fetch + ReadableStream reader — NOT EventSource; see Frontend)      │
+  │                                                                           ▼
+  │                                            resolve jarvis persona → build AgentOrchestrator
+  ▼                                                        │  orchestrator.run() already yields tokens
+ renders ◄─────── SSE (text/event-stream) ────────────────┤
+   tokens/steps                                            │  delegate_to_persona → ProcessManager.spawn
+                                                           │      child task (same process)
+                                                           └─ child orchestrators publish deltas ──►
+                                                              in-process session bus (asyncio.Queue
+                                                              registry keyed by session_id); the SSE
+                                                              handler merges Jarvis's stream + child deltas
 ```
 
-**Why a relay:** the persona loop runs in the **ARQ worker** process; the browser's SSE connection is
-held by the **web** process. They can't share an in-memory generator. The worker (and each delegated
-child) **publishes** structured stream events to a per-session Redis channel; the SSE endpoint in the web
-process **subscribes** and forwards them. This reuses the existing EventBus→Redis bridge pattern and is
-horizontally scalable (any web replica can serve the stream). It is infra-portable — no dependence on the
-current Cloudflare/free-tier setup (the developer will host on dedicated infra).
+**Why in-process (not a Redis relay):** persona execution and the SSE endpoint run in the **same FastAPI
+process** (`ProcessManager` uses `asyncio.create_task`, `process_manager.py:159`), so Jarvis's own tokens
+stream directly from `orchestrator.run()`. Delegated **children** are separate in-process tasks; to stream
+*their* tokens live we add a lightweight **in-process session bus** — a registry of `asyncio.Queue`s keyed
+by `session_id` that child orchestrators publish deltas to and the SSE handler drains. **No Redis is
+required for a single instance.** For multi-replica infra later, the bus is a one-file swap to Redis
+pub/sub (channel `stream:{tenant_id}:{session_id}`, modeled on the existing `RedisBridge`,
+`core/events.py:270`) — designed for it, not dependent on it.
 
 ### Components
 
-1. **Streaming persona execution.** The agent/orchestrator loop gains a streaming path: LLM calls use
-   `stream=True` and yield token deltas; tool-call handling is unchanged. Each yielded delta is published
-   to the session channel. Non-streaming callers keep working (streaming is additive).
-2. **Stream publisher.** A thin helper (e.g. `services/chat_stream.py`) that publishes typed events to
-   `chat:stream:{session_id}` via Redis. Called by the jarvis loop and by each delegated child loop
-   (children tag their events with `child_id` + `persona`).
-3. **SSE endpoint** (`GET /api/v1/kernel/chat/stream?session_id=…`) in the web process: subscribes to the
-   channel, forwards events as `text/event-stream`, closes on `done`/`error` or client disconnect.
-   Tenant-scoped and auth'd like other endpoints; heartbeats to keep the connection alive.
-4. **Chat frontend** — consumes the SSE, renders per the mockup.
+1. **Expose the orchestrator stream.** Reuse the exact orchestrator build that `_run_agent` already does
+   (`process_manager.py:425-449` — model/temperature/max_tokens from persona, `allowed_tools` filtering),
+   but instead of discarding tokens, forward `orchestrator.run()`'s yielded events to the HTTP response.
+   The orchestrator already emits `token`/`tool_call`/`tool_result`/`status`/`done` — we **map** those to
+   our chat event protocol (below): a `delegate_to_persona` `tool_call` → `delegation_start`; its
+   `tool_result` → `child_done` (+ the child's answer for the expandable buffer).
+2. **In-process session bus** (`services/chat_stream.py`): `publish(session_id, event)` /
+   `subscribe(session_id) -> AsyncIterator`. Backed by per-session `asyncio.Queue`s. Child persona loops
+   publish their `child_delta`s here (tagged `child_id`+`persona`); the SSE handler merges them with
+   Jarvis's own token stream. Redis-backed implementation is an interface-compatible drop-in.
+3. **SSE endpoint** `POST /api/v1/kernel/chat/stream` (web process): resolves the persona, runs the
+   orchestrator, and returns `StreamingResponse(..., media_type="text/event-stream")` merging the
+   orchestrator events + session-bus child deltas. Tenant-scoped + auth'd; heartbeats; also records an
+   `AgentTask` (+ children via delegation) so the existing task-tree endpoints and history still work.
+4. **Chat frontend** — consumes the stream via `fetch()` + `ReadableStream` reader, renders per the mockup.
 
 ## Event protocol (Redis channel → SSE)
 
@@ -104,14 +124,20 @@ choice). Jarvis's own `assistant_delta`/synthesis always streams visibly.
 
 ## API contracts
 
-**`POST /api/v1/kernel/route`** — *unchanged* (already accepts `target_agent`). Returns
-`{session_id, task_id, routed_to, task_status}`.
+**`POST /api/v1/kernel/chat/stream`** — *new, primary*. Body `{message, target_agent:"jarvis", session_id?,
+project_id?}`. Auth `Authorization: Bearer` + `X-Tenant-ID` (normal headers — the client uses `fetch()`,
+not `EventSource`, so headers work). Response `text/event-stream`: emits the chat events below
+(`event:` = type, `data:` = JSON), heartbeats ~15s, ends on `done`/`error` or client disconnect. Records
+an `AgentTask` (id returned in the `start` event) so the task-tree/history endpoints keep working.
 
-**`GET /api/v1/kernel/chat/stream?session_id=<uuid>`** — *new*. `Accept: text/event-stream`. Auth +
-`X-Tenant-ID` as usual. Emits the events above as SSE (`event:` = type, `data:` = JSON). Server sends a
-comment heartbeat every ~15s. Ends after `done`/`error`. Reconnect: client may re-open; server replays
-from a short Redis-retained buffer if the `Last-Event-ID` header is present (best-effort; a missed tail
-still resolves because the final result is also persisted on the task and fetchable).
+**Existing endpoints reused unchanged:** `POST /api/v1/kernel/route` (accepts `target_agent`; still used
+for the non-streaming/fire-and-forget path and by other callers), `GET /api/v1/kernel/tasks/{id}`
+(fetch the persisted final `result.response` — the reconnect/missed-tail fallback), and the Era-7
+`GET /api/v1/agent-tasks/{id}/tree` (`api/agent_tasks.py:57`) for the delegation tree view.
+
+**Reconnect:** if the stream drops, the client re-POSTs with the same `session_id`; the server replays from
+the session bus's short in-memory retained buffer, and if that's gone, the client falls back to
+`GET /kernel/tasks/{id}` for the final answer — a missed tail never loses the result (it's persisted).
 
 ## Frontend design
 
@@ -124,8 +150,13 @@ UI reference: **`docs/design/mockups/jarvis-streaming-chat.html`** (open in a br
 - **Surface placement:** unify with the existing chat rather than a third surface — the picker's "Ask my
   memories" option preserves today's memory-Q&A chat; picking a persona switches to the streaming route.
   (Exact file wiring — extend `m/chat` + `chat-bar` vs a shared component — resolved in the plan.)
-- **Controls:** a **Stop** button (aborts: closes SSE + best-effort cancels the task); graceful handling
-  of disconnect/reconnect; render the final answer from the task if the stream is missed.
+- **Controls:** a **Stop** button (aborts: closes the stream + best-effort `POST /kernel/tasks/{id}/cancel`);
+  graceful disconnect/reconnect; render the final answer from the task if the stream is missed.
+- **Streaming client:** consume via **`fetch()` + `ReadableStream.getReader()`** (parse the SSE frames
+  manually), **not `EventSource`** — EventSource can't send `Authorization`/`X-Tenant-ID` headers, and the
+  app's auth is header-based (`dashboard/lib/api.ts:2-11`). Add a `kernel.chatStream(message, target_agent)`
+  client and extend `api.kernel.route` to pass `target_agent` (today it sends only `{message}`,
+  `api.ts:138`).
 
 ## Jarvis coordination tune-up
 
@@ -152,22 +183,32 @@ user named. Add a coordination unit test asserting no duplicate-persona delegati
   test (no duplicate delegation).
 - **Integration:** `httpx.AsyncClient` + `ASGITransport` — POST route then consume the SSE endpoint with a
   mocked LLM that emits known token deltas; assert the ordered event sequence
-  (`start → delegation_start → child_delta* → child_done → assistant_delta* → done`). Redis mocked/faked.
+  (`start → delegation_start → child_delta* → child_done → assistant_delta* → done`). No Redis — the
+  session bus is in-process; the LLM is the only thing mocked.
 - **Manual gate:** on the VM, open the chat, address Jarvis with a two-role prompt, watch chips + synthesis
   stream, expand a chip; confirm it matches the mockup and the final answer equals the task's stored result.
 
 ## Locked decisions
 
 - SSE **token** streaming (not polling, not WS) — chosen deliberately; build proper, infra later.
-- **Redis pub/sub relay** worker→web (not in-process; not per-request worker execution).
+- **In-process session bus** (`asyncio.Queue` registry), *not* a Redis relay — because persona execution
+  and the SSE endpoint share one process. Redis pub/sub is a designed-for, interface-compatible drop-in
+  for multi-replica infra, not a V1 dependency.
+- **Expose the orchestrator's existing stream** rather than building streaming anew.
 - **Collapsible steps**, default compact, expand-to-nest.
 - Backend coordination/delegation/task-tree **reused unchanged**; only streaming + surfacing added.
 - Unify the chat surface (persona picker) rather than a separate Jarvis page.
 
 ## Open questions (resolve in plan)
 
-- Exact seam to add streaming in the agent loop (orchestrator vs driver) — pending the code map.
-- Whether `child_delta` streams live into the hidden buffer or the child's full text is attached on
-  `child_done` only (latency vs simplicity) — default to live buffering; fall back to on-done if the loop
-  seam makes per-token child relay costly.
+- **(resolved)** Seam = a new endpoint mirroring `process_manager._run_agent`'s orchestrator build
+  (`process_manager.py:425-449`) but forwarding `orchestrator.run()` events instead of discarding them.
+- Whether `child_delta` streams **live** into the hidden buffer (child orchestrators publish to the session
+  bus) or the child's full text is attached only on `child_done` (arrives as the `delegate_to_persona`
+  `tool_result` — simplest, no child-side plumbing). **Default:** live buffering; **fallback:** on-done if
+  wiring child loops to the session bus proves fiddly. Note `delegate_to_persona` currently **busy-polls**
+  the child every 2s (`tools/delegate.py:24`) — live child streaming needs the child loop to publish
+  deltas, independent of the parent's poll.
 - Frontend: extend `m/chat` + `chat-bar` or introduce a shared `<PersonaChat>` component.
+- The existing memory-chat SSE-lessness: the "Ask my memories" path stays on its current non-streaming
+  `conversations` pipeline unless we later unify both under the streaming surface.
