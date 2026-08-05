@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Plus, Send, Sparkles } from "lucide-react";
 import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
 import { MemorySheet } from "@/components/mobile/memory-sheet";
 import { useMobileState } from "@/components/mobile/mobile-state";
+import { PersonaChat } from "@/components/persona-chat";
 import { api } from "@/lib/api";
 import { onDistillComplete } from "@/lib/distill-events";
 import {
@@ -54,7 +55,54 @@ function fmtDate(iso?: string): string {
   return isNaN(d.getTime()) ? "" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+type Surface = "jarvis" | "memory";
+
+const TABS: { id: Surface; label: string }[] = [
+  { id: "jarvis", label: "Jarvis" },
+  { id: "memory", label: "Ask my memories" },
+];
+
+function SurfaceTabs({ surface, onChange }: { surface: Surface; onChange: (s: Surface) => void }) {
+  return (
+    <div style={{ display: "flex", gap: "6px", flexShrink: 0, paddingBottom: "8px" }}>
+      {TABS.map((t) => {
+        const active = t.id === surface;
+        return (
+          <button
+            key={t.id}
+            onClick={() => onChange(t.id)}
+            style={{
+              flex: 1,
+              height: "32px",
+              border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
+              borderRadius: "var(--radius-pill)",
+              background: active ? "var(--accent-soft)" : "var(--surface)",
+              color: active ? "var(--accent-soft-fg)" : "var(--text-muted)",
+              fontFamily: "inherit",
+              fontSize: "var(--text-sm)",
+              fontWeight: "var(--fw-semibold)",
+              cursor: "pointer",
+            }}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MobileChat() {
+  const [surface, setSurface] = useState<Surface>("jarvis");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      <SurfaceTabs surface={surface} onChange={setSurface} />
+      {surface === "jarvis" ? <PersonaChat /> : <MemorySurface />}
+    </div>
+  );
+}
+
+function MemorySurface() {
   const { online } = useMobileState();
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
