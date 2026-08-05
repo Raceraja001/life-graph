@@ -19,7 +19,7 @@ type Turn = {
 };
 
 type ChatEvent =
-  | { type: "start" }
+  | { type: "start"; task_id: string; persona: string }
   | { type: "assistant_delta"; text: string }
   | { type: "delegation_start"; child_id: string; persona: string }
   | { type: "child_delta"; child_id: string; persona: string; text: string }
@@ -66,6 +66,10 @@ export function PersonaChat() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const abort = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Captured from the SSE `start` event so Stop can best-effort cancel the
+  // backend task too (aborting the fetch alone leaves Jarvis running and
+  // burning model quota server-side).
+  const currentTaskId = useRef<string | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -87,7 +91,9 @@ export function PersonaChat() {
         msg,
         persona,
         (e: ChatEvent) => {
-          if (e.type === "assistant_delta") {
+          if (e.type === "start") {
+            currentTaskId.current = e.task_id;
+          } else if (e.type === "assistant_delta") {
             patchLast((t) => ({ ...t, synthesis: t.synthesis + e.text }));
           } else if (e.type === "delegation_start") {
             patchLast((t) =>
@@ -150,7 +156,19 @@ export function PersonaChat() {
           : { ...t, synthesis: t.synthesis + "\n[connection lost]", done: true, errored: true };
       });
     } finally {
+      currentTaskId.current = null;
       setStreaming(false);
+    }
+  }
+
+  function stop() {
+    abort.current?.abort();
+    // Best-effort: also ask the backend to cancel the task so Jarvis stops
+    // burning model quota. Ignore failures (task may already be done, or
+    // the cancel endpoint may 409 on a task that just completed).
+    const taskId = currentTaskId.current;
+    if (taskId) {
+      void api.kernel.tasks.cancel(taskId).catch(() => {});
     }
   }
 
@@ -251,7 +269,7 @@ export function PersonaChat() {
         />
         {streaming ? (
           <button
-            onClick={() => abort.current?.abort()}
+            onClick={stop}
             aria-label="Stop streaming"
             style={{
               flexShrink: 0,

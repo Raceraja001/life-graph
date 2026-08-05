@@ -44,6 +44,27 @@ class ChatStreamBus:
     def buffer_len(self, stream_key: str) -> int:
         return len(self._buffers.get(stream_key, ()))
 
+    def discard(self, stream_key: str) -> None:
+        """Free buffered/closed state for a key that has no active subscriber.
+
+        Every persona task publishes to the bus, but only an SSE-streamed
+        task ever gets a subscriber to drain it -- tasks spawned via
+        `/route`, cron, watchers, etc. have no subscriber and would leak a
+        `_buffers[stream_key]` deque forever without this. Call it once a
+        task tree is done producing events.
+
+        A no-op when a subscriber IS attached (the streamed path): the
+        endpoint's own `close()` plus each subscriber's `finally`-block
+        cleanup already reclaim that state once they've drained it, and
+        dropping it out from under a live subscriber would lose events it
+        hasn't read yet.
+        """
+        if self._subscribers.get(stream_key):
+            return
+        self._buffers.pop(stream_key, None)
+        self._closed.discard(stream_key)
+        self._subscribers.pop(stream_key, None)
+
     async def subscribe(self, stream_key: str) -> AsyncIterator[dict]:
         q: asyncio.Queue = asyncio.Queue()
         # Replay anything already buffered (events fired before we subscribed).

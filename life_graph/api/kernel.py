@@ -10,6 +10,7 @@ Phase 6: Notification Engine — priority-routed alerts.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from datetime import datetime
@@ -656,14 +657,30 @@ async def chat_stream(
     task_id = spawn["task_id"]  # == root_task_id for a top-level task
     bus = get_chat_stream_bus()
 
+    heartbeat_seconds = 15.0
+
     async def gen():
         def sse(obj: dict) -> str:
             return f"data: {json.dumps(obj)}\n\n"
 
         yield sse({"type": "start", "task_id": task_id, "persona": body.target_agent})
         seen: set[str] = set()
+        it = bus.subscribe(task_id).__aiter__()
         try:
-            async for raw in bus.subscribe(task_id):
+            while True:
+                # A delegated child waiting on a slow model can leave the bus
+                # idle for well over a minute; without a periodic keep-alive,
+                # proxies/load-balancers time out and drop the connection.
+                # `: heartbeat` is an SSE comment line -- ignored by any
+                # spec-compliant client (ours only parses "data: " lines).
+                try:
+                    raw = await asyncio.wait_for(it.__anext__(), timeout=heartbeat_seconds)
+                except TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                except StopAsyncIteration:
+                    break
+
                 mapped = map_bus_event(raw, seen)
                 if mapped is None:
                     continue
@@ -697,8 +714,17 @@ async def chat_stream(
                     break
         finally:
             bus.close(task_id)
+            await it.aclose()
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post(

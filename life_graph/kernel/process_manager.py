@@ -366,6 +366,8 @@ class ProcessManager:
                 started_at=datetime.now(timezone.utc),
             )
 
+            stream_key = str(root_task_id or task_id)
+
             try:
                 async with asyncio.timeout(timeout):
                     result = await self._run_agent(
@@ -380,6 +382,8 @@ class ProcessManager:
                     agent_name,
                     result,
                 )
+                # Success: the orchestrator's own "done" event was already
+                # published to the bus by _run_agent -- nothing more to do.
 
             except TimeoutError:
                 error_msg = f"Task {task_id} timed out after {timeout}s"
@@ -391,10 +395,15 @@ class ProcessManager:
                     error_msg,
                     timed_out=True,
                 )
+                self._publish_terminal_bus_event(stream_key, task_id, agent_name, depth, error_msg)
 
             except asyncio.CancelledError:
                 logger.info("Task %s was cancelled", task_id)
                 # Status already set by cancel()
+                self._publish_terminal_bus_event(
+                    stream_key, task_id, agent_name, depth, "Task cancelled"
+                )
+                raise
 
             except Exception as exc:
                 error_msg = f"{type(exc).__name__}: {exc}"
@@ -410,6 +419,51 @@ class ProcessManager:
                     agent_name,
                     error_msg,
                 )
+                self._publish_terminal_bus_event(stream_key, task_id, agent_name, depth, error_msg)
+
+            finally:
+                # Reclaim bus state for tasks nobody streamed (route/cron/
+                # watchers) -- a no-op if an SSE subscriber is attached, since
+                # that path's own close()/cleanup already handles it.
+                from life_graph.services.chat_stream import get_chat_stream_bus
+
+                get_chat_stream_bus().discard(stream_key)
+
+    def _publish_terminal_bus_event(
+        self,
+        stream_key: str,
+        task_id: uuid.UUID,
+        agent_name: str,
+        depth: int,
+        error_msg: str,
+    ) -> None:
+        """Publish a terminal bus event for a task that failed WITHOUT the
+        orchestrator itself ever emitting a top-level "done" (timeout,
+        cancellation, or an exception outside the orchestrator's own
+        error handling).
+
+        Without this, an SSE subscriber's `async for raw in bus.subscribe(...)`
+        would block forever waiting for a done/error event that will never
+        arrive, hanging the UI on "coordinating...". `map_bus_event` turns a
+        depth-0 partial_error into a fatal `error` (which the endpoint breaks
+        the stream on), while a depth>=1 partial_error maps to the existing
+        non-fatal `child_error` -- so a delegated child dying this way still
+        just fails its one step chip instead of cutting off Jarvis's own
+        stream. The "error" key (not "content") matches both map_bus_event's
+        `event.get("error") or event.get("message", "error")` lookup and the
+        key the orchestrator itself uses for its own partial_error events.
+        """
+        from life_graph.services.chat_stream import get_chat_stream_bus
+
+        get_chat_stream_bus().publish(
+            stream_key,
+            {
+                "task_id": str(task_id),
+                "agent_name": agent_name,
+                "depth": depth or 0,
+                "event": {"type": "partial_error", "error": error_msg[:500]},
+            },
+        )
 
     async def _run_agent(
         self,

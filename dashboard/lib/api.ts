@@ -134,6 +134,7 @@ export const api = {
       list: (params?: { status?: string; limit?: string }) =>
         listRequest<any>("/kernel/tasks", params),
       get: (id: string) => GET<any>(`/kernel/tasks/${id}`),
+      cancel: (id: string) => POST<any>(`/kernel/tasks/${id}/cancel`, {}),
     },
     route: (message: string, target_agent?: string) =>
       POST<any>("/kernel/route", target_agent ? { message, target_agent } : { message }),

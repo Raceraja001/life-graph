@@ -97,3 +97,41 @@ async def test_subscribe_after_close_and_drain_terminates():
     await asyncio.wait_for(task2, timeout=1)  # Must not hang
     # Second subscriber receives only _END (buffer was cleaned up).
     assert got2 == []
+
+
+def test_discard_with_no_subscriber_frees_buffer():
+    """Non-streamed tasks (/route, cron, watchers) publish to the bus but
+    nobody ever subscribes to drain+reap them -- discard() is how their
+    buffers get reclaimed instead of leaking forever."""
+    bus = ChatStreamBus()
+    bus.publish("k6", {"type": "token", "content": "x"})
+    assert bus.buffer_len("k6") == 1
+
+    bus.discard("k6")
+
+    assert bus.buffer_len("k6") == 0
+
+
+@pytest.mark.asyncio
+async def test_discard_with_active_subscriber_leaves_state_alone():
+    """discard() must be a no-op while a subscriber is attached (the SSE
+    streamed path) -- otherwise a sibling non-streamed task tree finishing
+    around the same time could blow away buffered events the live
+    subscriber hasn't drained yet."""
+    bus = ChatStreamBus()
+    got = []
+
+    async def consume():
+        async for ev in bus.subscribe("k7"):
+            got.append(ev)
+
+    task = asyncio.create_task(consume())
+    await asyncio.sleep(0)  # let subscribe register
+    bus.publish("k7", {"type": "token", "content": "hi"})
+
+    bus.discard("k7")
+    assert bus.buffer_len("k7") == 1  # untouched -- subscriber still attached
+
+    bus.close("k7")
+    await asyncio.wait_for(task, timeout=1)
+    assert got == [{"type": "token", "content": "hi"}]

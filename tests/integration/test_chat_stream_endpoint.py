@@ -55,6 +55,33 @@ class _StubProcessManager:
         return {"task_id": self._task_id}
 
 
+class _StubProcessManagerNoClose:
+    """Like _StubProcessManager, but never calls bus.close().
+
+    Production `ProcessManager._execute_task` never closes the bus either --
+    only the SSE endpoint does, from its own `finally`, and only AFTER its
+    `async for` loop has already broken out on a terminal event. This stub
+    reproduces that: it publishes canned events and stops, so the test can
+    verify the endpoint terminates on the terminal event's content alone,
+    not because the producer happened to close the stream for it.
+    """
+
+    def __init__(self, task_id: str, bus_events: list[dict]) -> None:
+        self._task_id = task_id
+        self._bus_events = bus_events
+
+    async def spawn(self, **kwargs) -> dict:
+        bus = get_chat_stream_bus()
+
+        async def _publish() -> None:
+            for event in self._bus_events:
+                bus.publish(self._task_id, event)
+            # Deliberately no bus.close() here -- see class docstring.
+
+        asyncio.create_task(_publish())
+        return {"task_id": self._task_id}
+
+
 def _token_done_events(task_id: str) -> list[dict]:
     """A depth-0 'Hello' response streamed as two tokens then done."""
     return [
@@ -110,6 +137,40 @@ def _child_error_then_continues_events(task_id: str) -> list[dict]:
     ]
 
 
+def _tokens_then_no_top_level_done_events(task_id: str) -> list[dict]:
+    """Some tokens, then the task ends abnormally (timeout/cancel/crash)
+    WITHOUT the orchestrator ever emitting a depth-0 `done`.
+
+    This is the exact shape production `ProcessManager._execute_task` now
+    publishes on its failure paths (see `_publish_terminal_bus_event`): a
+    depth-0 `partial_error`, which `map_bus_event` turns into a fatal
+    `error` -- the only thing that stops the SSE endpoint's `async for`
+    loop from blocking forever, since the producer side never calls
+    `bus.close()` (only `bus.discard()`, which is a no-op while this
+    request's subscriber is still attached).
+    """
+    return [
+        {
+            "task_id": task_id,
+            "agent_name": "jarvis",
+            "depth": 0,
+            "event": {"type": "token", "content": "Working"},
+        },
+        {
+            "task_id": task_id,
+            "agent_name": "jarvis",
+            "depth": 0,
+            "event": {"type": "token", "content": " on it"},
+        },
+        {
+            "task_id": task_id,
+            "agent_name": "jarvis",
+            "depth": 0,
+            "event": {"type": "partial_error", "error": "RuntimeError: boom"},
+        },
+    ]
+
+
 def _delegation_events(task_id: str) -> list[dict]:
     """Parent tool_call/usage (dropped) + a child that only ever emits done."""
     return [
@@ -135,11 +196,11 @@ def stub_overrides():
     """Install dependency overrides for a test, tearing them down after."""
     installed: dict = {}
 
-    def _install(task_id: str, events: list[dict]) -> None:
+    def _install(task_id: str, events: list[dict], pm_cls: type = _StubProcessManager) -> None:
         installed["persona"] = get_persona_service
         installed["pm"] = get_process_manager
         app.dependency_overrides[get_persona_service] = lambda: _StubPersonaService()
-        app.dependency_overrides[get_process_manager] = lambda: _StubProcessManager(task_id, events)
+        app.dependency_overrides[get_process_manager] = lambda: pm_cls(task_id, events)
 
     yield _install
 
@@ -244,6 +305,56 @@ async def test_chat_stream_continues_past_child_error_to_top_level_done(client, 
     assert child_error["message"] == "litellm.AuthenticationError"
     text = "".join(e["text"] for e in events if e["type"] == "assistant_delta")
     assert text == "Despite the failure"
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_terminates_when_execution_ends_without_top_level_done(
+    client, stub_overrides
+):
+    """Regression test for a silent hang: if the top-level task ends
+    (timeout/cancel/crash) WITHOUT the orchestrator ever emitting a depth-0
+    `done`, the SSE endpoint must still terminate instead of blocking
+    forever on `async for raw in bus.subscribe(...)`.
+
+    Production `ProcessManager._execute_task` now guarantees this by
+    publishing a depth-0 `partial_error` terminal event on every failure
+    path (timeout, cancellation, generic exception) -- see
+    `_publish_terminal_bus_event`. `_StubProcessManagerNoClose` reproduces
+    that exact event shape (and, crucially, never calls `bus.close()`
+    either, matching production) so this test exercises the real
+    consumer-side contract: the endpoint must break out of its loop on the
+    terminal event's content alone.
+
+    Consumption is wrapped in `asyncio.wait_for` with a short timeout so
+    that if this regresses, the test FAILS on a timeout instead of hanging
+    the whole suite.
+    """
+    task_id = f"stub-{uuid.uuid4()}"
+    stub_overrides(
+        task_id,
+        _tokens_then_no_top_level_done_events(task_id),
+        pm_cls=_StubProcessManagerNoClose,
+    )
+
+    async def _consume() -> list[dict]:
+        events: list[dict] = []
+        async with client.stream(
+            "POST",
+            "/api/v1/kernel/chat/stream",
+            headers=HEADERS,
+            json={"message": "hi", "target_agent": "jarvis"},
+        ) as resp:
+            assert resp.status_code == 200
+            async for line in resp.aiter_lines():
+                if line.startswith("data: "):
+                    events.append(json.loads(line[6:]))
+        return events
+
+    events = await asyncio.wait_for(_consume(), timeout=10)
+
+    types = [e["type"] for e in events]
+    assert types == ["start", "assistant_delta", "assistant_delta", "error"]
+    assert events[-1]["message"] == "RuntimeError: boom"
 
 
 @pytest.mark.asyncio
