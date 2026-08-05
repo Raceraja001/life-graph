@@ -49,11 +49,15 @@ class ChatStreamBus:
         # Replay anything already buffered (events fired before we subscribed).
         for ev in list(self._buffers.get(stream_key, ())):
             q.put_nowait(ev)
+        # If stream is already closed, signal end-of-stream so late subscribers
+        # terminate promptly instead of blocking forever.
+        if stream_key in self._closed:
+            q.put_nowait(_END)
         self._subscribers[stream_key].append(q)
         try:
             while True:
                 ev = await q.get()
-                if ev is _END or ev == _END:
+                if ev is _END:
                     return
                 yield ev
         finally:
@@ -62,7 +66,6 @@ class ChatStreamBus:
                 subs.remove(q)
             if not subs and stream_key in self._closed:
                 self._buffers.pop(stream_key, None)
-                self._closed.discard(stream_key)
                 self._subscribers.pop(stream_key, None)
 
 
