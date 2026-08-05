@@ -135,7 +135,44 @@ export const api = {
         listRequest<any>("/kernel/tasks", params),
       get: (id: string) => GET<any>(`/kernel/tasks/${id}`),
     },
-    route: (message: string) => POST<any>("/kernel/route", { message }),
+    route: (message: string, target_agent?: string) =>
+      POST<any>("/kernel/route", target_agent ? { message, target_agent } : { message }),
+    // Streams SSE frames from POST /kernel/chat/stream via fetch()+ReadableStream (NOT
+    // EventSource, which can't send the Authorization/X-Tenant-ID headers). Invokes onEvent
+    // per parsed `data: {...}` frame; abortable via `signal`.
+    chatStream: async (
+      message: string,
+      target_agent: string,
+      onEvent: (e: any) => void,
+      signal?: AbortSignal,
+    ): Promise<void> => {
+      const res = await fetch(`${API_BASE}/kernel/chat/stream`, {
+        method: "POST",
+        headers: { ...getHeaders(), Accept: "text/event-stream" },
+        body: JSON.stringify({ message, target_agent }),
+        signal,
+      });
+      if (!res.ok || !res.body) throw new Error(`chat stream failed: ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const frames = buf.split("\n\n");
+        buf = frames.pop() ?? "";
+        for (const frame of frames) {
+          const line = frame.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          try {
+            onEvent(JSON.parse(line.slice(6)));
+          } catch {
+            /* ignore keep-alive/comment frames */
+          }
+        }
+      }
+    },
     personas: () => GET<any[]>("/kernel/personas"),
     projects: () => listRequest<any>("/kernel/projects"),
     notifications: (params?: { limit?: string }) =>
