@@ -27,7 +27,7 @@ from life_graph.autonomy.pipeline.executor import CommandExecutor
 from life_graph.autonomy.pipeline.schemas import AutoActionResponse, AutoFixRequest, AutoFixResponse
 from life_graph.autonomy.shadow.service import shadow_service
 from life_graph.core.events import EventType, event_bus
-from life_graph.drivers.dispatcher import TaskDispatcher
+from life_graph.drivers.dispatcher import DispatchError, TaskDispatcher
 
 if TYPE_CHECKING:
     from life_graph.drivers.base import DriverResult
@@ -282,21 +282,38 @@ class AutoFixService:
         lock = self._get_lock(auto_action.project_id)
         started = datetime.now(UTC)
         async with lock:
+            error_message = None
             if auto_action.kind == "agent_task":
-                driver_result = await self._dispatcher.dispatch_task(
-                    tenant_id=tenant_id,
-                    task_id=auto_action.id,
-                    instruction=auto_action.instruction or "",
-                    task_type="general",
-                    project_id=auto_action.project_id,
-                    persona_name=auto_action.agent_id,
-                    verify_chain=["build_ok", "lint_clean"],
-                    interactive=False,
-                    cost_cap_usd=DEFAULT_AGENT_TASK_COST_CAP,
-                )
-                exit_code, stdout, stderr, duration_ms = self._driver_result_to_fields(
-                    driver_result
-                )
+                # Unlike CommandExecutor (which never raises), dispatch_task
+                # CAN raise — DispatchError on a WIP-limit hit, or any other
+                # driver/orchestrator error. Catch it here so it becomes an
+                # ordinary AutoAction failure row instead of propagating out
+                # of _run_action (and, via execute_pending, wedging the
+                # unified-feed approval flow). This backstop is agent_task-
+                # branch-only; the command path's CommandExecutor is
+                # untouched and still relied on to never raise.
+                try:
+                    driver_result = await self._dispatcher.dispatch_task(
+                        tenant_id=tenant_id,
+                        task_id=auto_action.id,
+                        instruction=auto_action.instruction or "",
+                        task_type="general",
+                        project_id=auto_action.project_id,
+                        persona_name=auto_action.agent_id,
+                        verify_chain=["build_ok", "lint_clean"],
+                        interactive=False,
+                        cost_cap_usd=DEFAULT_AGENT_TASK_COST_CAP,
+                    )
+                except DispatchError as exc:
+                    exit_code, stdout, stderr, duration_ms = 1, "", str(exc), 0
+                    error_message = str(exc)
+                except Exception as exc:  # backstop for unexpected driver/orchestrator errors
+                    exit_code, stdout, stderr, duration_ms = 1, "", str(exc), 0
+                    error_message = str(exc)
+                else:
+                    exit_code, stdout, stderr, duration_ms = self._driver_result_to_fields(
+                        driver_result
+                    )
             else:
                 exec_result = await self._executor.execute(
                     command=auto_action.action_command,
@@ -319,6 +336,7 @@ class AutoFixService:
                         exit_code=exit_code,
                         stdout=stdout,
                         stderr=stderr,
+                        error_message=error_message,
                         duration_ms=duration_ms,
                         started_at=started,
                         completed_at=now,

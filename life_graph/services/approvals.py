@@ -334,6 +334,18 @@ class ApprovalService:
         ``life_graph.autonomy.pipeline.service.AutoFixService.execute_pending``)
         — also swallowed, so the retry resolves the feed row cleanly instead
         of surfacing a stale error.
+
+        Phase B2 Task 4: ``execute_pending`` on a ``kind="agent_task"``
+        action can hit a ``dispatch_task`` failure (e.g. a WIP-limit
+        ``DispatchError``). That is caught inside ``AutoFixService._run_action``
+        and turned into an ordinary ``status="failure"`` ``AutoActionResponse``
+        instead of raising — so it never reaches either ``except`` clause
+        below. No broadening of the narrow ``ValueError`` swallow was needed
+        here: ``appr.status`` is already set to "approved"/"rejected" by the
+        caller (``resolve()``, above) before this method runs, so the generic
+        feed row resolves on a normal return regardless of whether the
+        underlying execution succeeded or failed — a failed-but-completed
+        agent_task is still a *resolved* approval.
         """
         from life_graph.api.dependencies import get_approval_service, get_autofix_service
 
