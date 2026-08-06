@@ -1,9 +1,9 @@
 """Turn an advisory persona's finished run into notifications.
 
 scout/admin/tutor end their reply with a JSON array of findings; this module
-extracts them and (Task 2) creates a Notification per finding, pushing urgent
-ones immediately. Malformed/absent JSON falls back to a single digest so a
-finding is never silently dropped.
+extracts them and creates a Notification per finding, pushing urgent ones
+immediately. Malformed/absent JSON falls back to a single digest so a finding
+is never silently dropped.
 """
 
 from __future__ import annotations
@@ -16,24 +16,45 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _VALID_URGENCY = {"now", "brief"}
-# Last ``[ ... ]`` block in the text, across newlines.
-_ARRAY_RE = re.compile(r"\[.*\]", re.DOTALL)
+
+
+def _extract_json_array(text: str) -> list[Any] | None:
+    """Extract the last JSON array from text.
+
+    Finds all potential ``[...]`` blocks (non-greedy) and validates each from
+    the end. Returns the parsed array (possibly empty) if valid, or ``None`` if
+    no JSON array is present.
+
+    This handles cases like ``"see [1]\\n[{...}]"`` by finding the trailing
+    array, not the first bracket.
+    """
+    if not text:
+        return None
+    # Find all potential array blocks (non-greedy) to avoid matching from first
+    # [ to last ] across multiple arrays
+    matches = re.findall(r"\[.*?\]", text, re.DOTALL)
+    if not matches:
+        return None
+    # Try each match from the end (the trailing array is most likely)
+    for match in reversed(matches):
+        try:
+            parsed = json.loads(match)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return None
 
 
 def parse_findings(result_text: str) -> list[dict[str, Any]]:
     """Extract the trailing JSON findings array from a persona's reply.
 
     Returns a list of ``{"title","detail","urgency"}`` dicts. Unknown urgency
-    values coerce to ``"brief"``. Returns ``[]`` when no valid array is found.
+    values coerce to ``"brief"``. Returns ``[]`` when no valid findings are
+    extracted (even if a JSON array was present).
     """
-    if not result_text:
-        return []
-    match = _ARRAY_RE.search(result_text)
-    if not match:
-        return []
-    try:
-        raw = json.loads(match.group(0))
-    except (json.JSONDecodeError, ValueError):
+    raw = _extract_json_array(result_text)
+    if raw is None:
         return []
     if not isinstance(raw, list):
         return []
@@ -57,20 +78,6 @@ def parse_findings(result_text: str) -> list[dict[str, Any]]:
 _PRIORITY = {"now": "important", "brief": "info"}
 
 
-def _json_array_found(result_text: str) -> bool:
-    """Check if a JSON array was found in the text."""
-    if not result_text:
-        return False
-    match = _ARRAY_RE.search(result_text)
-    if not match:
-        return False
-    try:
-        raw = json.loads(match.group(0))
-        return isinstance(raw, list)
-    except (json.JSONDecodeError, ValueError):
-        return False
-
-
 class FindingsBridge:
     """Convert an advisory run's findings into notifications (+ urgent push)."""
 
@@ -88,10 +95,32 @@ class FindingsBridge:
         Malformed/absent JSON becomes one held digest notification. Returns the
         number of notifications created.
         """
+        raw_array = _extract_json_array(result_text)
         findings = parse_findings(result_text)
-        # Fallback to digest only if no JSON array was found and text is not empty
-        if not findings and result_text.strip() and not _json_array_found(result_text):
-            findings = [{"title": f"{agent_name} update", "detail": result_text.strip(), "urgency": "brief"}]
+
+        # Fallback logic: create digest only if conditions apply
+        if raw_array is None:
+            # No JSON array found at all - fallback to digest if text exists
+            if result_text.strip():
+                findings = [
+                    {
+                        "title": f"{agent_name} update",
+                        "detail": result_text.strip(),
+                        "urgency": "brief",
+                    }
+                ]
+        elif raw_array == []:
+            # Explicit empty array - create nothing
+            findings = []
+        elif not findings and result_text.strip():
+            # Non-empty array but no valid findings - fallback to digest
+            findings = [
+                {
+                    "title": f"{agent_name} update",
+                    "detail": result_text.strip(),
+                    "urgency": "brief",
+                }
+            ]
 
         created = 0
         for f in findings:
