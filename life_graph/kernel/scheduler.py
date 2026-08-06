@@ -435,6 +435,7 @@ class SchedulerService:
 
     async def fire_job(
         self, tenant_id: str, job_id: str,
+        input_override: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Fire a scheduled job — spawn a task.
 
@@ -444,6 +445,9 @@ class SchedulerService:
         Args:
             tenant_id: Tenant scope.
             job_id: Job UUID string.
+            input_override: When provided, used as the spawned
+                task's input instead of the job's stored input.
+                Not persisted back to the job.
 
         Returns:
             Spawn result dict, or None if job not found.
@@ -467,7 +471,11 @@ class SchedulerService:
             result = await self._process_manager.spawn(
                 tenant_id=tenant_id,
                 agent_name=job["agent_name"],
-                input_data=job.get("input", {}),
+                input_data=(
+                    input_override
+                    if input_override is not None
+                    else job.get("input", {})
+                ),
                 task_name=f"schedule:{job['name']}",
                 timeout_seconds=job.get(
                     "timeout_seconds", 600,
