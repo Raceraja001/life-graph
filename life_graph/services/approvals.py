@@ -10,6 +10,7 @@ See docs/specs/approvals-feed.md.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -19,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.models.db import Approval, Memory
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
+
+logger = logging.getLogger(__name__)
 
 
 class ApprovalAlreadyResolvedError(Exception):
@@ -313,6 +316,24 @@ class ApprovalService:
         wires this service) and the autonomy pipeline it depends on here.
         Defensive: a malformed payload (missing autonomy approval id) resolves
         the generic approval without acting, matching the sibling handlers.
+
+        Idempotent retry-tap tolerance: the autonomy-side ``resolve()`` and
+        ``execute_pending()`` each commit in their own session, independent of
+        this method's caller flushing ``appr.status``. If ``execute_pending``
+        raised a genuine infra error on a first attempt, the autonomy side is
+        already committed "approved" while the generic feed row never
+        resolved. A user retry re-enters this method: the autonomy
+        ``resolve()`` then raises "already resolved" (see
+        ``life_graph.autonomy.approvals.service.ApprovalService.resolve``,
+        which raises ``ValueError(f"Approval already resolved: {status}")``)
+        — swallow exactly that case (not any other ``ValueError``, e.g. "not
+        found") and continue to ``execute_pending`` so the retry can still
+        run the action. Symmetrically, if the action already executed on a
+        prior attempt, ``execute_pending`` raises
+        ``ValueError(f"Cannot execute action in status: {status}")`` (see
+        ``life_graph.autonomy.pipeline.service.AutoFixService.execute_pending``)
+        — also swallowed, so the retry resolves the feed row cleanly instead
+        of surfacing a stale error.
         """
         from life_graph.api.dependencies import get_approval_service, get_autofix_service
 
@@ -322,16 +343,36 @@ class ApprovalService:
         if not autonomy_approval_id:
             return
 
-        await get_approval_service().resolve(
-            tenant_id=tenant_id,
-            approval_id=autonomy_approval_id,
-            decision="approve" if approve else "reject",
-            note=appr.resolution_note,
-            resolved_by=resolved_by,
-        )
+        try:
+            await get_approval_service().resolve(
+                tenant_id=tenant_id,
+                approval_id=autonomy_approval_id,
+                decision="approve" if approve else "reject",
+                note=appr.resolution_note,
+                resolved_by=resolved_by,
+            )
+        except ValueError as exc:
+            if "already resolved" not in str(exc):
+                raise
+            logger.info(
+                "Autonomous action approval %s: autonomy side already resolved "
+                "(%s) — retry-tap, continuing",
+                autonomy_approval_id,
+                exc,
+            )
 
         if approve and auto_action_id:
-            await get_autofix_service().execute_pending(tenant_id, auto_action_id)
+            try:
+                await get_autofix_service().execute_pending(tenant_id, auto_action_id)
+            except ValueError as exc:
+                if "Cannot execute action in status" not in str(exc):
+                    raise
+                logger.info(
+                    "Autonomous action %s: already executed — retry-tap, "
+                    "resolving feed row without re-running (%s)",
+                    auto_action_id,
+                    exc,
+                )
 
 
 def _num(value: Any) -> str | None:

@@ -110,6 +110,86 @@ async def test_reject_resolves_autonomy_approval_and_does_not_execute(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_approve_retry_tolerates_already_resolved_autonomy_side(monkeypatch):
+    """Idempotent retry-tap: a prior attempt already committed the autonomy
+    ``resolve()`` (e.g. ``execute_pending`` then raised a genuine infra
+    error before the generic feed row flushed). The retry must swallow the
+    autonomy side's "already resolved" ValueError and still reach
+    ``execute_pending`` — never propagate the stale error to the caller."""
+    appr = _autonomous_action_approval()
+    session = _FakeSession(appr)
+    service = ApprovalService(session)
+
+    fake_autonomy_approvals = AsyncMock()
+    fake_autonomy_approvals.resolve = AsyncMock(
+        side_effect=ValueError("Approval already resolved: approved")
+    )
+    fake_autofix = AsyncMock()
+    monkeypatch.setattr(
+        "life_graph.api.dependencies.get_approval_service", lambda: fake_autonomy_approvals
+    )
+    monkeypatch.setattr("life_graph.api.dependencies.get_autofix_service", lambda: fake_autofix)
+
+    result = await service.resolve("t1", str(appr.id), "approve", resolved_by="user-1")
+
+    fake_autonomy_approvals.resolve.assert_awaited_once()
+    fake_autofix.execute_pending.assert_awaited_once_with("t1", "ac-1")
+    assert result["status"] == "approved"
+    assert session.flushed is True
+
+
+@pytest.mark.asyncio
+async def test_approve_retry_tolerates_already_executed_action(monkeypatch):
+    """Symmetric case: the action itself already ran on a prior attempt, so
+    ``execute_pending`` raises "Cannot execute action in status: success".
+    The retry must still resolve the feed row cleanly rather than raise."""
+    appr = _autonomous_action_approval()
+    session = _FakeSession(appr)
+    service = ApprovalService(session)
+
+    fake_autonomy_approvals = AsyncMock()
+    fake_autonomy_approvals.resolve = AsyncMock(
+        side_effect=ValueError("Approval already resolved: approved")
+    )
+    fake_autofix = AsyncMock()
+    fake_autofix.execute_pending = AsyncMock(
+        side_effect=ValueError("Cannot execute action in status: success")
+    )
+    monkeypatch.setattr(
+        "life_graph.api.dependencies.get_approval_service", lambda: fake_autonomy_approvals
+    )
+    monkeypatch.setattr("life_graph.api.dependencies.get_autofix_service", lambda: fake_autofix)
+
+    result = await service.resolve("t1", str(appr.id), "approve", resolved_by="user-1")
+
+    fake_autofix.execute_pending.assert_awaited_once_with("t1", "ac-1")
+    assert result["status"] == "approved"
+    assert session.flushed is True
+
+
+@pytest.mark.asyncio
+async def test_approve_does_not_swallow_unrelated_autonomy_resolve_error(monkeypatch):
+    """Only the exact "already resolved" condition is tolerated — any other
+    ValueError from the autonomy side (e.g. not-found) must still propagate."""
+    appr = _autonomous_action_approval()
+    session = _FakeSession(appr)
+    service = ApprovalService(session)
+
+    fake_autonomy_approvals = AsyncMock()
+    fake_autonomy_approvals.resolve = AsyncMock(side_effect=ValueError("Approval aq-1 not found"))
+    fake_autofix = AsyncMock()
+    monkeypatch.setattr(
+        "life_graph.api.dependencies.get_approval_service", lambda: fake_autonomy_approvals
+    )
+    monkeypatch.setattr("life_graph.api.dependencies.get_autofix_service", lambda: fake_autofix)
+
+    with pytest.raises(ValueError, match="not found"):
+        await service.resolve("t1", str(appr.id), "approve", resolved_by="user-1")
+
+    fake_autofix.execute_pending.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_missing_autonomy_approval_id_skips_side_effect(monkeypatch):
     """Defensive: a malformed payload must not raise — the generic approval
     still resolves, matching the defensive style of the sibling handlers."""

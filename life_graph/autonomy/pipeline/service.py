@@ -441,7 +441,10 @@ class AutoFixService:
 
         async with self._session_factory() as session:
             res = await session.execute(
-                select(AutoAction).where(AutoAction.id == str(auto_action_id))
+                select(AutoAction).where(
+                    AutoAction.id == str(auto_action_id),
+                    AutoAction.tenant_id == tenant_id,
+                )
             )
             refreshed = res.scalar_one()
             return _to_response(refreshed)

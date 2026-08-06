@@ -24,6 +24,17 @@ logger = logging.getLogger(__name__)
 
 AMBIENT_PROJECT_ID = "ambient"
 
+# The scheduler ticker (life_graph.workers.tasks.tick_scheduled_jobs ->
+# ApprovalService... kernel.scheduler.SchedulerService.fire_job) spawns every
+# fired job's task with task_name=f"schedule:{job['name']}" (see
+# ``fire_job``). Interactive ops chat instead spawns with task_name=
+# f"chat:{target_agent}" (life_graph.api.kernel.chat_stream). Propose-mode
+# dispatch is scheduled-only, so this prefix is the real, load-bearing marker
+# that distinguishes the two — gate on it in addition to agent_name so an
+# interactive ops reply whose text happens to contain a JSON array is never
+# treated as an autonomy proposal.
+_SCHEDULED_TASK_NAME_PREFIX = "schedule:"
+
 
 class ActionProposalBridge:
     """Convert an ops run's proposed actions into ``AutoFixService`` requests."""
@@ -78,13 +89,13 @@ class ActionProposalBridge:
         return dispatched
 
 
-async def _load_task_result(tenant_id: str, task_id: str) -> str | None:
-    """Load a completed AgentTask's response text, tenant-scoped."""
+async def _load_task_row(tenant_id: str, task_id: str) -> Any:
+    """Load the completed ``AgentTask`` row, tenant-scoped."""
     from life_graph.models.db import AgentTask
     from life_graph.storage.database import async_session
 
     async with async_session() as session:
-        row = (
+        return (
             await session.execute(
                 select(AgentTask).where(
                     AgentTask.id == uuid.UUID(task_id),
@@ -92,13 +103,30 @@ async def _load_task_result(tenant_id: str, task_id: str) -> str | None:
                 )
             )
         ).scalar_one_or_none()
+
+
+async def _load_task_result(tenant_id: str, task_id: str) -> str | None:
+    """Load a completed, SCHEDULED AgentTask's response text, tenant-scoped.
+
+    Returns ``None`` (skip) for a task that wasn't fired by the scheduler
+    ticker — see ``_SCHEDULED_TASK_NAME_PREFIX``.
+    """
+    row = await _load_task_row(tenant_id, task_id)
     if row is None or not isinstance(row.result, dict):
+        return None
+    if not (row.task_name or "").startswith(_SCHEDULED_TASK_NAME_PREFIX):
         return None
     return row.result.get("response")
 
 
 class ActionProposalHandler:
-    """Subscribes TASK_COMPLETED and bridges ops proposal runs to the autonomy engine."""
+    """Subscribes TASK_COMPLETED and bridges SCHEDULED ops proposal runs to the autonomy engine.
+
+    Gated on ``agent_name in AMBIENT_ACTION`` AND the completed task being a
+    scheduler-fired run (``_SCHEDULED_TASK_NAME_PREFIX``) — an interactive
+    ops chat completion is never dispatched, even if its reply happens to
+    contain a JSON array.
+    """
 
     def __init__(self) -> None:
         self._subscribed = False
