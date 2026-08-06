@@ -76,6 +76,7 @@ async def lifespan(app: FastAPI):
         import life_graph.tools.browser  # noqa: F401
         import life_graph.tools.delegate  # noqa: F401
         import life_graph.tools.system_inspect  # noqa: F401
+        import life_graph.tools.filesystem  # noqa: F401
         from life_graph.tools.registry import registry
 
         logger.info("Agent tools registered: %s", registry.tool_names)
