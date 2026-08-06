@@ -50,7 +50,7 @@ class LocalDriver:
 
         Args:
             packet: The context packet with task information.
-            workdir: Working directory (unused by local orchestrator).
+            workdir: Working directory passed to the orchestrator in the system prompt.
             timeout: Maximum seconds (applied at orchestrator level).
 
         Returns:
@@ -63,7 +63,13 @@ class LocalDriver:
             orchestrator = AgentOrchestrator()
 
             # Build a system prompt from the context packet
-            system_parts = [packet.persona_system_prompt or "You are an AI agent executing a task."]
+            system_parts = [
+                packet.persona_system_prompt or "You are an AI agent executing a task.",
+                f"Your working directory is: {workdir}. Use this absolute path as "
+                "the base for any file, git, or shell operations — pass it "
+                "explicitly to tools that take a path/repo_path/"
+                "working_directory argument.",
+            ]
             if packet.project_context:
                 system_parts.append(
                     f"Project context: {json.dumps(packet.project_context, default=str)}"
