@@ -19,6 +19,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 
@@ -26,8 +27,18 @@ from life_graph.autonomy.pipeline.executor import CommandExecutor
 from life_graph.autonomy.pipeline.schemas import AutoActionResponse, AutoFixRequest, AutoFixResponse
 from life_graph.autonomy.shadow.service import shadow_service
 from life_graph.core.events import EventType, event_bus
+from life_graph.drivers.dispatcher import TaskDispatcher
+
+if TYPE_CHECKING:
+    from life_graph.drivers.base import DriverResult
 
 logger = logging.getLogger(__name__)
+
+# Conservative per-task cost cap for open-ended agent_task dispatches — the
+# Governor budget gate (life_graph/services/governor.py) is the real
+# enforcement point; this is just the secondary per-task guard passed to
+# TaskDispatcher.dispatch_task.
+DEFAULT_AGENT_TASK_COST_CAP = 1.0
 
 
 def _to_response(action) -> AutoActionResponse:
@@ -77,6 +88,7 @@ class AutoFixService:
         level_service=None,
         classifier=None,
         trust_service=None,
+        dispatcher=None,
     ):
         # classifier is built per-request in process() (it needs a live session),
         # so it is optional here; trust_service is likewise unused by the pipeline.
@@ -87,6 +99,13 @@ class AutoFixService:
         self._approval_service = approval_service
         self._level_service = level_service
         self._executor = CommandExecutor()
+        # kind == "agent_task" actions dispatch through the same
+        # TaskDispatcher used by interactive agent work (LocalDriver →
+        # AgentOrchestrator, Governor budget gate, verifier chain) instead of
+        # the command-path CommandExecutor.
+        self._dispatcher = dispatcher or TaskDispatcher(
+            session_factory=session_factory, event_bus=event_bus,
+        )
         self._project_locks: dict[str, asyncio.Lock] = {}
 
     def _get_lock(self, project_id: str) -> asyncio.Lock:
@@ -220,22 +239,42 @@ class AutoFixService:
             )
             await session.commit()
 
+    @staticmethod
+    def _driver_result_to_fields(result: DriverResult) -> tuple[int, str, str, int]:
+        """Adapt a ``TaskDispatcher.dispatch_task`` outcome into the same
+        ``(exit_code, stdout, stderr, duration_ms)`` shape the command path
+        (``CommandExecutor`` / ``ExecutionResult``) already persists onto
+        ``AutoAction``."""
+        exit_code = 0 if result.success else 1
+        stdout = result.output
+        stderr = result.error or ""
+        duration_ms = result.duration_ms
+        return exit_code, stdout, stderr, duration_ms
+
     async def _run_action(
         self, tenant_id: str, auto_action, timeout_seconds: int = 60,
     ):
-        """Run ``auto_action.action_command`` and record the outcome.
+        """Run ``auto_action`` (command or agent_task) and record the outcome.
 
         Shared core for every execution path (classify-time auto-execute and
         post-approval ``execute_pending``): acquires the per-project lock, runs
-        the command, persists status/exit_code/stdout/stderr/duration_ms/
+        the action, persists status/exit_code/stdout/stderr/duration_ms/
         started_at/completed_at, and writes the audit log entry. Does NOT emit
         ``AUTONOMOUS_ACTION_COMPLETED`` and does NOT touch level-promotion
         bookkeeping — callers must do both themselves, in that order
         (``record_action`` before the emit), so every route observes the same
         ordering as the original ``_auto_execute``.
 
+        ``auto_action.kind == "agent_task"`` dispatches through
+        ``TaskDispatcher.dispatch_task`` (LocalDriver → AgentOrchestrator,
+        Governor budget gate, verifier chain) instead of ``CommandExecutor``;
+        the resulting ``DriverResult`` is adapted via
+        ``_driver_result_to_fields`` into the same 4-tuple the command path
+        produces. Only the *source* of that 4-tuple differs between the two
+        branches — locking, persistence, and audit logic are identical.
+
         Returns:
-            Tuple of (status, ExecutionResult) where status is "success" or
+            Tuple of (status, exit_code) where status is "success" or
             "failure".
         """
         from life_graph.autonomy.models import AutoAction
@@ -243,12 +282,32 @@ class AutoFixService:
         lock = self._get_lock(auto_action.project_id)
         started = datetime.now(UTC)
         async with lock:
-            result = await self._executor.execute(
-                command=auto_action.action_command,
-                timeout_seconds=timeout_seconds or 60,
-            )
+            if auto_action.kind == "agent_task":
+                driver_result = await self._dispatcher.dispatch_task(
+                    tenant_id=tenant_id,
+                    task_id=auto_action.id,
+                    instruction=auto_action.instruction or "",
+                    task_type="general",
+                    project_id=auto_action.project_id,
+                    persona_name=auto_action.agent_id,
+                    verify_chain=["build_ok", "lint_clean"],
+                    interactive=False,
+                    cost_cap_usd=DEFAULT_AGENT_TASK_COST_CAP,
+                )
+                exit_code, stdout, stderr, duration_ms = self._driver_result_to_fields(
+                    driver_result
+                )
+            else:
+                exec_result = await self._executor.execute(
+                    command=auto_action.action_command,
+                    timeout_seconds=timeout_seconds or 60,
+                )
+                exit_code = exec_result.exit_code
+                stdout = exec_result.stdout
+                stderr = exec_result.stderr
+                duration_ms = exec_result.duration_ms
 
-            status = "success" if result.exit_code == 0 else "failure"
+            status = "success" if exit_code == 0 else "failure"
             now = datetime.now(UTC)
 
             async with self._session_factory() as session:
@@ -257,10 +316,10 @@ class AutoFixService:
                     .where(AutoAction.id == auto_action.id)
                     .values(
                         status=status,
-                        exit_code=result.exit_code,
-                        stdout=result.stdout,
-                        stderr=result.stderr,
-                        duration_ms=result.duration_ms,
+                        exit_code=exit_code,
+                        stdout=stdout,
+                        stderr=stderr,
+                        duration_ms=duration_ms,
                         started_at=started,
                         completed_at=now,
                     )
@@ -276,12 +335,12 @@ class AutoFixService:
             action_type=auto_action.action_name,
             risk_level=auto_action.risk_level,
             command=auto_action.action_command,
-            exit_code=result.exit_code,
-            duration_ms=result.duration_ms,
+            exit_code=exit_code,
+            duration_ms=duration_ms,
             result=status,
         )
 
-        return status, result
+        return status, exit_code
 
     async def _emit_completed(self, auto_action, status: str) -> None:
         """Emit ``AUTONOMOUS_ACTION_COMPLETED`` for a just-executed action.
