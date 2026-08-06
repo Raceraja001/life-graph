@@ -169,6 +169,8 @@ class ApprovalService:
             await self._apply_merge(tenant_id, appr, approve)
         elif appr.kind == "contradiction":
             await self._apply_contradiction(tenant_id, appr, approve)
+        elif appr.kind == "autonomous_action":
+            await self._apply_autonomous_action(tenant_id, appr, approve, resolved_by)
 
         await self.session.flush()
         return self._serialize(appr)
@@ -294,6 +296,38 @@ class ApprovalService:
             old.superseded_by = None
             if new is not None and new.supersedes == old.id:
                 new.supersedes = None
+
+    async def _apply_autonomous_action(
+        self, tenant_id: str, appr: Approval, approve: bool, resolved_by: str | None
+    ) -> None:
+        """Resolve the linked autonomy approval-queue entry; execute on approve.
+
+        ``appr.payload`` carries the autonomy-side identifiers written by the
+        ``AutonomousApprovalProducer`` (``approval_id`` — the ``approval_queue``
+        row; ``auto_action_id`` — the queued ``AutoAction``). Imports are lazy
+        to avoid an import cycle between ``life_graph.api.dependencies`` (which
+        wires this service) and the autonomy pipeline it depends on here.
+        Defensive: a malformed payload (missing autonomy approval id) resolves
+        the generic approval without acting, matching the sibling handlers.
+        """
+        from life_graph.api.dependencies import get_approval_service, get_autofix_service
+
+        payload = appr.payload or {}
+        autonomy_approval_id = payload.get("approval_id")
+        auto_action_id = payload.get("auto_action_id")
+        if not autonomy_approval_id:
+            return
+
+        await get_approval_service().resolve(
+            tenant_id=tenant_id,
+            approval_id=autonomy_approval_id,
+            decision="approve" if approve else "reject",
+            note=appr.resolution_note,
+            resolved_by=resolved_by,
+        )
+
+        if approve and auto_action_id:
+            await get_autofix_service().execute_pending(tenant_id, auto_action_id)
 
 
 def _num(value: Any) -> str | None:
