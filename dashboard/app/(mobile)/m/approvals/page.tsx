@@ -49,7 +49,7 @@ export default function MobileApprovals() {
             {ap.actionKind === "agent_task" ? (
               <>
                 <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.5 }}>
-                  {ap.instruction || ap.detail}
+                  {ap.instruction || ap.detail || "Agent task (no instruction provided)"}
                 </div>
                 <div style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)", marginTop: "4px" }}>
                   runs cody · build_ok, lint_clean

@@ -179,6 +179,34 @@ async def test_agent_task_payload_carries_kind_and_instruction(monkeypatch):
     assert row.payload["kind"] == "agent_task"
     assert row.payload["instruction"] == "Refactor the auth module for clarity"
 
+    # The push/in-app notification body must use the instruction, not the (always
+    # None for agent_task) command — must never literally read "None" (fix review).
+    _, kwargs = producer._notification_engine.create.call_args
+    assert "None" not in kwargs["body"]
+    assert "Refactor the auth module for clarity" in kwargs["body"]
+
+
+@pytest.mark.asyncio
+async def test_agent_task_with_no_instruction_falls_back_to_action_name_in_body(monkeypatch):
+    """Defensive case: even if an agent_task row somehow has neither command nor
+    instruction, the notification body falls back to the action name rather than
+    stringifying None."""
+    session = _FakeSession(
+        [
+            _approval_entry(kind="agent_task", instruction=None),
+            _auto_action(kind="agent_task", instruction=None, command=None),
+            None,
+        ]
+    )
+    monkeypatch.setattr("life_graph.services.autonomous_approvals.async_session", lambda: session)
+
+    producer = _make_producer()
+    await producer._on_pending(_pending_event())
+
+    _, kwargs = producer._notification_engine.create.call_args
+    assert "None" not in kwargs["body"]
+    assert "rm-old-logs" in kwargs["body"]  # falls back to action_name
+
 
 @pytest.mark.asyncio
 async def test_notification_title_differs_from_feed_title(monkeypatch):

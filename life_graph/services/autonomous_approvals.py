@@ -125,7 +125,16 @@ class AutonomousApprovalProducer:
                 # feed's own UI chrome already conveys via kind/status.
                 notification_title = f"{risk} action needs approval: {action_name}"
                 feed_title = f"{risk} action: {action_name}"
-                body = f"{command}\n{trigger_detail}" if trigger_detail else command
+                # agent_task actions have no shell command (action_command is always
+                # None for kind="agent_task" — see action_proposal_bridge.py); fall
+                # back to the natural-language instruction, then the action name, so
+                # the push/in-app body never literally reads "None".
+                command_or_instruction = command or instruction or action_name
+                body = (
+                    f"{command_or_instruction}\n{trigger_detail}"
+                    if trigger_detail
+                    else command_or_instruction
+                )
 
                 await self._notify(
                     tenant_id, notification_title, body, approval_id, action_id, risk
