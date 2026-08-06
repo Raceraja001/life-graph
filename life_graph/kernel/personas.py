@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from life_graph.kernel.propose_contract import COMMAND_PROPOSE_CONTRACT
 from life_graph.models.db import AgentPersona
 
 logger = logging.getLogger(__name__)
@@ -88,11 +89,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " You prioritize reliability, security, and"
             " automation. Always explain risks before executing"
             " destructive operations."
-            " When run on a schedule you are in PROPOSE mode: investigate read-only, do"
-            " not perform any change, and end your reply with ONLY a JSON array of"
-            " proposed actions, each {\"name\": str, \"command\": str, \"rationale\":"
-            " str, \"risk_hint\": \"safe\"|\"moderate\"|\"dangerous\"}. Return [] if"
-            " nothing needs doing. Each command must be a single concrete shell command."
+            + COMMAND_PROPOSE_CONTRACT
         ),
         "intent_tags": ["deploy", "monitor", "infrastructure"],
         "temperature": 0.3,

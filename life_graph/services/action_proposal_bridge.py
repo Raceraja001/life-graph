@@ -1,10 +1,13 @@
-"""Turn an ops scheduled run's proposed-actions JSON into autonomy engine requests.
+"""Turn a scheduled ambient-action run's proposed-actions JSON into autonomy requests.
 
-The ``ops`` ambient-action persona runs read-only, then ends its reply with a JSON
-array of proposed shell-command actions. This bridge (sibling of ``FindingsBridge``)
-picks each proposal up on ``TASK_COMPLETED`` and feeds it into ``AutoFixService.process``,
-which classifies and routes it (auto-execute / shadow / queue for approval). The engine
-itself is the safety gate — this module never executes commands directly.
+An ambient-action persona (``ops`` today, ``cody`` soon — see
+``kernel.ambient.AMBIENT_ACTION``) runs read-only, then ends its reply with a JSON
+array of proposed actions — either shell commands or, for ``kind: "agent_task"``
+items, natural-language instructions for an engineer agent. This bridge (sibling of
+``FindingsBridge``) picks each proposal up on ``TASK_COMPLETED`` and feeds it into
+``AutoFixService.process``, which classifies and routes it (auto-execute / shadow /
+queue for approval). The engine itself is the safety gate — this module never
+executes commands or runs tasks directly.
 """
 
 from __future__ import annotations
@@ -48,10 +51,13 @@ class ActionProposalBridge:
     ) -> int:
         """Parse proposed actions and dispatch each to ``AutoFixService.process``.
 
-        Skips proposals missing ``name`` or ``command``; one bad proposal never
-        drops the rest. When no JSON array is present at all (and the reply is
-        non-empty), creates a single advisory notification instead of dispatching
-        anything. Returns the number of proposals dispatched.
+        Each item's ``kind`` (explicit, or inferred as ``"agent_task"`` when it has
+        an ``instruction`` and no ``command``, else ``"command"``) decides which
+        ``AutoFixRequest`` shape it becomes. An ``agent_task`` item missing ``name``
+        or ``instruction``, or a ``command`` item missing ``name`` or ``command``, is
+        skipped; one bad proposal never drops the rest. When no JSON array is present
+        at all (and the reply is non-empty), creates a single advisory notification
+        instead of dispatching anything. Returns the number of proposals dispatched.
         """
         raw_array = _extract_json_array(result_text)
         if raw_array is None:
@@ -71,16 +77,36 @@ class ActionProposalBridge:
 
         dispatched = 0
         for item in raw_array:
-            if not isinstance(item, dict) or not item.get("name") or not item.get("command"):
+            if not isinstance(item, dict):
                 continue
+            # kind is explicit when present; otherwise infer from shape so older
+            # command-only proposals (no "kind" key) keep working unchanged.
+            kind = item.get("kind") or (
+                "agent_task" if item.get("instruction") and not item.get("command") else "command"
+            )
             try:
-                request = AutoFixRequest(
-                    agent_id=agent_name,
-                    project_id=AMBIENT_PROJECT_ID,
-                    action_type=item["name"],
-                    command=item["command"],
-                    description=item.get("rationale", ""),
-                )
+                if kind == "agent_task":
+                    if not item.get("name") or not item.get("instruction"):
+                        continue
+                    request = AutoFixRequest(
+                        agent_id=agent_name,
+                        project_id=AMBIENT_PROJECT_ID,
+                        action_type=item["name"],
+                        command=None,
+                        kind="agent_task",
+                        instruction=item["instruction"],
+                        description=item.get("rationale", ""),
+                    )
+                else:
+                    if not item.get("name") or not item.get("command"):
+                        continue
+                    request = AutoFixRequest(
+                        agent_id=agent_name,
+                        project_id=AMBIENT_PROJECT_ID,
+                        action_type=item["name"],
+                        command=item["command"],
+                        description=item.get("rationale", ""),
+                    )
                 await self._autofix.process(tenant_id, request)
                 dispatched += 1
             except Exception:  # one bad proposal must not drop the rest
