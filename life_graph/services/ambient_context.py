@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
+from life_graph.kernel.ambient import AMBIENT_ADVISORY
 from life_graph.models.db import Notification
 from life_graph.storage.database import async_session
 
@@ -63,6 +64,18 @@ _CONTRACT = (
     "for genuinely time-sensitive items. Return [] if you have nothing new."
 )
 
+# ACTION roles (e.g. ops) carry their OWN output-shape contract in their persona
+# system_prompt (a proposed-actions JSON array, not findings). Appending the
+# advisory _CONTRACT on top would hand the model two conflicting JSON schemas
+# for the same reply, so action roles get this neutral preamble instead — the
+# novelty/memory-signal context above still applies, just without the
+# findings-shaped contract.
+_ACTION_PREAMBLE = (
+    "This is a scheduled, unattended run. Use the context above to decide what,"
+    " if anything, is worth surfacing — follow the output contract in your own"
+    " instructions above."
+)
+
 
 async def build_ambient_input(
     agent_name: str, job_input: dict, tenant_id: str, *, novelty_days: int = 7
@@ -85,5 +98,5 @@ async def build_ambient_input(
     tags = await _memory_signal_tags(tenant_id)
     if tags:
         parts.append("Recent interest signals from the user's memory: " + ", ".join(tags) + ".")
-    parts.append(_CONTRACT)
+    parts.append(_CONTRACT if agent_name in AMBIENT_ADVISORY else _ACTION_PREAMBLE)
     return {"message": "\n\n".join(parts)}

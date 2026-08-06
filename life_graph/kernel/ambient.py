@@ -9,6 +9,22 @@ logger = logging.getLogger(__name__)
 
 AMBIENT_ADVISORY: frozenset[str] = frozenset({"scout", "admin", "tutor"})
 
+# Roles that run on a schedule in PROPOSE mode: read-only investigation, then
+# a JSON array of proposed actions for the user to approve — never executed
+# automatically. See AMBIENT_ACTION_READONLY_TOOLS below for the enforced toolset.
+AMBIENT_ACTION: frozenset[str] = frozenset({"ops"})
+
+# Tools a scheduled AMBIENT_ACTION run is restricted to — read-only by construction,
+# so an unattended ops sweep can investigate but never mutate anything.
+AMBIENT_ACTION_READONLY_TOOLS: list[str] = [
+    "inspect_system",
+    "git_status",
+    "git_log",
+    "git_diff",
+    "memory_search",
+    "get_current_datetime",
+]
+
 # Cron 01:00 UTC — before settings.brief_hour_utc (=2) so findings make the brief.
 AMBIENT_JOBS: list[dict[str, Any]] = [
     {
@@ -34,6 +50,14 @@ AMBIENT_JOBS: list[dict[str, Any]] = [
         "description": "Proactive learning nudges (opt-in).",
         "input": {},
         "active": False,
+    },
+    {
+        "name": "ops-ambient",
+        "cron_expression": "0 1 * * *",
+        "agent_name": "ops",
+        "description": "Ambient infra sweep: proposes maintenance actions for your approval.",
+        "input": {},
+        "active": False,  # opt-in — acts on real infra
     },
 ]
 

@@ -24,3 +24,18 @@ async def test_build_admin_input_has_no_topics_section():
         out = await ac.build_ambient_input("admin", {}, "t1")
     assert "watch-list" not in out["message"].lower()
     assert "message" in out
+
+
+@pytest.mark.asyncio
+async def test_build_ops_input_omits_findings_contract():
+    """ops (an ACTION role) must NOT receive the advisory findings-JSON contract —
+    its own persona system_prompt already carries the action-proposal contract, and
+    handing the model two conflicting JSON schemas would be ambiguous."""
+    with patch.object(ac, "_recent_finding_titles", AsyncMock(return_value=["Old finding"])), \
+         patch.object(ac, "_memory_signal_tags", AsyncMock(return_value=["pgvector"])):
+        out = await ac.build_ambient_input("ops", {}, "t1")
+    msg = out["message"]
+    assert "Old finding" in msg          # novelty context still present
+    assert "pgvector" in msg             # memory signal still present
+    assert '"urgency"' not in msg        # advisory findings-contract shape absent
+    assert "findings" not in msg.lower()

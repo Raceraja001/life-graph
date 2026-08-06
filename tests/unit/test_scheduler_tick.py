@@ -98,3 +98,30 @@ async def test_tick_enriches_advisory_jobs_only():
     calls = {c.args[1]: c.kwargs.get("input_override") for c in scheduler.fire_job.await_args_list}
     assert calls["j1"] == {"message": "ENRICHED"}
     assert calls["j2"] is None
+
+
+@pytest.mark.asyncio
+async def test_tick_gives_action_roles_input_override_and_readonly_tools():
+    """AMBIENT_ACTION roles (ops) must be enriched AND forced to the read-only
+    toolset — this is the safety guarantee for an unattended scheduled run."""
+    from life_graph.kernel.ambient import AMBIENT_ACTION_READONLY_TOOLS
+    from life_graph.workers import tasks
+
+    scheduler = AsyncMock()
+    scheduler.get_due_jobs = AsyncMock(return_value=[
+        {"id": "j1", "tenant_id": "t1", "agent_name": "ops", "input": {}},
+        {"id": "j2", "tenant_id": "t1", "agent_name": "scout", "input": {"topics": ["x"]}},
+    ])
+    scheduler.fire_job = AsyncMock(return_value={"task_id": "x"})
+
+    with patch.object(tasks, "get_scheduler_service", return_value=scheduler), \
+         patch.object(tasks, "set_tenant_context"), \
+         patch.object(tasks, "build_ambient_input", AsyncMock(return_value={"message": "ENRICHED"})):
+        await tasks.tick_scheduled_jobs({})
+
+    calls = {c.args[1]: c.kwargs for c in scheduler.fire_job.await_args_list}
+    assert calls["j1"]["input_override"] == {"message": "ENRICHED"}
+    assert calls["j1"]["tool_override"] == AMBIENT_ACTION_READONLY_TOOLS
+    # advisory role still gets enrichment but no tool restriction
+    assert calls["j2"]["input_override"] == {"message": "ENRICHED"}
+    assert calls["j2"]["tool_override"] is None
