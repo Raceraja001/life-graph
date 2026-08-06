@@ -58,3 +58,37 @@ async def test_bridge_skips_item_missing_both_command_and_instruction(bridge_wit
     n = await bridge.process_result("t1", "cody", "schedule:cody-ambient", text)
     assert n == 0
     autofix.process.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bridge_infers_agent_task_kind_when_kind_key_absent(bridge_with_mock_autofix):
+    """No explicit "kind" key, has instruction and no command -> inferred agent_task."""
+    bridge, autofix = bridge_with_mock_autofix
+    text = (
+        '[{"name":"cody_fix","instruction":"Fix test X",'
+        '"rationale":"broken","risk_hint":"moderate"}]'
+    )
+    n = await bridge.process_result("t1", "cody", "schedule:cody-ambient", text)
+    assert n == 1
+    req = autofix.process.call_args.args[1]
+    assert req.kind == "agent_task"
+    assert req.instruction == "Fix test X"
+    assert req.command is None
+
+
+@pytest.mark.asyncio
+async def test_bridge_infers_command_kind_when_both_command_and_instruction_present(
+    bridge_with_mock_autofix,
+):
+    """No explicit "kind" key, both command and instruction present -> falls through to command."""
+    bridge, autofix = bridge_with_mock_autofix
+    text = (
+        '[{"name":"restart","command":"docker restart x","instruction":"Fix test X",'
+        '"rationale":"stuck","risk_hint":"moderate"}]'
+    )
+    n = await bridge.process_result("t1", "ops", "schedule:ops-ambient", text)
+    assert n == 1
+    req = autofix.process.call_args.args[1]
+    assert req.kind == "command"
+    assert req.command == "docker restart x"
+    assert req.instruction is None
