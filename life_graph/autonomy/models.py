@@ -97,7 +97,9 @@ class AutoAction(Base):
 
     # ── Action Definition ─────────────────────────────────────
     action_name: Mapped[str] = mapped_column(Text, nullable=False)
-    action_command: Mapped[str] = mapped_column(Text, nullable=False)
+    action_command: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default="command")
+    instruction: Mapped[str | None] = mapped_column(Text, nullable=True)
     risk_level: Mapped[str | None] = mapped_column(Text, nullable=True)
     project_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -277,7 +279,9 @@ class ApprovalQueueEntry(Base):
 
     # ── Action ────────────────────────────────────────────────
     action_name: Mapped[str] = mapped_column(Text, nullable=False)
-    action_command: Mapped[str] = mapped_column(Text, nullable=False)
+    action_command: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False, server_default="command")
+    instruction: Mapped[str | None] = mapped_column(Text, nullable=True)
     risk_level: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str] = mapped_column(Text, nullable=False, default="general")
     project_id: Mapped[str | None] = mapped_column(Text, nullable=True)
