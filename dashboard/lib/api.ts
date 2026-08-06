@@ -179,6 +179,16 @@ export const api = {
     notifications: (params?: { limit?: string }) =>
       listRequest<any>("/kernel/notifications", params),
     sessions: () => listRequest<any>("/kernel/sessions"),
+    schedules: {
+      list: () => GET<any>("/kernel/schedules"),               // read .data.schedules
+      create: (body: {
+        name: string; cron_expression: string; agent_name: string;
+        description?: string; input?: Record<string, unknown>;
+      }) => POST<any>("/kernel/schedules", body),
+      update: (id: string, body: Record<string, unknown>) =>
+        request<any>("PATCH", `/kernel/schedules/${id}`, body),
+      remove: (id: string) => request<any>("DELETE", `/kernel/schedules/${id}`),
+    },
   },
 
   // ── Agent Tasks ──────────────────────────────
