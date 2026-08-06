@@ -84,10 +84,12 @@ class VerifierChain:
         return all(r.passed for r in results)
 
     def _register_builtins(self) -> None:
-        """Register the 7 built-in verifiers."""
+        """Register the built-in verifiers."""
         self.register("tests_pass", _verify_tests_pass)
         self.register("lint_clean", _verify_lint_clean)
         self.register("build_ok", _verify_build_ok)
+        self.register("build_ok_diff", _verify_build_ok_diff)
+        self.register("lint_clean_diff", _verify_lint_clean_diff)
         self.register("diff_within_scope", _verify_diff_within_scope)
         self.register("citations_present", _verify_citations_present)
         self.register("style_conforms", _verify_style_conforms)
@@ -141,6 +143,57 @@ async def _verify_build_ok(workdir: Path, ctx: dict) -> tuple[bool, dict]:
             errors.append(str(e))
     passed = len(errors) == 0
     return passed, {"errors": errors[:10]}
+
+
+def _changed_python_files(workdir: Path) -> list[Path]:
+    """Files changed since HEAD, filtered to ``*.py``, resolved under
+    ``workdir``. Empty list (never raises) on any git failure — e.g. the
+    scratch-temp-dir fallback, which is never a git repo at all."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(workdir),
+        )
+        changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
+    except Exception:
+        return []
+    return [workdir / f for f in changed if f.endswith(".py") and (workdir / f).is_file()]
+
+
+async def _verify_build_ok_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+    """Like build_ok, but only compiles files changed since HEAD."""
+    import py_compile
+
+    errors = []
+    for py_file in _changed_python_files(workdir):
+        try:
+            py_compile.compile(str(py_file), doraise=True)
+        except py_compile.PyCompileError as e:
+            errors.append(str(e))
+    passed = len(errors) == 0
+    return passed, {"errors": errors[:10], "checked": len(_changed_python_files(workdir))}
+
+
+async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+    """Like lint_clean, but only lints files changed since HEAD."""
+    changed = _changed_python_files(workdir)
+    if not changed:
+        return True, {"note": "No changed .py files"}
+    try:
+        result = subprocess.run(
+            ["ruff", "check", "--no-fix", *[str(f) for f in changed]],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(workdir),
+        )
+        passed = result.returncode == 0
+        return passed, {"issues": result.stdout[-500:], "returncode": result.returncode}
+    except Exception as e:
+        return False, {"error": str(e)}
 
 
 async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dict]:
