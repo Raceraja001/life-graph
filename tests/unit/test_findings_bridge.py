@@ -1,7 +1,9 @@
-from unittest.mock import AsyncMock
+import uuid as _uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from life_graph.core.events import Event, EventType
 from life_graph.services.findings_bridge import FindingsBridge, parse_findings
 
 
@@ -254,3 +256,34 @@ async def test_process_result_embedded_bracket_stays_urgent():
     assert kwargs["deliver_at_brief"] is False
     # Verify push was called (urgent finding)
     push.send_to_tenant.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_handler_ignores_non_advisory_persona():
+    from life_graph.services.findings_bridge import FindingsBridgeHandler
+
+    handler = FindingsBridgeHandler()
+    handler._bridge = AsyncMock()
+    ev = Event(
+        type=EventType.TASK_COMPLETED,
+        payload={"task_id": str(_uuid.uuid4()), "tenant_id": "t1", "agent_name": "cody"},
+    )
+    await handler._on_task_completed(ev)
+    handler._bridge.process_result.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_handler_processes_advisory_task_result():
+    from life_graph.services import findings_bridge as fb
+
+    handler = fb.FindingsBridgeHandler()
+    handler._bridge = AsyncMock()
+    tid = str(_uuid.uuid4())
+    ev = Event(
+        type=EventType.TASK_COMPLETED,
+        payload={"task_id": tid, "tenant_id": "t1", "agent_name": "scout"},
+    )
+
+    with patch.object(fb, "_load_task_result", AsyncMock(return_value="[]")):
+        await handler._on_task_completed(ev)
+    handler._bridge.process_result.assert_awaited_once_with("t1", "scout", tid, "[]")

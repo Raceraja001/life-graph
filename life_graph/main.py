@@ -181,6 +181,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Push delivery handler not available", exc_info=True)
 
+    # Startup — wire advisory runs -> notifications/push
+    try:
+        from life_graph.services.findings_bridge import findings_bridge_handler
+
+        findings_bridge_handler.subscribe()
+        logger.info("Ambient findings bridge enabled (web)")
+    except Exception:
+        logger.warning("Findings bridge not available", exc_info=True)
+
     # Startup — register agent drivers
     try:
         from life_graph.drivers.registry import driver_registry

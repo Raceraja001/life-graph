@@ -44,6 +44,18 @@ class WorkerSettings:
 
     redis_settings = parse_redis_settings()
 
+    @staticmethod
+    async def on_startup(ctx: dict) -> None:
+        """Wire event-bus subscribers that must run in this worker process.
+
+        Scheduled advisory tasks run in THIS worker process; the findings
+        bridge must be subscribed here (worker-emitted events don't reach
+        web subscribers).
+        """
+        from life_graph.services.findings_bridge import findings_bridge_handler
+
+        findings_bridge_handler.subscribe()
+
     # Import task functions lazily to avoid circular imports
     functions = [
         "life_graph.workers.tasks.run_tenant_consolidation",

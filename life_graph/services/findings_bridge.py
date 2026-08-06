@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from typing import Any
+
+from sqlalchemy import select
+
+from life_graph.core.events import Event, EventType, event_bus
+from life_graph.kernel.ambient import AMBIENT_ADVISORY
 
 logger = logging.getLogger(__name__)
 
@@ -141,3 +147,68 @@ class FindingsBridge:
                 except Exception:  # delivery must never break the flow
                     logger.warning("Findings bridge: urgent push failed", exc_info=True)
         return created
+
+
+async def _load_task_result(tenant_id: str, task_id: str) -> str | None:
+    """Load a completed AgentTask's response text, tenant-scoped."""
+    from life_graph.models.db import AgentTask
+    from life_graph.storage.database import async_session
+
+    async with async_session() as session:
+        row = (
+            await session.execute(
+                select(AgentTask).where(
+                    AgentTask.id == uuid.UUID(task_id),
+                    AgentTask.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+    if row is None or not isinstance(row.result, dict):
+        return None
+    return row.result.get("response")
+
+
+class FindingsBridgeHandler:
+    """Subscribes TASK_COMPLETED and bridges advisory runs to notifications."""
+
+    def __init__(self) -> None:
+        self._subscribed = False
+        self._bridge: FindingsBridge | None = None
+
+    def _get_bridge(self) -> FindingsBridge:
+        if self._bridge is None:
+            from life_graph.api.dependencies import get_notification_engine
+            from life_graph.services.webpush import PushService
+            from life_graph.storage.database import async_session
+
+            self._bridge = FindingsBridge(
+                notification_engine=get_notification_engine(),
+                push_service=PushService(async_session),
+            )
+        return self._bridge
+
+    def subscribe(self) -> None:
+        if self._subscribed:
+            return
+        event_bus.subscribe(EventType.TASK_COMPLETED, self._on_task_completed)
+        self._subscribed = True
+
+    async def _on_task_completed(self, event: Event) -> None:
+        try:
+            data = event.payload
+            agent_name = data.get("agent_name", "")
+            if agent_name not in AMBIENT_ADVISORY:
+                return
+            tenant_id = data.get("tenant_id")
+            task_id = data.get("task_id")
+            if not tenant_id or not task_id:
+                return
+            result_text = await _load_task_result(tenant_id, task_id)
+            if result_text is None:
+                return
+            await self._get_bridge().process_result(tenant_id, agent_name, task_id, result_text)
+        except Exception:  # a bridge failure must never break task completion
+            logger.warning("FindingsBridge handler failed", exc_info=True)
+
+
+findings_bridge_handler = FindingsBridgeHandler()
