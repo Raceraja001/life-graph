@@ -188,6 +188,7 @@ class FindingsBridgeHandler:
         return self._bridge
 
     def subscribe(self) -> None:
+        """Subscribe the handler to TASK_COMPLETED (idempotent)."""
         if self._subscribed:
             return
         event_bus.subscribe(EventType.TASK_COMPLETED, self._on_task_completed)

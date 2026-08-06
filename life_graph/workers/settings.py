@@ -9,10 +9,14 @@ Or via the Dockerfile:
 
 from __future__ import annotations
 
+import logging
+
 from arq import cron
 from arq.connections import RedisSettings
 
 from life_graph.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def parse_redis_settings() -> RedisSettings:
@@ -50,11 +54,16 @@ class WorkerSettings:
 
         Scheduled advisory tasks run in THIS worker process; the findings
         bridge must be subscribed here (worker-emitted events don't reach
-        web subscribers).
+        web subscribers). Guarded so a subscribe-time failure never crashes
+        the whole worker process — ARQ's Worker.run() has no surrounding
+        try/except around on_startup other than CancelledError.
         """
-        from life_graph.services.findings_bridge import findings_bridge_handler
+        try:
+            from life_graph.services.findings_bridge import findings_bridge_handler
 
-        findings_bridge_handler.subscribe()
+            findings_bridge_handler.subscribe()
+        except Exception:
+            logger.warning("Findings bridge not available in worker", exc_info=True)
 
     # Import task functions lazily to avoid circular imports
     functions = [
