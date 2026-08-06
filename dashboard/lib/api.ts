@@ -235,6 +235,14 @@ export const api = {
       POST<any>(`/approvals/${id}/reject`, body ?? {}),
   },
 
+  // ── Autonomy (shadow mode — grading queue for would-have-done actions) ──
+  autonomy: {
+    shadowRuns: (ungradedOnly: boolean = true) =>
+      listRequest<any>("/autonomy/shadow/runs", { ungraded_only: String(ungradedOnly) }),
+    gradeShadow: (id: string, grade: "good" | "bad") =>
+      POST<any>(`/autonomy/shadow/runs/${id}/grade`, { grade }),
+  },
+
   // ── Multi-modal ingest ──────────────────────────
   ingest: {
     voice: (blob: Blob, filename: string) => uploadRequest<any>("/ingest/voice", blob, filename),

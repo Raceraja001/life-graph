@@ -56,6 +56,10 @@ class ApprovalService:
             "detail": a.detail,
             "status": a.status,
             "source": a.source,
+            # Producers stash kind-specific extras here (e.g. the
+            # AutonomousApprovalProducer's risk_level) — passed through so the
+            # mobile feed can render a risk badge without a dedicated endpoint.
+            "payload": a.payload or {},
             "created_at": a.created_at.isoformat() if a.created_at else None,
         }
 

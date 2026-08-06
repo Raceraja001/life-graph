@@ -120,6 +120,9 @@ export interface ApprovalVM {
   detail: string;
   status: string;
   source: string;
+  // Populated for kind==="autonomous_action" rows from the AutonomousApprovalProducer's
+  // Approval.payload (Task 6/9) — null for every other producer's rows.
+  riskLevel: string | null;
 }
 
 export function mapApproval(raw: any): ApprovalVM {
@@ -130,6 +133,7 @@ export function mapApproval(raw: any): ApprovalVM {
     detail: raw?.detail ?? "",
     status: raw?.status ?? "pending",
     source: raw?.source ?? "",
+    riskLevel: typeof raw?.payload?.risk_level === "string" ? raw.payload.risk_level : null,
   };
 }
 
@@ -373,5 +377,56 @@ export function useAmbientFindings() {
     // Worker-created notifications (from ambient advisory jobs) don't publish to the
     // dashboard WebSocket relay, so poll to keep "Recent findings" from going stale.
     refetchInterval: 60_000,
+  });
+}
+
+// ── Shadow mode (would-have-done grading queue) ────────────────────────
+// A newly-graduating autonomous actor runs "in shadow": every action it would
+// have taken is recorded, not executed, until the user has graded enough of
+// them well. This surface lets the user watch the shadow log and one-tap
+// grade good/bad — grading feeds trust and drives graduation off shadow mode.
+export interface ShadowRunVM {
+  id: string;
+  agentId: string;
+  actionType: string;
+  command: string;
+  riskLevel: string | null;
+  projectId: string | null;
+  wouldHaveRouted: string;
+  grade: string | null;
+  createdAt: string;
+}
+
+export function mapShadowRun(raw: any): ShadowRunVM {
+  return {
+    id: String(raw?.id ?? ""),
+    agentId: raw?.agent_id ?? "",
+    actionType: raw?.action_type ?? "",
+    command: raw?.command ?? "",
+    riskLevel: raw?.risk_level ?? null,
+    projectId: raw?.project_id ?? null,
+    wouldHaveRouted: raw?.would_have_routed ?? "",
+    grade: raw?.grade ?? null,
+    createdAt: raw?.created_at ?? "",
+  };
+}
+
+// Shadow runs don't publish WebSocket events (the ops-ambient job runs on a
+// schedule, like ambient findings), so poll to keep the grading queue fresh.
+export function useShadowRuns(ungradedOnly = true) {
+  return useQuery({
+    queryKey: ["shadow-runs", { ungradedOnly }],
+    queryFn: () => api.autonomy.shadowRuns(ungradedOnly),
+    select: (rows: any[]) => rows.map(mapShadowRun),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useGradeShadowRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, grade }: { id: string; grade: "good" | "bad" }) =>
+      api.autonomy.gradeShadow(id, grade),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["shadow-runs"] }),
   });
 }

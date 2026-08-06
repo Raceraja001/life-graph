@@ -2,6 +2,7 @@
 import type { CSSProperties } from "react";
 import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
 import { useApprovals, useResolveApproval } from "@/lib/mobile-api";
+import { RiskBadge } from "@/components/shadow-log";
 
 const actionBtn: CSSProperties = {
   flex: 1,
@@ -40,7 +41,10 @@ export default function MobileApprovals() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "var(--ui-text)", fontWeight: "var(--fw-bold)" }}>{ap.title}</span>
+              <span style={{ fontSize: "var(--ui-text)", fontWeight: "var(--fw-bold)", flex: 1, minWidth: 0 }}>
+                {ap.title}
+              </span>
+              {ap.kind === "autonomous_action" && <RiskBadge risk={ap.riskLevel} />}
             </div>
             <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.5 }}>
               {ap.detail}
