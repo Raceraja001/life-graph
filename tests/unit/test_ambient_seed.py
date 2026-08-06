@@ -13,13 +13,20 @@ async def test_seed_creates_missing_jobs_and_deactivates_tutor():
 
     n = await seed_ambient_jobs(scheduler, "default")
 
-    assert n == 4
+    # Task 6: cody-ambient (seeded inactive, like ops-ambient) joins the ambient job set.
+    assert n == 5
     names = [c.args[1]["name"] for c in scheduler.create.await_args_list]
-    assert set(names) == {"scout-daily", "admin-daily", "tutor-daily", "ops-ambient"}
-    # tutor and ops-ambient (both seeded inactive) deactivated after creation
-    assert scheduler.update.await_count == 2
+    assert set(names) == {
+        "scout-daily",
+        "admin-daily",
+        "tutor-daily",
+        "ops-ambient",
+        "cody-ambient",
+    }
+    # tutor, ops-ambient, cody-ambient (all seeded inactive) deactivated after creation
+    assert scheduler.update.await_count == 3
     deactivated = {c.args[1] for c in scheduler.update.await_args_list}
-    assert deactivated == {"tutor-daily", "ops-ambient"}
+    assert deactivated == {"tutor-daily", "ops-ambient", "cody-ambient"}
 
 
 @pytest.mark.asyncio
@@ -31,8 +38,9 @@ async def test_seed_is_idempotent_when_jobs_exist():
             {"name": "admin-daily"},
             {"name": "tutor-daily"},
             {"name": "ops-ambient"},
+            {"name": "cody-ambient"},
         ],
-        4,
+        5,
     ))
     scheduler.create = AsyncMock()
     n = await seed_ambient_jobs(scheduler, "default")

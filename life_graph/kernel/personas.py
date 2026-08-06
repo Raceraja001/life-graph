@@ -17,7 +17,10 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from life_graph.kernel.propose_contract import COMMAND_PROPOSE_CONTRACT
+from life_graph.kernel.propose_contract import (
+    AGENT_TASK_PROPOSE_CONTRACT,
+    COMMAND_PROPOSE_CONTRACT,
+)
 from life_graph.models.db import AgentPersona
 
 logger = logging.getLogger(__name__)
@@ -53,6 +56,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " write clean, tested, production-ready code. You"
             " explain your reasoning and suggest improvements."
             " Always consider edge cases and error handling."
+            + AGENT_TASK_PROPOSE_CONTRACT
         ),
         "intent_tags": ["code", "debug", "refactor"],
         "temperature": 0.4,

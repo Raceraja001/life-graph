@@ -121,6 +121,29 @@ INFRA_SAFETY_RULES: list[dict] = [
     },
 ]
 
+# Code-action rules for the cody ambient-action persona's agent_task proposals
+# (see kernel.ambient.AMBIENT_ACTION, kernel.propose_contract.AGENT_TASK_PROPOSE_CONTRACT).
+# Task 2's router forces every agent_task proposal to queue for approval regardless of
+# risk_level — these rules only set the risk badge the approvals UI displays.
+CODY_SAFETY_RULES: list[dict] = [
+    {
+        "action_name": "cody_fix",
+        "action_pattern": "cody_fix",
+        "risk_level": "moderate",
+        "trust_threshold": 0.6,
+        "priority": 50,
+        "description": "Propose a fix for a failing test or known issue",
+    },
+    {
+        "action_name": "cody_refactor",
+        "action_pattern": "cody_refactor",
+        "risk_level": "moderate",
+        "trust_threshold": 0.6,
+        "priority": 50,
+        "description": "Propose a code refactor",
+    },
+]
+
 
 async def seed_ambient_autonomy(tenant_id: str) -> None:
     """Seed default + infra safety rules and set the ambient project to L1. Idempotent.
@@ -148,7 +171,7 @@ async def seed_ambient_autonomy(tenant_id: str) -> None:
         existing_names = set(existing)
 
         created = 0
-        for rule in INFRA_SAFETY_RULES:
+        for rule in INFRA_SAFETY_RULES + CODY_SAFETY_RULES:
             if rule["action_name"] in existing_names:
                 continue
             await safety_svc.create_rule(tenant_id=tenant_id, created_by="system", **rule)
@@ -156,7 +179,9 @@ async def seed_ambient_autonomy(tenant_id: str) -> None:
 
         await session.commit()
 
-    logger.info("Seeded %d infra safety rules for tenant=%s (ambient)", created, tenant_id)
+    logger.info(
+        "Seeded %d infra/cody safety rules for tenant=%s (ambient)", created, tenant_id
+    )
 
     level_svc = AutonomyLevelService(session_factory=async_session)
     await level_svc.set_manual(

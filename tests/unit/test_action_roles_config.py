@@ -22,4 +22,5 @@ def test_ops_ambient_job_seeded_inactive():
 
 
 def test_ambient_action_contains_ops():
-    assert frozenset({"ops"}) == AMBIENT_ACTION
+    # Task 6: cody joined ops as an ambient action-propose persona.
+    assert frozenset({"ops", "cody"}) == AMBIENT_ACTION

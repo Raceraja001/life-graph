@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from life_graph.autonomy.safety.ambient_rules import (
+    CODY_SAFETY_RULES,
     INFRA_SAFETY_RULES,
     seed_ambient_autonomy,
 )
@@ -88,7 +89,9 @@ async def test_seeds_defaults_and_infra_rules_and_sets_level(monkeypatch):
 
     safety = _FakeSafetyRuleService.instances[0]
     safety.seed_defaults.assert_awaited_once_with("default")
-    assert safety.create_rule.await_count == len(INFRA_SAFETY_RULES)
+    # Task 6: seed_ambient_autonomy also seeds cody's agent_task action rules in the
+    # same pass (life_graph/autonomy/safety/ambient_rules.py CODY_SAFETY_RULES).
+    assert safety.create_rule.await_count == len(INFRA_SAFETY_RULES) + len(CODY_SAFETY_RULES)
     assert session.committed is True
 
     level = _FakeAutonomyLevelService.instances[0]
@@ -124,7 +127,7 @@ async def test_infra_rules_have_expected_risk_categories_thresholds_and_guardrai
 
 @pytest.mark.asyncio
 async def test_skips_infra_rules_that_already_exist(monkeypatch):
-    existing = [r["action_name"] for r in INFRA_SAFETY_RULES]
+    existing = [r["action_name"] for r in INFRA_SAFETY_RULES + CODY_SAFETY_RULES]
     _patch_services(monkeypatch, existing_names=existing)
 
     await seed_ambient_autonomy("default")

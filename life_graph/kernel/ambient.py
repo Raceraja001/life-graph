@@ -12,7 +12,7 @@ AMBIENT_ADVISORY: frozenset[str] = frozenset({"scout", "admin", "tutor"})
 # Roles that run on a schedule in PROPOSE mode: read-only investigation, then
 # a JSON array of proposed actions for the user to approve — never executed
 # automatically. See AMBIENT_ACTION_READONLY_TOOLS below for the enforced toolset.
-AMBIENT_ACTION: frozenset[str] = frozenset({"ops"})
+AMBIENT_ACTION: frozenset[str] = frozenset({"ops", "cody"})
 
 # Tools a scheduled AMBIENT_ACTION run is restricted to — read-only by construction,
 # so an unattended ops sweep can investigate but never mutate anything.
@@ -58,6 +58,17 @@ AMBIENT_JOBS: list[dict[str, Any]] = [
         "description": "Ambient infra sweep: proposes maintenance actions for your approval.",
         "input": {},
         "active": False,  # opt-in — acts on real infra
+    },
+    {
+        "name": "cody-ambient",
+        "cron_expression": "0 2 * * *",  # an hour after ops-ambient so they don't collide
+        "agent_name": "cody",
+        "description": (
+            "Ambient code sweep: proposes fixes for failing tests / known issues"
+            " for your approval."
+        ),
+        "input": {},
+        "active": False,  # opt-in — acts on real code
     },
 ]
 
