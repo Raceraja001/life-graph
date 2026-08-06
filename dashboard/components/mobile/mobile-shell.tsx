@@ -13,6 +13,7 @@ const TITLES: Record<string, string> = {
   "/m/chat": "Ask",
   "/m/tasks": "Tasks",
   "/m/approvals": "Approvals",
+  "/m/schedules": "Ambient roles",
 };
 
 function titleFor(pathname: string) {
@@ -20,6 +21,7 @@ function titleFor(pathname: string) {
   if (pathname.startsWith("/m/chat")) return TITLES["/m/chat"];
   if (pathname.startsWith("/m/tasks")) return TITLES["/m/tasks"];
   if (pathname.startsWith("/m/approvals")) return TITLES["/m/approvals"];
+  if (pathname.startsWith("/m/schedules")) return TITLES["/m/schedules"];
   return TITLES["/m"];
 }
 

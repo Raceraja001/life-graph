@@ -270,3 +270,105 @@ export function useModelHealth() {
     select: (rows: RawModelHealth[]) => rows.map(mapModelHealth),
   });
 }
+
+// ── Ambient advisory roles (scout/admin/tutor) ─────────────────
+// These personas run on a schedule and only report — never act without the
+// user. This surface lets the user enable/disable each role, edit scout's
+// watch-list topics, and see what they've recently found.
+export const AMBIENT_AGENTS = ["scout", "admin", "tutor"] as const;
+export type AmbientAgent = (typeof AMBIENT_AGENTS)[number];
+
+function isAmbientAgent(name: unknown): name is AmbientAgent {
+  return (AMBIENT_AGENTS as readonly string[]).includes(name as string);
+}
+
+export interface AmbientJobVM {
+  id: string;
+  name: string;
+  agentName: string;
+  description: string;
+  cronExpression: string;
+  isActive: boolean;
+  topics: string[];
+}
+
+export function mapAmbientJob(raw: any): AmbientJobVM {
+  const input = raw?.input && typeof raw.input === "object" ? raw.input : {};
+  const topics = Array.isArray(input.topics) ? input.topics.filter((t: unknown) => typeof t === "string") : [];
+  return {
+    id: String(raw?.id ?? ""),
+    name: raw?.name ?? "",
+    agentName: raw?.agent_name ?? "",
+    description: raw?.description ?? "",
+    cronExpression: raw?.cron_expression ?? "",
+    isActive: raw?.is_active !== false,
+    topics,
+  };
+}
+
+// Schedules are UTC-only on the backend; this renders the cron's hour/minute
+// alongside the browser's local-time equivalent, for DISPLAY only — the
+// underlying cron_expression sent to the API is never touched here.
+export function describeCron(cron: string): string {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length < 5) return cron;
+  const minute = Number(parts[0]);
+  const hour = Number(parts[1]);
+  if (!Number.isInteger(minute) || !Number.isInteger(hour) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return cron; // step/range/wildcard cron — not a single fixed time, show raw
+  }
+  const utcLabel = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} UTC`;
+  const local = new Date();
+  local.setUTCHours(hour, minute, 0, 0);
+  const localLabel = local.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `Daily ${utcLabel} · ${localLabel} local`;
+}
+
+// `list()` returns data = {schedules, total} (a dict, not an array — see api.ts),
+// so unwrap it here rather than via the generic listRequest() helper.
+export function useAmbientSchedules() {
+  return useQuery({
+    queryKey: ["schedules"],
+    queryFn: () => api.kernel.schedules.list().then((r: any) => r?.data?.schedules ?? []),
+    select: (rows: any[]) => rows.filter((r) => isAmbientAgent(r?.agent_name)).map(mapAmbientJob),
+  });
+}
+
+export function useUpdateAmbientSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api.kernel.schedules.update(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedules"] }),
+  });
+}
+
+export interface AmbientFindingVM {
+  id: string;
+  title: string;
+  body: string;
+  priority: string;
+  sourceType: string;
+  createdAt: string;
+}
+
+export function mapAmbientFinding(raw: any): AmbientFindingVM {
+  return {
+    id: String(raw?.id ?? ""),
+    title: raw?.title ?? "",
+    body: raw?.body ?? "",
+    priority: raw?.priority ?? "info",
+    sourceType: raw?.source_type ?? "",
+    createdAt: raw?.created_at ?? "",
+  };
+}
+
+// Same query key shape as the desktop `useNotifications` hook (lib/hooks.ts)
+// so a `notification` WebSocket event invalidates both surfaces at once.
+export function useAmbientFindings() {
+  return useQuery({
+    queryKey: ["notifications", { limit: "20" }],
+    queryFn: () => api.kernel.notifications({ limit: "20" }),
+    select: (rows: any[]) => rows.filter((r) => isAmbientAgent(r?.source_type)).map(mapAmbientFinding),
+  });
+}

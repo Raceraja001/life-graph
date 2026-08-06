@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
 import { useModelHealth, type ModelHealthVM, type ModelHealthState } from "@/lib/mobile-api";
 
@@ -83,6 +85,32 @@ export default function MobileSettings() {
 
   return (
     <>
+      <Link
+        href="/m/schedules"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "11px",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-xs)",
+          padding: "12px 14px",
+          textDecoration: "none",
+          color: "var(--text)",
+        }}
+      >
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{ display: "block", fontSize: "var(--ui-text)", fontWeight: "var(--fw-semibold)" }}>
+            Ambient roles
+          </span>
+          <span style={{ display: "block", fontSize: "var(--text-2xs)", color: "var(--text-subtle)", marginTop: "1px" }}>
+            Scout, admin &amp; tutor — schedules and watch-list
+          </span>
+        </span>
+        <ChevronRight width={16} height={16} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
+      </Link>
+
       <h1
         style={{
           fontFamily: "var(--font-display)",
