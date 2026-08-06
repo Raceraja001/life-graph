@@ -146,6 +146,17 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Failed to seed kernel personas", exc_info=True)
 
+    # Startup — seed ambient scheduled jobs for default tenant
+    try:
+        from life_graph.api.dependencies import get_scheduler_service
+        from life_graph.kernel.ambient import seed_ambient_jobs
+
+        seeded_jobs = await seed_ambient_jobs(get_scheduler_service(), "default")
+        if seeded_jobs:
+            logger.info("Seeded %d ambient scheduled jobs for default tenant", seeded_jobs)
+    except Exception:
+        logger.warning("Failed to seed ambient scheduled jobs", exc_info=True)
+
     # Startup — wire preference → knowledge graph sync
     try:
         from life_graph.services.preference_graph import preference_graph_service
