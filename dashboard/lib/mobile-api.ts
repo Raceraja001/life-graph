@@ -123,6 +123,11 @@ export interface ApprovalVM {
   // Populated for kind==="autonomous_action" rows from the AutonomousApprovalProducer's
   // Approval.payload (Task 6/9) — null for every other producer's rows.
   riskLevel: string | null;
+  // The underlying AutoAction/ApprovalQueueEntry's kind ("command" | "agent_task"),
+  // and — for agent_task rows only — its natural-language instruction (Task 7).
+  // Both null for pre-B2 rows whose payload predates this field.
+  actionKind: string | null;
+  instruction: string | null;
 }
 
 export function mapApproval(raw: any): ApprovalVM {
@@ -134,6 +139,8 @@ export function mapApproval(raw: any): ApprovalVM {
     status: raw?.status ?? "pending",
     source: raw?.source ?? "",
     riskLevel: typeof raw?.payload?.risk_level === "string" ? raw.payload.risk_level : null,
+    actionKind: typeof raw?.payload?.kind === "string" ? raw.payload.kind : null,
+    instruction: typeof raw?.payload?.instruction === "string" ? raw.payload.instruction : null,
   };
 }
 

@@ -46,9 +46,20 @@ export default function MobileApprovals() {
               </span>
               {ap.kind === "autonomous_action" && <RiskBadge risk={ap.riskLevel} />}
             </div>
-            <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.5 }}>
-              {ap.detail}
-            </div>
+            {ap.actionKind === "agent_task" ? (
+              <>
+                <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.5 }}>
+                  {ap.instruction || ap.detail}
+                </div>
+                <div style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)", marginTop: "4px" }}>
+                  runs cody · build_ok, lint_clean
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.5 }}>
+                {ap.detail}
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: "8px", marginTop: "11px" }}>
               <button

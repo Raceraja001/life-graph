@@ -110,6 +110,14 @@ class AutonomousApprovalProducer:
                 trigger_detail = (
                     auto_action.trigger_detail if auto_action else approval_entry.trigger_detail
                 )
+                kind = (
+                    (auto_action.kind if auto_action else None)
+                    or approval_entry.kind
+                    or "command"
+                )
+                instruction = (
+                    auto_action.instruction if auto_action else approval_entry.instruction
+                )
 
                 # The notification/push title is deliberately more explicit than the
                 # feed-row title (which must match the plan text exactly) — a push
@@ -123,7 +131,15 @@ class AutonomousApprovalProducer:
                     tenant_id, notification_title, body, approval_id, action_id, risk
                 )
                 await self._mirror_to_feed(
-                    session, tenant_id, approval_id, action_id, risk, feed_title, command
+                    session,
+                    tenant_id,
+                    approval_id,
+                    action_id,
+                    risk,
+                    feed_title,
+                    command,
+                    kind,
+                    instruction,
                 )
         except Exception:  # a producer failure must never break the event flow
             logger.warning("Autonomous approval producer failed", exc_info=True)
@@ -170,6 +186,8 @@ class AutonomousApprovalProducer:
         risk: str,
         title: str,
         command: str,
+        kind: str = "command",
+        instruction: str | None = None,
     ) -> None:
         """Insert an ``Approval`` feed row, skipping if one already exists (idempotent)."""
         try:
@@ -184,6 +202,14 @@ class AutonomousApprovalProducer:
             ).scalar_one_or_none()
             if existing is not None:
                 return
+            payload: dict[str, Any] = {
+                "auto_action_id": str(action_id),
+                "approval_id": str(approval_id),
+                "risk_level": risk,
+                "kind": kind,
+            }
+            if kind == "agent_task" and instruction:
+                payload["instruction"] = instruction
             session.add(
                 Approval(
                     tenant_id=tenant_id,
@@ -192,11 +218,7 @@ class AutonomousApprovalProducer:
                     source_ref=str(approval_id),
                     title=title,
                     detail=command,
-                    payload={
-                        "auto_action_id": str(action_id),
-                        "approval_id": str(approval_id),
-                        "risk_level": risk,
-                    },
+                    payload=payload,
                     priority=_FEED_PRIORITY_BY_RISK.get(risk, 10),
                 )
             )

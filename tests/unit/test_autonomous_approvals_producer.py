@@ -63,13 +63,15 @@ def _pending_event(approval_id="a1", action_id="ac1", project_id="p1", risk_leve
     )
 
 
-def _approval_entry(risk="dangerous"):
+def _approval_entry(risk="dangerous", kind="command", instruction=None):
     return _Row(
         id="a1",
         tenant_id="t1",
         agent_id="ag1",
         action_name="rm-old-logs",
         action_command="rm -rf /var/log/old",
+        kind=kind,
+        instruction=instruction,
         risk_level=risk,
         category="pipeline",
         status="pending",
@@ -78,13 +80,15 @@ def _approval_entry(risk="dangerous"):
     )
 
 
-def _auto_action(risk="dangerous"):
+def _auto_action(risk="dangerous", kind="command", instruction=None, command="rm -rf /var/log/old"):
     return _Row(
         id="ac1",
         tenant_id="t1",
         agent_id="ag1",
         action_name="rm-old-logs",
-        action_command="rm -rf /var/log/old",
+        action_command=command,
+        kind=kind,
+        instruction=instruction,
         risk_level=risk,
         project_id="p1",
         status="pending",
@@ -143,8 +147,37 @@ async def test_inserts_approval_feed_row(monkeypatch):
     assert row.title == "dangerous action: rm-old-logs"  # feed title matches the plan text
     assert row.payload["approval_id"] == "a1"
     assert row.payload["auto_action_id"] == "ac1"
+    assert row.payload["kind"] == "command"
+    assert "instruction" not in row.payload
     assert row.priority == 90  # dangerous
     assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_agent_task_payload_carries_kind_and_instruction(monkeypatch):
+    """agent_task entries mirror kind + the natural-language instruction into the
+    unified Approval feed's payload, so the client can render it without a shell
+    command (Task 7)."""
+    session = _FakeSession(
+        [
+            _approval_entry(kind="agent_task", instruction="Refactor the auth module for clarity"),
+            _auto_action(
+                kind="agent_task",
+                instruction="Refactor the auth module for clarity",
+                command=None,
+            ),
+            None,
+        ]
+    )
+    monkeypatch.setattr("life_graph.services.autonomous_approvals.async_session", lambda: session)
+
+    producer = _make_producer()
+    await producer._on_pending(_pending_event())
+
+    assert len(session.added) == 1
+    row = session.added[0]
+    assert row.payload["kind"] == "agent_task"
+    assert row.payload["instruction"] == "Refactor the auth module for clarity"
 
 
 @pytest.mark.asyncio
