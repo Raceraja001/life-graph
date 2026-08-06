@@ -17,12 +17,15 @@ import json
 import logging
 import shutil
 import time
-import uuid
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from life_graph.config import settings
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import render_memory_block
+from life_graph.drivers.workdir import remove_worktree, resolve_workdir
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +65,7 @@ class ClaudeCodeDriver:
         start = time.monotonic()
         prompt = self._format_prompt(packet)
 
-        cwd, worktree = await self._resolve_workdir(packet, workdir)
+        cwd, worktree = await resolve_workdir(packet, workdir)
         try:
             proc = await asyncio.create_subprocess_exec(
                 self._binary,
@@ -121,7 +124,7 @@ class ClaudeCodeDriver:
             )
         finally:
             if worktree is not None:
-                await self._remove_worktree(packet, worktree)
+                await remove_worktree(packet, worktree)
 
     def capabilities(self) -> list[str]:
         """Task types Claude Code handles well."""
@@ -172,49 +175,3 @@ class ClaudeCodeDriver:
             return data if isinstance(data, dict) else {"result": data}
         except json.JSONDecodeError:
             return {"result": text}
-
-    async def _resolve_workdir(
-        self, packet: ContextPacket, fallback: Path
-    ) -> tuple[Path, Path | None]:
-        """Pick the execution directory.
-
-        Returns ``(cwd, worktree)`` where ``worktree`` is non-None only
-        when an isolated git worktree was created (and must be removed
-        after dispatch).
-        """
-        project_path = packet.project_context.get("path")
-        if not project_path or not Path(project_path).is_dir():
-            return fallback, None
-
-        project = Path(project_path)
-        if not packet.project_context.get("isolation"):
-            return project, None
-
-        worktree = fallback / f"wt_{uuid.uuid4().hex[:8]}"
-        proc = await asyncio.create_subprocess_exec(
-            "git", "worktree", "add", "--detach", str(worktree),
-            cwd=str(project),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, err = await proc.communicate()
-        if proc.returncode != 0:
-            logger.warning(
-                "Worktree isolation failed (%s) — using project dir directly",
-                err.decode(errors="replace").strip()[:200],
-            )
-            return project, None
-        return worktree, worktree
-
-    @staticmethod
-    async def _remove_worktree(packet: ContextPacket, worktree: Path) -> None:
-        project_path = packet.project_context.get("path")
-        if not project_path:
-            return
-        proc = await asyncio.create_subprocess_exec(
-            "git", "worktree", "remove", "--force", str(worktree),
-            cwd=str(project_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.communicate()
