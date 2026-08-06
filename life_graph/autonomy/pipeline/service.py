@@ -31,14 +31,20 @@ logger = logging.getLogger(__name__)
 
 
 def _to_response(action) -> AutoActionResponse:
-    """Serialize a real ``AutoAction`` ORM row into the API response shape."""
+    """Serialize a real ``AutoAction`` ORM row into the API response shape.
+
+    ``action_command`` is nullable on the ORM row (``kind == "agent_task"``
+    actions carry an ``instruction`` instead), but ``AutoActionResponse.
+    action_command`` is a non-optional ``str`` field — coerce ``None`` to
+    ``""`` here rather than widening the response schema.
+    """
     return AutoActionResponse(
         id=str(action.id),
         tenant_id=action.tenant_id,
         agent_id=action.agent_id,
         project_id=action.project_id,
         action_name=action.action_name,
-        action_command=action.action_command,
+        action_command=action.action_command or "",
         rollback_command=action.rollback_command,
         trigger_type=action.trigger_type,
         trigger_detail=action.trigger_detail,
@@ -118,6 +124,11 @@ class AutoFixService:
             rule_id = classification.matched_rule.id if classification.matched_rule else None
             reasoning = classification.reasoning
 
+        # B2-D2: open-ended agent work never auto-executes — always
+        # human-approved, regardless of what the classifier recommends.
+        if request.kind == "agent_task":
+            recommendation = Recommendation.QUEUE_FOR_APPROVAL
+
         # 2. Create the auto_action record (real AutoAction fields)
         action_id = str(uuid.uuid4())
         now = datetime.now(UTC)
@@ -130,6 +141,8 @@ class AutoFixService:
                 project_id=request.project_id,
                 action_name=request.action_type,
                 action_command=request.command,
+                kind=request.kind,
+                instruction=request.instruction,
                 rollback_command=request.rollback_command,
                 is_reversible=bool(request.rollback_command),
                 trigger_type="manual",
@@ -359,6 +372,8 @@ class AutoFixService:
                 "project_id": auto_action.project_id,
                 "action_name": auto_action.action_name,
                 "action_command": auto_action.action_command,
+                "kind": auto_action.kind,
+                "instruction": auto_action.instruction,
                 "risk_level": auto_action.risk_level,
                 "trigger_type": auto_action.trigger_type,
                 "trigger_detail": auto_action.trigger_detail,
