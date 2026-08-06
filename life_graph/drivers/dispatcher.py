@@ -31,6 +31,7 @@ from life_graph.core.events import EventBus, EventType
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import ContextPacketBuilder
 from life_graph.drivers.registry import driver_registry
+from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.services.governor import governor
 from life_graph.services.verifiers import VerifierResult, verifier_chain
 
@@ -122,6 +123,7 @@ class TaskDispatcher:
         cost_cap_usd: float = DEFAULT_COST_CAP_USD,
         verify_chain: list[str] | None = None,
         interactive: bool = False,
+        isolate_workdir: bool = False,
     ) -> DriverResult:
         """Dispatch a task through the full driver pipeline.
 
@@ -159,6 +161,8 @@ class TaskDispatcher:
         if owns_session:
             session = self._session_factory()
 
+        worktree = None
+
         try:
             # Normalize the project id ONCE, before both consumers (WIP check
             # and packet build) — callers may pass a non-UUID pseudo-project.
@@ -188,6 +192,12 @@ class TaskDispatcher:
                 packet.persona_system_prompt = getattr(persona, "system_prompt", None)
                 allowed = getattr(persona, "allowed_tools", None)
                 packet.allowed_tools = list(allowed) if allowed is not None else None
+
+            # Step 2c: opt-in workdir isolation — only when the caller asked
+            # for it AND a real project path resolved. A no-op flag on a
+            # personaless/projectless dispatch (today's exact behavior).
+            if isolate_workdir and packet.project_context.get("path"):
+                packet.project_context["isolation"] = True
 
             # Step 3: Select driver
             driver = await self._select_driver(
@@ -234,7 +244,8 @@ class TaskDispatcher:
             )
 
             # Step 4: Dispatch with workdir
-            workdir = Path(tempfile.mkdtemp(prefix=f"lg_dispatch_{task_id[:8]}_"))
+            scratch = Path(tempfile.mkdtemp(prefix=f"lg_dispatch_{task_id[:8]}_"))
+            workdir, worktree = await resolve_workdir(packet, scratch)
             result = await driver.dispatch(packet, workdir, timeout=300)
 
             # Book the actual spend into the Governor's ledger.
@@ -368,6 +379,8 @@ class TaskDispatcher:
             logger.error("Dispatch failed for task %s: %s", task_id, e, exc_info=True)
             raise
         finally:
+            if worktree is not None:
+                await remove_worktree(packet, worktree)
             if owns_session:
                 await session.close()
 
