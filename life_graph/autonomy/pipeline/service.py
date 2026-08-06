@@ -215,9 +215,11 @@ class AutoFixService:
         Shared core for every execution path (classify-time auto-execute and
         post-approval ``execute_pending``): acquires the per-project lock, runs
         the command, persists status/exit_code/stdout/stderr/duration_ms/
-        started_at/completed_at, writes the audit log entry, and emits
-        ``AUTONOMOUS_ACTION_COMPLETED``. Callers own any bookkeeping specific to
-        their route (e.g. level-promotion tracking).
+        started_at/completed_at, and writes the audit log entry. Does NOT emit
+        ``AUTONOMOUS_ACTION_COMPLETED`` and does NOT touch level-promotion
+        bookkeeping — callers must do both themselves, in that order
+        (``record_action`` before the emit), so every route observes the same
+        ordering as the original ``_auto_execute``.
 
         Returns:
             Tuple of (status, ExecutionResult) where status is "success" or
@@ -266,7 +268,15 @@ class AutoFixService:
             result=status,
         )
 
-        # Emit event
+        return status, result
+
+    async def _emit_completed(self, auto_action, status: str) -> None:
+        """Emit ``AUTONOMOUS_ACTION_COMPLETED`` for a just-executed action.
+
+        Shared by every route that calls ``_run_action``, always invoked
+        AFTER that route's own level-promotion bookkeeping so observable
+        ordering (record_action, then emit) is identical everywhere.
+        """
         await event_bus.emit(
             EventType.AUTONOMOUS_ACTION_COMPLETED,
             {
@@ -277,8 +287,6 @@ class AutoFixService:
             },
             source="autonomy_pipeline",
         )
-
-        return status, result
 
     async def _auto_execute(
         self, tenant_id: str, auto_action, rule, timeout_seconds: int = 60,
@@ -292,6 +300,8 @@ class AutoFixService:
                 tenant_id, auto_action.project_id,
                 auto_action.risk_level, status == "success",
             )
+
+        await self._emit_completed(auto_action, status)
 
     async def _notify_before_execute(
         self, tenant_id: str, auto_action, rule,
@@ -415,7 +425,19 @@ class AutoFixService:
             if action.status != "pending":
                 raise ValueError(f"Cannot execute action in status: {action.status}")
 
-        await self._run_action(tenant_id, action, timeout_seconds=60)
+        status, _ = await self._run_action(tenant_id, action, timeout_seconds=60)
+
+        # Record for level promotion tracking — this is the ONLY execution path
+        # for an L0 project's actions (L0 queues every action, so _auto_execute
+        # is unreachable there); without this, an L0 project's safe_count never
+        # advances and it can never promote to L1 auto-execute.
+        if self._level_service:
+            await self._level_service.record_action(
+                tenant_id, action.project_id,
+                action.risk_level, status == "success",
+            )
+
+        await self._emit_completed(action, status)
 
         async with self._session_factory() as session:
             res = await session.execute(

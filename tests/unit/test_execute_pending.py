@@ -57,7 +57,7 @@ class _FakeSession:
         pass
 
 
-def _make_service(action):
+def _make_service(action, level_service=None):
     """Build a bare AutoFixService with just the collaborators execute_pending needs."""
     svc = AutoFixService.__new__(AutoFixService)
     svc._session_factory = lambda: _FakeSession(action)
@@ -66,7 +66,7 @@ def _make_service(action):
         return_value=ExecutionResult(exit_code=0, stdout="ok", stderr="", duration_ms=12.0)
     )
     svc._audit_service = AsyncMock()
-    svc._level_service = None
+    svc._level_service = level_service
     svc._project_locks = {}
     return svc
 
@@ -150,3 +150,94 @@ async def test_execute_pending_raises_when_status_not_pending():
         await svc.execute_pending("t1", "a1")
 
     svc._executor.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_pending_records_level_action_on_success():
+    """L0 projects queue every action, so execute_pending is the ONLY path that
+    runs an L0 project's approved actions. Without a record_action call here,
+    an L0 project's safe_count can never reach the L1 promotion threshold and
+    nothing ever becomes auto-executable."""
+    action = _fake_pending_action()
+    level_service = AsyncMock()
+    svc = _make_service(action, level_service=level_service)
+
+    with patch("life_graph.autonomy.pipeline.service.event_bus") as bus:
+        bus.emit = AsyncMock()
+        await svc.execute_pending("t1", "a1")
+
+    level_service.record_action.assert_awaited_once_with(
+        "t1", "ambient", "moderate", True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_pending_records_level_action_on_failure():
+    action = _fake_pending_action()
+    level_service = AsyncMock()
+    svc = _make_service(action, level_service=level_service)
+    svc._executor.execute = AsyncMock(
+        return_value=ExecutionResult(exit_code=1, stdout="", stderr="boom", duration_ms=5.0)
+    )
+
+    with patch("life_graph.autonomy.pipeline.service.event_bus") as bus:
+        bus.emit = AsyncMock()
+        await svc.execute_pending("t1", "a1")
+
+    level_service.record_action.assert_awaited_once_with(
+        "t1", "ambient", "moderate", False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_pending_skips_level_service_when_absent():
+    """No level_service injected (e.g. some deployments) must not raise."""
+    action = _fake_pending_action()
+    svc = _make_service(action, level_service=None)
+
+    with patch("life_graph.autonomy.pipeline.service.event_bus") as bus:
+        bus.emit = AsyncMock()
+        resp = await svc.execute_pending("t1", "a1")
+
+    assert resp.status == "success"
+
+
+@pytest.mark.asyncio
+async def test_execute_pending_emits_completed_after_record_action():
+    """The AUTONOMOUS_ACTION_COMPLETED emit must observably happen AFTER
+    record_action — matching _auto_execute's pre-refactor ordering (the
+    refactor must not silently reorder side effects observers rely on)."""
+    action = _fake_pending_action()
+    level_service = AsyncMock()
+    call_order = []
+    level_service.record_action = AsyncMock(
+        side_effect=lambda *a, **kw: call_order.append("record_action")
+    )
+    svc = _make_service(action, level_service=level_service)
+
+    with patch("life_graph.autonomy.pipeline.service.event_bus") as bus:
+        bus.emit = AsyncMock(side_effect=lambda *a, **kw: call_order.append("emit"))
+        await svc.execute_pending("t1", "a1")
+
+    assert call_order == ["record_action", "emit"]
+
+
+@pytest.mark.asyncio
+async def test_auto_execute_emits_completed_after_record_action():
+    """Same ordering guarantee for the classify-time route, to prove the
+    _run_action extraction didn't change _auto_execute's observable order."""
+    from life_graph.autonomy.pipeline.service import AutoFixService as _Svc
+
+    action = _fake_pending_action()
+    level_service = AsyncMock()
+    call_order = []
+    level_service.record_action = AsyncMock(
+        side_effect=lambda *a, **kw: call_order.append("record_action")
+    )
+    svc = _make_service(action, level_service=level_service)
+
+    with patch("life_graph.autonomy.pipeline.service.event_bus") as bus:
+        bus.emit = AsyncMock(side_effect=lambda *a, **kw: call_order.append("emit"))
+        await _Svc._auto_execute(svc, "t1", action, rule=None, timeout_seconds=60)
+
+    assert call_order == ["record_action", "emit"]
