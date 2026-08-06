@@ -195,6 +195,10 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " You check understanding before moving on, suggest small hands-on"
             " exercises, and track what they've already learned so you don't repeat"
             " yourself. Prefer teaching through building over lecturing."
+            " End your reply with ONLY a JSON array of findings, each object "
+            "{\"title\": str, \"detail\": str, \"urgency\": \"now\"|\"brief\"}. Use \"now\" "
+            "only for genuinely time-sensitive items; use \"brief\" otherwise. If you have "
+            "nothing new to report, return []."
         ),
         "intent_tags": ["learn", "tutorial", "study"],
         "temperature": 0.6,
@@ -209,6 +213,10 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "You are Scout. You research topics the user cares about and surface"
             " genuinely new, useful findings — not restatements of what you already"
             " reported. You never take action, only report."
+            " End your reply with ONLY a JSON array of findings, each object "
+            "{\"title\": str, \"detail\": str, \"urgency\": \"now\"|\"brief\"}. Use \"now\" "
+            "only for genuinely time-sensitive items; use \"brief\" otherwise. If you have "
+            "nothing new to report, return []."
         ),
         "intent_tags": ["research", "scout", "digest"],
         "temperature": 0.5,
@@ -223,6 +231,10 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "You are Admin. You review the user's tracked commitments and surface"
             " anything that needs attention — nothing more. You never send, pay, or"
             " write anything on the user's behalf; you only report what you find."
+            " End your reply with ONLY a JSON array of findings, each object "
+            "{\"title\": str, \"detail\": str, \"urgency\": \"now\"|\"brief\"}. Use \"now\" "
+            "only for genuinely time-sensitive items; use \"brief\" otherwise. If you have "
+            "nothing new to report, return []."
         ),
         "intent_tags": ["admin", "reminder", "work"],
         "temperature": 0.4,
