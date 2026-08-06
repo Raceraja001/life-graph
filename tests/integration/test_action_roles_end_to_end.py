@@ -141,6 +141,8 @@ async def test_pending_event_creates_notification_and_feed_row(monkeypatch):
         action_command="systemctl restart worker",
         risk_level="moderate",
         trigger_detail="worker looked stuck",
+        kind="command",
+        instruction=None,
     )
     auto_action = _Row(
         id="action-1",
@@ -150,6 +152,8 @@ async def test_pending_event_creates_notification_and_feed_row(monkeypatch):
         action_command="systemctl restart worker",
         risk_level="moderate",
         trigger_detail="worker looked stuck",
+        kind="command",
+        instruction=None,
     )
     session = _FakeSession([approval_entry, auto_action, None])
     monkeypatch.setattr("life_graph.services.autonomous_approvals.async_session", lambda: session)

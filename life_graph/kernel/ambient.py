@@ -64,8 +64,7 @@ AMBIENT_JOBS: list[dict[str, Any]] = [
         "cron_expression": "0 2 * * *",  # an hour after ops-ambient so they don't collide
         "agent_name": "cody",
         "description": (
-            "Ambient code sweep: proposes fixes for failing tests / known issues"
-            " for your approval."
+            "Ambient code sweep: proposes fixes for failing tests / known issues for your approval."
         ),
         "input": {},
         "active": False,  # opt-in — acts on real code

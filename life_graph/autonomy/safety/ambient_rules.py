@@ -179,9 +179,7 @@ async def seed_ambient_autonomy(tenant_id: str) -> None:
 
         await session.commit()
 
-    logger.info(
-        "Seeded %d infra/cody safety rules for tenant=%s (ambient)", created, tenant_id
-    )
+    logger.info("Seeded %d infra/cody safety rules for tenant=%s (ambient)", created, tenant_id)
 
     level_svc = AutonomyLevelService(session_factory=async_session)
     await level_svc.set_manual(

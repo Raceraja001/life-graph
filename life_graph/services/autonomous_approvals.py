@@ -111,13 +111,9 @@ class AutonomousApprovalProducer:
                     auto_action.trigger_detail if auto_action else approval_entry.trigger_detail
                 )
                 kind = (
-                    (auto_action.kind if auto_action else None)
-                    or approval_entry.kind
-                    or "command"
+                    (auto_action.kind if auto_action else None) or approval_entry.kind or "command"
                 )
-                instruction = (
-                    auto_action.instruction if auto_action else approval_entry.instruction
-                )
+                instruction = auto_action.instruction if auto_action else approval_entry.instruction
 
                 # The notification/push title is deliberately more explicit than the
                 # feed-row title (which must match the plan text exactly) — a push
