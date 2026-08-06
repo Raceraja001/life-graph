@@ -39,6 +39,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # NOTE: restoring ``action_command`` to NOT NULL fails on real data if any
+    # ``kind='agent_task'`` row exists — those rows legitimately have
+    # ``action_command IS NULL`` (their payload is ``instruction``). Downgrading
+    # a database that has already run agent_task actions therefore requires
+    # deleting or backfilling those rows first, e.g.:
+    #   DELETE FROM auto_actions   WHERE kind = 'agent_task';
+    #   DELETE FROM approval_queue WHERE kind = 'agent_task';
+    # This is deliberately NOT done automatically — silently destroying rows in
+    # a downgrade is worse than failing loudly.
     for table in ("auto_actions", "approval_queue"):
         op.alter_column(
             table,

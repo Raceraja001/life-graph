@@ -40,6 +40,20 @@ logger = logging.getLogger(__name__)
 # TaskDispatcher.dispatch_task.
 DEFAULT_AGENT_TASK_COST_CAP = 1.0
 
+# Wall-clock bound on a single agent_task dispatch.
+#
+# ``execute_pending`` runs INLINE in the approve HTTP request (the mobile
+# "Approve" tap), and ``TaskDispatcher.dispatch_task`` is unbounded from this
+# side: a 300s driver timeout, plus a one-bounce re-dispatch (another 300s),
+# plus verifier-chain time — ~10 minutes worst case, well past any reverse
+# proxy / mobile client timeout. This is a STOPGAP: it bounds the request at
+# the cost of possibly cutting off a bounce retry, which then lands as an
+# ordinary AutoAction failure row (the timeout is caught in the same handler
+# as any other dispatch error, so the row is never left half-updated). The
+# real fix is to run the dispatch as a background ARQ job and return the
+# approval immediately — a bigger change, deliberately not attempted here.
+AGENT_TASK_DISPATCH_TIMEOUT_SECONDS = 280
+
 
 def _to_response(action) -> AutoActionResponse:
     """Serialize a real ``AutoAction`` ORM row into the API response shape.
@@ -293,20 +307,34 @@ class AutoFixService:
                 # branch-only; the command path's CommandExecutor is
                 # untouched and still relied on to never raise.
                 try:
-                    driver_result = await self._dispatcher.dispatch_task(
-                        tenant_id=tenant_id,
-                        task_id=auto_action.id,
-                        instruction=auto_action.instruction or "",
-                        task_type="general",
-                        project_id=auto_action.project_id,
-                        persona_name=auto_action.agent_id,
-                        verify_chain=["build_ok", "lint_clean"],
-                        interactive=False,
-                        cost_cap_usd=DEFAULT_AGENT_TASK_COST_CAP,
+                    driver_result = await asyncio.wait_for(
+                        self._dispatcher.dispatch_task(
+                            tenant_id=tenant_id,
+                            task_id=auto_action.id,
+                            instruction=auto_action.instruction or "",
+                            task_type="general",
+                            project_id=auto_action.project_id,
+                            persona_name=auto_action.agent_id,
+                            verify_chain=["build_ok", "lint_clean"],
+                            interactive=False,
+                            cost_cap_usd=DEFAULT_AGENT_TASK_COST_CAP,
+                        ),
+                        timeout=AGENT_TASK_DISPATCH_TIMEOUT_SECONDS,
                     )
                 except DispatchError as exc:
                     exit_code, stdout, stderr, duration_ms = 1, "", str(exc), 0
                     error_message = str(exc)
+                except TimeoutError:
+                    # asyncio.TimeoutError is the builtin TimeoutError on 3.11+
+                    # and carries no message — synthesize one. wait_for has
+                    # already cancelled the dispatch, so nothing is left running.
+                    msg = (
+                        "agent_task dispatch exceeded "
+                        f"{AGENT_TASK_DISPATCH_TIMEOUT_SECONDS}s and was cancelled"
+                    )
+                    logger.warning("Auto action %s: %s", auto_action.id, msg)
+                    exit_code, stdout, stderr, duration_ms = 1, "", msg, 0
+                    error_message = msg
                 except Exception as exc:  # backstop for unexpected driver/orchestrator errors
                     exit_code, stdout, stderr, duration_ms = 1, "", str(exc), 0
                     error_message = str(exc)
@@ -352,7 +380,9 @@ class AutoFixService:
             project_id=auto_action.project_id,
             action_type=auto_action.action_name,
             risk_level=auto_action.risk_level,
-            command=auto_action.action_command,
+            # agent_task actions have no shell command — log the natural-language
+            # instruction instead, so the audit row records what actually ran.
+            command=auto_action.action_command or auto_action.instruction,
             exit_code=exit_code,
             duration_ms=duration_ms,
             result=status,

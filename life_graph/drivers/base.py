@@ -31,6 +31,14 @@ class ContextPacket:
         calibration_profile: Bias info for the agent (over/under-confidence).
         max_tokens: Token budget for the entire context packet.
         private: If True, strip memories/preferences for external drivers.
+        persona_system_prompt: The dispatching persona's own system prompt, when
+            the dispatch was pinned to a persona. ``None`` means "no persona
+            resolved" — drivers fall back to their generic prompt.
+        allowed_tools: The dispatching persona's tool allowlist. ``None`` means
+            "no persona scoping" and drivers keep their default (full-registry)
+            behavior; a list — even an empty one — is an explicit allowlist and
+            MUST be honoured. Safety-load-bearing: this is what keeps an
+            unattended persona dispatch off the host shell (``run_command``).
     """
 
     task_id: uuid.UUID
@@ -44,6 +52,8 @@ class ContextPacket:
     calibration_profile: dict = field(default_factory=dict)
     max_tokens: int = 6000
     private: bool = False
+    persona_system_prompt: str | None = None
+    allowed_tools: list[str] | None = None
 
 
 @dataclass

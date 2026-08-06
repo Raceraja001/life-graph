@@ -49,6 +49,30 @@ class DispatchError(Exception):
     """Raised when a dispatch cannot proceed."""
 
 
+def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None:
+    """Best-effort ``project_id`` → ``uuid.UUID``; ``None`` when not a real UUID.
+
+    Not every caller has a real ``projects`` row: the ambient action pipeline
+    stamps its proposals with the pseudo-project ``"ambient"``
+    (``life_graph/services/action_proposal_bridge.py::AMBIENT_PROJECT_ID``),
+    which is a plain string. Parsing that with ``uuid.UUID()`` raises
+    ``ValueError`` and would abort the whole dispatch, so a non-UUID project id
+    degrades to "no project context" instead of crashing.
+    """
+    if project_id is None:
+        return None
+    if isinstance(project_id, uuid.UUID):
+        return project_id
+    try:
+        return uuid.UUID(str(project_id))
+    except (ValueError, AttributeError, TypeError):
+        logger.warning(
+            "dispatch: project_id %r is not a UUID — treating as no project",
+            project_id,
+        )
+        return None
+
+
 class TaskDispatcher:
     """Selects driver, enforces limits, runs verification, manages one-bounce.
 
@@ -136,11 +160,14 @@ class TaskDispatcher:
             session = self._session_factory()
 
         try:
+            # Normalize the project id ONCE, before both consumers (WIP check
+            # and packet build) — callers may pass a non-UUID pseudo-project.
+            project_uuid = _coerce_project_uuid(project_id)
+
             # Step 1: Check WIP limits
-            await self._check_wip_limits(tenant_id, project_id, session)
+            await self._check_wip_limits(tenant_id, project_uuid, session)
 
             # Step 2: Build context packet
-            project_uuid = uuid.UUID(project_id) if project_id else None
             packet = await self._context_builder.build_packet(
                 tenant_id=tenant_id,
                 task_type=task_type,
@@ -152,9 +179,19 @@ class TaskDispatcher:
             # Override the task_id from the caller
             packet.task_id = uuid.UUID(task_id) if isinstance(task_id, str) else task_id
 
+            # Step 2b: Resolve the pinned persona ONCE (reused for driver
+            # selection below) and scope the packet to it. Without this the
+            # driver would run with the FULL tool registry — including the
+            # host shell (`run_command`) — for an unattended dispatch.
+            persona = await self._load_persona(tenant_id, persona_name, session)
+            if persona is not None:
+                packet.persona_system_prompt = getattr(persona, "system_prompt", None)
+                allowed = getattr(persona, "allowed_tools", None)
+                packet.allowed_tools = list(allowed) if allowed is not None else None
+
             # Step 3: Select driver
             driver = await self._select_driver(
-                task_type, persona_name, tenant_id, session
+                task_type, persona_name, tenant_id, session, persona=persona
             )
 
             # Step 3b: Governor budget gate — refuse before spending, not after.
@@ -334,12 +371,55 @@ class TaskDispatcher:
             if owns_session:
                 await session.close()
 
+    async def _load_persona(
+        self,
+        tenant_id: str,
+        persona_name: str | None,
+        session: AsyncSession,
+    ):
+        """Load the active ``AgentPersona`` row for ``persona_name``, or None.
+
+        Never raises: a personaless (or unresolvable) dispatch must still
+        proceed — it simply carries no persona prompt/tool scoping, which is
+        exactly the pre-existing behavior for every non-persona caller.
+        """
+        if not persona_name:
+            return None
+        try:
+            from life_graph.models.db import AgentPersona
+
+            result = await session.execute(
+                select(AgentPersona).where(
+                    AgentPersona.tenant_id == tenant_id,
+                    AgentPersona.name == persona_name,
+                    AgentPersona.is_active.is_(True),
+                )
+            )
+            persona = result.scalar_one_or_none()
+            if persona is None:
+                logger.warning(
+                    "Persona %r not found for tenant %s — dispatching without "
+                    "persona prompt/tool scoping",
+                    persona_name,
+                    tenant_id,
+                )
+            return persona
+        except Exception:
+            logger.warning(
+                "Failed to load persona %r — dispatching without persona "
+                "prompt/tool scoping",
+                persona_name,
+                exc_info=True,
+            )
+            return None
+
     async def _select_driver(
         self,
         task_type: str,
         persona_name: str | None,
         tenant_id: str,
         session: AsyncSession,
+        persona=None,
     ):
         """Select the best driver for a task.
 
@@ -347,6 +427,11 @@ class TaskDispatcher:
         1. Persona pin (if persona specifies a driver)
         2. Cheapest capable trusted driver (success rate >= 0.6)
         3. Fallback to 'local'
+
+        Args:
+            persona: Optional pre-resolved ``AgentPersona`` row (see
+                ``_load_persona``) — passed by ``dispatch_task`` so the persona
+                is looked up once per dispatch rather than twice.
 
         Returns:
             An AgentDriver instance.
@@ -357,16 +442,8 @@ class TaskDispatcher:
         # 1. Check persona pin
         if persona_name:
             try:
-                from life_graph.models.db import AgentPersona
-
-                result = await session.execute(
-                    select(AgentPersona).where(
-                        AgentPersona.tenant_id == tenant_id,
-                        AgentPersona.name == persona_name,
-                        AgentPersona.is_active.is_(True),
-                    )
-                )
-                persona = result.scalar_one_or_none()
+                if persona is None:
+                    persona = await self._load_persona(tenant_id, persona_name, session)
                 if persona and persona.properties:
                     pinned_driver = persona.properties.get("driver")
                     if pinned_driver:
@@ -412,14 +489,19 @@ class TaskDispatcher:
     async def _check_wip_limits(
         self,
         tenant_id: str,
-        project_id: str | None,
+        project_id: str | uuid.UUID | None,
         session: AsyncSession,
     ) -> None:
         """Enforce WIP concurrency limits.
 
+        ``project_id`` is normally already normalized by ``dispatch_task``; it
+        is re-coerced here (idempotent) so the project-level check still works
+        for any other caller passing a raw string.
+
         Raises:
             DispatchError: If WIP limits are exceeded.
         """
+        project_uuid = _coerce_project_uuid(project_id)
         try:
             from life_graph.models.db import AgentTask
 
@@ -438,11 +520,11 @@ class TaskDispatcher:
                 )
 
             # Project-level WIP
-            if project_id:
+            if project_uuid is not None:
                 result = await session.execute(
                     select(func.count(AgentTask.id)).where(
                         AgentTask.tenant_id == tenant_id,
-                        AgentTask.project_id == uuid.UUID(project_id),
+                        AgentTask.project_id == project_uuid,
                         AgentTask.status == "running",
                     )
                 )
@@ -589,6 +671,11 @@ class TaskDispatcher:
             calibration_profile=packet.calibration_profile,
             max_tokens=packet.max_tokens,
             private=packet.private,
+            # Carry the persona scoping across the bounce — dropping
+            # allowed_tools here would silently hand the retry the full tool
+            # registry (including the host shell).
+            persona_system_prompt=packet.persona_system_prompt,
+            allowed_tools=packet.allowed_tools,
         )
 
         await self._emit(

@@ -186,6 +186,79 @@ async def test_dispatch_generic_exception_also_marks_failed_not_wedged(agent_tas
 
 
 @pytest.mark.asyncio
+async def test_dispatch_timeout_marks_failed_with_a_readable_message(
+    agent_task_service_raising, monkeypatch
+):
+    """Final-review Important #3: execute_pending runs INLINE in the approve
+    HTTP request, so the dispatch is bounded by asyncio.wait_for. A timeout
+    must land as an ordinary failure row with a readable message (a bare
+    TimeoutError stringifies to ""), never a half-updated AutoAction."""
+    import asyncio
+
+    import life_graph.autonomy.pipeline.service as svc_mod
+
+    svc, disp = agent_task_service_raising
+    monkeypatch.setattr(svc_mod, "AGENT_TASK_DISPATCH_TIMEOUT_SECONDS", 0.05)
+
+    dispatch_cancelled = asyncio.Event()
+
+    async def _hang(*_a, **_k):
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            dispatch_cancelled.set()
+            raise
+
+    disp.dispatch_task = AsyncMock(side_effect=_hang)
+    auto = make_auto_action(kind="agent_task", instruction="X", action_command=None)
+
+    await svc._run_action("t1", auto, timeout_seconds=60)
+
+    assert auto.status == "failure"
+    assert auto.exit_code == 1
+    assert "exceeded" in (auto.error_message or "")
+    assert auto.error_message == auto.stderr  # message is not empty / not lost
+    assert auto.completed_at is not None  # row fully persisted, not half-updated
+    assert dispatch_cancelled.is_set()  # wait_for actually cancelled the dispatch
+
+
+@pytest.mark.asyncio
+async def test_audit_log_records_the_instruction_for_agent_task(agent_task_service_raising):
+    """Final-review Important #4: action_command is always None for agent_task,
+    so the audit row was empty — log the instruction instead."""
+    svc, disp = agent_task_service_raising
+    disp.dispatch_task = AsyncMock(
+        side_effect=None, return_value=MagicMock(success=True, output="ok", error=None, duration_ms=5)
+    )
+    auto = make_auto_action(
+        kind="agent_task", instruction="Fix the flaky test_worker_retry test", action_command=None
+    )
+
+    await svc._run_action("t1", auto, timeout_seconds=60)
+
+    kwargs = svc._audit_service.log_auto_execute.await_args.kwargs
+    assert kwargs["command"] == "Fix the flaky test_worker_retry test"
+
+
+@pytest.mark.asyncio
+async def test_audit_log_still_records_the_command_for_command_actions(
+    agent_task_service_raising,
+):
+    """The command path is untouched — action_command still wins."""
+    svc, disp = agent_task_service_raising
+    svc._executor.execute = AsyncMock(
+        return_value=MagicMock(exit_code=0, stdout="ok", stderr="", duration_ms=5)
+    )
+    auto = make_auto_action(kind="command", instruction=None, action_command="docker restart x")
+
+    await svc._run_action("t1", auto, timeout_seconds=60)
+
+    kwargs = svc._audit_service.log_auto_execute.await_args.kwargs
+    assert kwargs["command"] == "docker restart x"
+    disp.dispatch_task.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_execute_pending_agent_task_dispatch_raise_does_not_propagate(
     agent_task_execute_pending_raising,
 ):

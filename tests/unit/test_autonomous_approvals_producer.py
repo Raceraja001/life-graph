@@ -264,6 +264,62 @@ async def test_notify_failure_does_not_propagate(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_agent_task_feed_row_detail_falls_back_to_instruction(monkeypatch):
+    """Final-review Minor #7: Approval.detail was always None for agent_task
+    (it was fed the always-None action_command)."""
+    session = _FakeSession(
+        [
+            _approval_entry(kind="agent_task", instruction="Refactor the auth module"),
+            _auto_action(kind="agent_task", instruction="Refactor the auth module", command=None),
+            None,
+        ]
+    )
+    monkeypatch.setattr("life_graph.services.autonomous_approvals.async_session", lambda: session)
+
+    producer = _make_producer()
+    await producer._on_pending(_pending_event())
+
+    assert session.added[0].detail == "Refactor the auth module"
+
+
+@pytest.mark.asyncio
+async def test_row_missing_the_b2_columns_still_gets_a_feed_row(monkeypatch):
+    """Final-review Important #6: a single broad try/except meant one bad
+    attribute cost the queued action its notification AND its feed row, leaving
+    it invisible in /m/approvals forever. Task 1's kind/instruction columns
+    tripped exactly this. Rows that predate (or drift from) the current schema
+    must degrade a field, not the whole event."""
+    stale_entry = _Row(
+        id="a1",
+        tenant_id="t1",
+        agent_id="ag1",
+        action_name="rm-old-logs",
+        action_command="rm -rf /var/log/old",
+        risk_level="dangerous",
+        trigger_detail="log dir over quota",
+    )  # note: no `kind`, no `instruction`
+    stale_action = _Row(
+        id="ac1",
+        tenant_id="t1",
+        agent_id="ag1",
+        action_name="rm-old-logs",
+        action_command="rm -rf /var/log/old",
+        risk_level="dangerous",
+        project_id="p1",
+        trigger_detail="log dir over quota",
+    )
+    session = _FakeSession([stale_entry, stale_action, None])
+    monkeypatch.setattr("life_graph.services.autonomous_approvals.async_session", lambda: session)
+
+    producer = _make_producer()
+    await producer._on_pending(_pending_event())
+
+    producer._notification_engine.create.assert_awaited_once()
+    assert len(session.added) == 1
+    assert session.added[0].payload["kind"] == "command"  # sane default
+
+
+@pytest.mark.asyncio
 async def test_missing_approval_entry_returns_without_error(monkeypatch):
     session = _FakeSession([None])
     monkeypatch.setattr("life_graph.services.autonomous_approvals.async_session", lambda: session)

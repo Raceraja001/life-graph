@@ -15,12 +15,25 @@ AMBIENT_ADVISORY: frozenset[str] = frozenset({"scout", "admin", "tutor"})
 AMBIENT_ACTION: frozenset[str] = frozenset({"ops", "cody"})
 
 # Tools a scheduled AMBIENT_ACTION run is restricted to — read-only by construction,
-# so an unattended ops sweep can investigate but never mutate anything.
+# so an unattended ops/cody sweep can investigate but never mutate anything.
+#
+# This is an ALLOWLIST, intersected with the live tool registry at run time
+# (see kernel/process_manager.py::_run_agent), so a name that is not registered
+# is simply dropped. Two names here are currently aspirational — "memory_search"
+# (pre-existing) and "file_read" — because NO file-read or memory-search tool is
+# registered today (life_graph/tools/ registers: inspect_system, git_*,
+# run_command, web_search, browse_web, browser_agent, calculator,
+# get_current_datetime, delegate_to_persona). They are listed so the capability
+# turns on automatically once those tools land, and because the built-in
+# personas (kernel/personas.py) already declare "file_read"/"memory_search" in
+# their own allowed_tools. Until then cody's propose sweep cannot actually read
+# source files — see the B2 final-review report.
 AMBIENT_ACTION_READONLY_TOOLS: list[str] = [
     "inspect_system",
     "git_status",
     "git_log",
     "git_diff",
+    "file_read",
     "memory_search",
     "get_current_datetime",
 ]

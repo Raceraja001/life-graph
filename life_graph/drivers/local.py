@@ -39,6 +39,15 @@ class LocalDriver:
         Formats the context packet as a conversation message, runs the
         orchestrator's streaming loop, and collects the output.
 
+        When the packet carries persona scoping (``persona_system_prompt`` /
+        ``allowed_tools``, set by ``TaskDispatcher.dispatch_task`` for a
+        persona-pinned dispatch), the persona's own prompt is used as the base
+        system prompt and the orchestrator is handed ONLY that persona's tools
+        — mirroring ``kernel/process_manager.py::_run_agent``. Without it the
+        orchestrator resolves the entire tool registry, which includes the
+        host shell (``run_command``); that is safety-load-bearing for
+        unattended dispatches, do not remove.
+
         Args:
             packet: The context packet with task information.
             workdir: Working directory (unused by local orchestrator).
@@ -54,7 +63,7 @@ class LocalDriver:
             orchestrator = AgentOrchestrator()
 
             # Build a system prompt from the context packet
-            system_parts = ["You are an AI agent executing a task."]
+            system_parts = [packet.persona_system_prompt or "You are an AI agent executing a task."]
             if packet.project_context:
                 system_parts.append(
                     f"Project context: {json.dumps(packet.project_context, default=str)}"
@@ -71,11 +80,25 @@ class LocalDriver:
             system_prompt = "\n\n".join(system_parts)
             messages = [{"role": "user", "content": packet.instruction}]
 
+            # Persona tool scoping. None => no persona resolved, keep the
+            # historical full-registry behavior (the orchestrator resolves the
+            # registry itself when tools is None). A list — even empty — is an
+            # explicit allowlist and is passed through verbatim.
+            run_kwargs: dict = {}
+            if packet.allowed_tools is not None:
+                from life_graph.tools.registry import registry as tool_registry
+
+                allowed_set = set(packet.allowed_tools)
+                run_kwargs["tools"] = [
+                    t for t in tool_registry.get_tools() if t["function"]["name"] in allowed_set
+                ]
+
             # Collect streamed output (the orchestrator yields SSE events)
             output_parts: list[str] = []
             async for event_str in orchestrator.run(
                 messages=messages,
                 system_prompt=system_prompt,
+                **run_kwargs,
             ):
                 # Parse SSE data lines to extract content tokens
                 if event_str.startswith("data: "):

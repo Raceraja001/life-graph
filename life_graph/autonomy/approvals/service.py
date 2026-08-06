@@ -27,6 +27,11 @@ def _serialize(entry) -> dict:
         "project_id": entry.project_id,
         "action_name": entry.action_name,
         "action_command": entry.action_command,
+        # B2: agent_task entries carry a natural-language instruction instead of
+        # a shell command — without these two fields an API caller sees a null
+        # action_command and no way to tell what the entry actually is.
+        "kind": getattr(entry, "kind", None) or "command",
+        "instruction": getattr(entry, "instruction", None),
         "risk_level": entry.risk_level,
         "category": entry.category,
         "trigger_type": entry.trigger_type,
