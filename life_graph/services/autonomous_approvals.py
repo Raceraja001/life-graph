@@ -111,12 +111,19 @@ class AutonomousApprovalProducer:
                     auto_action.trigger_detail if auto_action else approval_entry.trigger_detail
                 )
 
-                title = f"{risk} action needs approval: {action_name}"
+                # The notification/push title is deliberately more explicit than the
+                # feed-row title (which must match the plan text exactly) — a push
+                # benefits from "needs approval" context that the generic Approval
+                # feed's own UI chrome already conveys via kind/status.
+                notification_title = f"{risk} action needs approval: {action_name}"
+                feed_title = f"{risk} action: {action_name}"
                 body = f"{command}\n{trigger_detail}" if trigger_detail else command
 
-                await self._notify(tenant_id, title, body, approval_id, action_id, risk)
+                await self._notify(
+                    tenant_id, notification_title, body, approval_id, action_id, risk
+                )
                 await self._mirror_to_feed(
-                    session, tenant_id, approval_id, action_id, risk, title, command
+                    session, tenant_id, approval_id, action_id, risk, feed_title, command
                 )
         except Exception:  # a producer failure must never break the event flow
             logger.warning("Autonomous approval producer failed", exc_info=True)

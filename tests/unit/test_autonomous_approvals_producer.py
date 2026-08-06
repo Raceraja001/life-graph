@@ -140,10 +140,26 @@ async def test_inserts_approval_feed_row(monkeypatch):
     assert row.source == "autonomy"
     assert row.source_ref == "a1"
     assert row.tenant_id == "t1"
+    assert row.title == "dangerous action: rm-old-logs"  # feed title matches the plan text
     assert row.payload["approval_id"] == "a1"
     assert row.payload["auto_action_id"] == "ac1"
     assert row.priority == 90  # dangerous
     assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_notification_title_differs_from_feed_title(monkeypatch):
+    """The push/notification title stays the fuller 'needs approval' wording; only
+    the generic Approval feed-row title is trimmed to match the plan text."""
+    session = _FakeSession([_approval_entry(), _auto_action(), None])
+    monkeypatch.setattr("life_graph.services.autonomous_approvals.async_session", lambda: session)
+
+    producer = _make_producer()
+    await producer._on_pending(_pending_event())
+
+    notify_title = producer._notification_engine.create.call_args.args[1]
+    assert notify_title == "dangerous action needs approval: rm-old-logs"
+    assert session.added[0].title == "dangerous action: rm-old-logs"
 
 
 @pytest.mark.asyncio
