@@ -66,9 +66,10 @@ class ApprovalService:
         """Create an approval queue entry.
 
         ``data`` carries real ``ApprovalQueueEntry`` field names
-        (``action_name``, ``action_command``, ``trigger_type``, ``trigger_detail``,
-        ``risk_level``, ``project_id``, ``category``). ``auto_approve_minutes``
-        (optional) sets an auto-approve ``expires_at``.
+        (``action_name``, ``action_command``, ``kind``, ``instruction``,
+        ``trigger_type``, ``trigger_detail``, ``risk_level``, ``project_id``,
+        ``category``). ``auto_approve_minutes`` (optional) sets an
+        auto-approve ``expires_at``.
         """
         from life_graph.autonomy.models import ApprovalQueueEntry
 
@@ -93,6 +94,8 @@ class ApprovalService:
                 project_id=data.get("project_id"),
                 action_name=data["action_name"],
                 action_command=data["action_command"],
+                kind=data.get("kind", "command"),
+                instruction=data.get("instruction"),
                 risk_level=risk_level,
                 category=data.get("category", "general"),
                 trigger_type=data.get("trigger_type", "manual"),

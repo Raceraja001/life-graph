@@ -147,6 +147,10 @@ async def test_agent_task_always_queues_even_when_classifier_says_auto(
     assert saved.kind == "agent_task"
     assert saved.instruction == "Fix failing test X"
     assert saved.action_command is None
+    # kind/instruction are also handed to the approval-queue create() call
+    approval_data = mocks["approval_service"].create.call_args.kwargs["data"]
+    assert approval_data["kind"] == "agent_task"
+    assert approval_data["instruction"] == "Fix failing test X"
 
 
 @pytest.mark.asyncio
@@ -165,3 +169,63 @@ async def test_command_action_routing_unchanged(agent_task_autofix_service):
     assert saved.kind == "command"
     assert saved.instruction is None
     assert saved.action_command == "docker restart x"
+
+
+@pytest.mark.asyncio
+async def test_approval_queue_entry_persists_kind_and_instruction():
+    """Regression: ``ApprovalService.create()`` must actually persist the
+    ``kind``/``instruction`` keys carried in its ``data`` dict — previously
+    the constructor call had a closed set of named kwargs that silently
+    dropped both, even though ``process()`` already passed them through."""
+    from life_graph.autonomy.approvals.service import ApprovalService
+
+    box: dict = {"action": None}
+    session = _FakeSession(box)
+    approval_service = ApprovalService(session_factory=lambda: session)
+
+    entry = await approval_service.create(
+        tenant_id="t1",
+        data={
+            "agent_id": "cody",
+            "project_id": "ambient",
+            "action_name": "cody_fix",
+            "action_command": None,
+            "kind": "agent_task",
+            "instruction": "Fix failing test X",
+            "risk_level": "moderate",
+            "trigger_type": "manual",
+            "trigger_detail": "cody_fix",
+            "category": "pipeline",
+        },
+    )
+
+    assert entry.kind == "agent_task"
+    assert entry.instruction == "Fix failing test X"
+
+
+@pytest.mark.asyncio
+async def test_approval_queue_entry_defaults_kind_command_when_absent():
+    """Command-kind callers (B1 — no ``kind``/``instruction`` keys in
+    ``data``) must still default to ``kind="command"``/``instruction=None``."""
+    from life_graph.autonomy.approvals.service import ApprovalService
+
+    box: dict = {"action": None}
+    session = _FakeSession(box)
+    approval_service = ApprovalService(session_factory=lambda: session)
+
+    entry = await approval_service.create(
+        tenant_id="t1",
+        data={
+            "agent_id": "ops",
+            "project_id": "ambient",
+            "action_name": "restart",
+            "action_command": "docker restart x",
+            "risk_level": "moderate",
+            "trigger_type": "manual",
+            "trigger_detail": "restart",
+            "category": "pipeline",
+        },
+    )
+
+    assert entry.kind == "command"
+    assert entry.instruction is None
