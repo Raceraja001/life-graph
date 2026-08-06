@@ -31,6 +31,45 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_COST_PER_TASK_USD = 0.10  # frontier cost class; actual cost read from CLI output
 
+_ALLOWED_TOOLS_FLAG = "--allowedTools"
+
+# life_graph tool registry name → Claude Code CLI's own tool name. The CLI
+# has a different, coarser tool vocabulary (no separate git_status/git_diff/
+# etc. — all shell-adjacent operations go through "Bash"). Names with no
+# sensible CLI equivalent (delegate_to_persona, calculator,
+# get_current_datetime, inspect_system) are simply absent — an allowed_tools
+# list containing only those maps to an empty CLI allowlist, fail-closed,
+# matching LocalDriver's behavior for an unmapped/unregistered name.
+_TOOL_NAME_TO_CLI: dict[str, str] = {
+    "run_command": "Bash",
+    "git_status": "Bash",
+    "git_log": "Bash",
+    "git_diff": "Bash",
+    "git_branch": "Bash",
+    "file_read": "Read",
+    "file_write": "Write",
+    "web_search": "WebSearch",
+    "browse_web": "WebFetch",
+    "browser_agent": "WebFetch",
+}
+
+
+def _allowed_cli_tools(allowed_tools: list[str] | None) -> list[str] | None:
+    """Translate life_graph tool names into Claude Code CLI tool names.
+
+    Returns ``None`` when ``allowed_tools`` is ``None`` (no persona scoping —
+    the CLI keeps its own default permissions, matching the "no scoping"
+    contract ``ContextPacket.allowed_tools`` already documents). A present
+    list — even if every name is unmapped — produces a (possibly empty)
+    explicit CLI allowlist, fail-closed.
+    """
+    if allowed_tools is None:
+        return None
+    mapped = {
+        _TOOL_NAME_TO_CLI[name] for name in allowed_tools if name in _TOOL_NAME_TO_CLI
+    }
+    return sorted(mapped)
+
 
 class ClaudeCodeDriver:
     """Wraps Claude Code headless mode as an AgentDriver."""
@@ -67,12 +106,13 @@ class ClaudeCodeDriver:
 
         cwd, worktree = await resolve_workdir(packet, workdir)
         try:
+            cli_tools = _allowed_cli_tools(packet.allowed_tools)
+            args = [self._binary, "-p", prompt, "--output-format", "json"]
+            if cli_tools is not None:
+                args += [_ALLOWED_TOOLS_FLAG, ",".join(cli_tools)]
+
             proc = await asyncio.create_subprocess_exec(
-                self._binary,
-                "-p",
-                prompt,
-                "--output-format",
-                "json",
+                *args,
                 cwd=str(cwd),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -141,10 +181,15 @@ class ClaudeCodeDriver:
     def _format_prompt(packet: ContextPacket) -> str:
         """Render the context packet as a headless prompt.
 
-        Private packets get instruction + project context only —
-        memories and preferences never leave the local system.
+        Private packets get instruction + project context only — memories
+        and preferences never leave the local system. The persona's own
+        system prompt (when the dispatch was pinned to one) leads the
+        prompt, same as LocalDriver's system_prompt construction.
         """
-        parts = [packet.instruction]
+        parts = []
+        if packet.persona_system_prompt:
+            parts.append(packet.persona_system_prompt)
+        parts.append(packet.instruction)
         if packet.project_context:
             safe_project = {
                 k: v for k, v in packet.project_context.items()
