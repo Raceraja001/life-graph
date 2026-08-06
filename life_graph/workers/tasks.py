@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
+from life_graph.api.dependencies import get_scheduler_service
 from life_graph.core.tenant import set_tenant_context
 from life_graph.models.db import JobRun, Memory
 from life_graph.storage.database import async_session
@@ -681,3 +682,36 @@ async def failure_pattern_mining(ctx: dict) -> dict:
         len(tenant_ids), total_stored,
     )
     return {"tenants": len(tenant_ids), "patterns_stored": total_stored, "results": results}
+
+
+# ── Ambient Advisory Roles: Scheduler Ticker ─────────────────────────────
+
+
+async def tick_scheduled_jobs(ctx: dict) -> dict:
+    """Per-minute cron: fire every kernel ScheduledJob whose next_run_at has passed.
+
+    Uses the ProcessManager singleton belonging to THIS worker (advisory tasks
+    then run + emit TASK_COMPLETED here, where the findings bridge is subscribed).
+    Each job is fired in isolation so one failure never blocks the rest.
+
+    Args:
+        ctx: ARQ context (unused; required by the ARQ task signature).
+
+    Returns:
+        Dict with counts of due, fired, and failed jobs.
+    """
+    scheduler = get_scheduler_service()
+    due = await scheduler.get_due_jobs(None)
+    fired = 0
+    failed = 0
+    for job in due:
+        try:
+            set_tenant_context(job["tenant_id"], "system")
+            await scheduler.fire_job(job["tenant_id"], job["id"])
+            fired += 1
+        except Exception:
+            logger.exception("tick_scheduled_jobs: fire failed for job %s", job.get("id"))
+            failed += 1
+    if due:
+        logger.info("tick_scheduled_jobs: %d fired, %d failed", fired, failed)
+    return {"due": len(due), "fired": fired, "failed": failed}
