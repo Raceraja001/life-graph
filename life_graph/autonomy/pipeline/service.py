@@ -207,10 +207,22 @@ class AutoFixService:
             )
             await session.commit()
 
-    async def _auto_execute(
-        self, tenant_id: str, auto_action, rule, timeout_seconds: int = 60,
-    ) -> None:
-        """L1+ safe action: execute immediately with project lock."""
+    async def _run_action(
+        self, tenant_id: str, auto_action, timeout_seconds: int = 60,
+    ):
+        """Run ``auto_action.action_command`` and record the outcome.
+
+        Shared core for every execution path (classify-time auto-execute and
+        post-approval ``execute_pending``): acquires the per-project lock, runs
+        the command, persists status/exit_code/stdout/stderr/duration_ms/
+        started_at/completed_at, writes the audit log entry, and emits
+        ``AUTONOMOUS_ACTION_COMPLETED``. Callers own any bookkeeping specific to
+        their route (e.g. level-promotion tracking).
+
+        Returns:
+            Tuple of (status, ExecutionResult) where status is "success" or
+            "failure".
+        """
         from life_graph.autonomy.models import AutoAction
 
         lock = self._get_lock(auto_action.project_id)
@@ -254,13 +266,6 @@ class AutoFixService:
             result=status,
         )
 
-        # Record for level promotion tracking
-        if self._level_service:
-            await self._level_service.record_action(
-                tenant_id, auto_action.project_id,
-                auto_action.risk_level, status == "success",
-            )
-
         # Emit event
         await event_bus.emit(
             EventType.AUTONOMOUS_ACTION_COMPLETED,
@@ -272,6 +277,21 @@ class AutoFixService:
             },
             source="autonomy_pipeline",
         )
+
+        return status, result
+
+    async def _auto_execute(
+        self, tenant_id: str, auto_action, rule, timeout_seconds: int = 60,
+    ) -> None:
+        """L1+ safe action: execute immediately with project lock."""
+        status, _ = await self._run_action(tenant_id, auto_action, timeout_seconds)
+
+        # Record for level promotion tracking
+        if self._level_service:
+            await self._level_service.record_action(
+                tenant_id, auto_action.project_id,
+                auto_action.risk_level, status == "success",
+            )
 
     async def _notify_before_execute(
         self, tenant_id: str, auto_action, rule,
@@ -357,6 +377,52 @@ class AutoFixService:
             },
             source="autonomy_pipeline",
         )
+
+    async def execute_pending(
+        self, tenant_id: str, auto_action_id: str,
+    ) -> AutoActionResponse:
+        """Execute an approved (``status="pending"``) ``AutoAction`` by id.
+
+        This fills the execute-on-approval gap: today, approving an autonomy
+        approval flips its linked ``AutoAction`` to ``pending`` but nothing
+        runs it. Callers (e.g. the approvals API, after an approval is
+        granted) invoke this to actually run the command.
+
+        Args:
+            tenant_id: Tenant scope — the action must belong to this tenant.
+            auto_action_id: The ``AutoAction.id`` to execute.
+
+        Returns:
+            The refreshed ``AutoActionResponse`` after execution.
+
+        Raises:
+            ValueError: If no such action exists for this tenant, or its
+                status is not ``"pending"``.
+        """
+        from life_graph.autonomy.models import AutoAction
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(AutoAction).where(
+                    AutoAction.id == str(auto_action_id),
+                    AutoAction.tenant_id == tenant_id,
+                )
+            )
+            action = result.scalar_one_or_none()
+            if not action:
+                raise ValueError(f"Auto action {auto_action_id} not found")
+
+            if action.status != "pending":
+                raise ValueError(f"Cannot execute action in status: {action.status}")
+
+        await self._run_action(tenant_id, action, timeout_seconds=60)
+
+        async with self._session_factory() as session:
+            res = await session.execute(
+                select(AutoAction).where(AutoAction.id == str(auto_action_id))
+            )
+            refreshed = res.scalar_one()
+            return _to_response(refreshed)
 
     async def rollback(self, tenant_id: str, auto_action_id: str) -> AutoActionResponse:
         """Execute the rollback command for a previously-executed action."""
