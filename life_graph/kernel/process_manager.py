@@ -86,6 +86,7 @@ class ProcessManager:
         depth: int = 0,
         session_id: uuid.UUID | None = None,
         project_id: uuid.UUID | None = None,
+        tool_override: list[str] | None = None,
     ) -> dict[str, Any]:
         """Spawn a new agent task (like fork + exec).
 
@@ -111,6 +112,17 @@ class ProcessManager:
                 0 = root. Raises ValueError past MAX_DELEGATION_DEPTH.
             session_id: Associated agent session.
             project_id: Associated project.
+            tool_override: When not None, replaces the persona's
+                own `allowed_tools` as the tool allowlist for this
+                run only. Not persisted to the DB task record — an
+                in-memory-only override threaded straight through
+                to `_run_agent` for this execution. NOTE: automatic
+                retries (`_retry_task`) re-spawn from the persisted
+                `AgentTask.input` and do not currently carry
+                `tool_override` forward; a failed read-only run
+                retries under the persona's own `allowed_tools`.
+                Safety-load-bearing: this is how scheduled
+                action-role runs are forced read-only.
 
         Returns:
             Dict with the created task's id and status.
@@ -167,6 +179,7 @@ class ProcessManager:
                 timeout,
                 root_task_id=root_task_id or task_id,
                 depth=depth,
+                tool_override=tool_override,
             ),
             name=f"task-{task_id!s:.8}",
         )
@@ -348,6 +361,7 @@ class ProcessManager:
         timeout: int,
         root_task_id: uuid.UUID | None = None,
         depth: int = 0,
+        tool_override: list[str] | None = None,
     ) -> None:
         """Run the agent under semaphore + timeout control."""
         async with self._semaphore:
@@ -375,6 +389,7 @@ class ProcessManager:
                         agent_name,
                         input_data,
                         persona,
+                        tool_override=tool_override,
                     )
                 await self._complete_task(
                     task_id,
@@ -471,6 +486,7 @@ class ProcessManager:
         agent_name: str,
         input_data: dict[str, Any],
         persona: dict[str, Any],
+        tool_override: list[str] | None = None,
     ) -> dict[str, Any]:
         """Execute the agent via the orchestrator.
 
@@ -481,6 +497,11 @@ class ProcessManager:
             agent_name: Persona name.
             input_data: The task input payload.
             persona: Persona configuration dict.
+            tool_override: When not None, REPLACES the persona's
+                own `allowed_tools` as the tool allowlist for this
+                run (rather than merging with it). Used to force
+                scheduled action-role runs onto a read-only tool
+                set — safety-load-bearing, do not remove.
 
         Returns:
             Dict with 'response' text and 'token_count'.
@@ -501,9 +522,9 @@ class ProcessManager:
         ]
         system_prompt = persona.get("system_prompt")
 
-        allowed_tools = persona.get("allowed_tools")
-        if allowed_tools is not None:
-            allowed_set = set(allowed_tools)
+        allow = tool_override if tool_override is not None else persona.get("allowed_tools")
+        if allow is not None:
+            allowed_set = set(allow)
             tools = [t for t in tool_registry.get_tools() if t["function"]["name"] in allowed_set]
         else:
             tools = None

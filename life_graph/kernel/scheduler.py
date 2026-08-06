@@ -436,6 +436,7 @@ class SchedulerService:
     async def fire_job(
         self, tenant_id: str, job_id: str,
         input_override: dict[str, Any] | None = None,
+        tool_override: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """Fire a scheduled job — spawn a task.
 
@@ -448,6 +449,10 @@ class SchedulerService:
             input_override: When provided, used as the spawned
                 task's input instead of the job's stored input.
                 Not persisted back to the job.
+            tool_override: When provided, used as the spawned
+                task's tool allowlist instead of the persona's
+                own `allowed_tools`. Safety-load-bearing for
+                scheduled action roles — see `_run_agent`.
 
         Returns:
             Spawn result dict, or None if job not found.
@@ -481,6 +486,7 @@ class SchedulerService:
                     "timeout_seconds", 600,
                 ),
                 max_retries=job.get("max_retries", 3),
+                tool_override=tool_override,
             )
 
             task_id = (
