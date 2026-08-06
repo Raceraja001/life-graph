@@ -201,3 +201,124 @@ per-project autonomy-level management UI.
   migration).
 - **CommandExecutor is POSIX** — fine on the Linux VM; not for local Windows dev runs of the
   executor (tests mock the subprocess).
+
+---
+
+## Phase B2 Design Addendum (2026-08-06 — after B1 merged @ 6cf115e)
+
+Phase B1 (command actions) is built, reviewed (opus whole-branch: SHIP), and fast-forward-merged
+into local master @ `6cf115e`. This addendum settles the B2 open questions the spec above deferred
+"to the plan," grounded in a fresh code exploration of the merged tree. It **corrects three spec
+assumptions** that the original architecture sketch got wrong, then locks three decisions.
+
+### Corrections to the original B-spec (verified against master @ 6cf115e)
+
+1. **`dispatch_task` is complete but has ZERO production callers.** `drivers/dispatcher.py`
+   `TaskDispatcher.dispatch_task(tenant_id, task_id, instruction, task_type="general",
+   project_id=None, session=None, persona_name=None, private=False, cost_cap_usd=2.0,
+   verify_chain=None, interactive=False) -> DriverResult` runs a real agent loop
+   (`LocalDriver → AgentOrchestrator`), with a **Governor budget gate** (`interactive=True`
+   never throttles; autonomous dispatches do), a **verifier chain** (default
+   `["build_ok","lint_clean"]`), a **one-bounce** retry, and **creates an `ApprovalQueueEntry`
+   on terminal failure**. Its only caller today is the testing endpoint `POST /dispatch`
+   (`api/drivers.py`). Wiring it into the autonomy pipeline is 100% net-new integration.
+2. **"Task spec rides `ApprovalQueueEntry.payload`" is WRONG** — that table has no `payload`
+   column. `action_command` is `NOT NULL` on both `AutoAction` and `ApprovalQueueEntry`.
+   `AutoFixService._run_action` is a single hardcoded chokepoint
+   (`self._executor.execute(command=auto_action.action_command, ...)`); `action_type` is a
+   free-text label **never branched on**; there is **no `kind` discriminator anywhere**.
+3. **Shadow is a log, not a simulator.** `ShadowRun.record_would_have_done` persists "would have
+   run X" for a human to grade `good`/`bad`; it never dry-runs. Syntactically it can hold an
+   agent_task instruction (untyped `Text`), but for open-ended agent work the agent never runs in
+   shadow, so the human grades *intent with no outcome* — a materially weaker signal than for a
+   deterministic shell command.
+
+### Locked decisions (developer, 2026-08-06)
+
+- **B2-D1 — Data model: one clean Alembic migration.** Add a `kind` discriminator
+  (`'command'` | `'agent_task'`, default `'command'`) to `AutoAction` **and**
+  `ApprovalQueueEntry`; make `action_command` **nullable**; add an `instruction` (`Text`,
+  nullable) column to both for the agent_task natural-language spec. Rejected the zero-migration
+  "stuff the instruction into `action_command`" approach — it conflates shell-command with
+  instruction and breaks `rollback()`/`CommandExecutor`/audit-UI assumptions (safety-relevant).
+  `_run_action`/`execute_pending` branch on `kind`.
+- **B2-D2 — Execution posture: agent_task ALWAYS queues for approval.** No shadow ramp, no
+  auto-execute for `agent_task` in B2. Every open-ended agent run is human-approved before it
+  touches anything; write-enabled agent work never runs unattended on the live VM in this phase.
+  Command actions keep B1's graduated auto-execute + shadow unchanged. Auto-executing agent work
+  is a future phase, gated on a real outcome-based confidence signal (shadow-of-intent is
+  insufficient). Concretely: the classifier/router path for `kind=='agent_task'` is forced to
+  `QUEUE_FOR_APPROVAL` regardless of risk/trust.
+- **B2-D3 — Roles: cody only.** Build the agent_task loop end-to-end with **cody** (propose code
+  fixes for failing tests / known issues → approve → `dispatch_task(persona="cody")` implements →
+  `build_ok`/`lint_clean` verifier chain → one-bounce → done/needs-human). **swe-lead deferred**
+  to its own later phase — its "actions" are nested `delegate_to_persona` chains
+  (delegation-under-autonomy), a materially harder execution model deserving separate design.
+
+### B2 build surface (the seams to fill; details in the plan)
+
+1. **`kind`-aware proposal contract + bridge branch.** A propose schema
+   `{kind:"agent_task", name, instruction, rationale, risk_hint}` alongside the existing command
+   shape; `ActionProposalBridge.process_result` currently hard-filters on `item.get("command")`
+   and silently drops anything else — add a `kind`-dispatch that builds an agent_task
+   `AutoFixRequest`. Factor the propose-contract prompt text (today duplicated verbatim inside the
+   `ops` persona `system_prompt`) into a **shared constant** injected at ambient-run time, so
+   `cody` and `ops` don't diverge.
+2. **Execution branch + `DriverResult` adapter.** `_run_action`/`execute_pending` route
+   `kind=='agent_task'` to `TaskDispatcher.dispatch_task(instruction=..., persona_name="cody",
+   verify_chain=["build_ok","lint_clean"], interactive=False, cost_cap_usd=<conservative>)`.
+   Adapt `DriverResult` (`success`/`output`/`error`/`cost_usd`/`duration_ms`, **no `exit_code`**)
+   into the `AutoAction` persistence shape: `exit_code = 0 if success else 1`, `stdout=output`,
+   `stderr=error`, carry `duration_ms`.
+3. **Robustness — dispatch can raise.** `dispatch_task` may raise `DispatchError` (WIP-limit) or
+   propagate driver errors, whereas `CommandExecutor.execute` **never raises** (always returns an
+   `ExecutionResult`). The B1 approval bridge's idempotency swallow catches `ValueError` only, so
+   the agent_task execution path must catch dispatch failures → mark the `AutoAction` failed +
+   notify, and never wedge the unified-feed `Approval` row as unresolvable.
+4. **`AutoFixRequest` extension.** Add `kind` + `instruction` to the pydantic
+   `AutoFixRequest` (`autonomy/pipeline/schemas.py`) and thread them through `process()` into the
+   new `AutoAction` columns (today `metadata`/`timeout_seconds` are explicitly "not persisted" —
+   `instruction` must actually persist).
+5. **cody ambient role.** Add `"cody"` to `AMBIENT_ACTION`; a `cody-ambient` job in
+   `AMBIENT_JOBS` (opt-in, `active: False`, its own cron); cody's read-only propose-mode via the
+   existing `AMBIENT_ACTION_READONLY_TOOLS` + `tool_override` (cody carries write tools
+   unconditionally in `allowed_tools` — read-only-when-ambient is enforced ONLY by the scheduler
+   `tool_override`; the load-bearing invariant, same as ops in B1); cody's propose-mode paragraph
+   (agent_task-shaped) appended to its `system_prompt`.
+6. **Seed cody `ActionSafetyRule`s.** cody's agent_task action-name space needs seeded rules or
+   every proposal default-queues (`DANGEROUS+QUEUE`) — which is the safe default and also exactly
+   B2-D2's forced posture, so seeding here is about *labelling risk for display*, not changing
+   routing (agent_task queues regardless). Extend `autonomy/safety/ambient_rules.py`.
+7. **Unified approvals UI.** agent_task rows in `/m/approvals` render the **instruction** (not a
+   shell command), the verifier chain, the cost cap, and the proposing role; risk badge carries
+   over from B1.
+
+### B2 safety analysis
+
+- Open-ended agent work **never runs unattended** in B2 (B2-D2: always human-approved).
+- The scheduled proposer stays **read-only** (`tool_override` → `AMBIENT_ACTION_READONLY_TOOLS`),
+  the same load-bearing invariant B1's whole-branch review confirmed holds through the retry path.
+- The write-enabled cody run happens **only post-approval**, under `dispatch_task`'s verifier
+  chain + one-bounce + **Governor budget gate** (a conservative `cost_cap_usd` bounds spend;
+  autonomous dispatches are throttleable, unlike interactive).
+- `kind` migration keeps shell-command semantics uncontaminated, so `rollback()` and the audit
+  trail never mistake an instruction for a shell string.
+
+### B2 testing
+
+- **Unit:** proposal parse routes command vs agent_task by `kind`; agent_task `AutoFixRequest`
+  built with `instruction` (not `command`); classifier/router forces agent_task →
+  QUEUE_FOR_APPROVAL; `_run_action` `kind`-branch dispatches `dispatch_task` (mocked) and adapts
+  `DriverResult` → AutoAction fields; dispatch raising `DispatchError` → AutoAction failed +
+  no wedged feed row; shared propose-contract constant injected for both ops + cody.
+- **Integration (E2E):** cody proposal → `process` → queued (never auto) → approve → `dispatch_task`
+  invoked with the right instruction/persona/verify_chain (mocked driver) → AutoAction completed;
+  read-only propose-mode cannot carry write tools (cody).
+- Repo pattern: `httpx.AsyncClient` + `ASGITransport`, tenant headers, `conftest` pgvector mock;
+  backend tests run with `/c/Python314/python.exe -m pytest`.
+
+### Out of B2 (future)
+
+swe-lead ambient role (nested delegation under autonomy); auto-execute for agent_task (needs an
+outcome-based confidence signal, not shadow-of-intent); reactive (watcher/health-triggered)
+proposals; per-project autonomy-level & auto-execute-policy management UI.
