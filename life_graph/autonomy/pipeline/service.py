@@ -128,6 +128,37 @@ class AutoFixService:
             self._project_locks[project_id] = asyncio.Lock()
         return self._project_locks[project_id]
 
+    async def _resolve_repo_project_id(self, tenant_id: str) -> str | None:
+        """Look up the real ``Project`` row cody's agent_task work should run
+        against, by the well-known name ``AMBIENT_REPO_PROJECT_NAME``.
+
+        Returns its UUID as a string, or ``None`` if no such project is
+        registered for this tenant — the caller then falls back to today's
+        scratch-workdir, no-isolation dispatch behavior. Never raises: a
+        lookup failure degrades the same way an absent project does.
+        """
+        from life_graph.kernel.ambient import AMBIENT_REPO_PROJECT_NAME
+        from life_graph.models.db import Project
+
+        try:
+            async with self._session_factory() as session:
+                result = await session.execute(
+                    select(Project.id)
+                    .where(
+                        Project.tenant_id == tenant_id,
+                        Project.name == AMBIENT_REPO_PROJECT_NAME,
+                    )
+                    .limit(1)
+                )
+                project_id = result.scalar_one_or_none()
+                return str(project_id) if project_id else None
+        except Exception:
+            logger.warning(
+                "Failed to resolve repo project %r for tenant %s",
+                AMBIENT_REPO_PROJECT_NAME, tenant_id, exc_info=True,
+            )
+            return None
+
     async def process(
         self, tenant_id: str, request: AutoFixRequest,
     ) -> AutoFixResponse:
@@ -307,17 +338,19 @@ class AutoFixService:
                 # branch-only; the command path's CommandExecutor is
                 # untouched and still relied on to never raise.
                 try:
+                    repo_project_id = await self._resolve_repo_project_id(tenant_id)
                     driver_result = await asyncio.wait_for(
                         self._dispatcher.dispatch_task(
                             tenant_id=tenant_id,
                             task_id=auto_action.id,
                             instruction=auto_action.instruction or "",
                             task_type="general",
-                            project_id=auto_action.project_id,
+                            project_id=repo_project_id,
                             persona_name=auto_action.agent_id,
-                            verify_chain=["build_ok", "lint_clean"],
+                            verify_chain=["build_ok_diff", "lint_clean_diff"],
                             interactive=False,
                             cost_cap_usd=DEFAULT_AGENT_TASK_COST_CAP,
+                            isolate_workdir=True,
                         ),
                         timeout=AGENT_TASK_DISPATCH_TIMEOUT_SECONDS,
                     )

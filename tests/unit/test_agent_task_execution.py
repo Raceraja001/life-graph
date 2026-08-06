@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.sql.dml import Update
+from sqlalchemy.sql.selectable import Select
 
 from life_graph.autonomy.pipeline.executor import ExecutionResult
 from life_graph.autonomy.pipeline.service import DEFAULT_AGENT_TASK_COST_CAP, AutoFixService
@@ -63,6 +64,13 @@ class _FakeSession:
             for key, value in stmt.compile().params.items():
                 if hasattr(action, key):
                     setattr(action, key, value)
+            return _FakeResult(action)
+        if isinstance(stmt, Select):
+            # _resolve_repo_project_id's Project lookup — no Project row
+            # exists in this fake environment, so it degrades to None (the
+            # documented no-project fallback), same as production when the
+            # repo project isn't registered for the tenant.
+            return _FakeResult(None)
         return _FakeResult(action)
 
 
@@ -177,10 +185,15 @@ async def test_run_action_agent_task_dispatches(agent_task_service_with_dispatch
     assert kwargs["persona_name"] == "cody"
     assert kwargs["interactive"] is False
     assert kwargs["task_id"] == "a1"
-    assert kwargs["project_id"] == "ambient"
+    # dispatch_task's project_id kwarg is the RESOLVED real repo project
+    # (None here — this fake session has no Project row registered), never
+    # auto_action.project_id ("ambient") directly. See
+    # test_agent_task_real_project.py for the resolution behavior itself.
+    assert kwargs["project_id"] is None
     assert kwargs["task_type"] == "general"
-    assert kwargs["verify_chain"] == ["build_ok", "lint_clean"]
+    assert kwargs["verify_chain"] == ["build_ok_diff", "lint_clean_diff"]
     assert kwargs["cost_cap_usd"] == DEFAULT_AGENT_TASK_COST_CAP
+    assert kwargs["isolate_workdir"] is True
 
     assert auto.status == "success"
     assert auto.exit_code == 0
