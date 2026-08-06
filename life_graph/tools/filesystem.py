@@ -47,9 +47,7 @@ async def file_read(path: str) -> str:
             return json.dumps({"error": f"Not a file: {path}"})
         content = p.read_text(encoding="utf-8", errors="replace")
         truncated = len(content) > MAX_READ_CHARS
-        return json.dumps(
-            {"content": content[:MAX_READ_CHARS], "truncated": truncated}
-        )
+        return json.dumps({"content": content[:MAX_READ_CHARS], "truncated": truncated})
     except Exception as exc:
         logger.warning("file_read failed for %s: %s", path, exc)
         return json.dumps({"error": f"Read failed: {exc}"})
@@ -81,20 +79,13 @@ async def file_write(path: str, content: str) -> str:
     """Write text content to a file, creating parent directories as needed."""
     if len(content) > MAX_WRITE_CHARS:
         return json.dumps(
-            {
-                "error": (
-                    f"Content too large ({len(content)} chars, "
-                    f"max {MAX_WRITE_CHARS})"
-                )
-            }
+            {"error": (f"Content too large ({len(content)} chars, max {MAX_WRITE_CHARS})")}
         )
     try:
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
-        return json.dumps(
-            {"bytes_written": len(content.encode("utf-8")), "path": str(p)}
-        )
+        return json.dumps({"bytes_written": len(content.encode("utf-8")), "path": str(p)})
     except Exception as exc:
         logger.warning("file_write failed for %s: %s", path, exc)
         return json.dumps({"error": f"Write failed: {exc}"})

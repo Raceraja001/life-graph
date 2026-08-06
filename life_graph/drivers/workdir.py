@@ -23,9 +23,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-async def resolve_workdir(
-    packet: ContextPacket, fallback: Path
-) -> tuple[Path, Path | None]:
+async def resolve_workdir(packet: ContextPacket, fallback: Path) -> tuple[Path, Path | None]:
     """Pick the execution directory for a dispatch.
 
     Returns ``(cwd, worktree)`` where ``worktree`` is non-``None`` only when
@@ -51,7 +49,11 @@ async def resolve_workdir(
 
     worktree = fallback / f"wt_{uuid.uuid4().hex[:8]}"
     proc = await asyncio.create_subprocess_exec(
-        "git", "worktree", "add", "--detach", str(worktree),
+        "git",
+        "worktree",
+        "add",
+        "--detach",
+        str(worktree),
         cwd=str(project),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -72,7 +74,11 @@ async def remove_worktree(packet: ContextPacket, worktree: Path) -> None:
     if not project_path:
         return
     proc = await asyncio.create_subprocess_exec(
-        "git", "worktree", "remove", "--force", str(worktree),
+        "git",
+        "worktree",
+        "remove",
+        "--force",
+        str(worktree),
         cwd=str(project_path),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
