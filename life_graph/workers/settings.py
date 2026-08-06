@@ -65,6 +65,15 @@ class WorkerSettings:
         except Exception:
             logger.warning("Findings bridge not available in worker", exc_info=True)
 
+        try:
+            from life_graph.services.action_proposal_bridge import action_proposal_handler
+            from life_graph.services.autonomous_approvals import autonomous_approval_producer
+
+            action_proposal_handler.subscribe()
+            autonomous_approval_producer.subscribe()
+        except Exception:
+            logger.warning("Autonomous action bridges not available in worker", exc_info=True)
+
     # Import task functions lazily to avoid circular imports
     functions = [
         "life_graph.workers.tasks.run_tenant_consolidation",

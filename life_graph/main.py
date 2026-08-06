@@ -158,6 +158,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Failed to seed ambient scheduled jobs", exc_info=True)
 
+    # Startup — seed ambient project safety rules + L1 autonomy level (Sub-project B)
+    try:
+        from life_graph.autonomy.safety.ambient_rules import seed_ambient_autonomy
+
+        await seed_ambient_autonomy("default")
+        logger.info("Seeded ambient autonomy safety rules + L1 level for default tenant")
+    except Exception:
+        logger.warning("Failed to seed ambient autonomy rules", exc_info=True)
+
     # Startup — wire preference → knowledge graph sync
     try:
         from life_graph.services.preference_graph import preference_graph_service
@@ -201,6 +210,17 @@ async def lifespan(app: FastAPI):
         logger.info("Ambient findings bridge enabled (web)")
     except Exception:
         logger.warning("Findings bridge not available", exc_info=True)
+
+    # Startup — wire ops proposal runs -> autonomy engine, and pending actions -> approvals feed
+    try:
+        from life_graph.services.action_proposal_bridge import action_proposal_handler
+        from life_graph.services.autonomous_approvals import autonomous_approval_producer
+
+        action_proposal_handler.subscribe()
+        autonomous_approval_producer.subscribe()
+        logger.info("Autonomous action bridges enabled (web)")
+    except Exception:
+        logger.warning("Autonomous action bridges not available", exc_info=True)
 
     # Startup — register agent drivers
     try:
