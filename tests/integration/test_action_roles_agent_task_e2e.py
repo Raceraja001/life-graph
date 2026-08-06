@@ -359,7 +359,7 @@ async def test_approve_dispatches_agent_task_and_ends_success(monkeypatch):
     assert kwargs["task_id"] == "auto-1"
     assert kwargs["instruction"] == "Investigate and fix the flaky test_worker_retry test"
     assert kwargs["persona_name"] == "cody"
-    assert kwargs["verify_chain"] == ["build_ok", "lint_clean"]
+    assert kwargs["verify_chain"] == ["build_ok_diff", "lint_clean_diff"]
     assert kwargs["interactive"] is False
     assert kwargs["cost_cap_usd"] == DEFAULT_AGENT_TASK_COST_CAP
 
