@@ -182,7 +182,9 @@ export const api = {
       GET<any>("/kernel/notifications", params).then((res: any) => res?.data?.notifications ?? []),
     sessions: () => listRequest<any>("/kernel/sessions"),
     schedules: {
-      list: () => GET<any>("/kernel/schedules"),               // read .data.schedules
+      // include_inactive: the ambient-roles UI needs disabled jobs (e.g. seeded-inactive
+      // tutor-daily, or scout/admin toggled off) to remain visible so they can be re-enabled.
+      list: () => GET<any>("/kernel/schedules", { include_inactive: "true" }),  // read .data.schedules
       create: (body: {
         name: string; cron_expression: string; agent_name: string;
         description?: string; input?: Record<string, unknown>;

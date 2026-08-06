@@ -370,5 +370,8 @@ export function useAmbientFindings() {
     queryKey: ["notifications", { limit: "20" }],
     queryFn: () => api.kernel.notifications({ limit: "20" }),
     select: (rows: any[]) => rows.filter((r) => isAmbientAgent(r?.source_type)).map(mapAmbientFinding),
+    // Worker-created notifications (from ambient advisory jobs) don't publish to the
+    // dashboard WebSocket relay, so poll to keep "Recent findings" from going stale.
+    refetchInterval: 60_000,
   });
 }
