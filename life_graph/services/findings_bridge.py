@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -19,30 +18,33 @@ _VALID_URGENCY = {"now", "brief"}
 
 
 def _extract_json_array(text: str) -> list[Any] | None:
-    """Extract the last JSON array from text.
+    """Extract the last JSON array from text using real JSON parsing.
 
-    Finds all potential ``[...]`` blocks (non-greedy) and validates each from
-    the end. Returns the parsed array (possibly empty) if valid, or ``None`` if
-    no JSON array is present.
-
-    This handles cases like ``"see [1]\\n[{...}]"`` by finding the trailing
-    array, not the first bracket.
+    Finds all positions where text starts with '[', then tries to parse
+    a JSON value from each position (from right to left). Returns the
+    parsed array (possibly empty) if valid, or None if no JSON array
+    is present. Correctly handles brackets inside string values by using
+    the real JSON parser instead of regex.
     """
     if not text:
         return None
-    # Find all potential array blocks (non-greedy) to avoid matching from first
-    # [ to last ] across multiple arrays
-    matches = re.findall(r"\[.*?\]", text, re.DOTALL)
-    if not matches:
+
+    decoder = json.JSONDecoder()
+    # Find all candidate positions (where text[i] == "[")
+    candidates = [i for i, c in enumerate(text) if c == "["]
+    if not candidates:
         return None
-    # Try each match from the end (the trailing array is most likely)
-    for match in reversed(matches):
+
+    # Try each candidate from the end (most likely to be trailing array)
+    for idx in reversed(candidates):
         try:
-            parsed = json.loads(match)
-            if isinstance(parsed, list):
-                return parsed
-        except (json.JSONDecodeError, ValueError):
+            obj, _ = decoder.raw_decode(text, idx)
+            if isinstance(obj, list):
+                return obj
+        except ValueError:
+            # Not valid JSON at this position, try next
             continue
+
     return None
 
 

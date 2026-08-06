@@ -40,6 +40,21 @@ def test_parse_findings_array_with_no_valid_items_returns_empty():
     assert parse_findings(text) == []
 
 
+def test_parse_findings_preserves_findings_with_brackets_in_strings():
+    """Test that findings with brackets in string values are preserved.
+
+    This regression test ensures that brackets inside JSON string values
+    (e.g., 'config[key]') don't break parsing. The old regex approach
+    would stop at the first ] inside a string; real JSON parsing handles it.
+    """
+    text = '[{"title":"Check config","detail":"See config[key] for details","urgency":"now"}]'
+    out = parse_findings(text)
+    assert len(out) == 1
+    assert out[0]["title"] == "Check config"
+    assert out[0]["urgency"] == "now"
+    assert "config[key]" in out[0]["detail"]
+
+
 @pytest.mark.asyncio
 async def test_process_result_creates_notifications_and_pushes_urgent():
     engine = AsyncMock()
@@ -161,4 +176,30 @@ async def test_process_result_push_failure_is_swallowed():
     assert n == 1
     engine.create.assert_awaited_once()
     # Push was attempted but exception was caught
+    push.send_to_tenant.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_process_result_preserves_urgent_with_brackets_in_strings():
+    """Test that urgent findings with brackets in strings are pushed.
+
+    Regression test: brackets inside JSON string values should not cause
+    the finding to be lost or digested. Urgent urgency must be preserved.
+    """
+    engine = AsyncMock()
+    engine.create = AsyncMock(return_value={"id": "n1"})
+    push = AsyncMock()
+    push.send_to_tenant = AsyncMock(return_value=1)
+    bridge = FindingsBridge(notification_engine=engine, push_service=push)
+
+    text = '[{"title":"Check config","detail":"See config[key] for details","urgency":"now"}]'
+    n = await bridge.process_result("t1", "scout", "77777777-7777-7777-7777-777777777777", text)
+
+    # Should create 1 notification, not digest
+    assert n == 1
+    # Verify it was created with urgent (not brief) priority
+    args, kwargs = engine.create.call_args
+    assert kwargs["priority"] == "important"  # "now" urgency maps to important
+    assert kwargs["deliver_at_brief"] is False  # immediate, not held for brief
+    # Verify urgent push was called
     push.send_to_tenant.assert_awaited_once()
