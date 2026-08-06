@@ -116,11 +116,10 @@ class ProcessManager:
                 own `allowed_tools` as the tool allowlist for this
                 run only. Not persisted to the DB task record — an
                 in-memory-only override threaded straight through
-                to `_run_agent` for this execution. NOTE: automatic
-                retries (`_retry_task`) re-spawn from the persisted
-                `AgentTask.input` and do not currently carry
-                `tool_override` forward; a failed read-only run
-                retries under the persona's own `allowed_tools`.
+                to `_run_agent` for this execution, and re-applied
+                on automatic retries too (`_fail_task` ->
+                `_retry_task` -> `spawn`) so a retried run cannot
+                fall back to the persona's own `allowed_tools`.
                 Safety-load-bearing: this is how scheduled
                 action-role runs are forced read-only.
 
@@ -409,6 +408,7 @@ class ProcessManager:
                     agent_name,
                     error_msg,
                     timed_out=True,
+                    tool_override=tool_override,
                 )
                 self._publish_terminal_bus_event(stream_key, task_id, agent_name, depth, error_msg)
 
@@ -433,6 +433,7 @@ class ProcessManager:
                     tenant_id,
                     agent_name,
                     error_msg,
+                    tool_override=tool_override,
                 )
                 self._publish_terminal_bus_event(stream_key, task_id, agent_name, depth, error_msg)
 
@@ -615,8 +616,17 @@ class ProcessManager:
         error: str,
         *,
         timed_out: bool = False,
+        tool_override: list[str] | None = None,
     ) -> None:
-        """Mark a task as failed, attempt retry if eligible."""
+        """Mark a task as failed, attempt retry if eligible.
+
+        Args:
+            tool_override: Carried through from the original run so a
+                retry (see `_retry_task`) re-spawns under the SAME tool
+                allowlist rather than falling back to the persona's own
+                `allowed_tools`. Safety-load-bearing for read-only
+                scheduled action runs — do not drop on this path.
+        """
         now = datetime.now(timezone.utc)
         status = "timeout" if timed_out else "failed"
         event_type = EventType.TASK_TIMEOUT if timed_out else EventType.TASK_FAILED
@@ -669,6 +679,7 @@ class ProcessManager:
                 agent_name,
                 input_data,
                 retry_count,
+                tool_override=tool_override,
             )
 
     async def _retry_task(
@@ -678,11 +689,18 @@ class ProcessManager:
         agent_name: str,
         input_data: dict[str, Any],
         retry_count: int,
+        tool_override: list[str] | None = None,
     ) -> None:
         """Schedule a retry with exponential backoff.
 
         Creates a new task linked to the original via
         parent_task_id. Backoff delay = 2^retry_count seconds.
+
+        Args:
+            tool_override: Re-applied to the re-spawned task so a
+                retried read-only scheduled run stays read-only
+                instead of falling back to the persona's own
+                `allowed_tools`.
         """
         delay = 2**retry_count
         new_retry = retry_count + 1
@@ -716,6 +734,7 @@ class ProcessManager:
             input_data,
             task_name=f"retry-{new_retry}-of-{original_task_id!s:.8}",
             parent_task_id=original_task_id,
+            tool_override=tool_override,
         )
 
     # ── Helpers ───────────────────────────────────────────
