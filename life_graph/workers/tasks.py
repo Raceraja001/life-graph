@@ -15,7 +15,9 @@ from sqlalchemy import select, update
 
 from life_graph.api.dependencies import get_scheduler_service
 from life_graph.core.tenant import set_tenant_context
+from life_graph.kernel.ambient import AMBIENT_ADVISORY
 from life_graph.models.db import JobRun, Memory
+from life_graph.services.ambient_context import build_ambient_input
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -707,7 +709,12 @@ async def tick_scheduled_jobs(ctx: dict) -> dict:
     for job in due:
         try:
             set_tenant_context(job["tenant_id"], "system")
-            await scheduler.fire_job(job["tenant_id"], job["id"])
+            override = None
+            if job["agent_name"] in AMBIENT_ADVISORY:
+                override = await build_ambient_input(
+                    job["agent_name"], job.get("input") or {}, job["tenant_id"]
+                )
+            await scheduler.fire_job(job["tenant_id"], job["id"], input_override=override)
             fired += 1
         except Exception:
             logger.exception("tick_scheduled_jobs: fire failed for job %s", job.get("id"))

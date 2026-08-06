@@ -18,7 +18,8 @@ async def test_tick_fires_each_due_job_and_isolates_failures():
     scheduler.fire_job = AsyncMock(side_effect=[RuntimeError("boom"), {"task_id": "x"}])
 
     with patch.object(tasks, "get_scheduler_service", return_value=scheduler), \
-         patch.object(tasks, "set_tenant_context") as set_ctx:
+         patch.object(tasks, "set_tenant_context") as set_ctx, \
+         patch.object(tasks, "build_ambient_input", AsyncMock(return_value={"message": "x"})):
         out = await tasks.tick_scheduled_jobs({})
 
     assert scheduler.fire_job.await_count == 2
@@ -75,3 +76,25 @@ async def test_fire_job_falls_back_to_stored_input_when_no_override():
 
     _, kwargs = pm.spawn.call_args
     assert kwargs["input_data"] == stored_input
+
+
+@pytest.mark.asyncio
+async def test_tick_enriches_advisory_jobs_only():
+    from life_graph.workers import tasks
+
+    scheduler = AsyncMock()
+    scheduler.get_due_jobs = AsyncMock(return_value=[
+        {"id": "j1", "tenant_id": "t1", "agent_name": "scout", "input": {"topics": ["x"]}},
+        {"id": "j2", "tenant_id": "t1", "agent_name": "dependency-updater", "input": {}},
+    ])
+    scheduler.fire_job = AsyncMock(return_value={"task_id": "x"})
+
+    with patch.object(tasks, "get_scheduler_service", return_value=scheduler), \
+         patch.object(tasks, "set_tenant_context"), \
+         patch.object(tasks, "build_ambient_input", AsyncMock(return_value={"message": "ENRICHED"})):
+        await tasks.tick_scheduled_jobs({})
+
+    # advisory job fired WITH override; non-advisory WITHOUT
+    calls = {c.args[1]: c.kwargs.get("input_override") for c in scheduler.fire_job.await_args_list}
+    assert calls["j1"] == {"message": "ENRICHED"}
+    assert calls["j2"] is None
