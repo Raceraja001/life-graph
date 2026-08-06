@@ -18,34 +18,28 @@ _VALID_URGENCY = {"now", "brief"}
 
 
 def _extract_json_array(text: str) -> list[Any] | None:
-    """Extract the last JSON array from text using real JSON parsing.
+    """Return the trailing JSON array from text, or None if there is none.
 
-    Finds all positions where text starts with '[', then tries to parse
-    a JSON value from each position (from right to left). Returns the
-    parsed array (possibly empty) if valid, or None if no JSON array
-    is present. Correctly handles brackets inside string values by using
-    the real JSON parser instead of regex.
+    Prefers the array whose parse reaches end-of-text (the contract: the
+    reply ends with the findings array). Falls back to the widest array
+    found, so an embedded ``[]``/``[1]`` inside a string value can never
+    steal the match from the real, outer findings array.
     """
-    if not text:
-        return None
-
-    decoder = json.JSONDecoder()
-    # Find all candidate positions (where text[i] == "[")
-    candidates = [i for i, c in enumerate(text) if c == "["]
-    if not candidates:
-        return None
-
-    # Try each candidate from the end (most likely to be trailing array)
-    for idx in reversed(candidates):
+    dec = json.JSONDecoder()
+    best: tuple[int, list[Any]] | None = None  # (consumed_span, array)
+    for idx in (i for i, c in enumerate(text) if c == "["):
         try:
-            obj, _ = decoder.raw_decode(text, idx)
-            if isinstance(obj, list):
-                return obj
+            obj, end = dec.raw_decode(text, idx)
         except ValueError:
-            # Not valid JSON at this position, try next
             continue
-
-    return None
+        if not isinstance(obj, list):
+            continue
+        if text[end:].strip() == "":  # nothing but whitespace after → trailing array
+            return obj
+        span = end - idx
+        if best is None or span > best[0]:
+            best = (span, obj)
+    return best[1] if best else None
 
 
 def parse_findings(result_text: str) -> list[dict[str, Any]]:

@@ -203,3 +203,54 @@ async def test_process_result_preserves_urgent_with_brackets_in_strings():
     assert kwargs["deliver_at_brief"] is False  # immediate, not held for brief
     # Verify urgent push was called
     push.send_to_tenant.assert_awaited_once()
+
+
+def test_parse_findings_ignores_embedded_empty_array_in_string():
+    """Test that [] embedded in a string doesn't steal the match.
+
+    The coordinator's algorithm prefers arrays that parse to end-of-text.
+    An embedded [] inside "see []" should not match; the outer array should.
+    """
+    text = '[{"title":"A","detail":"see []","urgency":"now"}]'
+    out = parse_findings(text)
+    assert len(out) == 1
+    assert out[0]["title"] == "A"
+    assert out[0]["urgency"] == "now"
+    assert "see []" in out[0]["detail"]
+
+
+def test_parse_findings_ignores_embedded_bracket_literal_in_string():
+    """Test that [1] embedded in a string doesn't steal the match."""
+    text = '[{"title":"B","detail":"item [1] here","urgency":"brief"}]'
+    out = parse_findings(text)
+    assert len(out) == 1
+    assert out[0]["title"] == "B"
+    assert out[0]["urgency"] == "brief"
+    assert "item [1]" in out[0]["detail"]
+
+
+@pytest.mark.asyncio
+async def test_process_result_embedded_bracket_stays_urgent():
+    """Test that findings with embedded [] don't get digested.
+
+    Regression: embedded [] in string should not cause the finding to be
+    lost or downgraded to digest. Urgency must be preserved.
+    """
+    engine = AsyncMock()
+    engine.create = AsyncMock(return_value={"id": "n1"})
+    push = AsyncMock()
+    push.send_to_tenant = AsyncMock(return_value=1)
+    bridge = FindingsBridge(notification_engine=engine, push_service=push)
+
+    text = '[{"title":"A","detail":"see []","urgency":"now"}]'
+    n = await bridge.process_result("t1", "scout", "88888888-8888-8888-8888-888888888888", text)
+
+    # Must create 1 notification (the real finding), not digest
+    assert n == 1
+    # Verify urgent (not brief)
+    args, kwargs = engine.create.call_args
+    assert args[1] == "A"  # title
+    assert kwargs["priority"] == "important"
+    assert kwargs["deliver_at_brief"] is False
+    # Verify push was called (urgent finding)
+    push.send_to_tenant.assert_awaited_once()
