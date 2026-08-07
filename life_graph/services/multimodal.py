@@ -348,19 +348,8 @@ class MultiModalService:
         content_type = _content_type_for(filename)
         self.minio.upload(_VOICE_BUCKET, key, audio_bytes, content_type)
 
-        # 2. Transcribe — Groq when configured (fastest), else Cloudflare
-        #    Workers AI when configured (better Tamil/English code-switching),
-        #    else local faster-whisper.
-        from life_graph.config import settings
-
-        if settings.groq_api_key:
-            transcript = await self._transcribe_groq(audio_bytes, filename)
-        elif settings.cf_account_id and settings.cf_ai_token:
-            transcript = await self._transcribe_cloudflare(audio_bytes, filename)
-        else:
-            transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
-        if not transcript.strip():
-            raise ValueError("Transcription produced no text — nothing to remember")
+        # 2. Transcribe
+        transcript = await self._transcribe(audio_bytes, filename)
 
         # 3. Queue the slow ingestion work (extraction/scoring/dedup/embedding)
         #    for the ARQ worker instead of running it inline. The domain
@@ -397,6 +386,40 @@ class MultiModalService:
 
         logger.info("Transcribed %s: %d characters", filename, len(transcript))
         return transcript
+
+    async def _transcribe(self, audio_bytes: bytes, filename: str) -> str:
+        """Transcribe audio via the configured backend, in priority order.
+
+        Groq when configured (fastest), else Cloudflare Workers AI (better
+        Tamil/English code-switching), else local faster-whisper.
+
+        Raises:
+            ValueError: If transcription produces no text.
+        """
+        from life_graph.config import settings
+
+        if settings.groq_api_key:
+            transcript = await self._transcribe_groq(audio_bytes, filename)
+        elif settings.cf_account_id and settings.cf_ai_token:
+            transcript = await self._transcribe_cloudflare(audio_bytes, filename)
+        else:
+            transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
+        if not transcript.strip():
+            raise ValueError("Transcription produced no text — nothing to remember")
+        return transcript
+
+    async def transcribe_only(self, audio_bytes: bytes, filename: str) -> dict[str, Any]:
+        """Transcribe audio without storing it or queuing memory ingestion.
+
+        Used by live chat voice input (push-to-talk), which needs the text
+        immediately and must not silently create a memory as a side effect
+        — unlike :meth:`process_voice`.
+
+        Raises:
+            ValueError: If transcription produces no text.
+        """
+        transcript = await self._transcribe(audio_bytes, filename)
+        return {"transcript": transcript}
 
     # ── Image ─────────────────────────────────────────────────
 

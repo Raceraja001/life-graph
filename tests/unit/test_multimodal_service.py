@@ -130,6 +130,34 @@ async def test_process_voice_empty_transcript_raises_and_enqueues_nothing(monkey
 
 
 @pytest.mark.asyncio
+async def test_transcribe_only_returns_text_without_storing_or_queuing(monkeypatch):
+    svc, minio, _bus = _service()
+    monkeypatch.setattr(settings, "cf_account_id", "acct123", raising=False)
+    monkeypatch.setattr(settings, "cf_ai_token", "tok", raising=False)
+    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
+    _FakeAsyncClient.body = {"success": True, "result": {"text": "what's on my calendar"}}
+    enqueue = _mock_enqueue(monkeypatch)
+
+    result = await svc.transcribe_only(b"RIFFfake", "clip.webm")
+
+    assert result == {"transcript": "what's on my calendar"}
+    minio.upload.assert_not_called()
+    enqueue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_transcribe_only_empty_transcript_raises(monkeypatch):
+    svc, _minio, _bus = _service()
+    monkeypatch.setattr(settings, "cf_account_id", "acct123", raising=False)
+    monkeypatch.setattr(settings, "cf_ai_token", "tok", raising=False)
+    monkeypatch.setattr("httpx.AsyncClient", _FakeAsyncClient)
+    _FakeAsyncClient.body = {"success": True, "result": {"text": "   "}}
+
+    with pytest.raises(ValueError):
+        await svc.transcribe_only(b"x", "clip.webm")
+
+
+@pytest.mark.asyncio
 async def test_process_image_queues_ocr_text(monkeypatch):
     svc, minio, _bus = _service()
     svc._ocr_image = MagicMock(return_value="Receipt total Rs 450")
