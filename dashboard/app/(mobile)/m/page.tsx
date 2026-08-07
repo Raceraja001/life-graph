@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { ChevronRight, Inbox } from "lucide-react";
 import { MobileCapture } from "@/components/mobile/mobile-capture";
-import { SectionEyebrow, TaskRow, LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
+import { SectionEyebrow, TaskRow, EmptyCard, ErrorCard, SkeletonList } from "@/components/mobile/parts";
 import { useApprovals, useMobileMemories, useMobileTasks } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
 
@@ -79,7 +79,7 @@ export default function MobileHome() {
           </Link>
         </div>
         {tasks.isLoading ? (
-          <LoadingCard label="Loading tasks…" />
+          <SkeletonList count={2} />
         ) : tasks.isError ? (
           <ErrorCard>Can’t reach the task board — is the backend running?</ErrorCard>
         ) : todayTasks.length === 0 ? (
@@ -98,7 +98,7 @@ export default function MobileHome() {
           <SectionEyebrow>Remembered today</SectionEyebrow>
         </div>
         {memories.isLoading ? (
-          <LoadingCard label="Loading memories…" />
+          <SkeletonList count={3} />
         ) : memories.isError ? (
           <ErrorCard>Can’t reach memories.</ErrorCard>
         ) : recent.length === 0 ? (
