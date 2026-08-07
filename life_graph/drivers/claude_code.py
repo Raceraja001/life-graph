@@ -32,26 +32,69 @@ logger = logging.getLogger(__name__)
 DEFAULT_COST_PER_TASK_USD = 0.10  # frontier cost class; actual cost read from CLI output
 
 _ALLOWED_TOOLS_FLAG = "--allowedTools"
+_DISALLOWED_TOOLS_FLAG = "--disallowedTools"
+_PERMISSION_MODE_FLAG = "--permission-mode"
 
-# life_graph tool registry name → Claude Code CLI's own tool name. The CLI
-# has a different, coarser tool vocabulary (no separate git_status/git_diff/
-# etc. — all shell-adjacent operations go through "Bash"). Names with no
-# sensible CLI equivalent (delegate_to_persona, calculator,
+# The CLI's most restrictive non-interactive permission mode (verified
+# against `claude --help`: choices are acceptEdits, auto, bypassPermissions,
+# manual, dontAsk, plan). "manual" asks for approval on anything not already
+# pre-approved — and in headless `-p` mode there is nobody to ask, so those
+# calls are refused. Passed explicitly whenever the packet is tool-scoped so
+# a host-level default (a `permissions.defaultMode` of bypassPermissions /
+# acceptEdits in ~/.claude/settings.json) cannot silently widen an
+# unattended dispatch beyond its persona's allowlist.
+_RESTRICTIVE_PERMISSION_MODE = "manual"
+
+# life_graph tool registry name → the SET of Claude Code CLI tool names that
+# grant the same capability. The CLI has a different, coarser vocabulary in
+# some places (no separate git_status/git_diff/etc. — all shell-adjacent
+# operations go through "Bash") and a finer one in others (reading is Read +
+# the Glob/Grep search tools; writing is Write for whole new files but Edit
+# for modifying an existing one — dependency-updater's entire job is the
+# latter, so mapping file_write to Write alone would leave it unable to work).
+# Names with no sensible CLI equivalent (delegate_to_persona, calculator,
 # get_current_datetime, inspect_system) are simply absent — an allowed_tools
-# list containing only those maps to an empty CLI allowlist, fail-closed,
-# matching LocalDriver's behavior for an unmapped/unregistered name.
-_TOOL_NAME_TO_CLI: dict[str, str] = {
-    "run_command": "Bash",
-    "git_status": "Bash",
-    "git_log": "Bash",
-    "git_diff": "Bash",
-    "git_branch": "Bash",
-    "file_read": "Read",
-    "file_write": "Write",
-    "web_search": "WebSearch",
-    "browse_web": "WebFetch",
-    "browser_agent": "WebFetch",
+# list containing only those maps to an empty CLI allowlist, which
+# :meth:`ClaudeCodeDriver.dispatch` refuses outright rather than shelling
+# out unscoped.
+_TOOL_NAME_TO_CLI: dict[str, tuple[str, ...]] = {
+    "run_command": ("Bash",),
+    "git_status": ("Bash",),
+    "git_log": ("Bash",),
+    "git_diff": ("Bash",),
+    "git_branch": ("Bash",),
+    "file_read": ("Read", "Glob", "Grep"),
+    "file_write": ("Write", "Edit"),
+    "web_search": ("WebSearch",),
+    "browse_web": ("WebFetch",),
+    "browser_agent": ("WebFetch",),
 }
+
+
+# Belt-and-suspenders denylist. `--allowedTools` is a PRE-APPROVAL list, not
+# a sandbox: a tool merely ABSENT from it is not thereby forbidden, it just
+# falls through to the CLI's permission system (which a host
+# ~/.claude/settings.json `permissions.allow` rule can answer for us).
+# `--disallowedTools` IS a denial, so we also deny explicitly. We cannot
+# enumerate every tool the CLI will ever ship, so this is deliberately a
+# small, fixed set of the write/execute-capable tool names — the ones where
+# "hint" vs. "restriction" actually matters for an unattended dispatch —
+# and we deny whichever of them the persona did not earn. Read-only CLI
+# tools (Read/Glob/Grep/WebSearch/WebFetch) are intentionally NOT denied:
+# they carry no blast radius, and hard-denying them would newly break
+# existing personas (e.g. uzhavu-ops) that this branch is meant not to
+# regress.
+_DENIABLE_CLI_TOOLS: tuple[str, ...] = ("Bash", "Edit", "NotebookEdit", "Write")
+
+
+def _disallowed_cli_tools(cli_tools: list[str]) -> list[str]:
+    """The write/exec-capable CLI tools this packet did NOT ask for.
+
+    Complement of ``cli_tools`` within :data:`_DENIABLE_CLI_TOOLS`. May be
+    empty (a persona holding every dangerous tool), in which case the caller
+    omits the flag rather than passing an ambiguous empty value.
+    """
+    return sorted(set(_DENIABLE_CLI_TOOLS) - set(cli_tools))
 
 
 def _allowed_cli_tools(allowed_tools: list[str] | None) -> list[str] | None:
@@ -60,14 +103,14 @@ def _allowed_cli_tools(allowed_tools: list[str] | None) -> list[str] | None:
     Returns ``None`` when ``allowed_tools`` is ``None`` (no persona scoping —
     the CLI keeps its own default permissions, matching the "no scoping"
     contract ``ContextPacket.allowed_tools`` already documents). A present
-    list — even if every name is unmapped — produces a (possibly empty)
-    explicit CLI allowlist, fail-closed.
+    list where every name is unmapped produces an empty list, which the
+    caller treats as fail-closed.
     """
     if allowed_tools is None:
         return None
-    mapped = {
-        _TOOL_NAME_TO_CLI[name] for name in allowed_tools if name in _TOOL_NAME_TO_CLI
-    }
+    mapped: set[str] = set()
+    for name in allowed_tools:
+        mapped.update(_TOOL_NAME_TO_CLI.get(name, ()))
     return sorted(mapped)
 
 
@@ -100,16 +143,51 @@ class ClaudeCodeDriver:
         exists (or an isolated git worktree of it when the project context
         sets ``isolation: true``); otherwise the dispatcher-provided
         scratch ``workdir``.
+
+        Refuses to run at all when the packet IS tool-scoped but no
+        requested tool maps to a CLI tool: shelling out with an empty
+        ``--allowedTools`` value has unverified CLI semantics, so the
+        unambiguous fail-closed behavior is to not dispatch.
         """
         start = time.monotonic()
+
+        cli_tools = _allowed_cli_tools(packet.allowed_tools)
+        if cli_tools is not None and not cli_tools:
+            logger.warning(
+                "claude_code refusing task %s: allowed_tools %r maps to no CLI tool",
+                packet.task_id, packet.allowed_tools,
+            )
+            return DriverResult(
+                success=False,
+                error=(
+                    "No CLI-mappable tools in persona allowlist — "
+                    "refusing to dispatch unscoped"
+                ),
+                duration_ms=int((time.monotonic() - start) * 1000),
+                metadata={"exit_status": "refused_unscoped"},
+            )
+
         prompt = self._format_prompt(packet)
 
         cwd, worktree = await resolve_workdir(packet, workdir)
         try:
-            cli_tools = _allowed_cli_tools(packet.allowed_tools)
             args = [self._binary, "-p", prompt, "--output-format", "json"]
             if cli_tools is not None:
-                args += [_ALLOWED_TOOLS_FLAG, ",".join(cli_tools)]
+                args += [
+                    _ALLOWED_TOOLS_FLAG,
+                    ",".join(cli_tools),
+                    # --allowedTools is a PRE-APPROVAL list, not a sandbox:
+                    # an unlisted tool call still falls through to the CLI's
+                    # permission system. Pin the mode so a permissive host
+                    # default cannot approve it on our behalf.
+                    _PERMISSION_MODE_FLAG,
+                    _RESTRICTIVE_PERMISSION_MODE,
+                ]
+                # ...and deny the dangerous tools outright, so the scoping
+                # does not depend on the permission system answering right.
+                denied = _disallowed_cli_tools(cli_tools)
+                if denied:
+                    args += [_DISALLOWED_TOOLS_FLAG, ",".join(denied)]
 
             proc = await asyncio.create_subprocess_exec(
                 *args,

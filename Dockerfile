@@ -24,8 +24,11 @@ RUN pip install --no-cache-dir --prefix=/install \
 FROM python:3.11-slim
 
 # Runtime dependencies
+# `git` is required at run time (not just build time): drivers/workdir.py
+# shells out to `git worktree add/remove` to isolate agent_task dispatches,
+# and services/verifiers.py's diff-scoped verifiers shell out to `git diff`.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 bash tesseract-ocr tesseract-ocr-eng tesseract-ocr-tam && \
+    libpq5 bash git tesseract-ocr tesseract-ocr-eng tesseract-ocr-tam && \
     rm -rf /var/lib/apt/lists/*
 
 # Non-root user

@@ -364,7 +364,7 @@ class PersonaService:
             return self._persona_to_dict(persona)
 
     async def seed_builtins(self, tenant_id: str) -> int:
-        """Insert any built-in personas missing for this tenant.
+        """Insert missing built-in personas AND reconcile existing ones.
 
         Checks existing persona names (not just "does the tenant
         have any persona at all") so that newly-added built-ins
@@ -372,22 +372,52 @@ class PersonaService:
         version of _BUILTIN_PERSONAS — safe to call on every
         startup.
 
+        The same reasoning applies to built-ins that *changed*, not
+        only ones that were added: consumers (``TaskDispatcher.
+        _load_persona``, ``kernel/process_manager._run_agent``) read
+        the DB row, never ``_BUILTIN_PERSONAS``, so a tenant seeded
+        under an older version would keep stale ``allowed_tools`` /
+        ``system_prompt`` forever. Every ``is_builtin=True`` row is
+        therefore reconciled against its definition on each call —
+        but ONLY those two fields, and only when they actually
+        differ (no no-op write on every startup). Rows a user
+        created themselves (``is_builtin=False``) are never touched,
+        and neither are the built-ins' other fields (display_name,
+        icon, temperature, …), which the update API lets a user
+        deliberately tweak.
+
         Args:
             tenant_id: The tenant to seed personas for.
 
         Returns:
-            Number of personas inserted (0 if nothing new).
+            Total number of persona rows CHANGED — inserted **plus**
+            reconciled — so ``0`` still means "this tenant was already
+            fully up to date". The breakdown is not squeezed into the
+            return value (it stays a plain ``int`` for the existing
+            callers) but is logged: a summary line carrying both counts,
+            plus one ``info`` line naming each reconciled persona and
+            which fields drifted.
         """
         async with self._session_factory() as session:
-            existing_stmt = select(AgentPersona.name).where(
+            existing_stmt = select(
+                AgentPersona.name,
+                AgentPersona.is_builtin,
+                AgentPersona.allowed_tools,
+                AgentPersona.system_prompt,
+            ).where(
                 AgentPersona.tenant_id == tenant_id,
             )
             existing_result = await session.execute(existing_stmt)
-            existing_names = {row[0] for row in existing_result.all()}
+            existing_rows = {row[0]: row for row in existing_result.all()}
+            existing_names = set(existing_rows)
 
             count = 0
+            reconciled = 0
             for defn in _BUILTIN_PERSONAS:
                 if defn["name"] in existing_names:
+                    reconciled += await self._reconcile_builtin(
+                        session, tenant_id, defn, existing_rows[defn["name"]]
+                    )
                     continue
                 try:
                     # A SAVEPOINT scoped to this one persona: if the
@@ -432,11 +462,56 @@ class PersonaService:
 
             await session.commit()
             logger.info(
-                "Seeded %d built-in personas for tenant %s",
+                "Seeded %d built-in personas for tenant %s (%d reconciled)",
                 count,
                 tenant_id,
+                reconciled,
             )
-            return count
+            return count + reconciled
+
+    @staticmethod
+    async def _reconcile_builtin(
+        session: AsyncSession,
+        tenant_id: str,
+        defn: dict[str, Any],
+        row: Any,
+    ) -> int:
+        """Bring one already-seeded built-in row back in line with its
+        definition. Returns 1 if an UPDATE was issued, else 0.
+
+        Only ``allowed_tools`` and ``system_prompt`` are reconciled — see
+        :meth:`seed_builtins`. A row whose ``is_builtin`` is False is a
+        user-owned persona that merely shares the name; it is left alone.
+        """
+        if not row.is_builtin:
+            return 0
+
+        values: dict[str, Any] = {}
+        current_tools = list(row.allowed_tools) if row.allowed_tools is not None else None
+        if current_tools != defn["allowed_tools"]:
+            values["allowed_tools"] = defn["allowed_tools"]
+        if row.system_prompt != defn["system_prompt"]:
+            values["system_prompt"] = defn["system_prompt"]
+        if not values:
+            return 0
+
+        # updated_at is stamped by the column's own onupdate=_utcnow.
+        await session.execute(
+            update(AgentPersona)
+            .where(
+                AgentPersona.tenant_id == tenant_id,
+                AgentPersona.name == defn["name"],
+                AgentPersona.is_builtin.is_(True),
+            )
+            .values(**values)
+        )
+        logger.info(
+            "Reconciled built-in persona %s for tenant %s (fields: %s)",
+            defn["name"],
+            tenant_id,
+            sorted(values),
+        )
+        return 1
 
     # ── CRUD Operations ──────────────────────────────────
 

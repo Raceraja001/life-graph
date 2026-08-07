@@ -162,6 +162,7 @@ class TaskDispatcher:
             session = self._session_factory()
 
         worktree = None
+        worktree_origin: str | None = None
 
         try:
             # Normalize the project id ONCE, before both consumers (WIP check
@@ -246,6 +247,21 @@ class TaskDispatcher:
             # Step 4: Dispatch with workdir
             scratch = Path(tempfile.mkdtemp(prefix=f"lg_dispatch_{task_id[:8]}_"))
             workdir, worktree = await resolve_workdir(packet, scratch)
+            if worktree is not None:
+                worktree_origin = packet.project_context.get("path")
+                # Describe the packet's project location as the ALREADY-resolved
+                # workdir, so a driver that also calls resolve_workdir internally
+                # (e.g. ClaudeCodeDriver) is idempotent — it sees isolation=False
+                # and a "path" that's already the resolved worktree, so it returns
+                # that same directory directly instead of creating a SECOND, nested
+                # worktree the verifier chain would never see.
+                #
+                # Guarded on worktree is not None on purpose: when isolation was
+                # never requested (or failed), project_context stays untouched, so
+                # a caller that had an empty {} context keeps one — LocalDriver's
+                # prompt gates a whole section on `if packet.project_context:`.
+                packet.project_context["path"] = str(workdir)
+                packet.project_context["isolation"] = False
             result = await driver.dispatch(packet, workdir, timeout=300)
 
             # Book the actual spend into the Governor's ledger.
@@ -380,7 +396,10 @@ class TaskDispatcher:
             raise
         finally:
             if worktree is not None:
-                await remove_worktree(packet, worktree)
+                # Run the removal from the ORIGIN repo: packet.project_context
+                # ["path"] now points at the worktree itself (see Step 4), and
+                # git refuses to delete a worktree from inside it.
+                await remove_worktree(packet, worktree, repo_path=worktree_origin)
             if owns_session:
                 await session.close()
 

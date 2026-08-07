@@ -144,7 +144,10 @@ async def lifespan(app: FastAPI):
         persona_svc = get_persona_service()
         seeded = await persona_svc.seed_builtins("default")
         if seeded:
-            logger.info("Seeded %d built-in personas for default tenant", seeded)
+            # Inserted OR reconciled — seed_builtins logs the breakdown.
+            logger.info(
+                "Seeded/reconciled %d built-in personas for default tenant", seeded
+            )
     except Exception:
         logger.warning("Failed to seed kernel personas", exc_info=True)
 

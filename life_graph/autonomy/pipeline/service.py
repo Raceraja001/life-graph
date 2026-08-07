@@ -148,6 +148,10 @@ class AutoFixService:
                         Project.tenant_id == tenant_id,
                         Project.name == AMBIENT_REPO_PROJECT_NAME,
                     )
+                    # Project.name has no unique constraint, so duplicates are
+                    # possible; order explicitly so the same row wins on every
+                    # dispatch instead of whatever the DB happens to return.
+                    .order_by(Project.created_at, Project.id)
                     .limit(1)
                 )
                 project_id = result.scalar_one_or_none()

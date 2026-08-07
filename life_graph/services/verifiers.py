@@ -1,6 +1,6 @@
 """Verifier Chain — quality gates for agent task results.
 
-7 built-in verifiers. Each returns (passed: bool, evidence: dict).
+9 built-in verifiers. Each returns (passed: bool, evidence: dict).
 One-bounce rule: failed → re-dispatch once → second failure → needs_human.
 """
 
@@ -96,7 +96,7 @@ class VerifierChain:
         self.register("claims_evidenced", _verify_claims_evidenced)
 
 
-# ── 7 Built-in Verifiers ─────────────────────────────────────
+# ── 9 Built-in Verifiers ─────────────────────────────────────
 
 
 async def _verify_tests_pass(workdir: Path, ctx: dict) -> tuple[bool, dict]:
@@ -146,21 +146,49 @@ async def _verify_build_ok(workdir: Path, ctx: dict) -> tuple[bool, dict]:
 
 
 def _changed_python_files(workdir: Path) -> list[Path]:
-    """Files changed since HEAD, filtered to ``*.py``, resolved under
+    """Files changed since HEAD (tracked modifications) UNION untracked new
+    files (``git ls-files --others``), filtered to ``*.py``, resolved under
     ``workdir``. Empty list (never raises) on any git failure — e.g. the
-    scratch-temp-dir fallback, which is never a git repo at all."""
+    scratch-temp-dir fallback, which is never a git repo at all.
+
+    Both tracked modifications AND new untracked files must be included —
+    a change that only ADDS a file (no modification to any existing tracked
+    file) would otherwise be invisible to ``git diff --name-only HEAD``,
+    which reports NOTHING for untracked files, making build_ok_diff /
+    lint_clean_diff pass vacuously on exactly the kind of change they exist
+    to verify. Nothing in the agent-tool pipeline stages files (there is no
+    git-add tool, and LocalDriver never stages), so "new file" is the normal
+    case, not an edge case.
+    """
+    changed_names: set[str] = set()
     try:
-        result = subprocess.run(
+        tracked = subprocess.run(
             ["git", "diff", "--name-only", "HEAD"],
             capture_output=True,
             text=True,
             timeout=30,
             cwd=str(workdir),
         )
-        changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
+        changed_names.update(
+            f.strip() for f in tracked.stdout.strip().split("\n") if f.strip()
+        )
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(workdir),
+        )
+        changed_names.update(
+            f.strip() for f in untracked.stdout.strip().split("\n") if f.strip()
+        )
     except Exception:
         return []
-    return [workdir / f for f in changed if f.endswith(".py") and (workdir / f).is_file()]
+    return [
+        workdir / f
+        for f in changed_names
+        if f.endswith(".py") and (workdir / f).is_file()
+    ]
 
 
 async def _verify_build_ok_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
@@ -168,13 +196,14 @@ async def _verify_build_ok_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
     import py_compile
 
     errors = []
-    for py_file in _changed_python_files(workdir):
+    changed = _changed_python_files(workdir)
+    for py_file in changed:
         try:
             py_compile.compile(str(py_file), doraise=True)
         except py_compile.PyCompileError as e:
             errors.append(str(e))
     passed = len(errors) == 0
-    return passed, {"errors": errors[:10], "checked": len(_changed_python_files(workdir))}
+    return passed, {"errors": errors[:10], "checked": len(changed)}
 
 
 async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
@@ -190,10 +219,18 @@ async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]
             timeout=60,
             cwd=str(workdir),
         )
-        passed = result.returncode == 0
-        return passed, {"issues": result.stdout[-500:], "returncode": result.returncode}
+    except FileNotFoundError:
+        # No ruff binary on this host (e.g. the production image installs
+        # no dev tooling). A missing linter is NOT a lint failure — failing
+        # here would bounce → needs_human on EVERY dispatch that touched a
+        # .py file. Skip instead. A ruff that IS installed and reports
+        # issues still fails below.
+        logger.warning("lint_clean_diff: ruff not available — skipping lint check")
+        return True, {"note": "ruff not available — skipped"}
     except Exception as e:
         return False, {"error": str(e)}
+    passed = result.returncode == 0
+    return passed, {"issues": result.stdout[-500:], "returncode": result.returncode}
 
 
 async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dict]:

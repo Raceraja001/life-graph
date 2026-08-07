@@ -553,6 +553,107 @@ class TestSeedBuiltinsIdempotency:
         assert total == len(personas_module._BUILTIN_PERSONAS)
 
 
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_reseed_repairs_a_stale_builtin_row(self, client: AsyncClient):
+        """The headline regression: a tenant seeded under an OLD version of
+        _BUILTIN_PERSONAS must have its stale ``allowed_tools`` repaired on
+        the next startup. Consumers (TaskDispatcher._load_persona,
+        process_manager._run_agent) read this DB row, never the constant, so
+        without reconciliation the whole tool-scoping fix is a no-op on any
+        already-deployed tenant.
+
+        Deliberately exercised against real SQL, not a fake session: the
+        UPDATE's WHERE/SET shape and the ARRAY round-trip of allowed_tools
+        are exactly what a fake session cannot prove.
+        """
+        from sqlalchemy import select, update
+
+        from life_graph.api.dependencies import get_persona_service
+        from life_graph.kernel import personas as personas_module
+        from life_graph.models.db import AgentPersona
+
+        svc = get_persona_service()
+        tenant = f"test_reconcile_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        stale = ["file_read", "file_write", "terminal", "git"]
+        current = personas_module._BUILTIN_PERSONAS
+        cody_defn = next(p for p in current if p["name"] == "cody")
+        assert cody_defn["allowed_tools"] != stale, "fixture must actually be stale"
+
+        # Rewind cody's row to the pre-branch, broken value.
+        async with svc._session_factory() as session:
+            await session.execute(
+                update(AgentPersona)
+                .where(
+                    AgentPersona.tenant_id == tenant,
+                    AgentPersona.name == "cody",
+                )
+                .values(allowed_tools=stale, system_prompt="an old prompt")
+            )
+            await session.commit()
+
+        changed = await svc.seed_builtins(tenant)
+
+        assert changed >= 1, "reconcile must be reported in the return count"
+        repaired = await svc.get_by_name(tenant, "cody")
+        assert repaired["allowed_tools"] == cody_defn["allowed_tools"]
+        assert "terminal" not in repaired["allowed_tools"]
+        assert repaired["system_prompt"] == cody_defn["system_prompt"]
+
+        # ...and it settles: a second reseed is a no-op.
+        assert await svc.seed_builtins(tenant) == 0
+
+        # Fields OUTSIDE the two reconciled ones are left alone.
+        async with svc._session_factory() as session:
+            row = (
+                await session.execute(
+                    select(AgentPersona.temperature, AgentPersona.is_builtin).where(
+                        AgentPersona.tenant_id == tenant,
+                        AgentPersona.name == "cody",
+                    )
+                )
+            ).one()
+        assert row.is_builtin is True
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_reseed_never_touches_a_user_owned_row(self, client: AsyncClient):
+        """A tenant that forked a built-in name into their own persona
+        (is_builtin=False) must keep their customization forever."""
+        from sqlalchemy import update
+
+        from life_graph.api.dependencies import get_persona_service
+        from life_graph.models.db import AgentPersona
+
+        svc = get_persona_service()
+        tenant = f"test_userowned_{uuid.uuid4().hex[:6]}"
+        await svc.seed_builtins(tenant)
+
+        mine = ["memory_search"]
+        async with svc._session_factory() as session:
+            await session.execute(
+                update(AgentPersona)
+                .where(
+                    AgentPersona.tenant_id == tenant,
+                    AgentPersona.name == "cody",
+                )
+                .values(
+                    allowed_tools=mine,
+                    system_prompt="my own cody",
+                    is_builtin=False,
+                )
+            )
+            await session.commit()
+
+        await svc.seed_builtins(tenant)
+
+        untouched = await svc.get_by_name(tenant, "cody")
+        assert untouched["allowed_tools"] == mine
+        assert untouched["system_prompt"] == "my own cody"
+
+
 # ── The five new personal-roles personas ────────────────────
 
 

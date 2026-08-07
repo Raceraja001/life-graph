@@ -92,3 +92,97 @@ async def test_diff_scoped_verifiers_tolerate_a_non_git_directory(tmp_path):
     )
 
     assert all(r.passed for r in results)
+
+
+# ── Untracked (never `git add`-ed) new files ─────────────────
+#
+# Nothing in the agent-tool pipeline stages files: there is no git-add tool
+# in the registry, and LocalDriver never stages. `git diff --name-only HEAD`
+# reports NOTHING for an untracked file, so a fix whose entire shape is
+# "write a new module" was invisible to both diff verifiers — they passed
+# vacuously, which is the exact bug class this branch exists to close.
+
+
+@pytest.mark.asyncio
+async def test_build_ok_diff_detects_an_untracked_new_file(tmp_path):
+    _init_repo(tmp_path)
+    # NEVER git add-ed — genuinely untracked, exactly what an agent leaves
+    # behind after writing a new module via file_write.
+    (tmp_path / "new.py").write_text("def f(:\n", encoding="utf-8")
+
+    results = await verifier_chain.run_chain(["build_ok_diff"], tmp_path, {})
+
+    assert results[0].passed is False, (
+        "an untracked new file with a syntax error must not be invisible"
+    )
+    assert results[0].evidence["checked"] == 1
+
+
+@pytest.mark.asyncio
+async def test_lint_clean_diff_checks_an_untracked_new_file(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "new.py").write_text("x = 1\n", encoding="utf-8")
+
+    results = await verifier_chain.run_chain(["lint_clean_diff"], tmp_path, {})
+
+    # Not the vacuous "No changed .py files" pass — the file was really seen.
+    assert results[0].evidence.get("note") != "No changed .py files"
+    assert results[0].passed is True
+
+
+@pytest.mark.asyncio
+async def test_diff_verifiers_ignore_gitignored_untracked_files(tmp_path):
+    """--exclude-standard: a .gitignore'd file is not part of the change."""
+    _init_repo(tmp_path)
+    (tmp_path / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", ".gitignore"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit",
+         "-m", "ignore"],
+        cwd=str(tmp_path), check=True, capture_output=True,
+    )
+    (tmp_path / "ignored").mkdir()
+    (tmp_path / "ignored" / "broken.py").write_text("def f(:\n", encoding="utf-8")
+
+    results = await verifier_chain.run_chain(["build_ok_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+    assert results[0].evidence["checked"] == 0
+
+
+@pytest.mark.asyncio
+async def test_lint_clean_diff_skips_when_ruff_is_not_installed(tmp_path, monkeypatch):
+    """A missing linter is not a lint failure — failing here would bounce →
+    needs_human on every dispatch that touched a .py file (the production
+    image ships no ruff)."""
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "new.py").write_text("x = 1\n", encoding="utf-8")
+
+    real_run = subprocess.run
+
+    def _fake_run(cmd, *a, **kw):
+        if cmd and cmd[0] == "ruff":
+            raise FileNotFoundError("ruff not found")
+        return real_run(cmd, *a, **kw)
+
+    monkeypatch.setattr(verifiers_mod.subprocess, "run", _fake_run)
+
+    results = await verifier_chain.run_chain(["lint_clean_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+    assert "ruff not available" in results[0].evidence["note"]
+
+
+@pytest.mark.asyncio
+async def test_lint_clean_diff_still_fails_on_real_lint_errors(tmp_path):
+    """The ruff-missing skip must NOT swallow a genuine lint failure."""
+    _init_repo(tmp_path)
+    (tmp_path / "new.py").write_text("import os\n", encoding="utf-8")
+
+    results = await verifier_chain.run_chain(["lint_clean_diff"], tmp_path, {})
+
+    assert results[0].passed is False
