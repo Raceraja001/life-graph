@@ -74,13 +74,19 @@ ProcessManager.spawn(scout|admin|tutor)   ← headless AgentTask, allowed_tools 
 AgentTask.result  (persona ends with a JSON findings array)
         │
         ▼
-FindingsBridge  (subscribes to TASK_COMPLETED, advisory personas only)
-        │   parse JSON → N findings ; malformed → 1 "brief" digest (fallback)
-        ├── urgency "now"   → Notification(priority=important)             → NOTIFICATION_CREATED
+FindingsBridge  (handles TASK_COMPLETED, advisory personas only — wired in BOTH the
+        │        ARQ worker on_startup (where scheduled tasks run) AND the web lifespan)
+        │   loads AgentTask by task_id → parse JSON → N findings ; malformed → 1 "brief" digest
+        ├── urgency "now"   → Notification(priority=important, deliver_at_brief=False)
+        │                        + PushService.send_to_tenant(...) inline (same process)
         └── urgency "brief" → Notification(priority=info, deliver_at_brief=True)
                                                                             │
-NOTIFICATION_CREATED handler:  push immediately IF priority≥important AND not deliver_at_brief
 BRIEF_COMPOSED handler (existing): bundles the "brief" ones into the daily brief push
+
+# Cross-process note: worker-emitted events do NOT reach web-process subscribers
+# (the only Redis-channel consumer is the WebSocket relay; the worker doesn't run the
+# Redis bridge). So the bridge is subscribed IN THE WORKER, and pushes urgent findings
+# DIRECTLY via PushService rather than through a second cross-process event hop.
 ```
 
 ## Components
@@ -97,11 +103,11 @@ filter fires each job once per due window.
 ### 2. Ambient scheduled jobs + seeding (`kernel/scheduler.py` or a seed module)
 An idempotent seeder (mirroring the persona seeder's "skip if exists" pattern,
 `personas.py:seed`) creates, per tenant, three `ScheduledJob`s if absent:
-- `scout-daily`  — `agent_name="scout"`, cron `0 7 * * *` (07:00 UTC; **must precede
-  `settings.brief_hour_utc`** so the day's findings make that day's brief — verify the value
-  during planning and adjust if needed), `input = {"topics": []}` (empty watch-list; user fills it).
-- `admin-daily`  — `agent_name="admin"`, cron `0 7 * * *`, `input = {}`.
-- `tutor-daily`  — `agent_name="tutor"`, cron `0 7 * * *`, `input = {}`, seeded **inactive**
+- `scout-daily`  — `agent_name="scout"`, cron `0 1 * * *` (01:00 UTC — **before
+  `settings.brief_hour_utc = 2`** so the day's findings make that day's 02:00 brief),
+  `input = {"topics": []}` (empty watch-list; user fills it).
+- `admin-daily`  — `agent_name="admin"`, cron `0 1 * * *`, `input = {}`.
+- `tutor-daily`  — `agent_name="tutor"`, cron `0 1 * * *`, `input = {}`, seeded **inactive**
   (tutor nudges are opt-in; user enables via the UI).
 Seeding runs in the `lifespan` startup alongside persona seeding. Cadence + enabled
 state are editable afterward through the existing scheduler CRUD API / the new UI.
@@ -126,8 +132,11 @@ Admin and tutor use the same builder minus the watch-list: admin gets recent
 commitment-type memories + novelty; tutor gets recent learning-tagged memories + novelty.
 
 ### 5. Findings bridge (`services/findings_bridge.py`, new)
-Subscribes to `TASK_COMPLETED`. Acts **only** when the task's persona is advisory
-(scout/admin/tutor — gate on persona name / an `is_ambient_advisory` marker). Reads
+Handles `TASK_COMPLETED`; **subscribed in the ARQ worker `on_startup` (where scheduled
+tasks execute) and also in the web lifespan** (for interactive advisory runs). The event
+payload is `{task_id, tenant_id, agent_name, token_usage}` — so the bridge loads the
+`AgentTask` by `task_id`. Acts **only** when `agent_name` is advisory
+(gate on the constant `AMBIENT_ADVISORY = {"scout","admin","tutor"}`). Reads
 `AgentTask.result["response"]`, extracts the trailing JSON array
 `[{title, detail, urgency}]` (tolerant extraction: last fenced/`[...]` block). For each
 finding, `NotificationEngine.create(title, body=detail, priority=map(urgency),
@@ -139,11 +148,12 @@ short appended contract describing the exact JSON shape and the `now`/`brief` ur
 ### 6. Hybrid delivery
 - **Brief path** (exists): `deliver_at_brief=True` → bundled by `BriefComposer` → the daily
   `BRIEF_COMPOSED` push. Zero new code.
-- **Immediate path** (new, event-driven per the codebase invariant): `NotificationEngine.create`
-  emits a `NOTIFICATION_CREATED` event. A new handler (sibling of `PushDeliveryHandler`,
-  subscribed in `lifespan`) pushes via `PushService.send_to_tenant(tenant_id, title, body, "/m")`
-  **iff** `priority in (critical, important)` **and** `deliver_at_brief` is False. Push
-  failures are swallowed (never break the flow), matching the brief handler.
+- **Immediate path** (new): for an `urgency:"now"` finding the bridge, **in the same process
+  that ran the task**, calls `PushService.send_to_tenant(tenant_id, title, body, "/m")` right
+  after creating the notification. This avoids a second cross-process event hop (worker-emitted
+  events don't reach web subscribers — see the architecture note). Push failures are swallowed
+  (never break the flow), matching the existing brief handler. `PushService` is process-agnostic
+  (reads `push_subscriptions` from the DB, calls the browser push endpoint over HTTPS).
 - **Novelty:** the input-builder (§4) queries `Notification` rows with
   `source_type=persona_name` from the last 7 days and injects their titles as
   "already reported — don't repeat." Reuses the `Notification` table; no new store.
@@ -168,11 +178,13 @@ CRUD API lacks a needed shape (prefer reusing `GET/POST/PATCH /api/v1/kernel/sch
 
 - **No new tables.** Watch-list → existing `ScheduledJob.input`; findings + novelty →
   existing `Notification`.
-- **New event type** `NOTIFICATION_CREATED` (`core/events.py` `EventType`), emitted by
-  `NotificationEngine.create`. (Emit is additive; existing callers unaffected.)
-- Optional tiny marker so the bridge/UI can identify ambient-advisory personas without a
-  hardcoded name set — e.g. an `intent_tags` check (`"digest"`/`"scout"`/`"reminder"`/`"study"`)
-  or a small constant `AMBIENT_ADVISORY = {"scout","admin","tutor"}`. Constant preferred for clarity.
+- **No new event type needed.** The bridge hooks the existing `TASK_COMPLETED`
+  (`EventType.TASK_COMPLETED = "kernel:task:completed"`). (`NOTIFICATION_CREATED` already
+  exists in the enum but is not relied upon here — cross-process events don't round-trip.)
+- **New worker wiring:** `WorkerSettings` gains an `on_startup` that subscribes the
+  FindingsBridge (today the worker registers no event handlers). The same bridge is also
+  subscribed in the web lifespan next to `push_delivery_handler.subscribe()`.
+- Advisory personas identified by the constant `AMBIENT_ADVISORY = {"scout","admin","tutor"}`.
 
 ## API surface
 
