@@ -9,6 +9,14 @@ echo "╔═══════════════════════�
 echo "║          Life Graph — Starting Up                ║"
 echo "╚══════════════════════════════════════════════════╝"
 
+# ── Trust the bind-mounted repo, if present ───────────────────
+# git refuses to operate on a directory owned by a different UID than the
+# running user (bind mounts keep host ownership) — cody-ambient's
+# git-worktree isolation would silently never activate without this.
+if [ -d /repo/.git ]; then
+    git config --global --add safe.directory /repo
+fi
+
 # ── Wait for Postgres ─────────────────────────────────────────
 echo "⏳ Waiting for database..."
 MAX_RETRIES=30
