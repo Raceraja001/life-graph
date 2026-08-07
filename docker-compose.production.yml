@@ -40,6 +40,11 @@ services:
     container_name: life_graph_app
     entrypoint: ["/bin/bash", "/app/scripts/entrypoint.sh"]
     command: ["uvicorn", "life_graph.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--log-level", "warning"]
+    volumes:
+      # Read-write: agent_task dispatches (cody-ambient) create isolated git
+      # worktrees off this checkout via `git worktree add`, which writes
+      # worktree metadata into .git/ on the mounted repo itself.
+      - .:/repo
     environment:
       - LIFE_GRAPH_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-life_graph}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-life_graph}
       - LIFE_GRAPH_DATABASE_URL_SYNC=postgresql://${POSTGRES_USER:-life_graph}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-life_graph}
@@ -74,6 +79,8 @@ services:
       dockerfile: Dockerfile
     container_name: life_graph_worker
     command: ["arq", "life_graph.workers.settings.WorkerSettings"]
+    volumes:
+      - .:/repo
     environment:
       - LIFE_GRAPH_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-life_graph}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-life_graph}
       - LIFE_GRAPH_DATABASE_URL_SYNC=postgresql://${POSTGRES_USER:-life_graph}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-life_graph}
