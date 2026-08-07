@@ -121,6 +121,44 @@ async def ingest_voice(
 
 
 @router.post(
+    "/transcribe",
+    summary="Transcribe a voice recording without storing it as a memory",
+)
+async def ingest_transcribe(
+    file: UploadFile = File(...),
+) -> dict:
+    """Upload an audio clip and get back its transcript only.
+
+    Used by live chat voice input (push-to-talk) — unlike ``/ingest/voice``,
+    nothing is stored in MinIO and no memory is queued. Same accepted
+    audio formats and transcription backend chain as ``/ingest/voice``.
+    """
+    service = _get_multimodal_service()
+    audio_bytes = await file.read()
+    filename = _validate_upload(file, audio_bytes, ALLOWED_AUDIO, "audio")
+
+    try:
+        result = await service.transcribe_only(audio_bytes, filename)
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
+    except Exception:
+        logger.exception("Transcription failed for %s", filename)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Transcription failed",
+        )
+    return success_response(data=result)
+
+
+@router.post(
     "/image",
     summary="Ingest an image for OCR",
 )

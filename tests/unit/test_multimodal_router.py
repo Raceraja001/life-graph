@@ -26,6 +26,9 @@ class _RaisingService:
     async def process_voice(self, audio_bytes, filename, tenant_id):
         raise ValueError("Transcription produced no text — nothing to remember")
 
+    async def transcribe_only(self, audio_bytes, filename):
+        raise ValueError("Transcription produced no text — nothing to remember")
+
 
 class _QueuingService:
     """Fake MultiModalService that mimics the queued-ingestion response
@@ -37,6 +40,10 @@ class _QueuingService:
     async def process_voice(self, audio_bytes, filename, tenant_id):
         self.calls.append((audio_bytes, filename, tenant_id))
         return {"transcript": "hello", "ingest": "queued", "minio_key": "k/note.wav"}
+
+    async def transcribe_only(self, audio_bytes, filename):
+        self.calls.append((audio_bytes, filename))
+        return {"transcript": "hello"}
 
     async def process_image(self, image_bytes, filename, tenant_id):
         self.calls.append((image_bytes, filename, tenant_id))
@@ -136,3 +143,34 @@ async def test_ingest_document_passes_request_tenant_id_to_service(
     assert tenant_id == TENANT_HEADERS["X-Tenant-ID"]
     body = response.json()
     assert body["data"]["ingest"] == "queued"
+
+
+@pytest.mark.asyncio
+async def test_ingest_transcribe_value_error_maps_to_422(client: AsyncClient, monkeypatch):
+    """A ValueError raised by the service surfaces as HTTP 422, not 500."""
+    monkeypatch.setattr(multimodal_api, "_get_multimodal_service", lambda: _RaisingService())
+
+    response = await client.post(
+        "/api/v1/ingest/transcribe",
+        files={"file": ("clip.webm", b"RIFFfakeaudiodata", "audio/webm")},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_ingest_transcribe_returns_transcript_only(client: AsyncClient, monkeypatch):
+    """Unlike /ingest/voice, the response body is just {"transcript": ...} —
+    no ingest/minio_key fields, since nothing was stored or queued."""
+    fake_service = _QueuingService()
+    monkeypatch.setattr(multimodal_api, "_get_multimodal_service", lambda: fake_service)
+
+    response = await client.post(
+        "/api/v1/ingest/transcribe",
+        files={"file": ("clip.webm", b"RIFFfakeaudiodata", "audio/webm")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"] == {"transcript": "hello"}
+    assert len(fake_service.calls) == 1
