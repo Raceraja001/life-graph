@@ -10,9 +10,9 @@ task-dispatch use case, which is untouched by this module.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
-import shutil
 import time
 from dataclasses import dataclass
 
@@ -69,6 +69,8 @@ async def run_claude_cli(prompt: str, timeout: float = 60.0) -> ClaudeCliResult:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except TimeoutError:
         proc.kill()
+        with contextlib.suppress(Exception):
+            await proc.communicate()
         return ClaudeCliResult(
             success=False,
             text="",
@@ -76,22 +78,31 @@ async def run_claude_cli(prompt: str, timeout: float = 60.0) -> ClaudeCliResult:
             duration_ms=int((time.monotonic() - start) * 1000),
         )
 
-    duration = int((time.monotonic() - start) * 1000)
-    data = _parse_output(out)
-    is_error = bool(data.get("is_error", False))
-    success = proc.returncode == 0 and not is_error
+    try:
+        duration = int((time.monotonic() - start) * 1000)
+        data = _parse_output(out)
+        is_error = bool(data.get("is_error", False))
+        success = proc.returncode == 0 and not is_error
 
-    if success:
+        if success:
+            return ClaudeCliResult(
+                success=True, text=str(data.get("result", "")), error=None, duration_ms=duration
+            )
         return ClaudeCliResult(
-            success=True, text=str(data.get("result", "")), error=None, duration_ms=duration
+            success=False,
+            text="",
+            error=str(data.get("result") or err.decode(errors="replace"))[:2000]
+            or f"exit code {proc.returncode}",
+            duration_ms=duration,
         )
-    return ClaudeCliResult(
-        success=False,
-        text="",
-        error=str(data.get("result") or err.decode(errors="replace"))[:2000]
-        or f"exit code {proc.returncode}",
-        duration_ms=duration,
-    )
+    except Exception as exc:
+        logger.error("claude_cli_reply result building failed: %s", exc, exc_info=True)
+        return ClaudeCliResult(
+            success=False,
+            text="",
+            error=str(exc),
+            duration_ms=int((time.monotonic() - start) * 1000),
+        )
 
 
 def _parse_output(out: bytes) -> dict:
