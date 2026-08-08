@@ -482,3 +482,20 @@ export function useUpdatePersona() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["personas"] }),
   });
 }
+
+// ── Model catalog (live OpenRouter search for the persona picker) ──────
+export interface ModelOption {
+  id: string;
+  name: string;
+  isFree: boolean;
+}
+
+export function useModelCatalog() {
+  return useQuery({
+    queryKey: ["model-catalog"],
+    queryFn: () => api.kernel.models.list().then((r: any) => r?.data?.models ?? []),
+    select: (rows: any[]): ModelOption[] =>
+      rows.map((m) => ({ id: String(m.id ?? ""), name: m.name ?? m.id ?? "", isFree: Boolean(m.is_free) })),
+    staleTime: 60 * 60 * 1000,
+  });
+}
