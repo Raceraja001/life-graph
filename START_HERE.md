@@ -25,22 +25,29 @@ work). Verified against `origin/master` and the live production deploy
   autonomy classify/shadow/queue → unified `/m/approvals` → execute-on-approve.
   Real file read/write tools, git-worktree isolation, diff-scoped verifiers
   (`docs/superpowers/plans/tool-scoping...`).
-- **Push-to-talk voice input** — `POST /ingest/transcribe` +
-  `/m/chat` mic button (STT only — no voice output yet).
+- **Push-to-talk voice input and output** — `POST /ingest/transcribe` +
+  `/m/chat` mic button captures speech (Groq/Cloudflare Workers AI Whisper,
+  local `faster-whisper` fallback); replies to voice-originated turns are
+  spoken back via the browser's native `speechSynthesis`, with barge-in
+  (stop-on-interrupt) handling (`dashboard/components/persona-chat.tsx`).
+  Typed (non-voice) turns are not spoken. Design:
+  `docs/superpowers/specs/2026-08-08-jarvis-push-to-talk-design.md`.
 - **LLM resilient fallback** — streaming calls now validate their first
   chunk before being trusted, health-ranked free-model pool, exponential
   backoff per model, guaranteed paid last-resort model
   (`life_graph/services/resilient_llm.py`).
 - **Persona model picker** — `/settings` and `/m/personas` let a persona's
   `model`/`temperature`/`max_tokens` be edited from the dashboard instead of
-  DB surgery.
+  DB surgery, including a live OpenRouter-backed searchable model catalog
+  (`dashboard/components/model-combobox.tsx`, `GET /kernel/models`).
 
 Current known gaps (see `docs/design/08_jarvis_roadmap_2026-08.md` on the
-`docs/knowledge-base-design` branch for the full reasoning): no voice
-**output** (TTS), no real-world integrations (calendar/email reading,
-messaging channels), autonomy still defaults to L0/shadow-mode, and the
-persona model picker's dropdown is a curated static list rather than a live
-OpenRouter search.
+`docs/knowledge-base-design` branch for the full reasoning — note that doc
+predates the voice and live-model-search work above and is stale on those
+two points): no real-world integrations (calendar/email reading, messaging
+channels), autonomy still defaults to L0/shadow-mode, and TTS only speaks
+voice-originated replies (typed turns are silent, and it's browser-native
+`speechSynthesis` rather than a higher-quality paid voice).
 
 ### Prior state (as of July 11, 2026)
 

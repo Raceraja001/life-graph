@@ -318,21 +318,22 @@ seed personas, watcher→task origination, SDK docs) were all closed by
 July 12, 2026 — see START_HERE.md's "Remaining Gaps — ALL CLOSED" section.
 
 Since then, the Jarvis persona layer, streaming chat, ambient advisory
-roles, autonomous action roles, LLM resilient fallback, and the persona
-model picker have shipped and deployed — see START_HERE.md's
-"Era 9 — Jarvis Persona Layer & Beyond" section for what's built. Real
-remaining gaps, in priority order:
+roles, autonomous action roles, LLM resilient fallback, push-to-talk voice
+(input AND output — TTS already shipped, see below), and the persona model
+picker (now with a live OpenRouter-backed searchable catalog, not a static
+list) have all shipped and deployed — see START_HERE.md's "Era 9 — Jarvis
+Persona Layer & Beyond" section for what's built. Real remaining gaps, in
+priority order:
 
 - [ ] **Calendar + email reading** — biggest gap for life-admin usefulness;
   `config.py` has Google-creds stubs (`google_credentials_json`,
   `google_delegated_user`) but no tool files exist yet
-- [ ] **Voice output (TTS)** — push-to-talk voice input exists
-  (`POST /ingest/transcribe`); nothing talks back yet
 - [ ] **Messaging channels** — WhatsApp/Telegram as an interaction surface
   (specs exist, no code)
-- [ ] **Live OpenRouter model search** — the persona picker's model dropdown
-  is a curated static list (`dashboard/lib/model-options.ts`), already stale
-  against OpenRouter's real free-tier catalog
+- [ ] **TTS coverage/quality** — replies are only spoken for voice-originated
+  turns (typed turns stay silent), and it's the browser's native
+  `speechSynthesis` rather than a higher-quality paid voice (ElevenLabs was
+  flagged as a deferred v2 idea in the original design)
 - [ ] **Raising autonomy trust (L0→L1)** — a policy decision once
   shadow-mode graduates real personas, not a build task
 - [ ] **SDK documentation** — Python + TypeScript SDK usage examples
