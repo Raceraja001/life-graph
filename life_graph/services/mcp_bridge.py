@@ -17,6 +17,7 @@ from typing import Any
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamable_http_client
 
 from life_graph.config import settings
 from life_graph.tools.registry import registry
@@ -52,39 +53,68 @@ async def connect_all(exit_stack: AsyncExitStack) -> int:
 
 async def _connect_one(exit_stack: AsyncExitStack, server_config: dict) -> int:
     """Connect one server, register its tools. Raises on failure — the
-    caller (connect_all) is responsible for catching and isolating."""
-    name = server_config["name"]
-    params = StdioServerParameters(
-        command=server_config["command"],
-        args=server_config.get("args", []),
-        env=server_config.get("env") or None,
-    )
-    read, write = await exit_stack.enter_async_context(stdio_client(params))
-    session = await exit_stack.enter_async_context(ClientSession(read, write))
-    await session.initialize()
+    caller (connect_all) is responsible for catching and isolating.
 
-    result = await session.list_tools()
-    registered = 0
-    for tool in result.tools:
-        composed_name = f"mcp_{name}_{tool.name}"
-        if not _VALID_TOOL_NAME.match(composed_name):
-            logger.warning(
-                "mcp_bridge: skipping tool %r on server %r — composed name %r is not a "
-                "valid function-calling name",
-                tool.name,
-                name,
-                composed_name,
+    Two transports: "stdio" (default — spawns server_config["command"] as a
+    local subprocess of this process, e.g. `npx <mcp-server-package>`) or
+    "http" (connects to server_config["url"], an already-running server —
+    e.g. a separate container, used when the server needs its own resource
+    isolation rather than running inside the app process, such as
+    Playwright MCP's headless browser).
+
+    Connection setup happens on a LOCAL exit stack, not the caller's
+    long-lived one, and is only transferred over on success. Unlike a
+    stdio subprocess spawn (which fails synchronously — a missing binary
+    raises immediately), an unreachable HTTP server's failure can surface
+    later, from a background reader task, only when the client's context
+    manager is torn down — which would otherwise happen at the CALLER's
+    exit_stack teardown (app shutdown), not here, defeating the per-server
+    isolation `connect_all` depends on to keep one broken server from
+    affecting the others.
+    """
+    name = server_config["name"]
+    transport = server_config.get("transport", "stdio")
+    async with AsyncExitStack() as local_stack:
+        if transport == "http":
+            read, write, _get_session_id = await local_stack.enter_async_context(
+                streamable_http_client(server_config["url"])
             )
-            continue
-        registry.register(
-            name=composed_name,
-            description=tool.description or "",
-            parameters_schema=tool.inputSchema,
-            handler=_make_bridge_handler(session, tool.name),
-        )
-        registered += 1
-    logger.info("mcp_bridge: connected %r, registered %d tool(s)", name, registered)
-    return registered
+        else:
+            params = StdioServerParameters(
+                command=server_config["command"],
+                args=server_config.get("args", []),
+                env=server_config.get("env") or None,
+            )
+            read, write = await local_stack.enter_async_context(stdio_client(params))
+        session = await local_stack.enter_async_context(ClientSession(read, write))
+        await session.initialize()
+
+        result = await session.list_tools()
+        registered = 0
+        for tool in result.tools:
+            composed_name = f"mcp_{name}_{tool.name}"
+            if not _VALID_TOOL_NAME.match(composed_name):
+                logger.warning(
+                    "mcp_bridge: skipping tool %r on server %r — composed name %r is not a "
+                    "valid function-calling name",
+                    tool.name,
+                    name,
+                    composed_name,
+                )
+                continue
+            registry.register(
+                name=composed_name,
+                description=tool.description or "",
+                parameters_schema=tool.inputSchema,
+                handler=_make_bridge_handler(session, tool.name),
+            )
+            registered += 1
+        logger.info("mcp_bridge: connected %r, registered %d tool(s)", name, registered)
+        # Success — keep this connection alive for the app's life by
+        # handing ownership to the caller's long-lived exit_stack instead
+        # of closing it when this function returns.
+        exit_stack.push_async_callback(local_stack.pop_all().aclose)
+        return registered
 
 
 def _make_bridge_handler(session: ClientSession, tool_name: str):

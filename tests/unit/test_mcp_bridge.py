@@ -1,3 +1,5 @@
+import asyncio
+import socket
 import sys
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -9,6 +11,25 @@ from life_graph.services.mcp_bridge import _make_bridge_handler
 from life_graph.tools.registry import registry
 
 FIXTURE = str(Path(__file__).parent.parent / "fixtures" / "reference_mcp_server.py")
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+async def _wait_for_port(port: int, timeout: float = 10.0) -> None:
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            writer.close()
+            await writer.wait_closed()
+            return
+        except OSError:
+            await asyncio.sleep(0.1)
+    raise TimeoutError(f"reference HTTP server never opened port {port}")
 
 
 class _FakeAsyncCM:
@@ -73,6 +94,30 @@ def _clean_registry():
     yield
     registry._tools.clear()
     registry._tools.update(before)
+
+
+@pytest.fixture
+async def http_reference_server():
+    """Spawns the reference MCP server as a real HTTP subprocess (not a
+    mock) — mirrors the stdio tests' philosophy of exercising the real MCP
+    protocol. Yields its base URL once the port is actually accepting
+    connections."""
+    port = _free_port()
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, FIXTURE, "--http", str(port),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        await _wait_for_port(port)
+        yield f"http://127.0.0.1:{port}/mcp"
+    finally:
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
 
 
 @pytest.mark.asyncio
@@ -173,3 +218,50 @@ async def test_connect_one_skips_tool_with_invalid_composed_name(monkeypatch):
     assert "mcp_srv_good_tool" in registry.tool_names
     assert "mcp_srv_bad.tool.name" not in registry.tool_names
     assert not any(n.startswith("mcp_srv_xxx") for n in registry.tool_names)
+
+
+@pytest.mark.asyncio
+async def test_http_transport_registers_tools_from_reference_server(http_reference_server):
+    # Playwright MCP (and any server that needs its own resource isolation,
+    # e.g. a headless browser) runs as its own container rather than a
+    # stdio subprocess of the app — this is the transport that reaches it.
+    server_config = {"name": "ref", "transport": "http", "url": http_reference_server}
+    async with AsyncExitStack() as stack:
+        registered = await mcp_bridge._connect_one(stack, server_config)
+
+    assert registered == 2
+    assert "mcp_ref_echo" in registry.tool_names
+    assert "mcp_ref_add" in registry.tool_names
+
+
+@pytest.mark.asyncio
+async def test_http_transport_tool_call_round_trips_through_registry(http_reference_server):
+    server_config = {"name": "ref", "transport": "http", "url": http_reference_server}
+    async with AsyncExitStack() as stack:
+        await mcp_bridge._connect_one(stack, server_config)
+        result = await registry.execute("mcp_ref_add", {"a": 2, "b": 3})
+
+    assert result == "5"
+
+
+@pytest.mark.asyncio
+async def test_http_transport_bad_url_is_isolated_like_stdio(monkeypatch):
+    # Same isolation guarantee as the stdio "bad server" test — a server
+    # config with an unreachable URL must not block a healthy server
+    # (of either transport) from connecting.
+    import json
+
+    monkeypatch.setattr(
+        "life_graph.config.settings.mcp_servers",
+        json.dumps([
+            {"name": "broken", "transport": "http", "url": "http://127.0.0.1:1/mcp"},
+            {"name": "ref", "command": sys.executable, "args": [FIXTURE]},
+        ]),
+        raising=False,
+    )
+    async with AsyncExitStack() as stack:
+        count = await mcp_bridge.connect_all(stack)
+
+    assert count == 2  # only the stdio "ref" server's 2 tools
+    assert "mcp_ref_echo" in registry.tool_names
+    assert "mcp_broken_echo" not in registry.tool_names

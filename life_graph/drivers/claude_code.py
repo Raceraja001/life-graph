@@ -67,7 +67,6 @@ _TOOL_NAME_TO_CLI: dict[str, tuple[str, ...]] = {
     "file_write": ("Write", "Edit"),
     "web_search": ("WebSearch",),
     "browse_web": ("WebFetch",),
-    "browser_agent": ("WebFetch",),
 }
 
 

@@ -160,7 +160,12 @@ class Settings(BaseSettings):
     tenant_plans: str = "{}"  # JSON: {"tenant_abc": "pro", "tenant_def": "free"}
 
     # ── MCP (Model Context Protocol) Client Bridge ──────
-    mcp_servers: str = "[]"  # JSON: [{"name": ..., "command": ..., "args": [...], "env": {...}}]
+    # JSON list of external MCP servers to bridge tools from. Two shapes:
+    # stdio (default, spawned as a subprocess of this process):
+    #   {"name": ..., "command": ..., "args": [...], "env": {...}}
+    # http (connects to an already-running server, e.g. its own container):
+    #   {"name": ..., "transport": "http", "url": "http://host:port/mcp"}
+    mcp_servers: str = "[]"
 
     # ── CORS ───────────────────────────────────────────
     cors_origins: str = "http://localhost:3000,http://localhost:8000"

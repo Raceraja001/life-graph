@@ -58,6 +58,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      playwright-mcp:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -125,6 +127,24 @@ services:
     depends_on:
       app:
         condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ── Playwright MCP (browser automation for personas) ─
+  # Runs its own headless Chromium — isolated in its own container rather
+  # than baked into the app image, so a browser crash/OOM can't take down
+  # the API server. The MCP bridge (services/mcp_bridge.py) connects to it
+  # over HTTP, not as a spawned subprocess — see LIFE_GRAPH_MCP_SERVERS in
+  # .env.production for the "transport": "http" config entry that points
+  # here.
+  playwright-mcp:
+    image: mcr.microsoft.com/playwright/mcp:latest
+    container_name: life_graph_playwright_mcp
+    entrypoint: ["node"]
+    command: ["/app/cli.js", "--headless", "--browser", "chromium", "--no-sandbox", "--isolated", "--port", "8931", "--host", "0.0.0.0"]
     restart: unless-stopped
     deploy:
       resources:

@@ -1,10 +1,10 @@
-"""Browser tool — web browsing via browser-use.
+"""Browser tool — simple page fetching via httpx.
 
-Provides the agent with the ability to browse the web, scrape pages,
-fill forms, and interact with web applications using the browser-use
-library (pip install browser-use).
-
-Falls back to simple httpx fetch if browser-use is not installed.
+Interactive browsing (navigate, click, fill forms) is provided by the
+bridged Playwright MCP server (see services/mcp_bridge.py), not a
+native tool here — see docs/superpowers/specs/2026-08-09-playwright-mcp-wiring.md
+for why the earlier `browser_agent` (a nested browser-use agent loop)
+was removed in favor of that.
 """
 
 from __future__ import annotations
@@ -46,8 +46,9 @@ logger = logging.getLogger(__name__)
 async def browse_web(url: str, extract: str = "text") -> str:
     """Fetch a web page and extract content.
 
-    Uses httpx for simple fetching. For JavaScript-heavy pages,
-    browser-use can be integrated later.
+    Uses httpx for simple fetching — no JavaScript execution. For
+    JavaScript-heavy pages or interactive tasks (navigate, click, fill
+    forms), use the bridged Playwright MCP tools instead.
 
     Args:
         url: The URL to fetch.
@@ -115,60 +116,3 @@ async def browse_web(url: str, extract: str = "text") -> str:
     except Exception as exc:
         logger.exception("Browse failed for %s", url)
         return json.dumps({"error": f"Browse failed: {exc}"})
-
-
-@tool(
-    name="browser_agent",
-    description=(
-        "Use an AI-controlled browser to perform complex web tasks. "
-        "The browser agent can: navigate pages, fill forms, click buttons, "
-        "extract structured data, and interact with web apps. "
-        "Requires browser-use package (pip install browser-use). "
-        "Use for: complex scraping, form submissions, multi-step web workflows."
-    ),
-    parameters_schema={
-        "type": "object",
-        "properties": {
-            "task": {
-                "type": "string",
-                "description": "Natural language description of what to do in the browser. "
-                "Example: 'Go to github.com/trending and list the top 5 Python repos'",
-            },
-        },
-        "required": ["task"],
-    },
-)
-async def browser_agent(task: str) -> str:
-    """Run a browser-use agent to perform a web task.
-
-    Requires: pip install browser-use
-
-    Args:
-        task: Natural language instruction for the browser agent.
-
-    Returns:
-        JSON string with the task result.
-    """
-    try:
-        from browser_use import Agent as BrowserAgent
-        from langchain_openai import ChatOpenAI
-
-        # Use the same LLM as the orchestrator
-        llm = ChatOpenAI(model="gpt-4o-mini")
-        agent = BrowserAgent(task=task, llm=llm)
-        result = await agent.run()
-
-        return json.dumps({
-            "task": task,
-            "result": str(result),
-            "status": "completed",
-        })
-
-    except ImportError:
-        return json.dumps({
-            "error": "browser-use not installed. Run: pip install browser-use",
-            "fallback": "Use the browse_web tool for simple page fetching.",
-        })
-    except Exception as exc:
-        logger.exception("Browser agent failed for task: %s", task)
-        return json.dumps({"error": f"Browser agent failed: {exc}"})
