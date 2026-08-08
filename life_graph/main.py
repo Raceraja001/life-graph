@@ -90,6 +90,18 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Failed to register agent tools", exc_info=True)
 
+    # Startup — connect configured external MCP servers (bridge)
+    from contextlib import AsyncExitStack
+
+    app.state.mcp_exit_stack = AsyncExitStack()
+    try:
+        from life_graph.services.mcp_bridge import connect_all
+
+        bridged_count = await connect_all(app.state.mcp_exit_stack)
+        logger.info("MCP bridge: %d external tool(s) registered", bridged_count)
+    except Exception:
+        logger.warning("MCP bridge startup failed", exc_info=True)
+
     # Startup — load plugins
     plugins_dir = Path(__file__).resolve().parent.parent / "plugins"
     plugin_manager = PluginManager(event_bus, plugins_dir=plugins_dir)
@@ -239,6 +251,9 @@ async def lifespan(app: FastAPI):
         logger.warning("Agent drivers not available", exc_info=True)
 
     yield
+
+    # Shutdown — close MCP bridge connections
+    await app.state.mcp_exit_stack.aclose()
 
     # Shutdown — close Redis
     await close_redis()
