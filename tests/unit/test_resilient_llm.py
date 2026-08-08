@@ -51,6 +51,8 @@ class FakeHealth:
         self.success = []
         self.failure = []
         self.cooldowns = {}
+        self._consecutive = {}
+        self._latency = {}
 
     async def in_cooldown(self, m):
         return m in self.cooling
@@ -60,13 +62,23 @@ class FakeHealth:
 
     async def record_success(self, m, latency_ms):
         self.success.append(m)
+        self._consecutive[m] = 0
+        self._latency[m] = latency_ms
 
     async def record_failure(self, m, kind):
         self.failure.append((m, kind))
+        self._consecutive[m] = self._consecutive.get(m, 0) + 1
+        return self._consecutive[m]
 
     async def set_cooldown(self, m, seconds):
         self.cooldowns[m] = seconds
         self.cooling.add(m)
+
+    async def get(self, m):
+        return {
+            "consecutive_failures": self._consecutive.get(m, 0),
+            "avg_latency_ms": self._latency.get(m),
+        }
 
 
 @pytest.fixture(autouse=True)
@@ -231,3 +243,69 @@ async def test_streaming_empty_stream_treated_as_failure(monkeypatch):
     assert collected == ["hi"]
     assert h.failure[0][0] == "A"
     assert h.success == ["B"]
+
+
+@pytest.mark.asyncio
+async def test_error_cooldown_escalates_with_consecutive_failures(monkeypatch):
+    fail_a = rl.litellm.APIError(500, "boom", "prov", "A")
+    call = AsyncMock(side_effect=[fail_a, _resp("hi"), fail_a, _resp("hi"), fail_a, _resp("hi")])
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+    llm = ResilientLLM(health=h)
+
+    await llm.chat([{"role": "user", "content": "q"}])
+    assert h.cooldowns["A"] == 30  # 1st failure: base error cooldown
+
+    h.cooling.discard("A")  # simulate the cooldown period elapsing
+    await llm.chat([{"role": "user", "content": "q"}])
+    assert h.cooldowns["A"] == 60  # 2nd consecutive failure: doubled
+
+    h.cooling.discard("A")
+    await llm.chat([{"role": "user", "content": "q"}])
+    assert h.cooldowns["A"] == 120  # 3rd consecutive failure: doubled again
+
+
+@pytest.mark.asyncio
+async def test_error_cooldown_caps_at_max(monkeypatch):
+    monkeypatch.setattr(rl.settings, "llm_cooldown_max_seconds", 100, raising=False)
+    fail_a = rl.litellm.APIError(500, "boom", "prov", "A")
+    call = AsyncMock(side_effect=[fail_a, _resp("hi")])
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+    h._consecutive["A"] = 9  # A has already failed 9 times in a row (uncapped: 30*2**9=15360s)
+    llm = ResilientLLM(health=h)
+
+    await llm.chat([{"role": "user", "content": "q"}])
+    assert h.cooldowns["A"] == 100  # capped, not 30 * 2**9
+
+
+@pytest.mark.asyncio
+async def test_error_cooldown_resets_to_base_after_success(monkeypatch):
+    fail_a = rl.litellm.APIError(500, "boom", "prov", "A")
+    call = AsyncMock(side_effect=[fail_a, _resp("hi"), _resp("hi"), fail_a, _resp("hi")])
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+    llm = ResilientLLM(health=h)
+
+    await llm.chat([{"role": "user", "content": "q"}])  # A fails (1st), B succeeds
+    assert h.cooldowns["A"] == 30
+    h.cooling.discard("A")
+
+    await llm.chat([{"role": "user", "content": "q"}])  # A succeeds this round
+    assert h.success == ["B", "A"]
+
+    await llm.chat([{"role": "user", "content": "q"}])  # A fails again -> count reset to 1
+    assert h.cooldowns["A"] == 30  # back to base, not 60
+
+
+@pytest.mark.asyncio
+async def test_429_retry_after_header_used_as_is_not_multiplied(monkeypatch):
+    err = rl.litellm.RateLimitError("rate", "prov", "A")
+    err.response = SimpleNamespace(headers={"retry-after": "45"})
+    call = AsyncMock(side_effect=[err, _resp("hi")])
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+    h._consecutive["A"] = 4  # even with prior failures, an explicit Retry-After wins as-is
+
+    await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+    assert h.cooldowns["A"] == 45

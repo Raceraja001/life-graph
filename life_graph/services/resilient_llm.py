@@ -125,14 +125,21 @@ class ResilientLLM:
                 return await self._attempt(m, messages, kwargs)
             except Exception as exc:  # noqa: BLE001 - classify + fail over
                 kind = _classify(exc)
-                await self._health.record_failure(m, kind)
-                cd = (
-                    _retry_after(exc) or settings.llm_cooldown_429_seconds
-                    if kind == "429"
-                    else settings.llm_cooldown_error_seconds
-                )
+                fails = await self._health.record_failure(m, kind)
+                retry_after = _retry_after(exc) if kind == "429" else None
+                if retry_after is not None:
+                    cd = retry_after
+                else:
+                    base = (
+                        settings.llm_cooldown_429_seconds
+                        if kind == "429"
+                        else settings.llm_cooldown_error_seconds
+                    )
+                    cd = min(base * 2 ** (fails - 1), settings.llm_cooldown_max_seconds)
                 await self._health.set_cooldown(m, cd)
-                logger.warning("Model %s failed (%s); benched %ss", m, kind, cd)
+                logger.warning(
+                    "Model %s failed (%s); benched %ss (failure #%d)", m, kind, cd, fails
+                )
 
         # Every model failed or was skipped. If some were only SKIPPED (cooling),
         # force ONE live attempt on the one soonest to recover — don't give up blind.

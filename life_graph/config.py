@@ -125,6 +125,7 @@ class Settings(BaseSettings):
     llm_fallback_chain: str = "openrouter/deepseek/deepseek-chat,gemini/gemini-2.0-flash"
     llm_cooldown_429_seconds: int = 60
     llm_cooldown_error_seconds: int = 30
+    llm_cooldown_max_seconds: int = 900
     llm_health_ttl_seconds: int = 3600
 
     # ── Personal AI: Research ────────────────────────────
