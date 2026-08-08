@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { usePersonas, useUpdatePersona, type PersonaVM } from "@/lib/mobile-api";
-import { MODEL_OPTIONS } from "@/lib/model-options";
+import { ModelCombobox } from "@/components/model-combobox";
 
 export default function SettingsPage() {
   return (
@@ -84,9 +84,6 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
     update.mutate({ id: persona.id, body }, { onError: () => revert() });
   }
 
-  const knownModels = [...MODEL_OPTIONS.Free, ...MODEL_OPTIONS.Paid];
-  const isUnknownModel = Boolean(persona.model) && !knownModels.includes(persona.model);
-
   return (
     <div
       className="border border-zinc-100 rounded-lg p-4 space-y-3"
@@ -103,28 +100,9 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
 
       <div>
         <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Model</label>
-        <select
-          value={model}
-          disabled={busy}
-          onChange={(e) => setModel(e.target.value)}
-          className="w-full mt-1 text-sm text-zinc-800 bg-zinc-50 px-3 py-2 rounded-lg border border-zinc-100"
-        >
-          {isUnknownModel && <option value={persona.model}>{persona.model}</option>}
-          <optgroup label="Free">
-            {MODEL_OPTIONS.Free.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Paid">
-            {MODEL_OPTIONS.Paid.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+        <div className="mt-1">
+          <ModelCombobox value={model} onChange={setModel} disabled={busy} variant="desktop" />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

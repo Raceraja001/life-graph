@@ -8,7 +8,7 @@
 import { useState, type CSSProperties } from "react";
 import { LoadingCard, EmptyCard, ErrorCard, SectionEyebrow } from "@/components/mobile/parts";
 import { usePersonas, useUpdatePersona, type PersonaVM } from "@/lib/mobile-api";
-import { MODEL_OPTIONS } from "@/lib/model-options";
+import { ModelCombobox } from "@/components/model-combobox";
 
 const cardStyle: CSSProperties = {
   background: "var(--surface)",
@@ -81,9 +81,6 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
     update.mutate({ id: persona.id, body }, { onError: () => revert() });
   }
 
-  const knownModels = [...MODEL_OPTIONS.Free, ...MODEL_OPTIONS.Paid];
-  const isUnknownModel = Boolean(persona.model) && !knownModels.includes(persona.model);
-
   return (
     <section style={{ ...cardStyle, opacity: busy ? 0.7 : 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
@@ -106,28 +103,9 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
       </div>
 
       <label style={labelStyle}>Model</label>
-      <select
-        value={model}
-        disabled={busy}
-        onChange={(e) => setModel(e.target.value)}
-        style={{ ...inputStyle, marginBottom: "10px" }}
-      >
-        {isUnknownModel && <option value={persona.model}>{persona.model}</option>}
-        <optgroup label="Free">
-          {MODEL_OPTIONS.Free.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </optgroup>
-        <optgroup label="Paid">
-          {MODEL_OPTIONS.Paid.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </optgroup>
-      </select>
+      <div style={{ marginBottom: "10px" }}>
+        <ModelCombobox value={model} onChange={setModel} disabled={busy} variant="mobile" />
+      </div>
 
       <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
         <div style={{ flex: 1 }}>
