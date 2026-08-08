@@ -354,3 +354,50 @@ async def test_fallback_pool_ties_preserve_env_order(monkeypatch):
     out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
     assert out == "hi"
     assert h.success == ["B"]
+
+
+@pytest.mark.asyncio
+async def test_paid_fallback_tried_last_after_all_free_models_fail(monkeypatch):
+    monkeypatch.setattr(rl.settings, "llm_paid_fallback_model", "PAID", raising=False)
+    call = AsyncMock(
+        side_effect=[
+            rl.litellm.APIError(500, "boom", "prov", "A"),
+            rl.litellm.APIError(500, "boom", "prov", "B"),
+            rl.litellm.APIError(500, "boom", "prov", "C"),
+            _resp("hi"),
+        ]
+    )
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+
+    out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+    assert out == "hi"
+    assert call.call_args.kwargs["model"] == "PAID"
+    assert h.success == ["PAID"]
+
+
+@pytest.mark.asyncio
+async def test_paid_fallback_never_reordered_ahead_of_primary(monkeypatch):
+    monkeypatch.setattr(rl.settings, "llm_paid_fallback_model", "PAID", raising=False)
+    call = AsyncMock(return_value=_resp("hi"))
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+    # PAID would rank ahead of everything on health data alone (fast, zero
+    # failures) if it were part of the ranked pool -- it must not be, since
+    # it's cost, not health, that decides when it's used.
+    h._latency["PAID"] = 1.0
+
+    out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+    assert out == "hi"
+    assert call.call_args.kwargs["model"] == "A"  # primary still tried first
+
+
+@pytest.mark.asyncio
+async def test_no_paid_fallback_configured_exhausts_as_before(monkeypatch):
+    monkeypatch.setattr(rl.settings, "llm_paid_fallback_model", None, raising=False)
+    call = AsyncMock(side_effect=rl.litellm.APIError(500, "boom", "prov", "m"))
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+
+    with pytest.raises(ResilientLLMExhausted):
+        await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])

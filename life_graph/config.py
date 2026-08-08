@@ -127,6 +127,7 @@ class Settings(BaseSettings):
     llm_cooldown_error_seconds: int = 30
     llm_cooldown_max_seconds: int = 900
     llm_health_ttl_seconds: int = 3600
+    llm_paid_fallback_model: str | None = None
 
     # ── Personal AI: Research ────────────────────────────
     research_stale_days: int = 30

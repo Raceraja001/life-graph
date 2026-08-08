@@ -136,11 +136,15 @@ class ResilientLLM:
         """
         primary = self._primary(model, tier)
         chain = [primary, *await self._rank_fallbacks(primary)]
+        if settings.llm_paid_fallback_model and settings.llm_paid_fallback_model not in chain:
+            chain.append(settings.llm_paid_fallback_model)
         skipped: list[str] = []
         for m in chain:
             if await self._health.in_cooldown(m):
                 skipped.append(m)
                 continue
+            if m == settings.llm_paid_fallback_model:
+                logger.warning("Falling back to paid model %s", m)
             try:
                 return await self._attempt(m, messages, kwargs)
             except Exception as exc:  # noqa: BLE001 - classify + fail over
