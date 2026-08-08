@@ -112,6 +112,32 @@ export default function MobileSettings() {
       </Link>
 
       <Link
+        href="/m/personas"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "11px",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-lg)",
+          boxShadow: "var(--shadow-xs)",
+          padding: "12px 14px",
+          textDecoration: "none",
+          color: "var(--text)",
+        }}
+      >
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{ display: "block", fontSize: "var(--ui-text)", fontWeight: "var(--fw-semibold)" }}>
+            Personas
+          </span>
+          <span style={{ display: "block", fontSize: "var(--text-2xs)", color: "var(--text-subtle)", marginTop: "1px" }}>
+            Model, temperature &amp; max tokens per persona
+          </span>
+        </span>
+        <ChevronRight width={16} height={16} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
+      </Link>
+
+      <Link
         href="/m/shadow"
         style={{
           display: "flex",
