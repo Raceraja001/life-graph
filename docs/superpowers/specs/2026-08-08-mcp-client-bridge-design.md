@@ -128,14 +128,12 @@ behavior, not mocks, with zero external service or credentials required.
   is actually too tight in practice.
 - Admin API for managing server config without an env-var + restart — revisit only if
   env-var-only configuration proves too inconvenient in practice.
-- **Built-in personas can't actually use bridged tools yet.** `kernel/personas.py`
-  force-reconciles every built-in persona's `allowed_tools` back to its hardcoded seed
-  definition on every boot, and `process_manager.py` only advertises allowlisted tools —
-  so today only `chief` (`allowed_tools: None`) would ever see a bridged tool. Enabling a
-  bridged tool for a built-in persona currently requires editing `_BUILTIN_PERSONAS`
-  directly. Found during final review of the v1 build (2026-08-08); needs either a seed
-  update or a reconciliation-exemption mechanism before a configured server is actually
-  useful to jarvis/scout/etc.
+- ~~**Built-in personas can't actually use bridged tools yet.**~~ **RESOLVED 2026-08-08.**
+  `kernel/personas.py`'s `_reconcile_builtin` now excludes `mcp_`-prefixed entries from its
+  `allowed_tools` diff, so a tool granted by hand via `PATCH /personas/{id}` survives every
+  restart instead of being silently wiped back to `_BUILTIN_PERSONAS`. A built-in persona
+  other than `chief` can now durably see a bridged tool once one is granted this way — no
+  new admin API, reuses the existing update endpoint.
 - **MCP tool schemas aren't validated for provider compatibility.** A bridged tool's
   `inputSchema` is forwarded verbatim into the shared tool list every persona/model sees.
   Real MCP servers' pydantic-generated schemas routinely contain `$defs`/`$ref`/`anyOf`,
