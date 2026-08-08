@@ -197,6 +197,42 @@ async def test_missing_personas_are_still_inserted_alongside_reconciles():
 
 
 @pytest.mark.asyncio
+async def test_manually_granted_bridged_tool_survives_reconciliation():
+    """A bridged MCP tool (see services/mcp_bridge.py) granted by hand via
+    PATCH /personas/{id} is never part of a builtin's static definition, so
+    a naive full-list reconcile would silently wipe it out on every
+    restart. Reconciliation must ignore mcp_-prefixed entries."""
+    rows = _rows_matching_current_definitions()
+    cody_row = next(r for r in rows if r.name == "cody")
+    cody_row.allowed_tools = [*_defn("cody")["allowed_tools"], "mcp_playwright_navigate"]
+
+    svc, session = _service(rows)
+    changed = await svc.seed_builtins("t1")
+
+    assert changed == 0
+    assert session.updates == []
+
+
+@pytest.mark.asyncio
+async def test_bridged_tool_dropped_when_static_tools_also_drift():
+    """If the STATIC subset genuinely drifted (real version upgrade), the
+    full overwrite path still applies — a granted bridged tool is not
+    specially preserved through that reconciliation, only through a
+    reconcile where the static list already matches."""
+    rows = _rows_matching_current_definitions()
+    cody_row = next(r for r in rows if r.name == "cody")
+    cody_row.allowed_tools = ["terminal", "mcp_playwright_navigate"]
+
+    svc, session = _service(rows)
+    changed = await svc.seed_builtins("t1")
+
+    assert changed == 1
+    values = _update_values(session.updates[0])
+    assert values["allowed_tools"] == _defn("cody")["allowed_tools"]
+    assert "mcp_playwright_navigate" not in values["allowed_tools"]
+
+
+@pytest.mark.asyncio
 async def test_reconcile_update_is_tenant_and_builtin_scoped():
     rows = _rows_matching_current_definitions()
     next(r for r in rows if r.name == "cody").allowed_tools = ["terminal"]

@@ -482,14 +482,32 @@ class PersonaService:
         Only ``allowed_tools`` and ``system_prompt`` are reconciled — see
         :meth:`seed_builtins`. A row whose ``is_builtin`` is False is a
         user-owned persona that merely shares the name; it is left alone.
+
+        Bridged MCP tool names (``mcp_<server>_<tool>``, see
+        ``services/mcp_bridge.py``) are excluded from the ``allowed_tools``
+        comparison: they're never part of a builtin's static definition,
+        only granted by hand via ``PATCH /personas/{id}`` once a server is
+        configured. Comparing the full list would silently wipe that grant
+        back out on every restart — comparing only the static subset lets
+        it survive.
         """
         if not row.is_builtin:
             return 0
 
         values: dict[str, Any] = {}
         current_tools = list(row.allowed_tools) if row.allowed_tools is not None else None
-        if current_tools != defn["allowed_tools"]:
-            values["allowed_tools"] = defn["allowed_tools"]
+        target_tools = defn["allowed_tools"]
+        if target_tools is None:
+            if current_tools is not None:
+                values["allowed_tools"] = None
+        else:
+            static_current = (
+                [t for t in current_tools if not t.startswith("mcp_")]
+                if current_tools is not None
+                else None
+            )
+            if static_current != target_tools:
+                values["allowed_tools"] = target_tools
         if row.system_prompt != defn["system_prompt"]:
             values["system_prompt"] = defn["system_prompt"]
         if not values:
