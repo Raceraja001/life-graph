@@ -159,6 +159,9 @@ class Settings(BaseSettings):
     default_plan: str = "free"
     tenant_plans: str = "{}"  # JSON: {"tenant_abc": "pro", "tenant_def": "free"}
 
+    # ── MCP (Model Context Protocol) Client Bridge ──────
+    mcp_servers: str = "[]"  # JSON: [{"name": ..., "command": ..., "args": [...], "env": {...}}]
+
     # ── CORS ───────────────────────────────────────────
     cors_origins: str = "http://localhost:3000,http://localhost:8000"
 
@@ -263,6 +266,15 @@ class Settings(BaseSettings):
             return json.loads(self.tenant_plans) if self.tenant_plans else {}
         except json.JSONDecodeError:
             return {}
+
+    @property
+    def mcp_servers_list(self) -> list[dict]:
+        """Parse JSON list of configured external MCP servers."""
+        try:
+            parsed = json.loads(self.mcp_servers) if self.mcp_servers else []
+            return parsed if isinstance(parsed, list) else []
+        except json.JSONDecodeError:
+            return []
 
     @property
     def cors_origins_list(self) -> list[str]:

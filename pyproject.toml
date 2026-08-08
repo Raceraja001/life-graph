@@ -48,6 +48,7 @@ dependencies = [
 
     # MCP Server (Model Context Protocol)
     "fastmcp>=2.0",
+    "mcp>=1.29.0",
 
     # Web Push Notifications
     "pywebpush>=2.0",
