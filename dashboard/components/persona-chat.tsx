@@ -4,9 +4,10 @@
 // bubble, driven entirely by `api.kernel.chatStream`'s SSE event callback. Visual
 // target: docs/design/mockups/jarvis-streaming-chat.html.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Check, ChevronRight, Loader2, Send, Square, X } from "lucide-react";
+import { Check, ChevronRight, Loader2, Mic, Send, Square, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useMobileState } from "@/components/mobile/mobile-state";
+import { useRecorder } from "@/components/mobile/use-recorder";
 
 type Step = { persona: string; text: string; done: boolean; errored: boolean; error?: string };
 type Turn = {
@@ -16,6 +17,7 @@ type Turn = {
   order: string[];
   done: boolean;
   errored: boolean;
+  viaVoice?: boolean;
 };
 
 type ChatEvent =
@@ -53,8 +55,8 @@ function roleColor(persona: string): string {
   return ROLE_COLOR[persona] ?? "var(--accent-text)";
 }
 
-function newTurn(user: string): Turn {
-  return { user, synthesis: "", steps: {}, order: [], done: false, errored: false };
+function newTurn(user: string, viaVoice = false): Turn {
+  return { user, synthesis: "", steps: {}, order: [], done: false, errored: false, viaVoice };
 }
 
 export function PersonaChat() {
@@ -66,6 +68,10 @@ export function PersonaChat() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const abort = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const recorder = useRecorder();
+  const [transcribing, setTranscribing] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   // Captured from the SSE `start` event so Stop can best-effort cancel the
   // backend task too (aborting the fetch alone leaves Jarvis running and
   // burning model quota server-side).
@@ -79,11 +85,11 @@ export function PersonaChat() {
     setTurns((ts) => (ts.length === 0 ? ts : ts.map((t, i) => (i === ts.length - 1 ? fn(t) : t))));
   }
 
-  async function send() {
-    const msg = input.trim();
+  async function send(message?: string, viaVoice = false) {
+    const msg = (message ?? input).trim();
     if (!msg || streaming || !online) return;
     setInput("");
-    setTurns((ts) => [...ts, newTurn(msg)]);
+    setTurns((ts) => [...ts, newTurn(msg, viaVoice)]);
     setStreaming(true);
     abort.current = new AbortController();
     try {
@@ -163,6 +169,8 @@ export function PersonaChat() {
 
   function stop() {
     abort.current?.abort();
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    setSpeaking(false);
     // Best-effort: also ask the backend to cancel the task so Jarvis stops
     // burning model quota. Ignore failures (task may already be done, or
     // the cancel endpoint may 409 on a task that just completed).
@@ -173,6 +181,60 @@ export function PersonaChat() {
   }
 
   const lastIdx = turns.length - 1;
+  const lastTurn = turns[lastIdx];
+
+  const MAX_VOICE_BYTES = 20 * 1024 * 1024; // stay far below Cloudflare's 100MB
+
+  async function onMicTap() {
+    if (speaking && typeof window !== "undefined") {
+      // Barge-in: interrupt a spoken reply and start listening immediately,
+      // rather than making the user wait it out.
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+    }
+    if (recorder.recording) {
+      const blob = await recorder.stop();
+      if (!blob || blob.size === 0) return;
+      if (blob.size > MAX_VOICE_BYTES) {
+        setMicError("Recording too large — try a shorter clip.");
+        return;
+      }
+      setTranscribing(true);
+      setMicError(null);
+      try {
+        const res = (await api.ingest.transcribe(blob, `voice.${recorder.mimeExt}`)) as {
+          data?: { transcript?: string };
+        };
+        const transcript = res?.data?.transcript?.trim();
+        if (!transcript) {
+          setMicError("Didn't catch that — try again.");
+          return;
+        }
+        await send(transcript, true);
+      } catch {
+        setMicError("Couldn't transcribe — try again.");
+      } finally {
+        setTranscribing(false);
+      }
+    } else {
+      setMicError(null);
+      void recorder.start();
+    }
+  }
+
+  // Speak a voice-originated turn's reply once it finishes streaming. Typed
+  // turns (viaVoice falsy) never trigger this. Guarded on lastTurn?.done so
+  // this only fires once per turn, when it actually completes.
+  useEffect(() => {
+    if (!lastTurn || !lastTurn.done || !lastTurn.viaVoice) return;
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(lastTurn.synthesis || "");
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastTurn?.done, lastTurn?.viaVoice]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -267,6 +329,33 @@ export function PersonaChat() {
             opacity: !online ? 0.6 : 1,
           }}
         />
+        <button
+          onClick={() => void onMicTap()}
+          disabled={!online || transcribing}
+          aria-label={recorder.recording ? "Stop recording" : "Record a voice message"}
+          style={{
+            flexShrink: 0,
+            width: "42px",
+            height: "42px",
+            border: "1px solid var(--border-strong)",
+            borderRadius: "50%",
+            background: recorder.recording ? "var(--danger-soft, #fee)" : "var(--surface)",
+            color: recorder.recording ? "var(--danger, #d33)" : "var(--text)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: !online || transcribing ? "not-allowed" : "pointer",
+            opacity: !online || transcribing ? 0.5 : 1,
+          }}
+        >
+          {transcribing ? (
+            <Loader2 width={16} height={16} className="animate-spin" />
+          ) : recorder.recording ? (
+            <Square width={15} height={15} fill="currentColor" />
+          ) : (
+            <Mic width={17} height={17} />
+          )}
+        </button>
         {streaming ? (
           <button
             onClick={stop}
@@ -314,6 +403,11 @@ export function PersonaChat() {
       {!online && (
         <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", textAlign: "center", margin: "6px 0 0" }}>
           You’re offline — chat needs a connection.
+        </p>
+      )}
+      {(recorder.error || micError) && (
+        <p style={{ fontSize: "var(--text-2xs)", color: "var(--danger)", textAlign: "center", margin: "6px 0 0" }}>
+          {recorder.error || micError}
         </p>
       )}
     </div>
