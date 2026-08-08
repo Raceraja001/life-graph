@@ -143,3 +143,17 @@ the entire existing loop, which stays untouched for every other model value.
 - Budget/quota-awareness (tracking how much subscription usage `claude-cli`-routed
   personas consume) — ties to the broader budget-governance gap noted in earlier
   planning; not solved here.
+- **Timeout is a hardcoded 60s, not a setting.** Interactive Claude Code runs routinely
+  exceed that, and the SSE stream sends nothing until the call completes (no partial
+  progress). Revisit as a `LIFE_GRAPH_`-prefixed config setting if 60s proves too tight
+  in practice.
+- **Empty-but-successful CLI output yields an empty reply** rather than being treated as
+  a failure. Low-frequency edge case; revisit if it's observed in practice.
+- **No concurrency cap on `claude-cli` subprocess spawns.** `ClaudeCodeDriver` caps
+  itself at `max_concurrency = 2`; this path has none, and each turn spawns a full
+  Claude Code process. Fine at today's usage; a semaphore is the fix if concurrent
+  `claude-cli` chats ever become common enough to strain the host.
+- **The full conversation is passed as a single CLI argument**, which risks hitting
+  Windows' ~32K command-line length limit on long conversation histories, surfacing as
+  an opaque `partial_error` rather than a clear "conversation too long" message. Switch
+  to stdin or a temp file if long-history `claude-cli` turns turn out to be common.

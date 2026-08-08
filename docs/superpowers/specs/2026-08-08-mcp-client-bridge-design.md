@@ -128,3 +128,23 @@ behavior, not mocks, with zero external service or credentials required.
   is actually too tight in practice.
 - Admin API for managing server config without an env-var + restart — revisit only if
   env-var-only configuration proves too inconvenient in practice.
+- **Built-in personas can't actually use bridged tools yet.** `kernel/personas.py`
+  force-reconciles every built-in persona's `allowed_tools` back to its hardcoded seed
+  definition on every boot, and `process_manager.py` only advertises allowlisted tools —
+  so today only `chief` (`allowed_tools: None`) would ever see a bridged tool. Enabling a
+  bridged tool for a built-in persona currently requires editing `_BUILTIN_PERSONAS`
+  directly. Found during final review of the v1 build (2026-08-08); needs either a seed
+  update or a reconciliation-exemption mechanism before a configured server is actually
+  useful to jarvis/scout/etc.
+- **MCP tool schemas aren't validated for provider compatibility.** A bridged tool's
+  `inputSchema` is forwarded verbatim into the shared tool list every persona/model sees.
+  Real MCP servers' pydantic-generated schemas routinely contain `$defs`/`$ref`/`anyOf`,
+  which some providers (e.g. Gemini's function declarations) reject outright — one
+  incompatible bridged tool could break tool-calling for every persona that can see it,
+  not just calls to that tool. v1 only validates the composed tool *name* (pattern/length,
+  log-and-skip on mismatch); schema compatibility is unvalidated. Revisit once a real
+  server with a complex schema is actually configured.
+- **Bridged tools are global, not tenant-scoped.** One `ClientSession` and one credential
+  set are shared across all tenants — a deliberate simplification for a single-operator
+  self-host, but a real gap against this codebase's usual per-tenant-filtering invariant
+  if this project ever serves more than one tenant.
