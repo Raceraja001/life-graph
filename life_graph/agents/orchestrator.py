@@ -97,9 +97,24 @@ class AgentOrchestrator:
         working_messages.extend(messages)
 
         if self.model == "claude-cli":
-            prompt = "\n".join(f"{msg['role']}: {msg['content']}" for msg in working_messages)
+            try:
+                prompt = "\n".join(
+                    f"{msg['role']}: {msg['content']}" for msg in working_messages
+                )
+                result = await run_claude_cli(prompt)
+            except Exception as exc:
+                # Any unexpected failure here (message flattening or the CLI
+                # call itself) falls into the same graceful shape as a
+                # run_claude_cli() failure below, matching the existing
+                # ResilientLLMExhausted failure shape exactly
+                # (orchestrator.py:297-304) — "partial_error" with a
+                # "message" key, always followed by a terminal "done".
+                yield _sse(
+                    {"type": "partial_error", "message": str(exc), "retryable": True}
+                )
+                yield _sse({"type": "done", "model": self.model, "tokens": 0})
+                return
 
-            result = await run_claude_cli(prompt)
             if not result.success:
                 # Matches the existing ResilientLLMExhausted failure shape
                 # exactly (orchestrator.py:297-304) — "partial_error" with a
