@@ -331,7 +331,7 @@ export function PersonaChat() {
         />
         <button
           onClick={() => void onMicTap()}
-          disabled={!online || transcribing}
+          disabled={!online || transcribing || streaming}
           aria-label={recorder.recording ? "Stop recording" : "Record a voice message"}
           style={{
             flexShrink: 0,
@@ -344,8 +344,8 @@ export function PersonaChat() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            cursor: !online || transcribing ? "not-allowed" : "pointer",
-            opacity: !online || transcribing ? 0.5 : 1,
+            cursor: !online || transcribing || streaming ? "not-allowed" : "pointer",
+            opacity: !online || transcribing || streaming ? 0.5 : 1,
           }}
         >
           {transcribing ? (
