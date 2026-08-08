@@ -115,7 +115,7 @@ the entire existing loop, which stays untouched for every other model value.
 | `claude` binary not found on the host | `run_claude_cli` catches `FileNotFoundError`, returns a failure result; orchestrator yields an `error` SSE event in the same shape the existing `ResilientLLMExhausted` path already uses (`orchestrator.py:291-304`) — the chat UI's existing error rendering handles it unchanged. |
 | CLI call times out | Same as `claude_code.py`'s existing timeout handling — `proc.kill()`, drain, failure result, same `error` SSE event. |
 | CLI exits non-zero / returns `is_error: true` in its JSON | Failure result with the CLI's own error text (mirrors `claude_code.py:212-221`'s success/error determination), same `error` SSE event. |
-| Malformed/non-JSON CLI output | Caught by the same generic-exception path, failure result, same `error` SSE event — never propagates a raw parse exception to the SSE stream. |
+| Malformed/non-JSON CLI output on a zero exit code | Tolerated, not an error — mirrors `claude_code.py`'s own `_parse_output` behavior exactly: non-JSON stdout is treated as the literal reply text (`{"result": text}`), same as plain-text CLI output. A parse failure alone never fails the call; a non-zero exit code or an explicit `is_error: true` in the parsed JSON is what triggers the failure path below. |
 
 ## Testing
 
