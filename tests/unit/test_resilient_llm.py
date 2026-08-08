@@ -309,3 +309,48 @@ async def test_429_retry_after_header_used_as_is_not_multiplied(monkeypatch):
 
     await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
     assert h.cooldowns["A"] == 45
+
+
+@pytest.mark.asyncio
+async def test_fallback_pool_ranked_by_fewest_failures_then_latency(monkeypatch):
+    call = AsyncMock(
+        side_effect=[rl.litellm.APIError(500, "boom", "prov", "A"), _resp("hi")]
+    )
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+    # B has 2 consecutive failures recorded (not currently cooling); C is clean.
+    # B would be faster if it weren't unreliable -- failure count wins first.
+    h._consecutive["B"] = 2
+    h._latency["B"] = 10.0
+    h._latency["C"] = 50.0
+
+    out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+    assert out == "hi"
+    assert h.success == ["C"]  # C tried before B: fewer consecutive failures wins
+
+
+@pytest.mark.asyncio
+async def test_fallback_pool_unknown_model_gets_fair_first_try(monkeypatch):
+    call = AsyncMock(
+        side_effect=[rl.litellm.APIError(500, "boom", "prov", "A"), _resp("hi")]
+    )
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+    h._latency["B"] = 200.0  # B has a proven (nonzero-latency) track record; C has none
+
+    out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+    assert out == "hi"
+    assert h.success == ["C"]  # unseen C sorts ahead of B's recorded latency
+
+
+@pytest.mark.asyncio
+async def test_fallback_pool_ties_preserve_env_order(monkeypatch):
+    call = AsyncMock(
+        side_effect=[rl.litellm.APIError(500, "boom", "prov", "A"), _resp("hi")]
+    )
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()  # no health data for B or C at all -> tie -> original "B,C" order wins
+
+    out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+    assert out == "hi"
+    assert h.success == ["B"]

@@ -78,14 +78,33 @@ class ResilientLLM:
         _bridge_provider_credentials()
         self._health = health or LLMHealth()
 
-    def _chain(self, model: str | None, tier: str) -> list[str]:
-        """Build the de-duped attempt order: caller's model/tier default, then fallbacks."""
-        primary = model or (
+    def _primary(self, model: str | None, tier: str) -> str:
+        """Resolve the caller's model/tier choice into the primary model id."""
+        return model or (
             settings.llm_model_expensive if tier == "expensive" else settings.llm_model_cheap
         )
-        chain = [primary, *settings.llm_fallback_chain_list]
-        seen: set[str] = set()
-        return [m for m in chain if m and not (m in seen or seen.add(m))]
+
+    async def _rank_fallbacks(self, primary: str) -> list[str]:
+        """De-dupe the configured fallback pool against `primary`, then sort it by
+        health: fewest consecutive failures first, then lowest average latency.
+        A model with no recorded history yet sorts as best-case (fair first
+        try) rather than being buried behind models with a real track record.
+        Ties preserve the pool's original `.env` list order (stable sort).
+        """
+        seen: set[str] = {primary}
+        pool = [
+            m for m in settings.llm_fallback_chain_list if m and not (m in seen or seen.add(m))
+        ]
+
+        async def _rank_key(m: str) -> tuple[int, float]:
+            rec = await self._health.get(m)
+            fails = int(rec.get("consecutive_failures", 0) or 0)
+            latency = rec.get("avg_latency_ms")
+            return (fails, float(latency) if latency else -1.0)
+
+        keyed = [(await _rank_key(m), m) for m in pool]
+        keyed.sort(key=lambda pair: pair[0])
+        return [m for _, m in keyed]
 
     async def _attempt(self, model: str, messages: list[dict], kwargs: dict) -> Any:
         """Make one live call to `model`, recording success health on return.
@@ -115,7 +134,8 @@ class ResilientLLM:
         Raises ResilientLLMExhausted if every model in the chain fails, including the
         one forced attempt made when all candidates were skipped for being in cooldown.
         """
-        chain = self._chain(model, tier)
+        primary = self._primary(model, tier)
+        chain = [primary, *await self._rank_fallbacks(primary)]
         skipped: list[str] = []
         for m in chain:
             if await self._health.in_cooldown(m):
