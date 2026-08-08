@@ -1,0 +1,112 @@
+"""One-shot, non-streaming, tool-free replies via the Claude CLI.
+
+Mirrors drivers/claude_code.py's subprocess mechanics (binary resolution,
+timeout handling, JSON parsing) but is a standalone caller for the model-
+routing path (AgentOrchestrator selecting "claude-cli" as a persona's
+model), not a Driver — this is unrelated to the claude_code driver's
+task-dispatch use case, which is untouched by this module.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import shutil
+import time
+from dataclasses import dataclass
+
+from life_graph.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ClaudeCliResult:
+    success: bool
+    text: str
+    error: str | None
+    duration_ms: int
+
+
+def _binary() -> str:
+    return getattr(settings, "driver_claude_code_bin", "claude")
+
+
+async def run_claude_cli(prompt: str, timeout: float = 60.0) -> ClaudeCliResult:
+    """Shell out to the Claude CLI for a one-shot, non-streaming reply.
+
+    No tool-calling — this is a plain text-in, text-out call. See
+    docs/superpowers/specs/2026-08-08-claude-cli-model-routing-design.md
+    for why that's a deliberate v1 scope limit, not an oversight.
+    """
+    start = time.monotonic()
+    binary = _binary()
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            binary, "-p", prompt, "--output-format", "json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return ClaudeCliResult(
+            success=False,
+            text="",
+            error=f"claude_cli binary {binary!r} not found",
+            duration_ms=int((time.monotonic() - start) * 1000),
+        )
+    except Exception as exc:
+        logger.error("claude_cli_reply dispatch failed: %s", exc, exc_info=True)
+        return ClaudeCliResult(
+            success=False,
+            text="",
+            error=str(exc),
+            duration_ms=int((time.monotonic() - start) * 1000),
+        )
+
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except TimeoutError:
+        proc.kill()
+        return ClaudeCliResult(
+            success=False,
+            text="",
+            error=f"claude_cli timed out after {timeout}s",
+            duration_ms=int((time.monotonic() - start) * 1000),
+        )
+
+    duration = int((time.monotonic() - start) * 1000)
+    data = _parse_output(out)
+    is_error = bool(data.get("is_error", False))
+    success = proc.returncode == 0 and not is_error
+
+    if success:
+        return ClaudeCliResult(
+            success=True, text=str(data.get("result", "")), error=None, duration_ms=duration
+        )
+    return ClaudeCliResult(
+        success=False,
+        text="",
+        error=str(data.get("result") or err.decode(errors="replace"))[:2000]
+        or f"exit code {proc.returncode}",
+        duration_ms=duration,
+    )
+
+
+def _parse_output(out: bytes) -> dict:
+    """Parse the CLI's JSON stdout; tolerate plain-text output.
+
+    Same tolerance as drivers/claude_code.py's _parse_output — kept as a
+    separate copy here rather than importing that module's private
+    staticmethod, since claude_code.py is driver-specific and this module
+    is intentionally independent of it.
+    """
+    text = (out or b"").decode(errors="replace").strip()
+    if not text:
+        return {}
+    try:
+        data = json.loads(text)
+        return data if isinstance(data, dict) else {"result": data}
+    except json.JSONDecodeError:
+        return {"result": text}

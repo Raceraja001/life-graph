@@ -259,3 +259,13 @@ async def test_model_missing_architecture_field_is_excluded():
 
     ids = {m["id"] for m in models}
     assert "openrouter/vendor/mystery-model" not in ids
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_entry_always_present_on_success():
+    _FakeAsyncClient.body = {"data": []}
+
+    models = await model_catalog.get_model_catalog()
+
+    ids = {m["id"] for m in models}
+    assert "claude-cli" in ids

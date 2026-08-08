@@ -32,6 +32,11 @@ FALLBACK_MODELS: list[dict] = [
     {"id": "gemini/gemini-3.6-flash", "name": "Gemini 3.6 Flash", "is_free": False},
     {"id": "gemini/gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash Lite", "is_free": False},
     {"id": "openrouter/deepseek/deepseek-chat", "name": "DeepSeek Chat", "is_free": False},
+    {
+        "id": "claude-cli",
+        "name": "Claude CLI (subscription, no tool-calling)",
+        "is_free": False,
+    },
 ]
 
 
