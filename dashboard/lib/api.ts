@@ -174,7 +174,11 @@ export const api = {
         }
       }
     },
-    personas: () => GET<any[]>("/kernel/personas"),
+    personas: {
+      list: () => GET<any>("/kernel/personas"),  // caller unwraps .data.personas
+      update: (id: string, body: Record<string, unknown>) =>
+        request<any>("PATCH", `/kernel/personas/${id}`, body),
+    },
     projects: () => listRequest<any>("/kernel/projects"),
     // /kernel/notifications returns data = {notifications, total, unread_count} (a dict, like
     // /kernel/schedules), so listRequest's flat-array unwrap can't see it — read the nested key.

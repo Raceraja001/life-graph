@@ -437,3 +437,48 @@ export function useGradeShadowRun() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["shadow-runs"] }),
   });
 }
+
+// ── Personas (model picker) ─────────────────────────────
+// Lets a persona's model/temperature/max_tokens be edited from the
+// dashboard — fixes a persona stuck on a dead/deprecated model id without
+// SSH or direct database access.
+export interface PersonaVM {
+  id: string;
+  name: string;
+  displayName: string | null;
+  icon: string | null;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  isBuiltin: boolean;
+}
+
+export function mapPersona(raw: any): PersonaVM {
+  return {
+    id: String(raw?.id ?? ""),
+    name: raw?.name ?? "",
+    displayName: raw?.display_name ?? null,
+    icon: raw?.icon ?? null,
+    model: raw?.model ?? "",
+    temperature: typeof raw?.temperature === "number" ? raw.temperature : 0.7,
+    maxTokens: typeof raw?.max_tokens === "number" ? raw.max_tokens : 4096,
+    isBuiltin: Boolean(raw?.is_builtin),
+  };
+}
+
+export function usePersonas() {
+  return useQuery({
+    queryKey: ["personas"],
+    queryFn: () => api.kernel.personas.list().then((r: any) => r?.data?.personas ?? []),
+    select: (rows: any[]) => rows.map(mapPersona),
+  });
+}
+
+export function useUpdatePersona() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api.kernel.personas.update(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["personas"] }),
+  });
+}
