@@ -14,6 +14,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from life_graph.config import Settings
+from life_graph.services.claude_cli_reply import run_claude_cli
 from life_graph.services.resilient_llm import ResilientLLMExhausted
 from life_graph.tools.registry import registry
 
@@ -94,6 +95,31 @@ class AgentOrchestrator:
                 }
             )
         working_messages.extend(messages)
+
+        if self.model == "claude-cli":
+            prompt = "\n".join(f"{msg['role']}: {msg['content']}" for msg in working_messages)
+
+            result = await run_claude_cli(prompt)
+            if not result.success:
+                # Matches the existing ResilientLLMExhausted failure shape
+                # exactly (orchestrator.py:297-304) — "partial_error" with a
+                # "message" key, always followed by a terminal "done".
+                yield _sse(
+                    {"type": "partial_error", "message": result.error, "retryable": True}
+                )
+                yield _sse({"type": "done", "model": self.model, "tokens": 0})
+                return
+
+            yield _sse({"type": "token", "content": result.text})
+            yield _sse(
+                {
+                    "type": "usage",
+                    "completion_tokens": len(result.text.split()),
+                    "total_tokens": len(result.text.split()),
+                }
+            )
+            yield _sse({"type": "done", "model": self.model, "tokens": len(result.text.split())})
+            return
 
         logger.info(
             "Agent run started: model=%s, tools=%d, messages=%d",
