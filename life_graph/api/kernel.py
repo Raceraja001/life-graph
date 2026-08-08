@@ -376,6 +376,8 @@ class PersonaSummary(BaseModel):
     description: str | None = None
     icon: str | None = None
     model: str
+    temperature: float = 0.7
+    max_tokens: int = 4096
     intent_tags: list[str] | None = None
     is_builtin: bool = False
     is_active: bool = True
@@ -394,6 +396,8 @@ def _persona_to_summary(p: dict) -> dict:
         "description": p.get("description"),
         "icon": p.get("icon"),
         "model": p.get("model", ""),
+        "temperature": p.get("temperature", 0.7),
+        "max_tokens": p.get("max_tokens", 4096),
         "intent_tags": p.get("intent_tags"),
         "is_builtin": p.get("is_builtin", False),
         "is_active": p.get("is_active", True),

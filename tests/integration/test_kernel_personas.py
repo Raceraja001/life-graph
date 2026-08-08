@@ -199,6 +199,28 @@ class TestListPersonas:
         )
         assert response.status_code in (200, 500)
 
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_list_personas_includes_temperature_and_max_tokens(
+        self, client: AsyncClient,
+    ):
+        """List response includes temperature/max_tokens per persona, not just
+        the narrow summary fields — the model picker renders every persona as
+        an editable card from this one list call, with no per-persona detail
+        fetch, so both fields must be present here."""
+        response = await client.get("/api/v1/kernel/personas")
+        assert response.status_code in (200, 500)
+
+        if response.status_code == 200:
+            body = response.json()
+            personas = body["data"]["personas"]
+            if personas:
+                first = personas[0]
+                assert "temperature" in first
+                assert "max_tokens" in first
+                assert isinstance(first["temperature"], float)
+                assert isinstance(first["max_tokens"], int)
+
 
 # ── Get Persona Detail ───────────────────────────────────────
 
