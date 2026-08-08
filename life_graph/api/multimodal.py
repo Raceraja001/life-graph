@@ -1,9 +1,11 @@
 """Multi-modal ingest endpoints (T-077, T-078).
 
 Provides file-upload routes for ingesting voice recordings, images,
-and documents into the Life Graph. Each endpoint stores the original
-in MinIO, extracts text, runs the extraction pipeline, and returns
-processing results.
+and documents into the Life Graph. Most endpoints store the original
+in MinIO, extract text, run the extraction pipeline, and return
+processing results — the exception is ``/transcribe``, which returns
+a transcript only and stores/queues nothing (used by live chat voice
+input, not capture).
 """
 
 from __future__ import annotations

@@ -670,6 +670,10 @@ Expected: no new errors or warnings introduced by this file's changes.
 5. Type a message instead of using the mic — confirm it does **not** get read aloud (only voice-originated turns speak).
 6. Deny mic permission (or test on a browser without `MediaRecorder`) — confirm `recorder.error` shows inline and nothing crashes.
 7. Tap the mic and stay silent, then tap again — confirm the "Didn't catch that" error shows and no turn is created.
+8. Send a message that produces a long, multi-paragraph reply — confirm it's spoken to completion, not cut off partway (Chrome has a known ~15s ceiling on a single utterance).
+9. Start a voice turn, then navigate away from `/m/chat` while the reply is still being spoken — confirm speech stops (it should not keep talking after the screen changes).
+10. Repeat the full walkthrough on the actual primary target device/browser (not just desktop Chrome) — in particular test on iOS Safari if that's a supported target, since it requires a user gesture to start speech and this reply is triggered from an async callback, not a direct tap.
+11. Tap the mic in the brief instant right after a reply finishes streaming but before it visibly starts speaking — confirm this reliably stops/prevents that reply's speech rather than letting it start anyway.
 
 - [ ] **Step 10: Commit**
 

@@ -51,6 +51,11 @@ const ROLE_COLOR: Record<string, string> = {
   admin: "var(--accent-text)",
 };
 
+// Client-side guard, well under both real ceilings: the server's own
+// MAX_UPLOAD_SIZE (50MB, life_graph/api/multimodal.py) and Groq's own
+// ~25MB transcription limit.
+const MAX_VOICE_BYTES = 20 * 1024 * 1024;
+
 function roleColor(persona: string): string {
   return ROLE_COLOR[persona] ?? "var(--accent-text)";
 }
@@ -70,7 +75,10 @@ export function PersonaChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const recorder = useRecorder();
   const [transcribing, setTranscribing] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
+  // Only the setter is read now: Fix 2 (barge-in race) made the cancel()
+  // in onMicTap unconditional rather than gated on this value, and nothing
+  // else reads it — it exists purely to drive TTS lifecycle side effects.
+  const [, setSpeaking] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   // Captured from the SSE `start` event so Stop can best-effort cancel the
   // backend task too (aborting the fetch alone leaves Jarvis running and
@@ -81,6 +89,15 @@ export function PersonaChat() {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [turns.length, streaming]);
 
+  // Silence any in-progress speech if this component unmounts (e.g.
+  // navigating away from /m/chat mid-reply) — nothing else stops it once
+  // the Stop button (visible only while `streaming`) has already gone away.
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    };
+  }, []);
+
   function patchLast(fn: (t: Turn) => Turn) {
     setTurns((ts) => (ts.length === 0 ? ts : ts.map((t, i) => (i === ts.length - 1 ? fn(t) : t))));
   }
@@ -88,7 +105,7 @@ export function PersonaChat() {
   async function send(message?: string, viaVoice = false) {
     const msg = (message ?? input).trim();
     if (!msg || streaming || !online) return;
-    setInput("");
+    if (message === undefined) setInput("");
     setTurns((ts) => [...ts, newTurn(msg, viaVoice)]);
     setStreaming(true);
     abort.current = new AbortController();
@@ -183,18 +200,23 @@ export function PersonaChat() {
   const lastIdx = turns.length - 1;
   const lastTurn = turns[lastIdx];
 
-  const MAX_VOICE_BYTES = 20 * 1024 * 1024; // stay far below Cloudflare's 100MB
-
   async function onMicTap() {
-    if (speaking && typeof window !== "undefined") {
-      // Barge-in: interrupt a spoken reply and start listening immediately,
-      // rather than making the user wait it out.
+    // Unconditional, not gated on `speaking`: cancel() is a documented
+    // no-op when nothing is queued/speaking, and gating on `speaking`
+    // (only set by the utterance's own `onstart`) leaves a real race
+    // window between speak() being called and onstart firing — a tap in
+    // that window would let TTS start playing while the mic is recording,
+    // capturing Jarvis's own voice into the next transcript.
+    if (typeof window !== "undefined") {
       window.speechSynthesis.cancel();
-      setSpeaking(false);
     }
+    setSpeaking(false);
     if (recorder.recording) {
       const blob = await recorder.stop();
-      if (!blob || blob.size === 0) return;
+      if (!blob || blob.size === 0) {
+        setMicError("Didn't catch that — try again.");
+        return;
+      }
       if (blob.size > MAX_VOICE_BYTES) {
         setMicError("Recording too large — try a shorter clip.");
         return;
@@ -211,8 +233,13 @@ export function PersonaChat() {
           return;
         }
         await send(transcript, true);
-      } catch {
-        setMicError("Couldn't transcribe — try again.");
+      } catch (e) {
+        // The backend maps an empty/silent transcription to HTTP 422 (see
+        // uploadRequest's `API ${status}: ...` error format) — surface the
+        // same "didn't catch that" message as the empty-string case above,
+        // not a generic failure message that implies the server is broken.
+        const is422 = e instanceof Error && e.message.startsWith("API 422");
+        setMicError(is422 ? "Didn't catch that — try again." : "Couldn't transcribe — try again.");
       } finally {
         setTranscribing(false);
       }
@@ -226,7 +253,7 @@ export function PersonaChat() {
   // turns (viaVoice falsy) never trigger this. Guarded on lastTurn?.done so
   // this only fires once per turn, when it actually completes.
   useEffect(() => {
-    if (!lastTurn || !lastTurn.done || !lastTurn.viaVoice) return;
+    if (!lastTurn || !lastTurn.done || !lastTurn.viaVoice || lastTurn.errored) return;
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     const utterance = new SpeechSynthesisUtterance(lastTurn.synthesis || "");
     utterance.onstart = () => setSpeaking(true);
@@ -405,9 +432,9 @@ export function PersonaChat() {
           You’re offline — chat needs a connection.
         </p>
       )}
-      {(recorder.error || micError) && (
+      {(micError || recorder.error) && (
         <p style={{ fontSize: "var(--text-2xs)", color: "var(--danger)", textAlign: "center", margin: "6px 0 0" }}>
-          {recorder.error || micError}
+          {micError || recorder.error}
         </p>
       )}
     </div>
