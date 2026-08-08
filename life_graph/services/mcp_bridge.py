@@ -11,6 +11,7 @@ unrelated directions; nothing here talks to mcp_server.py.
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -21,6 +22,14 @@ from life_graph.config import settings
 from life_graph.tools.registry import registry
 
 logger = logging.getLogger(__name__)
+
+# OpenAI-shape function-calling names are constrained to this pattern.
+# registry.get_tools() is one global list every persona/model shares, so a
+# single bridged tool with an out-of-spec name (illegal characters, or too
+# long once prefixed with "mcp_<server>_") could break tool-calling for
+# every persona that can see it, not just calls to that one tool. Validate
+# and skip rather than fail the whole server's connection over one bad name.
+_VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 
 async def connect_all(exit_stack: AsyncExitStack) -> int:
@@ -55,15 +64,27 @@ async def _connect_one(exit_stack: AsyncExitStack, server_config: dict) -> int:
     await session.initialize()
 
     result = await session.list_tools()
+    registered = 0
     for tool in result.tools:
+        composed_name = f"mcp_{name}_{tool.name}"
+        if not _VALID_TOOL_NAME.match(composed_name):
+            logger.warning(
+                "mcp_bridge: skipping tool %r on server %r — composed name %r is not a "
+                "valid function-calling name",
+                tool.name,
+                name,
+                composed_name,
+            )
+            continue
         registry.register(
-            name=f"mcp_{name}_{tool.name}",
+            name=composed_name,
             description=tool.description or "",
             parameters_schema=tool.inputSchema,
             handler=_make_bridge_handler(session, tool.name),
         )
-    logger.info("mcp_bridge: connected %r, registered %d tool(s)", name, len(result.tools))
-    return len(result.tools)
+        registered += 1
+    logger.info("mcp_bridge: connected %r, registered %d tool(s)", name, registered)
+    return registered
 
 
 def _make_bridge_handler(session: ClientSession, tool_name: str):
@@ -78,6 +99,15 @@ def _make_bridge_handler(session: ClientSession, tool_name: str):
                 parts.append(block.text)
             else:
                 parts.append(f"[non-text content: {getattr(block, 'type', 'unknown')}]")
-        return "\n".join(parts)
+        joined_text = "\n".join(parts)
+        if getattr(result, "isError", False):
+            # The MCP server reported this call as an error. Raise rather
+            # than returning the error text as if it were a successful
+            # result — ToolRegistry.execute() already catches handler
+            # exceptions and converts them into an error result, so raising
+            # here is sufficient to keep downstream success/failure tracking
+            # honest.
+            raise RuntimeError(joined_text)
+        return joined_text
 
     return handler

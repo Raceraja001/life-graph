@@ -5,6 +5,15 @@ timeout handling, JSON parsing) but is a standalone caller for the model-
 routing path (AgentOrchestrator selecting "claude-cli" as a persona's
 model), not a Driver — this is unrelated to the claude_code driver's
 task-dispatch use case, which is untouched by this module.
+
+Despite being "tool-free" from Life Graph's own registry's point of view,
+every call is still scoped the same way drivers/claude_code.py scopes its
+own CLI invocations: `--permission-mode manual` plus an explicit
+`--disallowedTools` denylist (reusing that module's `_DENIABLE_CLI_TOOLS` /
+`_RESTRICTIVE_PERMISSION_MODE`), so a permissive host-level
+`~/.claude/settings.json` can't silently hand an unattended reply more
+capability than intended, and `cwd` is pinned to a scratch temp directory
+rather than inheriting the FastAPI server's own working directory.
 """
 
 from __future__ import annotations
@@ -13,10 +22,12 @@ import asyncio
 import contextlib
 import json
 import logging
+import tempfile
 import time
 from dataclasses import dataclass
 
 from life_graph.config import settings
+from life_graph.drivers.claude_code import _DENIABLE_CLI_TOOLS, _RESTRICTIVE_PERMISSION_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +56,16 @@ async def run_claude_cli(prompt: str, timeout: float = 60.0) -> ClaudeCliResult:
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            binary, "-p", prompt, "--output-format", "json",
+            binary,
+            "-p",
+            prompt,
+            "--output-format",
+            "json",
+            "--permission-mode",
+            _RESTRICTIVE_PERMISSION_MODE,
+            "--disallowedTools",
+            ",".join(_DENIABLE_CLI_TOOLS),
+            cwd=tempfile.gettempdir(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -68,8 +88,11 @@ async def run_claude_cli(prompt: str, timeout: float = 60.0) -> ClaudeCliResult:
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except TimeoutError:
-        proc.kill()
         with contextlib.suppress(Exception):
+            # kill() can itself raise ProcessLookupError if the process
+            # already exited in the race window right at the timeout
+            # boundary — cover it with the same suppress as the drain below.
+            proc.kill()
             await proc.communicate()
         return ClaudeCliResult(
             success=False,

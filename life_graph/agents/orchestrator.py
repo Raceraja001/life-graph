@@ -99,7 +99,18 @@ class AgentOrchestrator:
         if self.model == "claude-cli":
             try:
                 prompt = "\n".join(
-                    f"{msg['role']}: {msg['content']}" for msg in working_messages
+                    f"{msg['role']}: {msg.get('content') or ''}" for msg in working_messages
+                )
+                # claude-cli replies have zero tool access by design (see
+                # docs/superpowers/specs/2026-08-08-claude-cli-model-routing-design.md).
+                # A persona's system prompt may itself instruct tool use or
+                # delegation (e.g. jarvis's whole prompt is delegation
+                # instructions) — make the no-tools constraint explicit so
+                # the model doesn't hallucinate having delegated or run a
+                # tool that never executed.
+                prompt += (
+                    "\n\n(No tools are available this turn. Answer directly; do not "
+                    "claim to have delegated to another persona or run any tool.)"
                 )
                 result = await run_claude_cli(prompt)
             except Exception as exc:
@@ -109,9 +120,7 @@ class AgentOrchestrator:
                 # ResilientLLMExhausted failure shape exactly
                 # (orchestrator.py:297-304) — "partial_error" with a
                 # "message" key, always followed by a terminal "done".
-                yield _sse(
-                    {"type": "partial_error", "message": str(exc), "retryable": True}
-                )
+                yield _sse({"type": "partial_error", "message": str(exc), "retryable": True})
                 yield _sse({"type": "done", "model": self.model, "tokens": 0})
                 return
 
@@ -119,9 +128,7 @@ class AgentOrchestrator:
                 # Matches the existing ResilientLLMExhausted failure shape
                 # exactly (orchestrator.py:297-304) — "partial_error" with a
                 # "message" key, always followed by a terminal "done".
-                yield _sse(
-                    {"type": "partial_error", "message": result.error, "retryable": True}
-                )
+                yield _sse({"type": "partial_error", "message": result.error, "retryable": True})
                 yield _sse({"type": "done", "model": self.model, "tokens": 0})
                 return
 

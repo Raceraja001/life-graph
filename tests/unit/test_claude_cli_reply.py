@@ -1,5 +1,8 @@
+import tempfile
+
 import pytest
 
+from life_graph.drivers.claude_code import _DENIABLE_CLI_TOOLS, _RESTRICTIVE_PERMISSION_MODE
 from life_graph.services.claude_cli_reply import run_claude_cli
 
 
@@ -80,6 +83,35 @@ async def test_non_zero_exit_returns_failure(monkeypatch):
 
     assert result.success is False
     assert "bad request" in result.error
+
+
+@pytest.mark.asyncio
+async def test_subprocess_call_is_permission_scoped_and_not_repo_cwd(monkeypatch):
+    # Critical-finding regression guard: every claude-cli reply must run
+    # with the same scoping as drivers/claude_code.py's hardened CLI calls
+    # (--permission-mode manual + an explicit --disallowedTools denylist),
+    # and must never inherit the FastAPI server's own cwd (the repo root).
+    captured = {}
+
+    async def _fake_exec(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return _FakeProcess(0, b'{"result": "hi", "is_error": false}')
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", _fake_exec)
+
+    await run_claude_cli("hi")
+
+    args = captured["args"]
+    assert "--permission-mode" in args
+    assert args[args.index("--permission-mode") + 1] == _RESTRICTIVE_PERMISSION_MODE
+    assert "--disallowedTools" in args
+    denied = args[args.index("--disallowedTools") + 1].split(",")
+    assert set(denied) == set(_DENIABLE_CLI_TOOLS)
+
+    cwd = captured["kwargs"].get("cwd")
+    assert cwd is not None
+    assert cwd == tempfile.gettempdir()
 
 
 @pytest.mark.asyncio
