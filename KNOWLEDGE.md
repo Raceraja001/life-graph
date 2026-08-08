@@ -1,6 +1,6 @@
 # 🧠 Project Knowledge Base
 
-> **Last updated:** 2026-07-07 | **Version:** 1.1.0
+> **Last updated:** 2026-08-08 | **Version:** 1.2.0
 
 This is the single source of truth for AI agents and developers working on Life Graph.
 Read this FIRST before touching any code.
@@ -311,15 +311,30 @@ All env vars prefixed `LIFE_GRAPH_`:
 
 Eras 4–8, Capture Spine (incl. interview + daily brief), Judgment Engine,
 Agent Drivers (incl. `claude_code`), the dashboard, and the Lifeline are
-**built** — see START_HERE.md for the verified status table. Remaining gaps:
+**built** — see START_HERE.md for the verified status table. The 8 items
+formerly listed here (tool-observation hook, correction-triple export,
+failure-pattern mining, big-decision detection, second-opinion reviewer,
+seed personas, watcher→task origination, SDK docs) were all closed by
+July 12, 2026 — see START_HERE.md's "Remaining Gaps — ALL CLOSED" section.
 
-- [ ] **Tool-observation hook** — tool registry post-execution → capture spine (secret redaction, daily cap)
-- [ ] **Correction-triple NDJSON export** — capture spine export endpoint
-- [ ] **Monthly failure-pattern mining** — judgment engine cron (instances-cited-or-dropped rule)
-- [ ] **Big-decision detection** — heuristic → brief suggestion (once, never nagging)
-- [ ] **Second-opinion reviewer** — dissenting cheap-model pass in the verifier chain
-- [ ] **Seed personas** — `uzhavu-ops` + `dependency-updater` rows (agent-drivers Story 5)
-- [ ] **Watcher→task origination** — watcher findings + scheduler originate kernel tasks
+Since then, the Jarvis persona layer, streaming chat, ambient advisory
+roles, autonomous action roles, LLM resilient fallback, and the persona
+model picker have shipped and deployed — see START_HERE.md's
+"Era 9 — Jarvis Persona Layer & Beyond" section for what's built. Real
+remaining gaps, in priority order:
+
+- [ ] **Calendar + email reading** — biggest gap for life-admin usefulness;
+  `config.py` has Google-creds stubs (`google_credentials_json`,
+  `google_delegated_user`) but no tool files exist yet
+- [ ] **Voice output (TTS)** — push-to-talk voice input exists
+  (`POST /ingest/transcribe`); nothing talks back yet
+- [ ] **Messaging channels** — WhatsApp/Telegram as an interaction surface
+  (specs exist, no code)
+- [ ] **Live OpenRouter model search** — the persona picker's model dropdown
+  is a curated static list (`dashboard/lib/model-options.ts`), already stale
+  against OpenRouter's real free-tier catalog
+- [ ] **Raising autonomy trust (L0→L1)** — a policy decision once
+  shadow-mode graduates real personas, not a build task
 - [ ] **SDK documentation** — Python + TypeScript SDK usage examples
 
 ---

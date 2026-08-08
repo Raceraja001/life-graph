@@ -6,7 +6,43 @@
 
 Life Graph is an **AI Operating System** — an always-running personal AI assistant built with FastAPI + PostgreSQL. It's not just a memory service. It manages agents, tools, watchers, and learns from every interaction.
 
-## Current State (Updated: July 11, 2026)
+## Current State (Updated: August 8, 2026)
+
+### ✅ Era 9 — Jarvis Persona Layer & Beyond (built since July 12, 2026)
+
+Not yet reflected in the Roadmap Status table below (those rows predate this
+work). Verified against `origin/master` and the live production deploy
+(`brain.raceraja001.in`, GCP VM) — all of it is merged **and** deployed:
+
+- **Streaming Jarvis chat** — SSE token streaming + persona delegation chips
+  in the dashboard chat bar (`dashboard/components/chat-bar.tsx`), consuming
+  real assistant replies instead of raw routing JSON. Design:
+  `docs/superpowers/specs/2026-08-05-jarvis-streaming-chat-design.md`.
+- **Ambient advisory roles** — `scout`/`admin` run on a schedule, post
+  read-only findings as notifications (Sub-project A of `personal-roles.md`).
+- **Autonomous action roles (B1 + B2)** — `ops` proposes command actions,
+  `cody` proposes open-ended `agent_task` fixes; both flow through
+  autonomy classify/shadow/queue → unified `/m/approvals` → execute-on-approve.
+  Real file read/write tools, git-worktree isolation, diff-scoped verifiers
+  (`docs/superpowers/plans/tool-scoping...`).
+- **Push-to-talk voice input** — `POST /ingest/transcribe` +
+  `/m/chat` mic button (STT only — no voice output yet).
+- **LLM resilient fallback** — streaming calls now validate their first
+  chunk before being trusted, health-ranked free-model pool, exponential
+  backoff per model, guaranteed paid last-resort model
+  (`life_graph/services/resilient_llm.py`).
+- **Persona model picker** — `/settings` and `/m/personas` let a persona's
+  `model`/`temperature`/`max_tokens` be edited from the dashboard instead of
+  DB surgery.
+
+Current known gaps (see `docs/design/08_jarvis_roadmap_2026-08.md` on the
+`docs/knowledge-base-design` branch for the full reasoning): no voice
+**output** (TTS), no real-world integrations (calendar/email reading,
+messaging channels), autonomy still defaults to L0/shadow-mode, and the
+persona model picker's dropdown is a curated static list rather than a live
+OpenRouter search.
+
+### Prior state (as of July 11, 2026)
 
 ### ✅ What's Built
 - **Memory System** — 45 endpoints, pgvector, Apache AGE knowledge graph, events, dedup, decay
