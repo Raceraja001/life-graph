@@ -22,6 +22,7 @@ from typing import Any
 
 from fastapi import Query, WebSocket, WebSocketDisconnect
 
+from life_graph.api.auth import extract_api_key
 from life_graph.config import settings
 from life_graph.core.events import Event
 from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
@@ -223,15 +224,25 @@ async def websocket_endpoint(
 ) -> None:
     """WebSocket endpoint for real-time event streaming.
 
-    Authenticates via an ``api_key`` query parameter (compared
-    against ``settings.api_key``).  Once connected, the client
-    receives JSON-encoded events from the EventBus broadcast.
+    Authenticates via, in order: an ``Authorization: Bearer`` header, an
+    ``X-API-Key`` header, or an ``api_key`` query parameter (compared
+    against ``settings.api_key``) — the same precedence as the HTTP auth
+    path (``api/auth.py``'s ``verify_service_key``). The header sources
+    matter here specifically: a browser's native WebSocket API can't set
+    custom headers on its own outgoing handshake, but Caddy injects
+    ``X-API-Key`` on proxied ``/ws`` requests once Cloudflare Access has
+    already gated them, the same way it does for ``/api``/``/docs``. A
+    check that only looked at the query parameter never saw that header,
+    so every browser connection sent a placeholder key and failed auth —
+    once connected, receives JSON-encoded events from the EventBus
+    broadcast.
 
     The connection stays alive listening for client messages
     (pings / keepalives) until the client disconnects.
     """
     # ── Auth check ────────────────────────────────────────
-    if settings.api_key and api_key != settings.api_key:
+    resolved_key = extract_api_key(websocket.headers, websocket.query_params) or api_key
+    if settings.api_key and resolved_key != settings.api_key:
         await websocket.close(code=4001, reason="Invalid API key")
         return
 

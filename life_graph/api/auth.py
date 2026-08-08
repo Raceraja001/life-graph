@@ -8,6 +8,7 @@ Tenant identity comes from `X-Tenant-ID` header (set by the SaaS app).
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import Request, HTTPException, status
 
@@ -37,6 +38,38 @@ def is_exempt_path(path: str) -> bool:
     return any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES)
 
 
+def extract_api_key(headers: Any, query_params: Any) -> str | None:
+    """Extract a candidate API key from request-like headers/query params.
+
+    Checks, in order: ``Authorization: Bearer``, then ``X-API-Key``
+    header, then an ``api_key`` query parameter. Shared between the
+    HTTP auth path below and the WebSocket handshake in
+    ``api/websocket.py`` — the WS route is the one path where a browser
+    client can't know the real secret itself and instead relies on
+    Caddy injecting ``X-API-Key`` after Cloudflare Access has already
+    gated the request (see docs/... GCP deployment notes); a check that
+    only looked at the query param never saw that header and treated
+    every browser connection as unauthenticated.
+
+    Args:
+        headers: A ``Headers``-like mapping (``request.headers`` or
+            ``websocket.headers``).
+        query_params: A ``QueryParams``-like mapping (``request.
+            query_params`` or ``websocket.query_params``).
+
+    Returns:
+        The candidate key, or None if none of the three sources had one.
+        Callers are responsible for validating it.
+    """
+    auth_header = headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()
+    api_key = headers.get("X-API-Key")
+    if api_key:
+        return api_key
+    return query_params.get("api_key")
+
+
 def verify_service_key(request: Request) -> str | None:
     """Verify the service API key from Authorization header.
 
@@ -56,18 +89,7 @@ def verify_service_key(request: Request) -> str | None:
         if not settings.api_key:
             return None
 
-    # Extract bearer token
-    auth_header = request.headers.get("Authorization", "")
-    api_key = None
-
-    if auth_header.startswith("Bearer "):
-        api_key = auth_header[7:].strip()
-    else:
-        # Fallback: X-API-Key header (backward compatibility)
-        api_key = request.headers.get("X-API-Key")
-        # Fallback: query parameter (backward compatibility)
-        if not api_key:
-            api_key = request.query_params.get("api_key")
+    api_key = extract_api_key(request.headers, request.query_params)
 
     if not api_key:
         raise HTTPException(
