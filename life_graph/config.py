@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     # is the default so a keyless self-host works out of the box; ResilientLLM
     # fails over to `llm_fallback_chain` from here. Override via LIFE_GRAPH_LLM_MODEL_CHEAP.
     llm_model_cheap: str = "openrouter/openai/gpt-oss-20b:free"
-    llm_model_expensive: str = "gemini/gemini-2.5-pro"
+    llm_model_expensive: str = "gemini/gemini-3.6-flash"
     llm_daily_budget_usd: float = 1.0
 
     # ── Proactive Recall ───────────────────────────────
@@ -122,7 +122,7 @@ class Settings(BaseSettings):
     advisor_max_cost_per_query: float = 0.01
 
     # ── Resilient LLM failover ────────────────────
-    llm_fallback_chain: str = "openrouter/deepseek/deepseek-chat,gemini/gemini-2.0-flash"
+    llm_fallback_chain: str = "openrouter/deepseek/deepseek-chat,gemini/gemini-3.5-flash-lite"
     llm_cooldown_429_seconds: int = 60
     llm_cooldown_error_seconds: int = 30
     llm_cooldown_max_seconds: int = 900
@@ -198,7 +198,7 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
 
     # ── Self-Improving Agent ─────────────────────────
-    optimization_model: str = "openrouter/google/gemini-2.5-flash"
+    optimization_model: str = "openrouter/google/gemini-3.6-flash"
     eval_max_parallel: int = 5
     eval_accuracy_threshold_pct: float = 90.0
     optimization_min_improvement_pct: float = 1.0

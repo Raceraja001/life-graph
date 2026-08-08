@@ -13,10 +13,12 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import litellm
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 from life_graph.config import settings
 from life_graph.services.llm_health import LLMHealth
@@ -92,9 +94,7 @@ class ResilientLLM:
         Ties preserve the pool's original `.env` list order (stable sort).
         """
         seen: set[str] = {primary}
-        pool = [
-            m for m in settings.llm_fallback_chain_list if m and not (m in seen or seen.add(m))
-        ]
+        pool = [m for m in settings.llm_fallback_chain_list if m and not (m in seen or seen.add(m))]
 
         async def _rank_key(m: str) -> tuple[int, float]:
             rec = await self._health.get(m)
@@ -138,6 +138,12 @@ class ResilientLLM:
         chain = [primary, *await self._rank_fallbacks(primary)]
         if settings.llm_paid_fallback_model and settings.llm_paid_fallback_model not in chain:
             chain.append(settings.llm_paid_fallback_model)
+        elif settings.llm_paid_fallback_model:
+            logger.warning(
+                "Paid fallback model %s is already present in the free fallback chain; "
+                "the 'always last, cost-gated' guarantee does not hold in this configuration",
+                settings.llm_paid_fallback_model,
+            )
         skipped: list[str] = []
         for m in chain:
             if await self._health.in_cooldown(m):

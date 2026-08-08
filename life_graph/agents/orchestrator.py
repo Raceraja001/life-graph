@@ -13,9 +13,9 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from life_graph.tools.registry import registry
 from life_graph.config import Settings
 from life_graph.services.resilient_llm import ResilientLLMExhausted
+from life_graph.tools.registry import registry
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +47,7 @@ class AgentOrchestrator:
         settings = Settings()
         self.model = model or settings.agent_llm_model
         self.temperature = (
-            temperature if temperature is not None
-            else settings.agent_llm_temperature
+            temperature if temperature is not None else settings.agent_llm_temperature
         )
         self.max_tokens = max_tokens or settings.agent_llm_max_tokens
         self.FALLBACK_MODEL = settings.agent_fallback_model
@@ -83,17 +82,17 @@ class AgentOrchestrator:
         # also the enforcement boundary at execute time (see below), so a
         # persona's allowed_tools filtering can't be bypassed by a model
         # emitting a tool_call for a tool it was never shown.
-        allowed_tool_names = {
-            t["function"]["name"] for t in resolved_tools
-        }
+        allowed_tool_names = {t["function"]["name"] for t in resolved_tools}
 
         # Build working message list.
         working_messages: list[dict[str, Any]] = []
         if system_prompt:
-            working_messages.append({
-                "role": "system",
-                "content": system_prompt,
-            })
+            working_messages.append(
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                }
+            )
         working_messages.extend(messages)
 
         logger.info(
@@ -133,11 +132,7 @@ class AgentOrchestrator:
                 tool_calls_acc: dict[int, dict[str, Any]] = {}
 
                 async for chunk in response:
-                    delta = (
-                        chunk.choices[0].delta
-                        if chunk.choices
-                        else None
-                    )
+                    delta = chunk.choices[0].delta if chunk.choices else None
                     if delta is None:
                         continue
 
@@ -145,10 +140,12 @@ class AgentOrchestrator:
                     if delta.content:
                         content_parts.append(delta.content)
                         total_tokens += 1
-                        yield _sse({
-                            "type": "token",
-                            "content": delta.content,
-                        })
+                        yield _sse(
+                            {
+                                "type": "token",
+                                "content": delta.content,
+                            }
+                        )
 
                     # Accumulate tool calls across chunks.
                     if delta.tool_calls:
@@ -164,13 +161,9 @@ class AgentOrchestrator:
                                 tool_calls_acc[idx]["id"] = tc.id
                             if tc.function:
                                 if tc.function.name:
-                                    tool_calls_acc[idx]["name"] = (
-                                        tc.function.name
-                                    )
+                                    tool_calls_acc[idx]["name"] = tc.function.name
                                 if tc.function.arguments:
-                                    tool_calls_acc[idx]["arguments"] += (
-                                        tc.function.arguments
-                                    )
+                                    tool_calls_acc[idx]["arguments"] += tc.function.arguments
 
                 # If no tool calls, we're done.
                 if not tool_calls_acc:
@@ -180,30 +173,36 @@ class AgentOrchestrator:
                         total_tokens,
                     )
                     # Emit usage data for frontend token display
-                    yield _sse({
-                        "type": "usage",
-                        "completion_tokens": total_tokens,
-                        "total_tokens": total_tokens,
-                    })
-                    yield _sse({
-                        "type": "done",
-                        "model": self.model,
-                        "tokens": total_tokens,
-                    })
+                    yield _sse(
+                        {
+                            "type": "usage",
+                            "completion_tokens": total_tokens,
+                            "total_tokens": total_tokens,
+                        }
+                    )
+                    yield _sse(
+                        {
+                            "type": "done",
+                            "model": self.model,
+                            "tokens": total_tokens,
+                        }
+                    )
                     return
 
                 # Build assistant message with tool calls for context.
                 assistant_tool_calls = []
                 for idx in sorted(tool_calls_acc.keys()):
                     tc_data = tool_calls_acc[idx]
-                    assistant_tool_calls.append({
-                        "id": tc_data["id"],
-                        "type": "function",
-                        "function": {
-                            "name": tc_data["name"],
-                            "arguments": tc_data["arguments"],
-                        },
-                    })
+                    assistant_tool_calls.append(
+                        {
+                            "id": tc_data["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc_data["name"],
+                                "arguments": tc_data["arguments"],
+                            },
+                        }
+                    )
 
                 assistant_msg: dict[str, Any] = {
                     "role": "assistant",
@@ -228,12 +227,14 @@ class AgentOrchestrator:
                         )
 
                     # Signal tool execution start.
-                    yield _sse({
-                        "type": "tool_call",
-                        "name": tool_name,
-                        "arguments": tool_args,
-                        "status": "running",
-                    })
+                    yield _sse(
+                        {
+                            "type": "tool_call",
+                            "name": tool_name,
+                            "arguments": tool_args,
+                            "status": "running",
+                        }
+                    )
 
                     # Execute the tool — but only if it's within the set
                     # advertised for this run. This is the actual
@@ -248,35 +249,38 @@ class AgentOrchestrator:
                             " the allowed tool set for this run",
                             tool_name,
                         )
-                        result = json.dumps({
-                            "error": (
-                                f"tool '{tool_name}' is not permitted for"
-                                " this persona"
-                            ),
-                        })
+                        result = json.dumps(
+                            {
+                                "error": (f"tool '{tool_name}' is not permitted for this persona"),
+                            }
+                        )
                     else:
                         try:
-                            result = await registry.execute(
-                                tool_name, tool_args
-                            )
+                            result = await registry.execute(tool_name, tool_args)
                         except KeyError:
-                            result = json.dumps({
-                                "error": f"Unknown tool: {tool_name}",
-                            })
+                            result = json.dumps(
+                                {
+                                    "error": f"Unknown tool: {tool_name}",
+                                }
+                            )
 
                     # Signal tool execution result.
-                    yield _sse({
-                        "type": "tool_result",
-                        "name": tool_name,
-                        "result": result,
-                    })
+                    yield _sse(
+                        {
+                            "type": "tool_result",
+                            "name": tool_name,
+                            "result": result,
+                        }
+                    )
 
                     # Append tool result for next LLM iteration.
-                    working_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc_info["id"],
-                        "content": result,
-                    })
+                    working_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc_info["id"],
+                            "content": result,
+                        }
+                    )
 
                 logger.debug(
                     "Tool calls executed: %s",
@@ -290,11 +294,13 @@ class AgentOrchestrator:
                 # every attempt failed — nothing left for the orchestrator to
                 # retry or switch to. Surface one clear terminal error.
                 logger.error("All models exhausted for agent run: %s", exc)
-                yield _sse({
-                    "type": "partial_error",
-                    "message": "All models are currently unavailable. Please try again shortly.",
-                    "retryable": True,
-                })
+                yield _sse(
+                    {
+                        "type": "partial_error",
+                        "message": "All models are currently unavailable. Please try again shortly.",
+                        "retryable": True,
+                    }
+                )
                 yield _sse({"type": "done", "model": self.model, "tokens": total_tokens})
                 return
 
@@ -305,39 +311,46 @@ class AgentOrchestrator:
 
                 if retry_count < 1:  # single retry for unknown errors
                     logger.warning(
-                        "Unexpected error, retrying once: %s", exc,
+                        "Unexpected error, retrying once: %s",
+                        exc,
                     )
-                    yield _sse({
-                        "type": "status",
-                        "message": "Recovering from error...",
-                    })
+                    yield _sse(
+                        {
+                            "type": "status",
+                            "message": "Recovering from error...",
+                        }
+                    )
                     await asyncio.sleep(1.0)
                     continue
 
                 logger.exception("Unrecoverable agent error: %s", exc)
-                yield _sse({
-                    "type": "partial_error",
-                    "message": f"Internal error: {type(exc).__name__}",
-                    "retryable": True,
-                })
+                yield _sse(
+                    {
+                        "type": "partial_error",
+                        "message": f"Internal error: {type(exc).__name__}",
+                        "retryable": True,
+                    }
+                )
                 yield _sse({"type": "done", "model": self.model, "tokens": total_tokens})
                 return
 
         # Max iterations reached.
-        logger.warning(
-            "Agent hit max iterations (%d)", self.MAX_ITERATIONS
+        logger.warning("Agent hit max iterations (%d)", self.MAX_ITERATIONS)
+        yield _sse(
+            {
+                "type": "usage",
+                "completion_tokens": total_tokens,
+                "total_tokens": total_tokens,
+            }
         )
-        yield _sse({
-            "type": "usage",
-            "completion_tokens": total_tokens,
-            "total_tokens": total_tokens,
-        })
-        yield _sse({
-            "type": "done",
-            "model": self.model,
-            "tokens": total_tokens,
-            "warning": "Max tool-calling iterations reached.",
-        })
+        yield _sse(
+            {
+                "type": "done",
+                "model": self.model,
+                "tokens": total_tokens,
+                "warning": "Max tool-calling iterations reached.",
+            }
+        )
 
 
 # ── SSE Helpers ─────────────────────────────────────────────
