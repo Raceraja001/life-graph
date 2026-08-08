@@ -48,6 +48,51 @@ async def test_record_success_sets_last_success_and_latency(health):
 
 
 @pytest.mark.asyncio
+async def test_record_failure_returns_incrementing_count(health):
+    h, _ = health
+    assert await h.record_failure("m1", "error") == 1
+    assert await h.record_failure("m1", "error") == 2
+    assert await h.record_failure("m1", "error") == 3
+
+
+@pytest.mark.asyncio
+async def test_record_failure_count_resets_after_success(health):
+    h, _ = health
+    await h.record_failure("m1", "error")
+    await h.record_failure("m1", "error")
+    await h.record_success("m1", 50)
+    assert await h.record_failure("m1", "error") == 1
+
+
+@pytest.mark.asyncio
+async def test_record_failure_returns_one_when_redis_unavailable(monkeypatch):
+    monkeypatch.setattr("life_graph.services.llm_health.get_redis", lambda: None)
+    h = LLMHealth()
+    assert await h.record_failure("m", "error") == 1
+
+
+@pytest.mark.asyncio
+async def test_get_returns_raw_record(health):
+    h, _ = health
+    await h.record_success("m1", 120)
+    rec = await h.get("m1")
+    assert float(rec["avg_latency_ms"]) == pytest.approx(120, abs=1)
+
+
+@pytest.mark.asyncio
+async def test_get_returns_empty_dict_for_unknown_model(health):
+    h, _ = health
+    assert await h.get("never-seen") == {}
+
+
+@pytest.mark.asyncio
+async def test_get_returns_empty_dict_when_redis_unavailable(monkeypatch):
+    monkeypatch.setattr("life_graph.services.llm_health.get_redis", lambda: None)
+    h = LLMHealth()
+    assert await h.get("m") == {}
+
+
+@pytest.mark.asyncio
 async def test_429_sets_cooldown_and_in_cooldown_true(health):
     h, fake = health
     await h.record_failure("m1", "429")

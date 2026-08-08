@@ -67,13 +67,15 @@ class LLMHealth:
             },
         )
 
-    async def record_failure(self, model: str, kind: str) -> None:
+    async def record_failure(self, model: str, kind: str) -> int:
+        """Record a failure and return the model's updated consecutive-failure count."""
         prev = await self._read(model)
         fails = int(prev.get("consecutive_failures", 0) or 0) + 1
         await self._write(
             model,
             {"last_failure_at": self._clock(), "last_error": kind, "consecutive_failures": fails},
         )
+        return fails
 
     async def set_cooldown(self, model: str, seconds: float) -> None:
         await self._write(model, {"cooldown_until": self._clock() + seconds})
@@ -91,6 +93,10 @@ class LLMHealth:
             return float(rec.get("cooldown_until", 0) or 0)
         except (TypeError, ValueError):  # pragma: no cover
             return 0.0
+
+    async def get(self, model: str) -> dict[str, str]:
+        """Return a model's raw health record (empty dict if unknown or Redis is down)."""
+        return await self._read(model)
 
     async def snapshot(self) -> list[dict]:
         r = get_redis()
