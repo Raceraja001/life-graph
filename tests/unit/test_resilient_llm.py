@@ -16,6 +16,35 @@ def _resp(text="ok"):
     return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
 
 
+class FakeStream:
+    """Minimal async-iterator stand-in for litellm's CustomStreamWrapper.
+
+    Real streaming calls make no network request until first iterated —
+    this fake mirrors that: `raise_on_first` simulates a connect/first-byte
+    failure (e.g. a 404 for a deprecated model), surfacing only on the
+    first `__anext__()`, exactly like the real bug this fake exists to
+    reproduce.
+    """
+
+    def __init__(self, chunks=None, raise_on_first=None):
+        self._chunks = iter(chunks or [])
+        self._raise_on_first = raise_on_first
+        self._first_call = True
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._first_call and self._raise_on_first is not None:
+            self._first_call = False
+            raise self._raise_on_first
+        self._first_call = False
+        try:
+            return next(self._chunks)
+        except StopIteration:
+            raise StopAsyncIteration from None
+
+
 class FakeHealth:
     def __init__(self, cooling=None):
         self.cooling = set(cooling or [])
@@ -141,3 +170,64 @@ def test_bridge_noop_when_settings_empty(monkeypatch):
 
     assert "OPENROUTER_API_KEY" not in os.environ
     assert "OPENROUTER_API_BASE" not in os.environ
+
+
+@pytest.mark.asyncio
+async def test_streaming_first_chunk_failure_falls_over(monkeypatch):
+    """Regression test for the 2026-08-08 incident: a streaming call that
+    fails on its first chunk (e.g. a 404 for a deprecated model) must fail
+    over to the next model in the chain, not silently return a broken
+    stream to the caller."""
+    bad_stream = FakeStream(raise_on_first=rl.litellm.APIError(404, "not found", "prov", "A"))
+    good_stream = FakeStream(chunks=["chunk1", "chunk2"])
+    call = AsyncMock(side_effect=[bad_stream, good_stream])
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+
+    resp = await ResilientLLM(health=h).acompletion(
+        messages=[{"role": "user", "content": "q"}], stream=True
+    )
+    collected = [chunk async for chunk in resp]
+
+    assert collected == ["chunk1", "chunk2"]
+    assert h.failure[0][0] == "A"  # first model recorded as failed
+    assert h.success == ["B"]  # second model served the stream
+
+
+@pytest.mark.asyncio
+async def test_streaming_success_rechains_first_chunk(monkeypatch):
+    """A working stream must yield every chunk exactly once — the first
+    chunk (fetched during validation) must not be lost or duplicated."""
+    stream = FakeStream(chunks=["a", "b", "c"])
+    call = AsyncMock(return_value=stream)
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+
+    resp = await ResilientLLM(health=h).acompletion(
+        messages=[{"role": "user", "content": "q"}], stream=True
+    )
+    collected = [chunk async for chunk in resp]
+
+    assert collected == ["a", "b", "c"]
+    assert h.success == ["A"]
+
+
+@pytest.mark.asyncio
+async def test_streaming_empty_stream_treated_as_failure(monkeypatch):
+    """A stream with zero chunks (StopAsyncIteration on the very first
+    pull) must count as a failure and fail over, not a silent empty
+    success."""
+    empty_stream = FakeStream(chunks=[])
+    good_stream = FakeStream(chunks=["hi"])
+    call = AsyncMock(side_effect=[empty_stream, good_stream])
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+
+    resp = await ResilientLLM(health=h).acompletion(
+        messages=[{"role": "user", "content": "q"}], stream=True
+    )
+    collected = [chunk async for chunk in resp]
+
+    assert collected == ["hi"]
+    assert h.failure[0][0] == "A"
+    assert h.success == ["B"]

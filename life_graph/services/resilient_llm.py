@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import litellm
@@ -87,9 +88,22 @@ class ResilientLLM:
         return [m for m in chain if m and not (m in seen or seen.add(m))]
 
     async def _attempt(self, model: str, messages: list[dict], kwargs: dict) -> Any:
-        """Make one live call to `model`, recording success health on return."""
+        """Make one live call to `model`, recording success health on return.
+
+        For streaming calls, `litellm.acompletion` returns a lazy stream
+        wrapper that makes no real network call until first iterated — so the
+        first chunk is pulled here, inside this method (and thus inside the
+        caller's try/except in `acompletion()`), to catch connect/first-byte
+        failures (bad model id, auth, deprecated model, etc.) as an ordinary
+        failure that fails over, instead of letting them surface later,
+        unprotected, when the orchestrator iterates the stream itself.
+        """
         t0 = time.monotonic()
         resp = await litellm.acompletion(model=model, messages=messages, **kwargs)
+        if kwargs.get("stream"):
+            first_chunk = await resp.__anext__()
+            await self._health.record_success(model, (time.monotonic() - t0) * 1000)
+            return _rechain(first_chunk, resp)
         await self._health.record_success(model, (time.monotonic() - t0) * 1000)
         return resp
 
@@ -148,6 +162,13 @@ class ResilientLLM:
             opts["response_format"] = response_format
         resp = await self.acompletion(messages=messages, model=model, tier=tier, **opts)
         return resp.choices[0].message.content or ""
+
+
+async def _rechain(first_chunk: Any, rest: Any) -> AsyncGenerator[Any, None]:
+    """Re-yield an already-fetched first chunk, then delegate to the rest of the stream."""
+    yield first_chunk
+    async for chunk in rest:
+        yield chunk
 
 
 async def _safe_cooldown(health: LLMHealth, model: str) -> float:
