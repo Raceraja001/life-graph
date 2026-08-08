@@ -32,6 +32,7 @@ from life_graph.api.dependencies import (
 from life_graph.api.responses import paginated_response, success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.chat_stream import get_chat_stream_bus, map_bus_event
+from life_graph.services.model_catalog import get_model_catalog
 
 router = APIRouter(prefix="/kernel", tags=["kernel"])
 
@@ -554,6 +555,22 @@ async def delete_persona(
         )
 
     return success_response(data=result)
+
+
+# ── Model Catalog Endpoint ───────────────────────────────────
+
+
+@router.get(
+    "/models",
+    summary="List available LLM models for the persona picker",
+)
+async def list_models():
+    """Live OpenRouter model catalog (cached), for the persona model picker.
+
+    Never fails — degrades to a cached or static list on fetch errors.
+    """
+    models = await get_model_catalog()
+    return success_response(data={"models": models})
 
 
 # ── Router Schemas ───────────────────────────────────────────
