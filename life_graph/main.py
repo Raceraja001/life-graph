@@ -253,7 +253,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown — close MCP bridge connections
-    await app.state.mcp_exit_stack.aclose()
+    try:
+        await app.state.mcp_exit_stack.aclose()
+    except Exception:
+        logger.warning("MCP bridge shutdown failed", exc_info=True)
 
     # Shutdown — close Redis
     await close_redis()
