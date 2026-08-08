@@ -70,7 +70,7 @@ export function ModelCombobox({ value, onChange, disabled, variant }: ModelCombo
         style={buttonStyle}
         className={buttonClassName}
       >
-        {loading ? "Loading models…" : value || "Select a model"}
+        {value || "Select a model"}
       </button>
 
       {open && !loading && (
