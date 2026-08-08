@@ -8,16 +8,23 @@ model picker can never end up with zero options.
 
 from __future__ import annotations
 
+import logging
 import time
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 _CACHE: dict[str, tuple[float, list[dict]]] = {}
 _CACHE_KEY = "openrouter_models"
 _TTL_SECONDS = 3600
 
 FALLBACK_MODELS: list[dict] = [
-    {"id": "openrouter/nvidia/nemotron-3-super-120b-a12b:free", "name": "Nemotron 3 Super 120B", "is_free": True},
+    {
+        "id": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        "name": "Nemotron 3 Super 120B",
+        "is_free": True,
+    },
     {"id": "openrouter/openai/gpt-oss-20b:free", "name": "GPT-OSS 20B", "is_free": True},
     {"id": "openrouter/google/gemma-4-31b-it:free", "name": "Gemma 4 31B", "is_free": True},
     {"id": "openrouter/google/gemma-4-26b-a4b-it:free", "name": "Gemma 4 26B A4B", "is_free": True},
@@ -45,7 +52,8 @@ async def get_model_catalog() -> list[dict]:
             resp = await client.get("https://openrouter.ai/api/v1/models")
             resp.raise_for_status()
             data = resp.json()["data"]
-    except Exception:
+    except Exception as exc:
+        logger.warning("model_catalog fetch failed: %s", exc)
         return cached[1] if cached else FALLBACK_MODELS
 
     models = [
