@@ -161,10 +161,10 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:8000"
 
     # ── Agent System ──────────────────────────────────
-    agent_llm_model: str = "gemini/gemini-2.5-flash"
+    agent_llm_model: str = "gemini/gemini-3.6-flash"
     agent_llm_temperature: float = 0.7
     agent_llm_max_tokens: int = 4096
-    agent_fallback_model: str = "gemini/gemini-2.0-flash"
+    agent_fallback_model: str = "gemini/gemini-3.5-flash-lite"
     agent_max_iterations: int = 5
 
     # ── OS Kernel ──────────────────────────────────────────

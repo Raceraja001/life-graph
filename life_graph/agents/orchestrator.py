@@ -36,7 +36,7 @@ class AgentOrchestrator:
     MAX_ITERATIONS: int = 5
     MAX_RETRIES: int = 2
     RETRY_DELAY_BASE: float = 1.0  # exponential backoff base in seconds
-    FALLBACK_MODEL: str = "gemini/gemini-2.0-flash"  # overridden in __init__ from config
+    FALLBACK_MODEL: str = "gemini/gemini-3.5-flash-lite"  # overridden in __init__ from config
 
     def __init__(
         self,
