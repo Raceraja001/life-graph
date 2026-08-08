@@ -246,6 +246,7 @@ export const api = {
   // ── Multi-modal ingest ──────────────────────────
   ingest: {
     voice: (blob: Blob, filename: string) => uploadRequest<any>("/ingest/voice", blob, filename),
+    transcribe: (blob: Blob, filename: string) => uploadRequest<any>("/ingest/transcribe", blob, filename),
     image: (file: File) => uploadRequest<any>("/ingest/image", file, file.name),
     document: (file: File) => uploadRequest<any>("/ingest/document", file, file.name),
   },
