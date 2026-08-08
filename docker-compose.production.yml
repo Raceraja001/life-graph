@@ -144,7 +144,13 @@ services:
     image: mcr.microsoft.com/playwright/mcp:latest
     container_name: life_graph_playwright_mcp
     entrypoint: ["node"]
-    command: ["/app/cli.js", "--headless", "--browser", "chromium", "--no-sandbox", "--isolated", "--port", "8931", "--host", "0.0.0.0"]
+    # --allowed-hosts: the Host-header check @playwright/mcp does by default
+    # allows only the host it's bound to (localhost / 0.0.0.0) — not the
+    # docker-compose service name the app container actually connects
+    # through. Not a real security loosening: this container has no
+    # published port, so it's unreachable from outside the compose network
+    # regardless of this flag.
+    command: ["/app/cli.js", "--headless", "--browser", "chromium", "--no-sandbox", "--isolated", "--port", "8931", "--host", "0.0.0.0", "--allowed-hosts", "playwright-mcp:8931"]
     restart: unless-stopped
     deploy:
       resources:
