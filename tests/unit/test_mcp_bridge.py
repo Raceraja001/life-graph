@@ -136,6 +136,22 @@ async def test_connect_all_registers_tools_from_reference_server():
 
 
 @pytest.mark.asyncio
+async def test_bridged_tools_get_the_longer_bridge_timeout_not_the_global_default():
+    # Bridged tools do real network I/O against a remote process — the
+    # registry's global default (tuned for fast local tools) cut off
+    # real-world browser_navigate calls in production before Playwright's
+    # own (longer) action timeout ever got a chance to resolve cleanly.
+    server_config = {"name": "ref", "command": sys.executable, "args": [FIXTURE]}
+    async with AsyncExitStack() as stack:
+        await mcp_bridge._connect_one(stack, server_config)
+
+        assert registry._tools["mcp_ref_echo"].timeout_seconds == (
+            mcp_bridge.BRIDGED_TOOL_TIMEOUT_SECONDS
+        )
+        assert mcp_bridge.BRIDGED_TOOL_TIMEOUT_SECONDS > 15  # the registry's global default
+
+
+@pytest.mark.asyncio
 async def test_bridged_tool_call_round_trips_through_registry():
     server_config = {"name": "ref", "command": sys.executable, "args": [FIXTURE]}
     async with AsyncExitStack() as stack:

@@ -33,6 +33,16 @@ logger = logging.getLogger(__name__)
 # and skip rather than fail the whole server's connection over one bad name.
 _VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
+# Registry.execute()'s global default (15s) is tuned for fast local tools.
+# Bridged tools are inherently doing real network I/O against a remote
+# process — observed in production: real-world sites (financial/news pages
+# with heavy ad-tech and anti-bot JS) routinely took well past 15s for a
+# headless browser_navigate to settle, and every one of those got cut off
+# by the registry's timeout before Playwright's own (60s default) action
+# timeout ever got a chance to fire and return a clean, specific error.
+# Set just above that so Playwright's own timeout resolves first.
+BRIDGED_TOOL_TIMEOUT_SECONDS = 65
+
 
 class _Connection:
     """Owns exactly one open transport+session, running its actual
@@ -230,6 +240,7 @@ async def _connect_one(exit_stack: AsyncExitStack, server_config: dict) -> int:
             description=tool.description or "",
             parameters_schema=tool.inputSchema,
             handler=_make_bridge_handler(server, tool.name),
+            timeout_seconds=BRIDGED_TOOL_TIMEOUT_SECONDS,
         )
         registered += 1
     logger.info("mcp_bridge: connected %r, registered %d tool(s)", name, registered)

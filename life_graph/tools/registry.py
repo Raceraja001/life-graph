@@ -31,6 +31,7 @@ class ToolEntry:
     description: str
     parameters_schema: dict[str, Any]
     handler: Callable[..., Any]
+    timeout_seconds: int = TOOL_TIMEOUT_SECONDS
 
 
 class ToolRegistry:
@@ -92,6 +93,7 @@ class ToolRegistry:
         description: str,
         parameters_schema: dict[str, Any],
         handler: Callable[..., Any],
+        timeout_seconds: int | None = None,
     ) -> None:
         """Register a tool with the given metadata and handler.
 
@@ -100,6 +102,13 @@ class ToolRegistry:
             description: Human-readable description for the LLM.
             parameters_schema: JSON Schema for the tool's parameters.
             handler: Sync or async callable that implements the tool.
+            timeout_seconds: Per-tool override for the execution timeout.
+                Defaults to TOOL_TIMEOUT_SECONDS when omitted — every
+                existing caller that doesn't pass this keeps today's
+                behavior unchanged. Exists for callers whose tools are
+                inherently slower than a typical local one (e.g. the MCP
+                bridge's browser-automation tools, doing real network I/O
+                against real websites).
         """
         if name in self._tools:
             logger.warning("Overwriting existing tool: %s", name)
@@ -109,6 +118,7 @@ class ToolRegistry:
             description=description,
             parameters_schema=parameters_schema,
             handler=handler,
+            timeout_seconds=timeout_seconds if timeout_seconds is not None else TOOL_TIMEOUT_SECONDS,
         )
         logger.info("Registered tool: %s", name)
 
@@ -160,14 +170,14 @@ class ToolRegistry:
             if asyncio.iscoroutinefunction(entry.handler):
                 result = await asyncio.wait_for(
                     entry.handler(**args),
-                    timeout=TOOL_TIMEOUT_SECONDS,
+                    timeout=entry.timeout_seconds,
                 )
             else:
                 result = entry.handler(**args)
         except asyncio.TimeoutError:
-            logger.warning("Tool '%s' timed out after %ds", name, TOOL_TIMEOUT_SECONDS)
+            logger.warning("Tool '%s' timed out after %ds", name, entry.timeout_seconds)
             await self._fire_post_exec(name, args, "timeout", start)
-            return json.dumps({"error": f"Tool '{name}' timed out after {TOOL_TIMEOUT_SECONDS}s"})
+            return json.dumps({"error": f"Tool '{name}' timed out after {entry.timeout_seconds}s"})
         except Exception as exc:
             logger.exception("Tool '%s' failed: %s", name, exc)
             await self._fire_post_exec(name, args, "error", start)
