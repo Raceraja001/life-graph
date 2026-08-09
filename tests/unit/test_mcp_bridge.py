@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from life_graph.services import mcp_bridge
-from life_graph.services.mcp_bridge import _make_bridge_handler
+from life_graph.services.mcp_bridge import _BridgedServer, _make_bridge_handler
 from life_graph.tools.registry import registry
 
 FIXTURE = str(Path(__file__).parent.parent / "fixtures" / "reference_mcp_server.py")
@@ -265,3 +265,82 @@ async def test_http_transport_bad_url_is_isolated_like_stdio(monkeypatch):
     assert count == 2  # only the stdio "ref" server's 2 tools
     assert "mcp_ref_echo" in registry.tool_names
     assert "mcp_broken_echo" not in registry.tool_names
+
+
+class _DeadSession:
+    """Simulates a session the remote server has terminated — every call
+    raises, matching what a real dead MCP session does (observed in
+    production as an mcp.shared.exceptions.McpError: Session terminated)."""
+
+    async def call_tool(self, name, arguments=None):
+        raise RuntimeError("Session terminated")
+
+
+@pytest.mark.asyncio
+async def test_bridged_server_reconnects_after_session_dies(http_reference_server):
+    # Regression test for a production incident: Playwright MCP's remote
+    # session was silently terminated (idle timeout, most likely), and
+    # every subsequent call failed forever — nothing detected or recovered
+    # from the dead session; only a manual app restart fixed it. HTTP
+    # transport specifically, matching the real incident — a stdio
+    # subprocess's own anyio task-group nesting is more fragile around a
+    # close-then-reopen-while-the-old-one's-cleanup-is-pending sequence
+    # than this test needs to exercise.
+    server_config = {"name": "ref", "transport": "http", "url": http_reference_server}
+    async with AsyncExitStack() as stack:
+        server = _BridgedServer(server_config)
+        await server.open()
+        stack.push_async_callback(server.aclose)
+
+        server._session = _DeadSession()
+
+        result = await server.call_tool("echo", text="hello")
+        assert result.content[0].text == "hello"
+
+
+@pytest.mark.asyncio
+async def test_bridge_handler_survives_session_death(http_reference_server):
+    # Same scenario through the full tool-execution path (registry.execute
+    # -> handler -> server.call_tool), matching how the bug actually
+    # manifested: every call showing "Session terminated" until restarted.
+    server_config = {"name": "ref", "transport": "http", "url": http_reference_server}
+    async with AsyncExitStack() as stack:
+        server = _BridgedServer(server_config)
+        await server.open()
+        stack.push_async_callback(server.aclose)
+        handler = _make_bridge_handler(server, "echo")
+
+        server._session = _DeadSession()
+
+        result = await handler(text="still works")
+        assert result == "still works"
+
+
+@pytest.mark.asyncio
+async def test_reconnect_coalesces_concurrent_callers(http_reference_server):
+    # Two concurrent calls hitting the same dead session should trigger
+    # exactly one reconnect, not one per caller.
+    server_config = {"name": "ref", "transport": "http", "url": http_reference_server}
+    async with AsyncExitStack() as stack:
+        server = _BridgedServer(server_config)
+        await server.open()
+        stack.push_async_callback(server.aclose)
+
+        open_calls = 0
+        real_open = server.open
+
+        async def counting_open():
+            nonlocal open_calls
+            open_calls += 1
+            return await real_open()
+
+        server.open = counting_open
+        server._session = _DeadSession()
+
+        results = await asyncio.gather(
+            server.call_tool("add", a=1, b=2),
+            server.call_tool("add", a=3, b=4),
+        )
+
+        assert open_calls == 1
+        assert {r.content[0].text for r in results} == {"3", "7"}

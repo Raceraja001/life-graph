@@ -10,6 +10,7 @@ unrelated directions; nothing here talks to mcp_server.py.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from contextlib import AsyncExitStack
@@ -31,6 +32,140 @@ logger = logging.getLogger(__name__)
 # every persona that can see it, not just calls to that one tool. Validate
 # and skip rather than fail the whole server's connection over one bad name.
 _VALID_TOOL_NAME = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
+class _Connection:
+    """Owns exactly one open transport+session, running its actual
+    lifetime in a dedicated background task.
+
+    Why a background task, not a plain `async with`: the underlying
+    transports (stdio_client, streamable_http_client) are anyio
+    TaskGroup-based, and anyio requires a cancel scope to be exited from
+    the SAME task that entered it. A `_BridgedServer` needs to close an
+    OLD connection from inside a RECONNECT triggered by a later, unrelated
+    call — a different point in the call stack than where the old one was
+    opened. Tried the straightforward version first (build the stack,
+    `pop_all()` it out of an `async with` block, close it later via a
+    plain method call) — it reliably raised "Attempted to exit cancel
+    scope in a different task than it was entered in" the moment a second
+    connection's close overlapped the first's, for BOTH stdio and HTTP
+    transports. Running each connection's `async with` in its own task,
+    and closing it by signaling that same task to fall through and exit
+    its own block, is the actual fix — that satisfies anyio regardless of
+    which other task calls close().
+    """
+
+    def __init__(self, server_config: dict) -> None:
+        self._config = server_config
+        self._ready = asyncio.Event()
+        self._close_requested = asyncio.Event()
+        self._task: asyncio.Task | None = None
+        self.session: ClientSession | None = None
+        self._error: BaseException | None = None
+
+    async def start(self) -> ClientSession:
+        self._task = asyncio.create_task(self._run())
+        await self._ready.wait()
+        if self._error is not None:
+            raise self._error
+        assert self.session is not None
+        return self.session
+
+    async def _run(self) -> None:
+        try:
+            async with AsyncExitStack() as stack:
+                transport = self._config.get("transport", "stdio")
+                if transport == "http":
+                    read, write, _get_session_id = await stack.enter_async_context(
+                        streamable_http_client(self._config["url"])
+                    )
+                else:
+                    params = StdioServerParameters(
+                        command=self._config["command"],
+                        args=self._config.get("args", []),
+                        env=self._config.get("env") or None,
+                    )
+                    read, write = await stack.enter_async_context(stdio_client(params))
+                session = await stack.enter_async_context(ClientSession(read, write))
+                await session.initialize()
+                self.session = session
+                self._ready.set()
+                await self._close_requested.wait()
+        except Exception as exc:  # noqa: BLE001 - reported to start()'s waiter, not swallowed
+            self._error = exc
+            self._ready.set()
+
+    async def close(self) -> None:
+        self._close_requested.set()
+        if self._task is not None:
+            await self._task
+
+
+class _BridgedServer:
+    """Owns one configured server's live connection, with reconnect-on-
+    failure. Every tool registered for this server shares ONE instance
+    (via closures in _make_bridge_handler), so a single reconnect fixes
+    every one of that server's tools, not just whichever call triggered it.
+
+    Why this exists: a stdio subprocess dying is immediate and visible —
+    the spawn itself fails synchronously, caught at connect time. An HTTP
+    session (e.g. Playwright MCP, running as its own long-lived container)
+    can be unilaterally terminated by the REMOTE server at any later point
+    — an idle timeout, the browser context it was backing being closed —
+    without this process crashing or even being notified until the next
+    call. Observed in production: every mcp_playwright_* call started
+    failing with "Session terminated" mid-session, and stayed broken until
+    the app itself was manually restarted, because the bridge held one
+    ClientSession for its entire lifetime with no way to detect or recover
+    from the remote side dropping it.
+    """
+
+    def __init__(self, server_config: dict) -> None:
+        self._config = server_config
+        self._session: ClientSession | None = None
+        self._conn: _Connection | None = None
+        self._reconnect_lock = asyncio.Lock()
+
+    async def open(self) -> ClientSession:
+        """(Re)connect, replacing any existing session."""
+        conn = _Connection(self._config)
+        session = await conn.start()
+
+        old_conn, self._conn = self._conn, conn
+        self._session = session
+        if old_conn is not None:
+            await old_conn.close()
+        return session
+
+    async def call_tool(self, tool_name: str, **kwargs: Any):
+        session = self._session
+        if session is None:
+            session = await self._reconnect(expected_current=None)
+        try:
+            return await session.call_tool(tool_name, arguments=kwargs)
+        except Exception:
+            logger.warning(
+                "mcp_bridge: call to %r on server %r failed on the existing "
+                "session, reconnecting and retrying once",
+                tool_name,
+                self._config.get("name"),
+                exc_info=True,
+            )
+            session = await self._reconnect(expected_current=session)
+            return await session.call_tool(tool_name, arguments=kwargs)
+
+    async def _reconnect(self, expected_current: ClientSession | None) -> ClientSession:
+        """Reconnect, coalescing concurrent callers that hit the same dead
+        session — only the first one through the lock actually reconnects;
+        the rest see self._session already replaced and reuse it."""
+        async with self._reconnect_lock:
+            if self._session is not expected_current:
+                return self._session
+            return await self.open()
+
+    async def aclose(self) -> None:
+        if self._conn is not None:
+            await self._conn.close()
 
 
 async def connect_all(exit_stack: AsyncExitStack) -> int:
@@ -62,67 +197,53 @@ async def _connect_one(exit_stack: AsyncExitStack, server_config: dict) -> int:
     isolation rather than running inside the app process, such as
     Playwright MCP's headless browser).
 
-    Connection setup happens on a LOCAL exit stack, not the caller's
-    long-lived one, and is only transferred over on success. Unlike a
-    stdio subprocess spawn (which fails synchronously — a missing binary
-    raises immediately), an unreachable HTTP server's failure can surface
-    later, from a background reader task, only when the client's context
-    manager is torn down — which would otherwise happen at the CALLER's
-    exit_stack teardown (app shutdown), not here, defeating the per-server
-    isolation `connect_all` depends on to keep one broken server from
-    affecting the others.
+    The initial connect+list_tools happens before anything is registered
+    on the caller's long-lived exit_stack — if either fails, the server
+    object cleans up after itself immediately and the exception propagates
+    to connect_all's per-server catch, rather than leaving a half-open
+    connection for the caller's eventual (app-shutdown-time) teardown to
+    discover.
     """
     name = server_config["name"]
-    transport = server_config.get("transport", "stdio")
-    async with AsyncExitStack() as local_stack:
-        if transport == "http":
-            read, write, _get_session_id = await local_stack.enter_async_context(
-                streamable_http_client(server_config["url"])
-            )
-        else:
-            params = StdioServerParameters(
-                command=server_config["command"],
-                args=server_config.get("args", []),
-                env=server_config.get("env") or None,
-            )
-            read, write = await local_stack.enter_async_context(stdio_client(params))
-        session = await local_stack.enter_async_context(ClientSession(read, write))
-        await session.initialize()
-
+    server = _BridgedServer(server_config)
+    try:
+        session = await server.open()
         result = await session.list_tools()
-        registered = 0
-        for tool in result.tools:
-            composed_name = f"mcp_{name}_{tool.name}"
-            if not _VALID_TOOL_NAME.match(composed_name):
-                logger.warning(
-                    "mcp_bridge: skipping tool %r on server %r — composed name %r is not a "
-                    "valid function-calling name",
-                    tool.name,
-                    name,
-                    composed_name,
-                )
-                continue
-            registry.register(
-                name=composed_name,
-                description=tool.description or "",
-                parameters_schema=tool.inputSchema,
-                handler=_make_bridge_handler(session, tool.name),
+    except Exception:
+        await server.aclose()
+        raise
+
+    registered = 0
+    for tool in result.tools:
+        composed_name = f"mcp_{name}_{tool.name}"
+        if not _VALID_TOOL_NAME.match(composed_name):
+            logger.warning(
+                "mcp_bridge: skipping tool %r on server %r — composed name %r is not a "
+                "valid function-calling name",
+                tool.name,
+                name,
+                composed_name,
             )
-            registered += 1
-        logger.info("mcp_bridge: connected %r, registered %d tool(s)", name, registered)
-        # Success — keep this connection alive for the app's life by
-        # handing ownership to the caller's long-lived exit_stack instead
-        # of closing it when this function returns.
-        exit_stack.push_async_callback(local_stack.pop_all().aclose)
-        return registered
+            continue
+        registry.register(
+            name=composed_name,
+            description=tool.description or "",
+            parameters_schema=tool.inputSchema,
+            handler=_make_bridge_handler(server, tool.name),
+        )
+        registered += 1
+    logger.info("mcp_bridge: connected %r, registered %d tool(s)", name, registered)
+    exit_stack.push_async_callback(server.aclose)
+    return registered
 
 
-def _make_bridge_handler(session: ClientSession, tool_name: str):
+def _make_bridge_handler(server: _BridgedServer, tool_name: str):
     """Returns an async handler matching ToolRegistry's expected signature
-    for the given MCP tool on the given (already-connected) session."""
+    for the given MCP tool on the given bridged server (transparently
+    reconnects on a dead session — see _BridgedServer)."""
 
     async def handler(**kwargs: Any) -> str:
-        result = await session.call_tool(tool_name, arguments=kwargs)
+        result = await server.call_tool(tool_name, **kwargs)
         parts: list[str] = []
         for block in result.content:
             if getattr(block, "type", None) == "text":
