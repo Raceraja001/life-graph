@@ -220,11 +220,17 @@ def test_bridge_does_not_overwrite_existing_vertex_env(monkeypatch, tmp_path):
 
 def test_bridge_credentials_env_noop_when_path_empty(monkeypatch):
     monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+    monkeypatch.delenv("VERTEXAI_LOCATION", raising=False)
     monkeypatch.setattr(rl.settings, "vertex_credentials_path", "", raising=False)
+    monkeypatch.setattr(rl.settings, "vertex_project", "", raising=False)
+    monkeypatch.setattr(rl.settings, "vertex_location", "", raising=False)
 
     rl._bridge_provider_credentials()
 
     assert "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ
+    assert "VERTEXAI_PROJECT" not in os.environ
+    assert "VERTEXAI_LOCATION" not in os.environ
 
 
 @pytest.mark.asyncio
