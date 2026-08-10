@@ -19,3 +19,15 @@ def test_agent_fallback_model_default_is_current():
 def test_orchestrator_fallback_model_class_default_is_current():
     orch = AgentOrchestrator()
     assert orch.FALLBACK_MODEL == "gemini/gemini-3.5-flash-lite"
+
+
+def test_vertex_project_default_is_work_project():
+    assert Settings().vertex_project == "work-update-467706"
+
+
+def test_vertex_location_default_is_global():
+    assert Settings().vertex_location == "global"
+
+
+def test_vertex_credentials_path_defaults_empty():
+    assert Settings().vertex_credentials_path == ""

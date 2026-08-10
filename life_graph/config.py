@@ -116,6 +116,13 @@ class Settings(BaseSettings):
     openrouter_model: str = "deepseek/deepseek-chat"
     use_hybrid_llm: bool = False
 
+    # ── Vertex AI (cloud inference — Gemini via a separate GCP project's
+    # billing/quota; additive only, does not replace the OpenRouter/direct-
+    # Gemini settings above) ──
+    vertex_project: str = "work-update-467706"
+    vertex_location: str = "global"
+    vertex_credentials_path: str = ""  # Set LIFE_GRAPH_VERTEX_CREDENTIALS_PATH
+
     # ── Personal AI: Advisor ──────────────────────────────────
     advisor_models: str = "openrouter/openai/gpt-4o-mini,openrouter/deepseek/deepseek-chat,openrouter/meta-llama/llama-3.1-8b-instruct"
     advisor_timeout_seconds: int = 10
