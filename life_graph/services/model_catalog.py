@@ -37,6 +37,20 @@ FALLBACK_MODELS: list[dict] = [
         "name": "Claude CLI (subscription, no tool-calling)",
         "is_free": False,
     },
+    {"id": "vertex_ai/gemini-3.6-flash", "name": "Gemini 3.6 Flash (Vertex AI)", "is_free": False},
+    {"id": "vertex_ai/gemini-3.5-flash", "name": "Gemini 3.5 Flash (Vertex AI)", "is_free": False},
+    {
+        "id": "vertex_ai/gemini-3.5-flash-lite",
+        "name": "Gemini 3.5 Flash Lite (Vertex AI)",
+        "is_free": False,
+    },
+    {"id": "vertex_ai/gemini-2.5-pro", "name": "Gemini 2.5 Pro (Vertex AI)", "is_free": False},
+    {"id": "vertex_ai/gemini-2.5-flash", "name": "Gemini 2.5 Flash (Vertex AI)", "is_free": False},
+    {
+        "id": "vertex_ai/gemini-2.5-flash-lite",
+        "name": "Gemini 2.5 Flash Lite (Vertex AI)",
+        "is_free": False,
+    },
 ]
 
 

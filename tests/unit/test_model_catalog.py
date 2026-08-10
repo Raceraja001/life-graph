@@ -269,3 +269,24 @@ async def test_claude_cli_entry_always_present_on_success():
 
     ids = {m["id"] for m in models}
     assert "claude-cli" in ids
+
+
+@pytest.mark.asyncio
+async def test_vertex_gemini_entries_always_present_on_success():
+    _FakeAsyncClient.body = {"data": []}
+
+    models = await model_catalog.get_model_catalog()
+
+    ids = {m["id"] for m in models}
+    assert "vertex_ai/gemini-3.6-flash" in ids
+    assert "vertex_ai/gemini-2.5-flash" in ids
+
+
+@pytest.mark.asyncio
+async def test_vertex_gemini_entries_present_on_total_failure():
+    _FakeAsyncClient.raise_on_get = True
+
+    models = await model_catalog.get_model_catalog()
+
+    ids = {m["id"] for m in models}
+    assert "vertex_ai/gemini-3.6-flash" in ids
