@@ -45,6 +45,33 @@ class FakeStream:
             raise StopAsyncIteration from None
 
 
+@pytest.fixture(autouse=True)
+def _isolate_bridged_env():
+    """Save and restore all bridged env var names around every test in this file.
+
+    `monkeypatch.delenv(..., raising=False)` only records an undo action when
+    the key already exists at call time — on a machine with no ambient
+    GOOGLE_APPLICATION_CREDENTIALS/VERTEXAI_*, per-test delenv calls have
+    nothing to restore, so a bridge test that sets these for real would leak
+    them into every later test in the same pytest process. This fixture makes
+    that per-test cleanup redundant-but-harmless instead of load-bearing.
+    """
+    keys = (
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_API_BASE",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "VERTEXAI_PROJECT",
+        "VERTEXAI_LOCATION",
+    )
+    saved = {k: os.environ.get(k) for k in keys}
+    yield
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+
 class FakeHealth:
     def __init__(self, cooling=None):
         self.cooling = set(cooling or [])

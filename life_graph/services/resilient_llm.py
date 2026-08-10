@@ -50,9 +50,7 @@ def _bridge_provider_credentials() -> None:
     if settings.openrouter_url and not os.environ.get("OPENROUTER_API_BASE"):
         os.environ["OPENROUTER_API_BASE"] = settings.openrouter_url
 
-    if settings.vertex_credentials_path and not os.environ.get(
-        "GOOGLE_APPLICATION_CREDENTIALS"
-    ):
+    if settings.vertex_credentials_path and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(
             Path(settings.vertex_credentials_path).resolve()
         )
