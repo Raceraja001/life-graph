@@ -46,3 +46,8 @@ models_cache/
 # Alembic
 alembic/versions/__pycache__/
 docker-compose.override.yml
+
+# Secrets / service-account keys — never commit
+ext-assets/
+*.json.key
+service-account*.json
