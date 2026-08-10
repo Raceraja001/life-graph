@@ -10,6 +10,7 @@ tenant-based tool permission filtering.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -326,11 +327,26 @@ class PersonaService:
     sessions, safe to call from any async context.
     """
 
+    # get_by_name() is on the hot path for every chat turn (once directly,
+    # once again inside ProcessManager.spawn()) — personas change rarely, so
+    # a short-TTL in-process cache turns the second lookup into a cache hit.
+    # This is a single-process cache: correct for a single uvicorn worker
+    # (this deployment); a multi-worker deployment would need a shared cache
+    # (e.g. Redis) instead for cross-worker invalidation.
+    _CACHE_TTL_SECONDS = 30.0
+
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         self._session_factory = session_factory
+        self._name_cache: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+
+    def _invalidate_tenant_cache(self, tenant_id: str) -> None:
+        """Drop all cached personas for *tenant_id* (called after any write)."""
+        stale = [key for key in self._name_cache if key[0] == tenant_id]
+        for key in stale:
+            del self._name_cache[key]
 
     async def get_by_name(self, tenant_id: str, name: str) -> dict[str, Any] | None:
         """Look up a persona by tenant and unique name.
@@ -342,6 +358,14 @@ class PersonaService:
         Returns:
             Dict representation of the persona, or None.
         """
+        cache_key = (tenant_id, name)
+        cached = self._name_cache.get(cache_key)
+        if cached is not None:
+            expires_at, persona = cached
+            if expires_at > time.monotonic():
+                return dict(persona)
+            del self._name_cache[cache_key]
+
         async with self._session_factory() as session:
             stmt = select(AgentPersona).where(
                 AgentPersona.tenant_id == tenant_id,
@@ -349,10 +373,15 @@ class PersonaService:
                 AgentPersona.is_active.is_(True),
             )
             result = await session.execute(stmt)
-            persona = result.scalar_one_or_none()
-            if persona is None:
+            persona_row = result.scalar_one_or_none()
+            if persona_row is None:
                 return None
-            return self._persona_to_dict(persona)
+            persona = self._persona_to_dict(persona_row)
+            self._name_cache[cache_key] = (
+                time.monotonic() + self._CACHE_TTL_SECONDS,
+                persona,
+            )
+            return dict(persona)
 
     async def get_by_intent(self, tenant_id: str, intent: str) -> dict[str, Any] | None:
         """Find the first active persona matching *intent*.
@@ -477,6 +506,8 @@ class PersonaService:
                     continue
 
             await session.commit()
+            if count or reconciled:
+                self._invalidate_tenant_cache(tenant_id)
             logger.info(
                 "Seeded %d built-in personas for tenant %s (%d reconciled)",
                 count,
@@ -600,6 +631,7 @@ class PersonaService:
             await session.commit()
             await session.refresh(persona)
 
+            self._invalidate_tenant_cache(tenant_id)
             logger.info(
                 "Created persona '%s' for tenant %s",
                 name,
@@ -730,6 +762,7 @@ class PersonaService:
                 return None
             await session.commit()
 
+        self._invalidate_tenant_cache(tenant_id)
         logger.info(
             "Updated persona %s (fields: %s)",
             persona_id,
@@ -780,6 +813,7 @@ class PersonaService:
             )
             await session.commit()
 
+        self._invalidate_tenant_cache(tenant_id)
         logger.info(
             "Soft-deleted persona '%s' (%s)",
             persona["name"],

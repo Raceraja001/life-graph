@@ -55,6 +55,22 @@ class _StubProcessManager:
         return {"task_id": self._task_id}
 
 
+class _StubProcessManagerSpawnFails:
+    """spawn() raises -- reproduces a DB failure (or any other exception)
+    happening AFTER the SSE response has already started (spawn() now runs
+    inside the endpoint's generator, not before the response object is
+    returned). Regression coverage for the previously-unhandled path: before
+    this, an exception here would propagate out of the generator as an
+    unhandled error; now it must surface as a clean `error` SSE frame.
+    """
+
+    def __init__(self, message: str = "db unavailable") -> None:
+        self._message = message
+
+    async def spawn(self, **kwargs) -> dict:
+        raise RuntimeError(self._message)
+
+
 class _StubProcessManagerNoClose:
     """Like _StubProcessManager, but never calls bus.close().
 
@@ -456,6 +472,38 @@ async def test_chat_stream_survives_idle_gap_and_emits_heartbeat(client, monkeyp
     text = "".join(e["text"] for e in data_events if e["type"] == "assistant_delta")
     assert text == "before after"  # the post-gap delta survived the idle gap
     assert saw_heartbeat, "expected at least one ': heartbeat' frame during the idle gap"
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_yields_error_frame_when_spawn_fails(client):
+    """Persona lookup succeeds (so the response already opened as a 200
+    text/event-stream), but pm.spawn() itself then raises. Must surface as a
+    clean `error` SSE frame -- not an unhandled exception / broken stream."""
+    app.dependency_overrides[get_persona_service] = lambda: _StubPersonaService()
+    app.dependency_overrides[get_process_manager] = lambda: _StubProcessManagerSpawnFails(
+        "db unavailable"
+    )
+
+    try:
+        async with client.stream(
+            "POST",
+            "/api/v1/kernel/chat/stream",
+            headers=HEADERS,
+            json={"message": "hi", "target_agent": "jarvis"},
+        ) as resp:
+            assert resp.status_code == 200
+            assert "text/event-stream" in resp.headers["content-type"]
+            events = []
+            async for line in resp.aiter_lines():
+                if line.startswith("data: "):
+                    events.append(json.loads(line[6:]))
+    finally:
+        app.dependency_overrides.pop(get_persona_service, None)
+        app.dependency_overrides.pop(get_process_manager, None)
+
+    assert len(events) == 1
+    assert events[0]["type"] == "error"
+    assert events[0]["message"] == "db unavailable"
 
 
 @pytest.mark.asyncio

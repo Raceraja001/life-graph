@@ -473,6 +473,10 @@ async def deactivate_tenant(tenant_id: str):
         await session.commit()
         await session.refresh(config)
 
+    from life_graph.api.middleware import invalidate_tenant_status_cache
+
+    invalidate_tenant_status_cache(tenant_id)
+
     return success_response(data={
         "tenant_id": config.tenant_id,
         "status": config.status,
@@ -502,6 +506,10 @@ async def reactivate_tenant(tenant_id: str):
         config.deactivated_at = None
         await session.commit()
         await session.refresh(config)
+
+    from life_graph.api.middleware import invalidate_tenant_status_cache
+
+    invalidate_tenant_status_cache(tenant_id)
 
     return success_response(data={
         "tenant_id": config.tenant_id,

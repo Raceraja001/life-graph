@@ -11,6 +11,7 @@ a consolidated list sorted by confidence.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -145,8 +146,9 @@ class ExtractionPipeline:
         tier1_facts = self._rules.extract(text)
         logger.debug("Tier 1 extracted %d facts", len(tier1_facts))
 
-        # Tier 2 — spaCy
-        tier2_facts = self._spacy.extract(text)
+        # Tier 2 — spaCy (CPU-bound; run off the event loop so it doesn't
+        # stall other concurrent requests)
+        tier2_facts = await asyncio.to_thread(self._spacy.extract, text)
         logger.debug("Tier 2 extracted %d facts", len(tier2_facts))
 
         # Merge and deduplicate (Tier 1 + 2)

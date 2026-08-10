@@ -789,6 +789,41 @@ class PostgresMemoryStore:
             result = await session.execute(query)
             return [(row[0], float(row[1])) for row in result.fetchall()]
 
+    async def find_similarity_candidates(
+        self,
+        embedding: list[float],
+        limit: int = 15,
+    ) -> list[tuple[Memory, float]]:
+        """Single pgvector query serving both dedup near-match and
+        contradiction-check candidate lookups.
+
+        MemoryManager._process_fact() used to issue two near-identical
+        cosine-distance queries back to back (find_similar for dedup,
+        then ContradictionDetector's own search_similar for contradiction
+        candidates) for every new, non-exact-duplicate fact. This returns
+        one ranked candidate pool (active + pending, no SQL threshold) that
+        callers filter locally: dedup wants similarity >= dedup_threshold,
+        contradiction-check wants status == "active".
+
+        Returns:
+            List of ``(memory, similarity_score)`` tuples ordered by
+            descending similarity.
+        """
+        async with async_session() as session:
+            distance = Memory.embedding.cosine_distance(embedding)
+            query = (
+                select(Memory, (1 - distance).label("similarity"))
+                .where(
+                    Memory.tenant_id == get_current_tenant_id(),
+                    Memory.embedding.isnot(None),
+                    Memory.status.in_(("active", "pending")),
+                )
+                .order_by(distance)
+                .limit(limit)
+            )
+            result = await session.execute(query)
+            return [(row[0], float(row[1])) for row in result.fetchall()]
+
     # ── Impact Scoring (Feature 5) ────────────────────────────
 
     async def link_recall_to_session(

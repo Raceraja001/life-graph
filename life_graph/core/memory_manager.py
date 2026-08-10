@@ -14,6 +14,7 @@ Also manages supersession chains for belief evolution tracking.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import uuid
@@ -110,10 +111,48 @@ class MemoryManager:
 
         logger.info("Extracted %d facts from input text", len(facts))
 
-        # Steps 2-6: Process each fact
+        from life_graph.config import settings
+
+        # Cheap exact-hash check up front, in parallel — safe because the
+        # extraction pipeline already dedups facts against each other within
+        # this batch (pipeline.py's _deduplicate), so no two facts here share
+        # normalised content. This lets us skip the expensive embedding call
+        # entirely for facts that turn out to be exact duplicates of memories
+        # we already have.
+        exact_matches: list[Memory | None] = [None] * len(facts)
+        if settings.dedup_enabled and not skip_dedup:
+            content_hashes = [
+                hashlib.sha256(fact.content.strip().lower().encode()).hexdigest()
+                for fact in facts
+            ]
+            exact_matches = list(
+                await asyncio.gather(
+                    *(self._store.find_exact_duplicate(h) for h in content_hashes)
+                )
+            )
+
+        # Steps 2-6: Process each non-duplicate fact. Embeddings are independent
+        # per fact, so generate them all concurrently up front (this is the
+        # expensive network call); dedup/contradiction/store must stay
+        # sequential per fact since sibling facts from the same input can be
+        # near-duplicates of each other.
+        pending = [i for i, m in enumerate(exact_matches) if m is None]
+        embeddings: list[list[float] | None] = [None] * len(facts)
+        if pending:
+            computed = await asyncio.gather(
+                *(self._generate_embedding(facts[i].content) for i in pending)
+            )
+            for i, emb in zip(pending, computed):
+                embeddings[i] = emb
+
         stored_memories: list[Memory] = []
-        for fact in facts:
-            memory = await self._process_fact(fact, context, source, skip_dedup, trust_tier)
+        for fact, embedding, existing in zip(facts, embeddings, exact_matches):
+            if existing is not None:
+                stored_memories.append(await self._reuse_exact_duplicate(existing))
+                continue
+            memory = await self._process_fact(
+                fact, context, source, skip_dedup, trust_tier, embedding=embedding
+            )
             if memory:
                 stored_memories.append(memory)
 
@@ -131,10 +170,14 @@ class MemoryManager:
 
         Used by transcript distillation, which extracts facts itself.
         """
+        embeddings = await asyncio.gather(
+            *(self._generate_embedding(fact.content) for fact in facts)
+        )
+
         stored: list[Memory] = []
-        for fact in facts:
+        for fact, embedding in zip(facts, embeddings):
             memory = await self._process_fact(
-                fact, context, source, skip_dedup=False, trust_tier=None
+                fact, context, source, skip_dedup=False, trust_tier=None, embedding=embedding
             )
             if memory:
                 stored.append(memory)
@@ -200,6 +243,12 @@ class MemoryManager:
 
     # ── Internal Helpers ──────────────────────────────────────
 
+    async def _reuse_exact_duplicate(self, existing: Memory) -> Memory:
+        """Touch and return an existing memory found via exact-hash dedup."""
+        logger.info("Dedup: exact match found for memory %s", existing.id)
+        await self._store.touch(existing.id)
+        return existing
+
     async def _process_fact(
         self,
         fact: ExtractedFact,
@@ -207,8 +256,14 @@ class MemoryManager:
         source: str | None,
         skip_dedup: bool = False,
         trust_tier: str | None = None,
+        embedding: list[float] | None = None,
     ) -> Memory | None:
         """Process a single extracted fact through scoring, embedding, and storage.
+
+        Args:
+            embedding: Precomputed embedding for ``fact.content``, when the
+                caller already generated it (e.g. batched across facts in
+                ``ingest()``). If not provided, it's generated here.
 
         Returns:
             Stored Memory object, or None if the fact was a duplicate.
@@ -216,8 +271,9 @@ class MemoryManager:
         # Step 2: Score importance
         importance, tier = self._tagger.score(fact.content, context)
 
-        # Step 3: Generate embedding (placeholder)
-        embedding = await self._generate_embedding(fact.content)
+        # Step 3: Generate embedding (placeholder), unless already provided
+        if embedding is None:
+            embedding = await self._generate_embedding(fact.content)
 
         # Step 3b: Deduplication check
         content_hash = hashlib.sha256(
@@ -230,16 +286,22 @@ class MemoryManager:
             # Exact match (cheap, always runs first)
             existing = await self._store.find_exact_duplicate(content_hash)
             if existing:
-                logger.info("Dedup: exact match found for memory %s", existing.id)
-                await self._store.touch(existing.id)
-                return existing
+                return await self._reuse_exact_duplicate(existing)
 
-            # Near-match (expensive, only if no exact match and embedding available)
-            if embedding:
-                similar = await self._store.find_similar(
-                    embedding,
-                    threshold=settings.dedup_threshold,
-                )
+        # Shared candidate pool for near-match dedup below and the
+        # contradiction check in Step 4 — one pgvector query instead of two
+        # (find_similar + ContradictionDetector's own search_similar), since
+        # both were querying the same table/tenant/embedding back to back.
+        candidates: list[tuple[Memory, float]] = []
+        if embedding:
+            candidates = await self._store.find_similarity_candidates(embedding)
+
+        if settings.dedup_enabled and not skip_dedup:
+            # Near-match (only if no exact match and embedding available)
+            if candidates:
+                similar = [
+                    (m, s) for m, s in candidates if s >= settings.dedup_threshold
+                ][:5]
                 if similar:
                     existing_memory, score = similar[0]  # highest similarity
                     logger.info(
@@ -280,11 +342,15 @@ class MemoryManager:
                     await self._store.touch(existing_memory.id)
                     return updated
 
-        # Step 4: Check for contradictions
+        # Step 4: Check for contradictions, derived from the same candidate
+        # pool fetched above (active memories only — candidates also include
+        # "pending", which is dedup-only).
         contradictions: list[Contradiction] = []
-        if embedding:
-            contradictions = await self._contradiction_detector.check(
+        if candidates:
+            active_candidates = [m for m, _ in candidates if m.status == "active"][:10]
+            contradictions = await self._contradiction_detector.check_candidates(
                 fact.content,
+                active_candidates,
                 embedding,
             )
 

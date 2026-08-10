@@ -10,6 +10,7 @@ retry also fails) it raises ResilientLLMExhausted; callers run their own fallbac
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -105,14 +106,19 @@ class ResilientLLM:
         """
         seen: set[str] = {primary}
         pool = [m for m in settings.llm_fallback_chain_list if m and not (m in seen or seen.add(m))]
+        if not pool:
+            return []
 
-        async def _rank_key(m: str) -> tuple[int, float]:
-            rec = await self._health.get(m)
+        def _rank_key(rec: dict[str, str]) -> tuple[int, float]:
             fails = int(rec.get("consecutive_failures", 0) or 0)
             latency = rec.get("avg_latency_ms")
             return (fails, float(latency) if latency else -1.0)
 
-        keyed = [(await _rank_key(m), m) for m in pool]
+        # Fetch every candidate's health concurrently instead of one
+        # sequential Redis round-trip per model before the primary is even
+        # attempted.
+        records = await asyncio.gather(*(self._health.get(m) for m in pool))
+        keyed = [(_rank_key(rec), m) for m, rec in zip(pool, records)]
         keyed.sort(key=lambda pair: pair[0])
         return [m for _, m in keyed]
 

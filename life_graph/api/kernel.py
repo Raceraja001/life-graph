@@ -674,20 +674,32 @@ async def chat_stream(
             detail=f"Unknown persona: {body.target_agent!r}",
         )
 
-    spawn = await pm.spawn(
-        tenant_id=tenant_id,
-        agent_name=body.target_agent,
-        input_data={"message": body.message},
-        task_name=f"chat:{body.target_agent}",
-        session_id=body.session_id,
-        project_id=body.project_id,
-    )
-    task_id = spawn["task_id"]  # == root_task_id for a top-level task
     bus = get_chat_stream_bus()
 
     async def gen():
         def sse(obj: dict) -> str:
             return f"data: {json.dumps(obj)}\n\n"
+
+        # pm.spawn() (AgentTask insert + TASK_SPAWNED emit) now runs as the
+        # first thing INSIDE the generator rather than before this function
+        # returns its StreamingResponse — Starlette sends response headers
+        # as soon as that Response object is returned, before ever pulling
+        # the first item from this generator, so moving the DB work here
+        # means the client's connection opens right after the (cached)
+        # persona lookup instead of waiting on this insert too.
+        try:
+            spawn = await pm.spawn(
+                tenant_id=tenant_id,
+                agent_name=body.target_agent,
+                input_data={"message": body.message},
+                task_name=f"chat:{body.target_agent}",
+                session_id=body.session_id,
+                project_id=body.project_id,
+            )
+        except Exception as exc:
+            yield sse({"type": "error", "message": str(exc)})
+            return
+        task_id = spawn["task_id"]  # == root_task_id for a top-level task
 
         yield sse({"type": "start", "task_id": task_id, "persona": body.target_agent})
         seen: set[str] = set()

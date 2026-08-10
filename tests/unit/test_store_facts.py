@@ -17,11 +17,15 @@ async def test_store_facts_processes_each_fact(monkeypatch):
     m1, m2 = SimpleNamespace(id=1), SimpleNamespace(id=2)
     calls = []
 
-    async def fake_process(fact, context, source, skip_dedup=False, trust_tier=None):
+    async def fake_process(fact, context, source, skip_dedup=False, trust_tier=None, embedding=None):
         calls.append((fact.content, source))
         return {"a": m1, "b": m2, "c": None}[fact.content]
 
+    async def fake_embed(text):
+        return None
+
     monkeypatch.setattr(mgr, "_process_fact", fake_process)
+    monkeypatch.setattr(mgr, "_generate_embedding", fake_embed)
     facts = [
         ExtractedFact(content="a", fact_type="fact", confidence=0.7),
         ExtractedFact(content="b", fact_type="decision", confidence=0.7),

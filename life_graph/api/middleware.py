@@ -30,6 +30,19 @@ logger = logging.getLogger(__name__)
 DEV_DEFAULT_TENANT = "dev"
 DEV_DEFAULT_USER = "dev-user"
 
+# In-process cache of tenant status ("active"/"deactivated"/None), keyed by
+# tenant_id, so the deactivation check below doesn't open a DB session on
+# every single POST/PUT/PATCH/DELETE. Short TTL as a backstop; admin.py calls
+# invalidate_tenant_status_cache() on activate/deactivate so the block/unblock
+# still takes effect immediately rather than waiting out the TTL.
+_TENANT_STATUS_CACHE_TTL_SECONDS = 15.0
+_tenant_status_cache: dict[str, tuple[float, str | None]] = {}
+
+
+def invalidate_tenant_status_cache(tenant_id: str) -> None:
+    """Drop the cached status for *tenant_id* (call after any status change)."""
+    _tenant_status_cache.pop(tenant_id, None)
+
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Generate a unique request ID for each request.
@@ -127,26 +140,40 @@ class TenantMiddleware(BaseHTTPMiddleware):
             if not request.url.path.startswith(
                 "/admin"
             ) and not request.url.path.startswith("/api/v1/admin"):
-                try:
-                    from life_graph.models.db import TenantConfig
-                    from life_graph.storage.database import (
-                        async_session as _async_session,
-                    )
+                cached = _tenant_status_cache.get(tenant_id)
+                now = time.monotonic()
+                if cached is not None and cached[0] > now:
+                    tenant_status = cached[1]
+                else:
+                    tenant_status = None
+                    try:
+                        from life_graph.models.db import TenantConfig
+                        from life_graph.storage.database import (
+                            async_session as _async_session,
+                        )
+
+                        async with _async_session() as _db:
+                            _config = await _db.get(TenantConfig, tenant_id)
+                            tenant_status = _config.status if _config else None
+                        _tenant_status_cache[tenant_id] = (
+                            now + _TENANT_STATUS_CACHE_TTL_SECONDS,
+                            tenant_status,
+                        )
+                    except Exception:
+                        # If we can't check, allow the request through (fail open,
+                        # matching prior behavior) — don't cache the failure.
+                        tenant_status = None
+
+                if tenant_status == "deactivated":
                     from life_graph.api.responses import error_response
 
-                    async with _async_session() as _db:
-                        _config = await _db.get(TenantConfig, tenant_id)
-                        if _config and _config.status == "deactivated":
-                            return JSONResponse(
-                                status_code=403,
-                                content=error_response(
-                                    "TENANT_DEACTIVATED",
-                                    "Tenant is deactivated. Read-only access only.",
-                                ),
-                            )
-                except Exception:
-                    # If we can't check, allow the request through
-                    pass
+                    return JSONResponse(
+                        status_code=403,
+                        content=error_response(
+                            "TENANT_DEACTIVATED",
+                            "Tenant is deactivated. Read-only access only.",
+                        ),
+                    )
 
         return await call_next(request)
 

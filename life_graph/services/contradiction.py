@@ -128,6 +128,38 @@ class ContradictionDetector:
             filters={"status": "active"},
         )
 
+        return self._check_candidates(new_content, similar_memories, new_embedding)
+
+    async def check_candidates(
+        self,
+        new_content: str,
+        candidates: list[Memory],
+        new_embedding: list[float],
+    ) -> list[Contradiction]:
+        """Like check(), but skips the DB lookup — for callers that already
+        fetched candidate memories (e.g. MemoryManager._process_fact(), which
+        derives them from one shared similarity query it also uses for dedup,
+        instead of paying for a second pgvector round-trip here).
+
+        Args:
+            new_content: The new text to check.
+            candidates: Pre-fetched candidate memories (should be status
+                "active" — this does no further status filtering).
+            new_embedding: Pre-computed embedding vector for the new content.
+
+        Returns:
+            List of detected Contradiction objects, sorted by severity.
+        """
+        if not new_content.strip():
+            return []
+        return self._check_candidates(new_content, candidates, new_embedding)
+
+    def _check_candidates(
+        self,
+        new_content: str,
+        similar_memories: list[Memory],
+        new_embedding: list[float],
+    ) -> list[Contradiction]:
         if not similar_memories:
             return []
 
