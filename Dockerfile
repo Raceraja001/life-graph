@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ── Life Graph Memory Service ─────────────────────────────────
 # Multi-stage build for minimal production image.
 # Supports both API server and ARQ worker via CMD override.
@@ -10,15 +11,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
+# Dependency install is split from the source copy below so an ordinary
+# life_graph/ code change doesn't bust the (slow: torch/spacy/etc) deps
+# layer — only a pyproject.toml change does. The requirements list is
+# read straight out of pyproject.toml (stdlib tomllib) so this step needs
+# no local package build, hence no source tree yet.
 COPY pyproject.toml .
-COPY life_graph/ ./life_graph/
-
-# Install all deps with CPU-only PyTorch (no CUDA — saves ~1.8GB)
-# --extra-index-url for non-torch packages, primary index is CPU-only torch
-RUN pip install --no-cache-dir --prefix=/install \
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -c "import tomllib; d = tomllib.load(open('pyproject.toml', 'rb')); open('requirements.lock.txt', 'w').write('\n'.join(d['project']['dependencies'] + d['project']['optional-dependencies']['multimodal']))" && \
+    pip install --prefix=/install \
     --extra-index-url https://pypi.org/simple \
     --index-url https://download.pytorch.org/whl/cpu \
-    ".[multimodal]" psycopg2-binary
+    -r requirements.lock.txt psycopg2-binary
+
+COPY life_graph/ ./life_graph/
+
+# Local package only, no deps re-resolution — fast even though it reruns
+# on every code change.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install --no-deps .
 
 # ── Production image ─────────────────────────────────────────
 FROM python:3.11-slim
