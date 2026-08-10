@@ -215,7 +215,21 @@ class TestEntitiesOverlap:
         assert _entities_overlap("mongodb", "postgresql") is False
 
     def test_empty_strings(self) -> None:
-        assert _entities_overlap("", "") is True  # exact match of ""
+        # Regression: "" used to "match" via Python's `"" in x` substring
+        # semantics, so a blank capture registered as overlapping with
+        # literally anything. An empty entity can't be confirmed to match.
+        assert _entities_overlap("", "") is False
+
+    def test_empty_vs_nonempty_does_not_overlap(self) -> None:
+        assert _entities_overlap("", "postgresql") is False
+
+    def test_shared_stopword_alone_does_not_overlap(self) -> None:
+        # Regression: "the API" vs "the UI" used to register as the same
+        # entity purely because both share the stopword "the".
+        assert _entities_overlap("the api", "the ui") is False
+
+    def test_shared_content_word_still_overlaps_after_stopword_strip(self) -> None:
+        assert _entities_overlap("the database", "our database") is True
 
 
 # ── Resolution strategy ──────────────────────────────────────────────────

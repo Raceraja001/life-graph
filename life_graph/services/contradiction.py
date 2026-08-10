@@ -27,6 +27,14 @@ _SIMILARITY_THRESHOLD: float = 0.75
 # Maximum candidates to check for contradictions
 _MAX_CANDIDATES: int = 10
 
+# Filler words stripped before _entities_overlap's word-overlap check, so two
+# unrelated entities that merely share an article/pronoun (e.g. "the API" vs
+# "the UI") don't register as "the same entity".
+_STOPWORDS = frozenset({
+    "a", "an", "the", "this", "that", "these", "those",
+    "it", "its", "i", "my", "me", "our", "we", "you", "your",
+})
+
 
 @dataclass
 class Contradiction:
@@ -336,6 +344,15 @@ def _entities_overlap(entity_a: str, entity_b: str) -> bool:
     Uses substring containment for simple cases. Could be extended
     with spaCy entity linking for higher accuracy.
     """
+    entity_a = _strip_stopwords(entity_a)
+    entity_b = _strip_stopwords(entity_b)
+    if not entity_a or not entity_b:
+        # An empty (or filler-word-only) capture can't be confirmed to
+        # match anything. Without this, "" in "anything" is True in
+        # Python, so a blank capture group used to register as
+        # overlapping with every other entity.
+        return False
+
     if entity_a == entity_b:
         return True
     if entity_a in entity_b or entity_b in entity_a:
@@ -344,13 +361,17 @@ def _entities_overlap(entity_a: str, entity_b: str) -> bool:
     # Tokenize and check word overlap
     words_a = set(entity_a.split())
     words_b = set(entity_b.split())
-    if words_a and words_b:
-        overlap = len(words_a & words_b)
-        max_len = max(len(words_a), len(words_b))
-        if max_len > 0 and overlap / max_len >= 0.5:
-            return True
+    overlap = len(words_a & words_b)
+    max_len = max(len(words_a), len(words_b))
+    if overlap / max_len >= 0.5:
+        return True
 
     return False
+
+
+def _strip_stopwords(entity: str) -> str:
+    """Drop filler words (articles, pronouns) before entity comparison."""
+    return " ".join(w for w in entity.split() if w not in _STOPWORDS)
 
 
 def _determine_resolution(conflict_type: str, memory: Memory) -> str:
