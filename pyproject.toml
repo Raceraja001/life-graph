@@ -25,6 +25,7 @@ dependencies = [
 
     # LLM (routing only, minimal usage)
     "litellm>=1.40",
+    "google-auth>=2.30",  # Vertex AI credential handling (litellm's vertex_ai/* provider)
 
     # Cold Start
     "pydriller>=2.6",
