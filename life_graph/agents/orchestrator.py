@@ -34,7 +34,12 @@ class AgentOrchestrator:
             infinite loops.
     """
 
-    MAX_ITERATIONS: int = 5
+    # Was 5. Observed in production: a single browsing task easily spends
+    # one iteration per candidate source (navigate -> read), and a slow or
+    # dead site can burn a full 60s bridged-tool timeout for zero progress
+    # (see BRIDGED_TOOL_TIMEOUT_SECONDS in mcp_bridge.py) — 5 left no room
+    # to recover from one bad navigation plus try 2-3 more sources.
+    MAX_ITERATIONS: int = 8
     MAX_RETRIES: int = 2
     RETRY_DELAY_BASE: float = 1.0  # exponential backoff base in seconds
     FALLBACK_MODEL: str = "gemini/gemini-3.5-flash-lite"  # overridden in __init__ from config
