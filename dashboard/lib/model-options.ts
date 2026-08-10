@@ -13,5 +13,11 @@ export const MODEL_OPTIONS: { Free: string[]; Paid: string[] } = {
     "gemini/gemini-3.5-flash-lite",
     "openrouter/deepseek/deepseek-chat",
     "claude-cli",
+    "vertex_ai/gemini-3.6-flash",
+    "vertex_ai/gemini-3.5-flash",
+    "vertex_ai/gemini-3.5-flash-lite",
+    "vertex_ai/gemini-2.5-pro",
+    "vertex_ai/gemini-2.5-flash",
+    "vertex_ai/gemini-2.5-flash-lite",
   ],
 };
