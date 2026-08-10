@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import litellm
@@ -39,15 +40,26 @@ def _bridge_provider_credentials() -> None:
     var isn't already set, so repeated construction (e.g. via the `lru_cache`d
     `get_resilient_llm()`) is harmless and an operator's own env wins.
 
-    Gemini is intentionally left untouched: it already resolves via ambient
-    `GEMINI_API_KEY` pre-branch (extraction called it with no explicit key), so
-    only OpenRouter — previously passed explicitly by `LMStudioClient._cloud_chat`
-    — needs bridging now that synthesis routes through this wrapper.
+    Gemini's direct API key is intentionally left untouched here: it already
+    resolves via ambient `GEMINI_API_KEY` pre-branch. Vertex AI is a separate
+    Gemini access path — billed to a different GCP project via a service
+    account — so it needs its own credentials bridged, same as OpenRouter.
     """
     if settings.openrouter_api_key and not os.environ.get("OPENROUTER_API_KEY"):
         os.environ["OPENROUTER_API_KEY"] = settings.openrouter_api_key
     if settings.openrouter_url and not os.environ.get("OPENROUTER_API_BASE"):
         os.environ["OPENROUTER_API_BASE"] = settings.openrouter_url
+
+    if settings.vertex_credentials_path and not os.environ.get(
+        "GOOGLE_APPLICATION_CREDENTIALS"
+    ):
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(
+            Path(settings.vertex_credentials_path).resolve()
+        )
+    if settings.vertex_project and not os.environ.get("VERTEXAI_PROJECT"):
+        os.environ["VERTEXAI_PROJECT"] = settings.vertex_project
+    if settings.vertex_location and not os.environ.get("VERTEXAI_LOCATION"):
+        os.environ["VERTEXAI_LOCATION"] = settings.vertex_location
 
 
 def _classify(exc: Exception) -> str:

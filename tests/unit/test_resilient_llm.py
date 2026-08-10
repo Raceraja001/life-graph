@@ -184,6 +184,49 @@ def test_bridge_noop_when_settings_empty(monkeypatch):
     assert "OPENROUTER_API_BASE" not in os.environ
 
 
+def test_bridge_sets_vertex_env_from_settings_when_unset(monkeypatch, tmp_path):
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+    monkeypatch.delenv("VERTEXAI_LOCATION", raising=False)
+    key_file = tmp_path / "sa.json"
+    key_file.write_text("{}")
+    monkeypatch.setattr(rl.settings, "vertex_credentials_path", str(key_file), raising=False)
+    monkeypatch.setattr(rl.settings, "vertex_project", "work-update-467706", raising=False)
+    monkeypatch.setattr(rl.settings, "vertex_location", "global", raising=False)
+
+    rl._bridge_provider_credentials()
+
+    assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == str(key_file.resolve())
+    assert os.environ["VERTEXAI_PROJECT"] == "work-update-467706"
+    assert os.environ["VERTEXAI_LOCATION"] == "global"
+
+
+def test_bridge_does_not_overwrite_existing_vertex_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/pre-existing/key.json")
+    monkeypatch.setenv("VERTEXAI_PROJECT", "pre-existing-project")
+    monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+    key_file = tmp_path / "sa.json"
+    key_file.write_text("{}")
+    monkeypatch.setattr(rl.settings, "vertex_credentials_path", str(key_file), raising=False)
+    monkeypatch.setattr(rl.settings, "vertex_project", "should-not-win", raising=False)
+    monkeypatch.setattr(rl.settings, "vertex_location", "should-not-win", raising=False)
+
+    rl._bridge_provider_credentials()
+
+    assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/pre-existing/key.json"
+    assert os.environ["VERTEXAI_PROJECT"] == "pre-existing-project"
+    assert os.environ["VERTEXAI_LOCATION"] == "us-central1"
+
+
+def test_bridge_credentials_env_noop_when_path_empty(monkeypatch):
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.setattr(rl.settings, "vertex_credentials_path", "", raising=False)
+
+    rl._bridge_provider_credentials()
+
+    assert "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ
+
+
 @pytest.mark.asyncio
 async def test_streaming_first_chunk_failure_falls_over(monkeypatch):
     """Regression test for the 2026-08-08 incident: a streaming call that
