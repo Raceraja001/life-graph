@@ -568,6 +568,14 @@ class TenantConfig(Base):
         JSONB, nullable=True, default=None,
         comment="Per-tenant cold start questions/config. Null = use defaults.",
     )
+    autonomy_paused: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False,
+        comment="Kill-switch: when true, AutoFixService._run_action refuses to "
+        "execute any autonomous action for this tenant.",
+    )
+    autonomy_paused_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         Index("ix_tenant_configs_status", "status"),

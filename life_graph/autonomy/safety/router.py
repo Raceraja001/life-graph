@@ -169,3 +169,73 @@ async def seed_defaults(
     return success_response(
         [SafetyRuleResponse.model_validate(r) for r in rules]
     )
+
+
+# ── Kill Switch ──────────────────────────────────────────────
+# Emergency stop for autonomous action execution (life_graph/autonomy/
+# kill_switch.py, checked by AutoFixService._run_action). Scoped to the
+# current tenant, not an admin-only cross-tenant control, since this is
+# meant to be user-triggered.
+
+
+def _kill_switch_response(config) -> dict:
+    return {
+        "autonomy_paused": bool(config.autonomy_paused) if config else True,
+        "autonomy_paused_at": (
+            config.autonomy_paused_at.isoformat()
+            if config and config.autonomy_paused_at
+            else None
+        ),
+    }
+
+
+@router.get("/kill-switch")
+async def get_kill_switch(
+    session: AsyncSession = Depends(get_session),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Current autonomy kill-switch state for this tenant."""
+    from life_graph.models.db import TenantConfig
+
+    config = await session.get(TenantConfig, tenant_id)
+    return success_response(_kill_switch_response(config))
+
+
+@router.post("/kill-switch/pause")
+async def pause_kill_switch(
+    session: AsyncSession = Depends(get_session),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Immediately stop all autonomous action execution for this tenant."""
+    from datetime import UTC, datetime
+
+    from life_graph.autonomy.kill_switch import invalidate_autonomy_pause_cache
+    from life_graph.models.db import TenantConfig
+
+    config = await session.get(TenantConfig, tenant_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail=f"Tenant '{tenant_id}' not found")
+    config.autonomy_paused = True
+    config.autonomy_paused_at = datetime.now(UTC)
+    await session.commit()
+    invalidate_autonomy_pause_cache(tenant_id)
+    return success_response(_kill_switch_response(config))
+
+
+@router.post("/kill-switch/resume")
+async def resume_kill_switch(
+    session: AsyncSession = Depends(get_session),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Resume autonomous action execution for this tenant."""
+    from life_graph.autonomy.kill_switch import invalidate_autonomy_pause_cache
+    from life_graph.models.db import TenantConfig
+
+    config = await session.get(TenantConfig, tenant_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail=f"Tenant '{tenant_id}' not found")
+    config.autonomy_paused = False
+    config.autonomy_paused_at = None
+    await session.commit()
+    invalidate_autonomy_pause_cache(tenant_id)
+    return success_response(_kill_switch_response(config))

@@ -326,7 +326,11 @@ class AutoFixService:
             Tuple of (status, exit_code) where status is "success" or
             "failure".
         """
+        from life_graph.autonomy.kill_switch import is_autonomy_paused
         from life_graph.autonomy.models import AutoAction
+
+        if await is_autonomy_paused(tenant_id):
+            return await self._blocked_by_kill_switch(tenant_id, auto_action)
 
         lock = self._get_lock(auto_action.project_id)
         started = datetime.now(UTC)
@@ -422,6 +426,51 @@ class AutoFixService:
             command=auto_action.action_command or auto_action.instruction,
             exit_code=exit_code,
             duration_ms=duration_ms,
+            result=status,
+        )
+
+        return status, exit_code
+
+    async def _blocked_by_kill_switch(self, tenant_id: str, auto_action):
+        """Record ``auto_action`` as blocked instead of running it.
+
+        Reuses the plain "failure" status rather than a distinct "blocked"
+        one deliberately: callers' level-promotion bookkeeping treats a
+        kill-switch block the same as a real execution failure, so pausing
+        and later resuming naturally asks the system to re-earn trust
+        instead of silently resuming at the same autonomy level.
+        """
+        from life_graph.autonomy.models import AutoAction
+
+        status, exit_code = "failure", 1
+        error_message = "Blocked: autonomy kill-switch is paused for this tenant"
+        now = datetime.now(UTC)
+
+        async with self._session_factory() as session:
+            await session.execute(
+                update(AutoAction)
+                .where(AutoAction.id == auto_action.id)
+                .values(
+                    status=status,
+                    exit_code=exit_code,
+                    error_message=error_message,
+                    duration_ms=0,
+                    started_at=now,
+                    completed_at=now,
+                )
+            )
+            await session.commit()
+
+        await self._audit_service.log_auto_execute(
+            tenant_id=tenant_id,
+            action_id=auto_action.id,
+            agent_id=auto_action.agent_id,
+            project_id=auto_action.project_id,
+            action_type=auto_action.action_name,
+            risk_level=auto_action.risk_level,
+            command=auto_action.action_command or auto_action.instruction,
+            exit_code=exit_code,
+            duration_ms=0,
             result=status,
         )
 

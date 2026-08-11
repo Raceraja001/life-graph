@@ -4,7 +4,7 @@
 // bubble, driven entirely by `api.kernel.chatStream`'s SSE event callback. Visual
 // target: docs/design/mockups/jarvis-streaming-chat.html.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Check, ChevronRight, Loader2, Mic, Send, Square, X } from "lucide-react";
+import { Check, ChevronRight, Loader2, Mic, Send, Square, Volume2, VolumeX, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useMobileState } from "@/components/mobile/mobile-state";
 import { useRecorder } from "@/components/mobile/use-recorder";
@@ -75,11 +75,23 @@ export function PersonaChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const recorder = useRecorder();
   const [transcribing, setTranscribing] = useState(false);
-  // Only the setter is read now: Fix 2 (barge-in race) made the cancel()
-  // in onMicTap unconditional rather than gated on this value, and nothing
-  // else reads it — it exists purely to drive TTS lifecycle side effects.
-  const [, setSpeaking] = useState(false);
+  // Drives the header speaker icon's "speaking" visual. Barge-in logic
+  // (onMicTap, send(), stop()) still cancels unconditionally rather than
+  // gating on this — see the comment in onMicTap for why that's necessary.
+  const [speaking, setSpeaking] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
+  // Voice-output mute toggle, persisted so it survives a reload. Default
+  // enabled ("1"/unset) now that Jarvis speaks every reply, not just
+  // voice-originated ones -- muting is an opt-out, not an opt-in.
+  const [voiceOutput, setVoiceOutputState] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("lg_voice_output") !== "0";
+  });
+  function setVoiceOutput(next: boolean) {
+    setVoiceOutputState(next);
+    if (typeof window !== "undefined") localStorage.setItem("lg_voice_output", next ? "1" : "0");
+    if (!next && typeof window !== "undefined") window.speechSynthesis?.cancel();
+  }
   // Captured from the SSE `start` event so Stop can best-effort cancel the
   // backend task too (aborting the fetch alone leaves Jarvis running and
   // burning model quota server-side).
@@ -105,6 +117,11 @@ export function PersonaChat() {
   async function send(message?: string, viaVoice = false) {
     const msg = (message ?? input).trim();
     if (!msg || streaming || !online) return;
+    // Unconditional, same rationale as onMicTap's cancel: a new turn means
+    // the user wants Jarvis's attention now, whether they typed or spoke it
+    // -- barge-in must work regardless of how the previous reply was voiced.
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    setSpeaking(false);
     if (message === undefined) setInput("");
     setTurns((ts) => [...ts, newTurn(msg, viaVoice)]);
     setStreaming(true);
@@ -249,11 +266,13 @@ export function PersonaChat() {
     }
   }
 
-  // Speak a voice-originated turn's reply once it finishes streaming. Typed
-  // turns (viaVoice falsy) never trigger this. Guarded on lastTurn?.done so
-  // this only fires once per turn, when it actually completes.
+  // Speak every completed reply -- typed and voice-originated turns alike --
+  // so Jarvis always talks back regardless of how you addressed it. Guarded
+  // on lastTurn?.done so this only fires once per turn, when it completes,
+  // and on voiceOutput so the mute toggle actually silences it.
   useEffect(() => {
-    if (!lastTurn || !lastTurn.done || !lastTurn.viaVoice || lastTurn.errored) return;
+    if (!lastTurn || !lastTurn.done || lastTurn.errored) return;
+    if (!voiceOutput) return;
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     const utterance = new SpeechSynthesisUtterance(lastTurn.synthesis || "");
     utterance.onstart = () => setSpeaking(true);
@@ -261,7 +280,7 @@ export function PersonaChat() {
     utterance.onerror = () => setSpeaking(false);
     window.speechSynthesis.speak(utterance);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastTurn?.done, lastTurn?.viaVoice]);
+  }, [lastTurn?.done, voiceOutput]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -298,6 +317,28 @@ export function PersonaChat() {
             </option>
           ))}
         </select>
+        <button
+          onClick={() => setVoiceOutput(!voiceOutput)}
+          aria-label={voiceOutput ? "Mute Jarvis's voice" : "Unmute Jarvis's voice"}
+          aria-pressed={voiceOutput}
+          title={voiceOutput ? "Voice output on" : "Voice output muted"}
+          style={{
+            marginLeft: "auto",
+            flexShrink: 0,
+            width: "30px",
+            height: "30px",
+            border: "1px solid var(--border)",
+            borderRadius: "50%",
+            background: speaking ? "var(--accent-soft, var(--surface-2))" : "var(--surface-2)",
+            color: voiceOutput ? (speaking ? "var(--accent-text)" : "var(--text)") : "var(--text-subtle)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+          }}
+        >
+          {voiceOutput ? <Volume2 width={15} height={15} /> : <VolumeX width={15} height={15} />}
+        </button>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: "18px", padding: "4px 2px" }}>

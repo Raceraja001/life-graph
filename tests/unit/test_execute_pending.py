@@ -19,6 +19,16 @@ from life_graph.autonomy.pipeline.executor import ExecutionResult
 from life_graph.autonomy.pipeline.service import AutoFixService
 
 
+@pytest.fixture(autouse=True)
+def _autonomy_not_paused():
+    """These tests exercise real execution, not the kill-switch itself
+    (see test_kill_switch.py) -- keep _run_action's guard a no-op here."""
+    with patch(
+        "life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=False)
+    ):
+        yield
+
+
 class _FakeResult:
     """Stand-in for a SQLAlchemy Result — both scalar accessors return the action."""
 

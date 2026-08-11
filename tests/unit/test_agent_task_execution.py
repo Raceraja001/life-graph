@@ -13,7 +13,7 @@ path must be completely unaffected — see
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.sql.dml import Update
@@ -22,6 +22,16 @@ from sqlalchemy.sql.selectable import Select
 from life_graph.autonomy.pipeline.executor import ExecutionResult
 from life_graph.autonomy.pipeline.service import DEFAULT_AGENT_TASK_COST_CAP, AutoFixService
 from life_graph.drivers.base import DriverResult
+
+
+@pytest.fixture(autouse=True)
+def _autonomy_not_paused():
+    """These tests exercise real execution, not the kill-switch itself
+    (see test_kill_switch.py) -- keep _run_action's guard a no-op here."""
+    with patch(
+        "life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=False)
+    ):
+        yield
 
 
 class _FakeResult:

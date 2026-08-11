@@ -248,6 +248,10 @@ export const api = {
       listRequest<any>("/autonomy/shadow/runs", { ungraded_only: String(ungradedOnly) }),
     gradeShadow: (id: string, grade: "good" | "bad") =>
       POST<any>(`/autonomy/shadow/runs/${id}/grade`, { grade }),
+    // Emergency stop for autonomous action execution (tenant-scoped).
+    killSwitch: () => GET<any>("/autonomy/safety/kill-switch"),
+    pauseKillSwitch: () => POST<any>("/autonomy/safety/kill-switch/pause", {}),
+    resumeKillSwitch: () => POST<any>("/autonomy/safety/kill-switch/resume", {}),
   },
 
   // ── Multi-modal ingest ──────────────────────────

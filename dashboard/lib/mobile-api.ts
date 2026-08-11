@@ -282,6 +282,36 @@ export function useModelHealth() {
   });
 }
 
+// ── Autonomy kill-switch (emergency stop for autonomous actions) ──
+export interface AutonomyKillSwitchVM {
+  paused: boolean;
+  pausedAt: string | null;
+}
+
+interface RawKillSwitchResponse {
+  data?: { autonomy_paused?: boolean; autonomy_paused_at?: string | null };
+}
+
+export function useAutonomyKillSwitch() {
+  return useQuery({
+    queryKey: ["autonomy-kill-switch"],
+    queryFn: () => api.autonomy.killSwitch() as Promise<RawKillSwitchResponse>,
+    select: (r: RawKillSwitchResponse): AutonomyKillSwitchVM => ({
+      paused: Boolean(r?.data?.autonomy_paused),
+      pausedAt: r?.data?.autonomy_paused_at ?? null,
+    }),
+  });
+}
+
+export function useToggleAutonomyKillSwitch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pause: boolean) =>
+      pause ? api.autonomy.pauseKillSwitch() : api.autonomy.resumeKillSwitch(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["autonomy-kill-switch"] }),
+  });
+}
+
 // ── Ambient advisory roles (scout/admin/tutor) ─────────────────
 // These personas run on a schedule and only report — never act without the
 // user. This surface lets the user enable/disable each role, edit scout's

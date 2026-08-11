@@ -1,8 +1,14 @@
 "use client";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Octagon } from "lucide-react";
 import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
-import { useModelHealth, type ModelHealthVM, type ModelHealthState } from "@/lib/mobile-api";
+import {
+  useModelHealth,
+  type ModelHealthVM,
+  type ModelHealthState,
+  useAutonomyKillSwitch,
+  useToggleAutonomyKillSwitch,
+} from "@/lib/mobile-api";
 
 const DOT_COLOR: Record<ModelHealthState, string> = {
   up: "var(--success)",
@@ -79,12 +85,75 @@ function ModelHealthRow({ item }: { item: ModelHealthVM }) {
   );
 }
 
+function KillSwitchCard() {
+  const killSwitch = useAutonomyKillSwitch();
+  const toggle = useToggleAutonomyKillSwitch();
+  const paused = killSwitch.data?.paused ?? false;
+  const pausedAgo = paused && killSwitch.data?.pausedAt
+    ? relativeTime(Math.floor(new Date(killSwitch.data.pausedAt).getTime() / 1000))
+    : null;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "11px",
+        background: paused ? "var(--danger-soft, #fee)" : "var(--surface)",
+        border: `1px solid ${paused ? "var(--danger, #d33)" : "var(--border)"}`,
+        borderRadius: "var(--radius-lg)",
+        boxShadow: "var(--shadow-xs)",
+        padding: "12px 14px",
+      }}
+    >
+      <Octagon
+        width={18}
+        height={18}
+        style={{ color: paused ? "var(--danger, #d33)" : "var(--text-subtle)", flexShrink: 0 }}
+      />
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span style={{ display: "block", fontSize: "var(--ui-text)", fontWeight: "var(--fw-semibold)" }}>
+          Autonomous actions
+        </span>
+        <span style={{ display: "block", fontSize: "var(--text-2xs)", color: "var(--text-subtle)", marginTop: "1px" }}>
+          {killSwitch.isLoading
+            ? "Checking…"
+            : paused
+              ? `Paused${pausedAgo ? ` ${pausedAgo}` : ""} — nothing will auto-execute`
+              : "Running normally — ops/cody can act within their trust level"}
+        </span>
+      </span>
+      <button
+        onClick={() => toggle.mutate(!paused)}
+        disabled={killSwitch.isLoading || toggle.isPending}
+        style={{
+          flexShrink: 0,
+          border: `1px solid ${paused ? "var(--danger, #d33)" : "var(--border-strong)"}`,
+          borderRadius: "var(--radius-md)",
+          background: paused ? "var(--danger, #d33)" : "var(--surface-2)",
+          color: paused ? "#fff" : "var(--text)",
+          fontSize: "var(--text-sm)",
+          fontFamily: "inherit",
+          fontWeight: "var(--fw-semibold)",
+          padding: "7px 12px",
+          cursor: killSwitch.isLoading || toggle.isPending ? "not-allowed" : "pointer",
+          opacity: killSwitch.isLoading || toggle.isPending ? 0.6 : 1,
+        }}
+      >
+        {paused ? "Resume" : "Pause"}
+      </button>
+    </div>
+  );
+}
+
 export default function MobileSettings() {
   const modelHealth = useModelHealth();
   const items = modelHealth.data ?? [];
 
   return (
     <>
+      <KillSwitchCard />
+
       <Link
         href="/m/schedules"
         style={{
