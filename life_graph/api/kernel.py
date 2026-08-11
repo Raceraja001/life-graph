@@ -234,24 +234,26 @@ async def list_tasks(
     agent_name: str | None = Query(None, description="Filter by agent/persona name"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    include_total: bool = Query(False, description="Include total count (extra DB query)"),
     pm: Any = Depends(get_process_manager),
 ):
     """List tasks for the current tenant with optional filters."""
     tenant_id = get_current_tenant_id()
 
-    tasks, total = await pm.list_tasks(
+    tasks, total, has_more = await pm.list_tasks(
         tenant_id=tenant_id,
         status=status_filter,
         agent_name=agent_name,
         limit=limit,
         offset=offset,
+        include_total=include_total,
     )
 
     return paginated_response(
         data=[_task_row_to_summary(t) for t in tasks],
         total=total,
         page_size=limit,
-        has_more=(offset + limit) < total,
+        has_more=has_more,
     )
 
 

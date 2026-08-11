@@ -326,6 +326,7 @@ async def list_memories(
         offset=offset,
         limit=limit,
         cursor=cursor,
+        include_embedding=False,  # MemoryResponse never serializes it
     )
     memories = [MemoryResponse.model_validate(r) for r in rows]
 

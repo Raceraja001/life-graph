@@ -173,7 +173,7 @@ class TestDelegateToPersonaTool:
         assert result["status"] in ("completed", "failed", "still_running")
 
         # Whatever the outcome, the child task must be correctly linked.
-        tasks, _total = await pm.list_tasks(TENANT_ID, agent_name="chief")
+        tasks, _total, _has_more = await pm.list_tasks(TENANT_ID, agent_name="chief")
         child = next(
             (t for t in tasks if str(t.parent_task_id) == root_id), None,
         )

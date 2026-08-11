@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select, tuple_, update
+from sqlalchemy.orm import defer
 
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, coerce_tier
@@ -313,6 +314,7 @@ class PostgresMemoryStore:
         offset: int = 0,
         limit: int = 20,
         cursor: str | None = None,
+        include_embedding: bool = True,
     ) -> tuple[list[Memory], bool]:
         """List memories with optional filtering and cursor-based pagination.
 
@@ -320,12 +322,22 @@ class PostgresMemoryStore:
         is ignored.  The cursor encodes ``(created_at, id)`` for
         deterministic, gap-free paging.
 
+        Args:
+            include_embedding: When False, defers loading the ``embedding``
+                pgvector column (nothing accesses it after — a plain list
+                view was fetching and discarding it on every row). Accessing
+                ``.embedding`` on a returned row when this is False triggers
+                a lazy per-row load, so only pass False when the caller
+                genuinely never reads it.
+
         Returns:
             A tuple of ``(memories, has_more)``.
         """
         stmt = select(Memory).where(
             Memory.tenant_id == get_current_tenant_id(),
         )
+        if not include_embedding:
+            stmt = stmt.options(defer(Memory.embedding))
         stmt = self._apply_filters(stmt, Memory, filters)
         stmt = stmt.order_by(Memory.created_at.desc(), Memory.id.desc())
 

@@ -11,6 +11,7 @@ See docs/specs/approvals-feed.md.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -22,6 +23,15 @@ from life_graph.models.db import Approval, Memory
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
 
 logger = logging.getLogger(__name__)
+
+# reconcile_promotions() used to run unconditionally on every list_approvals()
+# call — 2 extra DB round trips on every GET /approvals for state that only
+# actually changes once a day (the self_improving nightly cron is the only
+# thing that sets OptimizationRun.status='needs_review'). A short per-tenant
+# TTL skip is enough to eliminate nearly all of that redundant work; a new
+# promotion still surfaces within one TTL window of the cron run finishing.
+_RECONCILE_TTL_SECONDS = 60.0
+_last_reconciled: dict[str, float] = {}
 
 
 class ApprovalAlreadyResolvedError(Exception):
@@ -39,8 +49,13 @@ class ApprovalService:
     async def list_approvals(
         self, tenant_id: str, status: str = "pending", limit: int = 100
     ) -> list[dict[str, Any]]:
-        """Reconcile producers, then return approvals (newest first)."""
-        await self.reconcile_promotions(tenant_id)
+        """Reconcile producers (at most once per TTL window), then return
+        approvals (newest first)."""
+        now = time.monotonic()
+        last = _last_reconciled.get(tenant_id)
+        if last is None or now - last >= _RECONCILE_TTL_SECONDS:
+            await self.reconcile_promotions(tenant_id)
+            _last_reconciled[tenant_id] = now
 
         query = select(Approval).where(Approval.tenant_id == tenant_id)
         if status != "all":

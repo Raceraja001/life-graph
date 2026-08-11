@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
 )
+from sqlalchemy.orm import defer
 
 from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
@@ -284,7 +285,8 @@ class ProcessManager:
         agent_name: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> tuple[list[Any], int]:
+        include_total: bool = False,
+    ) -> tuple[list[Any], int | None, bool]:
         """List tasks for a tenant with optional filters.
 
         Args:
@@ -293,40 +295,60 @@ class ProcessManager:
             agent_name: Optional agent name filter.
             limit: Max results per page.
             offset: Pagination offset.
+            include_total: When True, also run a COUNT(*) query. The only
+                caller (api/kernel.py's list endpoint) doesn't surface
+                total/has_more in the mobile Tasks board, so this defaults
+                to False — skips a second DB round trip on every request.
+                has_more is derived from an over-fetch (limit+1 rows), not
+                from total, so it's accurate either way.
 
         Returns:
-            Tuple of (task list, total count).
+            Tuple of (task list, total count or None, has_more).
         """
         async with self._session_factory() as session:
             base = select(AgentTask).where(
                 AgentTask.tenant_id == tenant_id,
             )
-            count_base = (
-                select(func.count()).select_from(AgentTask).where(AgentTask.tenant_id == tenant_id)
+            # The list view only ever renders _task_row_to_summary's 9
+            # scalar fields — defer the JSONB blobs nothing here reads.
+            base = base.options(
+                defer(AgentTask.input),
+                defer(AgentTask.result),
+                defer(AgentTask.logs),
+                defer(AgentTask.token_usage),
             )
 
             if status:
-                base = base.where(
-                    AgentTask.status == status,
-                )
-                count_base = count_base.where(
-                    AgentTask.status == status,
-                )
+                base = base.where(AgentTask.status == status)
             if agent_name:
-                base = base.where(
-                    AgentTask.agent_name == agent_name,
-                )
-                count_base = count_base.where(
-                    AgentTask.agent_name == agent_name,
-                )
+                base = base.where(AgentTask.agent_name == agent_name)
 
-            count_result = await session.execute(count_base)
-            total = count_result.scalar() or 0
-
-            stmt = base.order_by(AgentTask.created_at.desc()).limit(limit).offset(offset)
+            stmt = (
+                base.order_by(AgentTask.created_at.desc())
+                .limit(limit + 1)
+                .offset(offset)
+            )
             result = await session.execute(stmt)
             tasks = list(result.scalars().all())
-            return tasks, total
+            has_more = len(tasks) > limit
+            if has_more:
+                tasks = tasks[:limit]
+
+            total = None
+            if include_total:
+                count_base = (
+                    select(func.count())
+                    .select_from(AgentTask)
+                    .where(AgentTask.tenant_id == tenant_id)
+                )
+                if status:
+                    count_base = count_base.where(AgentTask.status == status)
+                if agent_name:
+                    count_base = count_base.where(AgentTask.agent_name == agent_name)
+                count_result = await session.execute(count_base)
+                total = count_result.scalar() or 0
+
+            return tasks, total, has_more
 
     async def cancel_queued(
         self,

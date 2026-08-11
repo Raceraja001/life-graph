@@ -453,5 +453,5 @@ class TestAmbientRoleScheduling:
         assert fire_result is not None
 
         pm = get_process_manager()
-        tasks, _total = await pm.list_tasks(tenant, agent_name="scout")
+        tasks, _total, _has_more = await pm.list_tasks(tenant, agent_name="scout")
         assert len(tasks) >= 1
