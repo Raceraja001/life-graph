@@ -15,6 +15,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import defer
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Evidence, Preference
@@ -131,12 +132,16 @@ class EvidenceStore:
         self, tenant_id: str, preference_id: uuid.UUID
     ) -> dict[str, Any]:
         """List evidence grouped by stance with net score calculation."""
+        # EvidenceResponse never serializes embedding or raw_content (can be
+        # a full article body) -- this was fetching and discarding both on
+        # every row.
         stmt = (
             select(Evidence)
             .where(Evidence.preference_id == preference_id)
             .where(Evidence.tenant_id == tenant_id)
             .where(Evidence.status == "active")
             .order_by(Evidence.created_at.desc())
+            .options(defer(Evidence.embedding), defer(Evidence.raw_content))
         )
 
         async with self._session_factory() as session:

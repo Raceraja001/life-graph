@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import defer
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Evidence, Preference
@@ -99,7 +100,13 @@ class PreferenceStore:
         offset: int = 0,
     ) -> list[Preference]:
         """List preferences with optional filters."""
-        stmt = select(Preference).where(Preference.tenant_id == tenant_id)
+        # PreferenceResponse never serializes embedding -- its only caller
+        # (GET /preferences/) was fetching and discarding it on every row.
+        stmt = (
+            select(Preference)
+            .where(Preference.tenant_id == tenant_id)
+            .options(defer(Preference.embedding))
+        )
 
         if status:
             stmt = stmt.where(Preference.status == status)

@@ -168,15 +168,27 @@ class PostgresMemoryStore:
         embedding: list[float],
         limit: int = 10,
         filters: dict | None = None,
+        include_embedding: bool = True,
     ) -> list[Memory]:
         """Find closest memories by cosine distance using pgvector ``<=>``.
 
         Applies the same optional filters as :meth:`list_memories`.
+
+        Args:
+            include_embedding: When False, defers loading the ``embedding``
+                column onto the returned rows (the cosine-distance ordering
+                still happens in SQL either way — this only affects whether
+                the vector is also fetched back into Python). Only pass
+                False when the caller never reads ``.embedding`` on the
+                result — e.g. ContradictionDetector does, so it keeps the
+                default.
         """
         stmt = select(Memory).where(
             Memory.embedding.is_not(None),
             Memory.tenant_id == get_current_tenant_id(),
         )
+        if not include_embedding:
+            stmt = stmt.options(defer(Memory.embedding))
         stmt = self._apply_filters(stmt, Memory, filters)
         stmt = stmt.order_by(Memory.embedding.cosine_distance(embedding))
         stmt = stmt.limit(limit)
@@ -290,12 +302,17 @@ class PostgresMemoryStore:
             if not scored_ids:
                 return []
 
-            # Fetch full ORM objects for the scored IDs
+            # Fetch full ORM objects for the scored IDs. Scoring already
+            # happened in the raw SQL above; neither caller of hybrid_search
+            # (hybrid.py, api/search.py) reads .embedding on the result, so
+            # defer it here too.
             id_list = [sid for sid, _ in scored_ids]
             score_map = {sid: score for sid, score in scored_ids}
 
             orm_result = await session.execute(
-                select(Memory).where(Memory.id.in_(id_list))
+                select(Memory)
+                .where(Memory.id.in_(id_list))
+                .options(defer(Memory.embedding))
             )
             rows = {r.id: r for r in orm_result.scalars().all()}
 

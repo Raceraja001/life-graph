@@ -142,6 +142,7 @@ class HybridQueryEngine:
                     embedding=embedding,
                     limit=limit,
                     filters=filters,
+                    include_embedding=False,  # only .id/.content/.tags/.importance/.created_at read below
                 )
                 memories = [
                     {
@@ -160,6 +161,7 @@ class HybridQueryEngine:
                         embedding=embedding,
                         limit=limit,
                         filters={"status": "active"},
+                        include_embedding=False,
                     )
                     seen_ids = {m["id"] for m in memories}
                     for r in broad_rows:

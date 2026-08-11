@@ -139,7 +139,9 @@ class NotificationEngine:
         is_read: bool | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> tuple[list[dict[str, Any]], int, int]:
+        include_total: bool = False,
+        include_unread_count: bool = False,
+    ) -> tuple[list[dict[str, Any]], int | None, int | None]:
         """List notifications for a tenant with filters.
 
         Args:
@@ -148,10 +150,17 @@ class NotificationEngine:
             is_read: Optional read-state filter.
             limit: Page size (default 20).
             offset: Page offset (default 0).
+            include_total: Run an extra COUNT(*) for the filtered total.
+                Defaults to False -- the only caller (GET /kernel/notifications)
+                doesn't surface it in the dashboard, so this was running two
+                unconditional COUNT queries on every request for nothing.
+            include_unread_count: Run an extra COUNT(*) for the tenant-wide
+                unread count. Same rationale, separate flag since a caller
+                may want one without the other.
 
         Returns:
-            Tuple of (notification dicts, total count,
-            unread count).
+            Tuple of (notification dicts, total count or None,
+            unread count or None).
         """
         async with self._session_factory() as session:
             # Base filters
@@ -167,28 +176,30 @@ class NotificationEngine:
                     Notification.is_read == is_read,
                 )
 
-            # Total count (with filters)
-            count_stmt = (
-                select(func.count())
-                .select_from(Notification)
-                .where(*base_where)
-            )
-            total = (
-                await session.execute(count_stmt)
-            ).scalar() or 0
-
-            # Unread count (tenant-wide, no filters)
-            unread_stmt = (
-                select(func.count())
-                .select_from(Notification)
-                .where(
-                    Notification.tenant_id == tenant_id,
-                    Notification.is_read.is_(False),
+            total = None
+            if include_total:
+                count_stmt = (
+                    select(func.count())
+                    .select_from(Notification)
+                    .where(*base_where)
                 )
-            )
-            unread_count = (
-                await session.execute(unread_stmt)
-            ).scalar() or 0
+                total = (
+                    await session.execute(count_stmt)
+                ).scalar() or 0
+
+            unread_count = None
+            if include_unread_count:
+                unread_stmt = (
+                    select(func.count())
+                    .select_from(Notification)
+                    .where(
+                        Notification.tenant_id == tenant_id,
+                        Notification.is_read.is_(False),
+                    )
+                )
+                unread_count = (
+                    await session.execute(unread_stmt)
+                ).scalar() or 0
 
             # Fetch page
             query = (

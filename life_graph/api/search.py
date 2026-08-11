@@ -185,6 +185,7 @@ async def semantic_search(
             embedding=embedding,
             limit=body.limit,
             filters=filters or None,
+            include_embedding=False,  # MemoryResponse never serializes it
         )
         memories = [MemoryResponse.model_validate(r) for r in rows]
 
@@ -265,6 +266,7 @@ async def ask_brain(
     rows = await store.search_similar(
         embedding=embedding,
         limit=body.limit,
+        include_embedding=False,  # MemoryResponse never serializes it
     )
 
     memories = [MemoryResponse.model_validate(r) for r in rows]

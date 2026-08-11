@@ -15,7 +15,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.kernel.propose_contract import (
@@ -658,30 +658,23 @@ class PersonaService:
             base = select(AgentPersona).where(
                 AgentPersona.tenant_id == tenant_id,
             )
-            count_base = (
-                select(func.count())
-                .select_from(AgentPersona)
-                .where(AgentPersona.tenant_id == tenant_id)
-            )
 
             if not include_inactive:
                 base = base.where(
                     AgentPersona.is_active.is_(True),
                 )
-                count_base = count_base.where(
-                    AgentPersona.is_active.is_(True),
-                )
 
-            count_result = await session.execute(count_base)
-            total = count_result.scalar() or 0
-
+            # No limit/offset on this query -- every matching row is always
+            # returned, so a separate COUNT(*) can never differ from
+            # len(personas). Dropped it rather than running a second,
+            # always-redundant query.
             stmt = base.order_by(
                 AgentPersona.is_builtin.desc(),
                 AgentPersona.name.asc(),
             )
             result = await session.execute(stmt)
             personas = [self._persona_to_dict(p) for p in result.scalars().all()]
-            return personas, total
+            return personas, len(personas)
 
     async def get_by_id(
         self,

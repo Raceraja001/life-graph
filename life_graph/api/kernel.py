@@ -1224,6 +1224,10 @@ async def list_notifications(
     ),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    include_total: bool = Query(False, description="Include total count (extra DB query)"),
+    include_unread_count: bool = Query(
+        False, description="Include tenant-wide unread count (extra DB query)"
+    ),
     svc: Any = Depends(get_notification_engine),
 ):
     """List notifications for the current tenant."""
@@ -1236,6 +1240,8 @@ async def list_notifications(
         is_read=is_read,
         limit=limit,
         offset=offset,
+        include_total=include_total,
+        include_unread_count=include_unread_count,
     )
 
     return success_response(

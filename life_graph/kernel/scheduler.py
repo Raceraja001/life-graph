@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -271,23 +271,14 @@ class SchedulerService:
             base = select(ScheduledJob).where(
                 ScheduledJob.tenant_id == tenant_id,
             )
-            count_base = (
-                select(func.count())
-                .select_from(ScheduledJob)
-                .where(ScheduledJob.tenant_id == tenant_id)
-            )
 
             if not include_inactive:
                 base = base.where(
                     ScheduledJob.is_active.is_(True),
                 )
-                count_base = count_base.where(
-                    ScheduledJob.is_active.is_(True),
-                )
 
-            count_result = await session.execute(count_base)
-            total = count_result.scalar() or 0
-
+            # No limit/offset here -- every matching row is always returned,
+            # so a separate COUNT(*) can never differ from len(jobs).
             stmt = base.order_by(
                 ScheduledJob.next_run_at.asc(),
             )
@@ -296,7 +287,7 @@ class SchedulerService:
                 self._job_to_dict(j)
                 for j in result.scalars().all()
             ]
-            return jobs, total
+            return jobs, len(jobs)
 
     async def get_by_id(
         self, tenant_id: str, job_id: str,
