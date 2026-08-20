@@ -121,7 +121,7 @@ class MultiModelAdvisor:
 
         # Process results
         responses: list[ModelResponse] = []
-        for model, result in zip(models, raw_results):
+        for model, result in zip(models, raw_results, strict=False):
             if isinstance(result, Exception):
                 logger.warning("Model %s failed: %s", model, result)
                 responses.append(ModelResponse(

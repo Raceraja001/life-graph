@@ -13,13 +13,13 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 
 from sqlalchemy import select, update
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     """Event severity levels."""
 
     CRITICAL = "critical"

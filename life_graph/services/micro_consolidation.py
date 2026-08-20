@@ -27,6 +27,7 @@ from life_graph.models.db import Memory, MemorySession
 from life_graph.scoring.importance import ImportanceTagger
 from life_graph.services.embeddings import EmbeddingService
 from life_graph.storage.postgres import PostgresMemoryStore
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     """Compute cosine similarity between two vectors."""
     if not vec_a or not vec_b or len(vec_a) != len(vec_b):
         return 0.0
-    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    dot = sum(a * b for a, b in zip(vec_a, vec_b, strict=False))
     norm_a = sum(a * a for a in vec_a) ** 0.5
     norm_b = sum(b * b for b in vec_b) ** 0.5
     if norm_a == 0.0 or norm_b == 0.0:
@@ -338,9 +339,7 @@ class MicroConsolidator:
                         except Exception:
                             pass  # Edge may already exist
 
-        try:
+        with contextlib.suppress(Exception):
             await graph.close()
-        except Exception:
-            pass
 
         return entities_created, edges_created

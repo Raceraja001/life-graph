@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 from fnmatch import fnmatch
 
 from sqlalchemy import select
@@ -20,7 +20,7 @@ from life_graph.autonomy.trust.calculator import TrustCalculator
 logger = logging.getLogger(__name__)
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     """Action risk classification."""
 
     SAFE = "safe"
@@ -28,7 +28,7 @@ class RiskLevel(str, Enum):
     DANGEROUS = "dangerous"
 
 
-class Recommendation(str, Enum):
+class Recommendation(StrEnum):
     """Recommended action handling strategy."""
 
     AUTO_EXECUTE = "auto_execute"

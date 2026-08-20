@@ -331,10 +331,7 @@ class GraphStore:
         """
         depth = min(max(depth, 1), 5)
 
-        if edge_label:
-            rel = f"[r:{edge_label}*1..{depth}]"
-        else:
-            rel = f"[r*1..{depth}]"
+        rel = f"[r:{edge_label}*1..{depth}]" if edge_label else f"[r*1..{depth}]"
 
         cypher = (
             f"MATCH (a:{vertex_label})-{rel}-(b) "
@@ -456,10 +453,7 @@ class GraphStore:
         Returns:
             List of vertex dicts.
         """
-        if label:
-            cypher = f"MATCH (n:{label}) RETURN n"
-        else:
-            cypher = "MATCH (n) RETURN n"
+        cypher = f"MATCH (n:{label}) RETURN n" if label else "MATCH (n) RETURN n"
 
         results = await self.execute_cypher(cypher)
 

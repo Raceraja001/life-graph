@@ -121,9 +121,8 @@ class HybridQueryEngine:
         if entity_names:
             filters["tags"] = entity_names
 
-        if graph_filter:
-            if "min_importance" in graph_filter:
-                filters["min_importance"] = graph_filter["min_importance"]
+        if graph_filter and "min_importance" in graph_filter:
+            filters["min_importance"] = graph_filter["min_importance"]
 
         # This path explores canon (graph-anchored context) — always active
         # only. Never surface pending/rejected/archived memories here.

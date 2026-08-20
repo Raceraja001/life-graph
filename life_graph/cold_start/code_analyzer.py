@@ -17,6 +17,7 @@ import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -455,10 +456,8 @@ class CodeAnalyzer:
         for candidate in ["pyproject.toml", "requirements.txt", "setup.py"]:
             path = root / candidate
             if path.exists():
-                try:
+                with contextlib.suppress(Exception):
                     texts.append(path.read_text(encoding="utf-8").lower())
-                except Exception:
-                    pass
 
         combined = " ".join(texts)
 

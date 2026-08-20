@@ -104,7 +104,7 @@ class ColdStartBootstrap:
 
         # ── Phase 4: Store in PostgreSQL ──────────────────────
         stored_count = 0
-        for memory_dict, embedding in zip(all_memories, embeddings):
+        for memory_dict, embedding in zip(all_memories, embeddings, strict=False):
             try:
                 create_payload = MemoryCreate(
                     content=memory_dict["content"],

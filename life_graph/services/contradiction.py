@@ -408,7 +408,7 @@ def _compute_similarity_from_memory(
         return 0.8
 
     # Compute cosine similarity
-    dot_product = sum(a * b for a, b in zip(memory.embedding, new_embedding))
+    dot_product = sum(a * b for a, b in zip(memory.embedding, new_embedding, strict=False))
     norm_a = sum(a * a for a in memory.embedding) ** 0.5
     norm_b = sum(b * b for b in new_embedding) ** 0.5
 

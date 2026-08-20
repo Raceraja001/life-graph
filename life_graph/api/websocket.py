@@ -27,6 +27,7 @@ from life_graph.config import settings
 from life_graph.core.events import Event
 from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
 from life_graph.storage.redis import get_redis
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -203,10 +204,8 @@ async def ws_event_handler(event: Event) -> None:
     # Determine tenant_id from context or fall back to broadcast
     tenant_id: str | None = None
     if has_tenant_context():
-        try:
+        with contextlib.suppress(RuntimeError):
             tenant_id = get_current_tenant_id()
-        except RuntimeError:
-            pass
 
     if tenant_id:
         await publish_event(tenant_id, message)

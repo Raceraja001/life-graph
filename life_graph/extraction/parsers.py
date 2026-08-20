@@ -38,7 +38,7 @@ def parse_csv(content: bytes, filename: str) -> str:
             continue
         # Create readable key:value pairs per row
         if headers:
-            pairs = [f"{h}: {v}" for h, v in zip(headers, row) if v.strip()]
+            pairs = [f"{h}: {v}" for h, v in zip(headers, row, strict=False) if v.strip()]
             lines.append(f"Row {i}: " + ", ".join(pairs))
         else:
             lines.append(" | ".join(row))

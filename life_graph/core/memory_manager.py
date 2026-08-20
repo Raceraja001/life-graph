@@ -142,11 +142,11 @@ class MemoryManager:
             computed = await asyncio.gather(
                 *(self._generate_embedding(facts[i].content) for i in pending)
             )
-            for i, emb in zip(pending, computed):
+            for i, emb in zip(pending, computed, strict=False):
                 embeddings[i] = emb
 
         stored_memories: list[Memory] = []
-        for fact, embedding, existing in zip(facts, embeddings, exact_matches):
+        for fact, embedding, existing in zip(facts, embeddings, exact_matches, strict=False):
             if existing is not None:
                 stored_memories.append(await self._reuse_exact_duplicate(existing))
                 continue
@@ -175,7 +175,7 @@ class MemoryManager:
         )
 
         stored: list[Memory] = []
-        for fact, embedding in zip(facts, embeddings):
+        for fact, embedding in zip(facts, embeddings, strict=False):
             memory = await self._process_fact(
                 fact, context, source, skip_dedup=False, trust_tier=None, embedding=embedding
             )

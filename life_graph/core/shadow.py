@@ -11,14 +11,14 @@ No DB, no I/O (mirrors ``core/trust.py`` and ``core/budget.py``).
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 DEFAULT_MIN_DAYS = 14
 DEFAULT_MIN_SAMPLES = 5
 DEFAULT_GOOD_RATE_THRESHOLD = 0.8
 
 
-class ShadowGrade(str, Enum):
+class ShadowGrade(StrEnum):
     """A one-tap grade on a would-have-done shadow run."""
 
     GOOD = "good"

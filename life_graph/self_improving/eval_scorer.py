@@ -7,11 +7,11 @@ Semantic similarity uses sentence_transformers lazily.
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 
 
-class ScoringType(str, Enum):
+class ScoringType(StrEnum):
     """Supported scoring methods."""
 
     EXACT_MATCH = "exact_match"

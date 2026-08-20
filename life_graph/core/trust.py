@@ -16,10 +16,10 @@ It is the only place the surface→tier map and the fence text live.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class TrustTier(str, Enum):
+class TrustTier(StrEnum):
     """Provenance trust of a piece of content, ordered least→most dangerous.
 
     ``SELF < VERIFIED < EXTERNAL < HOSTILE_POSSIBLE``. Comparisons use the

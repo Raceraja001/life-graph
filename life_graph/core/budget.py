@@ -14,17 +14,17 @@ No DB, no I/O, no imports from the rest of the app.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class BudgetPriority(str, Enum):
+class BudgetPriority(StrEnum):
     """How aggressively a category is throttled as the budget fills up."""
 
     HIGH = "high"  # acts on the user's live tasks/decisions — throttled last
     LOW = "low"    # background maintenance — throttled first
 
 
-class BudgetCategory(str, Enum):
+class BudgetCategory(StrEnum):
     """A spender bucket. New spenders add a member here + a priority below."""
 
     DRIVER = "driver"

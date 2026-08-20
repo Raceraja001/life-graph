@@ -23,13 +23,14 @@ import logging
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
+import contextlib
 
 logger = logging.getLogger(__name__)
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     """All event types emitted within the Life Graph system."""
 
     MEMORY_CREATED = "memory:created"
@@ -285,10 +286,8 @@ class RedisBridge:
 
         tenant_id = "system"
         if has_tenant_context():
-            try:
+            with contextlib.suppress(RuntimeError):
                 tenant_id = get_current_tenant_id()
-            except RuntimeError:
-                pass
 
         channel = f"events:{tenant_id}:{event.type.value}"
         data = json.dumps(

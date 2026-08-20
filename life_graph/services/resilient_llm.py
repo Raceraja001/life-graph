@@ -118,7 +118,7 @@ class ResilientLLM:
         # sequential Redis round-trip per model before the primary is even
         # attempted.
         records = await asyncio.gather(*(self._health.get(m) for m in pool))
-        keyed = [(_rank_key(rec), m) for m, rec in zip(pool, records)]
+        keyed = [(_rank_key(rec), m) for m, rec in zip(pool, records, strict=False)]
         keyed.sort(key=lambda pair: pair[0])
         return [m for _, m in keyed]
 

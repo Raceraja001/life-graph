@@ -188,10 +188,7 @@ class ToolRegistry:
 
         await self._fire_post_exec(name, args, "ok", start)
 
-        if isinstance(result, str):
-            output = result
-        else:
-            output = json.dumps(result)
+        output = result if isinstance(result, str) else json.dumps(result)
 
         # Truncate oversized results (JSON-aware)
         if len(output) > MAX_TOOL_RESULT_CHARS:
