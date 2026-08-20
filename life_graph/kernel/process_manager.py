@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -230,7 +230,7 @@ class ProcessManager:
         await self._update_task_status(
             task_id,
             "cancelled",
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(UTC),
         )
 
         await event_bus.emit(
@@ -362,7 +362,7 @@ class ProcessManager:
         await self._update_task_status(
             uuid.UUID(task_id),
             "cancelled",
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(UTC),
         )
         await event_bus.emit(
             EventType.TASK_CANCELLED,
@@ -398,7 +398,7 @@ class ProcessManager:
             await self._update_task_status(
                 task_id,
                 "running",
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
             )
 
             stream_key = str(root_task_id or task_id)
@@ -598,7 +598,7 @@ class ProcessManager:
         result: dict[str, Any],
     ) -> None:
         """Mark a task as completed and emit event."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         token_usage = {
             "total_tokens": result.get("token_count", 0),
         }
@@ -649,7 +649,7 @@ class ProcessManager:
                 `allowed_tools`. Safety-load-bearing for read-only
                 scheduled action runs — do not drop on this path.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         status = "timeout" if timed_out else "failed"
         event_type = EventType.TASK_TIMEOUT if timed_out else EventType.TASK_FAILED
 
@@ -743,7 +743,7 @@ class ProcessManager:
                 .where(AgentTask.id == original_task_id)
                 .values(
                     retry_count=new_retry,
-                    updated_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(UTC),
                 )
             )
             await session.execute(stmt)
@@ -772,7 +772,7 @@ class ProcessManager:
         """Update task status and optional timestamps."""
         values: dict[str, Any] = {
             "status": status,
-            "updated_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(UTC),
         }
         if started_at is not None:
             values["started_at"] = started_at

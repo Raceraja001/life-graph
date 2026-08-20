@@ -7,8 +7,7 @@ Supports disk projection (estimates days until full).
 from __future__ import annotations
 
 import logging
-import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -81,7 +80,7 @@ class ServerHealthWatcher:
                     "title": f"Server check failed: {server_config.get('name', server_config.get('host', 'unknown'))}",
                     "details": str(e),
                     "watcher_name": self.name,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": datetime.now(UTC),
                 })
 
         return events
@@ -111,7 +110,7 @@ class ServerHealthWatcher:
                 "title": f"Cannot check {name} — asyncssh not installed",
                 "details": "Install asyncssh to enable SSH health checks.",
                 "watcher_name": self.name,
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(UTC),
             }]
 
         try:
@@ -130,7 +129,7 @@ class ServerHealthWatcher:
                 "title": f"SSH unreachable: {name}",
                 "details": f"Connection failed after {self.SSH_TIMEOUT}s: {e}",
                 "watcher_name": self.name,
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(UTC),
             }]
 
         try:
@@ -195,7 +194,7 @@ class ServerHealthWatcher:
                         "title": f"Disk critical: {server_name} {mount} at {pct}%",
                         "details": f"Partition {mount} is {pct}% full. {projection}",
                         "watcher_name": self.name,
-                        "timestamp": datetime.now(timezone.utc),
+                        "timestamp": datetime.now(UTC),
                     })
                 elif pct >= self.DISK_WARN:
                     projection = await self._project_disk_full(conn, mount)
@@ -204,7 +203,7 @@ class ServerHealthWatcher:
                         "title": f"Disk warning: {server_name} {mount} at {pct}%",
                         "details": f"Partition {mount} is {pct}% full. {projection}",
                         "watcher_name": self.name,
-                        "timestamp": datetime.now(timezone.utc),
+                        "timestamp": datetime.now(UTC),
                     })
         except Exception as e:
             logger.warning("Disk usage check failed for %s: %s", server_name, e)
@@ -278,7 +277,7 @@ class ServerHealthWatcher:
                             f"({ncpu} cores)"
                         ),
                         "watcher_name": self.name,
-                        "timestamp": datetime.now(timezone.utc),
+                        "timestamp": datetime.now(UTC),
                     })
         except Exception as e:
             logger.warning("CPU check failed for %s: %s", server_name, e)
@@ -306,7 +305,7 @@ class ServerHealthWatcher:
                                     "title": f"Memory critical: {server_name} at {pct:.0f}%",
                                     "details": f"Used {used}MB of {total}MB ({pct:.1f}%)",
                                     "watcher_name": self.name,
-                                    "timestamp": datetime.now(timezone.utc),
+                                    "timestamp": datetime.now(UTC),
                                 })
                             elif pct >= 80:
                                 events.append({
@@ -314,7 +313,7 @@ class ServerHealthWatcher:
                                     "title": f"High memory: {server_name} at {pct:.0f}%",
                                     "details": f"Used {used}MB of {total}MB ({pct:.1f}%)",
                                     "watcher_name": self.name,
-                                    "timestamp": datetime.now(timezone.utc),
+                                    "timestamp": datetime.now(UTC),
                                 })
                     break
 
@@ -347,7 +346,7 @@ class ServerHealthWatcher:
                         "title": f"Service down: {svc} on {server_name}",
                         "details": f"Service '{svc}' status: {status}",
                         "watcher_name": self.name,
-                        "timestamp": datetime.now(timezone.utc),
+                        "timestamp": datetime.now(UTC),
                     })
             except Exception as e:
                 events.append({
@@ -355,7 +354,7 @@ class ServerHealthWatcher:
                     "title": f"Cannot check service {svc} on {server_name}",
                     "details": str(e),
                     "watcher_name": self.name,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": datetime.now(UTC),
                 })
 
         return events
@@ -379,7 +378,7 @@ class ServerHealthWatcher:
                     "title": f"HTTP health check failed: {name}",
                     "details": f"GET {url} returned {resp.status_code}",
                     "watcher_name": self.name,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": datetime.now(UTC),
                 })
             elif resp.status_code >= 400:
                 events.append({
@@ -387,7 +386,7 @@ class ServerHealthWatcher:
                     "title": f"HTTP health check warning: {name}",
                     "details": f"GET {url} returned {resp.status_code}",
                     "watcher_name": self.name,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": datetime.now(UTC),
                 })
 
         except Exception as e:
@@ -396,7 +395,7 @@ class ServerHealthWatcher:
                 "title": f"HTTP unreachable: {name}",
                 "details": f"GET {url} failed: {e}",
                 "watcher_name": self.name,
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(UTC),
             })
 
         return events

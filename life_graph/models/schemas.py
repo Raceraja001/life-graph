@@ -7,11 +7,10 @@ constructed directly from SQLAlchemy ORM model instances.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # ── Memory ────────────────────────────────────────────────────────────────────
 
@@ -79,8 +78,7 @@ class MemoryResponse(BaseModel):
                 import math
                 anchor = self.last_reinforced or self.created_at
                 if anchor.tzinfo is None:
-                    from datetime import timezone as tz
-                    anchor = anchor.replace(tzinfo=tz.utc)
+                    anchor = anchor.replace(tzinfo=UTC)
                 now = datetime.now(anchor.tzinfo or __import__('datetime').timezone.utc)
                 days = max((now - anchor).total_seconds() / 86400.0, 0.0)
                 adj_rate = 0.03 / max(1 + self.reinforced_count * 0.5, 1.0)
@@ -568,7 +566,7 @@ class AgentTaskTree(BaseModel):
     assigned_agent: str | None = None
     status: str
     depth: int = 0
-    children: list["AgentTaskTree"] = Field(default_factory=list)
+    children: list[AgentTaskTree] = Field(default_factory=list)
 
 
 # ── Agent Messages ────────────────────────────────────────────────────────────

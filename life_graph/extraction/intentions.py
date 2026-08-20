@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import calendar
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 
 def _utcnow() -> datetime:
     """Return the current UTC timestamp (timezone-aware)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _end_of_day(dt: datetime) -> datetime:

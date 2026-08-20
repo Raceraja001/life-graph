@@ -5,12 +5,12 @@ intelligent routing (chief router), scheduled jobs, project
 awareness, and notifications.
 """
 
-from life_graph.kernel.process_manager import ProcessManager
-from life_graph.kernel.personas import PersonaService
 from life_graph.kernel.chief_router import ChiefRouter
-from life_graph.kernel.scheduler import SchedulerService
-from life_graph.kernel.project_registry import ProjectRegistry
 from life_graph.kernel.notification_engine import NotificationEngine
+from life_graph.kernel.personas import PersonaService
+from life_graph.kernel.process_manager import ProcessManager
+from life_graph.kernel.project_registry import ProjectRegistry
+from life_graph.kernel.scheduler import SchedulerService
 
 __all__ = [
     "ProcessManager",

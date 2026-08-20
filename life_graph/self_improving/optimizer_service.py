@@ -8,14 +8,12 @@ improvements automatically.
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +86,7 @@ class DSPyOptimizerService:
                 optimization_run_id: UUID of the run
                 details: additional info
         """
-        from life_graph.self_improving.models import OptimizationRun, EvalSuite
+        from life_graph.self_improving.models import EvalSuite, OptimizationRun
 
         run_id = uuid.uuid4()
 
@@ -111,7 +109,7 @@ class DSPyOptimizerService:
                     suite_id=suite_id,
                     trigger_eval_run_id=trigger_eval_run_id,
                     status="running",
-                    started_at=datetime.now(timezone.utc),
+                    started_at=datetime.now(UTC),
                 )
                 session.add(opt_run)
                 await session.commit()
@@ -474,7 +472,7 @@ class DSPyOptimizerService:
             run = await session.get(OptimizationRun, run_id)
             if run:
                 run.status = status
-                run.completed_at = datetime.now(timezone.utc)
+                run.completed_at = datetime.now(UTC)
                 if result_data:
                     run.result = result_data
                 await session.commit()

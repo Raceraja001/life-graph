@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
@@ -45,10 +44,10 @@ async def trigger_auto_action(request: AutoFixRequest):
 
 @router.get("", response_model=None)
 async def list_auto_actions(
-    agent_id: Optional[str] = Query(None),
-    project_id: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    risk_level: Optional[str] = Query(None),
+    agent_id: str | None = Query(None),
+    project_id: str | None = Query(None),
+    status: str | None = Query(None),
+    risk_level: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):

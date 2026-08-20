@@ -18,8 +18,8 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select, update
@@ -169,7 +169,7 @@ class ConsolidationPipeline:
 
     async def _gather_recent(self) -> list[Memory]:
         """Collect all active memories created in the last 24 hours."""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
         stmt = (
             select(Memory)
             .where(Memory.created_at > cutoff)
@@ -333,7 +333,7 @@ class ConsolidationPipeline:
                     tags=["principle", "distilled"],
                     properties={
                         "source_memories": [str(m.id) for m in cluster],
-                        "distilled_at": datetime.now(timezone.utc).isoformat(),
+                        "distilled_at": datetime.now(UTC).isoformat(),
                     },
                     importance=0.8,
                     importance_tier="high",

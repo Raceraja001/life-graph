@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -102,7 +102,7 @@ class PromptVersionService:
 
         Uses a single transaction for consistency.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._sf() as session:
             async with session.begin():

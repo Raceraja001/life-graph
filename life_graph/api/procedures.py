@@ -14,7 +14,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from life_graph.api.responses import success_response
 from life_graph.models.db import Procedure

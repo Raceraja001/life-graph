@@ -11,7 +11,7 @@ All queries use async SQLAlchemy with raw selects for efficiency.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -50,7 +50,7 @@ class TriggerMatcher:
         Returns:
             List of Intention ORM objects ready to fire.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         stmt = (
             select(Intention)
@@ -122,7 +122,7 @@ class TriggerMatcher:
         Returns:
             List of stale Memory ORM objects.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
+        cutoff = datetime.now(UTC) - timedelta(days=stale_days)
 
         stmt = (
             select(Memory)

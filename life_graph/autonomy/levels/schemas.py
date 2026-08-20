@@ -7,7 +7,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 LEVEL_DESCRIPTIONS = {
     0: "Ask Everything",
     1: "Safe Auto",

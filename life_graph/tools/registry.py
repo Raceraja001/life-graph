@@ -11,8 +11,9 @@ import asyncio
 import json
 import logging
 import time
-from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +175,7 @@ class ToolRegistry:
                 )
             else:
                 result = entry.handler(**args)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Tool '%s' timed out after %ds", name, entry.timeout_seconds)
             await self._fire_post_exec(name, args, "timeout", start)
             return json.dumps({"error": f"Tool '{name}' timed out after {entry.timeout_seconds}s"})

@@ -173,9 +173,7 @@ class ColdStartBootstrap:
                 memory["content"].lower().strip().encode()
             ).hexdigest()
 
-            if key not in seen:
-                seen[key] = memory
-            elif memory.get("importance", 0) > seen[key].get("importance", 0):
+            if key not in seen or memory.get("importance", 0) > seen[key].get("importance", 0):
                 seen[key] = memory
 
         return list(seen.values())

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -100,7 +100,7 @@ class OutcomeResolver:
             )
 
         # Apply resolution
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         prediction.outcome = outcome
         prediction.resolved_at = now
         prediction.resolution_source = source
@@ -145,7 +145,7 @@ class OutcomeResolver:
         Returns:
             List of created ``InterviewQuestion`` rows.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = await self.session.execute(
             select(Prediction).where(
                 Prediction.tenant_id == tenant_id,

@@ -151,8 +151,9 @@ async def get_run(
     engine: WorkflowEngine = Depends(get_workflow_engine),
 ):
     """Retrieve a workflow run and all its step run details."""
-    from life_graph.models.db import WorkflowRun, WorkflowStepRun
     from sqlalchemy import select
+
+    from life_graph.models.db import WorkflowRun, WorkflowStepRun
     from life_graph.storage.database import async_session
 
     tenant_id = get_current_tenant_id()

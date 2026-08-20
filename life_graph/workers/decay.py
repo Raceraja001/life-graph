@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, text, update
 
@@ -60,7 +60,7 @@ async def run_decay_sweep(ctx: dict, tenant_id: str) -> dict:
             tenant_id=tenant_id,
             job_name="decay_sweep",
             status="running",
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
         session.add(job)
         await session.commit()
@@ -122,7 +122,7 @@ async def run_decay_sweep(ctx: dict, tenant_id: str) -> dict:
                 .where(JobRun.id == job_id)
                 .values(
                     status="success",
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                     result=result_data,
                 )
             )
@@ -144,7 +144,7 @@ async def run_decay_sweep(ctx: dict, tenant_id: str) -> dict:
                 .where(JobRun.id == job_id)
                 .values(
                     status="failed",
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                     error=str(exc),
                 )
             )

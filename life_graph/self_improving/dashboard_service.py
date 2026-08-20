@@ -8,12 +8,10 @@ and pending reviews.
 from __future__ import annotations
 
 import logging
-import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, func, case, and_, desc
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, desc, func, select
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +69,7 @@ class DashboardService:
             tasks_monitored = suite_count.scalar_one_or_none() or 0
 
             # Auto-fixes this week
-            week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+            week_ago = datetime.now(UTC) - timedelta(days=7)
             fixes_result = await session.execute(
                 select(func.count(OptimizationRun.id)).where(
                     OptimizationRun.tenant_id == tenant_id,
@@ -114,7 +112,7 @@ class DashboardService:
         """Time series of accuracy per task_type over the last N days."""
         from life_graph.self_improving.models import EvalRun, EvalSuite
 
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = datetime.now(UTC) - timedelta(days=days)
 
         async with self.session_factory() as session:
             result = await session.execute(
@@ -147,8 +145,8 @@ class DashboardService:
         self, tenant_id: str
     ) -> list[dict[str, Any]]:
         """Current accuracy per task_type with color-coded status."""
-        from life_graph.self_improving.models import EvalRun, EvalSuite
         from life_graph.config import settings
+        from life_graph.self_improving.models import EvalRun, EvalSuite
 
         threshold = getattr(settings, "eval_accuracy_threshold_pct", 90.0)
 
@@ -215,9 +213,9 @@ class DashboardService:
         self, tenant_id: str, days: int = 7
     ) -> list[dict[str, Any]]:
         """Deployed optimizations in the last N days."""
-        from life_graph.self_improving.models import OptimizationRun, EvalSuite
+        from life_graph.self_improving.models import EvalSuite, OptimizationRun
 
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = datetime.now(UTC) - timedelta(days=days)
 
         async with self.session_factory() as session:
             result = await session.execute(
@@ -258,7 +256,7 @@ class DashboardService:
         """Daily eval + optimization costs over the last N days."""
         from life_graph.self_improving.models import EvalRun, EvalSuite
 
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = datetime.now(UTC) - timedelta(days=days)
 
         async with self.session_factory() as session:
             result = await session.execute(
@@ -290,7 +288,7 @@ class DashboardService:
         self, tenant_id: str
     ) -> list[dict[str, Any]]:
         """Optimization runs with status='needs_review'."""
-        from life_graph.self_improving.models import OptimizationRun, EvalSuite
+        from life_graph.self_improving.models import EvalSuite, OptimizationRun
 
         async with self.session_factory() as session:
             result = await session.execute(

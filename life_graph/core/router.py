@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Route definitions: (route_name, list_of_regex_patterns)
 # Patterns are compiled at module load for performance.

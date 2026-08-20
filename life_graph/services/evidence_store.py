@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 import math
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import defer
 
@@ -247,7 +247,7 @@ class EvidenceStore:
     @staticmethod
     def freshness_score(evidence: Evidence) -> float:
         """Age-based decay: 1.0 for brand new, decays over 365 days."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         age_days = max((now - evidence.created_at).total_seconds() / 86400, 0)
         # Exponential decay with half-life of ~180 days
         return math.exp(-0.00385 * age_days)
@@ -293,10 +293,10 @@ class EvidenceStore:
             history = list(pref.confidence_history or [])
             history.append({
                 "value": new_confidence,
-                "at": datetime.now(timezone.utc).isoformat(),
+                "at": datetime.now(UTC).isoformat(),
                 "reason": "evidence_recalc",
             })
             pref.confidence = new_confidence
             pref.confidence_history = history
-            pref.updated_at = datetime.now(timezone.utc)
+            pref.updated_at = datetime.now(UTC)
             await session.commit()

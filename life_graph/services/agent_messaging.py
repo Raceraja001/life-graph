@@ -10,9 +10,9 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import select, and_, desc, case
+from sqlalchemy import and_, case, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.core.events import EventType, event_bus
@@ -64,7 +64,7 @@ class AgentMessagingService:
                         status_history=[
                             {
                                 "status": "pending",
-                                "at": datetime.now(timezone.utc).isoformat(),
+                                "at": datetime.now(UTC).isoformat(),
                             }
                         ],
                     )
@@ -151,7 +151,7 @@ class AgentMessagingService:
                 raise ValueError(f"Message {message_id} not found")
 
             msg.status = "read"
-            msg.read_at = datetime.now(timezone.utc)
+            msg.read_at = datetime.now(UTC)
             await session.commit()
             await session.refresh(msg)
 

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +44,11 @@ async def nightly_self_heal(
     Returns:
         Summary dict with per-suite results.
     """
-    from life_graph.self_improving.models import EvalSuite, NightlyRunLog
     from life_graph.config import settings
+    from life_graph.self_improving.models import EvalSuite, NightlyRunLog
 
     run_id = uuid.uuid4()
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     suite_results: list[dict[str, Any]] = []
     overall_status = "success"
 
@@ -248,7 +248,7 @@ async def _finalize_log(
         log = await session.get(NightlyRunLog, run_id)
         if log:
             log.status = status
-            log.completed_at = datetime.now(timezone.utc)
+            log.completed_at = datetime.now(UTC)
             log.summary = summary
             await session.commit()
 

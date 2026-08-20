@@ -13,9 +13,8 @@ expressions.
 from __future__ import annotations
 
 import logging
-import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, update
@@ -106,7 +105,7 @@ class CronExpression:
             The next datetime matching the cron expression.
         """
         if after is None:
-            after = datetime.now(timezone.utc)
+            after = datetime.now(UTC)
 
         # Start from the next minute
         dt = after.replace(second=0, microsecond=0)
@@ -359,7 +358,7 @@ class SchedulerService:
         if values.get("is_active") is True:
             values["consecutive_failures"] = 0
 
-        values["updated_at"] = datetime.now(timezone.utc)
+        values["updated_at"] = datetime.now(UTC)
 
         async with self._session_factory() as session:
             stmt = (
@@ -407,7 +406,7 @@ class SchedulerService:
                 )
                 .values(
                     is_active=False,
-                    updated_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(UTC),
                 )
             )
             await session.commit()
@@ -513,7 +512,7 @@ class SchedulerService:
         and consecutive_failures. If failures exceed
         threshold, auto-disables the job.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             # Read current state
@@ -594,7 +593,7 @@ class SchedulerService:
         Returns:
             List of due job dicts.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             stmt = select(ScheduledJob).where(

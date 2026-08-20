@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field
 

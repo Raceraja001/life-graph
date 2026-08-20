@@ -14,7 +14,6 @@ import json
 import logging
 import re
 from typing import Any
-from urllib.parse import urlparse
 
 import asyncpg
 
@@ -426,9 +425,9 @@ class GraphStore:
             # Search all vertices — use the base Entity label
             # but also check all specific labels
             cypher = (
-                f"MATCH (n) "
-                f"WHERE n.name =~ $pattern "
-                f"RETURN n"
+                "MATCH (n) "
+                "WHERE n.name =~ $pattern "
+                "RETURN n"
             )
 
         # AGE uses =~ for regex matching (case-insensitive)

@@ -13,10 +13,10 @@ import logging
 import time
 import uuid
 from collections import Counter
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.config import settings
@@ -252,7 +252,7 @@ class MultiModelAdvisor:
 
             props = row.properties or {}
             props["chosen_model"] = chosen_model
-            props["chosen_at"] = datetime.now(timezone.utc).isoformat()
+            props["chosen_at"] = datetime.now(UTC).isoformat()
             props["choice_notes"] = notes
             row.properties = props
             row.status = "chosen"

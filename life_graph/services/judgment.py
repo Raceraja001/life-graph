@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,7 +124,7 @@ class JudgmentService:
         Returns:
             The persisted ``Decision``.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         decision = Decision(
             id=uuid.uuid4(),
             tenant_id=tenant_id,

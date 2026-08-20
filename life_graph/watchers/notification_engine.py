@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.storage.database import async_session
 
@@ -40,8 +39,8 @@ class NotificationEngine:
             return
 
         from life_graph.watchers.channels.email_channel import EmailChannel
-        from life_graph.watchers.channels.webhook_channel import WebhookChannel
         from life_graph.watchers.channels.terminal_channel import TerminalChannel
+        from life_graph.watchers.channels.webhook_channel import WebhookChannel
 
         self._channels = {
             "email": EmailChannel(),
@@ -263,7 +262,7 @@ class NotificationEngine:
                         .where(Notification.id == notif.id)
                         .values(
                             status=new_status,
-                            sent_at=datetime.now(timezone.utc) if success else None,
+                            sent_at=datetime.now(UTC) if success else None,
                         )
                     )
                     await session.commit()
@@ -285,7 +284,7 @@ class NotificationEngine:
         try:
             from life_graph.watchers.models import WatchEvent
 
-            cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+            cutoff = datetime.now(UTC) - timedelta(hours=24)
 
             async with self._session_factory() as session:
                 result = await session.execute(
@@ -342,7 +341,7 @@ class NotificationEngine:
         title = event.get("title", "Notification")
         details = event.get("details", "")
         watcher = event.get("watcher_name", "unknown")
-        ts = event.get("timestamp", datetime.now(timezone.utc))
+        ts = event.get("timestamp", datetime.now(UTC))
 
         if isinstance(ts, datetime):
             ts = ts.strftime("%Y-%m-%d %H:%M:%S UTC")

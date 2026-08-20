@@ -10,13 +10,12 @@ Tags: [watchers]
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, select, update, delete
+from fastapi import APIRouter, HTTPException, Query, Response, status
+from sqlalchemy import func, select, update
 
-from life_graph.api.responses import success_response, paginated_response
+from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
 from life_graph.watchers.schemas import (
@@ -106,7 +105,7 @@ async def update_watcher_config(
         if update_data:
             for key, value in update_data.items():
                 setattr(config, key, value)
-            config.updated_at = datetime.now(timezone.utc)
+            config.updated_at = datetime.now(UTC)
             await session.commit()
             await session.refresh(config)
 
@@ -134,7 +133,7 @@ async def trigger_watcher_run(watcher_name: str):
             tenant_id=tenant_id,
             watcher_name=watcher_name,
             status="queued",
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
         )
         session.add(run)
         await session.commit()
@@ -242,7 +241,7 @@ async def acknowledge_event(
                 detail=f"Event {event_id} not found",
             )
 
-        event.acknowledged_at = datetime.now(timezone.utc)
+        event.acknowledged_at = datetime.now(UTC)
         event.acknowledged_by = body.acknowledged_by
         await session.commit()
         await session.refresh(event)
@@ -265,7 +264,7 @@ async def bulk_acknowledge_events(
     from life_graph.watchers.models import WatchEvent
 
     tenant_id = _get_tenant()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async with async_session() as session:
         query = (
@@ -377,7 +376,7 @@ async def list_tech_radar(
     if min_score is not None:
         query = query.where(TechRadarItem.score >= min_score)
     if days:
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = datetime.now(UTC) - timedelta(days=days)
         query = query.where(TechRadarItem.scraped_at >= since)
 
     query = query.order_by(
@@ -429,7 +428,7 @@ async def create_notification_channel(body: NotificationChannelCreate):
     from life_graph.watchers.models import NotificationChannel
 
     tenant_id = _get_tenant()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     channel = NotificationChannel(
         id=uuid.uuid4(),
@@ -484,7 +483,7 @@ async def update_notification_channel(
         if update_data:
             for key, value in update_data.items():
                 setattr(channel, key, value)
-            channel.updated_at = datetime.now(timezone.utc)
+            channel.updated_at = datetime.now(UTC)
             await session.commit()
             await session.refresh(channel)
 

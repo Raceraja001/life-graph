@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select, update
@@ -41,7 +41,7 @@ class DigestGenerator:
         Returns:
             Summary dict with counts.
         """
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        since = datetime.now(UTC) - timedelta(hours=24)
         return await self._generate_digest(tenant_id, since, "daily")
 
     async def generate_weekly(self, tenant_id: str) -> dict[str, Any]:
@@ -50,7 +50,7 @@ class DigestGenerator:
         Returns:
             Summary dict with counts.
         """
-        since = datetime.now(timezone.utc) - timedelta(days=7)
+        since = datetime.now(UTC) - timedelta(days=7)
         return await self._generate_digest(tenant_id, since, "weekly")
 
     async def _generate_digest(
@@ -70,7 +70,7 @@ class DigestGenerator:
             Summary dict.
         """
         try:
-            from life_graph.watchers.models import WatchEvent, Notification
+            from life_graph.watchers.models import Notification, WatchEvent
 
             # Fetch digest-pending events
             async with self._session_factory() as session:
@@ -103,7 +103,7 @@ class DigestGenerator:
                 "title": f"Ambient AI — {period.capitalize()} Digest",
                 "details": body,
                 "watcher_name": "digest",
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(UTC),
             }
 
             await engine.route_event(tenant_id, digest_event)

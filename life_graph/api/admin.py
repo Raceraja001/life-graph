@@ -7,13 +7,12 @@ webhook CRUD, tenant lifecycle management, and bulk memory operations.
 
 from __future__ import annotations
 
-import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
@@ -333,7 +332,7 @@ async def test_webhook(webhook_id: uuid.UUID):
         "event": "test.ping",
         "tenant_id": tenant_id,
         "webhook_id": str(webhook_id),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
     try:
@@ -385,7 +384,7 @@ async def provision_tenant(body: TenantProvisionRequest):
         config = TenantConfig(tenant_id=tenant_id, plan=plan)
         usage = TenantUsage(
             tenant_id=tenant_id,
-            period_start=datetime.now(timezone.utc),
+            period_start=datetime.now(UTC),
         )
         session.add(config)
         session.add(usage)
@@ -469,7 +468,7 @@ async def deactivate_tenant(tenant_id: str):
             )
 
         config.status = "deactivated"
-        config.deactivated_at = datetime.now(timezone.utc)
+        config.deactivated_at = datetime.now(UTC)
         await session.commit()
         await session.refresh(config)
 
@@ -715,6 +714,7 @@ async def bulk_import(body: BulkImportRequest):
     if body.generate_embeddings:
         try:
             from arq import create_pool
+
             from life_graph.workers.settings import parse_redis_settings
 
             pool = await create_pool(parse_redis_settings())
@@ -852,6 +852,7 @@ async def enqueue_consolidation(tenant_id: str | None = None):
     """
     try:
         from arq import create_pool
+
         from life_graph.workers.settings import parse_redis_settings
 
         pool = await create_pool(parse_redis_settings())
@@ -885,6 +886,7 @@ async def enqueue_cleanup_memories(tenant_id: str | None = None):
     approvals queue. Idempotent, so it's safe to trigger repeatedly.
     """
     from arq import create_pool
+
     from life_graph.workers.settings import parse_redis_settings
 
     pool = await create_pool(parse_redis_settings())

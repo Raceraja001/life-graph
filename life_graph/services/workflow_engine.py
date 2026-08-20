@@ -18,7 +18,7 @@ import logging
 import re
 import uuid
 from collections import defaultdict, deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, update
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 def _utcnow() -> datetime:
     """Return the current UTC timestamp (timezone-aware)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ── Condition Evaluator ──────────────────────────────────────────
@@ -180,7 +180,8 @@ class WorkflowEngine:
         Raises:
             ValueError: If the step graph contains cycles.
         """
-        from life_graph.models.db import Workflow as AgentWorkflow, WorkflowStep
+        from life_graph.models.db import Workflow as AgentWorkflow
+        from life_graph.models.db import WorkflowStep
 
         steps_data = data.get("steps", [])
         error = self._validate_dag(steps_data)
@@ -246,7 +247,11 @@ class WorkflowEngine:
             The created WorkflowRun ORM instance.
         """
         from life_graph.models.db import (
-            Workflow as AgentWorkflow, WorkflowStep, WorkflowRun, WorkflowStepRun,
+            Workflow as AgentWorkflow,
+        )
+        from life_graph.models.db import (
+            WorkflowRun,
+            WorkflowStepRun,
         )
 
         async with self._session_factory() as session:
@@ -383,7 +388,9 @@ class WorkflowEngine:
         If all steps are completed/skipped, complete the run.
         """
         from life_graph.models.db import (
-            WorkflowRun, WorkflowStep, WorkflowStepRun,
+            WorkflowRun,
+            WorkflowStep,
+            WorkflowStepRun,
         )
 
         async with self._session_factory() as session:
@@ -430,7 +437,7 @@ class WorkflowEngine:
 
                 deps = step.depends_on or []
                 all_deps_done = all(
-                    all_step_runs.get(d, None) is not None
+                    all_step_runs.get(d) is not None
                     and all_step_runs[d].status in ("completed", "skipped")
                     for d in deps
                 )

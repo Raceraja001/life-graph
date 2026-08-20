@@ -10,7 +10,7 @@ import hashlib
 import hmac
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ class WebhookChannel:
         secret = config.get("secret", "")
         timeout = config.get("timeout", 10)
 
-        ts = timestamp or datetime.now(timezone.utc)
+        ts = timestamp or datetime.now(UTC)
 
         payload = {
             "event_id": event_id,

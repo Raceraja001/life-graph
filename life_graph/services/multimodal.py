@@ -55,7 +55,7 @@ _OCR_LANGUAGES = "eng+tam"
 INGEST_CAPTURE_JOB_NAME = "life_graph.workers.ingest_capture.ingest_capture_text"
 
 
-async def ingest_or_fallback(manager: "MemoryManager", text: str, source: str) -> list[Any]:
+async def ingest_or_fallback(manager: MemoryManager, text: str, source: str) -> list[Any]:
     """Run text through the ingestion pipeline; if nothing was extracted,
     persist the raw text directly so it isn't silently dropped.
 
@@ -210,7 +210,7 @@ class MultiModalService:
 
     @staticmethod
     async def _ingest_or_fallback(
-        manager: "MemoryManager", text: str, source: str
+        manager: MemoryManager, text: str, source: str
     ) -> list[Any]:
         """Thin wrapper over the module-level ``ingest_or_fallback``.
 

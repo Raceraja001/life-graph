@@ -7,10 +7,9 @@ automatic config provisioning for new tenants.
 from __future__ import annotations
 
 import logging
-from typing import Any, Type
+from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.watchers.base import BaseWatcher
 from life_graph.watchers.models import WatchConfig
@@ -22,15 +21,15 @@ class WatcherFramework:
     def __init__(self, session_factory, settings: dict[str, Any] | None = None):
         self.session_factory = session_factory
         self.settings = settings
-        self._registry: dict[str, Type[BaseWatcher]] = {}
+        self._registry: dict[str, type[BaseWatcher]] = {}
         self.logger = logging.getLogger("watcher.framework")
 
-    def register(self, watcher_class: Type[BaseWatcher]) -> None:
+    def register(self, watcher_class: type[BaseWatcher]) -> None:
         """Register a watcher class by its name."""
         self._registry[watcher_class.name] = watcher_class
         self.logger.debug("Registered watcher: %s", watcher_class.name)
 
-    def get_registered(self) -> dict[str, Type[BaseWatcher]]:
+    def get_registered(self) -> dict[str, type[BaseWatcher]]:
         """Return a copy of the registered watcher classes."""
         return dict(self._registry)
 

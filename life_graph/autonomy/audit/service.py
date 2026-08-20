@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, date, timezone
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 
@@ -69,7 +69,7 @@ class AuditService:
                 approval_id=str(kwargs["approval_id"]) if kwargs.get("approval_id") else None,
                 result=result,
                 classification_reasoning=details,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(entry)
             await session.commit()
@@ -247,11 +247,11 @@ class AuditService:
                 q = q.where(AuditLogEntry.project_id == filters["project_id"])
             if filters.get("start_date"):
                 q = q.where(AuditLogEntry.created_at >= datetime.combine(
-                    filters["start_date"], datetime.min.time(), tzinfo=timezone.utc,
+                    filters["start_date"], datetime.min.time(), tzinfo=UTC,
                 ))
             if filters.get("end_date"):
                 q = q.where(AuditLogEntry.created_at <= datetime.combine(
-                    filters["end_date"], datetime.max.time(), tzinfo=timezone.utc,
+                    filters["end_date"], datetime.max.time(), tzinfo=UTC,
                 ))
 
             limit = filters.get("limit", 50)
@@ -278,10 +278,10 @@ class AuditService:
             q = select(AuditLogEntry).where(
                 AuditLogEntry.tenant_id == tenant_id,
                 AuditLogEntry.created_at >= datetime.combine(
-                    start_date, datetime.min.time(), tzinfo=timezone.utc,
+                    start_date, datetime.min.time(), tzinfo=UTC,
                 ),
                 AuditLogEntry.created_at <= datetime.combine(
-                    end_date, datetime.max.time(), tzinfo=timezone.utc,
+                    end_date, datetime.max.time(), tzinfo=UTC,
                 ),
             )
 

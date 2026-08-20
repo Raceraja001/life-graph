@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -147,7 +147,7 @@ class AdversarialAdvisor:
             ),
             confidence=0.5,
             domain_tags=keywords[:5],
-            resolve_by=datetime.now(timezone.utc) + timedelta(days=30),
+            resolve_by=datetime.now(UTC) + timedelta(days=30),
             resolution_criteria={
                 "type": "challenge_outcome",
                 "proposal": proposal[:200],

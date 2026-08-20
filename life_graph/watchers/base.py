@@ -12,12 +12,11 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class Severity(str, Enum):
@@ -88,7 +87,7 @@ class BaseWatcher(abc.ABC):
 
     async def run(self) -> dict[str, Any]:
         """Full lifecycle: load config → check enabled → create run → execute → persist events."""
-        from life_graph.watchers.models import WatchConfig, WatchEvent, WatcherRun
+        from life_graph.watchers.models import WatchConfig, WatcherRun, WatchEvent
 
         run_id = uuid.uuid4()
         start_time = time.monotonic()
@@ -160,7 +159,7 @@ class BaseWatcher(abc.ABC):
                     )
                     session.add(event)
 
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 await session.execute(
                     update(WatcherRun)
                     .where(WatcherRun.id == run_id)
@@ -204,7 +203,7 @@ class BaseWatcher(abc.ABC):
 
             # ── Phase 5: Record failure ───────────────────────
             async with self.session_factory() as session:
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 await session.execute(
                     update(WatcherRun)
                     .where(WatcherRun.id == run_id)

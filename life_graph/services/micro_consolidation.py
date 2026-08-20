@@ -18,8 +18,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

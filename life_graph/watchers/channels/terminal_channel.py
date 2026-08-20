@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class TerminalChannel:
         Returns:
             True on success, False on failure.
         """
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
         line = f"[{ts}] [{severity.upper()}] [{watcher_name}] {title}"
         if details:
             line += f"\n    {details}"

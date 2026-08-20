@@ -19,7 +19,6 @@ import uuid
 from typing import Any
 
 from sqlalchemy import and_, delete, or_, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from life_graph.models.db import Memory, MemoryLink
 from life_graph.storage.database import async_session

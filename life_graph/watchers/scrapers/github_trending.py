@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -16,7 +16,7 @@ async def scrape_github_trending(
 
     Returns list of ``{"title", "url", "source_id", "upvotes", "comments", "description"}``.
     """
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    since = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d")
     query = f"created:>{since} stars:>10"
     if language:
         query += f" language:{language}"

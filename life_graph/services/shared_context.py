@@ -16,10 +16,10 @@ from __future__ import annotations
 import hashlib
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import select, update
 
 from life_graph.core.events import EventType, event_bus
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 def _utcnow() -> datetime:
     """Return the current UTC timestamp (timezone-aware)."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class SharedContextService:
@@ -265,7 +265,8 @@ class SharedContextService:
         Returns:
             List of context entry dicts.
         """
-        from life_graph.models.db import AgentTask, SharedContext as SharedContextEntry
+        from life_graph.models.db import AgentTask
+        from life_graph.models.db import SharedContext as SharedContextEntry
 
         async with self._session_factory() as session:
             # Get all task IDs in the tree (root + descendants)

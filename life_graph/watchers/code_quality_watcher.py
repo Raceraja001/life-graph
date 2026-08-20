@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class CodeQualityWatcher:
                 "title": "Code quality watcher skipped — gitpython not installed",
                 "details": "Install gitpython to enable code quality analysis.",
                 "watcher_name": self.name,
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(UTC),
             }]
 
         projects = self.config.get("projects", [])
@@ -88,7 +88,7 @@ class CodeQualityWatcher:
                     "title": f"Code quality analysis failed: {project.get('name', project.get('path', 'unknown'))}",
                     "details": str(e),
                     "watcher_name": self.name,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": datetime.now(UTC),
                 })
 
         return events
@@ -147,7 +147,7 @@ class CodeQualityWatcher:
             logger.warning("Cannot open repo %s: %s", repo_path, e)
             return None
 
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = datetime.now(UTC) - timedelta(days=days)
 
         files_changed: set[str] = set()
         file_commit_counts: dict[str, int] = defaultdict(int)
@@ -163,7 +163,7 @@ class CodeQualityWatcher:
             for commit in repo.iter_commits(since=since.isoformat()):
                 commit_count += 1
                 commit_dt = datetime.fromtimestamp(
-                    commit.committed_date, tz=timezone.utc
+                    commit.committed_date, tz=UTC
                 )
                 day_key = commit_dt.strftime("%A")
                 commit_by_day[day_key] += 1
@@ -238,7 +238,7 @@ class CodeQualityWatcher:
                         f"4-week avg: {rolling_ratio:.2f})"
                     ),
                     "watcher_name": self.name,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": datetime.now(UTC),
                 })
 
         return events
@@ -276,7 +276,7 @@ class CodeQualityWatcher:
                     f"commits this week:\n{files_list}"
                 ),
                 "watcher_name": self.name,
-                "timestamp": datetime.now(timezone.utc),
+                "timestamp": datetime.now(UTC),
             })
 
         return events
@@ -306,7 +306,7 @@ class CodeQualityWatcher:
                         f"were made between midnight and 6 AM."
                     ),
                     "watcher_name": self.name,
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": datetime.now(UTC),
                 })
 
         return events
@@ -336,5 +336,5 @@ class CodeQualityWatcher:
             "title": f"Weekly code quality summary: {project_name}",
             "details": details,
             "watcher_name": self.name,
-            "timestamp": datetime.now(timezone.utc),
+            "timestamp": datetime.now(UTC),
         }]

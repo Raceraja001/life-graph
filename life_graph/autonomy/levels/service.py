@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
@@ -146,7 +146,7 @@ class AutonomyLevelService:
             raise ValueError(f"Not eligible for promotion: {check.reason}")
 
         new_level = check.current_level + 1
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             await session.execute(
@@ -191,7 +191,7 @@ class AutonomyLevelService:
             raise ValueError("Already at minimum level (L0)")
 
         new_level = level.current_level - 1
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             await session.execute(
@@ -244,7 +244,7 @@ class AutonomyLevelService:
 
         current = await self.get_level(tenant_id, project_id)
         old_level = current.current_level
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             await session.execute(
@@ -293,7 +293,7 @@ class AutonomyLevelService:
         from life_graph.autonomy.models import AutonomyLevel
 
         level = await self.get_level(tenant_id, project_id)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         updates = {"updated_at": now, "last_audit_at": now}
 

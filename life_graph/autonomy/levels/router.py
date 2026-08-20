@@ -8,8 +8,8 @@ from fastapi import APIRouter, HTTPException
 
 from life_graph.api.responses import success_response
 from life_graph.autonomy.levels.schemas import (
-    AutonomyLevelResponse,
     LEVEL_DESCRIPTIONS,
+    AutonomyLevelResponse,
     SetLevelRequest,
 )
 from life_graph.core.tenant import get_current_tenant_id

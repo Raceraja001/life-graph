@@ -76,7 +76,7 @@ class CommandExecutor:
                     process.communicate(),
                     timeout=timeout_seconds,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 timed_out = True
                 logger.warning(
                     "Command timed out after %ds, killing: %s",

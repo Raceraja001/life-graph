@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
@@ -23,11 +22,11 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 
 @router.get("", response_model=None)
 async def query_audit_log(
-    agent_id: Optional[str] = Query(None),
-    action_type: Optional[str] = Query(None),
-    risk_level: Optional[str] = Query(None),
-    result: Optional[str] = Query(None),
-    project_id: Optional[str] = Query(None),
+    agent_id: str | None = Query(None),
+    action_type: str | None = Query(None),
+    risk_level: str | None = Query(None),
+    result: str | None = Query(None),
+    project_id: str | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):

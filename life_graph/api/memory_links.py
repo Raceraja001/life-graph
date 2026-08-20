@@ -8,8 +8,8 @@ All routes are prefixed with ``/memories`` and tagged for OpenAPI docs.
 
 from __future__ import annotations
 
-import uuid
 import logging
+import uuid
 
 from fastapi import APIRouter, HTTPException, Query, status
 

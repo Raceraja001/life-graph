@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from itertools import groupby
 from typing import Any
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.models.db import Memory
@@ -154,10 +154,10 @@ class IdentityService:
                 raise ValueError(f"Memory {memory_id} not found")
 
             mem.status = state if state != "current" else "active"
-            mem.updated_at = datetime.now(timezone.utc)
+            mem.updated_at = datetime.now(UTC)
 
             if state in ("superseded", "retired"):
-                mem.valid_until = datetime.now(timezone.utc)
+                mem.valid_until = datetime.now(UTC)
 
             await session.commit()
             await session.refresh(mem)
@@ -181,7 +181,7 @@ class IdentityService:
                 ...
             ]
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=stale_months * 30)
+        cutoff = datetime.now(UTC) - timedelta(days=stale_months * 30)
         stmt = (
             select(Memory)
             .where(Memory.status == "active")
@@ -199,7 +199,7 @@ class IdentityService:
             result = await session.execute(stmt)
             stale = list(result.scalars().all())
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         challenges: list[dict[str, Any]] = []
         for mem in stale:
             last = mem.last_accessed or mem.created_at
@@ -238,7 +238,7 @@ class IdentityService:
             )
 
         mid = uuid.UUID(memory_id)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             mem = await session.get(Memory, mid)

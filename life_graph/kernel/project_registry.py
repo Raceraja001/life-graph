@@ -11,7 +11,7 @@ import logging
 import os
 import subprocess
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -327,7 +327,7 @@ class ProjectRegistry:
             file_cnt = count_files(path)
             dep_cnt = count_dependencies(path, dep_file)
             branch, commits = get_git_info(path)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             project = Project(
                 id=uuid.uuid4(),
@@ -454,7 +454,7 @@ class ProjectRegistry:
         file_cnt = count_files(path)
         dep_cnt = count_dependencies(path, dep_file)
         branch, commits = get_git_info(path)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         scan_meta = {
             "total_lines": 0,
@@ -524,7 +524,7 @@ class ProjectRegistry:
                 )
                 .values(
                     is_active=False,
-                    updated_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(UTC),
                 )
             )
             await session.commit()

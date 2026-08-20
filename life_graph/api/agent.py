@@ -19,7 +19,6 @@ from life_graph.api.dependencies import (
     get_store,
 )
 from life_graph.api.responses import success_response
-from life_graph.models.schemas import MemoryResponse
 from life_graph.services.agent_bridge import LifeGraphBridge
 
 logger = logging.getLogger(__name__)

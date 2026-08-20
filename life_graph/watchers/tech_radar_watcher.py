@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert

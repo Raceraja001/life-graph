@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from life_graph.api.dependencies import get_research_engine
-from life_graph.api.responses import success_response, paginated_response
+from life_graph.api.responses import paginated_response, success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.research_engine import ResearchEngine
 
@@ -47,6 +47,7 @@ async def list_research_runs(
     Supports pagination and optional status filtering.
     """
     from sqlalchemy import select
+
     from life_graph.models.db import ResearchRun
 
     tenant_id = get_current_tenant_id()
@@ -98,6 +99,7 @@ async def get_research_run(
 ):
     """Get a single research run by ID."""
     from sqlalchemy import select
+
     from life_graph.models.db import ResearchRun
 
     tenant_id = get_current_tenant_id()

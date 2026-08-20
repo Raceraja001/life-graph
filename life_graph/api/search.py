@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from life_graph.api.dependencies import (
@@ -26,7 +26,6 @@ from life_graph.api.responses import success_response
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.models.schemas import (
     MemoryResponse,
-    RecallContext,
     SearchQuery,
     SearchResult,
 )

@@ -15,13 +15,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from life_graph.api.dependencies import get_memory_manager, get_store
-from life_graph.api.openapi_examples import MEMORY_CREATED, MEMORY_DETAIL, PAGINATED_MEMORIES
-from life_graph.api.responses import success_response, paginated_response, encode_cursor
+from life_graph.api.openapi_examples import MEMORY_CREATED
+from life_graph.api.responses import encode_cursor, paginated_response, success_response
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.memory_manager import MemoryManager
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryResponse, MemoryUpdate
-from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)

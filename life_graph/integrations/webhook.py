@@ -23,7 +23,7 @@ import hashlib
 import hmac
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -106,7 +106,7 @@ async def deliver_webhook(
             {
                 "event": event_type,
                 "payload": payload,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "webhook_id": str(webhook.id),
             },
             default=str,
@@ -129,7 +129,7 @@ async def deliver_webhook(
 
             # Success — reset failure counter
             webhook.failure_count = 0
-            webhook.last_delivered_at = datetime.now(timezone.utc)
+            webhook.last_delivered_at = datetime.now(UTC)
             await session.commit()
 
             logger.debug(

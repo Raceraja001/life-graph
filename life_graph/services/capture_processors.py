@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
 
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.storage.database import async_session

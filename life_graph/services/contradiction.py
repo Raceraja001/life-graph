@@ -14,7 +14,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any
 
 from life_graph.models.db import Memory
 from life_graph.storage.postgres import PostgresMemoryStore

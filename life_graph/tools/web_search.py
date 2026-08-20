@@ -11,8 +11,8 @@ import logging
 
 import httpx
 
-from life_graph.tools.registry import tool
 from life_graph.config import Settings
+from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
 

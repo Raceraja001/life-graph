@@ -5,8 +5,8 @@ service-to-service auth, API versioned under /api/v1/, and middleware pipeline:
   RequestID → Auth → Tenant → RateLimit → Logging
 """
 
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
@@ -16,8 +16,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from life_graph.api import admin, graph, intentions, memories, search
-from life_graph.api import sessions, identity, agent
+from life_graph.api import admin, agent, graph, identity, intentions, memories, search, sessions
 from life_graph.api.middleware import (
     AuthMiddleware,
     RateLimitMiddleware,
@@ -27,15 +26,13 @@ from life_graph.api.middleware import (
 )
 from life_graph.api.multimodal import router as multimodal_router
 from life_graph.api.responses import error_response
-from life_graph.api.websocket import websocket_endpoint, ws_event_handler, ws_manager
+from life_graph.api.websocket import websocket_endpoint, ws_event_handler
 from life_graph.config import settings
-from life_graph.core.events import event_bus, enable_redis_bridge
-from life_graph.core.plugins import PluginManager
-from life_graph.storage.database import engine, async_session
-from life_graph.storage.redis import init_redis, close_redis, check_redis
-
-
+from life_graph.core.events import enable_redis_bridge, event_bus
 from life_graph.core.logging import setup_logging
+from life_graph.core.plugins import PluginManager
+from life_graph.storage.database import async_session, engine
+from life_graph.storage.redis import check_redis, close_redis, init_redis
 
 # Configure structured logging (JSON in prod, text in dev)
 setup_logging(format=settings.log_format, level=settings.log_level)
@@ -68,15 +65,15 @@ async def lifespan(app: FastAPI):
 
     # Startup — register agent tools (import triggers @tool decorator)
     try:
+        import life_graph.tools.browser  # noqa: F401
         import life_graph.tools.calculator  # noqa: F401
         import life_graph.tools.datetime_tool  # noqa: F401
-        import life_graph.tools.web_search  # noqa: F401
-        import life_graph.tools.terminal  # noqa: F401
-        import life_graph.tools.git  # noqa: F401
-        import life_graph.tools.browser  # noqa: F401
         import life_graph.tools.delegate  # noqa: F401
-        import life_graph.tools.system_inspect  # noqa: F401
         import life_graph.tools.filesystem  # noqa: F401
+        import life_graph.tools.git  # noqa: F401
+        import life_graph.tools.system_inspect  # noqa: F401
+        import life_graph.tools.terminal  # noqa: F401
+        import life_graph.tools.web_search  # noqa: F401
         from life_graph.tools.registry import registry
 
         logger.info("Agent tools registered: %s", registry.tool_names)
@@ -137,6 +134,7 @@ async def lifespan(app: FastAPI):
         # Wire ARQ pool for async webhook delivery
         try:
             from arq import create_pool
+
             from life_graph.workers.settings import parse_redis_settings
 
             arq_pool = await create_pool(parse_redis_settings())
@@ -240,9 +238,9 @@ async def lifespan(app: FastAPI):
 
     # Startup — register agent drivers
     try:
-        from life_graph.drivers.registry import driver_registry
-        from life_graph.drivers.local import LocalDriver
         from life_graph.drivers.claude_code import ClaudeCodeDriver
+        from life_graph.drivers.local import LocalDriver
+        from life_graph.drivers.registry import driver_registry
 
         driver_registry.register(LocalDriver())
         driver_registry.register(ClaudeCodeDriver())
@@ -437,6 +435,7 @@ from life_graph.api import approvals as approvals_api
 v1_router.include_router(approvals_api.router)
 
 from life_graph.api import push as push_api
+
 v1_router.include_router(push_api.router)
 
 from life_graph.api import conversations as conversations_api
@@ -444,6 +443,7 @@ from life_graph.api import conversations as conversations_api
 v1_router.include_router(conversations_api.router)
 
 from life_graph.api import model_health as model_health_api
+
 v1_router.include_router(model_health_api.router)
 
 app.include_router(v1_router)
@@ -551,7 +551,8 @@ async def readiness():
 async def metrics():
     """Prometheus metrics endpoint."""
     from starlette.responses import Response as StarletteResponse
-    from life_graph.core.metrics import get_metrics_text, get_metrics_content_type
+
+    from life_graph.core.metrics import get_metrics_content_type, get_metrics_text
 
     return StarletteResponse(
         content=get_metrics_text(),

@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.core.events import EventType, event_bus
@@ -46,7 +46,7 @@ class DelegationEngine:
                 deadline=data.get("deadline"),
                 tags=data.get("tags"),
                 properties=data.get("properties", {}),
-                status_history=[{"status": "pending", "at": datetime.now(timezone.utc).isoformat()}],
+                status_history=[{"status": "pending", "at": datetime.now(UTC).isoformat()}],
             )
 
             parent_id = data.get("parent_task_id")
@@ -141,7 +141,7 @@ class DelegationEngine:
             if not task or task.tenant_id != tenant_id:
                 raise ValueError(f"Task {task_id} not found")
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             task.status = "cancelled"
             task.cancel_reason = reason
             task.completed_at = now
@@ -219,7 +219,7 @@ class DelegationEngine:
             if not task or task.tenant_id != tenant_id:
                 raise ValueError(f"Task {task_id} not found")
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             for key, value in data.items():
                 if key == "status" and value != task.status:
                     history = list(task.status_history or [])

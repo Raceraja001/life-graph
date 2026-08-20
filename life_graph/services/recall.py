@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from life_graph.config import settings
@@ -119,7 +119,7 @@ class RecallEngine:
         for mem in filtered:
             mem_id = str(mem.get("id", ""))
             if mem_id:
-                self._surfaced_memory_ids[mem_id] = datetime.now(timezone.utc)
+                self._surfaced_memory_ids[mem_id] = datetime.now(UTC)
                 self._session_surface_count += 1
 
         recall_ctx = RecallContext(
@@ -178,7 +178,7 @@ class RecallEngine:
                 results.append(response)
                 mem_id = str(mem_dict.get("id", ""))
                 if mem_id:
-                    self._surfaced_memory_ids[mem_id] = datetime.now(timezone.utc)
+                    self._surfaced_memory_ids[mem_id] = datetime.now(UTC)
                     self._session_surface_count += 1
 
         return results
@@ -196,7 +196,7 @@ class RecallEngine:
             category: Category/tag of the dismissed memory.
         """
         self._dismissed_categories[category] += 1
-        self._surfaced_memory_ids[memory_id] = datetime.now(timezone.utc)
+        self._surfaced_memory_ids[memory_id] = datetime.now(UTC)
         logger.debug(
             "Dismissed memory %s (category=%s, total dismissals=%d)",
             memory_id, category, self._dismissed_categories[category],
@@ -252,7 +252,7 @@ class RecallEngine:
         self, candidates: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         """Filter candidates through anti-annoyance controls."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         filtered: list[dict[str, Any]] = []
 
         for cand in candidates:
@@ -338,7 +338,7 @@ def _dict_to_memory_response(mem_dict: dict[str, Any]) -> MemoryResponse | None:
         if isinstance(mem_id, str):
             mem_id = uuid.UUID(mem_id) if mem_id else uuid.uuid4()
 
-        created_at = mem_dict.get("created_at", datetime.now(timezone.utc))
+        created_at = mem_dict.get("created_at", datetime.now(UTC))
         confidence = float(mem_dict.get("confidence", 0.5))
         last_reinforced = mem_dict.get("last_reinforced")
         reinforced_count = int(mem_dict.get("reinforced_count", 0))

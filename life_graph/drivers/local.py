@@ -13,7 +13,7 @@ import logging
 import time
 from pathlib import Path
 
-from life_graph.drivers.base import AgentDriver, ContextPacket, DriverResult
+from life_graph.drivers.base import ContextPacket, DriverResult
 
 logger = logging.getLogger(__name__)
 

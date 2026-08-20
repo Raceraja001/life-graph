@@ -7,18 +7,16 @@ preferences via cosine similarity, and detects contradictions.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Evidence, Preference
 from life_graph.services.embeddings import EmbeddingService
 
@@ -445,7 +443,7 @@ class TranscriptExtractor:
             # Merge the detached instance
             existing = await session.merge(existing)
             existing.reinforced_count += 1
-            existing.last_reinforced = datetime.now(timezone.utc)
+            existing.last_reinforced = datetime.now(UTC)
             # Boost confidence slightly
             existing.confidence = min(1.0, existing.confidence + 0.05)
 

@@ -39,7 +39,7 @@ async def _run_git(args: list[str], cwd: str) -> dict:
             "stdout": stdout.decode("utf-8", errors="replace").strip(),
             "stderr": stderr.decode("utf-8", errors="replace").strip(),
         }
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return {"error": f"Git command timed out after {COMMAND_TIMEOUT}s"}
     except Exception as exc:
         return {"error": f"Git command failed: {exc}"}

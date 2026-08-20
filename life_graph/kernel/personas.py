@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, update
@@ -752,7 +752,7 @@ class PersonaService:
                 persona_id,
             )
 
-        values["updated_at"] = datetime.now(timezone.utc)
+        values["updated_at"] = datetime.now(UTC)
 
         async with self._session_factory() as session:
             stmt = (
@@ -816,7 +816,7 @@ class PersonaService:
                 )
                 .values(
                     is_active=False,
-                    updated_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(UTC),
                 )
             )
             await session.commit()

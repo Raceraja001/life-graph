@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Weight configuration
@@ -116,9 +115,9 @@ def _resolve_days_since_access(candidate: dict[str, Any]) -> float:
         return float(candidate["days_since_access"])
     last = candidate.get("last_accessed")
     if isinstance(last, datetime):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if last.tzinfo is None:
-            last = last.replace(tzinfo=timezone.utc)
+            last = last.replace(tzinfo=UTC)
         return max((now - last).total_seconds() / 86400.0, 0.0)
     return 0.0
 
@@ -229,7 +228,7 @@ class RecallRanker:
         """
         topic_counts: dict[str, int] = defaultdict(int)
         type_counts: dict[str, int] = defaultdict(int)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         results: list[dict[str, Any]] = []
 
         for cand in ranked:
@@ -282,7 +281,7 @@ class RecallRanker:
             return False
         if isinstance(last_surfaced, datetime):
             if last_surfaced.tzinfo is None:
-                last_surfaced = last_surfaced.replace(tzinfo=timezone.utc)
+                last_surfaced = last_surfaced.replace(tzinfo=UTC)
             days_ago = (now - last_surfaced).total_seconds() / 86400.0
             return days_ago < cooldown_days
         return False

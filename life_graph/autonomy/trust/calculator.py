@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,7 +63,7 @@ class TrustCalculator:
         recency_bonus = 0.0
         if current.last_action_at is not None:
             days_since = (
-                datetime.now(timezone.utc) - current.last_action_at
+                datetime.now(UTC) - current.last_action_at
             ).total_seconds() / 86400
             if days_since < 7:
                 recency_bonus = 0.02
@@ -120,7 +120,7 @@ class TrustCalculator:
             return score
 
         weeks = (
-            datetime.now(timezone.utc) - last_action_at
+            datetime.now(UTC) - last_action_at
         ).total_seconds() / (7 * 86400)
 
         if weeks < 1:

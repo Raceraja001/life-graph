@@ -7,7 +7,7 @@ persona's own recent finding titles are injected so it does not repeat itself.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 async def _recent_finding_titles(agent_name: str, tenant_id: str, days: int) -> list[str]:
     """Titles of this persona's own notifications from the last `days` days."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     async with async_session() as session:
         rows = (
             await session.execute(

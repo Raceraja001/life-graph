@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from life_graph.api.dependencies import get_delegation_engine
@@ -37,7 +38,8 @@ async def get_children(
     engine: DelegationEngine = Depends(get_delegation_engine),
 ):
     """Get direct children of a task."""
-    from sqlalchemy import select, and_
+    from sqlalchemy import and_, select
+
     from life_graph.models.db import AgentTask
     from life_graph.storage.database import async_session
 

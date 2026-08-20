@@ -7,7 +7,7 @@ metering counters, and job queue coordination.
 from __future__ import annotations
 
 import logging
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import redis.asyncio as aioredis
 

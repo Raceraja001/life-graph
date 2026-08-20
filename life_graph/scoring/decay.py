@@ -8,7 +8,7 @@ from archival.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -91,7 +91,7 @@ class DecayCalculator:
             List of ``(id, decay_score, should_archive)`` tuples, in the
             same order as the input.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         results: list[tuple[str, float, bool]] = []
 
         for mem in memories:
@@ -128,7 +128,7 @@ class DecayCalculator:
             return float(last_accessed)
         if isinstance(last_accessed, datetime):
             if last_accessed.tzinfo is None:
-                last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+                last_accessed = last_accessed.replace(tzinfo=UTC)
             delta = now - last_accessed
             return max(delta.total_seconds() / 86400.0, 0.0)
         raise TypeError(
@@ -165,7 +165,7 @@ class DecayCalculator:
         Returns:
             Effective confidence score ∈ [0.0, 1.0].
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         anchor = last_reinforced or created_at
 
         days = self._resolve_days_since(anchor, now)

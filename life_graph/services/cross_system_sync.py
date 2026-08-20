@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -67,7 +67,7 @@ class CrossSystemSyncService:
                 endpoint_url=settings.uzhavu_sync_url,
                 request_payload=payload,
                 records_sent=len(prefs),
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
             )
             session.add(sync_record)
             await session.commit()
@@ -89,7 +89,7 @@ class CrossSystemSyncService:
                     sync_record.status = "completed"
                     sync_record.records_synced = len(prefs)
                     sync_record.sync_duration_ms = elapsed_ms
-                    sync_record.completed_at = datetime.now(timezone.utc)
+                    sync_record.completed_at = datetime.now(UTC)
                     sync_record.response_summary = (
                         resp.json() if resp.content else {}
                     )
@@ -119,7 +119,7 @@ class CrossSystemSyncService:
             sync_record.status = "failed"
             sync_record.error = last_error
             sync_record.sync_duration_ms = elapsed_ms
-            sync_record.completed_at = datetime.now(timezone.utc)
+            sync_record.completed_at = datetime.now(UTC)
             await session.commit()
 
             await event_bus.emit(
@@ -141,7 +141,7 @@ class CrossSystemSyncService:
                 target_system="uzhavu",
                 request_payload=data,
                 records_sent=len(data.get("items", [])),
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
             )
             session.add(sync_record)
 
@@ -169,7 +169,7 @@ class CrossSystemSyncService:
             sync_record.status = "completed"
             sync_record.records_synced = synced
             sync_record.records_failed = failed
-            sync_record.completed_at = datetime.now(timezone.utc)
+            sync_record.completed_at = datetime.now(UTC)
             await session.commit()
             await session.refresh(sync_record)
 

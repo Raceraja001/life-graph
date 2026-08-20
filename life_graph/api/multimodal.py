@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from life_graph.api.dependencies import get_extraction_pipeline
 from life_graph.api.responses import success_response

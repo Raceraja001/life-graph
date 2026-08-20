@@ -42,6 +42,7 @@ class SafetyRuleUpdate(BaseModel):
 
 
 from datetime import datetime
+
 from pydantic import BaseModel
 
 

@@ -12,10 +12,11 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select, update
+
 from life_graph.config import settings
 from life_graph.models.db import Memory, MemorySession
 from life_graph.storage.database import async_session
-from sqlalchemy import select, update
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,6 @@ class ImpactScorer:
             if score_delta != 0.0 or confidence_delta != 0.0:
                 # Use raw SQL for efficient batch update with clamping
                 from sqlalchemy import case, literal
-                from sqlalchemy.sql.expression import func as sql_func
 
                 # Clamp impact_score between 0.0 and 1.0
                 new_score = case(

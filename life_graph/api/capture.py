@@ -10,8 +10,8 @@ Tags: [capture-spine]
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse

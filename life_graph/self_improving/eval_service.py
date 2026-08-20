@@ -11,9 +11,10 @@ import logging
 import time
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -306,7 +307,7 @@ class EvalService:
             duration = time.time() - run_start
 
             # Update run record
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             await session.execute(
                 update(EvalRun)
                 .where(EvalRun.id == run_id)

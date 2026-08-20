@@ -19,12 +19,12 @@ from life_graph.scoring.importance import ImportanceTagger
 from life_graph.scoring.ranking import RecallRanker
 from life_graph.services.context import ContextBuilder
 from life_graph.services.contradiction import ContradictionDetector
+from life_graph.services.impact import ImpactScorer
 from life_graph.services.intentions import IntentionService
 from life_graph.services.llm_client import LMStudioClient
 from life_graph.services.metamemory import MetamemoryTracker
 from life_graph.services.recall import RecallEngine
 from life_graph.services.synthesis import SynthesisService
-from life_graph.services.impact import ImpactScorer
 from life_graph.storage.database import async_session
 from life_graph.storage.postgres import PostgresMemoryStore
 
@@ -146,8 +146,8 @@ def get_identity_service():
 @lru_cache(maxsize=1)
 def get_embedding_service():
     """Return the singleton embedding service."""
-    from life_graph.services.embeddings import EmbeddingService
     from life_graph.config import settings
+    from life_graph.services.embeddings import EmbeddingService
     lm_client = get_lm_client() if settings.use_local_llm else None
     return EmbeddingService(lm_client=lm_client)
 
@@ -273,8 +273,8 @@ def get_evidence_store():
 @lru_cache(maxsize=1)
 def get_multi_model_advisor():
     """Return the singleton multi-model advisor service."""
-    from life_graph.services.multi_model_advisor import MultiModelAdvisor
     from life_graph.config import settings
+    from life_graph.services.multi_model_advisor import MultiModelAdvisor
     return MultiModelAdvisor(
         session_factory=async_session,
         openrouter_api_key=settings.openrouter_api_key,
@@ -294,8 +294,8 @@ def get_transcript_extractor():
 @lru_cache(maxsize=1)
 def get_research_engine():
     """Return the singleton autonomous research engine."""
-    from life_graph.services.research_engine import ResearchEngine
     from life_graph.config import settings
+    from life_graph.services.research_engine import ResearchEngine
     return ResearchEngine(
         session_factory=async_session,
         preference_store=get_preference_store(),
@@ -325,8 +325,8 @@ def get_prompt_version_service():
 @lru_cache(maxsize=1)
 def get_optimizer_service():
     """Return the singleton DSPy optimizer service."""
-    from life_graph.self_improving.optimizer_service import DSPyOptimizerService
     from life_graph.config import settings
+    from life_graph.self_improving.optimizer_service import DSPyOptimizerService
     return DSPyOptimizerService(
         session_factory=async_session,
         eval_service=get_eval_service(),
@@ -470,8 +470,8 @@ def get_autofix_service():
 @lru_cache(maxsize=1)
 def get_task_dispatcher():
     """Return the singleton task dispatcher."""
-    from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.core.events import event_bus
+    from life_graph.drivers.dispatcher import TaskDispatcher
     return TaskDispatcher(
         session_factory=async_session,
         event_bus=event_bus,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -108,7 +108,7 @@ class GitAnalyzer:
             # Time patterns
             author_dt = commit.author_date
             if author_dt.tzinfo is None:
-                author_dt = author_dt.replace(tzinfo=timezone.utc)
+                author_dt = author_dt.replace(tzinfo=UTC)
             hour_counter[author_dt.hour] += 1
             day_counter[author_dt.weekday()] += 1
 

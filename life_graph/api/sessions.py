@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -18,7 +18,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from life_graph.api.dependencies import get_lm_client
-from life_graph.api.responses import success_response, paginated_response, encode_cursor, decode_cursor
+from life_graph.api.responses import (
+    decode_cursor,
+    encode_cursor,
+    paginated_response,
+    success_response,
+)
 from life_graph.models.db import MemorySession, Session
 from life_graph.models.schemas import SessionCreate, SessionResponse
 from life_graph.storage.database import async_session
@@ -116,7 +121,7 @@ async def end_session(
         # Generate summary via LLM
         summary = await _generate_summary(sess, memory_count)
 
-        sess.ended_at = datetime.now(timezone.utc)
+        sess.ended_at = datetime.now(UTC)
         sess.summary = summary
         sess.memories_created = memory_count
 

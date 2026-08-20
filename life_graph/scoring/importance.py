@@ -7,7 +7,6 @@ Zero LLM dependency — all detection is rule-based.
 import re
 from dataclasses import dataclass, field
 
-
 # ---------------------------------------------------------------------------
 # Signal definitions
 # ---------------------------------------------------------------------------

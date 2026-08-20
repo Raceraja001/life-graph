@@ -9,8 +9,8 @@ Tags: [judgment-engine]
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import AsyncGenerator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -383,7 +383,8 @@ async def get_stats(
     Returns counts of decisions, pending/resolved predictions,
     and average Brier score across calibration snapshots.
     """
-    from sqlalchemy import func, select as sa_select
+    from sqlalchemy import func
+    from sqlalchemy import select as sa_select
 
     from life_graph.models.db import (
         CalibrationSnapshot,

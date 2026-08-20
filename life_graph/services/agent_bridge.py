@@ -21,7 +21,7 @@ import logging
 from typing import Any
 
 from life_graph.core.memory_manager import MemoryManager
-from life_graph.models.schemas import IntentionResponse, MemoryResponse, RecallContext
+from life_graph.models.schemas import MemoryResponse, RecallContext
 from life_graph.services.intentions import IntentionService
 from life_graph.services.recall import RecallEngine
 from life_graph.storage.postgres import PostgresMemoryStore
@@ -34,7 +34,7 @@ _STOP_WORDS: frozenset[str] = frozenset({
     "doing", "during", "every", "going", "having", "other",
     "should", "their", "there", "these", "thing", "those",
     "under", "using", "where", "which", "while", "would",
-    "build", "create", "write", "please", "could", "would",
+    "build", "create", "write", "please",
 })
 
 

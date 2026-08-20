@@ -10,7 +10,7 @@ After a driver completes:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -182,7 +182,7 @@ class ResultsLoop:
         try:
             from life_graph.models.db import DriverStat
 
-            today = datetime.now(timezone.utc).date()
+            today = datetime.now(UTC).date()
 
             existing = await session.execute(
                 select(DriverStat).where(

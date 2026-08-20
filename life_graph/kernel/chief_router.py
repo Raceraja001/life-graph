@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -22,8 +22,6 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
 )
 
-from life_graph.config import settings
-from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import AgentSession
 
 logger = logging.getLogger(__name__)
@@ -243,7 +241,7 @@ class ChiefRouter:
         Returns:
             Dict with session_id, intent, agent, task info.
         """
-        start = datetime.now(timezone.utc)
+        start = datetime.now(UTC)
 
         if target_agent:
             intent, confidence = "override", 1.0
@@ -281,7 +279,7 @@ class ChiefRouter:
             project_id=project_id,
         )
 
-        elapsed_ms = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+        elapsed_ms = int((datetime.now(UTC) - start).total_seconds() * 1000)
 
         return {
             "session_id": str(agent_session_id),

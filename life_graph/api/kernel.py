@@ -22,12 +22,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from life_graph.api.dependencies import (
-    get_process_manager,
-    get_persona_service,
     get_chief_router,
-    get_scheduler_service,
-    get_project_registry,
     get_notification_engine,
+    get_persona_service,
+    get_process_manager,
+    get_project_registry,
+    get_scheduler_service,
 )
 from life_graph.api.responses import paginated_response, success_response
 from life_graph.core.tenant import get_current_tenant_id

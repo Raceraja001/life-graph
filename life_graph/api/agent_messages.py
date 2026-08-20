@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from life_graph.api.dependencies import get_messaging_service

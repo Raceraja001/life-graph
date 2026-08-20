@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -372,9 +373,10 @@ async def review_optimization(
     prompt_service=Depends(get_prompt_version_service),
 ):
     """Approve or reject a needs_review optimization run."""
+    from datetime import datetime
+
     from life_graph.self_improving.models import OptimizationRun
     from life_graph.storage.database import async_session
-    from datetime import datetime, timezone
 
     tenant_id = get_current_tenant_id()
     async with async_session() as session:
@@ -404,7 +406,7 @@ async def review_optimization(
             opt_run.status = "rejected"
 
         opt_run.reviewer_notes = body.reviewer_notes
-        opt_run.reviewed_at = datetime.now(timezone.utc)
+        opt_run.reviewed_at = datetime.now(UTC)
         await session.commit()
 
         return success_response(data=_serialize(opt_run))
@@ -523,9 +525,7 @@ def _serialize(obj: Any) -> dict:
             data[key] = str(val)
         elif hasattr(val, "isoformat"):
             data[key] = val.isoformat()
-        elif isinstance(val, (str, int, float, bool, type(None))):
-            data[key] = val
-        elif isinstance(val, (list, dict)):
+        elif isinstance(val, (str, int, float, bool, type(None))) or isinstance(val, (list, dict)):
             data[key] = val
 
     return data

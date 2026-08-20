@@ -6,10 +6,9 @@ Tags: [drivers]
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from life_graph.api.responses import success_response
@@ -125,8 +124,9 @@ async def driver_stats(
     tenant_id = get_current_tenant_id()
 
     try:
-        from life_graph.models.db import DriverStat
         from sqlalchemy import func, select
+
+        from life_graph.models.db import DriverStat
 
         async with async_session() as session:
             # Aggregate across day-bucketed rows, grouped by driver
@@ -170,7 +170,7 @@ async def driver_stats(
             return success_response(
                 data={"stats": stat_list, "window_days": window}
             )
-    except Exception as e:
+    except Exception:
         # DriverStat table may not exist yet
         return success_response(
             data={"stats": [], "window_days": window, "note": "No stats available yet"}
@@ -193,8 +193,9 @@ async def dispatch_task(body: DispatchRequest):
 
     try:
         import uuid
-        from life_graph.drivers.dispatcher import TaskDispatcher
+
         from life_graph.core.events import event_bus
+        from life_graph.drivers.dispatcher import TaskDispatcher
 
         dispatcher = TaskDispatcher(
             session_factory=async_session,

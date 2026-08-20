@@ -12,7 +12,7 @@ import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
 
-_task_context_var: ContextVar["TaskContext | None"] = ContextVar("task_context", default=None)
+_task_context_var: ContextVar[TaskContext | None] = ContextVar("task_context", default=None)
 
 
 @dataclass(frozen=True, slots=True)

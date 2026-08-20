@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import defer
 
 from life_graph.core.events import EventType, event_bus
-from life_graph.models.db import Evidence, Preference
+from life_graph.models.db import Preference
 from life_graph.services.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ class PreferenceStore:
             confidence=confidence,
             confidence_history=[{
                 "value": confidence,
-                "at": datetime.now(timezone.utc).isoformat(),
+                "at": datetime.now(UTC).isoformat(),
                 "reason": "initial",
             }],
             source=source,
@@ -119,7 +119,7 @@ class PreferenceStore:
         if min_confidence is not None:
             stmt = stmt.where(Preference.confidence >= min_confidence)
         if stale_days is not None:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
+            cutoff = datetime.now(UTC) - timedelta(days=stale_days)
             stmt = stmt.where(Preference.last_validated_at < cutoff)
 
         stmt = stmt.order_by(Preference.updated_at.desc()).limit(limit).offset(offset)
@@ -161,7 +161,7 @@ class PreferenceStore:
                 history = list(pref.confidence_history or [])
                 history.append({
                     "value": data["confidence"],
-                    "at": datetime.now(timezone.utc).isoformat(),
+                    "at": datetime.now(UTC).isoformat(),
                     "reason": "manual_update",
                 })
                 pref.confidence_history = history
@@ -173,7 +173,7 @@ class PreferenceStore:
                     embed_text += f" — {pref.reason}"
                 pref.embedding = self._embedding.embed(embed_text) or None
 
-            pref.updated_at = datetime.now(timezone.utc)
+            pref.updated_at = datetime.now(UTC)
             await session.commit()
             await session.refresh(pref)
 
@@ -193,7 +193,7 @@ class PreferenceStore:
             if pref is None or pref.tenant_id != tenant_id:
                 return False
             pref.status = "archived"
-            pref.updated_at = datetime.now(timezone.utc)
+            pref.updated_at = datetime.now(UTC)
             await session.commit()
         return True
 
@@ -241,7 +241,7 @@ class PreferenceStore:
         self, tenant_id: str, stale_days: int = 90
     ) -> list[Preference]:
         """Get preferences not validated in N days."""
-        cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
+        cutoff = datetime.now(UTC) - timedelta(days=stale_days)
         stmt = (
             select(Preference)
             .where(Preference.tenant_id == tenant_id)

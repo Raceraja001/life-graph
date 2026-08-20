@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 
@@ -81,7 +81,7 @@ class ApprovalService:
         auto_approve_minutes = data.pop("auto_approve_minutes", None)
         expires_at = None
         if auto_approve_minutes:
-            expires_at = datetime.now(timezone.utc) + timedelta(minutes=auto_approve_minutes)
+            expires_at = datetime.now(UTC) + timedelta(minutes=auto_approve_minutes)
 
         # approval_queue.risk_level CHECK allows only moderate/dangerous; a "safe"
         # action queued for approval (e.g. at L0) is clamped to moderate here.
@@ -108,7 +108,7 @@ class ApprovalService:
                 estimated_impact=data.get("estimated_impact"),
                 status="pending",
                 expires_at=expires_at,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             session.add(entry)
             await session.commit()
@@ -134,7 +134,7 @@ class ApprovalService:
         from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
 
         approval_id = str(approval_id)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             result = await session.execute(
@@ -206,7 +206,7 @@ class ApprovalService:
         """Batch resolve approvals matching filter criteria."""
         from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         async with self._session_factory() as session:
             q = select(ApprovalQueueEntry).where(
@@ -258,7 +258,7 @@ class ApprovalService:
         """Auto-approve expired (notify-before) entries. Returns count."""
         from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expired_count = 0
 
         async with self._session_factory() as session:
@@ -306,7 +306,7 @@ class ApprovalService:
         """
         from life_graph.autonomy.models import ApprovalQueueEntry
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         escalated_count = 0
 
         async with self._session_factory() as session:
