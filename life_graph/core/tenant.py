@@ -35,11 +35,11 @@ def get_current_tenant_id() -> str:
     """
     try:
         return _tenant_id_var.get()
-    except LookupError:
+    except LookupError as exc:
         raise RuntimeError(
             "No tenant context set. Ensure TenantMiddleware is applied "
             "and X-Tenant-ID header is present."
-        )
+        ) from exc
 
 
 def get_current_user_id() -> str:

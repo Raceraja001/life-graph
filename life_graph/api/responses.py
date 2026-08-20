@@ -49,8 +49,8 @@ def decode_cursor(cursor: str) -> dict[str, str]:
     try:
         payload = base64.urlsafe_b64decode(cursor.encode()).decode()
         return json.loads(payload)
-    except Exception:
-        raise ValueError("Invalid cursor format")
+    except Exception as exc:
+        raise ValueError("Invalid cursor format") from exc
 
 
 # ── Response Helpers ─────────────────────────────────────────

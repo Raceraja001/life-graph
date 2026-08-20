@@ -201,11 +201,11 @@ async def get_eval_run(
     """Get an eval run by ID, including results."""
     try:
         run = await eval_service.get_run(run_id)
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"EvalRun {run_id} not found",
-        )
+        ) from exc
     return success_response(data=_serialize(run))
 
 
@@ -279,11 +279,11 @@ async def activate_prompt_version(
     tenant_id = get_current_tenant_id()
     try:
         version = await prompt_service.activate(tenant_id, version_id)
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"PromptVersion {version_id} not found",
-        )
+        ) from exc
     return success_response(data=_serialize(version))
 
 
@@ -299,11 +299,11 @@ async def rollback_prompt_version(
     tenant_id = get_current_tenant_id()
     try:
         version = await prompt_service.rollback(tenant_id, version_id)
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"PromptVersion {version_id} not found",
-        )
+        ) from exc
     return success_response(data=_serialize(version))
 
 

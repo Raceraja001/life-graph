@@ -99,11 +99,11 @@ async def complete_intention(
     """Mark a pending intention as completed."""
     try:
         intention = await service.complete(str(intention_id))
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Intention {intention_id} not found",
-        )
+        ) from exc
     return success_response(data=IntentionResponse.model_validate(intention))
 
 
@@ -118,9 +118,9 @@ async def dismiss_intention(
     """Dismiss a pending intention without completing it."""
     try:
         intention = await service.dismiss(str(intention_id))
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Intention {intention_id} not found",
-        )
+        ) from exc
     return success_response(data=IntentionResponse.model_validate(intention))

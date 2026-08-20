@@ -84,17 +84,17 @@ async def answer_question(
     """
     try:
         q = await svc.answer(tenant_id, question_id, body.answer)
-    except LookupError:
+    except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Interview question {question_id} not found",
-        )
-    except ExpiredQuestionError:
+        ) from exc
+    except ExpiredQuestionError as exc:
         # Commit the plain-memory capture despite the 410
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
             detail="This question expired — your answer was still saved as a memory.",
-        )
+        ) from exc
     return success_response(data=InterviewQuestionResponse.model_validate(q))
 
 
@@ -114,9 +114,9 @@ async def skip_question(
     """
     try:
         q = await svc.skip(tenant_id, question_id)
-    except LookupError:
+    except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Interview question {question_id} not found",
-        )
+        ) from exc
     return success_response(data=InterviewQuestionResponse.model_validate(q))

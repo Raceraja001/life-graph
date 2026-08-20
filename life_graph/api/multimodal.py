@@ -68,11 +68,11 @@ def _get_multimodal_service():
     if not hasattr(_get_multimodal_service, "_instance"):
         try:
             minio = MinIOStorage()
-        except ImportError:
+        except ImportError as err:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="MinIO client (minio package) is not installed",
-            )
+            ) from err
         _get_multimodal_service._instance = MultiModalService(
             minio=minio,
             event_bus=event_bus,
@@ -113,12 +113,12 @@ async def ingest_voice(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
-    except Exception:
+    except Exception as err:
         logger.exception("Voice processing failed for %s", filename)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Voice processing failed",
-        )
+        ) from err
     return success_response(data=result)
 
 
@@ -151,12 +151,12 @@ async def ingest_transcribe(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
-    except Exception:
+    except Exception as err:
         logger.exception("Transcription failed for %s", filename)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Transcription failed",
-        )
+        ) from err
     return success_response(data=result)
 
 
@@ -192,12 +192,12 @@ async def ingest_image(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
-    except Exception:
+    except Exception as err:
         logger.exception("Image processing failed for %s", filename)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Image processing failed",
-        )
+        ) from err
     return success_response(data=result)
 
 
@@ -234,10 +234,10 @@ async def ingest_document(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
-    except Exception:
+    except Exception as err:
         logger.exception("Document processing failed for %s", filename)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Document processing failed",
-        )
+        ) from err
     return success_response(data=result)

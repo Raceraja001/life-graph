@@ -85,8 +85,8 @@ async def post_message(
 ):
     try:
         result = await svc.ask(conversation_id, body.content)
-    except ConversationNotFound:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    except ConversationNotFound as exc:
+        raise HTTPException(status_code=404, detail="Conversation not found") from exc
     msg = result["message"]
     # resolve citation ids to full memories for chips
     citations = []

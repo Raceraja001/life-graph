@@ -117,11 +117,11 @@ async def update_preference(
         pref = await store.update(
             tenant_id, preference_id, body.model_dump(exclude_none=True)
         )
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preference {preference_id} not found",
-        )
+        ) from exc
     return success_response(data=PreferenceResponse.model_validate(pref))
 
 

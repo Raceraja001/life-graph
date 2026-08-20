@@ -225,11 +225,11 @@ async def update_memory(
         )
     try:
         row = await store.update(memory_id, body)
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Memory {memory_id} not found",
-        )
+        ) from exc
     return success_response(data=MemoryResponse.model_validate(row))
 
 
@@ -273,11 +273,11 @@ async def unarchive_memory(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Memory {memory_id} not found",
             )
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Memory {memory_id} not found",
-        )
+        ) from exc
     return success_response(data=MemoryResponse.model_validate(row))
 
 
@@ -379,11 +379,11 @@ async def reinforce_memory(
     """
     try:
         row = await store.reinforce(memory_id)
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Memory {memory_id} not found",
-        )
+        ) from exc
     return success_response(data=MemoryResponse.model_validate(row))
 
 
@@ -404,11 +404,11 @@ async def deny_memory(
     """
     try:
         denied, replacement = await store.deny(memory_id, body.replacement)
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Memory {memory_id} not found",
-        )
+        ) from exc
 
     result = {
         "denied": MemoryResponse.model_validate(denied),

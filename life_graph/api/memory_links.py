@@ -41,11 +41,11 @@ async def create_link(
     tenant_id = get_current_tenant_id()
     try:
         target_id = uuid.UUID(body.target_memory_id)
-    except ValueError:
+    except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Invalid target_memory_id format",
-        )
+        ) from err
 
     try:
         link = await link_service.create_link(
