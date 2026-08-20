@@ -1,18 +1,32 @@
 """Terminal tool — execute shell commands.
 
-Provides the agent with the ability to run shell commands on the
-host system. Restricted to the personal tenant for safety.
+Provides the agent with the ability to run shell commands on the host system.
 
-WARNING: This tool executes arbitrary commands. Only enable for
-trusted, personal-use tenants. Never expose to customer tenants.
+This module used to *claim* it was "restricted to the personal tenant" while
+implementing no such check — the only gate was a persona's ``allowed_tools``
+list. That restriction is now enforced in :mod:`life_graph.tools._guards`,
+along with a master switch (``LIFE_GRAPH_TOOL_SHELL_ENABLED``) and working
+directory confinement.
+
+WARNING: this executes an arbitrary shell string. The command denylist below
+is a mistake-catcher, NOT a security boundary — denylisting a shell cannot
+work, and should not be reasoned about as though it does. The real controls
+are the tenant gate and the master switch. Anything a shell can reach, a
+persona holding this tool can reach.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 
+from life_graph.config import settings
+from life_graph.tools._guards import (
+    ToolDeniedError,
+    check_command,
+    check_tenant,
+    resolve_cwd,
+)
 from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
@@ -20,22 +34,6 @@ logger = logging.getLogger(__name__)
 # Safety: max output size and timeout
 MAX_OUTPUT_CHARS = 8000
 COMMAND_TIMEOUT_SECONDS = 30
-
-# Commands that should NEVER be run
-BLOCKED_COMMANDS = frozenset([
-    "rm -rf /",
-    "format",
-    "del /f /s /q",
-    "mkfs",
-    "dd if=",
-    ":(){:|:&};:",
-])
-
-
-def _is_blocked(command: str) -> bool:
-    """Check if a command matches any blocked pattern."""
-    cmd_lower = command.strip().lower()
-    return any(blocked in cmd_lower for blocked in BLOCKED_COMMANDS)
 
 
 @tool(
@@ -74,29 +72,25 @@ async def run_command(command: str, working_directory: str | None = None) -> str
     """
     import json
 
-    if _is_blocked(command):
-        return json.dumps({"error": "Command blocked for safety reasons."})
+    if not settings.tool_shell_enabled:
+        return json.dumps({"error": "Shell execution is disabled on this deployment."})
 
-    cwd = working_directory or os.path.expanduser("~")
+    try:
+        check_tenant("run_command")
+        check_command(command)
+        cwd = resolve_cwd(working_directory, tool_name="run_command")
+    except ToolDeniedError as exc:
+        return json.dumps({"error": str(exc)})
 
     logger.info("Executing command: %s (cwd=%s)", command, cwd)
 
     try:
-        # Use shell=True on Windows, subprocess on Unix
-        if os.name == "nt":
-            process = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
-        else:
-            process = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(cwd),
+        )
 
         stdout, stderr = await asyncio.wait_for(
             process.communicate(),
@@ -121,7 +115,7 @@ async def run_command(command: str, working_directory: str | None = None) -> str
 
         return json.dumps(result)
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning("Command timed out after %ds: %s", COMMAND_TIMEOUT_SECONDS, command)
         return json.dumps({"error": f"Command timed out after {COMMAND_TIMEOUT_SECONDS}s"})
     except Exception as exc:

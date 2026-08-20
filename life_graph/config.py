@@ -7,6 +7,7 @@ Redis, rate limiting, and environment profiles.
 from __future__ import annotations
 
 import json
+import os
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -252,6 +253,19 @@ class Settings(BaseSettings):
     driver_second_opinion_enabled: bool = False
     driver_second_opinion_model: str | None = None  # cheap model; None = client default
 
+    # ── Host Tools (run_command / file_read / file_write) ──
+    # These tools execute against the host filesystem and shell. Every
+    # control below is ENFORCED in life_graph/tools/_guards.py — the module
+    # docstrings used to claim a "personal tenant only" restriction that no
+    # code implemented.
+    tool_shell_enabled: bool = True  # master switch for run_command
+    # Tenants permitted to use host tools. Empty string = every tenant,
+    # which is only sane for a single-tenant personal deployment.
+    tool_privileged_tenants: str = "default"
+    # Filesystem roots the file_* tools may touch. Empty = the home
+    # directory only. Comma-separated absolute paths.
+    tool_fs_roots: str = ""
+
     # ── Capture Spine: Interview + Daily Brief ─────────
     interview_max_questions_per_day: int = 3  # Hard daily budget — never nag
     interview_question_ttl_days: int = 7  # Unanswered questions expire after this
@@ -292,6 +306,17 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         """Parse comma-separated CORS origins."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def tool_privileged_tenants_list(self) -> list[str]:
+        """Tenants allowed to use host tools; empty list means no restriction."""
+        return [t.strip() for t in self.tool_privileged_tenants.split(",") if t.strip()]
+
+    @property
+    def tool_fs_roots_list(self) -> list[str]:
+        """Roots the file_* tools may touch. Defaults to the home directory."""
+        roots = [r.strip() for r in self.tool_fs_roots.split(",") if r.strip()]
+        return roots or [os.path.expanduser("~")]
 
     @property
     def llm_fallback_chain_list(self) -> list[str]:

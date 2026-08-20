@@ -7,6 +7,15 @@ import pytest
 from life_graph.tools.filesystem import file_read, file_write
 
 
+@pytest.fixture(autouse=True)
+def _confine_to_tmp(tmp_path, monkeypatch):
+    """file_read/file_write are confined to configured roots as of the tool
+    guards; these tests operate under tmp_path, so make that a root."""
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path))
+
+
 @pytest.mark.asyncio
 async def test_file_read_returns_content(tmp_path):
     f = tmp_path / "hello.txt"
