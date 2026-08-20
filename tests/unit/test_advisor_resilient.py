@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from life_graph.services.multi_model_advisor import MultiModelAdvisor
-from life_graph.services.resilient_llm import ResilientLLMExhausted
+from life_graph.services.resilient_llm import ResilientLLMExhaustedError
 
 
 def _make_advisor() -> MultiModelAdvisor:
@@ -57,10 +57,10 @@ async def test_query_model_uses_resilient_with_diversity(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_query_model_falls_back_when_resilient_exhausted(monkeypatch):
-    """When resilient.acompletion raises ResilientLLMExhausted, the advisor degrades
+    """When resilient.acompletion raises ResilientLLMExhaustedError, the advisor degrades
     to its normal fabricated fallback ModelResponse instead of raising."""
     resilient = AsyncMock()
-    resilient.acompletion = AsyncMock(side_effect=ResilientLLMExhausted("all models down"))
+    resilient.acompletion = AsyncMock(side_effect=ResilientLLMExhaustedError("all models down"))
     monkeypatch.setattr(
         "life_graph.api.dependencies.get_resilient_llm", lambda: resilient
     )

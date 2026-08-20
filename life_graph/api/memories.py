@@ -387,7 +387,7 @@ async def reinforce_memory(
 )
 async def deny_memory(
     memory_id: uuid.UUID,
-    body: DenyRequest = DenyRequest(),
+    body: DenyRequest | None = None,
     store: PostgresMemoryStore = Depends(get_store),
 ):
     """Mark a memory as superseded because the user says it is no longer true.
@@ -396,6 +396,7 @@ async def deny_memory(
     supersedes the old one (with full provenance chain). The old memory
     is kept in the supersession chain for history.
     """
+    body = body or DenyRequest()
     try:
         denied, replacement = await store.deny(memory_id, body.replacement)
     except ValueError as exc:

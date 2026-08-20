@@ -15,6 +15,7 @@ Levels:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import uuid
 from dataclasses import dataclass
@@ -335,7 +336,6 @@ class AutonomyLevelService:
         if success:
             check = await self.check_promotion(tenant_id, project_id)
             if check.eligible:
-                try:
+                # ValueError means a concurrent caller already promoted it.
+                with contextlib.suppress(ValueError):
                     await self.promote(tenant_id, project_id)
-                except ValueError:
-                    pass  # Race condition — already promoted

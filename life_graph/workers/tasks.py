@@ -302,7 +302,7 @@ async def run_watchers(ctx: dict) -> dict:
     from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
     from life_graph.watchers.server_health_watcher import ServerHealthWatcher
 
-    WATCHER_MAP = {
+    watcher_map = {
         "server_health": ServerHealthWatcher,
         "code_quality": CodeQualityWatcher,
     }
@@ -349,7 +349,7 @@ async def run_watchers(ctx: dict) -> dict:
         tenant_events = 0
 
         for wconfig in configs:
-            watcher_cls = WATCHER_MAP.get(wconfig.watcher_name)
+            watcher_cls = watcher_map.get(wconfig.watcher_name)
             if watcher_cls is None:
                 continue
 

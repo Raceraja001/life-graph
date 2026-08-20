@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from life_graph.models.db import Conversation, ConversationMessage
-from life_graph.services.conversation import ConversationNotFound, ConversationService
+from life_graph.services.conversation import ConversationNotFoundError, ConversationService
 
 
 class _FakeResult:
@@ -259,10 +259,10 @@ async def test_ask_raises_for_foreign_or_missing_conversation(monkeypatch):
 
     svc = ConversationService(session_factory, AsyncMock(), AsyncMock())
 
-    with pytest.raises(ConversationNotFound):
+    with pytest.raises(ConversationNotFoundError):
         await svc.ask(conv_id, "question?")
 
-    with pytest.raises(ConversationNotFound):
+    with pytest.raises(ConversationNotFoundError):
         await svc.ask(uuid.uuid4(), "question?")
 
 
@@ -284,7 +284,7 @@ async def test_ask_ownership_check_precedes_retrieval(monkeypatch):
 
     svc = ConversationService(session_factory, engine, synthesis)
 
-    with pytest.raises(ConversationNotFound):
+    with pytest.raises(ConversationNotFoundError):
         await svc.ask(uuid.uuid4(), "question?")
 
     engine.tri_search.assert_not_called()

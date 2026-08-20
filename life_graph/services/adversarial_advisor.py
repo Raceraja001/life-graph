@@ -263,7 +263,6 @@ class AdversarialAdvisor:
 
         # Simple keyword matching
         matches: list[Decision] = []
-        proposal_lower = proposal.lower()
         for decision in recent:
             title_lower = (decision.title or "").lower()
             reasoning_lower = (decision.reasoning or "").lower()

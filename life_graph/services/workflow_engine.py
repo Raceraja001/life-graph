@@ -446,16 +446,15 @@ class WorkflowEngine:
                     continue
 
                 # Evaluate condition if present
-                if step.condition:
-                    if not self._evaluator.evaluate(step.condition, step_outputs):
-                        sr.status = "skipped"
-                        sr.completed_at = _utcnow()
-                        logger.info(
-                            "Skipped step %s (condition not met): %s",
-                            step_key,
-                            step.condition,
-                        )
-                        continue
+                if step.condition and not self._evaluator.evaluate(step.condition, step_outputs):
+                    sr.status = "skipped"
+                    sr.completed_at = _utcnow()
+                    logger.info(
+                        "Skipped step %s (condition not met): %s",
+                        step_key,
+                        step.condition,
+                    )
+                    continue
 
                 await self._start_step(sr, step, run, tenant_id)
 

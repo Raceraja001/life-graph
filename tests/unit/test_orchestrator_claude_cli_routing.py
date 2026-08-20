@@ -65,7 +65,7 @@ async def test_claude_cli_failure_yields_partial_error_then_done(monkeypatch):
     async for chunk in orchestrator.run(messages=[{"role": "user", "content": "hi"}]):
         events.append(json.loads(chunk.removeprefix("data: ").strip()))
 
-    # Matches the existing ResilientLLMExhausted failure shape exactly
+    # Matches the existing ResilientLLMExhaustedError failure shape exactly
     # (orchestrator.py:297-304): a "partial_error" event with a "message"
     # key, always followed by a terminal "done" — not a bare "error" event.
     types = [e["type"] for e in events]

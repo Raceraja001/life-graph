@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from typing import Any
 
@@ -16,7 +17,7 @@ _HISTORY_TURNS = 6
 _RETRIEVE_LIMIT = 8
 
 
-class ConversationNotFound(Exception):
+class ConversationNotFoundError(Exception):
     """Raised when a conversation doesn't exist or belongs to another tenant."""
 
 
@@ -81,7 +82,7 @@ class ConversationService:
             # about to reject anyway.
             conv = await session.get(Conversation, conversation_id)
             if conv is None or conv.tenant_id != tenant_id:
-                raise ConversationNotFound("Conversation not found")
+                raise ConversationNotFoundError("Conversation not found")
 
             # 1. retrieve approved-only
             retrieval = await self._engine.tri_search(
@@ -136,7 +137,8 @@ class ConversationService:
             await session.commit()
             await session.refresh(assistant_turn)
 
-        try:
+        # Events must never break the reply.
+        with contextlib.suppress(Exception):  # pragma: no cover
             await event_bus.emit(
                 EventType.CONVERSATION_MESSAGE,
                 {
@@ -146,7 +148,5 @@ class ConversationService:
                 },
                 source="conversation",
             )
-        except Exception:  # pragma: no cover - events must never break the reply
-            pass
 
         return {"message": assistant_turn, "citations": citations}

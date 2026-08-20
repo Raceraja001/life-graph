@@ -16,7 +16,7 @@ It is the only place the surface→tier map and the fence text live.
 
 from __future__ import annotations
 
-from enum import Enum, StrEnum
+from enum import StrEnum
 
 
 class TrustTier(StrEnum):

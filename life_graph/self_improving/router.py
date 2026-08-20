@@ -169,7 +169,7 @@ async def bulk_import_cases(
 )
 async def trigger_eval_run(
     suite_id: uuid.UUID,
-    body: RunEvalSuiteRequest = RunEvalSuiteRequest(),
+    body: RunEvalSuiteRequest | None = None,
     eval_service=Depends(get_eval_service),
 ):
     """Trigger an evaluation run for a suite.
@@ -177,6 +177,7 @@ async def trigger_eval_run(
     If prompt_version_id is not provided, uses the active prompt
     for the suite's task_type.
     """
+    body = body or RunEvalSuiteRequest()
     tenant_id = get_current_tenant_id()
     run = await eval_service.run_suite(
         tenant_id=tenant_id,
@@ -520,7 +521,7 @@ def _serialize(obj: Any) -> dict:
             data[key] = str(val)
         elif hasattr(val, "isoformat"):
             data[key] = val.isoformat()
-        elif isinstance(val, (str, int, float, bool, type(None))) or isinstance(val, (list, dict)):
+        elif isinstance(val, (str, int, float, bool, type(None), list, dict)):
             data[key] = val
 
     return data

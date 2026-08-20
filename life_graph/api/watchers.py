@@ -221,9 +221,10 @@ async def list_watch_events(
 )
 async def acknowledge_event(
     event_id: uuid.UUID,
-    body: AcknowledgeRequest = AcknowledgeRequest(),
+    body: AcknowledgeRequest | None = None,
 ):
     """Acknowledge a watch event by ID."""
+    body = body or AcknowledgeRequest()
     from life_graph.watchers.models import WatchEvent
 
     tenant_id = _get_tenant()
@@ -256,13 +257,14 @@ async def acknowledge_event(
     summary="Bulk acknowledge events",
 )
 async def bulk_acknowledge_events(
-    body: BulkAcknowledgeRequest = BulkAcknowledgeRequest(),
+    body: BulkAcknowledgeRequest | None = None,
 ):
     """Acknowledge multiple events at once.
 
     If event_ids is provided, only those events are acknowledged.
     Otherwise, filters by watcher_name and severity.
     """
+    body = body or BulkAcknowledgeRequest()
     from life_graph.watchers.models import WatchEvent
 
     tenant_id = _get_tenant()

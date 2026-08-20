@@ -385,10 +385,7 @@ def _entities_overlap(entity_a: str, entity_b: str) -> bool:
     words_b = set(entity_b.split())
     overlap = len(words_a & words_b)
     max_len = max(len(words_a), len(words_b))
-    if overlap / max_len >= 0.5:
-        return True
-
-    return False
+    return overlap / max_len >= 0.5
 
 
 def _strip_stopwords(entity: str) -> str:

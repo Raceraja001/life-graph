@@ -268,11 +268,9 @@ class EvidenceStore:
             )
 
             total = support + contradict
-            if total > 0:
-                # Confidence = proportion of supporting evidence
-                new_confidence = min(support / total, 1.0)
-            else:
-                new_confidence = pref.confidence
+            # Confidence = proportion of supporting evidence; unchanged when
+            # there is no evidence either way.
+            new_confidence = min(support / total, 1.0) if total > 0 else pref.confidence
 
             # Update confidence and history
             history = list(pref.confidence_history or [])

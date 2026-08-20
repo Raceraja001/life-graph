@@ -11,13 +11,13 @@ Also detects project architecture from directory structure.
 from __future__ import annotations
 
 import ast
+import contextlib
 import json
 import logging
 import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
-import contextlib
 
 logger = logging.getLogger(__name__)
 

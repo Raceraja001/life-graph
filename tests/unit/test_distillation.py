@@ -194,11 +194,11 @@ async def test_minio_failure_preserves_facts():
 
 @pytest.mark.asyncio
 async def test_unknown_conversation_raises():
-    from life_graph.services.conversation import ConversationNotFound
+    from life_graph.services.conversation import ConversationNotFoundError
 
     conv = _conv()
     d, *_ = _distiller(conv, [])
-    with pytest.raises(ConversationNotFound):
+    with pytest.raises(ConversationNotFoundError):
         await d.distill(uuid.uuid4())  # different id → session.get returns None
 
 

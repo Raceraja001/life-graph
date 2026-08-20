@@ -599,7 +599,6 @@ class TaskDispatcher:
             if row and row[0]:  # dispatched sum exists
                 dispatched = row[0] or 0
                 landed = row[1] or 0
-                failed = row[2] or 0
                 total = dispatched
                 return {
                     "success_rate": landed / total if total > 0 else 1.0,

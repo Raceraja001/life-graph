@@ -112,7 +112,7 @@ async def create_workflow(
 )
 async def start_run(
     workflow_id: uuid.UUID,
-    body: WorkflowRunStart = WorkflowRunStart(),
+    body: WorkflowRunStart | None = None,
     engine: WorkflowEngine = Depends(get_workflow_engine),
 ):
     """Start a new run of the specified workflow.
@@ -120,6 +120,7 @@ async def start_run(
     Creates step runs for all steps and kicks off root steps
     (those with no dependencies).
     """
+    body = body or WorkflowRunStart()
     tenant_id = get_current_tenant_id()
 
     try:
@@ -224,10 +225,11 @@ async def get_run(
 async def cancel_run(
     workflow_id: uuid.UUID,
     run_id: uuid.UUID,
-    body: CancelRequest = CancelRequest(),
+    body: CancelRequest | None = None,
     engine: WorkflowEngine = Depends(get_workflow_engine),
 ):
     """Cancel a running workflow and all its pending/running steps."""
+    body = body or CancelRequest()
     tenant_id = get_current_tenant_id()
 
     await engine.cancel_run(

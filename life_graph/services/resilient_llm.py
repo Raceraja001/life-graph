@@ -5,7 +5,7 @@ fallback chain, skipping any model currently in cooldown. A 429 benches a model
 for `llm_cooldown_429_seconds` (or its Retry-After); other errors for
 `llm_cooldown_error_seconds`. Health is recorded to LLMHealth from real outcomes
 — never a probe. When every model is exhausted (or all cooling and the one forced
-retry also fails) it raises ResilientLLMExhausted; callers run their own fallback.
+retry also fails) it raises ResilientLLMExhaustedError; callers run their own fallback.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from life_graph.services.llm_health import LLMHealth
 logger = logging.getLogger(__name__)
 
 
-class ResilientLLMExhausted(Exception):
+class ResilientLLMExhaustedError(Exception):
     """Raised when every model in the chain failed or is unavailable."""
 
 
@@ -147,7 +147,7 @@ class ResilientLLM:
     ) -> Any:
         """Try models in order (skipping cooling ones), returning the raw LiteLLM response.
 
-        Raises ResilientLLMExhausted if every model in the chain fails, including the
+        Raises ResilientLLMExhaustedError if every model in the chain fails, including the
         one forced attempt made when all candidates were skipped for being in cooldown.
         """
         primary = self._primary(model, tier)
@@ -196,7 +196,7 @@ class ResilientLLM:
                 return await self._attempt(forced, messages, kwargs)
             except Exception as exc:  # noqa: BLE001
                 await self._health.record_failure(forced, _classify(exc))
-        raise ResilientLLMExhausted(f"All models exhausted: {chain}")
+        raise ResilientLLMExhaustedError(f"All models exhausted: {chain}")
 
     async def chat(
         self,

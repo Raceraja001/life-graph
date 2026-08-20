@@ -205,7 +205,4 @@ class TriggerMatcher:
 
         # Topics overlap
         intent_topics = set(intention_context.get("topics", []))
-        if intent_topics and set(current.topics) & intent_topics:
-            return True
-
-        return False
+        return bool(intent_topics and set(current.topics) & intent_topics)

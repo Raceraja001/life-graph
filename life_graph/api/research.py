@@ -140,7 +140,7 @@ async def get_research_run(
     summary="Trigger a research cycle",
 )
 async def trigger_research(
-    body: ResearchTriggerRequest = ResearchTriggerRequest(),
+    body: ResearchTriggerRequest | None = None,
     engine: ResearchEngine = Depends(get_research_engine),
 ):
     """Manually trigger a research cycle.
@@ -148,6 +148,7 @@ async def trigger_research(
     Optionally target a specific preference by ID. Returns 202 Accepted
     with initial status while research runs asynchronously.
     """
+    body = body or ResearchTriggerRequest()
     tenant_id = get_current_tenant_id()
 
     # Run inline for simplicity (could enqueue to ARQ for truly async)

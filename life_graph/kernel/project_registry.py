@@ -166,7 +166,7 @@ def count_files(project_path: str) -> int:
     root = Path(project_path)
 
     try:
-        for dirpath, dirnames, filenames in os.walk(root):
+        for _dirpath, dirnames, filenames in os.walk(root):
             # Skip hidden and excluded dirs
             dirnames[:] = [d for d in dirnames if d not in skip_dirs and not d.startswith(".")]
             for f in filenames:

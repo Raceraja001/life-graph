@@ -11,7 +11,7 @@ No DB, no I/O (mirrors ``core/trust.py`` and ``core/budget.py``).
 
 from __future__ import annotations
 
-from enum import Enum, StrEnum
+from enum import StrEnum
 
 DEFAULT_MIN_DAYS = 14
 DEFAULT_MIN_SAMPLES = 5

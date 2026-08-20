@@ -177,7 +177,6 @@ class GitAnalyzer:
     def _result_to_memories(self, result: dict[str, Any], repo_path: str) -> list[dict[str, Any]]:
         """Convert mined statistics into memory dicts."""
         memories: list[dict[str, Any]] = []
-        base_props = {"source": "cold_start:git_analysis", "repo": repo_path}
 
         # Commit convention
         content = (

@@ -15,6 +15,7 @@ to the nightly :class:`ConsolidationPipeline`.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 import uuid
@@ -27,7 +28,6 @@ from life_graph.models.db import Memory, MemorySession
 from life_graph.scoring.importance import ImportanceTagger
 from life_graph.services.embeddings import EmbeddingService
 from life_graph.storage.postgres import PostgresMemoryStore
-import contextlib
 
 logger = logging.getLogger(__name__)
 

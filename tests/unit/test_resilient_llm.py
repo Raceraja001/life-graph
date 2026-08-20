@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 import life_graph.services.resilient_llm as rl
-from life_graph.services.resilient_llm import ResilientLLM, ResilientLLMExhausted
+from life_graph.services.resilient_llm import ResilientLLM, ResilientLLMExhaustedError
 
 
 def _resp(text="ok"):
@@ -154,7 +154,7 @@ async def test_all_fail_raises_exhausted(monkeypatch):
     call = AsyncMock(side_effect=rl.litellm.APIError(500, "boom", "prov", "m"))
     monkeypatch.setattr(rl.litellm, "acompletion", call)
     h = FakeHealth()
-    with pytest.raises(ResilientLLMExhausted):
+    with pytest.raises(ResilientLLMExhaustedError):
         await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
     assert len(h.failure) >= 3  # A, B, C all recorded
 
@@ -469,5 +469,5 @@ async def test_no_paid_fallback_configured_exhausts_as_before(monkeypatch):
     monkeypatch.setattr(rl.litellm, "acompletion", call)
     h = FakeHealth()
 
-    with pytest.raises(ResilientLLMExhausted):
+    with pytest.raises(ResilientLLMExhaustedError):
         await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])

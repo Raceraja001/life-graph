@@ -240,7 +240,6 @@ class ResearchEngine:
                 sources.append(source_type)
 
                 # Store evidence
-                credibility = SOURCE_CREDIBILITY.get(source_type, 1.0)
                 await self._evidence_store.create(
                     tenant_id,
                     {

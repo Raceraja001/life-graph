@@ -128,44 +128,43 @@ class TenantMiddleware(BaseHTTPMiddleware):
         # Block write operations for deactivated tenants (read-only mode).
         # GET requests are always allowed. Admin paths are exempt so
         # operators can still reactivate or delete the tenant.
-        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            if not request.url.path.startswith("/admin") and not request.url.path.startswith(
-                "/api/v1/admin"
-            ):
-                cached = _tenant_status_cache.get(tenant_id)
-                now = time.monotonic()
-                if cached is not None and cached[0] > now:
-                    tenant_status = cached[1]
-                else:
-                    tenant_status = None
-                    try:
-                        from life_graph.models.db import TenantConfig
-                        from life_graph.storage.database import (
-                            async_session as _async_session,
-                        )
-
-                        async with _async_session() as _db:
-                            _config = await _db.get(TenantConfig, tenant_id)
-                            tenant_status = _config.status if _config else None
-                        _tenant_status_cache[tenant_id] = (
-                            now + _TENANT_STATUS_CACHE_TTL_SECONDS,
-                            tenant_status,
-                        )
-                    except Exception:
-                        # If we can't check, allow the request through (fail open,
-                        # matching prior behavior) — don't cache the failure.
-                        tenant_status = None
-
-                if tenant_status == "deactivated":
-                    from life_graph.api.responses import error_response
-
-                    return JSONResponse(
-                        status_code=403,
-                        content=error_response(
-                            "TENANT_DEACTIVATED",
-                            "Tenant is deactivated. Read-only access only.",
-                        ),
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and not (
+            request.url.path.startswith("/admin") or request.url.path.startswith("/api/v1/admin")
+        ):
+            cached = _tenant_status_cache.get(tenant_id)
+            now = time.monotonic()
+            if cached is not None and cached[0] > now:
+                tenant_status = cached[1]
+            else:
+                tenant_status = None
+                try:
+                    from life_graph.models.db import TenantConfig
+                    from life_graph.storage.database import (
+                        async_session as _async_session,
                     )
+
+                    async with _async_session() as _db:
+                        _config = await _db.get(TenantConfig, tenant_id)
+                        tenant_status = _config.status if _config else None
+                    _tenant_status_cache[tenant_id] = (
+                        now + _TENANT_STATUS_CACHE_TTL_SECONDS,
+                        tenant_status,
+                    )
+                except Exception:
+                    # If we can't check, allow the request through (fail open,
+                    # matching prior behavior) — don't cache the failure.
+                    tenant_status = None
+
+            if tenant_status == "deactivated":
+                from life_graph.api.responses import error_response
+
+                return JSONResponse(
+                    status_code=403,
+                    content=error_response(
+                        "TENANT_DEACTIVATED",
+                        "Tenant is deactivated. Read-only access only.",
+                    ),
+                )
 
         return await call_next(request)
 

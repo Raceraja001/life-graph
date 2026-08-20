@@ -202,7 +202,7 @@ class TranscriptExtractor:
             if "\nHuman:" in content or "\nAssistant:" in content:
                 blocks = re.split(r"\n(Human|Assistant):\s*", content)
                 current_role = role
-                for i, block in enumerate(blocks):
+                for _i, block in enumerate(blocks):
                     if block == "Human":
                         current_role = "human"
                     elif block == "Assistant":

@@ -161,11 +161,11 @@ async def execute_cypher(body: CypherQuery):
     Write operations (CREATE, SET, DELETE, MERGE, REMOVE, DROP) are blocked.
     """
     # Security: block write operations
-    _WRITE_KEYWORDS = re.compile(
+    _write_keywords = re.compile(
         r"\b(CREATE|SET|DELETE|DETACH|MERGE|REMOVE|DROP|CALL)\b",
         re.IGNORECASE,
     )
-    if _WRITE_KEYWORDS.search(body.cypher):
+    if _write_keywords.search(body.cypher):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Write operations are not allowed via the API. Use read-only Cypher.",

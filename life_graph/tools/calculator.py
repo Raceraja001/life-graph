@@ -77,9 +77,8 @@ def _safe_eval(node: ast.AST) -> int | float:
         right = _safe_eval(node.right)
 
         # Guard against excessively large exponents.
-        if isinstance(node.op, ast.Pow):
-            if isinstance(right, (int, float)) and abs(right) > 1000:
-                raise ValueError("Exponent too large (max 1000). This prevents memory exhaustion.")
+        if isinstance(node.op, ast.Pow) and isinstance(right, (int, float)) and abs(right) > 1000:
+            raise ValueError("Exponent too large (max 1000). This prevents memory exhaustion.")
 
         return op_func(left, right)
 

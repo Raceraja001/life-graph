@@ -30,7 +30,7 @@ ARCHIVE_BUCKET = "transcripts"
 CONTEXT_LOOKBACK = 4
 
 
-class ExternalSessionNotFound(Exception):
+class ExternalSessionNotFoundError(Exception):
     """Raised when the session is missing or owned by another tenant."""
 
 
@@ -73,11 +73,11 @@ class TranscriptDistiller:
         async with self._session_factory() as session:
             es = await self._load_session(session, tenant_id, session_id)
             if es is None:
-                raise ExternalSessionNotFound("External session not found")
+                raise ExternalSessionNotFoundError("External session not found")
 
             parser = self._parsers.get(es.tool)
             if parser is None:
-                raise ExternalSessionNotFound(f"No parser for tool {es.tool!r}")
+                raise ExternalSessionNotFoundError(f"No parser for tool {es.tool!r}")
 
             raw = b""
             if es.raw_key:

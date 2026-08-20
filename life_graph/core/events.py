@@ -18,14 +18,14 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum, StrEnum
+from enum import StrEnum
 from typing import Any
-import contextlib
 
 logger = logging.getLogger(__name__)
 

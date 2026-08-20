@@ -15,7 +15,7 @@ from typing import Any
 
 from life_graph.config import Settings
 from life_graph.services.claude_cli_reply import run_claude_cli
-from life_graph.services.resilient_llm import ResilientLLMExhausted
+from life_graph.services.resilient_llm import ResilientLLMExhaustedError
 from life_graph.tools.registry import registry
 
 logger = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ class AgentOrchestrator:
                 # Any unexpected failure here (message flattening or the CLI
                 # call itself) falls into the same graceful shape as a
                 # run_claude_cli() failure below, matching the existing
-                # ResilientLLMExhausted failure shape exactly
+                # ResilientLLMExhaustedError failure shape exactly
                 # (orchestrator.py:297-304) — "partial_error" with a
                 # "message" key, always followed by a terminal "done".
                 yield _sse({"type": "partial_error", "message": str(exc), "retryable": True})
@@ -130,7 +130,7 @@ class AgentOrchestrator:
                 return
 
             if not result.success:
-                # Matches the existing ResilientLLMExhausted failure shape
+                # Matches the existing ResilientLLMExhaustedError failure shape
                 # exactly (orchestrator.py:297-304) — "partial_error" with a
                 # "message" key, always followed by a terminal "done".
                 yield _sse({"type": "partial_error", "message": result.error, "retryable": True})
@@ -341,7 +341,7 @@ class AgentOrchestrator:
                 )
                 self._retry_count = 0  # reset on success
 
-            except ResilientLLMExhausted as exc:
+            except ResilientLLMExhaustedError as exc:
                 # ResilientLLM already tried the caller's model plus the whole
                 # configured fallback chain (with cooldown-aware skipping) and
                 # every attempt failed — nothing left for the orchestrator to

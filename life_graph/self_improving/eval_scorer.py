@@ -7,7 +7,7 @@ Semantic similarity uses sentence_transformers lazily.
 from __future__ import annotations
 
 import re
-from enum import Enum, StrEnum
+from enum import StrEnum
 from typing import Any
 
 

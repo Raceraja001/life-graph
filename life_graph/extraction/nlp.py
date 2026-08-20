@@ -405,9 +405,7 @@ def _is_negated(token: spacy.tokens.Token) -> bool:  # type: ignore[name-defined
     for child in token.children:
         if child.dep_ == "neg" or child.lemma_.lower() in _NEGATION_LEMMAS:
             return True
-    if token.head and token.head.lemma_.lower() in _NEGATION_LEMMAS:
-        return True
-    return False
+    return bool(token.head and token.head.lemma_.lower() in _NEGATION_LEMMAS)
 
 
 def _negation_in_window(text_lower: str, idx: int, window: int = 40) -> bool:

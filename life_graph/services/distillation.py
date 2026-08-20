@@ -27,7 +27,7 @@ from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Conversation, ConversationMessage, _utcnow
 from life_graph.models.schemas import MemoryUpdate
-from life_graph.services.conversation import ConversationNotFound
+from life_graph.services.conversation import ConversationNotFoundError
 
 if TYPE_CHECKING:
     import uuid
@@ -71,7 +71,7 @@ class ConversationDistiller:
         """Extract new user-facts → pending memories; archive the thread.
 
         Returns ``{"new_facts": int, "archived": bool, "skipped": bool}``.
-        Raises ``ConversationNotFound`` if the conversation is missing or owned
+        Raises ``ConversationNotFoundError`` if the conversation is missing or owned
         by another tenant.
         """
         tenant_id = get_current_tenant_id()
@@ -79,7 +79,7 @@ class ConversationDistiller:
         async with self._session_factory() as session:
             conv = await session.get(Conversation, conversation_id)
             if conv is None or conv.tenant_id != tenant_id:
-                raise ConversationNotFound("Conversation not found")
+                raise ConversationNotFoundError("Conversation not found")
 
             rows = await session.execute(
                 select(ConversationMessage)

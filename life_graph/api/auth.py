@@ -83,11 +83,10 @@ def verify_service_key(request: Request) -> str | None:
     if is_exempt_path(request.url.path):
         return None
 
-    # Dev mode: no auth required
-    if settings.is_development and not settings.service_api_keys_list:
-        # Also accept legacy single api_key for backward compatibility
-        if not settings.api_key:
-            return None
+    # Dev mode with no keys configured at all — neither the service-key list
+    # nor the legacy single api_key — requires no auth.
+    if settings.is_development and not settings.service_api_keys_list and not settings.api_key:
+        return None
 
     api_key = extract_api_key(request.headers, request.query_params)
 

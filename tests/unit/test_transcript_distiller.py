@@ -13,7 +13,7 @@ import life_graph.services.transcript_distiller as td_mod
 from life_graph.extraction.rules import ExtractedFact
 from life_graph.extraction.transcript_parsers import PARSERS
 from life_graph.services.transcript_distiller import (
-    ExternalSessionNotFound,
+    ExternalSessionNotFoundError,
     TranscriptDistiller,
 )
 
@@ -106,7 +106,7 @@ async def test_missing_session_raises(monkeypatch):
     monkeypatch.setattr(td_mod, "get_current_tenant_id", lambda: TENANT)
     d, *_ = _distiller(_session_obj(), [])
     monkeypatch.setattr(d, "_load_session", AsyncMock(return_value=None))
-    with pytest.raises(ExternalSessionNotFound):
+    with pytest.raises(ExternalSessionNotFoundError):
         await d.distill("nope")
 
 

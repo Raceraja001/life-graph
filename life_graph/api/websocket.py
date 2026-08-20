@@ -16,6 +16,7 @@ Usage — add to the FastAPI app directly (not via a router)::
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from typing import Any
@@ -27,7 +28,6 @@ from life_graph.config import settings
 from life_graph.core.events import Event
 from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
 from life_graph.storage.redis import get_redis
-import contextlib
 
 logger = logging.getLogger(__name__)
 

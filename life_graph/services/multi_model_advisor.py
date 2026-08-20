@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.config import settings
 from life_graph.models.db import AdvisorSession, Preference
-from life_graph.services.resilient_llm import ResilientLLMExhausted
+from life_graph.services.resilient_llm import ResilientLLMExhaustedError
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +321,7 @@ class MultiModelAdvisor:
                 ),
                 timeout=self._timeout,
             )
-        except (TimeoutError, ResilientLLMExhausted):
+        except (TimeoutError, ResilientLLMExhaustedError):
             latency = int((time.monotonic() - t0) * 1000)
             logger.warning("Model %s timed out after %dms", model, latency)
             return ModelResponse(

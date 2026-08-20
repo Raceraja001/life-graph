@@ -293,49 +293,49 @@ class MemoryManager:
         if embedding:
             candidates = await self._store.find_similarity_candidates(embedding)
 
-        if settings.dedup_enabled and not skip_dedup:
-            # Near-match (only if no exact match and embedding available)
-            if candidates:
-                similar = [(m, s) for m, s in candidates if s >= settings.dedup_threshold][:5]
-                if similar:
-                    existing_memory, score = similar[0]  # highest similarity
-                    logger.info(
-                        "Dedup: near-match (%.2f) found, merging with %s",
-                        score,
-                        existing_memory.id,
-                    )
+        # Near-match dedup — only when an embedding produced candidates,
+        # i.e. no exact hash match short-circuited above.
+        if settings.dedup_enabled and not skip_dedup and candidates:
+            similar = [(m, s) for m, s in candidates if s >= settings.dedup_threshold][:5]
+            if similar:
+                existing_memory, score = similar[0]  # highest similarity
+                logger.info(
+                    "Dedup: near-match (%.2f) found, merging with %s",
+                    score,
+                    existing_memory.id,
+                )
 
-                    # Merge: higher importance wins, union tags, merge properties
-                    merged_importance = max(
-                        existing_memory.importance,
-                        importance or 0.5,
+                # Merge: higher importance wins, union tags, merge properties
+                merged_importance = max(
+                    existing_memory.importance,
+                    importance or 0.5,
+                )
+                merged_tags = list(
+                    set(
+                        (existing_memory.tags or []) + _infer_tags(fact, tier),
                     )
-                    merged_tags = list(
-                        set(
-                            (existing_memory.tags or []) + _infer_tags(fact, tier),
-                        )
-                    )
+                )
 
-                    new_props: dict[str, Any] = {}
-                    if context:
-                        new_props.update(context)
-                    new_props["fact_type"] = fact.fact_type
-                    new_props["extraction_confidence"] = fact.confidence
-                    if fact.entities:
-                        new_props["entities"] = fact.entities
-                    merged_props = {
-                        **(existing_memory.properties or {}),
-                        **new_props,
-                    }
+                new_props: dict[str, Any] = {}
+                if context:
+                    new_props.update(context)
+                new_props["fact_type"] = fact.fact_type
+                new_props["extraction_confidence"] = fact.confidence
+                if fact.entities:
+                    new_props["entities"] = fact.entities
+                merged_props = {
+                    **(existing_memory.properties or {}),
+                    **new_props,
+                }
 
-                    update = MemoryUpdate(
-                        importance=merged_importance,
-                        tags=merged_tags,
-                        properties=merged_props,
-                    )
-                    updated = await self._store.update(existing_memory.id, update)
-                    await self._store.touch(existing_memory.id)
-                    return updated
+                update = MemoryUpdate(
+                    importance=merged_importance,
+                    tags=merged_tags,
+                    properties=merged_props,
+                )
+                updated = await self._store.update(existing_memory.id, update)
+                await self._store.touch(existing_memory.id)
+                return updated
 
         # Step 4: Check for contradictions, derived from the same candidate
         # pool fetched above (active memories only — candidates also include
