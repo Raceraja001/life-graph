@@ -51,30 +51,18 @@ PAGINATED_MEMORIES = {
 MEMORY_DETAIL = {
     200: {
         "description": "Memory detail",
-        "content": {
-            "application/json": {
-                "example": {"data": MEMORY_EXAMPLE}
-            }
-        },
+        "content": {"application/json": {"example": {"data": MEMORY_EXAMPLE}}},
     },
     404: {
         "description": "Memory not found",
-        "content": {
-            "application/json": {
-                "example": {"detail": "Memory a1b2c3d4-... not found"}
-            }
-        },
+        "content": {"application/json": {"example": {"detail": "Memory a1b2c3d4-... not found"}}},
     },
 }
 
 MEMORY_CREATED = {
     201: {
         "description": "Memories created from input",
-        "content": {
-            "application/json": {
-                "example": {"data": [MEMORY_EXAMPLE]}
-            }
-        },
+        "content": {"application/json": {"example": {"data": [MEMORY_EXAMPLE]}}},
     }
 }
 
@@ -117,11 +105,7 @@ WEBHOOK_EXAMPLE = {
 WEBHOOK_CREATED = {
     201: {
         "description": "Webhook registered",
-        "content": {
-            "application/json": {
-                "example": {"data": WEBHOOK_EXAMPLE}
-            }
-        },
+        "content": {"application/json": {"example": {"data": WEBHOOK_EXAMPLE}}},
     },
     422: {
         "description": "Validation error (missing url, short secret, etc.)",

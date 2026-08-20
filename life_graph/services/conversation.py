@@ -98,27 +98,29 @@ class ConversationService:
                 .limit(_HISTORY_TURNS)
             )
             history = [
-                {"role": m.role, "content": m.content}
-                for m in reversed(prior.scalars().all())
+                {"role": m.role, "content": m.content} for m in reversed(prior.scalars().all())
             ]
 
             # 2. synthesize — synthesis.py filters memories with empty/missing
             # ids BEFORE numbering, so the citations it returns are already
             # in lockstep with the [Memory J] tokens in the answer text; no
             # post-hoc filtering needed (or safe to do) here.
-            result = await self._synthesis.synthesize(
-                question, memories, history=history or None
-            )
+            result = await self._synthesis.synthesize(question, memories, history=history or None)
             citations = result.get("citations", [])
 
             # 3. persist both turns
             user_turn = ConversationMessage(
-                conversation_id=conversation_id, tenant_id=tenant_id,
-                role="user", content=question, cited_memory_ids=[],
+                conversation_id=conversation_id,
+                tenant_id=tenant_id,
+                role="user",
+                content=question,
+                cited_memory_ids=[],
             )
             assistant_turn = ConversationMessage(
-                conversation_id=conversation_id, tenant_id=tenant_id,
-                role="assistant", content=result["answer"],
+                conversation_id=conversation_id,
+                tenant_id=tenant_id,
+                role="assistant",
+                content=result["answer"],
                 cited_memory_ids=citations,
                 model=result.get("model"),
             )
@@ -137,8 +139,11 @@ class ConversationService:
         try:
             await event_bus.emit(
                 EventType.CONVERSATION_MESSAGE,
-                {"conversation_id": str(conversation_id), "tenant_id": tenant_id,
-                 "preview": result["answer"][:80]},
+                {
+                    "conversation_id": str(conversation_id),
+                    "tenant_id": tenant_id,
+                    "preview": result["answer"][:80],
+                },
                 source="conversation",
             )
         except Exception:  # pragma: no cover - events must never break the reply

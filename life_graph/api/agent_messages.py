@@ -28,7 +28,9 @@ async def send_message(
 ):
     """Send a message from one agent to another."""
     msg = await svc.send(
-        tenant_id, sender_agent, data.model_dump(exclude_none=True),
+        tenant_id,
+        sender_agent,
+        data.model_dump(exclude_none=True),
     )
     return success_response(data=AgentMessageResponse.model_validate(msg))
 
@@ -71,10 +73,11 @@ async def reply_to_message(
     """Reply to a message."""
     try:
         msg = await svc.reply(
-            tenant_id, message_id, sender_agent,
+            tenant_id,
+            message_id,
+            sender_agent,
             data.model_dump(exclude_none=True),
         )
         return success_response(data=AgentMessageResponse.model_validate(msg))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-

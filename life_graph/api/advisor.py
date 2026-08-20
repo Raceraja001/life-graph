@@ -66,31 +66,35 @@ async def ask_advisor(
     # Serialize dataclass responses
     responses_out = []
     for r in result.responses:
-        responses_out.append({
-            "model": r.model,
-            "recommendation": r.recommendation,
-            "pros": r.pros,
-            "cons": r.cons,
-            "confidence": r.confidence,
-            "reasoning": r.reasoning,
-            "tokens_used": r.tokens_used,
-            "latency_ms": r.latency_ms,
-            "cost_usd": r.cost_usd,
-            "status": r.status,
-        })
+        responses_out.append(
+            {
+                "model": r.model,
+                "recommendation": r.recommendation,
+                "pros": r.pros,
+                "cons": r.cons,
+                "confidence": r.confidence,
+                "reasoning": r.reasoning,
+                "tokens_used": r.tokens_used,
+                "latency_ms": r.latency_ms,
+                "cost_usd": r.cost_usd,
+                "status": r.status,
+            }
+        )
 
-    return success_response(data={
-        "session_id": str(result.session_id),
-        "question": result.question,
-        "responses": responses_out,
-        "consensus_score": result.consensus_score,
-        "consensus_label": result.consensus_label,
-        "winning_choice": result.winning_choice,
-        "total_tokens": result.total_tokens,
-        "total_cost_usd": result.total_cost_usd,
-        "total_latency_ms": result.total_latency_ms,
-        "context_used": result.context_used,
-    })
+    return success_response(
+        data={
+            "session_id": str(result.session_id),
+            "question": result.question,
+            "responses": responses_out,
+            "consensus_score": result.consensus_score,
+            "consensus_label": result.consensus_label,
+            "winning_choice": result.winning_choice,
+            "total_tokens": result.total_tokens,
+            "total_cost_usd": result.total_cost_usd,
+            "total_latency_ms": result.total_latency_ms,
+            "context_used": result.context_used,
+        }
+    )
 
 
 @router.get(

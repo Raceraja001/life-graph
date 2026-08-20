@@ -120,25 +120,19 @@ class IntentionService:
 
         async with self._session_factory() as session:
             # ── Time-based triggers ───────────────────────────────
-            time_stmt = (
-                select(Intention)
-                .where(
-                    Intention.status == "pending",
-                    Intention.trigger_type == "time",
-                    Intention.trigger_time <= now,
-                )
+            time_stmt = select(Intention).where(
+                Intention.status == "pending",
+                Intention.trigger_type == "time",
+                Intention.trigger_time <= now,
             )
             time_result = await session.execute(time_stmt)
             triggered.extend(time_result.scalars().all())
 
             # ── Context/event triggers ────────────────────────────
-            ctx_stmt = (
-                select(Intention)
-                .where(
-                    Intention.status == "pending",
-                    Intention.trigger_type.in_(["event", "context"]),
-                    Intention.context_match.isnot(None),
-                )
+            ctx_stmt = select(Intention).where(
+                Intention.status == "pending",
+                Intention.trigger_type.in_(["event", "context"]),
+                Intention.context_match.isnot(None),
             )
             ctx_result = await session.execute(ctx_stmt)
             for intention in ctx_result.scalars().all():

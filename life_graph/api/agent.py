@@ -52,9 +52,7 @@ class BuildContextRequest(BaseModel):
 class LearnRequest(BaseModel):
     """Body for learning memories from a completed task."""
 
-    conversation: str = Field(
-        ..., min_length=1, description="Full text of the agent conversation"
-    )
+    conversation: str = Field(..., min_length=1, description="Full text of the agent conversation")
     context: dict[str, Any] | None = Field(
         None, description="Optional context metadata (project, tool, etc.)"
     )

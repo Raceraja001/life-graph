@@ -72,7 +72,10 @@ class EvalScorer:
             return False, 0.0, f"Unsupported scoring type: {scoring_type}"
 
     def _score_exact_match(
-        self, expected: str, actual: str, config: dict[str, Any],
+        self,
+        expected: str,
+        actual: str,
+        config: dict[str, Any],
     ) -> tuple[bool, float, str | None]:
         """Case-insensitive exact match by default."""
         case_sensitive = config.get("case_sensitive", False)
@@ -86,12 +89,17 @@ class EvalScorer:
             a = a.lower()
 
         passed = e == a
-        return passed, 1.0 if passed else 0.0, (
-            None if passed else f"Expected '{expected[:100]}', got '{actual[:100]}'"
+        return (
+            passed,
+            1.0 if passed else 0.0,
+            (None if passed else f"Expected '{expected[:100]}', got '{actual[:100]}'"),
         )
 
     def _score_contains(
-        self, expected: str, actual: str, config: dict[str, Any],
+        self,
+        expected: str,
+        actual: str,
+        config: dict[str, Any],
     ) -> tuple[bool, float, str | None]:
         """Check if expected text is contained in actual output."""
         case_sensitive = config.get("case_sensitive", False)
@@ -99,12 +107,17 @@ class EvalScorer:
         a = actual if case_sensitive else actual.lower()
 
         passed = e in a
-        return passed, 1.0 if passed else 0.0, (
-            None if passed else f"Expected output to contain '{expected[:100]}'"
+        return (
+            passed,
+            1.0 if passed else 0.0,
+            (None if passed else f"Expected output to contain '{expected[:100]}'"),
         )
 
     def _score_regex(
-        self, expected: str, actual: str, config: dict[str, Any],
+        self,
+        expected: str,
+        actual: str,
+        config: dict[str, Any],
     ) -> tuple[bool, float, str | None]:
         """Match actual output against an expected regex pattern."""
         flags = 0 if config.get("case_sensitive", False) else re.IGNORECASE
@@ -115,12 +128,17 @@ class EvalScorer:
             return False, 0.0, f"Invalid regex pattern: {exc}"
 
         passed = match is not None
-        return passed, 1.0 if passed else 0.0, (
-            None if passed else f"Output did not match pattern '{expected[:100]}'"
+        return (
+            passed,
+            1.0 if passed else 0.0,
+            (None if passed else f"Output did not match pattern '{expected[:100]}'"),
         )
 
     def _score_semantic(
-        self, expected: str, actual: str, config: dict[str, Any],
+        self,
+        expected: str,
+        actual: str,
+        config: dict[str, Any],
     ) -> tuple[bool, float, str | None]:
         """Cosine similarity via sentence-transformers."""
         threshold = config.get("threshold", 0.8)
@@ -131,7 +149,12 @@ class EvalScorer:
         similarity = float(embeddings[0] @ embeddings[1])
 
         passed = similarity >= threshold
-        return passed, round(similarity, 4), (
-            None if passed
-            else f"Semantic similarity {similarity:.4f} below threshold {threshold}"
+        return (
+            passed,
+            round(similarity, 4),
+            (
+                None
+                if passed
+                else f"Semantic similarity {similarity:.4f} below threshold {threshold}"
+            ),
         )

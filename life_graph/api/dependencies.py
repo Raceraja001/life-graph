@@ -59,6 +59,7 @@ def get_extraction_pipeline() -> ExtractionPipeline:
     """Return the singleton extraction pipeline (rules → spaCy → LLM)."""
     from life_graph.config import settings
     from life_graph.extraction.llm import LLMExtractor
+
     lm_client = get_lm_client() if settings.use_local_llm else None
     # Steer the cloud extraction primary off the configurable cheap-tier model
     # (default: a free OpenRouter model) instead of LLMExtractor's hardcoded
@@ -140,6 +141,7 @@ def get_router() -> QueryRouter:
 def get_identity_service():
     """Return the singleton identity service."""
     from life_graph.services.identity import IdentityService
+
     return IdentityService(session_factory=async_session)
 
 
@@ -148,6 +150,7 @@ def get_embedding_service():
     """Return the singleton embedding service."""
     from life_graph.config import settings
     from life_graph.services.embeddings import EmbeddingService
+
     lm_client = get_lm_client() if settings.use_local_llm else None
     return EmbeddingService(lm_client=lm_client)
 
@@ -156,6 +159,7 @@ def get_embedding_service():
 def get_consolidation_pipeline():
     """Return the singleton consolidation pipeline."""
     from life_graph.jobs.consolidation import ConsolidationPipeline
+
     return ConsolidationPipeline(
         session_factory=async_session,
         embedding_service=get_embedding_service(),
@@ -166,6 +170,7 @@ def get_consolidation_pipeline():
 def get_job_scheduler():
     """Return the singleton job scheduler."""
     from life_graph.jobs.scheduler import JobScheduler
+
     return JobScheduler(consolidation=get_consolidation_pipeline())
 
 
@@ -173,6 +178,7 @@ def get_job_scheduler():
 def get_agent_bridge():
     """Return the singleton agent bridge."""
     from life_graph.services.agent_bridge import LifeGraphBridge
+
     return LifeGraphBridge(
         store=get_store(),
         recall_engine=get_recall_engine(),
@@ -191,6 +197,7 @@ def get_impact_scorer() -> ImpactScorer:
 def get_micro_consolidator():
     """Return the singleton micro-consolidation service."""
     from life_graph.services.micro_consolidation import MicroConsolidator
+
     return MicroConsolidator(
         session_factory=async_session,
         embedding_service=get_embedding_service(),
@@ -201,6 +208,7 @@ def get_micro_consolidator():
 def get_persona_service():
     """Return the singleton persona service."""
     from life_graph.kernel.personas import PersonaService
+
     return PersonaService(session_factory=async_session)
 
 
@@ -208,6 +216,7 @@ def get_persona_service():
 def get_process_manager():
     """Return the singleton process manager."""
     from life_graph.kernel.process_manager import ProcessManager
+
     return ProcessManager(
         session_factory=async_session,
         persona_service=get_persona_service(),
@@ -218,6 +227,7 @@ def get_process_manager():
 def get_chief_router():
     """Return the singleton chief router."""
     from life_graph.kernel.chief_router import ChiefRouter
+
     return ChiefRouter(
         session_factory=async_session,
         persona_service=get_persona_service(),
@@ -229,6 +239,7 @@ def get_chief_router():
 def get_scheduler_service():
     """Return the singleton scheduler service."""
     from life_graph.kernel.scheduler import SchedulerService
+
     return SchedulerService(
         session_factory=async_session,
         process_manager=get_process_manager(),
@@ -239,6 +250,7 @@ def get_scheduler_service():
 def get_project_registry():
     """Return the singleton project registry."""
     from life_graph.kernel.project_registry import ProjectRegistry
+
     return ProjectRegistry(session_factory=async_session)
 
 
@@ -246,6 +258,7 @@ def get_project_registry():
 def get_notification_engine():
     """Return the singleton notification engine."""
     from life_graph.kernel.notification_engine import NotificationEngine
+
     return NotificationEngine(session_factory=async_session)
 
 
@@ -253,6 +266,7 @@ def get_notification_engine():
 def get_preference_store():
     """Return the singleton preference store."""
     from life_graph.services.preference_store import PreferenceStore
+
     return PreferenceStore(
         session_factory=async_session,
         embedding_service=get_embedding_service(),
@@ -263,11 +277,11 @@ def get_preference_store():
 def get_evidence_store():
     """Return the singleton evidence store."""
     from life_graph.services.evidence_store import EvidenceStore
+
     return EvidenceStore(
         session_factory=async_session,
         embedding_service=get_embedding_service(),
     )
-
 
 
 @lru_cache(maxsize=1)
@@ -275,6 +289,7 @@ def get_multi_model_advisor():
     """Return the singleton multi-model advisor service."""
     from life_graph.config import settings
     from life_graph.services.multi_model_advisor import MultiModelAdvisor
+
     return MultiModelAdvisor(
         session_factory=async_session,
         openrouter_api_key=settings.openrouter_api_key,
@@ -285,6 +300,7 @@ def get_multi_model_advisor():
 def get_transcript_extractor():
     """Return the singleton transcript extractor service."""
     from life_graph.services.transcript_extractor import TranscriptExtractor
+
     return TranscriptExtractor(
         session_factory=async_session,
         embedding_service=get_embedding_service(),
@@ -296,6 +312,7 @@ def get_research_engine():
     """Return the singleton autonomous research engine."""
     from life_graph.config import settings
     from life_graph.services.research_engine import ResearchEngine
+
     return ResearchEngine(
         session_factory=async_session,
         preference_store=get_preference_store(),
@@ -312,6 +329,7 @@ def get_research_engine():
 def get_eval_service():
     """Return the singleton eval service."""
     from life_graph.self_improving.eval_service import EvalService
+
     return EvalService(session_factory=async_session)
 
 
@@ -319,6 +337,7 @@ def get_eval_service():
 def get_prompt_version_service():
     """Return the singleton prompt version service."""
     from life_graph.self_improving.prompt_version_service import PromptVersionService
+
     return PromptVersionService(session_factory=async_session)
 
 
@@ -327,6 +346,7 @@ def get_optimizer_service():
     """Return the singleton DSPy optimizer service."""
     from life_graph.config import settings
     from life_graph.self_improving.optimizer_service import DSPyOptimizerService
+
     return DSPyOptimizerService(
         session_factory=async_session,
         eval_service=get_eval_service(),
@@ -339,6 +359,7 @@ def get_optimizer_service():
 def get_dashboard_service():
     """Return the singleton dashboard service."""
     from life_graph.self_improving.dashboard_service import DashboardService
+
     return DashboardService(session_factory=async_session)
 
 
@@ -349,6 +370,7 @@ def get_dashboard_service():
 def get_watcher_notification_engine():
     """Return the singleton watcher notification engine."""
     from life_graph.watchers.notification_engine import NotificationEngine
+
     return NotificationEngine(session_factory=async_session)
 
 
@@ -356,6 +378,7 @@ def get_watcher_notification_engine():
 def get_digest_generator():
     """Return the singleton digest generator."""
     from life_graph.watchers.digest import DigestGenerator
+
     return DigestGenerator(
         session_factory=async_session,
         notification_engine=get_watcher_notification_engine(),
@@ -369,6 +392,7 @@ def get_digest_generator():
 def get_delegation_engine():
     """Return the singleton delegation engine."""
     from life_graph.services.delegation import DelegationEngine
+
     return DelegationEngine(session_factory=async_session)
 
 
@@ -376,6 +400,7 @@ def get_delegation_engine():
 def get_messaging_service():
     """Return the singleton agent messaging service."""
     from life_graph.services.agent_messaging import AgentMessagingService
+
     return AgentMessagingService(session_factory=async_session)
 
 
@@ -383,6 +408,7 @@ def get_messaging_service():
 def get_sync_service():
     """Return the singleton cross-system sync service."""
     from life_graph.services.cross_system_sync import CrossSystemSyncService
+
     return CrossSystemSyncService(session_factory=async_session)
 
 
@@ -390,6 +416,7 @@ def get_sync_service():
 def get_workflow_engine():
     """Return the singleton workflow engine."""
     from life_graph.services.workflow_engine import WorkflowEngine
+
     return WorkflowEngine(
         session_factory=async_session,
         delegation_engine=get_delegation_engine(),
@@ -400,6 +427,7 @@ def get_workflow_engine():
 def get_shared_context_service():
     """Return the singleton shared context service."""
     from life_graph.services.shared_context import SharedContextService
+
     return SharedContextService(
         session_factory=async_session,
         embedding_service=get_embedding_service(),
@@ -413,6 +441,7 @@ def get_shared_context_service():
 def get_audit_service():
     """Return the singleton audit service."""
     from life_graph.autonomy.audit.service import AuditService
+
     return AuditService(session_factory=async_session)
 
 
@@ -420,6 +449,7 @@ def get_audit_service():
 def get_approval_service():
     """Return the singleton approval service."""
     from life_graph.autonomy.approvals.service import ApprovalService
+
     return ApprovalService(
         session_factory=async_session,
         audit_service=get_audit_service(),
@@ -430,6 +460,7 @@ def get_approval_service():
 def get_autonomy_level_service():
     """Return the singleton autonomy level service."""
     from life_graph.autonomy.levels.service import AutonomyLevelService
+
     return AutonomyLevelService(
         session_factory=async_session,
         audit_service=get_audit_service(),
@@ -445,6 +476,7 @@ def get_trust_service():
     if unavailable).
     """
     from life_graph.autonomy.trust.service import TrustScoreService
+
     return TrustScoreService(async_session())
 
 
@@ -456,6 +488,7 @@ def get_autofix_service():
     a live session), so it is not injected here.
     """
     from life_graph.autonomy.pipeline.service import AutoFixService
+
     return AutoFixService(
         session_factory=async_session,
         audit_service=get_audit_service(),
@@ -472,6 +505,7 @@ def get_task_dispatcher():
     """Return the singleton task dispatcher."""
     from life_graph.core.events import event_bus
     from life_graph.drivers.dispatcher import TaskDispatcher
+
     return TaskDispatcher(
         session_factory=async_session,
         event_bus=event_bus,
@@ -482,6 +516,7 @@ def get_task_dispatcher():
 def get_results_loop():
     """Return the singleton results loop."""
     from life_graph.services.results_loop import ResultsLoop
+
     return ResultsLoop(session_factory=async_session)
 
 
@@ -522,4 +557,3 @@ def get_transcript_distiller():
         PARSERS,
         get_resilient_llm(),
     )
-

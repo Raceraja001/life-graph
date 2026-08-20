@@ -88,8 +88,7 @@ def bucket_analysis(predictions: list[dict]) -> list[BucketResult]:
         bucket_preds = [
             p
             for p in valid
-            if low <= p["confidence"] < high
-            or (high == 0.99 and p["confidence"] >= 0.90)
+            if low <= p["confidence"] < high or (high == 0.99 and p["confidence"] >= 0.90)
         ]
         if not bucket_preds:
             results.append(

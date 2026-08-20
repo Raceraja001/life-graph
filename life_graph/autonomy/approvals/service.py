@@ -321,8 +321,7 @@ class ApprovalService:
                 age_minutes = (now - entry.created_at).total_seconds() / 60
                 already = set(entry.escalation_sent or [])
                 newly = {
-                    t for t in self.ESCALATION_THRESHOLDS
-                    if age_minutes >= t and t not in already
+                    t for t in self.ESCALATION_THRESHOLDS if age_minutes >= t and t not in already
                 }
                 if newly:
                     merged = sorted(already | newly)
@@ -334,7 +333,9 @@ class ApprovalService:
                     escalated_count += 1
                     logger.warning(
                         "Escalated approval %s (age: %.0f min, thresholds: %s)",
-                        entry.id, age_minutes, sorted(newly),
+                        entry.id,
+                        age_minutes,
+                        sorted(newly),
                     )
 
             await session.commit()

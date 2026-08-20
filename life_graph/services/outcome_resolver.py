@@ -40,9 +40,7 @@ class OutcomeResolver:
     method returns.
     """
 
-    def __init__(
-        self, session: AsyncSession, event_bus: EventBus | None = None
-    ) -> None:
+    def __init__(self, session: AsyncSession, event_bus: EventBus | None = None) -> None:
         self.session = session
         self.event_bus = event_bus
 
@@ -78,8 +76,7 @@ class OutcomeResolver:
         """
         if outcome not in _VALID_OUTCOMES:
             raise ValueError(
-                f"Invalid outcome '{outcome}'. "
-                f"Must be one of: {', '.join(sorted(_VALID_OUTCOMES))}"
+                f"Invalid outcome '{outcome}'. Must be one of: {', '.join(sorted(_VALID_OUTCOMES))}"
             )
 
         result = await self.session.execute(
@@ -105,9 +102,7 @@ class OutcomeResolver:
         prediction.resolved_at = now
         prediction.resolution_source = source
         prediction.resolution_evidence = evidence or {}
-        prediction.actual_vs_predicted = (
-            1.0 if outcome == "correct" else 0.0
-        )
+        prediction.actual_vs_predicted = 1.0 if outcome == "correct" else 0.0
 
         if self.event_bus:
             await self.event_bus.emit(
@@ -130,9 +125,7 @@ class OutcomeResolver:
         )
         return prediction
 
-    async def check_expired_predictions(
-        self, tenant_id: str
-    ) -> list[InterviewQuestion]:
+    async def check_expired_predictions(self, tenant_id: str) -> list[InterviewQuestion]:
         """Find predictions past their resolve_by date and escalate.
 
         Queries for predictions that are still pending but past their
@@ -157,15 +150,12 @@ class OutcomeResolver:
 
         questions: list[InterviewQuestion] = []
         for prediction in expired:
-            question = await self._escalate_to_interview(
-                tenant_id, prediction
-            )
+            question = await self._escalate_to_interview(tenant_id, prediction)
             questions.append(question)
 
         if expired:
             logger.info(
-                "Escalated %d expired predictions to interview for "
-                "tenant %s",
+                "Escalated %d expired predictions to interview for tenant %s",
                 len(expired),
                 tenant_id,
             )

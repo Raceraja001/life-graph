@@ -43,9 +43,7 @@ async def list_scores(
         project_id=project_id,
         action_type=action_type,
     )
-    return success_response(
-        [TrustScoreResponse.model_validate(s) for s in scores]
-    )
+    return success_response([TrustScoreResponse.model_validate(s) for s in scores])
 
 
 @router.get("/scores/{score_id}")

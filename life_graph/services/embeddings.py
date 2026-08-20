@@ -44,6 +44,7 @@ class EmbeddingService:
     def _use_local(self) -> bool:
         """Check if local LM Studio should be used for embeddings."""
         from life_graph.config import settings
+
         return settings.use_local_llm and self._lm_client is not None
 
     # ── Public API ────────────────────────────────────────────
@@ -56,6 +57,7 @@ class EmbeddingService:
         """
         if self._use_local():
             import asyncio
+
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
@@ -92,9 +94,7 @@ class EmbeddingService:
             return await self._lm_client.embed_batch(texts)
         return self.embed_batch(texts)
 
-    def embed_batch(
-        self, texts: list[str], batch_size: int = 32
-    ) -> list[list[float]]:
+    def embed_batch(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
         """Embed a list of texts in batches.
 
         Returns a list of 768-dim vectors, one per input text.
@@ -147,9 +147,7 @@ class EmbeddingService:
             logger.info("Loading embedding model: %s", self._model_name)
             self._model = SentenceTransformer(self._model_name)
             self._dimension = self._model.get_sentence_embedding_dimension()
-            logger.info(
-                "Embedding model loaded (dim=%d)", self._dimension
-            )
+            logger.info("Embedding model loaded (dim=%d)", self._dimension)
             return self._model
         except Exception:
             logger.exception("Failed to load embedding model: %s", self._model_name)

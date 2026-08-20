@@ -106,9 +106,7 @@ class MicroConsolidator:
         report.memories_processed = len(session_memories)
         if not session_memories:
             report.duration_seconds = time.monotonic() - t0
-            logger.info(
-                "Micro-consolidation %s: no memories — skipping", session_id
-            )
+            logger.info("Micro-consolidation %s: no memories — skipping", session_id)
             return report
 
         # Step 2 — Dedup against existing memories
@@ -147,7 +145,8 @@ class MicroConsolidator:
     # ── Step 1: Gather ────────────────────────────────────────
 
     async def _gather_session_memories(
-        self, session_id: uuid.UUID,
+        self,
+        session_id: uuid.UUID,
     ) -> list[Memory]:
         """Collect all active memories linked to this session."""
         stmt = (
@@ -162,15 +161,14 @@ class MicroConsolidator:
         async with self._session_factory() as session:
             result = await session.execute(stmt)
             memories = list(result.scalars().all())
-        logger.debug(
-            "Gathered %d memories for session %s", len(memories), session_id
-        )
+        logger.debug("Gathered %d memories for session %s", len(memories), session_id)
         return memories
 
     # ── Step 2: Dedup ─────────────────────────────────────────
 
     async def _dedup_against_existing(
-        self, session_memories: list[Memory],
+        self,
+        session_memories: list[Memory],
     ) -> int:
         """Check session memories for near-duplicates against the full store.
 
@@ -219,7 +217,9 @@ class MicroConsolidator:
                     removed += 1
                     logger.debug(
                         "Dedup: %s superseded by %s (sim=%.3f)",
-                        mem.id, existing.id, similarity,
+                        mem.id,
+                        existing.id,
+                        similarity,
                     )
                     break  # Only supersede once
 
@@ -228,7 +228,8 @@ class MicroConsolidator:
     # ── Step 3: Re-score ──────────────────────────────────────
 
     async def _rescore_importance(
-        self, memories: list[Memory],
+        self,
+        memories: list[Memory],
     ) -> int:
         """Recalculate importance scores for session memories.
 
@@ -257,7 +258,8 @@ class MicroConsolidator:
     # ── Step 4: Graph ─────────────────────────────────────────
 
     async def _update_graph(
-        self, memories: list[Memory],
+        self,
+        memories: list[Memory],
     ) -> tuple[int, int]:
         """Extract entities from memories and create graph vertices/edges.
 
@@ -311,8 +313,7 @@ class MicroConsolidator:
                         name=name,
                         properties={
                             "memory_ids": [str(mem.id)],
-                            "last_seen": mem.created_at.isoformat()
-                            if mem.created_at else None,
+                            "last_seen": mem.created_at.isoformat() if mem.created_at else None,
                         },
                     )
                     canonical_names.append(name)
@@ -323,7 +324,7 @@ class MicroConsolidator:
             # Create edges between co-occurring entities
             if len(canonical_names) >= 2:
                 for i, src in enumerate(canonical_names):
-                    for dst in canonical_names[i + 1:]:
+                    for dst in canonical_names[i + 1 :]:
                         try:
                             await graph.create_edge(
                                 from_label="Entity",

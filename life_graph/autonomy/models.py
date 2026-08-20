@@ -28,9 +28,7 @@ class ActionSafetyRule(Base):
     __tablename__ = "action_safety_rules"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[str] = mapped_column(
-        Text, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
 
     # ── Rule Definition ───────────────────────────────────────
@@ -38,9 +36,7 @@ class ActionSafetyRule(Base):
     action_pattern: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str] = mapped_column(Text, nullable=False, default="general")
     risk_level: Mapped[str] = mapped_column(Text, nullable=False, default="dangerous")
-    trust_threshold: Mapped[float] = mapped_column(
-        Numeric(3, 2), nullable=False, default=0.7
-    )
+    trust_threshold: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False, default=0.7)
 
     # ── Guardrail Flags ───────────────────────────────────────
     is_guardrail: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -89,9 +85,7 @@ class AutoAction(Base):
     __tablename__ = "auto_actions"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[str] = mapped_column(
-        Text, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     agent_id: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -129,9 +123,7 @@ class AutoAction(Base):
     # ── Rollback ──────────────────────────────────────────────
     is_reversible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     rollback_command: Mapped[str | None] = mapped_column(Text, nullable=True)
-    rolled_back_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rollback_action_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Approval ──────────────────────────────────────────────
@@ -141,20 +133,12 @@ class AutoAction(Base):
         nullable=True,
     )
     approved_by: Mapped[str | None] = mapped_column(Text, nullable=True)
-    approved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Timestamps ────────────────────────────────────────────
-    queued_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -169,10 +153,7 @@ class AutoAction(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<AutoAction(id={self.id[:8]}, "
-            f"action={self.action_name}, status={self.status})>"
-        )
+        return f"<AutoAction(id={self.id[:8]}, action={self.action_name}, status={self.status})>"
 
 
 class TrustScore(Base):
@@ -185,54 +166,34 @@ class TrustScore(Base):
     __tablename__ = "trust_scores"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[str] = mapped_column(
-        Text, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     agent_id: Mapped[str] = mapped_column(Text, nullable=False)
     action_type: Mapped[str] = mapped_column(Text, nullable=False)
     project_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Score ─────────────────────────────────────────────────
-    score: Mapped[float] = mapped_column(
-        Numeric(4, 3), nullable=False, default=0.0
-    )
+    score: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False, default=0.0)
     total_successes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     consecutive_successes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    peak_score: Mapped[float] = mapped_column(
-        Numeric(4, 3), nullable=False, default=0.0
-    )
+    peak_score: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False, default=0.0)
 
     # ── Timestamps ────────────────────────────────────────────
-    last_action_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    last_failure_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    last_success_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Tuning ────────────────────────────────────────────────
-    decay_rate: Mapped[float] = mapped_column(
-        Numeric(4, 3), nullable=False, default=0.05
-    )
-    failure_penalty: Mapped[float] = mapped_column(
-        Numeric(4, 3), nullable=False, default=0.5
-    )
+    decay_rate: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False, default=0.05)
+    failure_penalty: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False, default=0.5)
 
     # ── Manual Override ───────────────────────────────────────
-    manual_override: Mapped[float | None] = mapped_column(
-        Numeric(4, 3), nullable=True
-    )
+    manual_override: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
     override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     override_by: Mapped[str | None] = mapped_column(Text, nullable=True)
-    override_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    override_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Timestamps ────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(
@@ -245,7 +206,10 @@ class TrustScore(Base):
     __table_args__ = (
         Index(
             "uq_ts_tenant_agent_action_project",
-            "tenant_id", "agent_id", "action_type", "project_id",
+            "tenant_id",
+            "agent_id",
+            "action_type",
+            "project_id",
             unique=True,
         ),
         Index("ix_ts_agent", "tenant_id", "agent_id"),
@@ -271,9 +235,7 @@ class ApprovalQueueEntry(Base):
     __tablename__ = "approval_queue"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[str] = mapped_column(
-        Text, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     agent_id: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -305,25 +267,19 @@ class ApprovalQueueEntry(Base):
     # ── Resolution ────────────────────────────────────────────
     resolved_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    resolved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Batch & Timeout ───────────────────────────────────────
     also_trust: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     batch_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     timeout_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=24)
-    escalation_sent: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
+    escalation_sent: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="[]")
 
     # ── Timestamps ────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("ix_aq_tenant_status", "tenant_id", "status"),
@@ -350,9 +306,7 @@ class AuditLogEntry(Base):
     __tablename__ = "audit_log"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[str] = mapped_column(
-        Text, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     agent_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -400,10 +354,7 @@ class AuditLogEntry(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<AuditLogEntry(id={self.id[:8]}, "
-            f"action={self.action_name}, result={self.result})>"
-        )
+        return f"<AuditLogEntry(id={self.id[:8]}, action={self.action_name}, result={self.result})>"
 
 
 class ShadowEnrollment(Base):
@@ -417,9 +368,7 @@ class ShadowEnrollment(Base):
 
     __tablename__ = "shadow_enrollments"
 
-    id: Mapped[str] = mapped_column(
-        Text, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     agent_id: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -432,9 +381,7 @@ class ShadowEnrollment(Base):
     enrolled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    graduated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    graduated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
@@ -456,9 +403,7 @@ class ShadowRun(Base):
 
     __tablename__ = "shadow_runs"
 
-    id: Mapped[str] = mapped_column(
-        Text, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     agent_id: Mapped[str] = mapped_column(Text, nullable=False)
     enrollment_id: Mapped[str] = mapped_column(
@@ -476,9 +421,7 @@ class ShadowRun(Base):
     # ── Grade ─────────────────────────────────────────────────
     grade: Mapped[str | None] = mapped_column(String(8), nullable=True, doc="good | bad")
     graded_by: Mapped[str | None] = mapped_column(Text, nullable=True)
-    graded_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
@@ -507,17 +450,13 @@ class AutonomyLevel(Base):
     __tablename__ = "autonomy_levels"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[str] = mapped_column(
-        Text, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
+    id: Mapped[str] = mapped_column(Text, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     project_id: Mapped[str] = mapped_column(Text, nullable=False)
 
     # ── Level ─────────────────────────────────────────────────
     level: Mapped[str] = mapped_column(Text, nullable=False, default="L0")
-    level_description: Mapped[str] = mapped_column(
-        Text, nullable=False, default="Ask Everything"
-    )
+    level_description: Mapped[str] = mapped_column(Text, nullable=False, default="Ask Everything")
 
     # ── Success Counters ──────────────────────────────────────
     safe_successes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -525,36 +464,27 @@ class AutonomyLevel(Base):
     dangerous_successes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # ── Promotion ─────────────────────────────────────────────
-    promotion_eligible: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
+    promotion_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     promotion_threshold: Mapped[dict] = mapped_column(
-        JSONB, nullable=False,
+        JSONB,
+        nullable=False,
         server_default='{"L0_to_L1": 20, "L1_to_L2": 50, "L2_to_L3": 100}',
     )
 
     # ── Demotion ──────────────────────────────────────────────
-    last_failure_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     demotion_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # ── Manual Override ───────────────────────────────────────
     manual_level: Mapped[str | None] = mapped_column(Text, nullable=True)
     manual_set_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     manual_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    manual_set_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    manual_set_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Configuration ─────────────────────────────────────────
-    moderate_timeout_minutes: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=15
-    )
+    moderate_timeout_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=15)
     l3_opted_in: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    l3_min_trust: Mapped[float] = mapped_column(
-        Numeric(3, 2), nullable=False, default=0.90
-    )
+    l3_min_trust: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False, default=0.90)
 
     # ── Aggregate Stats ───────────────────────────────────────
     total_auto_actions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -569,9 +499,7 @@ class AutonomyLevel(Base):
     last_demotion_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    last_audit_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_audit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -610,7 +538,4 @@ class AutonomyLevel(Base):
         return self.total_failures or 0
 
     def __repr__(self) -> str:
-        return (
-            f"<AutonomyLevel(id={self.id[:8]}, "
-            f"project={self.project_id}, level={self.level})>"
-        )
+        return f"<AutonomyLevel(id={self.id[:8]}, project={self.project_id}, level={self.level})>"

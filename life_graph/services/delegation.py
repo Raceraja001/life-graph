@@ -67,13 +67,20 @@ class DelegationEngine:
 
             await event_bus.emit(
                 EventType.TASK_DELEGATED,
-                {"task_id": str(task.id), "tenant_id": tenant_id, "assigned_agent": task.assigned_agent},
+                {
+                    "task_id": str(task.id),
+                    "tenant_id": tenant_id,
+                    "assigned_agent": task.assigned_agent,
+                },
                 source="delegation",
             )
             return task
 
     async def create_child_task(
-        self, tenant_id: str, parent_task_id: uuid.UUID, data: dict,
+        self,
+        tenant_id: str,
+        parent_task_id: uuid.UUID,
+        data: dict,
     ) -> AgentTask:
         """Create a child task delegated from a parent."""
         data["parent_task_id"] = parent_task_id
@@ -89,19 +96,21 @@ class DelegationEngine:
                 return
 
             siblings = (
-                await session.execute(
-                    select(AgentTask).where(
-                        and_(
-                            AgentTask.parent_task_id == task.parent_task_id,
-                            AgentTask.tenant_id == tenant_id,
+                (
+                    await session.execute(
+                        select(AgentTask).where(
+                            and_(
+                                AgentTask.parent_task_id == task.parent_task_id,
+                                AgentTask.tenant_id == tenant_id,
+                            )
                         )
                     )
                 )
-            ).scalars().all()
-
-            all_done = all(
-                s.status in ("completed", "failed", "cancelled") for s in siblings
+                .scalars()
+                .all()
             )
+
+            all_done = all(s.status in ("completed", "failed", "cancelled") for s in siblings)
             any_failed = any(s.status == "failed" for s in siblings)
 
             if any_failed:
@@ -133,7 +142,10 @@ class DelegationEngine:
                 )
 
     async def cancel_task(
-        self, task_id: uuid.UUID, tenant_id: str, reason: str = "Cancelled by user",
+        self,
+        task_id: uuid.UUID,
+        tenant_id: str,
+        reason: str = "Cancelled by user",
     ) -> AgentTask:
         """Cancel a task and all its descendants recursively."""
         async with self._sf() as session:
@@ -150,16 +162,20 @@ class DelegationEngine:
             task.status_history = history
 
             children = (
-                await session.execute(
-                    select(AgentTask).where(
-                        and_(
-                            AgentTask.parent_task_id == task_id,
-                            AgentTask.tenant_id == tenant_id,
-                            AgentTask.status.in_(["pending", "running"]),
+                (
+                    await session.execute(
+                        select(AgentTask).where(
+                            and_(
+                                AgentTask.parent_task_id == task_id,
+                                AgentTask.tenant_id == tenant_id,
+                                AgentTask.status.in_(["pending", "running"]),
+                            )
                         )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             for child in children:
                 child.status = "cancelled"
@@ -180,18 +196,22 @@ class DelegationEngine:
         """Build a recursive task tree from root."""
         async with self._sf() as session:
             all_tasks = (
-                await session.execute(
-                    select(AgentTask).where(
-                        and_(
-                            AgentTask.tenant_id == tenant_id,
-                            (
-                                (AgentTask.id == root_task_id)
-                                | (AgentTask.root_task_id == root_task_id)
-                            ),
+                (
+                    await session.execute(
+                        select(AgentTask).where(
+                            and_(
+                                AgentTask.tenant_id == tenant_id,
+                                (
+                                    (AgentTask.id == root_task_id)
+                                    | (AgentTask.root_task_id == root_task_id)
+                                ),
+                            )
                         )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             task_map = {t.id: t for t in all_tasks}
             children_map: dict[uuid.UUID, list] = {}
@@ -211,7 +231,10 @@ class DelegationEngine:
             return build(root)
 
     async def update_task(
-        self, tenant_id: str, task_id: uuid.UUID, data: dict,
+        self,
+        tenant_id: str,
+        task_id: uuid.UUID,
+        data: dict,
     ) -> AgentTask:
         """Partially update a task with status history tracking."""
         async with self._sf() as session:

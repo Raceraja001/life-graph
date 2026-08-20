@@ -34,6 +34,7 @@ async def query_audit_log(
     tenant_id = get_current_tenant_id()
 
     from life_graph.api.dependencies import get_audit_service
+
     service = get_audit_service()
 
     entries = await service.query(
@@ -75,6 +76,7 @@ async def export_audit_log(request: ExportRequest):
     tenant_id = get_current_tenant_id()
 
     from life_graph.api.dependencies import get_audit_service
+
     service = get_audit_service()
 
     ndjson = await service.export_ndjson(
@@ -96,6 +98,7 @@ async def rollback_from_audit(action_id: UUID):
     tenant_id = get_current_tenant_id()
 
     from life_graph.api.dependencies import get_autofix_service
+
     service = get_autofix_service()
 
     try:

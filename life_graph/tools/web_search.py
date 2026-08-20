@@ -46,14 +46,16 @@ async def web_search(query: str) -> str:
 
     if not api_key:
         logger.info("Web search skipped — TAVILY_API_KEY not set")
-        return json.dumps({
-            "status": "not_configured",
-            "message": (
-                "Web search is not configured. "
-                "Set the TAVILY_API_KEY environment variable "
-                "to enable web search."
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "not_configured",
+                "message": (
+                    "Web search is not configured. "
+                    "Set the TAVILY_API_KEY environment variable "
+                    "to enable web search."
+                ),
+            }
+        )
 
     logger.info("Searching web for: %s", query)
 
@@ -72,25 +74,31 @@ async def web_search(query: str) -> str:
 
         results = []
         for item in data.get("results", []):
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "content": item.get("content", ""),
-            })
+            results.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "content": item.get("content", ""),
+                }
+            )
 
         logger.info("Web search returned %d results", len(results))
-        return json.dumps({
-            "status": "ok",
-            "query": query,
-            "results": results,
-        })
+        return json.dumps(
+            {
+                "status": "ok",
+                "query": query,
+                "results": results,
+            }
+        )
 
     except httpx.TimeoutException:
         logger.warning("Web search timed out for query: %s", query)
-        return json.dumps({
-            "status": "error",
-            "message": "Search request timed out. Please try again.",
-        })
+        return json.dumps(
+            {
+                "status": "error",
+                "message": "Search request timed out. Please try again.",
+            }
+        )
 
     except httpx.HTTPStatusError as exc:
         logger.error(
@@ -98,16 +106,18 @@ async def web_search(query: str) -> str:
             exc.response.status_code,
             exc.response.text[:200],
         )
-        return json.dumps({
-            "status": "error",
-            "message": (
-                f"Search API returned HTTP {exc.response.status_code}."
-            ),
-        })
+        return json.dumps(
+            {
+                "status": "error",
+                "message": (f"Search API returned HTTP {exc.response.status_code}."),
+            }
+        )
 
     except Exception as exc:
         logger.exception("Unexpected web search error: %s", exc)
-        return json.dumps({
-            "status": "error",
-            "message": f"Search failed: {type(exc).__name__}",
-        })
+        return json.dumps(
+            {
+                "status": "error",
+                "message": f"Search failed: {type(exc).__name__}",
+            }
+        )

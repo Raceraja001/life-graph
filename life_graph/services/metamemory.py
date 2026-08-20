@@ -159,10 +159,7 @@ class MetamemoryTracker:
             existing = await self._find_existing_gap(session, topic)
 
         if existing is not None and existing.query_count >= _GAP_TEACH_THRESHOLD:
-            return (
-                f"You've asked about '{topic}' {existing.query_count} times. "
-                f"Want to teach me?"
-            )
+            return f"You've asked about '{topic}' {existing.query_count} times. Want to teach me?"
 
         return None
 
@@ -230,7 +227,7 @@ class MetamemoryTracker:
         # Remove leading question words for cleaner topic matching
         for prefix in ("what is ", "what are ", "how to ", "how do i ", "where is "):
             if topic.lower().startswith(prefix):
-                topic = topic[len(prefix):]
+                topic = topic[len(prefix) :]
                 break
         return topic.strip()
 

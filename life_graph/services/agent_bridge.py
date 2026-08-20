@@ -29,13 +29,38 @@ from life_graph.storage.postgres import PostgresMemoryStore
 logger = logging.getLogger(__name__)
 
 # Common task-description words that don't carry topical meaning
-_STOP_WORDS: frozenset[str] = frozenset({
-    "about", "after", "before", "being", "between", "could",
-    "doing", "during", "every", "going", "having", "other",
-    "should", "their", "there", "these", "thing", "those",
-    "under", "using", "where", "which", "while", "would",
-    "build", "create", "write", "please",
-})
+_STOP_WORDS: frozenset[str] = frozenset(
+    {
+        "about",
+        "after",
+        "before",
+        "being",
+        "between",
+        "could",
+        "doing",
+        "during",
+        "every",
+        "going",
+        "having",
+        "other",
+        "should",
+        "their",
+        "there",
+        "these",
+        "thing",
+        "those",
+        "under",
+        "using",
+        "where",
+        "which",
+        "while",
+        "would",
+        "build",
+        "create",
+        "write",
+        "please",
+    }
+)
 
 
 class LifeGraphBridge:

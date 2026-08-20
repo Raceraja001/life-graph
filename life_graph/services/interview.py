@@ -297,9 +297,7 @@ class InterviewService:
             # Persist the capture despite the error — the API layer's
             # rollback-on-exception must not lose the user's answer.
             await self.session.commit()
-            raise ExpiredQuestionError(
-                f"Question {question_id} expired; answer captured anyway"
-            )
+            raise ExpiredQuestionError(f"Question {question_id} expired; answer captured anyway")
 
         q.answer = answer
         q.answer_capture_id = capture.id
@@ -380,18 +378,14 @@ class InterviewService:
                         evidence={"question_id": str(q.id)},
                     )
                 except Exception:
-                    logger.exception(
-                        "Could not ambiguous-resolve prediction %s", prediction_id
-                    )
+                    logger.exception("Could not ambiguous-resolve prediction %s", prediction_id)
         if expired:
             logger.info("Expired %d interview questions for %s", len(expired), tenant_id)
         return len(expired)
 
     # ── Internals ─────────────────────────────────────────────
 
-    async def _get(
-        self, tenant_id: str, question_id: uuid.UUID
-    ) -> InterviewQuestion:
+    async def _get(self, tenant_id: str, question_id: uuid.UUID) -> InterviewQuestion:
         result = await self.session.execute(
             select(InterviewQuestion).where(
                 InterviewQuestion.tenant_id == tenant_id,
@@ -403,9 +397,7 @@ class InterviewService:
             raise LookupError(f"Interview question {question_id} not found")
         return q
 
-    async def _route_to_origin(
-        self, tenant_id: str, q: InterviewQuestion, answer: str
-    ) -> None:
+    async def _route_to_origin(self, tenant_id: str, q: InterviewQuestion, answer: str) -> None:
         """Update the origin the question came from."""
         ref = q.origin_ref or {}
         if q.origin == "outcome_resolution" and ref.get("prediction_id"):

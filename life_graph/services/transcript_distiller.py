@@ -48,7 +48,9 @@ def build_transcript_snapshot(session: Any, turns: list[dict], memory_ids: list)
 
 
 class TranscriptDistiller:
-    def __init__(self, session_factory, memory_manager, minio, store, parsers, resilient_llm) -> None:
+    def __init__(
+        self, session_factory, memory_manager, minio, store, parsers, resilient_llm
+    ) -> None:
         self._session_factory = session_factory
         self._manager = memory_manager
         self._minio = minio
@@ -98,8 +100,7 @@ class TranscriptDistiller:
             # Extraction window: new turns + a small lookback for context, redacted.
             start = max(0, es.last_turn_index - CONTEXT_LOOKBACK)
             window = [
-                Turn(role=t["role"], text=redact(t["text"]), ts=t.get("ts"))
-                for t in turns[start:]
+                Turn(role=t["role"], text=redact(t["text"]), ts=t.get("ts")) for t in turns[start:]
             ]
             facts = await extract_transcript_facts(window, resilient_llm=self._llm)
             memories = await self._manager.store_facts(

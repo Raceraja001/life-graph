@@ -27,12 +27,14 @@ async def trigger_auto_action(request: AutoFixRequest):
     tenant_id = get_current_tenant_id()
 
     from life_graph.api.dependencies import get_autofix_service
+
     service = get_autofix_service()
 
     result = await service.process(tenant_id, request)
 
     status_code = 201 if result.routing == "auto_executed" else 202
     from fastapi.responses import JSONResponse
+
     return JSONResponse(
         status_code=status_code,
         content=success_response(
@@ -83,6 +85,7 @@ async def rollback_action(action_id: str):
     tenant_id = get_current_tenant_id()
 
     from life_graph.api.dependencies import get_autofix_service
+
     service = get_autofix_service()
 
     try:

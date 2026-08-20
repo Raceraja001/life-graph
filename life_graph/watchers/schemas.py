@@ -78,7 +78,9 @@ class AcknowledgeRequest(BaseModel):
 class BulkAcknowledgeRequest(BaseModel):
     """Payload for bulk-acknowledging events."""
 
-    event_ids: list[uuid.UUID] | None = Field(None, description="Specific event IDs (or all if omitted)")
+    event_ids: list[uuid.UUID] | None = Field(
+        None, description="Specific event IDs (or all if omitted)"
+    )
     watcher_name: str | None = Field(None, description="Filter by watcher name")
     severity: str | None = Field(None, description="Filter by severity")
     acknowledged_by: str | None = Field(None, description="Who acknowledged these events")
@@ -143,8 +145,12 @@ class NotificationChannelCreate(BaseModel):
         description="Channel type: email, webhook, terminal",
     )
     name: str | None = Field(None, description="Human-readable name")
-    config: dict[str, Any] = Field(default_factory=dict, description="Channel config (SMTP, URL, etc.)")
-    priority: int = Field(0, description="Higher = preferred. Primary channel has highest priority.")
+    config: dict[str, Any] = Field(
+        default_factory=dict, description="Channel config (SMTP, URL, etc.)"
+    )
+    priority: int = Field(
+        0, description="Higher = preferred. Primary channel has highest priority."
+    )
     enabled: bool = True
 
 

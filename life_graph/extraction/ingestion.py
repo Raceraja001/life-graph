@@ -84,9 +84,14 @@ def _recursive_split(
         if current_len + part_len > chunk_size and current_chunk:
             merged = separator.join(current_chunk)
             if len(merged) > chunk_size and remaining_separators:
-                chunks.extend(_recursive_split(
-                    merged, remaining_separators, chunk_size, overlap,
-                ))
+                chunks.extend(
+                    _recursive_split(
+                        merged,
+                        remaining_separators,
+                        chunk_size,
+                        overlap,
+                    )
+                )
             else:
                 chunks.append(merged)
 
@@ -108,9 +113,14 @@ def _recursive_split(
     if current_chunk:
         merged = separator.join(current_chunk)
         if len(merged) > chunk_size and remaining_separators:
-            chunks.extend(_recursive_split(
-                merged, remaining_separators, chunk_size, overlap,
-            ))
+            chunks.extend(
+                _recursive_split(
+                    merged,
+                    remaining_separators,
+                    chunk_size,
+                    overlap,
+                )
+            )
         else:
             chunks.append(merged)
 
@@ -144,7 +154,9 @@ async def ingest_document(
     """
     logger.info(
         "Ingesting document doc_id=%s tenant_id=%s (%d chars)",
-        doc_id, tenant_id, len(content),
+        doc_id,
+        tenant_id,
+        len(content),
     )
 
     chunks = _split_text(content, chunk_size, overlap)
@@ -165,11 +177,15 @@ async def ingest_document(
             stored += 1
         except Exception:
             logger.exception(
-                "Failed to store chunk %d of doc %s", i, doc_id,
+                "Failed to store chunk %d of doc %s",
+                i,
+                doc_id,
             )
 
     logger.info(
         "Ingested %d/%d chunks for doc %s",
-        stored, len(chunks), doc_id,
+        stored,
+        len(chunks),
+        doc_id,
     )
     return stored

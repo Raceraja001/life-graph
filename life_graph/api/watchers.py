@@ -62,9 +62,11 @@ async def list_watcher_configs():
 
     async with async_session() as session:
         result = await session.execute(
-            select(WatchConfig).where(
+            select(WatchConfig)
+            .where(
                 WatchConfig.tenant_id == tenant_id,
-            ).order_by(WatchConfig.watcher_name)
+            )
+            .order_by(WatchConfig.watcher_name)
         )
         rows = result.scalars().all()
 
@@ -267,12 +269,9 @@ async def bulk_acknowledge_events(
     now = datetime.now(UTC)
 
     async with async_session() as session:
-        query = (
-            update(WatchEvent)
-            .where(
-                WatchEvent.tenant_id == tenant_id,
-                WatchEvent.acknowledged_at.is_(None),
-            )
+        query = update(WatchEvent).where(
+            WatchEvent.tenant_id == tenant_id,
+            WatchEvent.acknowledged_at.is_(None),
         )
 
         if body.event_ids:
@@ -407,9 +406,11 @@ async def list_notification_channels():
 
     async with async_session() as session:
         result = await session.execute(
-            select(NotificationChannel).where(
+            select(NotificationChannel)
+            .where(
                 NotificationChannel.tenant_id == tenant_id,
-            ).order_by(NotificationChannel.priority.desc())
+            )
+            .order_by(NotificationChannel.priority.desc())
         )
         rows = result.scalars().all()
 

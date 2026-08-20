@@ -76,9 +76,7 @@ async def list_rules(
         category=category,
         risk_level=risk_level,
     )
-    return success_response(
-        [SafetyRuleResponse.model_validate(r) for r in rules]
-    )
+    return success_response([SafetyRuleResponse.model_validate(r) for r in rules])
 
 
 @router.get("/rules/{rule_id}")
@@ -166,9 +164,7 @@ async def seed_defaults(
     """Seed default safety rules for the current tenant."""
     svc = SafetyRuleService(session)
     rules = await svc.seed_defaults(tenant_id)
-    return success_response(
-        [SafetyRuleResponse.model_validate(r) for r in rules]
-    )
+    return success_response([SafetyRuleResponse.model_validate(r) for r in rules])
 
 
 # ── Kill Switch ──────────────────────────────────────────────
@@ -182,9 +178,7 @@ def _kill_switch_response(config) -> dict:
     return {
         "autonomy_paused": bool(config.autonomy_paused) if config else True,
         "autonomy_paused_at": (
-            config.autonomy_paused_at.isoformat()
-            if config and config.autonomy_paused_at
-            else None
+            config.autonomy_paused_at.isoformat() if config and config.autonomy_paused_at else None
         ),
     }
 

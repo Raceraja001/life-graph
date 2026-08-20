@@ -21,9 +21,7 @@ class WatchConfig(Base):
 
     __tablename__ = "watch_configs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     watcher_name: Mapped[str] = mapped_column(Text, nullable=False)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
@@ -31,15 +29,9 @@ class WatchConfig(Base):
     schedule: Mapped[str] = mapped_column(Text, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    consecutive_failures: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    last_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    next_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -51,16 +43,16 @@ class WatchConfig(Base):
         Index("uq_watch_configs_tenant_name", "tenant_id", "watcher_name", unique=True),
         Index("ix_watch_configs_tenant", "tenant_id"),
         Index(
-            "ix_watch_configs_enabled", "tenant_id", "enabled",
+            "ix_watch_configs_enabled",
+            "tenant_id",
+            "enabled",
             postgresql_where="enabled = true",
         ),
     )
 
     def __repr__(self) -> str:
         return (
-            f"<WatchConfig(id={self.id!s:.8}, "
-            f"watcher={self.watcher_name}, "
-            f"enabled={self.enabled})>"
+            f"<WatchConfig(id={self.id!s:.8}, watcher={self.watcher_name}, enabled={self.enabled})>"
         )
 
 
@@ -69,9 +61,7 @@ class WatchEvent(Base):
 
     __tablename__ = "watch_events"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
     watcher_name: Mapped[str] = mapped_column(Text, nullable=False)
     run_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -83,9 +73,7 @@ class WatchEvent(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     details: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    acknowledged_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     acknowledged_by: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
@@ -101,7 +89,9 @@ class WatchEvent(Base):
         Index("ix_watch_events_tenant_severity", "tenant_id", "severity", "created_at"),
         Index("ix_watch_events_tenant_watcher", "tenant_id", "watcher_name", "created_at"),
         Index(
-            "ix_watch_events_unacked", "tenant_id", "created_at",
+            "ix_watch_events_unacked",
+            "tenant_id",
+            "created_at",
             postgresql_where="acknowledged_at IS NULL",
         ),
         Index("ix_watch_events_run", "run_id"),
@@ -109,9 +99,7 @@ class WatchEvent(Base):
 
     def __repr__(self) -> str:
         return (
-            f"<WatchEvent(id={self.id!s:.8}, "
-            f"severity={self.severity}, "
-            f"title={self.title[:30]!r})>"
+            f"<WatchEvent(id={self.id!s:.8}, severity={self.severity}, title={self.title[:30]!r})>"
         )
 
 
@@ -120,18 +108,14 @@ class WatcherRun(Base):
 
     __tablename__ = "watcher_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
     watcher_name: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="running")
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     events_generated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     result: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
@@ -143,17 +127,15 @@ class WatcherRun(Base):
     __table_args__ = (
         Index("ix_watcher_runs_tenant_watcher", "tenant_id", "watcher_name", "created_at"),
         Index(
-            "ix_watcher_runs_failed", "tenant_id", "created_at",
+            "ix_watcher_runs_failed",
+            "tenant_id",
+            "created_at",
             postgresql_where="status = 'failed'",
         ),
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<WatcherRun(id={self.id!s:.8}, "
-            f"watcher={self.watcher_name}, "
-            f"status={self.status})>"
-        )
+        return f"<WatcherRun(id={self.id!s:.8}, watcher={self.watcher_name}, status={self.status})>"
 
 
 class TechRadarItem(Base):
@@ -161,9 +143,7 @@ class TechRadarItem(Base):
 
     __tablename__ = "tech_radar"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
@@ -174,9 +154,7 @@ class TechRadarItem(Base):
     upvotes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     comments: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    tags: Mapped[list[str]] = mapped_column(
-        ARRAY(String), nullable=False, server_default="{}"
-    )
+    tags: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
     scraped_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -190,11 +168,7 @@ class TechRadarItem(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<TechRadarItem(id={self.id!s:.8}, "
-            f"title={self.title[:30]!r}, "
-            f"score={self.score})>"
-        )
+        return f"<TechRadarItem(id={self.id!s:.8}, title={self.title[:30]!r}, score={self.score})>"
 
 
 class WatcherNotification(Base):
@@ -202,9 +176,7 @@ class WatcherNotification(Base):
 
     __tablename__ = "watcher_notifications"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
     event_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -217,32 +189,29 @@ class WatcherNotification(Base):
     recipient: Mapped[str | None] = mapped_column(Text, nullable=True)
     subject: Mapped[str | None] = mapped_column(Text, nullable=True)
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
-    sent_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    digest_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    digest_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
 
     # ── Relationships ─────────────────────────────────────────
-    event: Mapped[WatchEvent] = relationship(
-        "WatchEvent", back_populates="notifications"
-    )
+    event: Mapped[WatchEvent] = relationship("WatchEvent", back_populates="notifications")
 
     __table_args__ = (
         Index("ix_watcher_notif_tenant_created", "tenant_id", "created_at"),
         Index(
-            "ix_watcher_notif_pending", "tenant_id", "status",
+            "ix_watcher_notif_pending",
+            "tenant_id",
+            "status",
             postgresql_where="status IN ('pending','queued','failed')",
         ),
         Index(
-            "ix_watcher_notif_digest", "digest_id",
+            "ix_watcher_notif_digest",
+            "digest_id",
             postgresql_where="digest_id IS NOT NULL",
         ),
         Index("ix_watcher_notif_event", "event_id"),
@@ -261,9 +230,7 @@ class NotificationChannel(Base):
 
     __tablename__ = "notification_channels"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
     channel_type: Mapped[str] = mapped_column(Text, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -278,11 +245,15 @@ class NotificationChannel(Base):
 
     __table_args__ = (
         Index(
-            "uq_notif_channels_tenant_type", "tenant_id", "channel_type",
+            "uq_notif_channels_tenant_type",
+            "tenant_id",
+            "channel_type",
             unique=True,
         ),
         Index(
-            "ix_notif_channels_enabled", "tenant_id", "enabled",
+            "ix_notif_channels_enabled",
+            "tenant_id",
+            "enabled",
             postgresql_where="enabled = true",
         ),
     )

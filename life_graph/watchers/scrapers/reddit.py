@@ -5,7 +5,11 @@ from __future__ import annotations
 import httpx
 
 DEFAULT_SUBREDDITS = [
-    "programming", "python", "javascript", "devops", "machinelearning",
+    "programming",
+    "python",
+    "javascript",
+    "devops",
+    "machinelearning",
 ]
 USER_AGENT = "LifeGraph-TechRadar/1.0 (ambient AI watcher)"
 

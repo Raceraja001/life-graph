@@ -21,7 +21,7 @@ class BudgetPriority(StrEnum):
     """How aggressively a category is throttled as the budget fills up."""
 
     HIGH = "high"  # acts on the user's live tasks/decisions — throttled last
-    LOW = "low"    # background maintenance — throttled first
+    LOW = "low"  # background maintenance — throttled first
 
 
 class BudgetCategory(StrEnum):
@@ -128,7 +128,8 @@ def decide(
         if priority is BudgetPriority.HIGH:
             return _decision(True, False, "over soft threshold; high-priority allowed")
         return _decision(
-            False, True,
+            False,
+            True,
             "over soft threshold; low-priority autonomous throttled",
         )
     return _decision(True, False, "within budget")

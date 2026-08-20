@@ -250,9 +250,7 @@ class ConsolidationPipeline:
             kept.append(mem)
 
         if removed_ids:
-            logger.debug(
-                "Deduped cluster: kept %d, removed %d", len(kept), len(removed_ids)
-            )
+            logger.debug("Deduped cluster: kept %d, removed %d", len(kept), len(removed_ids))
         return kept
 
     # ── Step 4: Score ─────────────────────────────────────────
@@ -268,9 +266,7 @@ class ConsolidationPipeline:
             results.append((mem, score, tier))
         return results
 
-    async def _persist_scores(
-        self, scored: list[tuple[Memory, float, str]]
-    ) -> None:
+    async def _persist_scores(self, scored: list[tuple[Memory, float, str]]) -> None:
         """Write updated importance scores back to the database."""
         if not scored:
             return
@@ -286,9 +282,7 @@ class ConsolidationPipeline:
 
     # ── Step 5: Distill ───────────────────────────────────────
 
-    async def _distill(
-        self, clusters: list[list[Memory]]
-    ) -> list[dict[str, Any]]:
+    async def _distill(self, clusters: list[list[Memory]]) -> list[dict[str, Any]]:
         """Summarise large clusters into principle memories via LLM.
 
         Only clusters with >= 3 memories are distilled. Uses litellm
@@ -302,9 +296,7 @@ class ConsolidationPipeline:
         principles: list[dict[str, Any]] = []
 
         for cluster in large_clusters:
-            contents = "\n".join(
-                f"- {m.content}" for m in cluster
-            )
+            contents = "\n".join(f"- {m.content}" for m in cluster)
             prompt = (
                 "You are a personal knowledge distiller. "
                 "Distill these related memories into ONE concise principle "
@@ -351,12 +343,14 @@ class ConsolidationPipeline:
                     await session.commit()
                     await session.refresh(new_memory)
 
-                principles.append({
-                    "id": str(new_memory.id),
-                    "content": principle_text,
-                    "source_count": len(cluster),
-                    "cost_usd": cost,
-                })
+                principles.append(
+                    {
+                        "id": str(new_memory.id),
+                        "content": principle_text,
+                        "source_count": len(cluster),
+                        "cost_usd": cost,
+                    }
+                )
                 logger.info(
                     "Distilled %d memories → principle: %s",
                     len(cluster),
@@ -364,9 +358,7 @@ class ConsolidationPipeline:
                 )
 
             except Exception:
-                logger.exception(
-                    "Failed to distill cluster of %d memories", len(cluster)
-                )
+                logger.exception("Failed to distill cluster of %d memories", len(cluster))
 
         return principles
 
@@ -391,14 +383,16 @@ class ConsolidationPipeline:
         # Build dicts for batch_calculate
         mem_dicts: list[dict[str, Any]] = []
         for m in active:
-            mem_dicts.append({
-                "id": str(m.id),
-                "importance": m.importance,
-                "access_count": m.access_count,
-                "last_accessed": m.last_accessed or m.created_at,
-                "decay_rate": m.decay_rate,
-                "importance_tier": m.importance_tier,
-            })
+            mem_dicts.append(
+                {
+                    "id": str(m.id),
+                    "importance": m.importance,
+                    "access_count": m.access_count,
+                    "last_accessed": m.last_accessed or m.created_at,
+                    "decay_rate": m.decay_rate,
+                    "importance_tier": m.importance_tier,
+                }
+            )
 
         decay_results = self._decay.batch_calculate(mem_dicts)
 
@@ -422,9 +416,7 @@ class ConsolidationPipeline:
 
     # ── Step 7: Audit ─────────────────────────────────────────
 
-    async def _audit_contradictions(
-        self, memories: list[Memory]
-    ) -> list[dict[str, Any]]:
+    async def _audit_contradictions(self, memories: list[Memory]) -> list[dict[str, Any]]:
         """Check recent memories for contradictions with existing knowledge.
 
         Returns a list of dicts describing found contradictions (for
@@ -442,20 +434,18 @@ class ConsolidationPipeline:
                     new_embedding=mem.embedding,
                 )
                 for c in contradictions:
-                    found.append({
-                        "memory_id": str(mem.id),
-                        "existing_id": c.existing_memory_id,
-                        "conflict_type": c.conflict_type,
-                        "resolution": c.resolution,
-                        "reason": c.reason,
-                    })
+                    found.append(
+                        {
+                            "memory_id": str(mem.id),
+                            "existing_id": c.existing_memory_id,
+                            "conflict_type": c.conflict_type,
+                            "resolution": c.resolution,
+                            "reason": c.reason,
+                        }
+                    )
             except Exception:
-                logger.exception(
-                    "Contradiction check failed for memory %s", mem.id
-                )
+                logger.exception("Contradiction check failed for memory %s", mem.id)
 
         if found:
-            logger.warning(
-                "Found %d contradictions during consolidation audit", len(found)
-            )
+            logger.warning("Found %d contradictions during consolidation audit", len(found))
         return found

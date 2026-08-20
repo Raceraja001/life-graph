@@ -52,12 +52,8 @@ class RecallRequest(BaseModel):
 class MidSessionRecallRequest(BaseModel):
     """Body for mid-session event-driven recall."""
 
-    context: dict[str, Any] = Field(
-        ..., description="Current session context"
-    )
-    event: str = Field(
-        ..., min_length=1, description="Event that triggered the recall"
-    )
+    context: dict[str, Any] = Field(..., description="Current session context")
+    event: str = Field(..., min_length=1, description="Event that triggered the recall")
 
 
 class AskRequest(BaseModel):
@@ -144,6 +140,7 @@ async def semantic_search(
         # ── Tri-hybrid: vector + BM25 + graph ────────────────
         try:
             from life_graph.storage.hybrid import HybridQueryEngine
+
             engine = HybridQueryEngine()
             result = await engine.tri_search(
                 query=body.query,
@@ -154,6 +151,7 @@ async def semantic_search(
             for mem_dict in result.get("memories", []):
                 try:
                     from life_graph.services.recall import _dict_to_memory_response
+
                     resp = _dict_to_memory_response(mem_dict)
                     if resp:
                         memories.append(resp)
@@ -193,15 +191,20 @@ async def semantic_search(
     # Track in metamemory
     max_confidence = max((m.confidence for m in memories), default=0.0)
     await metamemory.track_query(
-        body.query, len(memories), max_confidence, embedding=embedding,
+        body.query,
+        len(memories),
+        max_confidence,
+        embedding=embedding,
     )
 
-    return success_response(data=SearchResult(
-        memories=memories,
-        total_count=len(memories),
-        query_time_ms=round(query_time_ms, 2),
-        search_mode=search_mode,
-    ))
+    return success_response(
+        data=SearchResult(
+            memories=memories,
+            total_count=len(memories),
+            query_time_ms=round(query_time_ms, 2),
+            search_mode=search_mode,
+        )
+    )
 
 
 @router.post(
@@ -273,7 +276,10 @@ async def ask_brain(
     # Track in metamemory
     max_confidence = max((m.confidence for m in memories), default=0.0)
     await metamemory.track_query(
-        body.question, len(memories), max_confidence, embedding=embedding,
+        body.question,
+        len(memories),
+        max_confidence,
+        embedding=embedding,
     )
 
     # Synthesize answer
@@ -292,10 +298,12 @@ async def ask_brain(
 
     query_time_ms = (time.perf_counter() - t0) * 1000
 
-    return success_response(data=AskResponse(
-        answer=result["answer"],
-        source_count=result["source_count"],
-        model=result["model"],
-        memories=memories,
-        query_time_ms=round(query_time_ms, 2),
-    ))
+    return success_response(
+        data=AskResponse(
+            answer=result["answer"],
+            source_count=result["source_count"],
+            model=result["model"],
+            memories=memories,
+            query_time_ms=round(query_time_ms, 2),
+        )
+    )

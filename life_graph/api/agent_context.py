@@ -30,7 +30,9 @@ class SharedContextCreate(BaseModel):
     """Payload for creating a shared context entry."""
 
     content: str = Field(..., min_length=1, description="Context content text")
-    context_type: str = Field("observation", description="Type: fact, decision, observation, insight")
+    context_type: str = Field(
+        "observation", description="Type: fact, decision, observation, insight"
+    )
     project_id: uuid.UUID | None = Field(None, description="Associated project ID")
     source_agent: str | None = Field(None, description="Agent that generated this context")
     source_task_id: uuid.UUID | None = Field(None, description="Task that generated this context")
@@ -62,16 +64,18 @@ async def create_context(
         data=body.model_dump(),
     )
 
-    return success_response(data={
-        "id": str(entry.id),
-        "content": entry.content,
-        "context_type": entry.context_type,
-        "project_id": str(entry.project_id) if entry.project_id else None,
-        "source_agent": entry.source_agent,
-        "relevance_score": entry.relevance_score,
-        "access_count": entry.access_count,
-        "created_at": entry.created_at.isoformat() if entry.created_at else None,
-    })
+    return success_response(
+        data={
+            "id": str(entry.id),
+            "content": entry.content,
+            "context_type": entry.context_type,
+            "project_id": str(entry.project_id) if entry.project_id else None,
+            "source_agent": entry.source_agent,
+            "relevance_score": entry.relevance_score,
+            "access_count": entry.access_count,
+            "created_at": entry.created_at.isoformat() if entry.created_at else None,
+        }
+    )
 
 
 @router.get(

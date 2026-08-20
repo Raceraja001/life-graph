@@ -23,9 +23,21 @@ logger = logging.getLogger(__name__)
 
 # Directories to skip during analysis
 VENDORED_DIRS = {
-    "node_modules", ".venv", "venv", "vendor", "__pycache__",
-    ".git", ".tox", "dist", "build", "egg-info", ".eggs",
-    "site-packages", ".mypy_cache", ".pytest_cache", "migrations",
+    "node_modules",
+    ".venv",
+    "venv",
+    "vendor",
+    "__pycache__",
+    ".git",
+    ".tox",
+    "dist",
+    "build",
+    "egg-info",
+    ".eggs",
+    "site-packages",
+    ".mypy_cache",
+    ".pytest_cache",
+    "migrations",
 }
 
 
@@ -180,7 +192,8 @@ class CodeAnalyzer:
 
         logger.info(
             "Code analysis produced %d memories from %s",
-            len(memories), repo_path,
+            len(memories),
+            repo_path,
         )
         return memories
 
@@ -204,9 +217,7 @@ class CodeAnalyzer:
         logger.debug("Parsed %d Python files", parsed)
         return visitor
 
-    def _visitor_to_memories(
-        self, v: _PatternVisitor
-    ) -> list[dict[str, Any]]:
+    def _visitor_to_memories(self, v: _PatternVisitor) -> list[dict[str, Any]]:
         """Convert visitor statistics into memory dicts."""
         memories: list[dict[str, Any]] = []
 
@@ -218,137 +229,159 @@ class CodeAnalyzer:
         if total_names > 0:
             snake_ratio = v.snake_case_names / total_names
             convention = (
-                "snake_case" if snake_ratio > 0.8
-                else "camelCase" if snake_ratio < 0.2
-                else "mixed"
+                "snake_case" if snake_ratio > 0.8 else "camelCase" if snake_ratio < 0.2 else "mixed"
             )
-            memories.append({
-                "content": (
-                    f"Uses {convention} naming convention "
-                    f"({v.snake_case_names} snake_case, "
-                    f"{v.camel_case_names} camelCase)"
-                ),
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:code_analysis",
-                "tags": ["preference", "python", "naming-convention"],
-            })
+            memories.append(
+                {
+                    "content": (
+                        f"Uses {convention} naming convention "
+                        f"({v.snake_case_names} snake_case, "
+                        f"{v.camel_case_names} camelCase)"
+                    ),
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["preference", "python", "naming-convention"],
+                }
+            )
 
         # Docstring rate
         doc_rate = v.functions_with_docstrings / v.function_count
-        memories.append({
-            "content": (
-                f"Docstring rate: {doc_rate:.0%} of functions have docstrings "
-                f"({v.functions_with_docstrings}/{v.function_count})"
-            ),
-            "type_tag": "pattern",
-            "importance": 0.6,
-            "source": "cold_start:code_analysis",
-            "tags": ["preference", "python", "documentation"],
-        })
+        memories.append(
+            {
+                "content": (
+                    f"Docstring rate: {doc_rate:.0%} of functions have docstrings "
+                    f"({v.functions_with_docstrings}/{v.function_count})"
+                ),
+                "type_tag": "pattern",
+                "importance": 0.6,
+                "source": "cold_start:code_analysis",
+                "tags": ["preference", "python", "documentation"],
+            }
+        )
 
         # Type hint rate
         hint_rate = v.functions_with_type_hints / v.function_count
-        memories.append({
-            "content": (
-                f"Type hint rate: {hint_rate:.0%} of functions have type "
-                f"annotations ({v.functions_with_type_hints}/{v.function_count})"
-            ),
-            "type_tag": "pattern",
-            "importance": 0.7,
-            "source": "cold_start:code_analysis",
-            "tags": ["preference", "python", "typing"],
-        })
+        memories.append(
+            {
+                "content": (
+                    f"Type hint rate: {hint_rate:.0%} of functions have type "
+                    f"annotations ({v.functions_with_type_hints}/{v.function_count})"
+                ),
+                "type_tag": "pattern",
+                "importance": 0.7,
+                "source": "cold_start:code_analysis",
+                "tags": ["preference", "python", "typing"],
+            }
+        )
 
         # Error handling style
         total_excepts = v.bare_excepts + v.specific_excepts
         if total_excepts > 0:
             style = (
-                "specific exceptions" if v.bare_excepts == 0
-                else "bare excepts" if v.specific_excepts == 0
+                "specific exceptions"
+                if v.bare_excepts == 0
+                else "bare excepts"
+                if v.specific_excepts == 0
                 else f"mixed ({v.bare_excepts} bare, {v.specific_excepts} specific)"
             )
-            memories.append({
-                "content": f"Error handling style: {style}",
-                "type_tag": "preference",
-                "importance": 0.6,
-                "source": "cold_start:code_analysis",
-                "tags": ["preference", "python", "error-handling"],
-            })
+            memories.append(
+                {
+                    "content": f"Error handling style: {style}",
+                    "type_tag": "preference",
+                    "importance": 0.6,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["preference", "python", "error-handling"],
+                }
+            )
 
         # Test framework
         if v.uses_pytest:
-            memories.append({
-                "content": "Uses pytest as the testing framework",
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:code_analysis",
-                "tags": ["preference", "python", "testing", "pytest"],
-            })
+            memories.append(
+                {
+                    "content": "Uses pytest as the testing framework",
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["preference", "python", "testing", "pytest"],
+                }
+            )
         elif v.uses_unittest:
-            memories.append({
-                "content": "Uses unittest as the testing framework",
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:code_analysis",
-                "tags": ["preference", "python", "testing", "unittest"],
-            })
+            memories.append(
+                {
+                    "content": "Uses unittest as the testing framework",
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["preference", "python", "testing", "unittest"],
+                }
+            )
 
         # Async usage
         if v.async_function_count > 0:
             async_ratio = v.async_function_count / v.function_count
-            memories.append({
-                "content": (
-                    f"Uses async/await pattern ({async_ratio:.0%} of functions "
-                    f"are async, {v.async_function_count} total)"
-                ),
-                "type_tag": "pattern",
-                "importance": 0.6,
-                "source": "cold_start:code_analysis",
-                "tags": ["preference", "python", "async"],
-            })
+            memories.append(
+                {
+                    "content": (
+                        f"Uses async/await pattern ({async_ratio:.0%} of functions "
+                        f"are async, {v.async_function_count} total)"
+                    ),
+                    "type_tag": "pattern",
+                    "importance": 0.6,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["preference", "python", "async"],
+                }
+            )
 
         # Pydantic / dataclass
         if v.uses_pydantic:
-            memories.append({
-                "content": "Uses Pydantic BaseModel for data validation",
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:code_analysis",
-                "tags": ["preference", "python", "pydantic"],
-            })
+            memories.append(
+                {
+                    "content": "Uses Pydantic BaseModel for data validation",
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["preference", "python", "pydantic"],
+                }
+            )
         if v.uses_dataclass:
-            memories.append({
-                "content": "Uses Python dataclasses for data structures",
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:code_analysis",
-                "tags": ["preference", "python", "dataclass"],
-            })
+            memories.append(
+                {
+                    "content": "Uses Python dataclasses for data structures",
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["preference", "python", "dataclass"],
+                }
+            )
 
         # Top 15 imports
         top_imports = v.imports.most_common(15)
         if top_imports:
             names = [n for n, _ in top_imports[:15]]
-            memories.append({
-                "content": f"Most-used Python imports: {', '.join(names[:10])}",
-                "type_tag": "pattern",
-                "importance": 0.5,
-                "source": "cold_start:code_analysis",
-                "tags": ["preference", "python", "imports"],
-            })
+            memories.append(
+                {
+                    "content": f"Most-used Python imports: {', '.join(names[:10])}",
+                    "type_tag": "pattern",
+                    "importance": 0.5,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["preference", "python", "imports"],
+                }
+            )
 
         # Top decorators
         top_decorators = v.decorators.most_common(10)
         if top_decorators:
             dec_names = [n for n, _ in top_decorators[:5]]
-            memories.append({
-                "content": f"Most-used decorators: {', '.join(dec_names)}",
-                "type_tag": "pattern",
-                "importance": 0.5,
-                "source": "cold_start:code_analysis",
-                "tags": ["preference", "python", "decorators"],
-            })
+            memories.append(
+                {
+                    "content": f"Most-used decorators: {', '.join(dec_names)}",
+                    "type_tag": "pattern",
+                    "importance": 0.5,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["preference", "python", "decorators"],
+                }
+            )
 
         return memories
 
@@ -362,26 +395,30 @@ class CodeAnalyzer:
         has_packages = (root / "packages").is_dir()
         has_apps = (root / "apps").is_dir()
         if has_packages or has_apps:
-            memories.append({
-                "content": "Uses monorepo structure",
-                "type_tag": "architecture",
-                "importance": 0.8,
-                "source": "cold_start:code_analysis",
-                "tags": ["architecture", "monorepo", "project-structure"],
-            })
+            memories.append(
+                {
+                    "content": "Uses monorepo structure",
+                    "type_tag": "architecture",
+                    "importance": 0.8,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["architecture", "monorepo", "project-structure"],
+                }
+            )
 
         # Docker presence
         has_docker = any(root.glob("Dockerfile*"))
         has_compose = any(root.glob("docker-compose*"))
         if has_docker or has_compose:
             detail = " with docker-compose" if has_compose else ""
-            memories.append({
-                "content": f"Uses Docker for containerization{detail}",
-                "type_tag": "architecture",
-                "importance": 0.7,
-                "source": "cold_start:code_analysis",
-                "tags": ["architecture", "docker", "infrastructure"],
-            })
+            memories.append(
+                {
+                    "content": f"Uses Docker for containerization{detail}",
+                    "type_tag": "architecture",
+                    "importance": 0.7,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["architecture", "docker", "infrastructure"],
+                }
+            )
 
         # CI/CD presence
         ci_systems: list[str] = []
@@ -394,13 +431,15 @@ class CodeAnalyzer:
         if (root / ".circleci").is_dir():
             ci_systems.append("CircleCI")
         if ci_systems:
-            memories.append({
-                "content": f"Uses {', '.join(ci_systems)} for CI/CD",
-                "type_tag": "architecture",
-                "importance": 0.7,
-                "source": "cold_start:code_analysis",
-                "tags": ["architecture", "ci", "infrastructure"],
-            })
+            memories.append(
+                {
+                    "content": f"Uses {', '.join(ci_systems)} for CI/CD",
+                    "type_tag": "architecture",
+                    "importance": 0.7,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["architecture", "ci", "infrastructure"],
+                }
+            )
 
         # Frontend framework detection
         memories.extend(self._detect_frontend(root))
@@ -439,13 +478,15 @@ class CodeAnalyzer:
 
         for key, name in frameworks:
             if key in all_deps:
-                return [{
-                    "content": f"Uses {name} as frontend framework",
-                    "type_tag": "architecture",
-                    "importance": 0.8,
-                    "source": "cold_start:code_analysis",
-                    "tags": ["architecture", "frontend", name.lower()],
-                }]
+                return [
+                    {
+                        "content": f"Uses {name} as frontend framework",
+                        "type_tag": "architecture",
+                        "importance": 0.8,
+                        "source": "cold_start:code_analysis",
+                        "tags": ["architecture", "frontend", name.lower()],
+                    }
+                ]
 
         return []
 
@@ -469,13 +510,15 @@ class CodeAnalyzer:
 
         for key, name in frameworks:
             if key in combined:
-                return [{
-                    "content": f"Uses {name} as backend framework",
-                    "type_tag": "architecture",
-                    "importance": 0.8,
-                    "source": "cold_start:code_analysis",
-                    "tags": ["architecture", "backend", key, "python"],
-                }]
+                return [
+                    {
+                        "content": f"Uses {name} as backend framework",
+                        "type_tag": "architecture",
+                        "importance": 0.8,
+                        "source": "cold_start:code_analysis",
+                        "tags": ["architecture", "backend", key, "python"],
+                    }
+                ]
 
         return []
 
@@ -489,52 +532,68 @@ class CodeAnalyzer:
         # MVC pattern
         mvc_signals = {"models", "views", "controllers", "templates"}
         if len(mvc_signals & all_dirs) >= 3:
-            return [{
-                "content": "Project follows MVC architecture pattern",
-                "type_tag": "architecture",
-                "importance": 0.7,
-                "source": "cold_start:code_analysis",
-                "tags": ["architecture", "pattern", "mvc"],
-            }]
+            return [
+                {
+                    "content": "Project follows MVC architecture pattern",
+                    "type_tag": "architecture",
+                    "importance": 0.7,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["architecture", "pattern", "mvc"],
+                }
+            ]
 
         # Clean architecture
         clean_signals = {
-            "domain", "application", "infrastructure", "interfaces",
-            "adapters", "use_cases", "usecases", "entities", "repositories",
+            "domain",
+            "application",
+            "infrastructure",
+            "interfaces",
+            "adapters",
+            "use_cases",
+            "usecases",
+            "entities",
+            "repositories",
         }
         if len(clean_signals & all_dirs) >= 3:
-            return [{
-                "content": "Project follows Clean Architecture pattern",
-                "type_tag": "architecture",
-                "importance": 0.8,
-                "source": "cold_start:code_analysis",
-                "tags": ["architecture", "pattern", "clean-architecture"],
-            }]
+            return [
+                {
+                    "content": "Project follows Clean Architecture pattern",
+                    "type_tag": "architecture",
+                    "importance": 0.8,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["architecture", "pattern", "clean-architecture"],
+                }
+            ]
 
         # FastAPI standard (routers, models, schemas, services)
         fastapi_signals = {"routers", "models", "schemas", "services"}
         if len(fastapi_signals & all_dirs) >= 3:
-            return [{
-                "content": "Project follows FastAPI standard structure",
-                "type_tag": "architecture",
-                "importance": 0.7,
-                "source": "cold_start:code_analysis",
-                "tags": ["architecture", "pattern", "fastapi-standard"],
-            }]
+            return [
+                {
+                    "content": "Project follows FastAPI standard structure",
+                    "type_tag": "architecture",
+                    "importance": 0.7,
+                    "source": "cold_start:code_analysis",
+                    "tags": ["architecture", "pattern", "fastapi-standard"],
+                }
+            ]
 
         # Flat structure
-        top_dirs = {d.name.lower() for d in root.iterdir()
-                    if d.is_dir() and not d.name.startswith(".")}
+        top_dirs = {
+            d.name.lower() for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")
+        }
         src_like = {"src", "lib", "app", "core", "pkg"}
         if not (src_like & top_dirs):
             py_in_root = list(root.glob("*.py"))
             if len(py_in_root) > 5:
-                return [{
-                    "content": "Project uses flat file structure (no src/ directory)",
-                    "type_tag": "architecture",
-                    "importance": 0.5,
-                    "source": "cold_start:code_analysis",
-                    "tags": ["architecture", "pattern", "flat-structure"],
-                }]
+                return [
+                    {
+                        "content": "Project uses flat file structure (no src/ directory)",
+                        "type_tag": "architecture",
+                        "importance": 0.5,
+                        "source": "cold_start:code_analysis",
+                        "tags": ["architecture", "pattern", "flat-structure"],
+                    }
+                ]
 
         return []

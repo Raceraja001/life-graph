@@ -68,23 +68,29 @@ class Governor:
             logger.error(
                 "Governor authorize failed for tenant=%s category=%s — failing OPEN. "
                 "Budget enforcement is degraded; investigate.",
-                tenant_id, category, exc_info=True,
+                tenant_id,
+                category,
+                exc_info=True,
             )
             return BudgetDecision(
-                allowed=True, throttled=False,
+                allowed=True,
+                throttled=False,
                 reason="governor unavailable — failed open",
-                spent_usd=0.0, cap_usd=cap, remaining_usd=cap,
+                spent_usd=0.0,
+                cap_usd=cap,
+                remaining_usd=cap,
             )
 
         projected = spent + max(0.0, estimated_usd)
         return decide(
-            projected, cap, priority_for(category),
-            interactive=interactive, soft_threshold=soft,
+            projected,
+            cap,
+            priority_for(category),
+            interactive=interactive,
+            soft_threshold=soft,
         )
 
-    async def record(
-        self, tenant_id: str, category: BudgetCategory, actual_usd: float
-    ) -> None:
+    async def record(self, tenant_id: str, category: BudgetCategory, actual_usd: float) -> None:
         """Book an actual spend into this month's ledger (upsert + increment)."""
         if actual_usd <= 0:
             return
@@ -110,7 +116,10 @@ class Governor:
         except Exception:
             logger.error(
                 "Governor failed to record $%.6f for tenant=%s category=%s",
-                actual_usd, tenant_id, cat, exc_info=True,
+                actual_usd,
+                tenant_id,
+                cat,
+                exc_info=True,
             )
 
     async def status(self, tenant_id: str) -> BudgetStatus:

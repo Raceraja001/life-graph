@@ -27,6 +27,7 @@ class TenantContext:
 
 # ── Accessors ──────────────────────────────────────────
 
+
 def get_current_tenant_id() -> str:
     """Get the current tenant ID from context.
 

@@ -113,10 +113,7 @@ class MultiModelAdvisor:
         ]
 
         # Query all models in parallel
-        tasks = [
-            self._query_model(model, question, context_dicts)
-            for model in models
-        ]
+        tasks = [self._query_model(model, question, context_dicts) for model in models]
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Process results
@@ -124,23 +121,23 @@ class MultiModelAdvisor:
         for model, result in zip(models, raw_results, strict=False):
             if isinstance(result, Exception):
                 logger.warning("Model %s failed: %s", model, result)
-                responses.append(ModelResponse(
-                    model=model,
-                    recommendation="",
-                    pros=[],
-                    cons=[],
-                    confidence=0.0,
-                    reasoning=str(result),
-                    status="error",
-                ))
+                responses.append(
+                    ModelResponse(
+                        model=model,
+                        recommendation="",
+                        pros=[],
+                        cons=[],
+                        confidence=0.0,
+                        reasoning=str(result),
+                        status="error",
+                    )
+                )
             else:
                 responses.append(result)
 
         # Calculate consensus
         completed = [r for r in responses if r.status == "completed"]
-        consensus_score, consensus_label, winning_choice = self._calculate_consensus(
-            completed
-        )
+        consensus_score, consensus_label, winning_choice = self._calculate_consensus(completed)
 
         # Build result
         session_id = uuid.uuid4()
@@ -272,9 +269,7 @@ class MultiModelAdvisor:
         raw = settings.advisor_models
         return [m.strip() for m in raw.split(",") if m.strip()]
 
-    async def _fetch_preferences(
-        self, tenant_id: str, limit: int = 20
-    ) -> list[Preference]:
+    async def _fetch_preferences(self, tenant_id: str, limit: int = 20) -> list[Preference]:
         """Fetch active preferences for context injection."""
         async with self._session_factory() as session:
             stmt = (
@@ -296,12 +291,14 @@ class MultiModelAdvisor:
         context_preferences: list[dict],
     ) -> ModelResponse:
         """Query a single model via litellm with timeout."""
-        preferences_json = json.dumps(context_preferences, indent=2) if context_preferences else "None yet."
+        preferences_json = (
+            json.dumps(context_preferences, indent=2) if context_preferences else "None yet."
+        )
 
         system_prompt = (
             "You are a technology advisor. The user has these current preferences:\n"
             f"{preferences_json}\n\n"
-            'Answer the question with a JSON object:\n'
+            "Answer the question with a JSON object:\n"
             '{"recommendation": "...", "pros": ["..."], "cons": ["..."], '
             '"confidence": 0.0-1.0, "reasoning": "..."}'
         )
@@ -356,7 +353,7 @@ class MultiModelAdvisor:
         # Parse response
         content = response.choices[0].message.content or "{}"
         usage = response.usage
-        tokens_used = (usage.total_tokens if usage else 0)
+        tokens_used = usage.total_tokens if usage else 0
 
         # Calculate cost
         costs = MODEL_COSTS.get(model, {"input": 0.0, "output": 0.0})
@@ -388,9 +385,7 @@ class MultiModelAdvisor:
             status="completed",
         )
 
-    def _calculate_consensus(
-        self, responses: list[ModelResponse]
-    ) -> tuple[float, str, str | None]:
+    def _calculate_consensus(self, responses: list[ModelResponse]) -> tuple[float, str, str | None]:
         """Calculate consensus from completed model responses.
 
         Returns (score, label, winning_choice).
@@ -426,9 +421,7 @@ class MultiModelAdvisor:
 
         return score, label, winning
 
-    async def _save_session(
-        self, tenant_id: str, result: AdvisorResult
-    ) -> None:
+    async def _save_session(self, tenant_id: str, result: AdvisorResult) -> None:
         """Persist an advisor session to the database."""
         responses_dict = {}
         for r in result.responses:

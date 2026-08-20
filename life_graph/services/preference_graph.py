@@ -237,8 +237,7 @@ class PreferenceGraphService:
         """
         if rel_type not in _ALLOWED_REL_TYPES:
             raise ValueError(
-                f"Invalid rel_type {rel_type!r}; "
-                f"must be one of {sorted(_ALLOWED_REL_TYPES)}"
+                f"Invalid rel_type {rel_type!r}; must be one of {sorted(_ALLOWED_REL_TYPES)}"
             )
 
         store = _get_graph_store()
@@ -294,9 +293,7 @@ class PreferenceGraphService:
         try:
             # ── Fetch root preference node ────────────────────
             pref_rows = await store.execute_cypher(
-                "MATCH (p:Preference) "
-                "WHERE p.id = $pid AND p.tenant_id = $tid "
-                "RETURN p",
+                "MATCH (p:Preference) WHERE p.id = $pid AND p.tenant_id = $tid RETURN p",
                 params={"pid": preference_id, "tid": tenant_id},
             )
             if not pref_rows:
@@ -323,11 +320,13 @@ class PreferenceGraphService:
                 if ev and isinstance(ev, dict):
                     evidence_nodes.append(ev)
                 if rel and isinstance(rel, dict):
-                    edges.append({
-                        "from": rel.get("start_id") or _prop(ev, "id"),
-                        "to": preference_id,
-                        "label": rel.get("label", "SUPPORTS"),
-                    })
+                    edges.append(
+                        {
+                            "from": rel.get("start_id") or _prop(ev, "id"),
+                            "to": preference_id,
+                            "label": rel.get("label", "SUPPORTS"),
+                        }
+                    )
 
             # ── Fetch related preference nodes + edges ────────
             rel_pref_rows = await store.execute_cypher(
@@ -346,11 +345,13 @@ class PreferenceGraphService:
                 if qn and isinstance(qn, dict):
                     related_nodes.append(qn)
                 if rel and isinstance(rel, dict):
-                    edges.append({
-                        "from": preference_id,
-                        "to": _prop(qn, "id"),
-                        "label": rel.get("label", "RELATED_TO"),
-                    })
+                    edges.append(
+                        {
+                            "from": preference_id,
+                            "to": _prop(qn, "id"),
+                            "label": rel.get("label", "RELATED_TO"),
+                        }
+                    )
 
             return {
                 "preference": preference_node,

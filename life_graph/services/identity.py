@@ -115,19 +115,19 @@ class IdentityService:
                     active.append(mem)
                 else:
                     superseded.append(mem)
-            chapters.append({
-                "period": period,
-                "active": active,
-                "superseded": superseded,
-            })
+            chapters.append(
+                {
+                    "period": period,
+                    "active": active,
+                    "superseded": superseded,
+                }
+            )
 
         return chapters
 
     # ── Belief states ─────────────────────────────────────────
 
-    async def update_belief_state(
-        self, memory_id: str, state: str
-    ) -> Memory:
+    async def update_belief_state(self, memory_id: str, state: str) -> Memory:
         """Update a memory's belief state.
 
         Args:
@@ -165,9 +165,7 @@ class IdentityService:
         logger.info("Updated belief state for %s → %s", memory_id, state)
         return mem
 
-    async def challenge_stale_beliefs(
-        self, stale_months: int = 6
-    ) -> list[dict[str, Any]]:
+    async def challenge_stale_beliefs(self, stale_months: int = 6) -> list[dict[str, Any]]:
         """Find identity memories not accessed in *stale_months* months.
 
         Returns challenge prompts that can be shown to the user::
@@ -206,21 +204,20 @@ class IdentityService:
             days_stale = (now - last).days
             months = days_stale // 30
             content_preview = mem.content[:80]
-            challenges.append({
-                "memory": mem,
-                "prompt": (
-                    f"You've held '{content_preview}' for {months} months. "
-                    "Still current?"
-                ),
-                "days_stale": days_stale,
-            })
+            challenges.append(
+                {
+                    "memory": mem,
+                    "prompt": (
+                        f"You've held '{content_preview}' for {months} months. Still current?"
+                    ),
+                    "days_stale": days_stale,
+                }
+            )
 
         logger.info("Found %d stale beliefs to challenge", len(challenges))
         return challenges
 
-    async def respond_to_challenge(
-        self, memory_id: str, response: str
-    ) -> None:
+    async def respond_to_challenge(self, memory_id: str, response: str) -> None:
         """Handle the user's response to a stale-belief challenge.
 
         Args:
@@ -233,8 +230,7 @@ class IdentityService:
         valid_responses = {"confirm", "supersede", "uncertain", "retire"}
         if response not in valid_responses:
             raise ValueError(
-                f"Invalid response '{response}'. "
-                f"Valid: {', '.join(sorted(valid_responses))}"
+                f"Invalid response '{response}'. Valid: {', '.join(sorted(valid_responses))}"
             )
 
         mid = uuid.UUID(memory_id)

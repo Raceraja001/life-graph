@@ -31,32 +31,116 @@ logger = logging.getLogger(__name__)
 
 # Keywords that hint at a specific vertex label
 _TECHNOLOGY_KEYWORDS = {
-    "python", "javascript", "typescript", "rust", "go", "java", "kotlin",
-    "swift", "ruby", "php", "c++", "c#", "react", "vue", "angular",
-    "django", "flask", "fastapi", "express", "nextjs", "nuxt",
-    "postgresql", "postgres", "mysql", "mongodb", "redis", "sqlite",
-    "docker", "kubernetes", "k8s", "aws", "gcp", "azure",
-    "git", "github", "gitlab", "linux", "windows", "macos",
-    "vscode", "vim", "neovim", "emacs", "jetbrains", "pycharm",
-    "node", "npm", "yarn", "pip", "poetry", "hatch",
-    "tensorflow", "pytorch", "pandas", "numpy", "scipy",
-    "html", "css", "sass", "tailwind", "bootstrap",
-    "graphql", "rest", "grpc", "websocket",
-    "nginx", "apache", "caddy", "traefik",
-    "sqlalchemy", "alembic", "pgvector", "asyncpg",
-    "spacy", "transformers", "litellm", "openai", "anthropic",
-    "minio", "s3", "elasticsearch", "kibana",
+    "python",
+    "javascript",
+    "typescript",
+    "rust",
+    "go",
+    "java",
+    "kotlin",
+    "swift",
+    "ruby",
+    "php",
+    "c++",
+    "c#",
+    "react",
+    "vue",
+    "angular",
+    "django",
+    "flask",
+    "fastapi",
+    "express",
+    "nextjs",
+    "nuxt",
+    "postgresql",
+    "postgres",
+    "mysql",
+    "mongodb",
+    "redis",
+    "sqlite",
+    "docker",
+    "kubernetes",
+    "k8s",
+    "aws",
+    "gcp",
+    "azure",
+    "git",
+    "github",
+    "gitlab",
+    "linux",
+    "windows",
+    "macos",
+    "vscode",
+    "vim",
+    "neovim",
+    "emacs",
+    "jetbrains",
+    "pycharm",
+    "node",
+    "npm",
+    "yarn",
+    "pip",
+    "poetry",
+    "hatch",
+    "tensorflow",
+    "pytorch",
+    "pandas",
+    "numpy",
+    "scipy",
+    "html",
+    "css",
+    "sass",
+    "tailwind",
+    "bootstrap",
+    "graphql",
+    "rest",
+    "grpc",
+    "websocket",
+    "nginx",
+    "apache",
+    "caddy",
+    "traefik",
+    "sqlalchemy",
+    "alembic",
+    "pgvector",
+    "asyncpg",
+    "spacy",
+    "transformers",
+    "litellm",
+    "openai",
+    "anthropic",
+    "minio",
+    "s3",
+    "elasticsearch",
+    "kibana",
 }
 
 _DECISION_KEYWORDS = {
-    "decided", "chose", "picked", "selected", "went with",
-    "switched to", "migrated to", "adopted", "prefer",
+    "decided",
+    "chose",
+    "picked",
+    "selected",
+    "went with",
+    "switched to",
+    "migrated to",
+    "adopted",
+    "prefer",
 }
 
 _CONCEPT_KEYWORDS = {
-    "pattern", "principle", "practice", "approach", "strategy",
-    "architecture", "design", "methodology", "framework",
-    "convention", "standard", "guideline", "rule",
+    "pattern",
+    "principle",
+    "practice",
+    "approach",
+    "strategy",
+    "architecture",
+    "design",
+    "methodology",
+    "framework",
+    "convention",
+    "standard",
+    "guideline",
+    "rule",
 }
 
 
@@ -137,6 +221,7 @@ class GraphMigrationJob:
         """Lazy-initialise the GraphStore."""
         if self._graph_store is None:
             from life_graph.storage.graph import GraphStore
+
             self._graph_store = GraphStore()
         return self._graph_store
 
@@ -183,7 +268,8 @@ class GraphMigrationJob:
                 report.vertices_created += 1
             except Exception:
                 logger.warning(
-                    "Failed to create vertex for %s", entity_name,
+                    "Failed to create vertex for %s",
+                    entity_name,
                     exc_info=True,
                 )
                 report.errors += 1
@@ -210,7 +296,9 @@ class GraphMigrationJob:
                     report.edges_created += 1
                 except Exception:
                     logger.warning(
-                        "Failed to create edge %s -> %s", a, b,
+                        "Failed to create edge %s -> %s",
+                        a,
+                        b,
                         exc_info=True,
                     )
                     report.errors += 1
@@ -229,11 +317,7 @@ class GraphMigrationJob:
 
     async def _fetch_memories(self) -> list[Memory]:
         """Fetch all active memories from the database."""
-        stmt = (
-            select(Memory)
-            .where(Memory.status == "active")
-            .order_by(Memory.created_at.desc())
-        )
+        stmt = select(Memory).where(Memory.status == "active").order_by(Memory.created_at.desc())
         async with self._session_factory() as session:
             result = await session.execute(stmt)
             return list(result.scalars().all())
@@ -282,9 +366,7 @@ class GraphMigrationJob:
             for entity_name in mem_entities:
                 key = entity_name.lower()
                 if key not in raw_entities:
-                    label = infer_label(
-                        entity_name, context=memory.content
-                    )
+                    label = infer_label(entity_name, context=memory.content)
                     raw_entities[key] = {
                         "canonical": entity_name,
                         "label": label,

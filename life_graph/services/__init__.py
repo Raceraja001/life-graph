@@ -22,10 +22,14 @@ def __getattr__(name):
         "IdentityService": ("life_graph.services.identity", "IdentityService"),
         "RecallEngine": ("life_graph.services.recall", "RecallEngine"),
         "TriggerMatcher": ("life_graph.services.triggers", "TriggerMatcher"),
-        "PreferenceGraphService": ("life_graph.services.preference_graph", "PreferenceGraphService"),
+        "PreferenceGraphService": (
+            "life_graph.services.preference_graph",
+            "PreferenceGraphService",
+        ),
     }
     if name in _map:
         import importlib
+
         module = importlib.import_module(_map[name][0])
         return getattr(module, _map[name][1])
     raise AttributeError(f"module 'life_graph.services' has no attribute {name!r}")

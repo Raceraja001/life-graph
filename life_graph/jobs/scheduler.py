@@ -19,9 +19,7 @@ logger = logging.getLogger(__name__)
 def _seconds_until(target_hour: int, target_minute: int) -> float:
     """Calculate seconds from now until the next occurrence of HH:MM UTC."""
     now = datetime.now(UTC)
-    target_today = datetime.combine(
-        now.date(), time(target_hour, target_minute), tzinfo=UTC
-    )
+    target_today = datetime.combine(now.date(), time(target_hour, target_minute), tzinfo=UTC)
     if target_today <= now:
         target_today += timedelta(days=1)
     return (target_today - now).total_seconds()

@@ -31,12 +31,8 @@ async def list_runs(
     tenant_id: str = Depends(get_current_tenant_id),
 ):
     """List would-have-done shadow runs (the grading queue by default)."""
-    runs = await shadow_service.list_runs(
-        tenant_id, ungraded_only=ungraded_only, limit=limit
-    )
-    return success_response(
-        data=[ShadowRunResponse.model_validate(r) for r in runs]
-    )
+    runs = await shadow_service.list_runs(tenant_id, ungraded_only=ungraded_only, limit=limit)
+    return success_response(data=[ShadowRunResponse.model_validate(r) for r in runs])
 
 
 @router.post("/runs/{run_id}/grade")
@@ -50,13 +46,15 @@ async def grade_run(
         result = await shadow_service.grade(tenant_id, run_id, body.grade)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return success_response(data={
-        "graded": result.graded,
-        "graduated": result.graduated,
-        "status": result.status,
-        "graded_good": result.graded_good,
-        "graded_bad": result.graded_bad,
-    })
+    return success_response(
+        data={
+            "graded": result.graded,
+            "graduated": result.graduated,
+            "status": result.status,
+            "graded_good": result.graded_good,
+            "graded_bad": result.graded_bad,
+        }
+    )
 
 
 @router.get("/enrollments")
@@ -65,6 +63,4 @@ async def list_enrollments(
 ):
     """List actor enrollments and their progress toward graduation."""
     enrollments = await shadow_service.list_enrollments(tenant_id)
-    return success_response(
-        data=[ShadowEnrollmentResponse.model_validate(e) for e in enrollments]
-    )
+    return success_response(data=[ShadowEnrollmentResponse.model_validate(e) for e in enrollments])

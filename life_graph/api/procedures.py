@@ -78,9 +78,7 @@ async def list_procedures(
         result = await db.execute(stmt)
         procedures = result.scalars().all()
 
-    return success_response(
-        data=[ProcedureResponse.model_validate(p) for p in procedures]
-    )
+    return success_response(data=[ProcedureResponse.model_validate(p) for p in procedures])
 
 
 @router.get(
@@ -189,7 +187,9 @@ async def apply_procedure(
 
     logger.info(
         "Procedure %s applied (success=%s, rate=%.2f)",
-        procedure_id, success, proc.success_rate,
+        procedure_id,
+        success,
+        proc.success_rate,
     )
     return success_response(data=ProcedureResponse.model_validate(proc))
 
@@ -224,6 +224,4 @@ async def match_procedures(
         result = await db.execute(stmt)
         procedures = result.scalars().all()
 
-    return success_response(
-        data=[ProcedureResponse.model_validate(p) for p in procedures]
-    )
+    return success_response(data=[ProcedureResponse.model_validate(p) for p in procedures])

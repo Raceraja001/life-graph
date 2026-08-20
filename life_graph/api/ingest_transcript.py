@@ -80,7 +80,11 @@ async def ingest_transcript(
         content = msg.content
         if isinstance(content, (dict, list)):
             # Pass structured content through for chatgpt/claude parsers
-            messages_raw.append({"role": msg.role, **content} if isinstance(content, dict) else {"role": msg.role, "content": content})
+            messages_raw.append(
+                {"role": msg.role, **content}
+                if isinstance(content, dict)
+                else {"role": msg.role, "content": content}
+            )
         else:
             messages_raw.append({"role": msg.role, "content": content})
 
@@ -91,10 +95,12 @@ async def ingest_transcript(
         format=body.format,
     )
 
-    return success_response(data={
-        "preferences_extracted": result.preferences_extracted,
-        "preferences_reinforced": result.preferences_reinforced,
-        "contradictions_found": result.contradictions_found,
-        "processing_time_ms": result.processing_time_ms,
-        "details": result.details,
-    })
+    return success_response(
+        data={
+            "preferences_extracted": result.preferences_extracted,
+            "preferences_reinforced": result.preferences_reinforced,
+            "contradictions_found": result.contradictions_found,
+            "processing_time_ms": result.processing_time_ms,
+            "details": result.details,
+        }
+    )

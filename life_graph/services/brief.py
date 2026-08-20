@@ -63,8 +63,7 @@ class BriefComposer:
                 tenant_id, max_questions=settings.interview_max_questions_per_day
             )
             question_data = [
-                {"id": str(q.id), "question": q.question, "origin": q.origin}
-                for q in questions
+                {"id": str(q.id), "question": q.question, "origin": q.origin} for q in questions
             ]
             await session.commit()
 
@@ -74,11 +73,7 @@ class BriefComposer:
         big_decisions = await self._big_decisions(tenant_id, since)
 
         if not (
-            held
-            or question_data
-            or capture_summary["total"]
-            or watcher_summary
-            or big_decisions
+            held or question_data or capture_summary["total"] or watcher_summary or big_decisions
         ):
             logger.info("No brief content for tenant %s — staying silent", tenant_id)
             return None
@@ -124,7 +119,9 @@ class BriefComposer:
 
         logger.info(
             "Composed brief for %s: %d questions, %d held notifications",
-            tenant_id, len(question_data), len(held),
+            tenant_id,
+            len(question_data),
+            len(held),
         )
         return {
             "id": notif_id,
@@ -188,34 +185,36 @@ class BriefComposer:
             for n in rows:
                 flagged = (n.extra_metadata or {}).get("deliver_at_brief")
                 if flagged or n.priority in ("critical", "important"):
-                    held.append(
-                        {"id": str(n.id), "title": n.title, "priority": n.priority}
-                    )
+                    held.append({"id": str(n.id), "title": n.title, "priority": n.priority})
                     n.is_delivered = True
                     n.delivered_at = now
             await session.commit()
             held.sort(key=lambda h: 0 if h["priority"] == "critical" else 1)
             return held
 
-    async def _capture_summary(
-        self, tenant_id: str, since: datetime
-    ) -> dict[str, int]:
+    async def _capture_summary(self, tenant_id: str, since: datetime) -> dict[str, int]:
         """One-line counts: captures, memories, decisions in the window."""
         async with self._session_factory() as session:
             captures = await session.scalar(
-                select(func.count()).select_from(CaptureEvent).where(
+                select(func.count())
+                .select_from(CaptureEvent)
+                .where(
                     CaptureEvent.tenant_id == tenant_id,
                     CaptureEvent.occurred_at >= since,
                 )
             )
             memories = await session.scalar(
-                select(func.count()).select_from(Memory).where(
+                select(func.count())
+                .select_from(Memory)
+                .where(
                     Memory.tenant_id == tenant_id,
                     Memory.created_at >= since,
                 )
             )
             decisions = await session.scalar(
-                select(func.count()).select_from(Decision).where(
+                select(func.count())
+                .select_from(Decision)
+                .where(
                     Decision.tenant_id == tenant_id,
                     Decision.created_at >= since,
                 )
@@ -234,9 +233,7 @@ class BriefComposer:
         summary["pending_approval"] = int(pending or 0)
         return summary
 
-    async def _big_decisions(
-        self, tenant_id: str, since: datetime
-    ) -> list[dict[str, Any]]:
+    async def _big_decisions(self, tenant_id: str, since: datetime) -> list[dict[str, Any]]:
         """Big candidate decisions in the window, for a one-time challenge nudge.
 
         The 24h window + daily cadence means each big decision surfaces in at
@@ -256,14 +253,9 @@ class BriefComposer:
                 .order_by(Decision.created_at.desc())
                 .limit(5)
             )
-            return [
-                {"id": str(d.id), "title": d.title}
-                for d in result.scalars().all()
-            ]
+            return [{"id": str(d.id), "title": d.title} for d in result.scalars().all()]
 
-    async def _watcher_summary(
-        self, tenant_id: str, since: datetime
-    ) -> dict[str, int]:
+    async def _watcher_summary(self, tenant_id: str, since: datetime) -> dict[str, int]:
         """Watch-event counts per watcher in the window (empty if none)."""
         try:
             from life_graph.watchers.models import WatchEvent
@@ -300,8 +292,7 @@ class BriefComposer:
             lines.append("## Big decision — want me to argue against it first?")
             for d in big_decisions:
                 lines.append(
-                    f"- {d['title']}  "
-                    f"_(challenge: POST /judgment/decisions/{d['id']}/challenge)_"
+                    f"- {d['title']}  _(challenge: POST /judgment/decisions/{d['id']}/challenge)_"
                 )
             lines.append("")
         if questions:

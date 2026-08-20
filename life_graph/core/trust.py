@@ -82,7 +82,9 @@ def classify_surface(surface: str | None) -> TrustTier:
     return _SURFACE_TIER.get(surface, TrustTier.EXTERNAL)
 
 
-def coerce_tier(value: str | TrustTier | None, default: TrustTier = TrustTier.EXTERNAL) -> TrustTier:
+def coerce_tier(
+    value: str | TrustTier | None, default: TrustTier = TrustTier.EXTERNAL
+) -> TrustTier:
     """Coerce a stored string / enum / ``None`` into a :class:`TrustTier`.
 
     Unrecognised strings resolve to ``default`` (EXTERNAL by default — a corrupt

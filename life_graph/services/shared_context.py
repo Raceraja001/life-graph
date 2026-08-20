@@ -101,7 +101,9 @@ class SharedContextService:
             # Near-duplicate check via cosine similarity (if embedding available)
             if embedding and len(embedding) > 0:
                 near_dup = await self._find_near_duplicate(
-                    session, tenant_id, embedding,
+                    session,
+                    tenant_id,
+                    embedding,
                     data.get("project_id"),
                 )
                 if near_dup:
@@ -124,7 +126,9 @@ class SharedContextService:
             entry = SharedContextEntry(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                project_id=data.get("project_id") if isinstance(data.get("project_id"), str) else (str(data.get("project_id")) if data.get("project_id") else None),
+                project_id=data.get("project_id")
+                if isinstance(data.get("project_id"), str)
+                else (str(data.get("project_id")) if data.get("project_id") else None),
                 title=data.get("title") or content[:50],
                 content=content,
                 content_hash=content_hash,
@@ -151,7 +155,9 @@ class SharedContextService:
 
         logger.info(
             "Created shared context %s (type=%s) for tenant %s",
-            entry.id, entry.context_type, tenant_id,
+            entry.id,
+            entry.context_type,
+            tenant_id,
         )
         return entry
 
@@ -183,10 +189,7 @@ class SharedContextService:
         if not query:
             # Return recent entries without semantic search
             async with self._session_factory() as session:
-                stmt = (
-                    select(SharedContextEntry)
-                    .where(SharedContextEntry.tenant_id == tenant_id)
-                )
+                stmt = select(SharedContextEntry).where(SharedContextEntry.tenant_id == tenant_id)
                 if project_id:
                     stmt = stmt.where(SharedContextEntry.project_id == project_id)
                 stmt = stmt.order_by(SharedContextEntry.created_at.desc()).limit(limit)
@@ -207,21 +210,14 @@ class SharedContextService:
             embedding_col = SharedContextEntry.embedding
             distance = embedding_col.cosine_distance(query_embedding)
 
-            stmt = (
-                select(SharedContextEntry, (1 - distance).label("similarity"))
-                .where(
-                    SharedContextEntry.tenant_id == tenant_id,
-                    SharedContextEntry.embedding.isnot(None),
-                )
+            stmt = select(SharedContextEntry, (1 - distance).label("similarity")).where(
+                SharedContextEntry.tenant_id == tenant_id,
+                SharedContextEntry.embedding.isnot(None),
             )
             if project_id:
                 stmt = stmt.where(SharedContextEntry.project_id == project_id)
 
-            stmt = (
-                stmt
-                .order_by(distance)
-                .limit(limit)
-            )
+            stmt = stmt.order_by(distance).limit(limit)
 
             result = await session.execute(stmt)
             rows = result.all()
@@ -341,14 +337,19 @@ class SharedContextService:
         if affected:
             logger.info(
                 "Decayed relevance for %d stale context entries (tenant=%s, days=%d)",
-                affected, tenant_id, days,
+                affected,
+                tenant_id,
+                days,
             )
         return affected
 
     # ── Internal Helpers ─────────────────────────────────────
 
     async def _find_near_duplicate(
-        self, session, tenant_id: str, embedding: list[float],
+        self,
+        session,
+        tenant_id: str,
+        embedding: list[float],
         project_id=None,
     ):
         """Find a near-duplicate entry by cosine similarity."""
@@ -357,12 +358,9 @@ class SharedContextService:
         embedding_col = SharedContextEntry.embedding
         distance = embedding_col.cosine_distance(embedding)
 
-        stmt = (
-            select(SharedContextEntry, (1 - distance).label("similarity"))
-            .where(
-                SharedContextEntry.tenant_id == tenant_id,
-                SharedContextEntry.embedding.isnot(None),
-            )
+        stmt = select(SharedContextEntry, (1 - distance).label("similarity")).where(
+            SharedContextEntry.tenant_id == tenant_id,
+            SharedContextEntry.embedding.isnot(None),
         )
         if project_id:
             stmt = stmt.where(SharedContextEntry.project_id == project_id)

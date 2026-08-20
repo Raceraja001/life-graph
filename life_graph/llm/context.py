@@ -23,6 +23,7 @@ MODEL_CONTEXT_LIMITS: dict[str, int] = {
 # Reserve tokens for response generation
 RESPONSE_RESERVE = 4096
 
+
 def estimate_tokens(text: str) -> int:
     """Content-aware token estimation.
 
@@ -40,10 +41,10 @@ def estimate_tokens(text: str) -> int:
     if ascii_ratio < 0.5:
         # Heavy non-ASCII (Tamil, Hindi, etc.)
         chars_per_token = 2.0
-    elif '{' in text[:100] or text.strip().startswith('['):
+    elif "{" in text[:100] or text.strip().startswith("["):
         # JSON/structured data
         chars_per_token = 3.0
-    elif '```' in text or 'def ' in text or 'function ' in text:
+    elif "```" in text or "def " in text or "function " in text:
         # Code
         chars_per_token = 3.0
     else:
@@ -102,7 +103,9 @@ def trim_messages(
 
     logger.warning(
         "Context window pressure: %d tokens estimated, %d available (model: %s)",
-        total_tokens, available, model,
+        total_tokens,
+        available,
+        model,
     )
 
     # Reduce memory results when context is tight
@@ -138,7 +141,9 @@ def trim_messages(
         dropped = len(messages) - len(trimmed)
         logger.info(
             "Trimmed %d messages to fit context window (%d -> %d tokens)",
-            dropped, total_tokens, current_tokens,
+            dropped,
+            total_tokens,
+            current_tokens,
         )
         # Add a summary note
         summary_msg = {

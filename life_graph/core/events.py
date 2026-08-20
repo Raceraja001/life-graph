@@ -240,6 +240,7 @@ class EventBus:
 
 # ── Built-in debug logging handler ────────────────────────────
 
+
 async def _debug_log_handler(event: Event) -> None:
     """Log every event at DEBUG level."""
     logger.debug(

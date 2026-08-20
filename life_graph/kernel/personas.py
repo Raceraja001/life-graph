@@ -56,8 +56,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "You are Cody, a senior software engineer. You"
             " write clean, tested, production-ready code. You"
             " explain your reasoning and suggest improvements."
-            " Always consider edge cases and error handling."
-            + AGENT_TASK_PROPOSE_CONTRACT
+            " Always consider edge cases and error handling." + AGENT_TASK_PROPOSE_CONTRACT
         ),
         "intent_tags": ["code", "debug", "refactor"],
         "temperature": 0.4,
@@ -96,8 +95,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " deployments, containers, servers, and monitoring."
             " You prioritize reliability, security, and"
             " automation. Always explain risks before executing"
-            " destructive operations."
-            + COMMAND_PROPOSE_CONTRACT
+            " destructive operations." + COMMAND_PROPOSE_CONTRACT
         ),
         "intent_tags": ["deploy", "monitor", "infrastructure"],
         "temperature": 0.3,
@@ -221,8 +219,8 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " exercises, and track what they've already learned so you don't repeat"
             " yourself. Prefer teaching through building over lecturing."
             " End your reply with ONLY a JSON array of findings, each object "
-            "{\"title\": str, \"detail\": str, \"urgency\": \"now\"|\"brief\"}. Use \"now\" "
-            "only for genuinely time-sensitive items; use \"brief\" otherwise. If you have "
+            '{"title": str, "detail": str, "urgency": "now"|"brief"}. Use "now" '
+            'only for genuinely time-sensitive items; use "brief" otherwise. If you have '
             "nothing new to report, return []."
         ),
         "intent_tags": ["learn", "tutorial", "study"],
@@ -239,8 +237,8 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " genuinely new, useful findings — not restatements of what you already"
             " reported. You never take action, only report."
             " End your reply with ONLY a JSON array of findings, each object "
-            "{\"title\": str, \"detail\": str, \"urgency\": \"now\"|\"brief\"}. Use \"now\" "
-            "only for genuinely time-sensitive items; use \"brief\" otherwise. If you have "
+            '{"title": str, "detail": str, "urgency": "now"|"brief"}. Use "now" '
+            'only for genuinely time-sensitive items; use "brief" otherwise. If you have '
             "nothing new to report, return []."
         ),
         "intent_tags": ["research", "scout", "digest"],
@@ -257,8 +255,8 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " anything that needs attention — nothing more. You never send, pay, or"
             " write anything on the user's behalf; you only report what you find."
             " End your reply with ONLY a JSON array of findings, each object "
-            "{\"title\": str, \"detail\": str, \"urgency\": \"now\"|\"brief\"}. Use \"now\" "
-            "only for genuinely time-sensitive items; use \"brief\" otherwise. If you have "
+            '{"title": str, "detail": str, "urgency": "now"|"brief"}. Use "now" '
+            'only for genuinely time-sensitive items; use "brief" otherwise. If you have '
             "nothing new to report, return []."
         ),
         "intent_tags": ["admin", "reminder", "work"],
@@ -279,7 +277,14 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         ),
         "intent_tags": ["team", "build", "project"],
         "temperature": 0.4,
-        "allowed_tools": ["delegate_to_persona", "run_command", "git_status", "git_log", "git_diff", "git_branch"],
+        "allowed_tools": [
+            "delegate_to_persona",
+            "run_command",
+            "git_status",
+            "git_log",
+            "git_diff",
+            "git_branch",
+        ],
         "verifier_chain": ["tests_pass", "diff_within_scope"],
     },
     {

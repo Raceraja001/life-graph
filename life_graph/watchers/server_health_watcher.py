@@ -23,6 +23,7 @@ def _get_asyncssh():
     if not _asyncssh_checked:
         try:
             import asyncssh
+
             _asyncssh = asyncssh
         except ImportError:
             logger.warning(
@@ -75,13 +76,15 @@ class ServerHealthWatcher:
                 server_events = await self._check_server(server_config)
                 events.extend(server_events)
             except Exception as e:
-                events.append({
-                    "severity": "critical",
-                    "title": f"Server check failed: {server_config.get('name', server_config.get('host', 'unknown'))}",
-                    "details": str(e),
-                    "watcher_name": self.name,
-                    "timestamp": datetime.now(UTC),
-                })
+                events.append(
+                    {
+                        "severity": "critical",
+                        "title": f"Server check failed: {server_config.get('name', server_config.get('host', 'unknown'))}",
+                        "details": str(e),
+                        "watcher_name": self.name,
+                        "timestamp": datetime.now(UTC),
+                    }
+                )
 
         return events
 
@@ -105,13 +108,15 @@ class ServerHealthWatcher:
 
         asyncssh = _get_asyncssh()
         if asyncssh is None:
-            return [{
-                "severity": "important",
-                "title": f"Cannot check {name} — asyncssh not installed",
-                "details": "Install asyncssh to enable SSH health checks.",
-                "watcher_name": self.name,
-                "timestamp": datetime.now(UTC),
-            }]
+            return [
+                {
+                    "severity": "important",
+                    "title": f"Cannot check {name} — asyncssh not installed",
+                    "details": "Install asyncssh to enable SSH health checks.",
+                    "watcher_name": self.name,
+                    "timestamp": datetime.now(UTC),
+                }
+            ]
 
         try:
             conn = await asyncssh.connect(
@@ -124,13 +129,15 @@ class ServerHealthWatcher:
                 connect_timeout=self.SSH_TIMEOUT,
             )
         except Exception as e:
-            return [{
-                "severity": "critical",
-                "title": f"SSH unreachable: {name}",
-                "details": f"Connection failed after {self.SSH_TIMEOUT}s: {e}",
-                "watcher_name": self.name,
-                "timestamp": datetime.now(UTC),
-            }]
+            return [
+                {
+                    "severity": "critical",
+                    "title": f"SSH unreachable: {name}",
+                    "details": f"Connection failed after {self.SSH_TIMEOUT}s: {e}",
+                    "watcher_name": self.name,
+                    "timestamp": datetime.now(UTC),
+                }
+            ]
 
         try:
             # Disk
@@ -189,22 +196,26 @@ class ServerHealthWatcher:
 
                 if pct >= self.DISK_CRIT:
                     projection = await self._project_disk_full(conn, mount)
-                    events.append({
-                        "severity": "critical",
-                        "title": f"Disk critical: {server_name} {mount} at {pct}%",
-                        "details": f"Partition {mount} is {pct}% full. {projection}",
-                        "watcher_name": self.name,
-                        "timestamp": datetime.now(UTC),
-                    })
+                    events.append(
+                        {
+                            "severity": "critical",
+                            "title": f"Disk critical: {server_name} {mount} at {pct}%",
+                            "details": f"Partition {mount} is {pct}% full. {projection}",
+                            "watcher_name": self.name,
+                            "timestamp": datetime.now(UTC),
+                        }
+                    )
                 elif pct >= self.DISK_WARN:
                     projection = await self._project_disk_full(conn, mount)
-                    events.append({
-                        "severity": "important",
-                        "title": f"Disk warning: {server_name} {mount} at {pct}%",
-                        "details": f"Partition {mount} is {pct}% full. {projection}",
-                        "watcher_name": self.name,
-                        "timestamp": datetime.now(UTC),
-                    })
+                    events.append(
+                        {
+                            "severity": "important",
+                            "title": f"Disk warning: {server_name} {mount} at {pct}%",
+                            "details": f"Partition {mount} is {pct}% full. {projection}",
+                            "watcher_name": self.name,
+                            "timestamp": datetime.now(UTC),
+                        }
+                    )
         except Exception as e:
             logger.warning("Disk usage check failed for %s: %s", server_name, e)
 
@@ -267,18 +278,20 @@ class ServerHealthWatcher:
                 load_pct = (load_1 / ncpu) * 100 if ncpu > 0 else load_1 * 100
 
                 if load_pct >= self.CPU_WARN:
-                    events.append({
-                        "severity": "important",
-                        "title": f"High CPU: {server_name} at {load_pct:.0f}%",
-                        "details": (
-                            f"1-min load avg: {load_1:.2f}, "
-                            f"5-min: {parts[1] if len(parts) > 1 else 'N/A'}, "
-                            f"15-min: {parts[2] if len(parts) > 2 else 'N/A'} "
-                            f"({ncpu} cores)"
-                        ),
-                        "watcher_name": self.name,
-                        "timestamp": datetime.now(UTC),
-                    })
+                    events.append(
+                        {
+                            "severity": "important",
+                            "title": f"High CPU: {server_name} at {load_pct:.0f}%",
+                            "details": (
+                                f"1-min load avg: {load_1:.2f}, "
+                                f"5-min: {parts[1] if len(parts) > 1 else 'N/A'}, "
+                                f"15-min: {parts[2] if len(parts) > 2 else 'N/A'} "
+                                f"({ncpu} cores)"
+                            ),
+                            "watcher_name": self.name,
+                            "timestamp": datetime.now(UTC),
+                        }
+                    )
         except Exception as e:
             logger.warning("CPU check failed for %s: %s", server_name, e)
 
@@ -300,21 +313,25 @@ class ServerHealthWatcher:
                         if total > 0:
                             pct = (used / total) * 100
                             if pct >= 90:
-                                events.append({
-                                    "severity": "critical",
-                                    "title": f"Memory critical: {server_name} at {pct:.0f}%",
-                                    "details": f"Used {used}MB of {total}MB ({pct:.1f}%)",
-                                    "watcher_name": self.name,
-                                    "timestamp": datetime.now(UTC),
-                                })
+                                events.append(
+                                    {
+                                        "severity": "critical",
+                                        "title": f"Memory critical: {server_name} at {pct:.0f}%",
+                                        "details": f"Used {used}MB of {total}MB ({pct:.1f}%)",
+                                        "watcher_name": self.name,
+                                        "timestamp": datetime.now(UTC),
+                                    }
+                                )
                             elif pct >= 80:
-                                events.append({
-                                    "severity": "important",
-                                    "title": f"High memory: {server_name} at {pct:.0f}%",
-                                    "details": f"Used {used}MB of {total}MB ({pct:.1f}%)",
-                                    "watcher_name": self.name,
-                                    "timestamp": datetime.now(UTC),
-                                })
+                                events.append(
+                                    {
+                                        "severity": "important",
+                                        "title": f"High memory: {server_name} at {pct:.0f}%",
+                                        "details": f"Used {used}MB of {total}MB ({pct:.1f}%)",
+                                        "watcher_name": self.name,
+                                        "timestamp": datetime.now(UTC),
+                                    }
+                                )
                     break
 
         except Exception as e:
@@ -341,21 +358,25 @@ class ServerHealthWatcher:
                 status = result.stdout.strip()
 
                 if status != "active":
-                    events.append({
-                        "severity": "critical",
-                        "title": f"Service down: {svc} on {server_name}",
-                        "details": f"Service '{svc}' status: {status}",
+                    events.append(
+                        {
+                            "severity": "critical",
+                            "title": f"Service down: {svc} on {server_name}",
+                            "details": f"Service '{svc}' status: {status}",
+                            "watcher_name": self.name,
+                            "timestamp": datetime.now(UTC),
+                        }
+                    )
+            except Exception as e:
+                events.append(
+                    {
+                        "severity": "important",
+                        "title": f"Cannot check service {svc} on {server_name}",
+                        "details": str(e),
                         "watcher_name": self.name,
                         "timestamp": datetime.now(UTC),
-                    })
-            except Exception as e:
-                events.append({
-                    "severity": "important",
-                    "title": f"Cannot check service {svc} on {server_name}",
-                    "details": str(e),
-                    "watcher_name": self.name,
-                    "timestamp": datetime.now(UTC),
-                })
+                    }
+                )
 
         return events
 
@@ -373,29 +394,35 @@ class ServerHealthWatcher:
                 resp = await client.get(url)
 
             if resp.status_code >= 500:
-                events.append({
-                    "severity": "critical",
-                    "title": f"HTTP health check failed: {name}",
-                    "details": f"GET {url} returned {resp.status_code}",
-                    "watcher_name": self.name,
-                    "timestamp": datetime.now(UTC),
-                })
+                events.append(
+                    {
+                        "severity": "critical",
+                        "title": f"HTTP health check failed: {name}",
+                        "details": f"GET {url} returned {resp.status_code}",
+                        "watcher_name": self.name,
+                        "timestamp": datetime.now(UTC),
+                    }
+                )
             elif resp.status_code >= 400:
-                events.append({
-                    "severity": "important",
-                    "title": f"HTTP health check warning: {name}",
-                    "details": f"GET {url} returned {resp.status_code}",
-                    "watcher_name": self.name,
-                    "timestamp": datetime.now(UTC),
-                })
+                events.append(
+                    {
+                        "severity": "important",
+                        "title": f"HTTP health check warning: {name}",
+                        "details": f"GET {url} returned {resp.status_code}",
+                        "watcher_name": self.name,
+                        "timestamp": datetime.now(UTC),
+                    }
+                )
 
         except Exception as e:
-            events.append({
-                "severity": "critical",
-                "title": f"HTTP unreachable: {name}",
-                "details": f"GET {url} failed: {e}",
-                "watcher_name": self.name,
-                "timestamp": datetime.now(UTC),
-            })
+            events.append(
+                {
+                    "severity": "critical",
+                    "title": f"HTTP unreachable: {name}",
+                    "details": f"GET {url} failed: {e}",
+                    "watcher_name": self.name,
+                    "timestamp": datetime.now(UTC),
+                }
+            )
 
         return events

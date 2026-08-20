@@ -102,9 +102,7 @@ class PluginManager:
 
         register_fn = getattr(module, "register", None)
         if not callable(register_fn):
-            raise RuntimeError(
-                f"Plugin '{name}' has no callable 'register' in __init__.py"
-            )
+            raise RuntimeError(f"Plugin '{name}' has no callable 'register' in __init__.py")
 
         try:
             register_fn(self.event_bus, config)
@@ -132,7 +130,4 @@ class PluginManager:
         Returns:
             List of dicts with ``name``, ``status``, and ``config`` keys.
         """
-        return [
-            {"name": name, **info}
-            for name, info in self.loaded.items()
-        ]
+        return [{"name": name, **info} for name, info in self.loaded.items()]

@@ -50,9 +50,7 @@ async def create_memory(
     # Heuristic: if tags/properties already provided and content is short,
     # treat as structured input and store directly.
     is_structured = (
-        body.tags is not None
-        and body.importance is not None
-        and len(body.content.split()) <= 20
+        body.tags is not None and body.importance is not None and len(body.content.split()) <= 20
     )
 
     if is_structured:
@@ -113,9 +111,7 @@ async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemorySt
     if row.status == "rejected":
         return row  # idempotent
     if row.status != "pending":
-        raise HTTPException(
-            status_code=409, detail=f"Cannot reject a {row.status} memory"
-        )
+        raise HTTPException(status_code=409, detail=f"Cannot reject a {row.status} memory")
     updated = await store.update(memory_id, MemoryUpdate(status="rejected"))
     try:
         await event_bus.emit(
@@ -281,7 +277,6 @@ async def unarchive_memory(
     return success_response(data=MemoryResponse.model_validate(row))
 
 
-
 @router.get(
     "/",
     summary="List memories with optional filters",
@@ -358,9 +353,8 @@ async def list_memories(
 
 class DenyRequest(BaseModel):
     """Payload for denying a memory — optionally replacing it with a new fact."""
-    replacement: str | None = Field(
-        None, description="New content that replaces the denied memory"
-    )
+
+    replacement: str | None = Field(None, description="New content that replaces the denied memory")
 
 
 @router.post(
@@ -415,4 +409,3 @@ async def deny_memory(
         "replacement": MemoryResponse.model_validate(replacement) if replacement else None,
     }
     return success_response(data=result)
-

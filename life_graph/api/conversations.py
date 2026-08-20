@@ -42,10 +42,7 @@ async def create_conversation(svc: ConversationService = Depends(get_conversatio
 async def list_conversations(svc: ConversationService = Depends(get_conversation_service)):
     convs = await svc.list_recent()
     return success_response(
-        data=[
-            {"id": str(c.id), "title": c.title, "updated_at": str(c.updated_at)}
-            for c in convs
-        ]
+        data=[{"id": str(c.id), "title": c.title, "updated_at": str(c.updated_at)} for c in convs]
     )
 
 

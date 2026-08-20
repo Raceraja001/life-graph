@@ -71,7 +71,9 @@ def parse_docx(content: bytes, filename: str) -> str:
     try:
         from docx import Document
     except ImportError:
-        logger.warning("python-docx not installed — cannot parse DOCX files. Run: pip install python-docx")
+        logger.warning(
+            "python-docx not installed — cannot parse DOCX files. Run: pip install python-docx"
+        )
         return f"[Error: DOCX parsing unavailable. Install python-docx to parse {filename}]"
 
     doc = Document(io.BytesIO(content))
@@ -127,8 +129,7 @@ def parse_file(content: bytes, filename: str) -> str:
 
     if ext not in PARSERS:
         raise ValueError(
-            f"Unsupported file type: {ext}. "
-            f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+            f"Unsupported file type: {ext}. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
 
     parser = PARSERS[ext]

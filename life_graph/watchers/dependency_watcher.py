@@ -19,13 +19,30 @@ from life_graph.watchers.scrapers.pypi import check_pypi_version
 logger = logging.getLogger(__name__)
 
 # Security-related keywords that escalate to CRITICAL severity
-SECURITY_KEYWORDS = frozenset({
-    "security", "cve", "vulnerability", "exploit", "patch",
-    "xss", "csrf", "injection", "rce", "remote code execution",
-    "denial of service", "dos", "buffer overflow", "privilege escalation",
-    "authentication bypass", "sql injection", "ssrf", "deserialization",
-    "path traversal", "directory traversal",
-})
+SECURITY_KEYWORDS = frozenset(
+    {
+        "security",
+        "cve",
+        "vulnerability",
+        "exploit",
+        "patch",
+        "xss",
+        "csrf",
+        "injection",
+        "rce",
+        "remote code execution",
+        "denial of service",
+        "dos",
+        "buffer overflow",
+        "privilege escalation",
+        "authentication bypass",
+        "sql injection",
+        "ssrf",
+        "deserialization",
+        "path traversal",
+        "directory traversal",
+    }
+)
 
 # Regex for requirements.txt lines: package==version
 _REQ_RE = re.compile(r"^\s*([A-Za-z0-9_][A-Za-z0-9_.\-]*)\s*==\s*([^\s#;]+)")
@@ -74,7 +91,9 @@ def _parse_version(v: str) -> tuple[int, ...]:
 
 
 def _classify_severity(
-    current: str, latest: str, summary: str = "",
+    current: str,
+    latest: str,
+    summary: str = "",
 ) -> Severity:
     """Classify update severity based on version bump and security keywords."""
     # Check security keywords in summary
@@ -97,7 +116,10 @@ def _classify_severity(
 
 
 async def _get_impact_analysis(
-    package: str, current: str, latest: str, summary: str,
+    package: str,
+    current: str,
+    latest: str,
+    summary: str,
 ) -> str | None:
     """Optional LLM-based impact analysis via litellm."""
     try:
@@ -141,7 +163,8 @@ class DependencyWatcher(BaseWatcher):
 
         self.logger.info(
             "Checking %d Python + %d Node dependencies",
-            len(python_deps), len(node_deps),
+            len(python_deps),
+            len(node_deps),
         )
 
         updates_found: list[dict[str, Any]] = []
@@ -151,12 +174,16 @@ class DependencyWatcher(BaseWatcher):
             info = await check_pypi_version(pkg)
             if info and info["version"] != current_ver:
                 severity = _classify_severity(
-                    current_ver, info["version"], info.get("summary", ""),
+                    current_ver,
+                    info["version"],
+                    info.get("summary", ""),
                 )
                 impact = None
                 if severity in (Severity.CRITICAL, Severity.IMPORTANT):
                     impact = await _get_impact_analysis(
-                        pkg, current_ver, info["version"],
+                        pkg,
+                        current_ver,
+                        info["version"],
                         info.get("summary", ""),
                     )
 
@@ -182,13 +209,16 @@ class DependencyWatcher(BaseWatcher):
             info = await check_npm_version(pkg)
             if info and info["version"] != current_ver:
                 severity = _classify_severity(
-                    current_ver, info["version"],
+                    current_ver,
+                    info["version"],
                     info.get("description", ""),
                 )
                 impact = None
                 if severity in (Severity.CRITICAL, Severity.IMPORTANT):
                     impact = await _get_impact_analysis(
-                        pkg, current_ver, info["version"],
+                        pkg,
+                        current_ver,
+                        info["version"],
                         info.get("description", ""),
                     )
 
@@ -212,16 +242,24 @@ class DependencyWatcher(BaseWatcher):
         # ── Emit summary event ────────────────────────────────
         if updates_found:
             critical = sum(
-                1 for u in updates_found
+                1
+                for u in updates_found
                 if _classify_severity(
-                    u["current"], u["latest"], u.get("summary", ""),
-                ) == Severity.CRITICAL
+                    u["current"],
+                    u["latest"],
+                    u.get("summary", ""),
+                )
+                == Severity.CRITICAL
             )
             important = sum(
-                1 for u in updates_found
+                1
+                for u in updates_found
                 if _classify_severity(
-                    u["current"], u["latest"], u.get("summary", ""),
-                ) == Severity.IMPORTANT
+                    u["current"],
+                    u["latest"],
+                    u.get("summary", ""),
+                )
+                == Severity.IMPORTANT
             )
             info_count = len(updates_found) - critical - important
 
@@ -231,8 +269,10 @@ class DependencyWatcher(BaseWatcher):
             )
             self.emit_event(
                 severity=(
-                    Severity.CRITICAL if critical > 0
-                    else Severity.IMPORTANT if important > 0
+                    Severity.CRITICAL
+                    if critical > 0
+                    else Severity.IMPORTANT
+                    if important > 0
                     else Severity.INFO
                 ),
                 title="Dependency Check Summary",

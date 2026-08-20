@@ -87,7 +87,7 @@ synthesize a clear, natural answer. Follow these rules:
 
 class SynthesisService:
     """Generate natural language answers from search results.
-    
+
     Combines retrieved memories with an LLM to produce
     human-readable answers to questions about the user's knowledge.
     """
@@ -175,8 +175,7 @@ class SynthesisService:
         )
 
         model_used = model or (
-            settings.openrouter_model if settings.use_hybrid_llm
-            else settings.lm_synthesis_model
+            settings.openrouter_model if settings.use_hybrid_llm else settings.lm_synthesis_model
         )
 
         # Fallback: if LLM is unavailable, build a rule-based answer

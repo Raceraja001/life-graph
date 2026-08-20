@@ -57,11 +57,7 @@ async def list_pending_questions(
     """
     questions = await svc.list_pending(tenant_id)
     return success_response(
-        data={
-            "questions": [
-                InterviewQuestionResponse.model_validate(q) for q in questions
-            ]
-        }
+        data={"questions": [InterviewQuestionResponse.model_validate(q) for q in questions]}
     )
 
 

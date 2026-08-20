@@ -97,9 +97,7 @@ class TaskOriginationService:
             return True
         return str(finding.get("severity", "")).lower() in ACTIONABLE_SEVERITIES
 
-    def select_rule(
-        self, watcher_name: str, finding: dict
-    ) -> tuple[str, str] | None:
+    def select_rule(self, watcher_name: str, finding: dict) -> tuple[str, str] | None:
         """Resolve (agent_name, task_type) for a finding.
 
         A finding may pin its own ``agent_name`` + ``task_type``; otherwise
@@ -113,15 +111,9 @@ class TaskOriginationService:
         return self._rules.get(watcher_name)
 
     @staticmethod
-    def fingerprint(
-        tenant_id: str, watcher_name: str, agent_name: str, finding: dict
-    ) -> str:
+    def fingerprint(tenant_id: str, watcher_name: str, agent_name: str, finding: dict) -> str:
         """Stable id for a finding so re-runs don't spawn duplicates."""
-        key = (
-            finding.get("fingerprint")
-            or finding.get("title")
-            or str(finding.get("details", ""))
-        )
+        key = finding.get("fingerprint") or finding.get("title") or str(finding.get("details", ""))
         raw = f"{tenant_id}|{watcher_name}|{agent_name}|{key}"
         return hashlib.sha256(raw.encode()).hexdigest()
 
@@ -155,30 +147,26 @@ class TaskOriginationService:
             if tenant_open + len(spawned) >= self._tenant_wip:
                 logger.info(
                     "Tenant %s at WIP limit (%d) — deferring remaining findings",
-                    tenant_id, self._tenant_wip,
+                    tenant_id,
+                    self._tenant_wip,
                 )
                 break
 
             project_id = finding.get("project_id") or payload.get("project_id")
             if project_id is not None:
-                proj_open = await self._open_task_count(
-                    tenant_id, project_id=project_id
-                )
-                proj_spawned = sum(
-                    1 for s in spawned if s.get("project_id") == project_id
-                )
+                proj_open = await self._open_task_count(tenant_id, project_id=project_id)
+                proj_spawned = sum(1 for s in spawned if s.get("project_id") == project_id)
                 if proj_open + proj_spawned >= self._project_wip:
                     logger.info(
                         "Project %s at WIP limit (%d) — skipping finding",
-                        project_id, self._project_wip,
+                        project_id,
+                        self._project_wip,
                     )
                     continue
 
             fp = self.fingerprint(tenant_id, watcher_name, agent_name, finding)
             if await self._has_open_task(tenant_id, fp):
-                logger.debug(
-                    "Open task already exists for finding %s — skip", fp[:12]
-                )
+                logger.debug("Open task already exists for finding %s — skip", fp[:12])
                 continue
 
             severity = str(finding.get("severity", "")).lower()
@@ -207,15 +195,15 @@ class TaskOriginationService:
         if spawned:
             logger.info(
                 "Originated %d task(s) from %s findings for tenant %s",
-                len(spawned), watcher_name, tenant_id,
+                len(spawned),
+                watcher_name,
+                tenant_id,
             )
         return spawned
 
     # ── DB access (overridden in unit tests) ──────────────────
 
-    async def _open_task_count(
-        self, tenant_id: str, project_id: Any = None
-    ) -> int:
+    async def _open_task_count(self, tenant_id: str, project_id: Any = None) -> int:
         """Count queued/running tasks for a tenant (optionally a project)."""
         async with self._session_factory() as session:
             stmt = (

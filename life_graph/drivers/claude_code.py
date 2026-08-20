@@ -120,9 +120,7 @@ class ClaudeCodeDriver:
     max_concurrency = 2
 
     def __init__(self, binary: str | None = None) -> None:
-        self._binary = binary or getattr(
-            settings, "driver_claude_code_bin", "claude"
-        )
+        self._binary = binary or getattr(settings, "driver_claude_code_bin", "claude")
 
     # ── Protocol ──────────────────────────────────────────────
 
@@ -154,13 +152,13 @@ class ClaudeCodeDriver:
         if cli_tools is not None and not cli_tools:
             logger.warning(
                 "claude_code refusing task %s: allowed_tools %r maps to no CLI tool",
-                packet.task_id, packet.allowed_tools,
+                packet.task_id,
+                packet.allowed_tools,
             )
             return DriverResult(
                 success=False,
                 error=(
-                    "No CLI-mappable tools in persona allowlist — "
-                    "refusing to dispatch unscoped"
+                    "No CLI-mappable tools in persona allowlist — refusing to dispatch unscoped"
                 ),
                 duration_ms=int((time.monotonic() - start) * 1000),
                 metadata={"exit_status": "refused_unscoped"},
@@ -214,7 +212,9 @@ class ClaudeCodeDriver:
                 output=str(data.get("result", ""))[:20000],
                 cost_usd=float(data.get("total_cost_usd") or 0.0),
                 duration_ms=duration,
-                error=None if success else (
+                error=None
+                if success
+                else (
                     str(data.get("result") or err.decode(errors="replace"))[:2000]
                     or f"exit code {proc.returncode}"
                 ),
@@ -269,8 +269,7 @@ class ClaudeCodeDriver:
         parts.append(packet.instruction)
         if packet.project_context:
             safe_project = {
-                k: v for k, v in packet.project_context.items()
-                if k not in ("path", "isolation")
+                k: v for k, v in packet.project_context.items() if k not in ("path", "isolation")
             }
             if safe_project:
                 parts.append(f"\n## Project context\n{json.dumps(safe_project, default=str)}")
@@ -278,7 +277,9 @@ class ClaudeCodeDriver:
             if packet.procedures:
                 parts.append(f"\n## Known procedures\n{json.dumps(packet.procedures, default=str)}")
             if packet.preferences:
-                parts.append(f"\n## User preferences\n{json.dumps(packet.preferences, default=str)}")
+                parts.append(
+                    f"\n## User preferences\n{json.dumps(packet.preferences, default=str)}"
+                )
             # Immune System: memories are trust-tiered; untrusted ones are
             # rendered inside a data fence, never as bare instructions.
             memory_block = render_memory_block(packet.memories)

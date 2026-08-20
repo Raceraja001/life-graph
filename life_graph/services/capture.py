@@ -64,8 +64,7 @@ class CaptureService:
             The new or duplicate ``CaptureEvent``.
         """
         resolved_tier = (
-            coerce_tier(trust_tier) if trust_tier is not None
-            else classify_surface(surface)
+            coerce_tier(trust_tier) if trust_tier is not None else classify_surface(surface)
         )
         now = occurred_at or datetime.now(UTC)
         content_hash = hashlib.sha256(content.encode()).hexdigest()
@@ -244,11 +243,7 @@ class CaptureService:
             "context": correction.context or {},
             "domain_tags": correction.domain_tags or [],
             "kind": correction.kind,
-            "created_at": (
-                correction.created_at.isoformat()
-                if correction.created_at
-                else None
-            ),
+            "created_at": (correction.created_at.isoformat() if correction.created_at else None),
         }
 
     @staticmethod
@@ -296,9 +291,7 @@ class CaptureService:
 
     # ── Yield Tracking ────────────────────────────────────────
 
-    async def update_yield_count(
-        self, capture_event_id: uuid.UUID, delta: int = 1
-    ) -> None:
+    async def update_yield_count(self, capture_event_id: uuid.UUID, delta: int = 1) -> None:
         """Increment yield_count after processing produces artifacts.
 
         Args:

@@ -76,9 +76,7 @@ async def nightly_self_heal(
             suites = result.scalars().all()
 
         if not suites:
-            logger.info(
-                "No auto-optimize suites for tenant %s — skipping", tenant_id
-            )
+            logger.info("No auto-optimize suites for tenant %s — skipping", tenant_id)
             await _finalize_log(
                 session_factory,
                 run_id,
@@ -87,9 +85,7 @@ async def nightly_self_heal(
             )
             return {"status": "success", "suites_processed": 0}
 
-        accuracy_threshold = getattr(
-            settings, "eval_accuracy_threshold_pct", 90.0
-        )
+        accuracy_threshold = getattr(settings, "eval_accuracy_threshold_pct", 90.0)
 
         for suite in suites:
             suite_result: dict[str, Any] = {
@@ -100,12 +96,8 @@ async def nightly_self_heal(
 
             try:
                 # Check consecutive failures — skip if too many
-                max_consecutive = getattr(
-                    suite, "max_consecutive_fails", 3
-                )
-                current_failures = getattr(
-                    suite, "consecutive_failures", 0
-                )
+                max_consecutive = getattr(suite, "max_consecutive_fails", 3)
+                current_failures = getattr(suite, "consecutive_failures", 0)
 
                 if current_failures >= max_consecutive:
                     logger.warning(
@@ -117,17 +109,14 @@ async def nightly_self_heal(
                     )
                     suite_result["status"] = "escalated"
                     suite_result["reason"] = (
-                        f"consecutive_failures={current_failures} "
-                        f">= max={max_consecutive}"
+                        f"consecutive_failures={current_failures} >= max={max_consecutive}"
                     )
                     suite_results.append(suite_result)
                     overall_status = "partial"
                     continue
 
                 # Step 1: Get active prompt
-                active_prompt = await prompt_service.get_active_prompt(
-                    tenant_id, suite.task_type
-                )
+                active_prompt = await prompt_service.get_active_prompt(tenant_id, suite.task_type)
                 if active_prompt is None:
                     suite_result["status"] = "skipped"
                     suite_result["reason"] = "no_active_prompt"
@@ -149,15 +138,12 @@ async def nightly_self_heal(
                 if accuracy >= accuracy_threshold:
                     suite_result["status"] = "healthy"
                     # Reset consecutive failures on success
-                    await _reset_consecutive_failures(
-                        session_factory, suite.id
-                    )
+                    await _reset_consecutive_failures(session_factory, suite.id)
                     suite_results.append(suite_result)
                     continue
 
                 logger.info(
-                    "Suite %s (%s) accuracy %.1f%% < threshold %.1f%% "
-                    "— triggering optimization",
+                    "Suite %s (%s) accuracy %.1f%% < threshold %.1f%% — triggering optimization",
                     suite.id,
                     suite.task_type,
                     accuracy,
@@ -172,43 +158,29 @@ async def nightly_self_heal(
                 )
 
                 suite_result["optimization_status"] = opt_result["status"]
-                suite_result["optimization_run_id"] = str(
-                    opt_result["optimization_run_id"]
-                )
+                suite_result["optimization_run_id"] = str(opt_result["optimization_run_id"])
 
                 # Step 5: Handle result
                 if opt_result["status"] == "deployed":
                     suite_result["status"] = "auto_fixed"
-                    await _reset_consecutive_failures(
-                        session_factory, suite.id
-                    )
+                    await _reset_consecutive_failures(session_factory, suite.id)
                 elif opt_result["status"] == "needs_review":
                     suite_result["status"] = "needs_review"
-                    await _increment_consecutive_failures(
-                        session_factory, suite.id
-                    )
+                    await _increment_consecutive_failures(session_factory, suite.id)
                     overall_status = "partial"
                 elif opt_result["status"] == "error":
                     suite_result["status"] = "error"
-                    await _increment_consecutive_failures(
-                        session_factory, suite.id
-                    )
+                    await _increment_consecutive_failures(session_factory, suite.id)
                     overall_status = "partial"
                 else:
                     suite_result["status"] = "no_improvement"
-                    await _increment_consecutive_failures(
-                        session_factory, suite.id
-                    )
+                    await _increment_consecutive_failures(session_factory, suite.id)
 
             except Exception as e:
-                logger.exception(
-                    "Nightly self-heal failed for suite %s", suite.id
-                )
+                logger.exception("Nightly self-heal failed for suite %s", suite.id)
                 suite_result["status"] = "error"
                 suite_result["error"] = str(e)
-                await _increment_consecutive_failures(
-                    session_factory, suite.id
-                )
+                await _increment_consecutive_failures(session_factory, suite.id)
                 overall_status = "partial"
 
             suite_results.append(suite_result)
@@ -223,12 +195,8 @@ async def nightly_self_heal(
         return {"status": overall_status, **summary}
 
     except Exception as e:
-        logger.exception(
-            "Nightly self-heal failed entirely for tenant %s", tenant_id
-        )
-        await _finalize_log(
-            session_factory, run_id, "error", {"error": str(e)}
-        )
+        logger.exception("Nightly self-heal failed entirely for tenant %s", tenant_id)
+        await _finalize_log(session_factory, run_id, "error", {"error": str(e)})
         return {"status": "error", "error": str(e)}
 
 
@@ -253,9 +221,7 @@ async def _finalize_log(
             await session.commit()
 
 
-async def _reset_consecutive_failures(
-    session_factory, suite_id: uuid.UUID
-) -> None:
+async def _reset_consecutive_failures(session_factory, suite_id: uuid.UUID) -> None:
     """Reset consecutive_failures counter for a suite."""
     from life_graph.self_improving.models import EvalSuite
 
@@ -266,16 +232,12 @@ async def _reset_consecutive_failures(
             await session.commit()
 
 
-async def _increment_consecutive_failures(
-    session_factory, suite_id: uuid.UUID
-) -> None:
+async def _increment_consecutive_failures(session_factory, suite_id: uuid.UUID) -> None:
     """Increment consecutive_failures counter for a suite."""
     from life_graph.self_improving.models import EvalSuite
 
     async with session_factory() as session:
         suite = await session.get(EvalSuite, suite_id)
         if suite and hasattr(suite, "consecutive_failures"):
-            suite.consecutive_failures = (
-                getattr(suite, "consecutive_failures", 0) + 1
-            )
+            suite.consecutive_failures = getattr(suite, "consecutive_failures", 0) + 1
             await session.commit()

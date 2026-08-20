@@ -41,13 +41,13 @@ class SafetyRuleService:
         await self._session.flush()
         logger.info(
             "Created safety rule: tenant=%s, action=%s, risk=%s",
-            tenant_id, action_name, risk_level,
+            tenant_id,
+            action_name,
+            risk_level,
         )
         return rule
 
-    async def get_rule(
-        self, tenant_id: str, rule_id: str
-    ) -> ActionSafetyRule | None:
+    async def get_rule(self, tenant_id: str, rule_id: str) -> ActionSafetyRule | None:
         """Get a single safety rule by ID."""
         stmt = select(ActionSafetyRule).where(
             ActionSafetyRule.id == rule_id,
@@ -64,9 +64,7 @@ class SafetyRuleService:
         risk_level: str | None = None,
     ) -> list[ActionSafetyRule]:
         """List safety rules with optional filters."""
-        stmt = select(ActionSafetyRule).where(
-            ActionSafetyRule.tenant_id == tenant_id
-        )
+        stmt = select(ActionSafetyRule).where(ActionSafetyRule.tenant_id == tenant_id)
 
         if enabled_only:
             stmt = stmt.where(ActionSafetyRule.enabled.is_(True))
@@ -79,9 +77,7 @@ class SafetyRuleService:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def update_rule(
-        self, tenant_id: str, rule_id: str, **updates
-    ) -> ActionSafetyRule | None:
+    async def update_rule(self, tenant_id: str, rule_id: str, **updates) -> ActionSafetyRule | None:
         """Update a safety rule's fields."""
         rule = await self.get_rule(tenant_id, rule_id)
         if rule is None:
@@ -221,9 +217,7 @@ class SafetyRuleService:
         created = []
         for rule_data in defaults:
             if rule_data["action_name"] in existing_names:
-                logger.debug(
-                    "Skipping existing rule: %s", rule_data["action_name"]
-                )
+                logger.debug("Skipping existing rule: %s", rule_data["action_name"])
                 continue
 
             rule = await self.create_rule(

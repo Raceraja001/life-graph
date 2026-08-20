@@ -18,9 +18,21 @@ logger = logging.getLogger(__name__)
 
 # Directories to skip
 VENDORED_DIRS = {
-    "node_modules", ".venv", "venv", "vendor", "__pycache__",
-    ".git", ".tox", "dist", "build", "egg-info", ".eggs",
-    "site-packages", ".mypy_cache", ".pytest_cache", "migrations",
+    "node_modules",
+    ".venv",
+    "venv",
+    "vendor",
+    "__pycache__",
+    ".git",
+    ".tox",
+    "dist",
+    "build",
+    "egg-info",
+    ".eggs",
+    "site-packages",
+    ".mypy_cache",
+    ".pytest_cache",
+    "migrations",
 }
 
 
@@ -51,7 +63,8 @@ class ConfigParser:
 
         logger.info(
             "Config parsing produced %d memories from %s",
-            len(memories), repo_path,
+            len(memories),
+            repo_path,
         )
         return memories
 
@@ -81,13 +94,15 @@ class ConfigParser:
         black = tool.get("black", {})
         if black:
             line_length = black.get("line-length", "default")
-            memories.append({
-                "content": f"Uses Black formatter (line-length={line_length})",
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "python", "formatting", "black"],
-            })
+            memories.append(
+                {
+                    "content": f"Uses Black formatter (line-length={line_length})",
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "python", "formatting", "black"],
+                }
+            )
 
         # Pytest configuration
         pytest_cfg = tool.get("pytest", {}).get("ini_options", {})
@@ -98,25 +113,29 @@ class ConfigParser:
             if "testpaths" in pytest_cfg:
                 parts.append(f"testpaths={pytest_cfg['testpaths']}")
             detail = ": " + ", ".join(parts) if parts else ""
-            memories.append({
-                "content": f"Pytest configuration{detail}",
-                "type_tag": "preference",
-                "importance": 0.6,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "python", "testing", "pytest"],
-            })
+            memories.append(
+                {
+                    "content": f"Pytest configuration{detail}",
+                    "type_tag": "preference",
+                    "importance": 0.6,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "python", "testing", "pytest"],
+                }
+            )
 
         # Mypy configuration
         mypy = tool.get("mypy", {})
         if mypy:
             strict = mypy.get("strict", False)
-            memories.append({
-                "content": f"Uses mypy for type checking (strict={strict})",
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "python", "typing", "mypy"],
-            })
+            memories.append(
+                {
+                    "content": f"Uses mypy for type checking (strict={strict})",
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "python", "typing", "mypy"],
+                }
+            )
 
         return memories
 
@@ -126,23 +145,27 @@ class ConfigParser:
 
         line_length = ruff.get("line-length")
         if line_length:
-            memories.append({
-                "content": f"Uses ruff linter with line-length={line_length}",
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "python", "linting", "ruff"],
-            })
+            memories.append(
+                {
+                    "content": f"Uses ruff linter with line-length={line_length}",
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "python", "linting", "ruff"],
+                }
+            )
 
         select_rules = ruff.get("select") or ruff.get("lint", {}).get("select")
         if select_rules:
-            memories.append({
-                "content": f"Ruff lint rules selected: {', '.join(select_rules[:10])}",
-                "type_tag": "preference",
-                "importance": 0.6,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "python", "linting", "ruff"],
-            })
+            memories.append(
+                {
+                    "content": f"Ruff lint rules selected: {', '.join(select_rules[:10])}",
+                    "type_tag": "preference",
+                    "importance": 0.6,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "python", "linting", "ruff"],
+                }
+            )
 
         return memories
 
@@ -177,13 +200,15 @@ class ConfigParser:
             parts.append(f"jsx={compiler['jsx']}")
 
         if parts:
-            memories.append({
-                "content": f"TypeScript config: {', '.join(parts)}",
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "typescript", "config"],
-            })
+            memories.append(
+                {
+                    "content": f"TypeScript config: {', '.join(parts)}",
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "typescript", "config"],
+                }
+            )
 
         return memories
 
@@ -210,13 +235,15 @@ class ConfigParser:
             parts.append(f"indent_size={indent_size.group(1)}")
 
         if parts:
-            memories.append({
-                "content": f"Editor config preferences: {', '.join(parts)}",
-                "type_tag": "preference",
-                "importance": 0.6,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "editor", "formatting"],
-            })
+            memories.append(
+                {
+                    "content": f"Editor config preferences: {', '.join(parts)}",
+                    "type_tag": "preference",
+                    "importance": 0.6,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "editor", "formatting"],
+                }
+            )
 
         return memories
 
@@ -254,13 +281,15 @@ class ConfigParser:
             if details:
                 content += f" ({', '.join(details)})"
 
-            memories.append({
-                "content": content,
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "docker", "infrastructure"],
-            })
+            memories.append(
+                {
+                    "content": content,
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "docker", "infrastructure"],
+                }
+            )
             break  # Only first Dockerfile to avoid noise
 
         return memories
@@ -284,22 +313,26 @@ class ConfigParser:
 
         if deps:
             top = deps[:10]
-            memories.append({
-                "content": f"Node.js dependencies: {', '.join(top)}",
-                "type_tag": "preference",
-                "importance": 0.6,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "javascript", "dependencies"],
-            })
+            memories.append(
+                {
+                    "content": f"Node.js dependencies: {', '.join(top)}",
+                    "type_tag": "preference",
+                    "importance": 0.6,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "javascript", "dependencies"],
+                }
+            )
 
         if dev_deps:
             top = dev_deps[:10]
-            memories.append({
-                "content": f"Node.js dev dependencies: {', '.join(top)}",
-                "type_tag": "preference",
-                "importance": 0.5,
-                "source": "cold_start:config_parse",
-                "tags": ["preference", "javascript", "devDependencies"],
-            })
+            memories.append(
+                {
+                    "content": f"Node.js dev dependencies: {', '.join(top)}",
+                    "type_tag": "preference",
+                    "importance": 0.5,
+                    "source": "cold_start:config_parse",
+                    "tags": ["preference", "javascript", "devDependencies"],
+                }
+            )
 
         return memories

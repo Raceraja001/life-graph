@@ -56,10 +56,12 @@ class NotificationEngine:
 
             async with self._session_factory() as session:
                 result = await session.execute(
-                    select(NotificationChannel).where(
+                    select(NotificationChannel)
+                    .where(
                         NotificationChannel.tenant_id == tenant_id,
                         NotificationChannel.enabled == True,  # noqa: E712
-                    ).order_by(NotificationChannel.priority.desc())
+                    )
+                    .order_by(NotificationChannel.priority.desc())
                 )
                 rows = result.scalars().all()
                 return [
@@ -232,10 +234,12 @@ class NotificationEngine:
 
             async with self._session_factory() as session:
                 result = await session.execute(
-                    select(Notification).where(
+                    select(Notification)
+                    .where(
                         Notification.tenant_id == tenant_id,
                         Notification.status == "queued",
-                    ).order_by(Notification.created_at)
+                    )
+                    .order_by(Notification.created_at)
                 )
                 pending = result.scalars().all()
 
@@ -359,7 +363,7 @@ class NotificationEngine:
                 <p style="margin: 0 0 12px 0; color: #495057;"><strong>Watcher:</strong> {watcher}</p>
                 <p style="margin: 0 0 12px 0; color: #495057;"><strong>Time:</strong> {ts}</p>
                 <div style="background: white; padding: 16px; border-radius: 4px; border: 1px solid #dee2e6; margin-top: 8px;">
-                    {details or '<em>No additional details.</em>'}
+                    {details or "<em>No additional details.</em>"}
                 </div>
             </div>
         </div>

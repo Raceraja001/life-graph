@@ -72,24 +72,31 @@ async def browse_web(url: str, extract: str = "text") -> str:
         if extract == "title":
             # Simple title extraction
             import re
+
             title_match = re.search(r"<title[^>]*>(.*?)</title>", text, re.IGNORECASE | re.DOTALL)
-            return json.dumps({
-                "url": url,
-                "title": title_match.group(1).strip() if title_match else "No title found",
-            })
+            return json.dumps(
+                {
+                    "url": url,
+                    "title": title_match.group(1).strip() if title_match else "No title found",
+                }
+            )
 
         if extract == "links":
             import re
+
             links = re.findall(r'href=["\']([^"\']+)["\']', text)
-            return json.dumps({
-                "url": url,
-                "links": links[:50],  # Cap at 50 links
-                "total": len(links),
-            })
+            return json.dumps(
+                {
+                    "url": url,
+                    "links": links[:50],  # Cap at 50 links
+                    "total": len(links),
+                }
+            )
 
         # Default: extract text content
         # Strip HTML tags for a cleaner result
         import re
+
         # Remove script and style blocks
         clean = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", text, flags=re.DOTALL | re.IGNORECASE)
         # Remove HTML tags
@@ -102,12 +109,14 @@ async def browse_web(url: str, extract: str = "text") -> str:
         if len(clean) > max_chars:
             clean = clean[:max_chars] + f"\n\n[... truncated, {len(clean)} total chars]"
 
-        return json.dumps({
-            "url": url,
-            "content_type": content_type,
-            "text": clean,
-            "length": len(clean),
-        })
+        return json.dumps(
+            {
+                "url": url,
+                "content_type": content_type,
+                "text": clean,
+                "length": len(clean),
+            }
+        )
 
     except httpx.HTTPStatusError as exc:
         return json.dumps({"error": f"HTTP {exc.response.status_code}: {url}"})

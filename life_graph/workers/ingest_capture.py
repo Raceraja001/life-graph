@@ -91,7 +91,10 @@ async def ingest_capture_text(
 
     logger.info(
         "Ingested capture for tenant %s (source=%s): %d chunk(s), %d memories",
-        tenant_id, source, len(chunks), total,
+        tenant_id,
+        source,
+        len(chunks),
+        total,
     )
 
     event_info = _EVENT_BY_SOURCE.get(source)
@@ -108,8 +111,6 @@ async def ingest_capture_text(
         }
         if source == "document":
             payload["chunks"] = len(chunks)
-        await event_bus.emit(
-            getattr(EventType, event_type_name), payload, source="multimodal"
-        )
+        await event_bus.emit(getattr(EventType, event_type_name), payload, source="multimodal")
 
     return total

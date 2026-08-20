@@ -31,7 +31,9 @@ class WorkflowStepCreate(BaseModel):
 
     step_key: str = Field(..., min_length=1, description="Unique key for this step")
     agent_name: str = Field(..., min_length=1, description="Agent to execute this step")
-    depends_on: list[str] = Field(default_factory=list, description="Step keys this step depends on")
+    depends_on: list[str] = Field(
+        default_factory=list, description="Step keys this step depends on"
+    )
     condition: str | None = Field(None, description="Condition expression for execution")
     config: dict[str, Any] = Field(default_factory=dict, description="Step configuration")
     timeout_seconds: int = Field(300, ge=10, le=7200, description="Step timeout")
@@ -92,13 +94,15 @@ async def create_workflow(
             detail=str(e),
         ) from e
 
-    return success_response(data={
-        "id": str(workflow.id),
-        "name": workflow.name,
-        "description": workflow.description,
-        "trigger_type": workflow.trigger_type,
-        "created_at": workflow.created_at.isoformat() if workflow.created_at else None,
-    })
+    return success_response(
+        data={
+            "id": str(workflow.id),
+            "name": workflow.name,
+            "description": workflow.description,
+            "trigger_type": workflow.trigger_type,
+            "created_at": workflow.created_at.isoformat() if workflow.created_at else None,
+        }
+    )
 
 
 @router.post(
@@ -132,13 +136,15 @@ async def start_run(
             detail=str(e),
         ) from e
 
-    return success_response(data={
-        "id": str(run.id),
-        "workflow_id": str(run.workflow_id),
-        "status": run.status,
-        "trigger": run.trigger,
-        "started_at": run.started_at.isoformat() if run.started_at else None,
-    })
+    return success_response(
+        data={
+            "id": str(run.id),
+            "workflow_id": str(run.workflow_id),
+            "status": run.status,
+            "trigger": run.trigger,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+        }
+    )
 
 
 @router.get(
@@ -182,31 +188,33 @@ async def get_run(
         )
         step_runs = step_result.scalars().all()
 
-    return success_response(data={
-        "id": str(run.id),
-        "workflow_id": str(run.workflow_id),
-        "status": run.status,
-        "trigger": run.trigger,
-        "triggered_by": run.triggered_by,
-        "input_params": run.input_params,
-        "output_summary": run.output_summary,
-        "error": run.error,
-        "started_at": run.started_at.isoformat() if run.started_at else None,
-        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
-        "steps": [
-            {
-                "id": str(sr.id),
-                "step_key": sr.step_key,
-                "status": sr.status,
-                "output": sr.output,
-                "error": sr.error,
-                "task_id": str(sr.task_id) if sr.task_id else None,
-                "started_at": sr.started_at.isoformat() if sr.started_at else None,
-                "completed_at": sr.completed_at.isoformat() if sr.completed_at else None,
-            }
-            for sr in step_runs
-        ],
-    })
+    return success_response(
+        data={
+            "id": str(run.id),
+            "workflow_id": str(run.workflow_id),
+            "status": run.status,
+            "trigger": run.trigger,
+            "triggered_by": run.triggered_by,
+            "input_params": run.input_params,
+            "output_summary": run.output_summary,
+            "error": run.error,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+            "steps": [
+                {
+                    "id": str(sr.id),
+                    "step_key": sr.step_key,
+                    "status": sr.status,
+                    "output": sr.output,
+                    "error": sr.error,
+                    "task_id": str(sr.task_id) if sr.task_id else None,
+                    "started_at": sr.started_at.isoformat() if sr.started_at else None,
+                    "completed_at": sr.completed_at.isoformat() if sr.completed_at else None,
+                }
+                for sr in step_runs
+            ],
+        }
+    )
 
 
 @router.post(
@@ -228,8 +236,10 @@ async def cancel_run(
         reason=body.reason,
     )
 
-    return success_response(data={
-        "run_id": str(run_id),
-        "status": "cancelled",
-        "reason": body.reason,
-    })
+    return success_response(
+        data={
+            "run_id": str(run_id),
+            "status": "cancelled",
+            "reason": body.reason,
+        }
+    )

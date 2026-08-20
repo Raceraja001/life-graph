@@ -22,13 +22,19 @@ class EvalSuiteCreate(BaseModel):
     name: str = Field(..., min_length=1, description="Human-readable suite name")
     description: str | None = Field(None, description="Suite description")
     accuracy_threshold_pct: float = Field(
-        90.0, ge=0.0, le=100.0, description="Minimum accuracy to pass",
+        90.0,
+        ge=0.0,
+        le=100.0,
+        description="Minimum accuracy to pass",
     )
     auto_optimize_enabled: bool = Field(
-        True, description="Auto-trigger optimization on failure",
+        True,
+        description="Auto-trigger optimization on failure",
     )
     max_consecutive_fails: int = Field(
-        3, ge=1, description="Max consecutive failures before alerting",
+        3,
+        ge=1,
+        description="Max consecutive failures before alerting",
     )
 
 
@@ -67,10 +73,12 @@ class EvalCaseCreate(BaseModel):
         description="How to score this case",
     )
     scoring_config: dict[str, Any] = Field(
-        default_factory=dict, description="Extra scoring configuration",
+        default_factory=dict,
+        description="Extra scoring configuration",
     )
     metadata: dict[str, Any] = Field(
-        default_factory=dict, description="Case metadata",
+        default_factory=dict,
+        description="Case metadata",
     )
     source: str = Field("manual", description="Origin of the case")
 
@@ -79,7 +87,9 @@ class EvalCaseBulkCreate(BaseModel):
     """Payload for bulk-importing eval cases."""
 
     cases: list[EvalCaseCreate] = Field(
-        ..., min_length=1, description="List of cases to import",
+        ...,
+        min_length=1,
+        description="List of cases to import",
     )
 
 
@@ -107,7 +117,8 @@ class EvalRunTrigger(BaseModel):
     """Payload for triggering an eval run."""
 
     prompt_version_id: str = Field(
-        ..., description="Prompt version to evaluate",
+        ...,
+        description="Prompt version to evaluate",
     )
     trigger: str = Field(
         "manual",
@@ -181,7 +192,8 @@ class PromptVersionCreate(BaseModel):
     task_type: str = Field(..., min_length=1, description="Task type")
     prompt_text: str = Field(..., min_length=1, description="Prompt template")
     few_shot_examples: list[dict[str, Any]] = Field(
-        default_factory=list, description="Few-shot examples",
+        default_factory=list,
+        description="Few-shot examples",
     )
     change_note: str | None = Field(None, description="What changed")
     created_by: str = Field("human", description="Creator: human or optimizer")
@@ -222,7 +234,8 @@ class OptimizationTrigger(BaseModel):
 
     suite_id: uuid.UUID = Field(..., description="Eval suite to optimize for")
     trigger_eval_run_id: str = Field(
-        ..., description="The eval run that triggered this optimization",
+        ...,
+        description="The eval run that triggered this optimization",
     )
 
 

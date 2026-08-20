@@ -87,9 +87,7 @@ async def remember(
         body["importance"] = importance
 
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
-        resp = await client.post(
-            "/api/v1/memories/", json=body, headers=_headers(tenant_id)
-        )
+        resp = await client.post("/api/v1/memories/", json=body, headers=_headers(tenant_id))
         resp.raise_for_status()
         return _extract_data(resp.json())
 
@@ -129,9 +127,7 @@ async def search(
         body["tags"] = tags
 
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
-        resp = await client.post(
-            "/api/v1/search/", json=body, headers=_headers(tenant_id)
-        )
+        resp = await client.post("/api/v1/search/", json=body, headers=_headers(tenant_id))
         resp.raise_for_status()
         return _extract_data(resp.json())
 
@@ -202,9 +198,7 @@ async def forget(
         tenant_id: Tenant scope
     """
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
-        resp = await client.delete(
-            f"/api/v1/memories/{memory_id}", headers=_headers(tenant_id)
-        )
+        resp = await client.delete(f"/api/v1/memories/{memory_id}", headers=_headers(tenant_id))
         resp.raise_for_status()
         return {"status": "deleted", "memory_id": memory_id}
 
@@ -279,9 +273,7 @@ async def beliefs(
         tenant_id: Tenant scope
     """
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
-        resp = await client.get(
-            "/api/v1/identity/beliefs", headers=_headers(tenant_id)
-        )
+        resp = await client.get("/api/v1/identity/beliefs", headers=_headers(tenant_id))
         resp.raise_for_status()
         return _extract_data(resp.json())
 
@@ -392,9 +384,7 @@ async def set_intention(
         body["trigger_condition"] = trigger_condition
 
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
-        resp = await client.post(
-            "/api/v1/intentions/", json=body, headers=_headers(tenant_id)
-        )
+        resp = await client.post("/api/v1/intentions/", json=body, headers=_headers(tenant_id))
         resp.raise_for_status()
         return _extract_data(resp.json())
 

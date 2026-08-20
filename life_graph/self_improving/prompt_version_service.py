@@ -31,14 +31,19 @@ class PromptVersionService:
         self._sf = session_factory
 
     async def create(
-        self, tenant_id: str, data: PromptVersionCreate,
+        self,
+        tenant_id: str,
+        data: PromptVersionCreate,
     ) -> PromptVersionResponse:
         """Create a new prompt version with auto-incremented version_number."""
         async with self._sf() as session:
             # Get next version number
-            stmt = select(func.coalesce(
-                func.max(PromptVersion.version_number), 0,
-            )).where(
+            stmt = select(
+                func.coalesce(
+                    func.max(PromptVersion.version_number),
+                    0,
+                )
+            ).where(
                 PromptVersion.tenant_id == tenant_id,
                 PromptVersion.task_type == data.task_type,
             )
@@ -62,7 +67,9 @@ class PromptVersionService:
             return PromptVersionResponse.model_validate(version)
 
     async def get_active(
-        self, tenant_id: str, task_type: str,
+        self,
+        tenant_id: str,
+        task_type: str,
     ) -> PromptVersionResponse | None:
         """Get the currently active prompt version for a task type."""
         async with self._sf() as session:
@@ -78,7 +85,9 @@ class PromptVersionService:
             return PromptVersionResponse.model_validate(version)
 
     async def list_versions(
-        self, tenant_id: str, task_type: str,
+        self,
+        tenant_id: str,
+        task_type: str,
     ) -> list[PromptVersionResponse]:
         """List all versions for a task type, sorted by version_number DESC."""
         async with self._sf() as session:
@@ -95,7 +104,9 @@ class PromptVersionService:
             return [PromptVersionResponse.model_validate(v) for v in versions]
 
     async def activate(
-        self, tenant_id: str, version_id: uuid.UUID,
+        self,
+        tenant_id: str,
+        version_id: uuid.UUID,
         reason: str | None = None,
     ) -> PromptVersionResponse:
         """Atomically swap the active version: deactivate current, activate new.
@@ -114,9 +125,7 @@ class PromptVersionService:
                 result = await session.execute(stmt)
                 version = result.scalar_one_or_none()
                 if not version:
-                    raise ValueError(
-                        f"Version {version_id} not found for tenant {tenant_id}"
-                    )
+                    raise ValueError(f"Version {version_id} not found for tenant {tenant_id}")
 
                 # Deactivate current active version for this task_type
                 await session.execute(
@@ -144,14 +153,17 @@ class PromptVersionService:
             return PromptVersionResponse.model_validate(version)
 
     async def rollback(
-        self, tenant_id: str, version_id: uuid.UUID,
+        self,
+        tenant_id: str,
+        version_id: uuid.UUID,
         reason: str = "manual_rollback",
     ) -> PromptVersionResponse:
         """Deactivate the current active version and reactivate a previous one."""
         return await self.activate(tenant_id, version_id, reason=reason)
 
     async def get_version(
-        self, version_id: uuid.UUID,
+        self,
+        version_id: uuid.UUID,
     ) -> PromptVersionResponse:
         """Get a single prompt version by ID."""
         async with self._sf() as session:

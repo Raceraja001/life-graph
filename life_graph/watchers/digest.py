@@ -29,6 +29,7 @@ class DigestGenerator:
         """Lazy-load notification engine to avoid circular imports."""
         if self._notification_engine is None:
             from life_graph.watchers.notification_engine import NotificationEngine
+
             self._notification_engine = NotificationEngine(self._session_factory)
         return self._notification_engine
 
@@ -75,11 +76,13 @@ class DigestGenerator:
             # Fetch digest-pending events
             async with self._session_factory() as session:
                 result = await session.execute(
-                    select(WatchEvent).where(
+                    select(WatchEvent)
+                    .where(
                         WatchEvent.tenant_id == tenant_id,
                         WatchEvent.created_at >= since,
                         WatchEvent.severity == "info",
-                    ).order_by(WatchEvent.created_at)
+                    )
+                    .order_by(WatchEvent.created_at)
                 )
                 events = result.scalars().all()
 
@@ -168,6 +171,5 @@ class DigestGenerator:
         return (
             f"<h2>{period.capitalize()} Digest</h2>"
             f"<p><strong>{total}</strong> events since {since_str} "
-            f"across <strong>{len(by_watcher)}</strong> watchers.</p>"
-            + "".join(sections)
+            f"across <strong>{len(by_watcher)}</strong> watchers.</p>" + "".join(sections)
         )

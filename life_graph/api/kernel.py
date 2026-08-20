@@ -725,9 +725,7 @@ async def chat_stream(
             while True:
                 if pending is None:
                     pending = asyncio.ensure_future(it.__anext__())
-                done_set, _ = await asyncio.wait(
-                    {pending}, timeout=CHAT_STREAM_HEARTBEAT_SECONDS
-                )
+                done_set, _ = await asyncio.wait({pending}, timeout=CHAT_STREAM_HEARTBEAT_SECONDS)
                 if not done_set:
                     yield ": heartbeat\n\n"
                     continue

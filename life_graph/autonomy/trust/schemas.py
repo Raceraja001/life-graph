@@ -32,7 +32,6 @@ class TrustScoreResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-
 class TrustOverrideRequest(BaseModel):
     """Request body for manually overriding a trust score."""
 

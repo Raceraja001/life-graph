@@ -80,9 +80,7 @@ if PROMETHEUS_AVAILABLE:
     )
 
 
-def track_request(
-    method: str, path: str, status: int, duration: float
-) -> None:
+def track_request(method: str, path: str, status: int, duration: float) -> None:
     """Record request metrics."""
     if not PROMETHEUS_AVAILABLE:
         return
@@ -98,9 +96,7 @@ def track_llm_call(
     """Record LLM call metrics."""
     if not PROMETHEUS_AVAILABLE:
         return
-    LLM_DURATION.labels(provider=provider, model=model, operation=operation).observe(
-        duration
-    )
+    LLM_DURATION.labels(provider=provider, model=model, operation=operation).observe(duration)
     if tokens > 0:
         LLM_TOKENS.labels(provider=provider, model=model).inc(tokens)
 

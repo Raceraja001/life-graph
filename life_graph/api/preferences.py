@@ -114,9 +114,7 @@ async def update_preference(
 ):
     """Partially update a preference."""
     try:
-        pref = await store.update(
-            tenant_id, preference_id, body.model_dump(exclude_none=True)
-        )
+        pref = await store.update(tenant_id, preference_id, body.model_dump(exclude_none=True))
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

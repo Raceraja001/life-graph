@@ -16,52 +16,70 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _ROUTE_DEFINITIONS: list[tuple[str, list[str]]] = [
-    ("graph", [
-        r"what\s+do\s+i\s+(?:prefer|use|like)",
-        r"what\s+(?:tools?|frameworks?|languages?|databases?)",
-        r"what\s+is\s+my\s+(?:preferred|favorite|go[- ]?to)",
-        r"what\s+do\s+i\s+use\s+for",
-        r"how\s+are\s+(\w+)\s+and\s+(\w+)\s+related",
-        r"relationship\s+between",
-        r"connected\s+to",
-        r"what\s+depends\s+on",
-        r"what\s+uses",
-    ]),
-    ("relational", [
-        r"when\s+did\s+i",
-        r"last\s+time\s+i",
-        r"history\s+of",
-        r"how\s+many\s+times",
-        r"how\s+often",
-    ]),
-    ("reasoning", [
-        r"why\s+did\s+i",
-        r"why\s+do\s+i",
-        r"reason\s+for",
-        r"explain\s+my",
-    ]),
-    ("vector", [
-        r"similar\s+to",
-        r"related\s+to",
-        r"like\s+this",
-        r"find.*similar",
-        r"anything\s+like",
-    ]),
-    ("intentions", [
-        r"\btodo\b",
-        r"\bremind\b",
-        r"\bplan\b",
-        r"what\s+should\s+i\s+do",
-        r"\bpending\b",
-        r"\bupcoming\b",
-    ]),
-    ("hybrid", [
-        r"show\s+my\s+decisions?\s+about",
-        r"everything\s+(?:about|related\s+to|involving)",
-        r"context\s+(?:for|about|on)",
-        r"what\s+do\s+i\s+know\s+about",
-        r"tell\s+me\s+about",
-    ]),
+    (
+        "graph",
+        [
+            r"what\s+do\s+i\s+(?:prefer|use|like)",
+            r"what\s+(?:tools?|frameworks?|languages?|databases?)",
+            r"what\s+is\s+my\s+(?:preferred|favorite|go[- ]?to)",
+            r"what\s+do\s+i\s+use\s+for",
+            r"how\s+are\s+(\w+)\s+and\s+(\w+)\s+related",
+            r"relationship\s+between",
+            r"connected\s+to",
+            r"what\s+depends\s+on",
+            r"what\s+uses",
+        ],
+    ),
+    (
+        "relational",
+        [
+            r"when\s+did\s+i",
+            r"last\s+time\s+i",
+            r"history\s+of",
+            r"how\s+many\s+times",
+            r"how\s+often",
+        ],
+    ),
+    (
+        "reasoning",
+        [
+            r"why\s+did\s+i",
+            r"why\s+do\s+i",
+            r"reason\s+for",
+            r"explain\s+my",
+        ],
+    ),
+    (
+        "vector",
+        [
+            r"similar\s+to",
+            r"related\s+to",
+            r"like\s+this",
+            r"find.*similar",
+            r"anything\s+like",
+        ],
+    ),
+    (
+        "intentions",
+        [
+            r"\btodo\b",
+            r"\bremind\b",
+            r"\bplan\b",
+            r"what\s+should\s+i\s+do",
+            r"\bpending\b",
+            r"\bupcoming\b",
+        ],
+    ),
+    (
+        "hybrid",
+        [
+            r"show\s+my\s+decisions?\s+about",
+            r"everything\s+(?:about|related\s+to|involving)",
+            r"context\s+(?:for|about|on)",
+            r"what\s+do\s+i\s+know\s+about",
+            r"tell\s+me\s+about",
+        ],
+    ),
 ]
 
 
@@ -72,9 +90,7 @@ class _CompiledRoute:
 
     def __init__(self, name: str, raw_patterns: list[str]) -> None:
         self.name = name
-        self.patterns: list[re.Pattern[str]] = [
-            re.compile(p, re.IGNORECASE) for p in raw_patterns
-        ]
+        self.patterns: list[re.Pattern[str]] = [re.compile(p, re.IGNORECASE) for p in raw_patterns]
 
     def match(self, query: str) -> re.Match[str] | None:
         """Return the first matching pattern, or None."""
@@ -102,8 +118,7 @@ class QueryRouter:
 
     def __init__(self) -> None:
         self._routes: list[_CompiledRoute] = [
-            _CompiledRoute(name, patterns)
-            for name, patterns in _ROUTE_DEFINITIONS
+            _CompiledRoute(name, patterns) for name, patterns in _ROUTE_DEFINITIONS
         ]
 
     def route(self, query: str) -> str:

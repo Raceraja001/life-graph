@@ -31,10 +31,10 @@ _BEARER = re.compile(r"(?i)\b(bearer)\s+\S+")
 
 # Standalone token shapes worth redacting wherever they appear.
 _TOKEN_SHAPES: list[re.Pattern[str]] = [
-    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),               # AWS access key id
-    re.compile(r"\bsk-[A-Za-z0-9]{16,}\b"),            # OpenAI-style keys
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),     # GitHub tokens
-    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),   # Slack tokens
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),  # AWS access key id
+    re.compile(r"\bsk-[A-Za-z0-9]{16,}\b"),  # OpenAI-style keys
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),  # GitHub tokens
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),  # Slack tokens
     re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9._-]{8,}\b"),  # JWT
 ]
 

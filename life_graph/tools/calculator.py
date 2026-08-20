@@ -61,34 +61,25 @@ def _safe_eval(node: ast.AST) -> int | float:
     if isinstance(node, ast.Constant):
         if isinstance(node.value, (int, float)):
             return node.value
-        raise ValueError(
-            f"Unsupported constant type: {type(node.value).__name__}"
-        )
+        raise ValueError(f"Unsupported constant type: {type(node.value).__name__}")
 
     if isinstance(node, ast.UnaryOp):
         op_func = _UNARY_OPS.get(type(node.op))
         if op_func is None:
-            raise ValueError(
-                f"Unsupported unary operator: {type(node.op).__name__}"
-            )
+            raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
         return op_func(_safe_eval(node.operand))
 
     if isinstance(node, ast.BinOp):
         op_func = _BINARY_OPS.get(type(node.op))
         if op_func is None:
-            raise ValueError(
-                f"Unsupported binary operator: {type(node.op).__name__}"
-            )
+            raise ValueError(f"Unsupported binary operator: {type(node.op).__name__}")
         left = _safe_eval(node.left)
         right = _safe_eval(node.right)
 
         # Guard against excessively large exponents.
         if isinstance(node.op, ast.Pow):
             if isinstance(right, (int, float)) and abs(right) > 1000:
-                raise ValueError(
-                    "Exponent too large (max 1000). "
-                    "This prevents memory exhaustion."
-                )
+                raise ValueError("Exponent too large (max 1000). This prevents memory exhaustion.")
 
         return op_func(left, right)
 
@@ -109,10 +100,7 @@ def _safe_eval(node: ast.AST) -> int | float:
         "properties": {
             "expression": {
                 "type": "string",
-                "description": (
-                    "Mathematical expression to evaluate "
-                    "(e.g. '2 + 3 * 4')"
-                ),
+                "description": ("Mathematical expression to evaluate (e.g. '2 + 3 * 4')"),
             },
         },
         "required": ["expression"],
@@ -136,37 +124,47 @@ async def calculator(expression: str) -> str:
         tree = ast.parse(expression.strip(), mode="eval")
     except SyntaxError as exc:
         logger.warning("Invalid expression syntax: %s", expression)
-        return json.dumps({
-            "error": f"Invalid expression syntax: {exc.msg}",
-            "expression": expression,
-        })
+        return json.dumps(
+            {
+                "error": f"Invalid expression syntax: {exc.msg}",
+                "expression": expression,
+            }
+        )
 
     try:
         result = _safe_eval(tree)
     except ZeroDivisionError:
         logger.warning("Division by zero: %s", expression)
-        return json.dumps({
-            "error": "Division by zero",
-            "expression": expression,
-        })
+        return json.dumps(
+            {
+                "error": "Division by zero",
+                "expression": expression,
+            }
+        )
     except ValueError as exc:
         logger.warning("Unsafe expression rejected: %s — %s", expression, exc)
-        return json.dumps({
-            "error": str(exc),
-            "expression": expression,
-        })
+        return json.dumps(
+            {
+                "error": str(exc),
+                "expression": expression,
+            }
+        )
     except Exception as exc:
         logger.exception("Unexpected calculator error: %s", exc)
-        return json.dumps({
-            "error": f"Calculation failed: {type(exc).__name__}",
-            "expression": expression,
-        })
+        return json.dumps(
+            {
+                "error": f"Calculation failed: {type(exc).__name__}",
+                "expression": expression,
+            }
+        )
 
     result_type = "int" if isinstance(result, int) else "float"
 
     logger.info("Expression result: %s = %s", expression, result)
-    return json.dumps({
-        "expression": expression,
-        "result": result,
-        "type": result_type,
-    })
+    return json.dumps(
+        {
+            "expression": expression,
+            "result": result,
+            "type": result_type,
+        }
+    )

@@ -49,7 +49,8 @@ class DispatchRequest(BaseModel):
     """Request body for test dispatch."""
 
     instruction: str = Field(
-        ..., min_length=1,
+        ...,
+        min_length=1,
         description="Natural language task description",
     )
     task_type: str = Field("general", description="Task type (code, research, etc.)")
@@ -139,9 +140,11 @@ async def driver_stats(
                     func.sum(DriverStat.total_cost_usd).label("cost"),
                     func.sum(DriverStat.total_duration_ms).label("duration"),
                     func.max(DriverStat.window_start).label("last_window"),
-                ).where(
+                )
+                .where(
                     DriverStat.tenant_id == tenant_id,
-                ).group_by(DriverStat.driver)
+                )
+                .group_by(DriverStat.driver)
             )
             rows = result.all()
 
@@ -167,9 +170,7 @@ async def driver_stats(
                     ).model_dump()
                 )
 
-            return success_response(
-                data={"stats": stat_list, "window_days": window}
-            )
+            return success_response(data={"stats": stat_list, "window_days": window})
     except Exception:
         # DriverStat table may not exist yet
         return success_response(

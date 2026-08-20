@@ -209,9 +209,7 @@ class MultiModalService:
         self._whisper_model: Any = None
 
     @staticmethod
-    async def _ingest_or_fallback(
-        manager: MemoryManager, text: str, source: str
-    ) -> list[Any]:
+    async def _ingest_or_fallback(manager: MemoryManager, text: str, source: str) -> list[Any]:
         """Thin wrapper over the module-level ``ingest_or_fallback``.
 
         Kept for backward compatibility with any external caller that
@@ -237,6 +235,7 @@ class MultiModalService:
             model_name = os.environ.get("WHISPER_MODEL", None)
             if model_name is None:
                 from life_graph.config import settings
+
                 model_name = settings.whisper_model
             logger.info("Loading Whisper model: %s (this may take a moment)", model_name)
             self._whisper_model = WhisperModel(model_name, compute_type="int8")

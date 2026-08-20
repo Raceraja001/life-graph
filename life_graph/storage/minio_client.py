@@ -138,12 +138,14 @@ class MinIOStorage:
         objects = self.client.list_objects(bucket, prefix=prefix, recursive=True)
         results: list[dict[str, Any]] = []
         for obj in objects:
-            results.append({
-                "key": obj.object_name,
-                "size": obj.size,
-                "last_modified": obj.last_modified.isoformat() if obj.last_modified else None,
-                "content_type": obj.content_type,
-            })
+            results.append(
+                {
+                    "key": obj.object_name,
+                    "size": obj.size,
+                    "last_modified": obj.last_modified.isoformat() if obj.last_modified else None,
+                    "content_type": obj.content_type,
+                }
+            )
         return results
 
     def delete(self, bucket: str, key: str) -> bool:

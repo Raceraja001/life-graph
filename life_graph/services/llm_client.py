@@ -53,6 +53,7 @@ class LMStudioClient:
         """Lazy-load synchronous OpenAI client (local)."""
         if self._client is None:
             from openai import OpenAI
+
             self._client = OpenAI(
                 base_url=self._base_url,
                 api_key=self._api_key,
@@ -63,6 +64,7 @@ class LMStudioClient:
         """Lazy-load async OpenAI client (local)."""
         if self._async_client is None:
             from openai import AsyncOpenAI
+
             self._async_client = AsyncOpenAI(
                 base_url=self._base_url,
                 api_key=self._api_key,
@@ -73,6 +75,7 @@ class LMStudioClient:
         """Lazy-load async OpenAI client pointed at OpenRouter."""
         if self._cloud_client is None:
             from openai import AsyncOpenAI
+
             self._cloud_client = AsyncOpenAI(
                 base_url=settings.openrouter_url,
                 api_key=settings.openrouter_api_key,

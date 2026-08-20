@@ -28,7 +28,15 @@ router = APIRouter(prefix="/ingest", tags=["multi-modal"])
 
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
 
-ALLOWED_AUDIO = {"audio/wav", "audio/mpeg", "audio/ogg", "audio/mp4", "audio/flac", "audio/webm", "audio/x-wav"}
+ALLOWED_AUDIO = {
+    "audio/wav",
+    "audio/mpeg",
+    "audio/ogg",
+    "audio/mp4",
+    "audio/flac",
+    "audio/webm",
+    "audio/x-wav",
+}
 ALLOWED_IMAGE = {"image/png", "image/jpeg", "image/gif", "image/bmp", "image/tiff", "image/webp"}
 ALLOWED_DOCUMENT = {"application/pdf", "text/plain", "text/markdown", "application/octet-stream"}
 
@@ -38,7 +46,7 @@ def _validate_upload(file: UploadFile, data: bytes, allowed_types: set[str], lab
     if len(data) > MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024*1024)}MB.",
+            detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)}MB.",
         )
     if not data:
         raise HTTPException(
@@ -54,9 +62,11 @@ def _validate_upload(file: UploadFile, data: bytes, allowed_types: set[str], lab
         )
     # Sanitize filename — strip path components to prevent traversal
     import os
+
     filename = os.path.basename(file.filename or f"upload.{label}")
     # Remove any non-alphanumeric chars except dots, hyphens, underscores
     import re
+
     filename = re.sub(r"[^\w.\-]", "_", filename)
     return filename
 

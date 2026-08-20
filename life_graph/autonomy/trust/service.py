@@ -77,7 +77,9 @@ class TrustScoreService:
         await self._session.flush()
         logger.info(
             "Created trust score: agent=%s, action=%s, project=%s",
-            agent_id, action_type, project_id,
+            agent_id,
+            action_type,
+            project_id,
         )
         return score
 
@@ -105,7 +107,9 @@ class TrustScoreService:
         await self._session.flush()
         logger.info(
             "Recorded success: agent=%s, action=%s, new_score=%.3f",
-            agent_id, action_type, update.new_score,
+            agent_id,
+            action_type,
+            update.new_score,
         )
         return ts
 
@@ -132,7 +136,9 @@ class TrustScoreService:
         await self._session.flush()
         logger.info(
             "Recorded failure: agent=%s, action=%s, new_score=%.3f",
-            agent_id, action_type, update.new_score,
+            agent_id,
+            action_type,
+            update.new_score,
         )
         return ts
 
@@ -159,7 +165,10 @@ class TrustScoreService:
         await self._session.flush()
         logger.info(
             "Trust override: agent=%s, action=%s, override=%.3f, by=%s",
-            agent_id, action_type, score or 0.0, by,
+            agent_id,
+            action_type,
+            score or 0.0,
+            by,
         )
         return ts
 
@@ -195,6 +204,8 @@ class TrustScoreService:
 
         logger.info(
             "Decayed %d/%d trust scores for tenant=%s",
-            decayed_count, len(scores), tenant_id,
+            decayed_count,
+            len(scores),
+            tenant_id,
         )
         return decayed_count

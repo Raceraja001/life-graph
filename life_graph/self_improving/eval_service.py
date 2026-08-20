@@ -55,7 +55,9 @@ class EvalService:
     # ── Suite CRUD ────────────────────────────────────────────
 
     async def create_suite(
-        self, tenant_id: str, data: EvalSuiteCreate,
+        self,
+        tenant_id: str,
+        data: EvalSuiteCreate,
     ) -> EvalSuiteResponse:
         """Create a new eval suite."""
         async with self._sf() as session:
@@ -74,7 +76,8 @@ class EvalService:
             return EvalSuiteResponse.model_validate(suite)
 
     async def list_suites(
-        self, tenant_id: str,
+        self,
+        tenant_id: str,
     ) -> list[EvalSuiteResponse]:
         """List all eval suites for a tenant with stats."""
         async with self._sf() as session:
@@ -90,7 +93,9 @@ class EvalService:
     # ── Case CRUD ─────────────────────────────────────────────
 
     async def add_case(
-        self, suite_id: uuid.UUID, data: EvalCaseCreate,
+        self,
+        suite_id: uuid.UUID,
+        data: EvalCaseCreate,
     ) -> EvalCaseResponse:
         """Add a single test case and increment suite case_count."""
         async with self._sf() as session:
@@ -117,7 +122,9 @@ class EvalService:
             return EvalCaseResponse.model_validate(case)
 
     async def bulk_add_cases(
-        self, suite_id: uuid.UUID, data: EvalCaseBulkCreate,
+        self,
+        suite_id: uuid.UUID,
+        data: EvalCaseBulkCreate,
     ) -> list[EvalCaseResponse]:
         """Bulk import test cases."""
         async with self._sf() as session:
@@ -167,12 +174,9 @@ class EvalService:
 
         async with self._sf() as session:
             # Fetch active cases
-            stmt = (
-                select(EvalCase)
-                .where(
-                    EvalCase.suite_id == suite_id,
-                    EvalCase.is_active.is_(True),
-                )
+            stmt = select(EvalCase).where(
+                EvalCase.suite_id == suite_id,
+                EvalCase.is_active.is_(True),
             )
             result = await session.execute(stmt)
             cases = list(result.scalars().all())
@@ -204,7 +208,8 @@ class EvalService:
 
                     if llm_fn:
                         actual, latency_ms, tokens, cost = await llm_fn(
-                            prompt_version_id, case.input_text,
+                            prompt_version_id,
+                            case.input_text,
                         )
                     else:
                         # Dry-run: use empty output
@@ -225,9 +230,7 @@ class EvalService:
                         "status": "pass" if passed else "fail",
                         "actual_output": actual,
                         "score": Decimal(str(score_val)),
-                        "failure_type": (
-                            case.scoring_type if not passed else None
-                        ),
+                        "failure_type": (case.scoring_type if not passed else None),
                         "failure_reason": reason,
                         "similarity_score": (
                             Decimal(str(score_val))
@@ -282,28 +285,15 @@ class EvalService:
             failed_count = sum(1 for r in eval_results if r["status"] == "fail")
             errored_count = sum(1 for r in eval_results if r["status"] == "error")
             total = len(eval_results)
-            accuracy = (
-                Decimal(str(round(passed_count / total * 100, 2)))
-                if total > 0 else None
-            )
+            accuracy = Decimal(str(round(passed_count / total * 100, 2))) if total > 0 else None
 
-            latencies = [
-                r["latency_ms"] for r in eval_results
-                if r["latency_ms"] is not None
-            ]
+            latencies = [r["latency_ms"] for r in eval_results if r["latency_ms"] is not None]
             avg_lat = sum(latencies) / len(latencies) if latencies else None
-            p95_lat = (
-                sorted(latencies)[int(len(latencies) * 0.95)]
-                if latencies else None
-            )
+            p95_lat = sorted(latencies)[int(len(latencies) * 0.95)] if latencies else None
             total_tokens = sum(
-                r["tokens_used"] for r in eval_results
-                if r["tokens_used"] is not None
+                r["tokens_used"] for r in eval_results if r["tokens_used"] is not None
             )
-            total_cost = sum(
-                r["cost_usd"] for r in eval_results
-                if r["cost_usd"] is not None
-            )
+            total_cost = sum(r["cost_usd"] for r in eval_results if r["cost_usd"] is not None)
             duration = time.time() - run_start
 
             # Update run record
@@ -347,9 +337,7 @@ class EvalService:
         """Get an eval run with all results."""
         async with self._sf() as session:
             stmt = (
-                select(EvalRun)
-                .options(selectinload(EvalRun.results))
-                .where(EvalRun.id == run_id)
+                select(EvalRun).options(selectinload(EvalRun.results)).where(EvalRun.id == run_id)
             )
             result = await session.execute(stmt)
             run = result.scalar_one_or_none()
@@ -358,16 +346,14 @@ class EvalService:
             return EvalRunResponse.model_validate(run)
 
     async def get_failures(
-        self, run_id: uuid.UUID,
+        self,
+        run_id: uuid.UUID,
     ) -> list[FailureAnalysis]:
         """Get failure analysis with grouping by failure_type."""
         async with self._sf() as session:
-            stmt = (
-                select(EvalResult)
-                .where(
-                    EvalResult.run_id == run_id,
-                    EvalResult.status == "fail",
-                )
+            stmt = select(EvalResult).where(
+                EvalResult.run_id == run_id,
+                EvalResult.status == "fail",
             )
             result = await session.execute(stmt)
             failures = list(result.scalars().all())

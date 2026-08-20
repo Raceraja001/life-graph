@@ -23,7 +23,7 @@ _PROMPT = (
     "passed automated checks (tests/lint/build). Look ONLY for a serious "
     "problem that should block auto-landing: a correctness bug, a security "
     "issue, or work that does not match the task. If you find none, approve.\n\n"
-    "Return strict JSON: {{\"approved\": bool, \"concern\": string}}. "
+    'Return strict JSON: {{"approved": bool, "concern": string}}. '
     "Leave concern empty when approved.\n\n"
     "TASK ({task_type}): {instruction}\n\nOUTPUT:\n{output}"
 )
@@ -46,9 +46,7 @@ class SecondOpinionReviewer:
         self._model = model
         self._enabled = enabled
 
-    async def review(
-        self, task_type: str, instruction: str, output: str | None
-    ) -> ReviewVerdict:
+    async def review(self, task_type: str, instruction: str, output: str | None) -> ReviewVerdict:
         """Review verified output. Approves unless a concrete concern is found."""
         if not self._enabled or self._llm is None or not output:
             return ReviewVerdict(approved=True, ran=False)
@@ -85,7 +83,11 @@ class SecondOpinionReviewer:
         approved = data.get("approved", True)
         if not isinstance(approved, bool):
             approved = str(approved).strip().lower() in (
-                "true", "yes", "1", "approve", "approved",
+                "true",
+                "yes",
+                "1",
+                "approve",
+                "approved",
             )
         concern = data.get("concern") or None
         return ReviewVerdict(

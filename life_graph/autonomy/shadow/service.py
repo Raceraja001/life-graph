@@ -93,24 +93,30 @@ class ShadowService:
         """Persist a dry-run 'would-have-done' record. No execution happens."""
         run_id = str(uuid.uuid4())
         async with async_session() as session:
-            session.add(ShadowRun(
-                id=run_id,
-                tenant_id=tenant_id,
-                agent_id=agent_id,
-                enrollment_id=enrollment_id,
-                action_type=action_type,
-                command=command,
-                risk_level=risk_level,
-                project_id=project_id,
-                would_have_routed=would_have_routed,
-                rationale=rationale or {},
-            ))
+            session.add(
+                ShadowRun(
+                    id=run_id,
+                    tenant_id=tenant_id,
+                    agent_id=agent_id,
+                    enrollment_id=enrollment_id,
+                    action_type=action_type,
+                    command=command,
+                    risk_level=risk_level,
+                    project_id=project_id,
+                    would_have_routed=would_have_routed,
+                    rationale=rationale or {},
+                )
+            )
             await session.commit()
 
         await event_bus.emit(
             EventType.SHADOW_RECORDED,
-            {"run_id": run_id, "tenant_id": tenant_id, "agent_id": agent_id,
-             "action_type": action_type},
+            {
+                "run_id": run_id,
+                "tenant_id": tenant_id,
+                "agent_id": agent_id,
+                "action_type": action_type,
+            },
             source="shadow",
         )
         return run_id
@@ -151,16 +157,22 @@ class ShadowService:
             if first_grade:
                 trust = TrustScoreService(session)
                 if grade is ShadowGrade.GOOD:
-                    await trust.record_success(tenant_id, run.agent_id, run.action_type, run.project_id)
+                    await trust.record_success(
+                        tenant_id, run.agent_id, run.action_type, run.project_id
+                    )
                 else:
-                    await trust.record_failure(tenant_id, run.agent_id, run.action_type, run.project_id)
+                    await trust.record_failure(
+                        tenant_id, run.agent_id, run.action_type, run.project_id
+                    )
 
             # Graduation check.
             graduated = False
             if enrollment.status == "shadow":
                 days = (datetime.now(UTC) - enrollment.enrolled_at).total_seconds() / 86400
                 if should_graduate(
-                    days, enrollment.graded_good, enrollment.graded_bad,
+                    days,
+                    enrollment.graded_good,
+                    enrollment.graded_bad,
                     min_days=settings.shadow_min_days,
                     min_samples=settings.shadow_min_samples,
                     good_rate_threshold=settings.shadow_good_rate,
@@ -171,15 +183,21 @@ class ShadowService:
 
             await session.commit()
             result = GradeResult(
-                graded=True, graduated=graduated, status=enrollment.status,
-                graded_good=enrollment.graded_good, graded_bad=enrollment.graded_bad,
+                graded=True,
+                graduated=graduated,
+                status=enrollment.status,
+                graded_good=enrollment.graded_good,
+                graded_bad=enrollment.graded_bad,
             )
 
         if graduated:
             await event_bus.emit(
                 EventType.SHADOW_GRADUATED,
-                {"tenant_id": tenant_id, "agent_id": run.agent_id,
-                 "enrollment_id": run.enrollment_id},
+                {
+                    "tenant_id": tenant_id,
+                    "agent_id": run.agent_id,
+                    "enrollment_id": run.enrollment_id,
+                },
                 source="shadow",
             )
         return result

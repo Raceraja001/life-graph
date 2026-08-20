@@ -37,13 +37,17 @@ class CrossSystemSyncService:
 
         async with self._sf() as session:
             prefs = (
-                await session.execute(
-                    select(Preference).where(
-                        Preference.tenant_id == tenant_id,
-                        Preference.status == "active",
+                (
+                    await session.execute(
+                        select(Preference).where(
+                            Preference.tenant_id == tenant_id,
+                            Preference.status == "active",
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             payload = {
                 "tenant_id": tenant_id,
@@ -90,9 +94,7 @@ class CrossSystemSyncService:
                     sync_record.records_synced = len(prefs)
                     sync_record.sync_duration_ms = elapsed_ms
                     sync_record.completed_at = datetime.now(UTC)
-                    sync_record.response_summary = (
-                        resp.json() if resp.content else {}
-                    )
+                    sync_record.response_summary = resp.json() if resp.content else {}
                     await session.commit()
 
                     await event_bus.emit(
@@ -130,7 +132,9 @@ class CrossSystemSyncService:
             return sync_record
 
     async def receive_analytics(
-        self, tenant_id: str, data: dict,
+        self,
+        tenant_id: str,
+        data: dict,
     ) -> CrossSystemSync:
         """Receive analytics from Uzhavu and store as memories."""
         async with self._sf() as session:
@@ -163,7 +167,8 @@ class CrossSystemSyncService:
                 except Exception:
                     failed += 1
                     logger.warning(
-                        "Failed to ingest analytics item", exc_info=True,
+                        "Failed to ingest analytics item",
+                        exc_info=True,
                     )
 
             sync_record.status = "completed"

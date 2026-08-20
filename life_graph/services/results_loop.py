@@ -80,9 +80,7 @@ class ResultsLoop:
                 summary["captured"] = captured
 
             # Step 2: Update driver stats
-            stats_ok = await self._update_stats(
-                tenant_id, driver_name, "general", result, session
-            )
+            stats_ok = await self._update_stats(tenant_id, driver_name, "general", result, session)
             summary["stats_updated"] = stats_ok
 
             # Step 3: Emit downstream event
@@ -106,9 +104,7 @@ class ResultsLoop:
             return summary
 
         except Exception as e:
-            logger.error(
-                "Results loop failed for task %s: %s", task_id, e, exc_info=True
-            )
+            logger.error("Results loop failed for task %s: %s", task_id, e, exc_info=True)
             if owns_session:
                 await session.rollback()
             return {
@@ -158,9 +154,7 @@ class ResultsLoop:
             )
             return True
         except Exception:
-            logger.warning(
-                "Failed to capture result for task %s", task_id, exc_info=True
-            )
+            logger.warning("Failed to capture result for task %s", task_id, exc_info=True)
             return False
 
     async def _update_stats(

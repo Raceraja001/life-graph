@@ -100,7 +100,10 @@ async def check_rate_limit(
         if not allowed:
             logger.warning(
                 "Rate limit exceeded: tenant=%s resource=%s count=%d limit=%d",
-                tenant_id, resource, current_count, limit,
+                tenant_id,
+                resource,
+                current_count,
+                limit,
             )
 
         return RateLimitResult(

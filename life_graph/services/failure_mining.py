@@ -93,8 +93,8 @@ class FailurePatternMiner:
         )
         prompt = (
             "You analyze a person's failed decisions to find recurring failure "
-            "patterns. Return JSON {\"patterns\": [{\"description\": str, "
-            "\"decision_ids\": [str, ...]}]}. Only report a pattern if at least "
+            'patterns. Return JSON {"patterns": [{"description": str, '
+            '"decision_ids": [str, ...]}]}. Only report a pattern if at least '
             f"{MIN_INSTANCES} of the listed decisions genuinely share it, and "
             "cite their exact ids. Invent nothing.\n\nFailed decisions:\n"
             f"{listing}"
@@ -123,9 +123,7 @@ class FailurePatternMiner:
                 out.append(
                     {
                         "description": str(p["description"]),
-                        "decision_ids": [
-                            str(x) for x in (p.get("decision_ids") or [])
-                        ],
+                        "decision_ids": [str(x) for x in (p.get("decision_ids") or [])],
                     }
                 )
         return out
@@ -146,9 +144,7 @@ class FailurePatternMiner:
 
     # ── Store ─────────────────────────────────────────────────
 
-    async def store_patterns(
-        self, tenant_id: str, patterns: list[dict]
-    ) -> int:
+    async def store_patterns(self, tenant_id: str, patterns: list[dict]) -> int:
         """Persist patterns as failure-pattern memories. Returns count stored."""
         if not patterns:
             return 0
@@ -190,7 +186,9 @@ class FailurePatternMiner:
         # Governor budget gate — the monthly LLM mining pass is low-priority
         # autonomous spend, so it is throttled first when the budget runs low.
         decision = await governor.authorize(
-            tenant_id, BudgetCategory.FAILURE_MINING, estimated_usd=ESTIMATED_MINING_COST_USD,
+            tenant_id,
+            BudgetCategory.FAILURE_MINING,
+            estimated_usd=ESTIMATED_MINING_COST_USD,
         )
         if not decision.allowed:
             logger.info("Failure mining denied by Governor for %s: %s", tenant_id, decision.reason)
@@ -207,7 +205,10 @@ class FailurePatternMiner:
         stored = await self.store_patterns(tenant_id, kept)
         logger.info(
             "Failure mining for %s: %d failures → %d candidates → %d stored",
-            tenant_id, len(failures), len(candidates), stored,
+            tenant_id,
+            len(failures),
+            len(candidates),
+            stored,
         )
         return {
             "tenant_id": tenant_id,

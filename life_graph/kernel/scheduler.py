@@ -47,11 +47,11 @@ class CronExpression:
     """
 
     _FIELD_RANGES = [
-        (0, 59),   # minute
-        (0, 23),   # hour
-        (1, 31),   # day of month
-        (1, 12),   # month
-        (0, 6),    # day of week (0=Sunday)
+        (0, 59),  # minute
+        (0, 23),  # hour
+        (1, 31),  # day of month
+        (1, 12),  # month
+        (0, 6),  # day of week (0=Sunday)
     ]
 
     def __init__(self, expression: str) -> None:
@@ -59,17 +59,15 @@ class CronExpression:
         parts = self.expression.split()
         if len(parts) != 5:
             raise ValueError(
-                f"Cron expression must have 5 fields,"
-                f" got {len(parts)}: {expression!r}"
+                f"Cron expression must have 5 fields, got {len(parts)}: {expression!r}"
             )
-        self._fields = [
-            self._parse_field(parts[i], *self._FIELD_RANGES[i])
-            for i in range(5)
-        ]
+        self._fields = [self._parse_field(parts[i], *self._FIELD_RANGES[i]) for i in range(5)]
 
     @staticmethod
     def _parse_field(
-        field: str, lo: int, hi: int,
+        field: str,
+        lo: int,
+        hi: int,
     ) -> set[int]:
         """Parse a single cron field into a set of values."""
         values: set[int] = set()
@@ -84,9 +82,7 @@ class CronExpression:
                 values.update(range(lo, hi + 1, step))
             elif "-" in part:
                 start, end = part.split("-", 1)
-                values.update(
-                    range(int(start), int(end) + 1, step)
-                )
+                values.update(range(int(start), int(end) + 1, step))
             else:
                 values.add(int(part))
 
@@ -110,6 +106,7 @@ class CronExpression:
         # Start from the next minute
         dt = after.replace(second=0, microsecond=0)
         from datetime import timedelta
+
         dt += timedelta(minutes=1)
 
         minutes, hours, days, months, dows = self._fields
@@ -126,9 +123,7 @@ class CronExpression:
                 return dt
             dt += timedelta(minutes=1)
 
-        raise ValueError(
-            f"No matching time found for {self.expression}"
-        )
+        raise ValueError(f"No matching time found for {self.expression}")
 
     @staticmethod
     def _py_weekdays(cron_dows: set[int]) -> set[int]:
@@ -138,8 +133,13 @@ class CronExpression:
         Python: 0=Monday, 1=Tuesday, ..., 6=Sunday
         """
         mapping = {
-            0: 6, 1: 0, 2: 1, 3: 2,
-            4: 3, 5: 4, 6: 5,
+            0: 6,
+            1: 0,
+            2: 1,
+            3: 2,
+            4: 3,
+            5: 4,
+            6: 5,
         }
         return {mapping[d] for d in cron_dows}
 
@@ -176,9 +176,7 @@ class SchedulerService:
     ) -> None:
         self._session_factory = session_factory
         self._process_manager = process_manager
-        self._max_failures = (
-            settings.kernel_max_consecutive_failures
-        )
+        self._max_failures = settings.kernel_max_consecutive_failures
 
     # ── CRUD ──────────────────────────────────────────────
 
@@ -204,9 +202,7 @@ class SchedulerService:
 
         # Validate cron expression
         if not CronExpression.validate(cron_expr):
-            raise ValueError(
-                f"Invalid cron expression: {cron_expr!r}"
-            )
+            raise ValueError(f"Invalid cron expression: {cron_expr!r}")
 
         # Compute next_run_at
         cron = CronExpression(cron_expr)
@@ -221,9 +217,7 @@ class SchedulerService:
                 )
             )
             if existing.scalar_one_or_none() is not None:
-                raise ValueError(
-                    f"Schedule '{name}' already exists"
-                )
+                raise ValueError(f"Schedule '{name}' already exists")
 
             job = ScheduledJob(
                 id=uuid.uuid4(),
@@ -235,7 +229,8 @@ class SchedulerService:
                 input=data.get("input", {}),
                 is_active=True,
                 timeout_seconds=data.get(
-                    "timeout_seconds", 600,
+                    "timeout_seconds",
+                    600,
                 ),
                 max_retries=data.get("max_retries", 3),
                 next_run_at=next_run,
@@ -247,7 +242,9 @@ class SchedulerService:
 
             logger.info(
                 "Created schedule '%s' (cron=%s, next=%s)",
-                name, cron_expr, next_run,
+                name,
+                cron_expr,
+                next_run,
             )
             return self._job_to_dict(job)
 
@@ -282,14 +279,13 @@ class SchedulerService:
                 ScheduledJob.next_run_at.asc(),
             )
             result = await session.execute(stmt)
-            jobs = [
-                self._job_to_dict(j)
-                for j in result.scalars().all()
-            ]
+            jobs = [self._job_to_dict(j) for j in result.scalars().all()]
             return jobs, len(jobs)
 
     async def get_by_id(
-        self, tenant_id: str, job_id: str,
+        self,
+        tenant_id: str,
+        job_id: str,
     ) -> dict[str, Any] | None:
         """Get a scheduled job by UUID.
 
@@ -330,27 +326,27 @@ class SchedulerService:
             Updated job dict, or None if not found.
         """
         allowed = {
-            "description", "cron_expression",
-            "agent_name", "input", "is_active",
-            "timeout_seconds", "max_retries",
+            "description",
+            "cron_expression",
+            "agent_name",
+            "input",
+            "is_active",
+            "timeout_seconds",
+            "max_retries",
             "properties",
         }
-        values = {
-            k: v for k, v in data.items()
-            if k in allowed
-        }
+        values = {k: v for k, v in data.items() if k in allowed}
         if not values:
             return await self.get_by_id(
-                tenant_id, job_id,
+                tenant_id,
+                job_id,
             )
 
         # Validate and recompute if cron changed
         new_cron = values.get("cron_expression")
         if new_cron:
             if not CronExpression.validate(new_cron):
-                raise ValueError(
-                    f"Invalid cron: {new_cron!r}"
-                )
+                raise ValueError(f"Invalid cron: {new_cron!r}")
             cron = CronExpression(new_cron)
             values["next_run_at"] = cron.next_fire_time()
 
@@ -377,12 +373,15 @@ class SchedulerService:
 
         logger.info(
             "Updated schedule %s (fields: %s)",
-            job_id, list(values.keys()),
+            job_id,
+            list(values.keys()),
         )
         return await self.get_by_id(tenant_id, job_id)
 
     async def delete(
-        self, tenant_id: str, job_id: str,
+        self,
+        tenant_id: str,
+        job_id: str,
     ) -> dict[str, Any] | None:
         """Soft-delete a scheduled job.
 
@@ -413,7 +412,8 @@ class SchedulerService:
 
         logger.info(
             "Deleted schedule '%s' (%s)",
-            job["name"], job_id,
+            job["name"],
+            job_id,
         )
         return {
             "id": job_id,
@@ -424,7 +424,9 @@ class SchedulerService:
     # ── Job Execution ─────────────────────────────────────
 
     async def fire_job(
-        self, tenant_id: str, job_id: str,
+        self,
+        tenant_id: str,
+        job_id: str,
         input_override: dict[str, Any] | None = None,
         tool_override: list[str] | None = None,
     ) -> dict[str, Any] | None:
@@ -466,37 +468,35 @@ class SchedulerService:
             result = await self._process_manager.spawn(
                 tenant_id=tenant_id,
                 agent_name=job["agent_name"],
-                input_data=(
-                    input_override
-                    if input_override is not None
-                    else job.get("input", {})
-                ),
+                input_data=(input_override if input_override is not None else job.get("input", {})),
                 task_name=f"schedule:{job['name']}",
                 timeout_seconds=job.get(
-                    "timeout_seconds", 600,
+                    "timeout_seconds",
+                    600,
                 ),
                 max_retries=job.get("max_retries", 3),
                 tool_override=tool_override,
             )
 
-            task_id = (
-                result.get("task_id")
-                if isinstance(result, dict)
-                else str(result)
-            )
+            task_id = result.get("task_id") if isinstance(result, dict) else str(result)
 
             await self._record_run(
-                job_id, "completed", task_id,
+                job_id,
+                "completed",
+                task_id,
             )
             return result
 
         except Exception as exc:
             logger.error(
                 "Schedule %s fire failed: %s",
-                job_id, exc,
+                job_id,
+                exc,
             )
             await self._record_run(
-                job_id, "failed", None,
+                job_id,
+                "failed",
+                None,
             )
             return None
 
@@ -524,10 +524,7 @@ class SchedulerService:
             if job is None:
                 return
 
-            new_failures = (
-                0 if status == "completed"
-                else job.consecutive_failures + 1
-            )
+            new_failures = 0 if status == "completed" else job.consecutive_failures + 1
 
             # Compute next run
             try:
@@ -545,17 +542,15 @@ class SchedulerService:
                 "updated_at": now,
             }
             if task_id:
-                values["last_run_task_id"] = (
-                    uuid.UUID(task_id)
-                )
+                values["last_run_task_id"] = uuid.UUID(task_id)
 
             # Auto-disable on threshold
             if new_failures >= self._max_failures:
                 values["is_active"] = False
                 logger.warning(
-                    "Auto-disabled schedule %s after"
-                    " %d consecutive failures",
-                    job_id, new_failures,
+                    "Auto-disabled schedule %s after %d consecutive failures",
+                    job_id,
+                    new_failures,
                 )
 
         # Apply update in fresh session
@@ -583,7 +578,8 @@ class SchedulerService:
     # ── Due Job Finder ────────────────────────────────────
 
     async def get_due_jobs(
-        self, tenant_id: str | None = None,
+        self,
+        tenant_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Find all active jobs whose next_run_at is past.
 
@@ -606,10 +602,7 @@ class SchedulerService:
                 )
 
             result = await session.execute(stmt)
-            return [
-                self._job_to_dict(j)
-                for j in result.scalars().all()
-            ]
+            return [self._job_to_dict(j) for j in result.scalars().all()]
 
     # ── Helpers ───────────────────────────────────────────
 
@@ -628,22 +621,11 @@ class SchedulerService:
             "input": job.input or {},
             "is_active": job.is_active,
             "run_count": job.run_count,
-            "consecutive_failures": (
-                job.consecutive_failures
-            ),
-            "last_run_at": (
-                job.last_run_at.isoformat()
-                if job.last_run_at else None
-            ),
+            "consecutive_failures": (job.consecutive_failures),
+            "last_run_at": (job.last_run_at.isoformat() if job.last_run_at else None),
             "last_run_status": job.last_run_status,
-            "last_run_task_id": (
-                str(job.last_run_task_id)
-                if job.last_run_task_id else None
-            ),
-            "next_run_at": (
-                job.next_run_at.isoformat()
-                if job.next_run_at else None
-            ),
+            "last_run_task_id": (str(job.last_run_task_id) if job.last_run_task_id else None),
+            "next_run_at": (job.next_run_at.isoformat() if job.next_run_at else None),
             "max_retries": job.max_retries,
             "timeout_seconds": job.timeout_seconds,
             "properties": job.properties or {},

@@ -59,9 +59,7 @@ class Memory(Base):
     __tablename__ = "memories"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Content ───────────────────────────────────────────────
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -79,10 +77,13 @@ class Memory(Base):
     source: Mapped[str | None] = mapped_column(String, nullable=True)
     trust_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
     trust_tier: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default="verified", default="verified",
+        String(16),
+        nullable=False,
+        server_default="verified",
+        default="verified",
         doc="Provenance trust tier: self|verified|external|hostile_possible. "
-            "Defaults to 'verified' (system-produced); untrusted origin is set "
-            "explicitly by the ingesting caller. See core/trust.py.",
+        "Defaults to 'verified' (system-produced); untrusted origin is set "
+        "explicitly by the ingesting caller. See core/trust.py.",
     )
 
     # ── Timestamps ────────────────────────────────────────────
@@ -95,44 +96,49 @@ class Memory(Base):
     valid_from: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    valid_until: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Access & Decay ────────────────────────────────────────
     access_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    last_accessed: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_accessed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decay_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.1)
 
     # ── Reinforcement (Confidence Decay) ──────────────────────
     last_reinforced: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
         doc="Last time user confirmed this memory is still accurate",
     )
     reinforced_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0,
+        Integer,
+        nullable=False,
+        default=0,
         doc="Number of times user confirmed this memory",
     )
 
     # ── Extraction Provenance ─────────────────────────────────
     extraction_tier: Mapped[str | None] = mapped_column(
-        String(20), nullable=True,
+        String(20),
+        nullable=True,
         doc="Which extraction tier created this: regex, spacy, llm, manual",
     )
     extraction_confidence: Mapped[float | None] = mapped_column(
-        Float, nullable=True,
+        Float,
+        nullable=True,
         doc="Confidence score from the extraction pipeline (0.0-1.0)",
     )
 
     # ── Impact Scoring (Feature 5) ────────────────────────────
     impact_score: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.5,
+        Float,
+        nullable=False,
+        default=0.5,
         doc="Learned usefulness from session outcome feedback (0.0-1.0)",
     )
     impact_confidence: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.0,
+        Float,
+        nullable=False,
+        default=0.0,
         doc="Confidence in impact_score (grows with more data points)",
     )
 
@@ -149,9 +155,7 @@ class Memory(Base):
     )
 
     # ── Tenant ─────────────────────────────────────────────────
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
 
     # ── Status & Owner ────────────────────────────────────────
     status: Mapped[str] = mapped_column(String, nullable=False, default="active")
@@ -164,14 +168,13 @@ class Memory(Base):
 
     # ── Capture Spine ─────────────────────────────────────────
     capture_event_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True,
+        UUID(as_uuid=True),
+        nullable=True,
         doc="Links this memory to the capture event that produced it",
     )
 
     # ── Embedding ─────────────────────────────────────────────
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(_EMBED_DIM), nullable=True
-    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBED_DIM), nullable=True)
     embedding_model: Mapped[str] = mapped_column(
         String, nullable=False, default=settings.embedding_model
     )
@@ -213,29 +216,22 @@ class Session(Base):
 
     __tablename__ = "sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    ended_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     context: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     memories_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     memories_accessed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     outcome: Mapped[str | None] = mapped_column(
-        String(20), nullable=True,
+        String(20),
+        nullable=True,
         doc="Session result: success, failure, or neutral",
     )
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(_EMBED_DIM), nullable=True
-    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBED_DIM), nullable=True)
 
     # ── Relationships ─────────────────────────────────────────
     memory_links: Mapped[list[MemorySession]] = relationship(
@@ -260,18 +256,12 @@ class Intention(Base):
 
     __tablename__ = "intentions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     content: Mapped[str] = mapped_column(Text, nullable=False)
     trigger_type: Mapped[str] = mapped_column(String, nullable=False, default="event")
     trigger_condition: Mapped[str | None] = mapped_column(Text, nullable=True)
-    trigger_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    trigger_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     context_match: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     priority: Mapped[str] = mapped_column(String, nullable=False, default="normal")
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
@@ -280,15 +270,9 @@ class Intention(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    triggered_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ── Foreign Keys ──────────────────────────────────────────
     source_session: Mapped[uuid.UUID | None] = mapped_column(
@@ -303,9 +287,7 @@ class Intention(Base):
     )
 
     # ── Embedding ─────────────────────────────────────────────
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(_EMBED_DIM), nullable=True
-    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBED_DIM), nullable=True)
 
     __table_args__ = (
         Index("ix_intentions_status", "status"),
@@ -327,12 +309,8 @@ class KnowledgeGap(Base):
 
     __tablename__ = "knowledge_gaps"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     topic: Mapped[str] = mapped_column(Text, nullable=False)
     query_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     first_asked: Mapped[datetime] = mapped_column(
@@ -347,9 +325,7 @@ class KnowledgeGap(Base):
         ForeignKey("memories.id", ondelete="SET NULL"),
         nullable=True,
     )
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(_EMBED_DIM), nullable=True
-    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBED_DIM), nullable=True)
 
     __table_args__ = (
         Index("ix_knowledge_gaps_resolved", "resolved"),
@@ -380,11 +356,14 @@ class MemorySession(Base):
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
     role: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="created",
+        String(20),
+        nullable=False,
+        default="created",
         doc="Whether memory was 'created' or 'recalled' in this session",
     )
     was_useful: Mapped[bool | None] = mapped_column(
-        Boolean, nullable=True,
+        Boolean,
+        nullable=True,
         doc="Per-memory usefulness feedback (v2)",
     )
 
@@ -405,9 +384,7 @@ class MemoryLink(Base):
 
     __tablename__ = "memory_links"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_memory_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("memories.id", ondelete="CASCADE"),
@@ -424,9 +401,7 @@ class MemoryLink(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
 
     __table_args__ = (
         Index("ix_memory_links_source", "source_memory_id"),
@@ -452,20 +427,14 @@ class JobRun(Base):
 
     __tablename__ = "job_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     job_name: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="queued"
     )  # queued | running | success | failed
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     result: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -487,23 +456,15 @@ class TenantUsage(Base):
 
     __tablename__ = "tenant_usage"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    period_start: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     api_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     memories_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     llm_tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    llm_cost_usd: Mapped[float] = mapped_column(
-        Numeric(10, 6), nullable=False, default=0
-    )
+    llm_cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False, default=0)
 
-    __table_args__ = (
-        Index("ix_tenant_usage_lookup", "tenant_id", "period_start"),
-    )
+    __table_args__ = (Index("ix_tenant_usage_lookup", "tenant_id", "period_start"),)
 
     def __repr__(self) -> str:
         return f"<TenantUsage(tenant={self.tenant_id}, period={self.period_start})>"
@@ -519,9 +480,7 @@ class BudgetSpend(Base):
 
     __tablename__ = "budget_spend"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     period_month: Mapped[datetime] = mapped_column(
         Date, nullable=False, doc="First day of the UTC month this row aggregates."
@@ -533,9 +492,7 @@ class BudgetSpend(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint(
-            "tenant_id", "period_month", "category", name="uq_budget_spend_key"
-        ),
+        UniqueConstraint("tenant_id", "period_month", "category", name="uq_budget_spend_key"),
         Index("ix_budget_spend_lookup", "tenant_id", "period_month"),
     )
 
@@ -551,9 +508,7 @@ class TenantConfig(Base):
 
     __tablename__ = "tenant_configs"
 
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), primary_key=True
-    )
+    tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     plan: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="active"
@@ -561,15 +516,17 @@ class TenantConfig(Base):
     provisioned_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    deactivated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cold_start_config: Mapped[dict | None] = mapped_column(
-        JSONB, nullable=True, default=None,
+        JSONB,
+        nullable=True,
+        default=None,
         comment="Per-tenant cold start questions/config. Null = use defaults.",
     )
     autonomy_paused: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False,
+        Boolean,
+        nullable=False,
+        default=False,
         comment="Kill-switch: when true, AutoFixService._run_action refuses to "
         "execute any autonomous action for this tenant.",
     )
@@ -577,9 +534,7 @@ class TenantConfig(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    __table_args__ = (
-        Index("ix_tenant_configs_status", "status"),
-    )
+    __table_args__ = (Index("ix_tenant_configs_status", "status"),)
 
     def __repr__(self) -> str:
         return f"<TenantConfig(tenant={self.tenant_id}, status={self.status})>"
@@ -590,12 +545,8 @@ class TenantWebhook(Base):
 
     __tablename__ = "tenant_webhooks"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     secret: Mapped[str] = mapped_column(String(256), nullable=False)
     events: Mapped[str] = mapped_column(
@@ -629,9 +580,7 @@ class Procedure(Base):
 
     __tablename__ = "procedures"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trigger: Mapped[str] = mapped_column(Text, nullable=False)
     steps: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="[]")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -648,9 +597,7 @@ class Procedure(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
 
     @property
     def success_rate(self) -> float:
@@ -677,40 +624,20 @@ class AgentSession(Base):
 
     __tablename__ = "agent_sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     user_message: Mapped[str] = mapped_column(Text, nullable=False)
-    classified_intent: Mapped[str | None] = mapped_column(
-        String(30), nullable=True
-    )
-    classification_conf: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.0
-    )
-    routed_to: Mapped[str | None] = mapped_column(
-        String(100), nullable=True
-    )
-    handoff_chain: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
-    total_duration_ms: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    total_tokens: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    total_cost_usd: Mapped[float] = mapped_column(
-        Numeric(10, 6), nullable=False, default=0
-    )
+    classified_intent: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    classification_conf: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    routed_to: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    handoff_chain: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="[]")
+    total_duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False, default=0)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="active"
     )  # active|completed|failed|abandoned
-    context: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    context: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     memory_session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("sessions.id", ondelete="SET NULL"),
@@ -719,9 +646,7 @@ class AgentSession(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("ix_agent_sessions_tenant", "tenant_id", "created_at"),
@@ -745,49 +670,25 @@ class AgentPersona(Base):
 
     __tablename__ = "agent_personas"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    display_name: Mapped[str | None] = mapped_column(
-        String(200), nullable=True
-    )
+    display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     model: Mapped[str] = mapped_column(
         String(100), nullable=False, default="gemini/gemini-2.5-flash"
     )
-    temperature: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.7
-    )
-    max_tokens: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=4096
-    )
-    allowed_tools: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
-    intent_tags: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
+    temperature: Mapped[float] = mapped_column(Float, nullable=False, default=0.7)
+    max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=4096)
+    allowed_tools: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    intent_tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
     icon: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    is_builtin: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True
-    )
-    properties: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
-    use_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    last_used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    properties: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -800,19 +701,26 @@ class AgentPersona(Base):
 
     # ── Agent Driver Columns ──────────────────────────────────
     driver: Mapped[str | None] = mapped_column(
-        String(32), nullable=True,
+        String(32),
+        nullable=True,
         doc="Default driver for this persona (local, claude_code, codex, etc.)",
     )
     verifier_chain: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default="[]",
+        JSONB,
+        nullable=False,
+        server_default="[]",
         doc="Ordered list of verifier names to run after task completion",
     )
     context_profile: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}",
+        JSONB,
+        nullable=False,
+        server_default="{}",
         doc="Context packet configuration: which sections to include, token budgets",
     )
     task_types: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), nullable=False, server_default="{}",
+        ARRAY(Text),
+        nullable=False,
+        server_default="{}",
         doc="Task types this persona can handle",
     )
 
@@ -832,11 +740,7 @@ class AgentPersona(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<AgentPersona(id={self.id!s:.8}, "
-            f"name={self.name}, "
-            f"builtin={self.is_builtin})>"
-        )
+        return f"<AgentPersona(id={self.id!s:.8}, name={self.name}, builtin={self.is_builtin})>"
 
 
 class AgentTask(Base):
@@ -847,47 +751,25 @@ class AgentTask(Base):
 
     __tablename__ = "agent_tasks"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     task_name: Mapped[str | None] = mapped_column(Text, nullable=True)
-    agent_name: Mapped[str] = mapped_column(
-        String(100), nullable=False
-    )
+    agent_name: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="queued"
     )  # queued|running|completed|failed|cancelled|timeout
     priority: Mapped[str] = mapped_column(
         String(10), nullable=False, default="normal"
     )  # low|normal|high|critical
-    input: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
-    result: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    input: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    result: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    logs: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
-    token_usage: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
-    model_used: Mapped[str | None] = mapped_column(
-        String(100), nullable=True
-    )
-    timeout_seconds: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=300
-    )
-    retry_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    max_retries: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=2
-    )
+    logs: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="[]")
+    token_usage: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    model_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     parent_task_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("agent_tasks.id", ondelete="SET NULL"),
@@ -898,67 +780,37 @@ class AgentTask(Base):
         ForeignKey("agent_sessions.id", ondelete="SET NULL"),
         nullable=True,
     )
-    project_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # ── Era 7 additions ──
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    task_type: Mapped[str] = mapped_column(
-        String(30), nullable=False, default="general"
-    )
+    task_type: Mapped[str] = mapped_column(String(30), nullable=False, default="general")
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
-    assigned_agent: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
-    created_by_agent: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
+    assigned_agent: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_by_agent: Mapped[str | None] = mapped_column(String(64), nullable=True)
     root_task_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("agent_tasks.id", ondelete="SET NULL"),
         nullable=True,
     )
-    depth: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    on_child_failure: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="continue"
-    )
-    status_history: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
+    depth: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    on_child_failure: Mapped[str] = mapped_column(String(20), nullable=False, default="continue")
+    status_history: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    claimed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    deadline: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    source_message_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
-    workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
-    workflow_step_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
-    properties: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    workflow_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    workflow_step_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    properties: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     tags: Mapped[list[str]] = mapped_column(
         ARRAY(String(50)),
         nullable=False,
         server_default="{}",
         default=list,
     )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -970,9 +822,7 @@ class AgentTask(Base):
     )
 
     __table_args__ = (
-        Index(
-            "ix_agent_tasks_tenant_status", "tenant_id", "status"
-        ),
+        Index("ix_agent_tasks_tenant_status", "tenant_id", "status"),
         Index(
             "ix_agent_tasks_tenant_created",
             "tenant_id",
@@ -991,11 +841,7 @@ class AgentTask(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<AgentTask(id={self.id!s:.8}, "
-            f"agent={self.agent_name}, "
-            f"status={self.status})>"
-        )
+        return f"<AgentTask(id={self.id!s:.8}, agent={self.agent_name}, status={self.status})>"
 
 
 class ScheduledJob(Base):
@@ -1014,58 +860,80 @@ class ScheduledJob(Base):
         default=uuid.uuid4,
     )
     tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy",
+        String(64),
+        nullable=False,
+        default="legacy",
     )
     name: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     description: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
     cron_expression: Mapped[str] = mapped_column(
-        String(100), nullable=False,
+        String(100),
+        nullable=False,
     )
     agent_name: Mapped[str] = mapped_column(
-        String(100), nullable=False,
+        String(100),
+        nullable=False,
     )
     input: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}",
+        JSONB,
+        nullable=False,
+        server_default="{}",
     )
     is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True,
+        Boolean,
+        nullable=False,
+        default=True,
     )
     run_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0,
+        Integer,
+        nullable=False,
+        default=0,
     )
     consecutive_failures: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0,
+        Integer,
+        nullable=False,
+        default=0,
     )
     last_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     last_run_status: Mapped[str | None] = mapped_column(
-        String(20), nullable=True,
+        String(20),
+        nullable=True,
     )
-    last_run_task_id: Mapped[uuid.UUID | None] = (
-        mapped_column(
-            UUID(as_uuid=True),
-            ForeignKey(
-                "agent_tasks.id", ondelete="SET NULL",
-            ),
-            nullable=True,
-        )
+    last_run_task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "agent_tasks.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
     )
     next_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     max_retries: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=3,
+        Integer,
+        nullable=False,
+        default=3,
     )
     timeout_seconds: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=600,
+        Integer,
+        nullable=False,
+        default=600,
     )
     properties: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}",
+        JSONB,
+        nullable=False,
+        server_default="{}",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1098,11 +966,7 @@ class ScheduledJob(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<ScheduledJob(id={self.id!s:.8}, "
-            f"name={self.name}, "
-            f"cron={self.cron_expression})>"
-        )
+        return f"<ScheduledJob(id={self.id!s:.8}, name={self.name}, cron={self.cron_expression})>"
 
 
 class Project(Base):
@@ -1121,49 +985,70 @@ class Project(Base):
         default=uuid.uuid4,
     )
     tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy",
+        String(64),
+        nullable=False,
+        default="legacy",
     )
     name: Mapped[str] = mapped_column(
-        String(200), nullable=False,
+        String(200),
+        nullable=False,
     )
     path: Mapped[str] = mapped_column(
-        Text, nullable=False,
+        Text,
+        nullable=False,
     )
     description: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
     git_url: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
     git_branch: Mapped[str | None] = mapped_column(
-        String(200), nullable=True,
+        String(200),
+        nullable=True,
     )
     language: Mapped[str | None] = mapped_column(
-        String(50), nullable=True,
+        String(50),
+        nullable=True,
     )
     framework: Mapped[str | None] = mapped_column(
-        String(100), nullable=True,
+        String(100),
+        nullable=True,
     )
     dependency_file: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
     dependency_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0,
+        Integer,
+        nullable=False,
+        default=0,
     )
     file_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0,
+        Integer,
+        nullable=False,
+        default=0,
     )
     recent_commits: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default="[]",
+        JSONB,
+        nullable=False,
+        server_default="[]",
     )
     scan_metadata: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}",
+        JSONB,
+        nullable=False,
+        server_default="{}",
     )
     last_scanned_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     is_active: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=True,
+        Boolean,
+        nullable=False,
+        default=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1180,25 +1065,24 @@ class Project(Base):
     __table_args__ = (
         Index(
             "ix_projects_name",
-            "tenant_id", "name",
+            "tenant_id",
+            "name",
             unique=True,
         ),
         Index(
             "ix_projects_tenant",
-            "tenant_id", "is_active",
+            "tenant_id",
+            "is_active",
         ),
         Index(
             "ix_projects_language",
-            "tenant_id", "language",
+            "tenant_id",
+            "language",
         ),
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<Project(id={self.id!s:.8}, "
-            f"name={self.name}, "
-            f"lang={self.language})>"
-        )
+        return f"<Project(id={self.id!s:.8}, name={self.name}, lang={self.language})>"
 
 
 class Notification(Base):
@@ -1217,41 +1101,59 @@ class Notification(Base):
         default=uuid.uuid4,
     )
     tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy",
+        String(64),
+        nullable=False,
+        default="legacy",
     )
     priority: Mapped[str] = mapped_column(
-        String(10), nullable=False, default="info",
+        String(10),
+        nullable=False,
+        default="info",
     )
     channel: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="terminal",
+        String(20),
+        nullable=False,
+        default="terminal",
     )
     title: Mapped[str] = mapped_column(
-        String(500), nullable=False,
+        String(500),
+        nullable=False,
     )
     body: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
     extra_metadata: Mapped[dict] = mapped_column(
         "metadata",
-        JSONB, nullable=False, server_default="{}",
+        JSONB,
+        nullable=False,
+        server_default="{}",
     )
     is_read: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False,
+        Boolean,
+        nullable=False,
+        default=False,
     )
     is_delivered: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False,
+        Boolean,
+        nullable=False,
+        default=False,
     )
     delivered_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True,
+        DateTime(timezone=True),
+        nullable=True,
     )
     delivery_error: Mapped[str | None] = mapped_column(
-        Text, nullable=True,
+        Text,
+        nullable=True,
     )
     source_type: Mapped[str | None] = mapped_column(
-        String(50), nullable=True,
+        String(50),
+        nullable=True,
     )
     source_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True,
+        UUID(as_uuid=True),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -1267,23 +1169,27 @@ class Notification(Base):
         ),
         Index(
             "ix_notifications_unread",
-            "tenant_id", "is_read", "created_at",
+            "tenant_id",
+            "is_read",
+            "created_at",
         ),
         Index(
             "ix_notifications_priority",
-            "tenant_id", "priority", "created_at",
+            "tenant_id",
+            "priority",
+            "created_at",
         ),
         Index(
             "ix_notifications_pending",
-            "is_delivered", "priority", "created_at",
+            "is_delivered",
+            "priority",
+            "created_at",
         ),
     )
 
     def __repr__(self) -> str:
         return (
-            f"<Notification(id={self.id!s:.8}, "
-            f"priority={self.priority}, "
-            f"title={self.title[:30]})>"
+            f"<Notification(id={self.id!s:.8}, priority={self.priority}, title={self.title[:30]})>"
         )
 
 
@@ -1300,12 +1206,8 @@ class Preference(Base):
     __tablename__ = "preferences"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
 
     # ── Content ───────────────────────────────────────────────
     topic: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1314,64 +1216,49 @@ class Preference(Base):
     context: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Confidence ────────────────────────────────────────────
-    confidence: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.5
-    )
-    confidence_history: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    confidence_history: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
 
     # ── Source ────────────────────────────────────────────────
-    source: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="explicit"
-    )
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="explicit")
     source_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Categorization ────────────────────────────────────────
-    tags: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String), nullable=True
-    )
-    category: Mapped[str | None] = mapped_column(
-        String(50), nullable=True
-    )
-    properties: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    properties: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     # ── Validation ────────────────────────────────────────────
     last_validated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    validated_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    validated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_challenged_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     # ── Embedding ─────────────────────────────────────────────
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(_EMBED_DIM), nullable=True
-    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBED_DIM), nullable=True)
     embedding_model: Mapped[str] = mapped_column(
         String(50), nullable=False, default=settings.embedding_model
     )
 
     # ── Status & Timestamps ───────────────────────────────────
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="active"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow,
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
         onupdate=_utcnow,
     )
 
     # ── Relationships ─────────────────────────────────────────
     evidence_items: Mapped[list[Evidence]] = relationship(
-        "Evidence", back_populates="preference",
+        "Evidence",
+        back_populates="preference",
         cascade="all, delete-orphan",
     )
 
@@ -1401,12 +1288,8 @@ class Evidence(Base):
     __tablename__ = "evidence"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
 
     # ── FK to Preference ──────────────────────────────────────
     preference_id: Mapped[uuid.UUID] = mapped_column(
@@ -1416,52 +1299,36 @@ class Evidence(Base):
     )
 
     # ── Source ────────────────────────────────────────────────
-    source_type: Mapped[str] = mapped_column(
-        String(30), nullable=False
-    )
+    source_type: Mapped[str] = mapped_column(String(30), nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_title: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Content ───────────────────────────────────────────────
-    stance: Mapped[str] = mapped_column(
-        String(10), nullable=False, default="supports"
-    )
+    stance: Mapped[str] = mapped_column(String(10), nullable=False, default="supports")
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Scoring ───────────────────────────────────────────────
-    credibility: Mapped[float] = mapped_column(
-        Float, nullable=False, default=1.0
-    )
-    weight: Mapped[float] = mapped_column(
-        Float, nullable=False, default=1.0
-    )
+    credibility: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
 
     # ── Metadata ──────────────────────────────────────────────
-    properties: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    properties: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     # ── Embedding ─────────────────────────────────────────────
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(_EMBED_DIM), nullable=True
-    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBED_DIM), nullable=True)
     embedding_model: Mapped[str] = mapped_column(
         String(50), nullable=False, default=settings.embedding_model
     )
 
     # ── Status & Timestamps ───────────────────────────────────
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="active"
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
 
     # ── Relationships ─────────────────────────────────────────
-    preference: Mapped[Preference] = relationship(
-        "Preference", back_populates="evidence_items"
-    )
+    preference: Mapped[Preference] = relationship("Preference", back_populates="evidence_items")
 
     # ── Indexes ───────────────────────────────────────────────
     __table_args__ = (
@@ -1472,10 +1339,7 @@ class Evidence(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<Evidence(id={self.id!s:.8}, "
-            f"stance={self.stance}, source={self.source_type})>"
-        )
+        return f"<Evidence(id={self.id!s:.8}, stance={self.stance}, source={self.source_type})>"
 
 
 class AdvisorSession(Base):
@@ -1487,39 +1351,21 @@ class AdvisorSession(Base):
 
     __tablename__ = "advisor_sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
-    sources_used: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
-    preferences_cited: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
-    confidence: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0.5
-    )
-    consensus_score: Mapped[float | None] = mapped_column(
-        Float, nullable=True
-    )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
-    )
-    properties: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    sources_used: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    preferences_cited: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    consensus_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    properties: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    answered_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("ix_advisor_tenant_created", "tenant_id", "created_at"),
@@ -1540,38 +1386,20 @@ class ResearchRun(Base):
 
     __tablename__ = "research_runs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="legacy"
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     query: Mapped[str] = mapped_column(Text, nullable=False)
-    sources_searched: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
-    evidence_found: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    evidence_added: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
-    preferences_affected: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="pending"
-    )
+    sources_searched: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    evidence_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    evidence_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    preferences_affected: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    properties: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    properties: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("ix_research_tenant_started", "tenant_id", "started_at"),
@@ -1596,7 +1424,9 @@ class AgentMessage(Base):
     recipient_agent: Mapped[str] = mapped_column(String(64), nullable=False)
     thread_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     reply_to_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("agent_messages.id", ondelete="SET NULL"), nullable=True,
+        UUID(as_uuid=True),
+        ForeignKey("agent_messages.id", ondelete="SET NULL"),
+        nullable=True,
     )
     message_type: Mapped[str] = mapped_column(String(30), nullable=False)
     subject: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -1606,9 +1436,13 @@ class AgentMessage(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="unread")
     priority: Mapped[str] = mapped_column(String(10), nullable=False, default="medium")
     task_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("agent_tasks.id", ondelete="SET NULL"), nullable=True,
+        UUID(as_uuid=True),
+        ForeignKey("agent_tasks.id", ondelete="SET NULL"),
+        nullable=True,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     properties: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
@@ -1643,7 +1477,9 @@ class CrossSystemSync(Base):
     sync_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1672,14 +1508,22 @@ class Workflow(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
     properties: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String(50)), nullable=True)
 
     # Relationships
-    steps: Mapped[list[WorkflowStep]] = relationship("WorkflowStep", back_populates="workflow", cascade="all, delete-orphan")
-    runs: Mapped[list[WorkflowRun]] = relationship("WorkflowRun", back_populates="workflow", cascade="all, delete-orphan")
+    steps: Mapped[list[WorkflowStep]] = relationship(
+        "WorkflowStep", back_populates="workflow", cascade="all, delete-orphan"
+    )
+    runs: Mapped[list[WorkflowRun]] = relationship(
+        "WorkflowRun", back_populates="workflow", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("uq_workflows_tenant_name", "tenant_id", "name", unique=True),
@@ -1697,7 +1541,9 @@ class WorkflowStep(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workflow_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False,
+        UUID(as_uuid=True),
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
     )
     step_key: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -1732,7 +1578,9 @@ class WorkflowRun(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workflow_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False,
+        UUID(as_uuid=True),
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
     )
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
@@ -1741,12 +1589,16 @@ class WorkflowRun(Base):
     input_params: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     output_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     properties: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     workflow: Mapped[Workflow] = relationship("Workflow", back_populates="runs")
-    step_runs: Mapped[list[WorkflowStepRun]] = relationship("WorkflowStepRun", back_populates="run", cascade="all, delete-orphan")
+    step_runs: Mapped[list[WorkflowStepRun]] = relationship(
+        "WorkflowStepRun", back_populates="run", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("ix_wfr_tenant_status", "tenant_id", "status"),
@@ -1765,20 +1617,28 @@ class WorkflowStepRun(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workflow_run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("workflow_runs.id", ondelete="CASCADE"), nullable=False,
+        UUID(as_uuid=True),
+        ForeignKey("workflow_runs.id", ondelete="CASCADE"),
+        nullable=False,
     )
     workflow_step_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("workflow_steps.id", ondelete="CASCADE"), nullable=False,
+        UUID(as_uuid=True),
+        ForeignKey("workflow_steps.id", ondelete="CASCADE"),
+        nullable=False,
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     skip_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     agent_task_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("agent_tasks.id", ondelete="SET NULL"), nullable=True,
+        UUID(as_uuid=True),
+        ForeignKey("agent_tasks.id", ondelete="SET NULL"),
+        nullable=True,
     )
     output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     properties: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -1804,7 +1664,9 @@ class SharedContext(Base):
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     project_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     source_task_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("agent_tasks.id", ondelete="SET NULL"), nullable=True,
+        UUID(as_uuid=True),
+        ForeignKey("agent_tasks.id", ondelete="SET NULL"),
+        nullable=True,
     )
     source_agent: Mapped[str | None] = mapped_column(String(64), nullable=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -1815,8 +1677,12 @@ class SharedContext(Base):
     access_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBED_DIM), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
     last_accessed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     properties: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
@@ -1844,46 +1710,56 @@ class CaptureEvent(Base):
     __tablename__ = "capture_events"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Source ────────────────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
     surface: Mapped[str] = mapped_column(
-        String(32), nullable=False,
+        String(32),
+        nullable=False,
         doc="Where this came from: orchestrator, mcp, cli, voice, tool, watcher, git",
     )
     modality: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="text",
+        String(16),
+        nullable=False,
+        default="text",
         doc="Input modality: text, voice, image, structured",
     )
 
     # ── Content ───────────────────────────────────────────────
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(
-        String(64), nullable=False,
+        String(64),
+        nullable=False,
         doc="SHA-256 hash of content for dedup",
     )
     trust_tier: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default="external", default="external",
+        String(16),
+        nullable=False,
+        server_default="external",
+        default="external",
         doc="Provenance trust tier derived from surface (default-deny: unknown "
-            "surface -> external). See core/trust.py.",
+        "surface -> external). See core/trust.py.",
     )
 
     # ── Processing ────────────────────────────────────────────
     status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="received",
+        String(16),
+        nullable=False,
+        default="received",
         doc="Processing status: received, processed, duplicate, failed",
     )
     yield_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0,
+        Integer,
+        nullable=False,
+        default=0,
         doc="Number of memories/artifacts produced from this event",
     )
 
     # ── Timestamps ────────────────────────────────────────────
     occurred_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True),
+        nullable=False,
         doc="When the event actually occurred (may differ from created_at)",
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -1915,9 +1791,7 @@ class Correction(Base):
     __tablename__ = "corrections"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Tenant & Source ───────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -1929,7 +1803,8 @@ class Correction(Base):
 
     # ── Correction Detail ─────────────────────────────────────
     kind: Mapped[str] = mapped_column(
-        String(16), nullable=False,
+        String(16),
+        nullable=False,
         doc="Correction type: edit, override, reject, approve",
     )
     original: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1937,7 +1812,9 @@ class Correction(Base):
     diff_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     context: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     domain_tags: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), nullable=False, server_default="{}",
+        ARRAY(Text),
+        nullable=False,
+        server_default="{}",
     )
 
     # ── Timestamps ────────────────────────────────────────────
@@ -1966,9 +1843,7 @@ class InterviewQuestion(Base):
     __tablename__ = "interview_questions"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Tenant & Content ──────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -1976,7 +1851,8 @@ class InterviewQuestion(Base):
 
     # ── Origin ────────────────────────────────────────────────
     origin: Mapped[str] = mapped_column(
-        String(32), nullable=False,
+        String(32),
+        nullable=False,
         doc="Why this question was generated: outcome_resolution, knowledge_gap, drift, reflection",
     )
     origin_ref: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
@@ -1984,7 +1860,9 @@ class InterviewQuestion(Base):
     # ── Priority & Status ─────────────────────────────────────
     priority: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
     status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="pending",
+        String(16),
+        nullable=False,
+        default="pending",
         doc="Lifecycle: pending, asked, answered, skipped, expired",
     )
 
@@ -1998,9 +1876,7 @@ class InterviewQuestion(Base):
     asked_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # ── Timestamps ────────────────────────────────────────────
-    expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -2029,9 +1905,7 @@ class Decision(Base):
     __tablename__ = "decisions"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Tenant ────────────────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -2044,32 +1918,37 @@ class Decision(Base):
 
     # ── Status & Source ───────────────────────────────────────
     status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="candidate",
+        String(16),
+        nullable=False,
+        default="candidate",
         doc="Lifecycle: candidate, decided, reviewed, superseded, discarded",
     )
     source: Mapped[str | None] = mapped_column(
-        String(16), nullable=True,
+        String(16),
+        nullable=True,
         doc="Origin: conversation, explicit, challenge",
     )
 
     # ── Classification ────────────────────────────────────────
     domain_tags: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), nullable=False, server_default="{}",
+        ARRAY(Text),
+        nullable=False,
+        server_default="{}",
     )
     importance: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
 
     # ── Embedding ─────────────────────────────────────────────
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(_EMBED_DIM), nullable=True
-    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(_EMBED_DIM), nullable=True)
 
     # ── References ────────────────────────────────────────────
     capture_event_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True,
+        UUID(as_uuid=True),
+        nullable=True,
         doc="Links this decision to the capture event that produced it",
     )
     challenge_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True,
+        UUID(as_uuid=True),
+        nullable=True,
         doc="Links to a challenge that prompted this decision",
     )
     superseded_by: Mapped[uuid.UUID | None] = mapped_column(
@@ -2079,15 +1958,9 @@ class Decision(Base):
     )
 
     # ── Timestamps ────────────────────────────────────────────
-    decided_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    review_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    reviewed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     properties: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
@@ -2114,9 +1987,7 @@ class Prediction(Base):
     __tablename__ = "predictions"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Tenant ────────────────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -2131,42 +2002,36 @@ class Prediction(Base):
     # ── Content ───────────────────────────────────────────────
     statement: Mapped[str] = mapped_column(Text, nullable=False)
     confidence: Mapped[float] = mapped_column(
-        Float, nullable=False,
+        Float,
+        nullable=False,
         doc="Confidence level [0.5, 0.99]",
     )
 
     # ── Classification ────────────────────────────────────────
     domain_tags: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), nullable=False, server_default="{}",
+        ARRAY(Text),
+        nullable=False,
+        server_default="{}",
     )
 
     # ── Resolution ────────────────────────────────────────────
-    resolve_by: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    resolution_criteria: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    resolve_by: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_criteria: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     outcome: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="pending",
+        String(16),
+        nullable=False,
+        default="pending",
         doc="Resolution: pending, correct, incorrect, ambiguous, expired",
     )
-    resolved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    resolution_source: Mapped[str | None] = mapped_column(
-        String(32), nullable=True
-    )
-    resolution_evidence: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
-    actual_vs_predicted: Mapped[float | None] = mapped_column(
-        Float, nullable=True
-    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resolution_evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    actual_vs_predicted: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # ── References ────────────────────────────────────────────
     capture_event_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True,
+        UUID(as_uuid=True),
+        nullable=True,
     )
 
     # ── Timestamps ────────────────────────────────────────────
@@ -2183,8 +2048,7 @@ class Prediction(Base):
 
     def __repr__(self) -> str:
         return (
-            f"<Prediction(id={self.id!s:.8}, "
-            f"confidence={self.confidence}, outcome={self.outcome})>"
+            f"<Prediction(id={self.id!s:.8}, confidence={self.confidence}, outcome={self.outcome})>"
         )
 
 
@@ -2198,9 +2062,7 @@ class CalibrationSnapshot(Base):
     __tablename__ = "calibration_snapshots"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Tenant ────────────────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -2245,9 +2107,7 @@ class Challenge(Base):
     __tablename__ = "challenges"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Tenant ────────────────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -2256,11 +2116,13 @@ class Challenge(Base):
     proposal: Mapped[str] = mapped_column(Text, nullable=False)
     report: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     verdict: Mapped[str | None] = mapped_column(
-        String(32), nullable=True,
+        String(32),
+        nullable=True,
         doc="Verdict: proceed, proceed_with_changes, reconsider",
     )
     action_taken: Mapped[str | None] = mapped_column(
-        String(16), nullable=True,
+        String(16),
+        nullable=True,
         doc="What the user did: followed, ignored, modified",
     )
 
@@ -2270,9 +2132,7 @@ class Challenge(Base):
         ForeignKey("life_graph.predictions.id", ondelete="SET NULL"),
         nullable=True,
     )
-    total_cost_usd: Mapped[float] = mapped_column(
-        Float, nullable=False, default=0
-    )
+    total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
 
     # ── Timestamps ────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(
@@ -2300,9 +2160,7 @@ class Approval(Base):
 
     __tablename__ = "approvals"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
 
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -2316,9 +2174,7 @@ class Approval(Base):
 
     resolved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    resolved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
@@ -2355,9 +2211,7 @@ class Conversation(Base):
 
     __tablename__ = "conversations"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -2371,9 +2225,7 @@ class Conversation(Base):
         DateTime(timezone=True), nullable=True, default=None
     )
 
-    __table_args__ = (
-        Index("ix_conversations_tenant_updated", "tenant_id", "updated_at"),
-    )
+    __table_args__ = (Index("ix_conversations_tenant_updated", "tenant_id", "updated_at"),)
 
     def __repr__(self) -> str:
         return f"<Conversation(id={self.id!s:.8}, title={self.title})>"
@@ -2384,9 +2236,7 @@ class ConversationMessage(Base):
 
     __tablename__ = "conversation_messages"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("conversations.id", ondelete="CASCADE"),
@@ -2418,9 +2268,7 @@ class ExternalSession(Base):
 
     __tablename__ = "external_sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     tool: Mapped[str] = mapped_column(String(64), nullable=False)
     external_id: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -2452,9 +2300,7 @@ class PushSubscription(Base):
 
     __tablename__ = "push_subscriptions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="legacy")
     endpoint: Mapped[str] = mapped_column(Text, nullable=False)
     p256dh: Mapped[str] = mapped_column(Text, nullable=False)
@@ -2487,9 +2333,7 @@ class DriverStat(Base):
     __tablename__ = "driver_stats"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Tenant ────────────────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -2504,14 +2348,15 @@ class DriverStat(Base):
     verified_landed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0)
-    total_duration_ms: Mapped[int] = mapped_column(
-        BigInteger, nullable=False, default=0
-    )
+    total_duration_ms: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     # ── Indexes ───────────────────────────────────────────────
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id", "driver", "task_type", "window_start",
+            "tenant_id",
+            "driver",
+            "task_type",
+            "window_start",
             name="uq_driver_stats_tenant_driver_task_window",
         ),
         Index("ix_driver_stats_tenant_driver", "tenant_id", "driver"),
@@ -2519,10 +2364,7 @@ class DriverStat(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<DriverStat(id={self.id!s:.8}, "
-            f"driver={self.driver}, window={self.window_start})>"
-        )
+        return f"<DriverStat(id={self.id!s:.8}, driver={self.driver}, window={self.window_start})>"
 
 
 class VerificationRun(Base):
@@ -2535,9 +2377,7 @@ class VerificationRun(Base):
     __tablename__ = "verification_runs"
 
     # ── Identity ──────────────────────────────────────────────
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # ── Tenant ────────────────────────────────────────────────
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -2551,12 +2391,16 @@ class VerificationRun(Base):
 
     # ── Verification ──────────────────────────────────────────
     attempt: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1,
+        Integer,
+        nullable=False,
+        default=1,
         doc="Attempt number: 1 for first try, 2 for one-bounce retry",
     )
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
     results: Mapped[list] = mapped_column(
-        JSONB, nullable=False, server_default="[]",
+        JSONB,
+        nullable=False,
+        server_default="[]",
         doc="Per-verifier results: [{verifier, passed, evidence}]",
     )
 
@@ -2572,10 +2416,7 @@ class VerificationRun(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<VerificationRun(id={self.id!s:.8}, "
-            f"attempt={self.attempt}, passed={self.passed})>"
-        )
+        return f"<VerificationRun(id={self.id!s:.8}, attempt={self.attempt}, passed={self.passed})>"
 
 
 # NOTE: The Era-8 autonomy models (AutoAction, ApprovalQueueEntry, AuditLogEntry,
@@ -2585,5 +2426,3 @@ class VerificationRun(Base):
 # this module, so a top-level `from life_graph.autonomy.models import ...` would create
 # an import-order-dependent circular import. Downstream code uses function-local imports
 # from life_graph.autonomy.models instead.
-
-

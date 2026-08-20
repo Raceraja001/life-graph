@@ -51,12 +51,9 @@ class ImpactScorer:
 
         async with async_session() as db:
             # Find all memories recalled (not created) in this session
-            stmt = (
-                select(MemorySession.memory_id)
-                .where(
-                    MemorySession.session_id == session_id,
-                    MemorySession.role == "recalled",
-                )
+            stmt = select(MemorySession.memory_id).where(
+                MemorySession.session_id == session_id,
+                MemorySession.role == "recalled",
             )
             result = await db.execute(stmt)
             recalled_ids = [row[0] for row in result.all()]
@@ -64,7 +61,8 @@ class ImpactScorer:
             if not recalled_ids:
                 logger.info(
                     "Session %s: no recalled memories to score (outcome=%s)",
-                    session_id, outcome,
+                    session_id,
+                    outcome,
                 )
                 return {"memories_updated": 0, "outcome": outcome}
 
@@ -110,9 +108,11 @@ class ImpactScorer:
                 await db.commit()
 
             logger.info(
-                "Session %s: updated %d recalled memories "
-                "(outcome=%s, score_delta=%+.2f)",
-                session_id, len(recalled_ids), outcome, score_delta,
+                "Session %s: updated %d recalled memories (outcome=%s, score_delta=%+.2f)",
+                session_id,
+                len(recalled_ids),
+                outcome,
+                score_delta,
             )
             return {
                 "memories_updated": len(recalled_ids),

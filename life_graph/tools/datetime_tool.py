@@ -25,8 +25,7 @@ logger = logging.getLogger(__name__)
             "timezone": {
                 "type": "string",
                 "description": (
-                    "IANA timezone name (e.g. Asia/Kolkata, "
-                    "America/New_York). Defaults to UTC."
+                    "IANA timezone name (e.g. Asia/Kolkata, America/New_York). Defaults to UTC."
                 ),
                 "default": "UTC",
             },
@@ -50,22 +49,26 @@ async def get_current_datetime(timezone: str = "UTC") -> str:
         tz = ZoneInfo(timezone)
     except (ZoneInfoNotFoundError, KeyError):
         logger.warning("Invalid timezone requested: %s", timezone)
-        return json.dumps({
-            "error": (
-                f"Unknown timezone: '{timezone}'. "
-                "Use IANA timezone names like 'UTC', "
-                "'Asia/Kolkata', or 'America/New_York'."
-            ),
-        })
+        return json.dumps(
+            {
+                "error": (
+                    f"Unknown timezone: '{timezone}'. "
+                    "Use IANA timezone names like 'UTC', "
+                    "'Asia/Kolkata', or 'America/New_York'."
+                ),
+            }
+        )
 
     now = datetime.now(tz=tz)
 
-    return json.dumps({
-        "datetime": now.isoformat(),
-        "date": now.strftime("%Y-%m-%d"),
-        "time": now.strftime("%H:%M:%S"),
-        "timezone": timezone,
-        "utc_offset": now.strftime("%z"),
-        "day_of_week": now.strftime("%A"),
-        "unix_timestamp": int(now.timestamp()),
-    })
+    return json.dumps(
+        {
+            "datetime": now.isoformat(),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M:%S"),
+            "timezone": timezone,
+            "utc_offset": now.strftime("%z"),
+            "day_of_week": now.strftime("%A"),
+            "unix_timestamp": int(now.timestamp()),
+        }
+    )

@@ -29,10 +29,26 @@ _MAX_CANDIDATES: int = 10
 # Filler words stripped before _entities_overlap's word-overlap check, so two
 # unrelated entities that merely share an article/pronoun (e.g. "the API" vs
 # "the UI") don't register as "the same entity".
-_STOPWORDS = frozenset({
-    "a", "an", "the", "this", "that", "these", "those",
-    "it", "its", "i", "my", "me", "our", "we", "you", "your",
-})
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "i",
+        "my",
+        "me",
+        "our",
+        "we",
+        "you",
+        "your",
+    }
+)
 
 
 @dataclass
@@ -53,7 +69,9 @@ class Contradiction:
 _NEGATION_PAIRS: list[tuple[re.Pattern[str], re.Pattern[str], str]] = [
     # "not X" vs "X" / "X" vs "not X"
     (
-        re.compile(r"\b(?:do\s+not|don'?t|never|avoid)\s+(?:use\s+)?(.+?)(?:[.,;!?\n]|$)", re.IGNORECASE),
+        re.compile(
+            r"\b(?:do\s+not|don'?t|never|avoid)\s+(?:use\s+)?(.+?)(?:[.,;!?\n]|$)", re.IGNORECASE
+        ),
         re.compile(r"\b(?:always|prefer|use|like)\s+(.+?)(?:[.,;!?\n]|$)", re.IGNORECASE),
         "negation",
     ),
@@ -184,15 +202,17 @@ class ContradictionDetector:
             if negation:
                 conflict_type, reason = negation
                 resolution = _determine_resolution(conflict_type, memory)
-                contradictions.append(Contradiction(
-                    existing_memory_id=str(memory.id),
-                    existing_content=memory.content,
-                    new_content=new_content,
-                    conflict_type=conflict_type,
-                    similarity=similarity,
-                    resolution=resolution,
-                    reason=reason,
-                ))
+                contradictions.append(
+                    Contradiction(
+                        existing_memory_id=str(memory.id),
+                        existing_content=memory.content,
+                        new_content=new_content,
+                        conflict_type=conflict_type,
+                        similarity=similarity,
+                        resolution=resolution,
+                        reason=reason,
+                    )
+                )
                 continue
 
             # Check for entity swaps (same verb pattern, different object)
@@ -202,25 +222,29 @@ class ContradictionDetector:
                 # Check if scope difference makes both valid
                 scope_diff = _check_scope_difference(memory)
                 if scope_diff:
-                    contradictions.append(Contradiction(
-                        existing_memory_id=str(memory.id),
-                        existing_content=memory.content,
-                        new_content=new_content,
-                        conflict_type="scope",
-                        similarity=similarity,
-                        resolution="scope",
-                        reason=f"Both valid in different contexts: {scope_diff}",
-                    ))
+                    contradictions.append(
+                        Contradiction(
+                            existing_memory_id=str(memory.id),
+                            existing_content=memory.content,
+                            new_content=new_content,
+                            conflict_type="scope",
+                            similarity=similarity,
+                            resolution="scope",
+                            reason=f"Both valid in different contexts: {scope_diff}",
+                        )
+                    )
                 else:
-                    contradictions.append(Contradiction(
-                        existing_memory_id=str(memory.id),
-                        existing_content=memory.content,
-                        new_content=new_content,
-                        conflict_type="preference_change",
-                        similarity=similarity,
-                        resolution="supersede",
-                        reason=reason,
-                    ))
+                    contradictions.append(
+                        Contradiction(
+                            existing_memory_id=str(memory.id),
+                            existing_content=memory.content,
+                            new_content=new_content,
+                            conflict_type="preference_change",
+                            similarity=similarity,
+                            resolution="supersede",
+                            reason=reason,
+                        )
+                    )
 
         # Sort: auto-resolvable first, then by similarity
         contradictions.sort(
@@ -232,7 +256,8 @@ class ContradictionDetector:
 
         logger.info(
             "Contradiction check: %d candidates, %d contradictions found",
-            len(similar_memories), len(contradictions),
+            len(similar_memories),
+            len(contradictions),
         )
         return contradictions
 
@@ -241,7 +266,8 @@ class ContradictionDetector:
 
 
 def _check_negation_flip(
-    new_text: str, existing_text: str,
+    new_text: str,
+    existing_text: str,
 ) -> tuple[str, str] | None:
     """Check if two texts express opposing sentiments via negation patterns.
 
@@ -306,10 +332,7 @@ def _check_entity_swap(new_text: str, existing_text: str) -> str | None:
                 and new_entity_clean != existing_entity_clean
                 and not _entities_overlap(new_entity_clean, existing_entity_clean)
             ):
-                return (
-                    f"Entity swap: '{existing_entity.strip()}' → "
-                    f"'{new_entity.strip()}'"
-                )
+                return f"Entity swap: '{existing_entity.strip()}' → '{new_entity.strip()}'"
 
     return None
 
@@ -396,7 +419,8 @@ def _determine_resolution(conflict_type: str, memory: Memory) -> str:
 
 
 def _compute_similarity_from_memory(
-    memory: Memory, new_embedding: list[float],
+    memory: Memory,
+    new_embedding: list[float],
 ) -> float:
     """Compute cosine similarity between a memory's embedding and a new vector.
 

@@ -18,9 +18,21 @@ logger = logging.getLogger(__name__)
 
 # Directories to skip during analysis
 VENDORED_DIRS = {
-    "node_modules", ".venv", "venv", "vendor", "__pycache__",
-    ".git", ".tox", "dist", "build", "egg-info", ".eggs",
-    "site-packages", ".mypy_cache", ".pytest_cache", "migrations",
+    "node_modules",
+    ".venv",
+    "venv",
+    "vendor",
+    "__pycache__",
+    ".git",
+    ".tox",
+    "dist",
+    "build",
+    "egg-info",
+    ".eggs",
+    "site-packages",
+    ".mypy_cache",
+    ".pytest_cache",
+    "migrations",
 }
 
 # Conventional commit pattern
@@ -28,8 +40,7 @@ CONVENTIONAL_RE = re.compile(
     r"^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\(.+?\))?:\s"
 )
 
-DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday",
-             "Friday", "Saturday", "Sunday"]
+DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 class GitAnalyzer:
@@ -92,9 +103,7 @@ class GitAnalyzer:
                 break
 
             # Author filter
-            if author_filter and author_filter.lower() not in (
-                commit.author.name or ""
-            ).lower():
+            if author_filter and author_filter.lower() not in (commit.author.name or "").lower():
                 continue
 
             total_commits += 1
@@ -141,8 +150,10 @@ class GitAnalyzer:
         # Compute results
         conventional_ratio = conventional_count / total_commits
         commit_convention = (
-            "conventional" if conventional_ratio > 0.6
-            else "mixed" if conventional_ratio > 0.2
+            "conventional"
+            if conventional_ratio > 0.6
+            else "mixed"
+            if conventional_ratio > 0.2
             else "freeform"
         )
 
@@ -158,18 +169,12 @@ class GitAnalyzer:
             "peak_hours": peak_hours,
             "active_days": active_days,
             "language_frequency": dict(extension_counter.most_common(10)),
-            "avg_commit_size": round(
-                sum(lines_changed) / len(lines_changed), 1
-            ),
-            "avg_files_per_commit": round(
-                sum(files_per_commit) / len(files_per_commit), 1
-            ),
+            "avg_commit_size": round(sum(lines_changed) / len(lines_changed), 1),
+            "avg_files_per_commit": round(sum(files_per_commit) / len(files_per_commit), 1),
             "top_directories": dict(dir_counter.most_common(10)),
         }
 
-    def _result_to_memories(
-        self, result: dict[str, Any], repo_path: str
-    ) -> list[dict[str, Any]]:
+    def _result_to_memories(self, result: dict[str, Any], repo_path: str) -> list[dict[str, Any]]:
         """Convert mined statistics into memory dicts."""
         memories: list[dict[str, Any]] = []
         base_props = {"source": "cold_start:git_analysis", "repo": repo_path}
@@ -181,71 +186,84 @@ class GitAnalyzer:
         )
         if result["top_prefixes"]:
             content += f". Top prefixes: {', '.join(result['top_prefixes'])}"
-        memories.append({
-            "content": content,
-            "type_tag": "preference",
-            "importance": 0.6,
-            "source": "cold_start:git_analysis",
-            "tags": ["preference", "git", "commit-style"],
-        })
+        memories.append(
+            {
+                "content": content,
+                "type_tag": "preference",
+                "importance": 0.6,
+                "source": "cold_start:git_analysis",
+                "tags": ["preference", "git", "commit-style"],
+            }
+        )
 
         # Peak hours
         if result["peak_hours"]:
             hours_str = ", ".join(f"{h}:00" for h in result["peak_hours"])
-            memories.append({
-                "content": f"Peak coding hours: {hours_str}",
-                "type_tag": "pattern",
-                "importance": 0.5,
-                "source": "cold_start:git_analysis",
-                "tags": ["pattern", "time", "work-schedule"],
-            })
+            memories.append(
+                {
+                    "content": f"Peak coding hours: {hours_str}",
+                    "type_tag": "pattern",
+                    "importance": 0.5,
+                    "source": "cold_start:git_analysis",
+                    "tags": ["pattern", "time", "work-schedule"],
+                }
+            )
 
         # Most active days
         if result["active_days"]:
-            memories.append({
-                "content": f"Most active coding days: {', '.join(result['active_days'])}",
-                "type_tag": "pattern",
-                "importance": 0.5,
-                "source": "cold_start:git_analysis",
-                "tags": ["pattern", "time", "work-schedule"],
-            })
+            memories.append(
+                {
+                    "content": f"Most active coding days: {', '.join(result['active_days'])}",
+                    "type_tag": "pattern",
+                    "importance": 0.5,
+                    "source": "cold_start:git_analysis",
+                    "tags": ["pattern", "time", "work-schedule"],
+                }
+            )
 
         # Language distribution
         if result["language_frequency"]:
             top_langs = list(result["language_frequency"].keys())[:5]
-            memories.append({
-                "content": f"Primary languages (by file changes): {', '.join(top_langs)}",
-                "type_tag": "preference",
-                "importance": 0.7,
-                "source": "cold_start:git_analysis",
-                "tags": ["preference", "language"] + top_langs[:3],
-            })
+            memories.append(
+                {
+                    "content": f"Primary languages (by file changes): {', '.join(top_langs)}",
+                    "type_tag": "preference",
+                    "importance": 0.7,
+                    "source": "cold_start:git_analysis",
+                    "tags": ["preference", "language"] + top_langs[:3],
+                }
+            )
 
         # Commit size
-        memories.append({
-            "content": (
-                f"Average commit size: {result['avg_commit_size']} lines changed, "
-                f"{result['avg_files_per_commit']} files per commit"
-            ),
-            "type_tag": "pattern",
-            "importance": 0.4,
-            "source": "cold_start:git_analysis",
-            "tags": ["pattern", "git", "commit-size"],
-        })
+        memories.append(
+            {
+                "content": (
+                    f"Average commit size: {result['avg_commit_size']} lines changed, "
+                    f"{result['avg_files_per_commit']} files per commit"
+                ),
+                "type_tag": "pattern",
+                "importance": 0.4,
+                "source": "cold_start:git_analysis",
+                "tags": ["pattern", "git", "commit-size"],
+            }
+        )
 
         # Top directories
         if result["top_directories"]:
             top_dirs = list(result["top_directories"].keys())[:5]
-            memories.append({
-                "content": f"Most-changed directories: {', '.join(top_dirs)}",
-                "type_tag": "pattern",
-                "importance": 0.4,
-                "source": "cold_start:git_analysis",
-                "tags": ["pattern", "git", "project-structure"],
-            })
+            memories.append(
+                {
+                    "content": f"Most-changed directories: {', '.join(top_dirs)}",
+                    "type_tag": "pattern",
+                    "importance": 0.4,
+                    "source": "cold_start:git_analysis",
+                    "tags": ["pattern", "git", "project-structure"],
+                }
+            )
 
         logger.info(
             "Git analysis produced %d memories from %d commits",
-            len(memories), result["total_commits"],
+            len(memories),
+            result["total_commits"],
         )
         return memories

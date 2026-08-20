@@ -117,9 +117,7 @@ class GraphStore:
     async def _init_connection(conn: asyncpg.Connection) -> None:
         """Per-connection setup for Apache AGE."""
         await conn.execute("LOAD 'age'")
-        await conn.execute(
-            'SET search_path = ag_catalog, "$user", public'
-        )
+        await conn.execute('SET search_path = ag_catalog, "$user", public')
 
     async def close(self) -> None:
         """Close the connection pool."""
@@ -160,28 +158,18 @@ class GraphStore:
                 if isinstance(value, str):
                     # Escape single quotes for Cypher string literals
                     safe_val = value.replace("\\", "\\\\").replace("'", "\\'")
-                    resolved_cypher = resolved_cypher.replace(
-                        placeholder, f"'{safe_val}'"
-                    )
+                    resolved_cypher = resolved_cypher.replace(placeholder, f"'{safe_val}'")
                 elif isinstance(value, (int, float)):
-                    resolved_cypher = resolved_cypher.replace(
-                        placeholder, str(value)
-                    )
+                    resolved_cypher = resolved_cypher.replace(placeholder, str(value))
                 elif isinstance(value, bool):
                     resolved_cypher = resolved_cypher.replace(
                         placeholder, "true" if value else "false"
                     )
                 else:
                     safe_val = json.dumps(value).replace("'", "\\'")
-                    resolved_cypher = resolved_cypher.replace(
-                        placeholder, f"'{safe_val}'"
-                    )
+                    resolved_cypher = resolved_cypher.replace(placeholder, f"'{safe_val}'")
 
-        sql = (
-            f"SELECT * FROM cypher('{GRAPH_NAME}', $$ "
-            f"{resolved_cypher} "
-            f"$$) AS ({col_spec})"
-        )
+        sql = f"SELECT * FROM cypher('{GRAPH_NAME}', $$ {resolved_cypher} $$) AS ({col_spec})"
 
         pool = await self._get_pool()
         async with pool.acquire() as conn:
@@ -189,9 +177,7 @@ class GraphStore:
             # asyncpg resets search_path (via RESET ALL) when returning
             # connections to the pool, so we must re-set it on every use.
             await conn.execute("LOAD 'age'")
-            await conn.execute(
-                'SET search_path = ag_catalog, "$user", public'
-            )
+            await conn.execute('SET search_path = ag_catalog, "$user", public')
             try:
                 rows = await conn.fetch(sql)
             except Exception:
@@ -210,9 +196,7 @@ class GraphStore:
 
     # ── Vertex Operations ─────────────────────────────────────
 
-    async def create_vertex(
-        self, label: str, properties: dict[str, Any]
-    ) -> str:
+    async def create_vertex(self, label: str, properties: dict[str, Any]) -> str:
         """Create a vertex with the given label and properties.
 
         Args:
@@ -229,20 +213,14 @@ class GraphStore:
             return str(results[0]["v"])
         return ""
 
-    async def get_vertex(
-        self, label: str, name: str
-    ) -> dict[str, Any] | None:
+    async def get_vertex(self, label: str, name: str) -> dict[str, Any] | None:
         """Find a vertex by label and name property.
 
         Returns:
             Vertex data dict or None if not found.
         """
-        cypher = "MATCH (n:{label}) WHERE n.name = $name RETURN n".replace(
-            "{label}", label
-        )
-        results = await self.execute_cypher(
-            cypher, params={"name": name}
-        )
+        cypher = "MATCH (n:{label}) WHERE n.name = $name RETURN n".replace("{label}", label)
+        results = await self.execute_cypher(cypher, params={"name": name})
         if results:
             return results[0]["v"]
         return None
@@ -333,14 +311,8 @@ class GraphStore:
 
         rel = f"[r:{edge_label}*1..{depth}]" if edge_label else f"[r*1..{depth}]"
 
-        cypher = (
-            f"MATCH (a:{vertex_label})-{rel}-(b) "
-            f"WHERE a.name = $name "
-            f"RETURN b"
-        )
-        results = await self.execute_cypher(
-            cypher, params={"name": vertex_name}
-        )
+        cypher = f"MATCH (a:{vertex_label})-{rel}-(b) WHERE a.name = $name RETURN b"
+        results = await self.execute_cypher(cypher, params={"name": vertex_name})
 
         neighbors: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -413,25 +385,15 @@ class GraphStore:
 
         # Search across the specific label or all labels if Entity
         if label and label != "Entity":
-            cypher = (
-                f"MATCH (n:{target_label}) "
-                f"WHERE n.name =~ $pattern "
-                f"RETURN n"
-            )
+            cypher = f"MATCH (n:{target_label}) WHERE n.name =~ $pattern RETURN n"
         else:
             # Search all vertices — use the base Entity label
             # but also check all specific labels
-            cypher = (
-                "MATCH (n) "
-                "WHERE n.name =~ $pattern "
-                "RETURN n"
-            )
+            cypher = "MATCH (n) WHERE n.name =~ $pattern RETURN n"
 
         # AGE uses =~ for regex matching (case-insensitive)
         pattern = f"(?i).*{re.escape(query)}.*"
-        results = await self.execute_cypher(
-            cypher, params={"pattern": pattern}
-        )
+        results = await self.execute_cypher(cypher, params={"pattern": pattern})
 
         entities: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -445,9 +407,7 @@ class GraphStore:
 
         return entities
 
-    async def get_all_entities(
-        self, label: str | None = None
-    ) -> list[dict[str, Any]]:
+    async def get_all_entities(self, label: str | None = None) -> list[dict[str, Any]]:
         """List all entities, optionally filtered by label.
 
         Returns:
@@ -558,7 +518,8 @@ class GraphStore:
             )
             logger.debug(
                 "Graph: evidence node %s linked to preference %s",
-                evidence_id, preference_id,
+                evidence_id,
+                preference_id,
             )
         except Exception:
             logger.warning(
@@ -593,12 +554,15 @@ class GraphStore:
             )
             logger.debug(
                 "Graph: preference relationship %s -> %s (%s)",
-                from_id, to_id, rel_type,
+                from_id,
+                to_id,
+                rel_type,
             )
         except Exception:
             logger.warning(
                 "Graph: failed to create preference relationship %s -> %s (best-effort)",
-                from_id, to_id,
+                from_id,
+                to_id,
                 exc_info=True,
             )
 
@@ -623,9 +587,7 @@ class GraphStore:
 
             # Get all connected nodes
             conn_results = await self.execute_cypher(
-                "MATCH (p:Preference)-[r]-(n) "
-                "WHERE p.id = $pid AND p.tenant_id = $tid "
-                "RETURN n",
+                "MATCH (p:Preference)-[r]-(n) WHERE p.id = $pid AND p.tenant_id = $tid RETURN n",
                 params={"pid": preference_id, "tid": tenant_id},
             )
 

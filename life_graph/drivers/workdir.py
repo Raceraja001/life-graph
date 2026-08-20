@@ -69,9 +69,7 @@ async def resolve_workdir(packet: ContextPacket, fallback: Path) -> tuple[Path, 
         # `git` missing from PATH (FileNotFoundError — the shipped runtime
         # image had no git until this was found), permission errors, etc.
         # create_subprocess_exec raises BEFORE there is a proc to inspect.
-        logger.warning(
-            "Worktree isolation could not run git (%s) — using scratch dir", exc
-        )
+        logger.warning("Worktree isolation could not run git (%s) — using scratch dir", exc)
         return fallback, None
     if proc.returncode != 0:
         logger.warning(

@@ -60,9 +60,7 @@ class ConditionEvaluator:
 
     # Match: <lhs> <operator> <rhs>
     # Operator order matters — check >= before > to avoid partial match
-    _PATTERN = re.compile(
-        r"^(.+?)\s*(!=|>=|<=|==|>|<)\s*(.+)$"
-    )
+    _PATTERN = re.compile(r"^(.+?)\s*(!=|>=|<=|==|>|<)\s*(.+)$")
 
     def evaluate(self, condition: str, step_outputs: dict[str, Any]) -> bool:
         """Evaluate a condition string against collected step outputs.
@@ -137,8 +135,9 @@ class ConditionEvaluator:
         except ValueError:
             pass
         # Strip quotes if present
-        if (raw.startswith('"') and raw.endswith('"')) or \
-           (raw.startswith("'") and raw.endswith("'")):
+        if (raw.startswith('"') and raw.endswith('"')) or (
+            raw.startswith("'") and raw.endswith("'")
+        ):
             return raw[1:-1]
         return raw
 
@@ -219,7 +218,9 @@ class WorkflowEngine:
 
             logger.info(
                 "Created workflow %s with %d steps for tenant %s",
-                workflow.id, len(steps_data), tenant_id,
+                workflow.id,
+                len(steps_data),
+                tenant_id,
             )
             return workflow
 
@@ -316,7 +317,8 @@ class WorkflowEngine:
 
             logger.info(
                 "Started workflow run %s for workflow %s",
-                run.id, workflow_id,
+                run.id,
+                workflow_id,
             )
             return run
 
@@ -407,9 +409,7 @@ class WorkflowEngine:
                 return
 
             # Load workflow run to get workflow_id
-            run_result = await session.execute(
-                select(WorkflowRun).where(WorkflowRun.id == run_id)
-            )
+            run_result = await session.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
             run = run_result.scalar_one_or_none()
             if not run or run.status != "running":
                 return
@@ -452,7 +452,8 @@ class WorkflowEngine:
                         sr.completed_at = _utcnow()
                         logger.info(
                             "Skipped step %s (condition not met): %s",
-                            step_key, step.condition,
+                            step_key,
+                            step.condition,
                         )
                         continue
 
@@ -497,7 +498,9 @@ class WorkflowEngine:
 
             logger.info(
                 "Started step %s (task %s) in run %s",
-                step.step_key, task.id, run.id,
+                step.step_key,
+                task.id,
+                run.id,
             )
         except Exception:
             step_run.status = "failed"
@@ -505,7 +508,8 @@ class WorkflowEngine:
             step_run.completed_at = _utcnow()
             logger.exception(
                 "Failed to start step %s in run %s",
-                step.step_key, run.id,
+                step.step_key,
+                run.id,
             )
 
     async def _complete_run(self, run_id: uuid.UUID, tenant_id: str) -> None:
@@ -513,9 +517,7 @@ class WorkflowEngine:
         from life_graph.models.db import WorkflowRun, WorkflowStepRun
 
         async with self._session_factory() as session:
-            run_result = await session.execute(
-                select(WorkflowRun).where(WorkflowRun.id == run_id)
-            )
+            run_result = await session.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
             run = run_result.scalar_one_or_none()
             if not run or run.status != "running":
                 return
@@ -581,9 +583,7 @@ class WorkflowEngine:
             )
 
             # Update run
-            run_result = await session.execute(
-                select(WorkflowRun).where(WorkflowRun.id == run_id)
-            )
+            run_result = await session.execute(select(WorkflowRun).where(WorkflowRun.id == run_id))
             run = run_result.scalar_one_or_none()
             if run:
                 run.status = final_status

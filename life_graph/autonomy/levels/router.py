@@ -25,6 +25,7 @@ async def get_autonomy_level(project_id: str):
     tenant_id = get_current_tenant_id()
 
     from life_graph.api.dependencies import get_autonomy_level_service
+
     service = get_autonomy_level_service()
 
     level = await service.get_level(tenant_id, project_id)
@@ -54,6 +55,7 @@ async def set_autonomy_level(project_id: str, request: SetLevelRequest):
     tenant_id = get_current_tenant_id()
 
     from life_graph.api.dependencies import get_autonomy_level_service
+
     service = get_autonomy_level_service()
 
     try:

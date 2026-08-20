@@ -100,7 +100,8 @@ class ResearchEngine:
         # Governor budget gate (primary) — research is low-priority autonomous
         # spend, throttled first when the global monthly budget runs low.
         decision = await governor.authorize(
-            tenant_id, BudgetCategory.RESEARCH,
+            tenant_id,
+            BudgetCategory.RESEARCH,
             estimated_usd=self.MONTHLY_BUDGET_USD / max(1, self.MAX_PREFERENCES_PER_RUN),
         )
         if not decision.allowed:
@@ -110,9 +111,7 @@ class ResearchEngine:
         # Secondary per-topic research budget guard.
         budget_remaining = await self._check_budget(tenant_id)
         if budget_remaining <= 0:
-            logger.info(
-                "Monthly research budget exhausted for tenant %s", tenant_id
-            )
+            logger.info("Monthly research budget exhausted for tenant %s", tenant_id)
             return {"status": "budget_exhausted", "budget_remaining": 0.0}
 
         # Find preferences to research
@@ -149,18 +148,14 @@ class ResearchEngine:
 
         for pref in preferences:
             try:
-                result = await self._research_preference(
-                    tenant_id, pref, run_id
-                )
+                result = await self._research_preference(tenant_id, pref, run_id)
                 total_evidence_found += result.get("evidence_found", 0)
                 total_evidence_added += result.get("evidence_added", 0)
                 if result.get("evidence_added", 0) > 0:
                     preferences_affected.append(str(pref.id))
                 sources_searched.extend(result.get("sources", []))
             except Exception:
-                logger.exception(
-                    "Failed to research preference %s", pref.id
-                )
+                logger.exception("Failed to research preference %s", pref.id)
 
         # Complete the run
         async with self._session_factory() as session:
@@ -193,7 +188,10 @@ class ResearchEngine:
 
         logger.info(
             "Research cycle complete: run=%s, prefs=%d, evidence_found=%d, added=%d",
-            run_id, len(preferences), total_evidence_found, total_evidence_added,
+            run_id,
+            len(preferences),
+            total_evidence_found,
+            total_evidence_added,
         )
 
         return {
@@ -277,7 +275,10 @@ class ResearchEngine:
             updated_pref = await self._preference_store.get(tenant_id, preference.id)
             if updated_pref:
                 new_confidence = updated_pref.confidence
-                if new_confidence < self.CONFIDENCE_ALERT_THRESHOLD and old_confidence >= self.CONFIDENCE_ALERT_THRESHOLD:
+                if (
+                    new_confidence < self.CONFIDENCE_ALERT_THRESHOLD
+                    and old_confidence >= self.CONFIDENCE_ALERT_THRESHOLD
+                ):
                     await self._fire_challenge_alert(
                         tenant_id, preference, old_confidence, new_confidence
                     )
@@ -314,9 +315,7 @@ class ResearchEngine:
 
         return results
 
-    async def _fetch_hn(
-        self, client: httpx.AsyncClient, query: str
-    ) -> list[dict[str, Any]]:
+    async def _fetch_hn(self, client: httpx.AsyncClient, query: str) -> list[dict[str, Any]]:
         """Fetch from HN Algolia API."""
         url = "https://hn.algolia.com/api/v1/search"
         params = {"query": query, "tags": "story", "hitsPerPage": 5}
@@ -327,19 +326,20 @@ class ResearchEngine:
 
         articles = []
         for hit in data.get("hits", []):
-            articles.append({
-                "title": hit.get("title", ""),
-                "url": hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID', '')}",
-                "content": f"{hit.get('title', '')}. {hit.get('story_text', '') or ''}".strip(),
-                "summary": hit.get("title", ""),
-                "source_type": "hn_discussion",
-                "points": hit.get("points", 0),
-            })
+            articles.append(
+                {
+                    "title": hit.get("title", ""),
+                    "url": hit.get("url")
+                    or f"https://news.ycombinator.com/item?id={hit.get('objectID', '')}",
+                    "content": f"{hit.get('title', '')}. {hit.get('story_text', '') or ''}".strip(),
+                    "summary": hit.get("title", ""),
+                    "source_type": "hn_discussion",
+                    "points": hit.get("points", 0),
+                }
+            )
         return articles
 
-    async def _fetch_reddit(
-        self, client: httpx.AsyncClient, query: str
-    ) -> list[dict[str, Any]]:
+    async def _fetch_reddit(self, client: httpx.AsyncClient, query: str) -> list[dict[str, Any]]:
         """Fetch from Reddit JSON API."""
         url = "https://www.reddit.com/r/python/search.json"
         params = {"q": query, "sort": "new", "limit": 5, "t": "year"}
@@ -352,19 +352,19 @@ class ResearchEngine:
         articles = []
         for post in data.get("data", {}).get("children", []):
             pd = post.get("data", {})
-            articles.append({
-                "title": pd.get("title", ""),
-                "url": f"https://reddit.com{pd.get('permalink', '')}",
-                "content": f"{pd.get('title', '')}. {pd.get('selftext', '')[:500]}".strip(),
-                "summary": pd.get("title", ""),
-                "source_type": "reddit",
-                "score": pd.get("score", 0),
-            })
+            articles.append(
+                {
+                    "title": pd.get("title", ""),
+                    "url": f"https://reddit.com{pd.get('permalink', '')}",
+                    "content": f"{pd.get('title', '')}. {pd.get('selftext', '')[:500]}".strip(),
+                    "summary": pd.get("title", ""),
+                    "source_type": "reddit",
+                    "score": pd.get("score", 0),
+                }
+            )
         return articles
 
-    async def _fetch_github(
-        self, client: httpx.AsyncClient, query: str
-    ) -> list[dict[str, Any]]:
+    async def _fetch_github(self, client: httpx.AsyncClient, query: str) -> list[dict[str, Any]]:
         """Fetch from GitHub search API."""
         url = "https://api.github.com/search/repositories"
         params = {"q": query, "sort": "stars", "per_page": 5}
@@ -375,14 +375,16 @@ class ResearchEngine:
 
         articles = []
         for repo in data.get("items", []):
-            articles.append({
-                "title": repo.get("full_name", ""),
-                "url": repo.get("html_url", ""),
-                "content": f"{repo.get('full_name', '')}: {repo.get('description', '') or ''}".strip(),
-                "summary": repo.get("description", "") or repo.get("full_name", ""),
-                "source_type": "github_trend",
-                "stars": repo.get("stargazers_count", 0),
-            })
+            articles.append(
+                {
+                    "title": repo.get("full_name", ""),
+                    "url": repo.get("html_url", ""),
+                    "content": f"{repo.get('full_name', '')}: {repo.get('description', '') or ''}".strip(),
+                    "summary": repo.get("description", "") or repo.get("full_name", ""),
+                    "source_type": "github_trend",
+                    "stars": repo.get("stargazers_count", 0),
+                }
+            )
         return articles
 
     # ── Internal: Stance Detection ───────────────────────────
@@ -482,13 +484,9 @@ class ResearchEngine:
             if not items:
                 return
 
-            sum_supporting = sum(
-                e.credibility * e.weight
-                for e in items if e.stance == "supports"
-            )
+            sum_supporting = sum(e.credibility * e.weight for e in items if e.stance == "supports")
             sum_contradicting = sum(
-                e.credibility * e.weight
-                for e in items if e.stance == "contradicts"
+                e.credibility * e.weight for e in items if e.stance == "contradicts"
             )
 
             base = pref.confidence
@@ -497,11 +495,13 @@ class ResearchEngine:
 
             # Update confidence and history
             history = list(pref.confidence_history or [])
-            history.append({
-                "value": new_confidence,
-                "at": datetime.now(UTC).isoformat(),
-                "reason": "research_recalc",
-            })
+            history.append(
+                {
+                    "value": new_confidence,
+                    "at": datetime.now(UTC).isoformat(),
+                    "reason": "research_recalc",
+                }
+            )
             pref.confidence = new_confidence
             pref.confidence_history = history
             pref.last_validated_at = datetime.now(UTC)
@@ -560,8 +560,11 @@ class ResearchEngine:
         )
         logger.warning(
             "Preference challenged: %s (%s → %s) — confidence dropped %.2f → %.2f",
-            preference.id, preference.topic, preference.choice,
-            old_confidence, new_confidence,
+            preference.id,
+            preference.topic,
+            preference.choice,
+            old_confidence,
+            new_confidence,
         )
 
         # Update last_challenged_at

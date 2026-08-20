@@ -240,11 +240,7 @@ class WebhookEventHandler:
             return
 
         # Resolve event type to a string for matching
-        event_str = (
-            event.type.value
-            if isinstance(event.type, EventType)
-            else str(event.type)
-        )
+        event_str = event.type.value if isinstance(event.type, EventType) else str(event.type)
 
         # Find active webhooks for this tenant
         async with async_session() as session:

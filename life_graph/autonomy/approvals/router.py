@@ -51,10 +51,7 @@ async def list_approvals(
         entries = result.scalars().all()
 
     return success_response(
-        data=[
-            ApprovalResponse(**_serialize(e)).model_dump(mode="json")
-            for e in entries
-        ],
+        data=[ApprovalResponse(**_serialize(e)).model_dump(mode="json") for e in entries],
     )
 
 
@@ -64,6 +61,7 @@ async def resolve_approval(approval_id: str, request: ResolveRequest):
     tenant_id = get_current_tenant_id()
 
     from life_graph.api.dependencies import get_approval_service
+
     service = get_approval_service()
 
     try:
@@ -90,6 +88,7 @@ async def batch_resolve(request: BatchResolveRequest):
     tenant_id = get_current_tenant_id()
 
     from life_graph.api.dependencies import get_approval_service
+
     service = get_approval_service()
 
     result = await service.batch_resolve(

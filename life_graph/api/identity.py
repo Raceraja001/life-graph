@@ -82,14 +82,16 @@ async def get_timeline(
     # The query param is accepted for forward compatibility.
     chapters = await service.get_timeline()
 
-    return success_response(data=[
-        TimelineChapter(
-            period=ch["period"],
-            active=[MemoryResponse.model_validate(m) for m in ch["active"]],
-            superseded=[MemoryResponse.model_validate(m) for m in ch["superseded"]],
-        )
-        for ch in chapters
-    ])
+    return success_response(
+        data=[
+            TimelineChapter(
+                period=ch["period"],
+                active=[MemoryResponse.model_validate(m) for m in ch["active"]],
+                superseded=[MemoryResponse.model_validate(m) for m in ch["superseded"]],
+            )
+            for ch in chapters
+        ]
+    )
 
 
 @router.get(
@@ -125,14 +127,16 @@ async def find_stale_beliefs(
     stale_months = max(days // 30, 1)
     challenges = await service.challenge_stale_beliefs(stale_months=stale_months)
 
-    return success_response(data=[
-        StaleBelief(
-            memory=MemoryResponse.model_validate(ch["memory"]),
-            prompt=ch["prompt"],
-            days_stale=ch["days_stale"],
-        )
-        for ch in challenges
-    ])
+    return success_response(
+        data=[
+            StaleBelief(
+                memory=MemoryResponse.model_validate(ch["memory"]),
+                prompt=ch["prompt"],
+                days_stale=ch["days_stale"],
+            )
+            for ch in challenges
+        ]
+    )
 
 
 @router.post(
@@ -156,8 +160,10 @@ async def challenge_belief(
             detail=str(exc),
         ) from exc
 
-    return success_response(data=ChallengeResponse(
-        memory_id=body.memory_id,
-        status="challenged",
-        message=f"Memory {body.memory_id} marked as uncertain for review",
-    ))
+    return success_response(
+        data=ChallengeResponse(
+            memory_id=body.memory_id,
+            status="challenged",
+            message=f"Memory {body.memory_id} marked as uncertain for review",
+        )
+    )

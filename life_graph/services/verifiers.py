@@ -67,9 +67,7 @@ class VerifierChain:
         for name in chain:
             verifier = self._verifiers.get(name)
             if not verifier:
-                results.append(
-                    VerifierResult(name, False, {"error": f"Unknown verifier: {name}"})
-                )
+                results.append(VerifierResult(name, False, {"error": f"Unknown verifier: {name}"}))
                 continue
             try:
                 passed, evidence = await verifier(workdir, task_context)
@@ -169,9 +167,7 @@ def _changed_python_files(workdir: Path) -> list[Path]:
             timeout=30,
             cwd=str(workdir),
         )
-        changed_names.update(
-            f.strip() for f in tracked.stdout.strip().split("\n") if f.strip()
-        )
+        changed_names.update(f.strip() for f in tracked.stdout.strip().split("\n") if f.strip())
         untracked = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard"],
             capture_output=True,
@@ -179,16 +175,10 @@ def _changed_python_files(workdir: Path) -> list[Path]:
             timeout=30,
             cwd=str(workdir),
         )
-        changed_names.update(
-            f.strip() for f in untracked.stdout.strip().split("\n") if f.strip()
-        )
+        changed_names.update(f.strip() for f in untracked.stdout.strip().split("\n") if f.strip())
     except Exception:
         return []
-    return [
-        workdir / f
-        for f in changed_names
-        if f.endswith(".py") and (workdir / f).is_file()
-    ]
+    return [workdir / f for f in changed_names if f.endswith(".py") and (workdir / f).is_file()]
 
 
 async def _verify_build_ok_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
@@ -258,8 +248,7 @@ async def _verify_citations_present(workdir: Path, ctx: dict) -> tuple[bool, dic
     """Check that output contains citations/references."""
     output = ctx.get("output", "")
     has_citations = any(
-        marker in output
-        for marker in ["[ref:", "[id:", "evidence:", "source:", "citing"]
+        marker in output for marker in ["[ref:", "[id:", "evidence:", "source:", "citing"]
     )
     return has_citations or not ctx.get("require_citations", False), {
         "has_citations": has_citations,
@@ -288,8 +277,7 @@ async def _verify_claims_evidenced(workdir: Path, ctx: dict) -> tuple[bool, dict
     if not output:
         return True, {"note": "No output to check"}
     has_data = any(
-        marker in output
-        for marker in ["```", "results:", "found", "tested", "verified"]
+        marker in output for marker in ["```", "results:", "found", "tested", "verified"]
     )
     return has_data or len(output) < 100, {"has_evidence_markers": has_data}
 

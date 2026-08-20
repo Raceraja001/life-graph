@@ -80,9 +80,7 @@ class IngestRequest(BaseModel):
     context: dict[str, Any] | None = Field(
         None, description="Optional context (project, module, etc.)"
     )
-    source: str | None = Field(
-        None, description="Source identifier (e.g. 'chat', 'git', 'manual')"
-    )
+    source: str | None = Field(None, description="Source identifier (e.g. 'chat', 'git', 'manual')")
 
 
 class BulkImportItem(BaseModel):
@@ -120,7 +118,9 @@ class TenantProvisionRequest(BaseModel):
     """Request body for provisioning a new tenant."""
 
     tenant_id: str = Field(
-        ..., min_length=3, max_length=64,
+        ...,
+        min_length=3,
+        max_length=64,
         pattern=r"^[a-z0-9][a-z0-9_-]{2,63}$",
         description="Unique tenant identifier (lowercase alphanumeric + hyphens)",
     )
@@ -142,12 +142,14 @@ async def get_stats():
         gap_count = await session.scalar(select(func.count(KnowledgeGap.id)))
         session_count = await session.scalar(select(func.count(Session.id)))
 
-    return success_response(data=SystemStats(
-        memory_count=memory_count or 0,
-        intention_count=intention_count or 0,
-        gap_count=gap_count or 0,
-        session_count=session_count or 0,
-    ))
+    return success_response(
+        data=SystemStats(
+            memory_count=memory_count or 0,
+            intention_count=intention_count or 0,
+            gap_count=gap_count or 0,
+            session_count=session_count or 0,
+        )
+    )
 
 
 @router.get(
@@ -246,13 +248,15 @@ async def create_webhook(body: WebhookCreate):
         await session.commit()
         await session.refresh(webhook)
 
-    return success_response(data={
-        "id": str(webhook.id),
-        "url": webhook.url,
-        "events": webhook.events,
-        "active": webhook.active,
-        "created_at": webhook.created_at.isoformat(),
-    })
+    return success_response(
+        data={
+            "id": str(webhook.id),
+            "url": webhook.url,
+            "events": webhook.events,
+            "active": webhook.active,
+            "created_at": webhook.created_at.isoformat(),
+        }
+    )
 
 
 @router.get(
@@ -339,19 +343,23 @@ async def test_webhook(webhook_id: uuid.UUID):
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(webhook.url, json=test_payload)
         delivery_status = "delivered" if resp.status_code < 400 else "failed"
-        return success_response(data={
-            "webhook_id": str(webhook_id),
-            "delivery_status": delivery_status,
-            "http_status": resp.status_code,
-            "url": webhook.url,
-        })
+        return success_response(
+            data={
+                "webhook_id": str(webhook_id),
+                "delivery_status": delivery_status,
+                "http_status": resp.status_code,
+                "url": webhook.url,
+            }
+        )
     except Exception as e:
-        return success_response(data={
-            "webhook_id": str(webhook_id),
-            "delivery_status": "error",
-            "error": str(e),
-            "url": webhook.url,
-        })
+        return success_response(
+            data={
+                "webhook_id": str(webhook_id),
+                "delivery_status": "error",
+                "error": str(e),
+                "url": webhook.url,
+            }
+        )
 
 
 # ── Tenant Lifecycle ─────────────────────────────────────────
@@ -391,12 +399,14 @@ async def provision_tenant(body: TenantProvisionRequest):
         await session.commit()
         await session.refresh(config)
 
-    return success_response(data={
-        "tenant_id": config.tenant_id,
-        "plan": config.plan,
-        "status": config.status,
-        "provisioned_at": config.provisioned_at.isoformat(),
-    })
+    return success_response(
+        data={
+            "tenant_id": config.tenant_id,
+            "plan": config.plan,
+            "status": config.status,
+            "provisioned_at": config.provisioned_at.isoformat(),
+        }
+    )
 
 
 @router.get(
@@ -433,20 +443,22 @@ async def get_tenant_summary(tenant_id: str):
         ).where(TenantUsage.tenant_id == tenant_id)
         usage_row = (await session.execute(usage_stmt)).one_or_none()
 
-    return success_response(data={
-        "tenant_id": config.tenant_id,
-        "plan": config.plan,
-        "status": config.status,
-        "provisioned_at": config.provisioned_at.isoformat(),
-        "deactivated_at": config.deactivated_at.isoformat() if config.deactivated_at else None,
-        "memory_count": memory_count or 0,
-        "session_count": session_count or 0,
-        "usage": {
-            "total_api_calls": usage_row[0] or 0 if usage_row else 0,
-            "total_memories_created": usage_row[1] or 0 if usage_row else 0,
-            "total_llm_tokens_used": usage_row[2] or 0 if usage_row else 0,
-        },
-    })
+    return success_response(
+        data={
+            "tenant_id": config.tenant_id,
+            "plan": config.plan,
+            "status": config.status,
+            "provisioned_at": config.provisioned_at.isoformat(),
+            "deactivated_at": config.deactivated_at.isoformat() if config.deactivated_at else None,
+            "memory_count": memory_count or 0,
+            "session_count": session_count or 0,
+            "usage": {
+                "total_api_calls": usage_row[0] or 0 if usage_row else 0,
+                "total_memories_created": usage_row[1] or 0 if usage_row else 0,
+                "total_llm_tokens_used": usage_row[2] or 0 if usage_row else 0,
+            },
+        }
+    )
 
 
 @router.post(
@@ -476,11 +488,13 @@ async def deactivate_tenant(tenant_id: str):
 
     invalidate_tenant_status_cache(tenant_id)
 
-    return success_response(data={
-        "tenant_id": config.tenant_id,
-        "status": config.status,
-        "deactivated_at": config.deactivated_at.isoformat(),
-    })
+    return success_response(
+        data={
+            "tenant_id": config.tenant_id,
+            "status": config.status,
+            "deactivated_at": config.deactivated_at.isoformat(),
+        }
+    )
 
 
 @router.post(
@@ -510,10 +524,12 @@ async def reactivate_tenant(tenant_id: str):
 
     invalidate_tenant_status_cache(tenant_id)
 
-    return success_response(data={
-        "tenant_id": config.tenant_id,
-        "status": config.status,
-    })
+    return success_response(
+        data={
+            "tenant_id": config.tenant_id,
+            "status": config.status,
+        }
+    )
 
 
 @router.delete(
@@ -548,26 +564,18 @@ async def delete_tenant(tenant_id: str):
         # MemorySessions (references both memories and sessions)
         ms_del = await session.execute(
             delete(MemorySession).where(
-                MemorySession.memory_id.in_(
-                    select(Memory.id).where(Memory.tenant_id == tenant_id)
-                )
+                MemorySession.memory_id.in_(select(Memory.id).where(Memory.tenant_id == tenant_id))
             )
         )
         counts["memory_sessions"] = ms_del.rowcount
 
-        mem_del = await session.execute(
-            delete(Memory).where(Memory.tenant_id == tenant_id)
-        )
+        mem_del = await session.execute(delete(Memory).where(Memory.tenant_id == tenant_id))
         counts["memories"] = mem_del.rowcount
 
-        sess_del = await session.execute(
-            delete(Session).where(Session.tenant_id == tenant_id)
-        )
+        sess_del = await session.execute(delete(Session).where(Session.tenant_id == tenant_id))
         counts["sessions"] = sess_del.rowcount
 
-        int_del = await session.execute(
-            delete(Intention).where(Intention.tenant_id == tenant_id)
-        )
+        int_del = await session.execute(delete(Intention).where(Intention.tenant_id == tenant_id))
         counts["intentions"] = int_del.rowcount
 
         gap_del = await session.execute(
@@ -575,9 +583,7 @@ async def delete_tenant(tenant_id: str):
         )
         counts["knowledge_gaps"] = gap_del.rowcount
 
-        job_del = await session.execute(
-            delete(JobRun).where(JobRun.tenant_id == tenant_id)
-        )
+        job_del = await session.execute(delete(JobRun).where(JobRun.tenant_id == tenant_id))
         counts["job_runs"] = job_del.rowcount
 
         usage_del = await session.execute(
@@ -595,11 +601,13 @@ async def delete_tenant(tenant_id: str):
 
         await session.commit()
 
-    return success_response(data={
-        "tenant_id": tenant_id,
-        "deleted": True,
-        "counts": counts,
-    })
+    return success_response(
+        data={
+            "tenant_id": tenant_id,
+            "deleted": True,
+            "counts": counts,
+        }
+    )
 
 
 # ── Bulk Operations ──────────────────────────────────────────
@@ -644,33 +652,33 @@ async def bulk_delete(body: BulkDeleteRequest):
         count = len(matching_ids)
 
         if not body.confirm:
-            return success_response(data={
-                "dry_run": True,
-                "match_count": count,
-                "filters": filters,
-            })
+            return success_response(
+                data={
+                    "dry_run": True,
+                    "match_count": count,
+                    "filters": filters,
+                }
+            )
 
         # Execute delete
         if matching_ids:
             # Delete associations first
             await session.execute(
-                delete(MemorySession).where(
-                    MemorySession.memory_id.in_(matching_ids)
-                )
+                delete(MemorySession).where(MemorySession.memory_id.in_(matching_ids))
             )
-            del_result = await session.execute(
-                delete(Memory).where(Memory.id.in_(matching_ids))
-            )
+            del_result = await session.execute(delete(Memory).where(Memory.id.in_(matching_ids)))
             await session.commit()
             deleted = del_result.rowcount
         else:
             deleted = 0
 
-    return success_response(data={
-        "dry_run": False,
-        "deleted": deleted,
-        "filters": filters,
-    })
+    return success_response(
+        data={
+            "dry_run": False,
+            "deleted": deleted,
+            "filters": filters,
+        }
+    )
 
 
 @router.post(
@@ -729,11 +737,13 @@ async def bulk_import(body: BulkImportRequest):
             # Embeddings will need to be generated later
             pass
 
-    return success_response(data={
-        "imported": imported,
-        "embedding_job_id": embedding_job_id,
-        "searchable": searchable,
-    })
+    return success_response(
+        data={
+            "imported": imported,
+            "embedding_job_id": embedding_job_id,
+            "searchable": searchable,
+        }
+    )
 
 
 # ── Consolidation ────────────────────────────────────────────
@@ -762,17 +772,20 @@ async def run_consolidation():
     dedup, score, distill, decay, and audit.
     """
     from life_graph.api.dependencies import get_job_scheduler
+
     scheduler = get_job_scheduler()
     report = await scheduler.run_consolidation()
-    return success_response(data=ConsolidationResponse(
-        gathered=report.gathered,
-        clusters_found=report.clusters_found,
-        duplicates_removed=report.duplicates_removed,
-        principles_created=report.principles_created,
-        memories_archived=report.memories_archived,
-        contradictions_found=report.contradictions_found,
-        duration_seconds=report.duration_seconds,
-    ))
+    return success_response(
+        data=ConsolidationResponse(
+            gathered=report.gathered,
+            clusters_found=report.clusters_found,
+            duplicates_removed=report.duplicates_removed,
+            principles_created=report.principles_created,
+            memories_archived=report.memories_archived,
+            contradictions_found=report.contradictions_found,
+            duration_seconds=report.duration_seconds,
+        )
+    )
 
 
 @router.post(
@@ -791,15 +804,17 @@ async def run_micro_consolidation(session_id: uuid.UUID):
 
     consolidator = get_micro_consolidator()
     report = await consolidator.run(session_id)
-    return success_response(data=MicroConsolidationResponse(
-        session_id=str(session_id),
-        memories_processed=report.memories_processed,
-        duplicates_removed=report.duplicates_removed,
-        importance_updated=report.importance_updated,
-        entities_discovered=report.entities_discovered,
-        edges_created=report.edges_created,
-        duration_seconds=report.duration_seconds,
-    ))
+    return success_response(
+        data=MicroConsolidationResponse(
+            session_id=str(session_id),
+            memories_processed=report.memories_processed,
+            duplicates_removed=report.duplicates_removed,
+            importance_updated=report.importance_updated,
+            entities_discovered=report.entities_discovered,
+            edges_created=report.edges_created,
+            duration_seconds=report.duration_seconds,
+        )
+    )
 
 
 # ── Background Jobs ──────────────────────────────────────────
@@ -867,6 +882,7 @@ async def enqueue_consolidation(tenant_id: str | None = None):
     except Exception:
         # Fallback: run the legacy consolidation
         from life_graph.api.dependencies import get_job_scheduler
+
         scheduler = get_job_scheduler()
         report = await scheduler.run_consolidation()
         return success_response(data={"status": "completed_sync", "gathered": report.gathered})
@@ -893,7 +909,9 @@ async def enqueue_cleanup_memories(tenant_id: str | None = None):
     # Full dotted names — must match WorkerSettings.functions registration, or
     # ARQ logs "<name> not found" and the job silently never runs.
     if tenant_id:
-        job = await pool.enqueue_job("life_graph.workers.cleanup.cleanup_memories_tenant", tenant_id)
+        job = await pool.enqueue_job(
+            "life_graph.workers.cleanup.cleanup_memories_tenant", tenant_id
+        )
     else:
         job = await pool.enqueue_job("life_graph.workers.cleanup.cleanup_memories_all")
     await pool.close()

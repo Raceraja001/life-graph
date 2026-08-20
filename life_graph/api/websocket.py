@@ -66,9 +66,7 @@ class ConnectionManager:
             self.active_count,
         )
 
-    async def broadcast_to_tenant(
-        self, tenant_id: str, message: dict[str, Any]
-    ) -> None:
+    async def broadcast_to_tenant(self, tenant_id: str, message: dict[str, Any]) -> None:
         """Send a JSON message to all connected clients for a specific tenant.
 
         Failed sends are logged and the dead connection is removed,

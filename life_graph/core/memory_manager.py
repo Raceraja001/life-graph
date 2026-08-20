@@ -122,13 +122,10 @@ class MemoryManager:
         exact_matches: list[Memory | None] = [None] * len(facts)
         if settings.dedup_enabled and not skip_dedup:
             content_hashes = [
-                hashlib.sha256(fact.content.strip().lower().encode()).hexdigest()
-                for fact in facts
+                hashlib.sha256(fact.content.strip().lower().encode()).hexdigest() for fact in facts
             ]
             exact_matches = list(
-                await asyncio.gather(
-                    *(self._store.find_exact_duplicate(h) for h in content_hashes)
-                )
+                await asyncio.gather(*(self._store.find_exact_duplicate(h) for h in content_hashes))
             )
 
         # Steps 2-6: Process each non-duplicate fact. Embeddings are independent
@@ -299,9 +296,7 @@ class MemoryManager:
         if settings.dedup_enabled and not skip_dedup:
             # Near-match (only if no exact match and embedding available)
             if candidates:
-                similar = [
-                    (m, s) for m, s in candidates if s >= settings.dedup_threshold
-                ][:5]
+                similar = [(m, s) for m, s in candidates if s >= settings.dedup_threshold][:5]
                 if similar:
                     existing_memory, score = similar[0]  # highest similarity
                     logger.info(

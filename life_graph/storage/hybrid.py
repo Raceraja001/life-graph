@@ -38,6 +38,7 @@ class HybridQueryEngine:
         """Lazy-initialise the GraphStore."""
         if self._graph_store is None:
             from life_graph.storage.graph import GraphStore
+
             self._graph_store = GraphStore()
         return self._graph_store
 
@@ -46,6 +47,7 @@ class HybridQueryEngine:
         """Lazy-initialise the PostgresMemoryStore."""
         if self._memory_store is None:
             from life_graph.storage.postgres import PostgresMemoryStore
+
             self._memory_store = PostgresMemoryStore()
         return self._memory_store
 
@@ -85,9 +87,7 @@ class HybridQueryEngine:
             # If a specific label filter is provided, narrow further
             if graph_filter and "label" in graph_filter:
                 label = graph_filter["label"]
-                label_results = await self.graph_store.search_entities(
-                    query, label=label
-                )
+                label_results = await self.graph_store.search_entities(query, label=label)
                 entities = label_results[:10]
 
             # Step 2 — Get neighbors of found entities
@@ -165,13 +165,17 @@ class HybridQueryEngine:
                     seen_ids = {m["id"] for m in memories}
                     for r in broad_rows:
                         if str(r.id) not in seen_ids:
-                            memories.append({
-                                "id": str(r.id),
-                                "content": r.content,
-                                "tags": r.tags,
-                                "importance": r.importance,
-                                "created_at": r.created_at.isoformat() if r.created_at else None,
-                            })
+                            memories.append(
+                                {
+                                    "id": str(r.id),
+                                    "content": r.content,
+                                    "tags": r.tags,
+                                    "importance": r.importance,
+                                    "created_at": r.created_at.isoformat()
+                                    if r.created_at
+                                    else None,
+                                }
+                            )
                     memories = memories[:limit]
 
         except Exception:
@@ -181,13 +185,9 @@ class HybridQueryEngine:
             )
 
         return {
-            "entities": [
-                e.get("properties", {}) for e in entities
-            ],
+            "entities": [e.get("properties", {}) for e in entities],
             "memories": memories,
-            "graph_context": [
-                e.get("properties", {}) for e in graph_context
-            ],
+            "graph_context": [e.get("properties", {}) for e in graph_context],
         }
 
     # ── Tri-Signal Hybrid Search (Feature 2) ──────────────────
@@ -246,20 +246,24 @@ class HybridQueryEngine:
                 )
 
                 for memory, base_score in hybrid_results:
-                    scored_memories.append({
-                        "id": str(memory.id),
-                        "content": memory.content,
-                        "tags": memory.tags,
-                        "importance": memory.importance,
-                        "confidence": memory.confidence,
-                        "source_type": memory.source_type,
-                        "created_at": memory.created_at.isoformat() if memory.created_at else None,
-                        "access_count": memory.access_count,
-                        "extraction_tier": memory.extraction_tier,
-                        "base_score": base_score,
-                        "graph_boost": 0.0,
-                        "final_score": base_score,
-                    })
+                    scored_memories.append(
+                        {
+                            "id": str(memory.id),
+                            "content": memory.content,
+                            "tags": memory.tags,
+                            "importance": memory.importance,
+                            "confidence": memory.confidence,
+                            "source_type": memory.source_type,
+                            "created_at": memory.created_at.isoformat()
+                            if memory.created_at
+                            else None,
+                            "access_count": memory.access_count,
+                            "extraction_tier": memory.extraction_tier,
+                            "base_score": base_score,
+                            "graph_boost": 0.0,
+                            "final_score": base_score,
+                        }
+                    )
 
         except Exception:
             logger.warning(
@@ -274,11 +278,7 @@ class HybridQueryEngine:
         try:
             entity_results = await self.graph_store.search_entities(query)
             graph_entities = [e.get("properties", {}) for e in entity_results[:10]]
-            entity_names = {
-                e.get("name", "").lower()
-                for e in graph_entities
-                if e.get("name")
-            }
+            entity_names = {e.get("name", "").lower() for e in graph_entities if e.get("name")}
 
             # Get neighbor names for extended graph context
             neighbor_names: set[str] = set()
@@ -340,9 +340,7 @@ class HybridQueryEngine:
 
     # ── Entity Context ────────────────────────────────────────
 
-    async def entity_context(
-        self, entity_name: str
-    ) -> dict[str, Any]:
+    async def entity_context(self, entity_name: str) -> dict[str, Any]:
         """Get full context for a named entity.
 
         Returns graph neighbors, related entities, and memories
@@ -360,8 +358,15 @@ class HybridQueryEngine:
 
         try:
             # Try multiple labels
-            for label in ["Entity", "Technology", "Person", "Project",
-                          "Decision", "Concept", "Domain"]:
+            for label in [
+                "Entity",
+                "Technology",
+                "Person",
+                "Project",
+                "Decision",
+                "Concept",
+                "Domain",
+            ]:
                 entity = await self.graph_store.get_vertex(label, entity_name)
                 if entity:
                     break
@@ -373,13 +378,12 @@ class HybridQueryEngine:
                     vertex_label=entity.get("label", "Entity"),
                     depth=2,
                 )
-                neighbors = [
-                    n.get("properties", {}) for n in raw_neighbors
-                ]
+                neighbors = [n.get("properties", {}) for n in raw_neighbors]
 
         except Exception:
             logger.warning(
-                "Graph lookup failed for entity %s", entity_name,
+                "Graph lookup failed for entity %s",
+                entity_name,
                 exc_info=True,
             )
 
@@ -409,17 +413,20 @@ class HybridQueryEngine:
             seen_ids = {m["id"] for m in memories}
             for r in prop_rows:
                 if str(r.id) not in seen_ids:
-                    memories.append({
-                        "id": str(r.id),
-                        "content": r.content,
-                        "tags": r.tags,
-                        "importance": r.importance,
-                        "created_at": r.created_at.isoformat() if r.created_at else None,
-                    })
+                    memories.append(
+                        {
+                            "id": str(r.id),
+                            "content": r.content,
+                            "tags": r.tags,
+                            "importance": r.importance,
+                            "created_at": r.created_at.isoformat() if r.created_at else None,
+                        }
+                    )
 
         except Exception:
             logger.warning(
-                "Memory lookup failed for entity %s", entity_name,
+                "Memory lookup failed for entity %s",
+                entity_name,
                 exc_info=True,
             )
 

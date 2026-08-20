@@ -48,8 +48,7 @@ async def _run_git(args: list[str], cwd: str) -> dict:
 @tool(
     name="git_status",
     description=(
-        "Get the current git status of a repository. Shows modified, staged, "
-        "and untracked files."
+        "Get the current git status of a repository. Shows modified, staged, and untracked files."
     ),
     parameters_schema={
         "type": "object",

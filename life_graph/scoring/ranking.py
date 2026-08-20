@@ -29,6 +29,7 @@ _WEIGHT_TRUST: float = 0.05
 # Context similarity helpers
 # ---------------------------------------------------------------------------
 
+
 def _set_overlap_ratio(a: set[str], b: set[str]) -> float:
     """Compute overlap ratio between two sets.
 
@@ -95,6 +96,7 @@ def context_similarity(
 # Sub-score computations
 # ---------------------------------------------------------------------------
 
+
 def _recency_score(days_since_access: float) -> float:
     """Exponential recency decay: e^(-0.02 × days)."""
     return math.exp(-0.02 * max(days_since_access, 0.0))
@@ -125,6 +127,7 @@ def _resolve_days_since_access(candidate: dict[str, Any]) -> float:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 class RecallRanker:
     """Multi-signal ranker for memory retrieval results.

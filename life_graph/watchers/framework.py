@@ -34,7 +34,9 @@ class WatcherFramework:
         return dict(self._registry)
 
     async def run_watcher(
-        self, tenant_id: str, watcher_name: str,
+        self,
+        tenant_id: str,
+        watcher_name: str,
     ) -> dict[str, Any]:
         """Instantiate and run a single watcher by name."""
         watcher_cls = self._registry.get(watcher_name)
@@ -49,7 +51,8 @@ class WatcherFramework:
         return await watcher.run()
 
     async def run_all_for_tenant(
-        self, tenant_id: str,
+        self,
+        tenant_id: str,
     ) -> list[dict[str, Any]]:
         """Run all enabled watchers for a tenant."""
         results: list[dict[str, Any]] = []
@@ -104,7 +107,8 @@ class WatcherFramework:
                 await session.commit()
                 self.logger.info(
                     "Created %d default watcher configs for tenant %s",
-                    created, tenant_id,
+                    created,
+                    tenant_id,
                 )
 
         return created

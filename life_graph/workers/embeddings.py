@@ -77,9 +77,7 @@ async def generate_embeddings_batch(
             chunk_ids = memory_ids[i : i + BATCH_SIZE]
 
             async with async_session() as session:
-                result = await session.execute(
-                    select(Memory).where(Memory.id.in_(chunk_ids))
-                )
+                result = await session.execute(select(Memory).where(Memory.id.in_(chunk_ids)))
                 memories = result.scalars().all()
 
                 for memory in memories:

@@ -71,7 +71,6 @@ class SafetyRuleResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-
 class ClassifyRequest(BaseModel):
     """Request body for classifying an action."""
 

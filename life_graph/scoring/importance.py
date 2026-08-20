@@ -12,23 +12,45 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 
 EMPHASIS_KEYWORDS: set[str] = {
-    "important", "critical", "never", "always", "must",
+    "important",
+    "critical",
+    "never",
+    "always",
+    "must",
 }
 
 FAILURE_KEYWORDS: set[str] = {
-    "bug", "error", "crash", "fix", "broke", "issue",
+    "bug",
+    "error",
+    "crash",
+    "fix",
+    "broke",
+    "issue",
 }
 
 ARCHITECTURE_KEYWORDS: set[str] = {
-    "architecture", "design", "pattern", "approach", "structure",
+    "architecture",
+    "design",
+    "pattern",
+    "approach",
+    "structure",
 }
 
 COST_KEYWORDS: set[str] = {
-    "cost", "price", "expensive", "budget", "pay", "save money",
+    "cost",
+    "price",
+    "expensive",
+    "budget",
+    "pay",
+    "save money",
 }
 
 HEDGING_KEYWORDS: set[str] = {
-    "maybe", "perhaps", "might", "not sure", "possibly",
+    "maybe",
+    "perhaps",
+    "might",
+    "not sure",
+    "possibly",
 }
 
 # Compiled regex patterns (compiled once at module load)
@@ -65,6 +87,7 @@ class SignalResult:
 # ---------------------------------------------------------------------------
 # Detection helpers
 # ---------------------------------------------------------------------------
+
 
 def _detect_emphasis(text: str) -> list[Signal]:
     """Detect explicit emphasis via keywords (case-insensitive) and ALL-CAPS words."""
@@ -129,6 +152,7 @@ def _detect_repeated_mention(context: dict | None) -> Signal | None:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def _importance_tier(score: float) -> str:
     """Map a numeric importance score to a tier label."""
@@ -211,7 +235,9 @@ class ImportanceTagger:
         return clamped, tier
 
     def score_detailed(
-        self, text: str, context: dict | None = None,
+        self,
+        text: str,
+        context: dict | None = None,
     ) -> tuple[float, str, list[Signal]]:
         """Score with full signal breakdown for debugging.
 

@@ -24,6 +24,7 @@ router = APIRouter(prefix="/research", tags=["research"])
 
 class ResearchTriggerRequest(BaseModel):
     """Request body for manually triggering research."""
+
     preference_id: uuid.UUID | None = Field(
         None, description="Research a specific preference (omit for stale scan)"
     )
@@ -52,10 +53,7 @@ async def list_research_runs(
 
     tenant_id = get_current_tenant_id()
 
-    stmt = (
-        select(ResearchRun)
-        .where(ResearchRun.tenant_id == tenant_id)
-    )
+    stmt = select(ResearchRun).where(ResearchRun.tenant_id == tenant_id)
     if run_status:
         stmt = stmt.where(ResearchRun.status == run_status)
 
@@ -119,19 +117,21 @@ async def get_research_run(
             detail=f"Research run {run_id} not found",
         )
 
-    return success_response(data={
-        "id": str(run.id),
-        "query": run.query,
-        "status": run.status,
-        "evidence_found": run.evidence_found,
-        "evidence_added": run.evidence_added,
-        "preferences_affected": run.preferences_affected,
-        "sources_searched": run.sources_searched,
-        "properties": run.properties,
-        "error": run.error,
-        "started_at": run.started_at.isoformat(),
-        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
-    })
+    return success_response(
+        data={
+            "id": str(run.id),
+            "query": run.query,
+            "status": run.status,
+            "evidence_found": run.evidence_found,
+            "evidence_added": run.evidence_added,
+            "preferences_affected": run.preferences_affected,
+            "sources_searched": run.sources_searched,
+            "properties": run.properties,
+            "error": run.error,
+            "started_at": run.started_at.isoformat(),
+            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        }
+    )
 
 
 @router.post(
@@ -151,8 +151,6 @@ async def trigger_research(
     tenant_id = get_current_tenant_id()
 
     # Run inline for simplicity (could enqueue to ARQ for truly async)
-    result = await engine.run_research_cycle(
-        tenant_id, preference_id=body.preference_id
-    )
+    result = await engine.run_research_cycle(tenant_id, preference_id=body.preference_id)
 
     return success_response(data=result)

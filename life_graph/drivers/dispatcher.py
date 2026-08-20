@@ -103,6 +103,7 @@ class TaskDispatcher:
         llm = None
         if enabled:
             from life_graph.services.llm_client import LMStudioClient
+
             llm = LMStudioClient()
         return SecondOpinionReviewer(
             llm=llm,
@@ -217,13 +218,18 @@ class TaskDispatcher:
             if not decision.allowed:
                 logger.warning(
                     "Task %s denied by Governor: %s (spent $%.2f / $%.2f)",
-                    task_id, decision.reason, decision.spent_usd, decision.cap_usd,
+                    task_id,
+                    decision.reason,
+                    decision.spent_usd,
+                    decision.cap_usd,
                 )
                 await self._emit(
                     EventType.DRIVER_DISPATCHED,
                     {
-                        "task_id": task_id, "driver": driver.name,
-                        "task_type": task_type, "tenant_id": tenant_id,
+                        "task_id": task_id,
+                        "driver": driver.name,
+                        "task_type": task_type,
+                        "tenant_id": tenant_id,
                         "budget_denied": True,
                     },
                 )
@@ -271,7 +277,9 @@ class TaskDispatcher:
             if result.cost_usd > cost_cap_usd:
                 logger.warning(
                     "Task %s exceeded per-task cost cap: $%.2f > $%.2f",
-                    task_id, result.cost_usd, cost_cap_usd,
+                    task_id,
+                    result.cost_usd,
+                    cost_cap_usd,
                 )
 
             # Step 5: Run verifier chain
@@ -281,9 +289,7 @@ class TaskDispatcher:
                     "task_type": task_type,
                     "instruction": instruction,
                 }
-                v_results = await verifier_chain.run_chain(
-                    verify_chain, workdir, task_context
-                )
+                v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
 
                 if not verifier_chain.all_passed(v_results):
                     # Step 6: One-bounce rule
@@ -292,9 +298,7 @@ class TaskDispatcher:
                         {
                             "task_id": task_id,
                             "driver": driver.name,
-                            "failures": [
-                                asdict(r) for r in v_results if not r.passed
-                            ],
+                            "failures": [asdict(r) for r in v_results if not r.passed],
                         },
                     )
 
@@ -337,9 +341,7 @@ class TaskDispatcher:
                     )
 
                     # Step 6b: Second-opinion dissenting review before landing.
-                    verdict = await self._reviewer.review(
-                        task_type, instruction, result.output
-                    )
+                    verdict = await self._reviewer.review(task_type, instruction, result.output)
                     if verdict.ran and not verdict.approved:
                         await self._emit(
                             EventType.SECOND_OPINION_DISSENT,
@@ -350,8 +352,11 @@ class TaskDispatcher:
                             },
                         )
                         await self._create_dissent_approval_entry(
-                            tenant_id, task_id, driver.name,
-                            verdict.concern, session,
+                            tenant_id,
+                            task_id,
+                            driver.name,
+                            verdict.concern,
+                            session,
                         )
                         result = DriverResult(
                             success=False,
@@ -369,9 +374,7 @@ class TaskDispatcher:
                         )
 
             # Step 7: Record stats + emit result
-            await self._record_stats(
-                tenant_id, driver.name, task_type, result, session
-            )
+            await self._record_stats(tenant_id, driver.name, task_type, result, session)
 
             await self._emit(
                 EventType.DRIVER_RESULT,
@@ -438,8 +441,7 @@ class TaskDispatcher:
             return persona
         except Exception:
             logger.warning(
-                "Failed to load persona %r — dispatching without persona "
-                "prompt/tool scoping",
+                "Failed to load persona %r — dispatching without persona prompt/tool scoping",
                 persona_name,
                 exc_info=True,
             )
@@ -481,9 +483,7 @@ class TaskDispatcher:
                     if pinned_driver:
                         driver = driver_registry.get(pinned_driver)
                         if driver and await driver.available():
-                            logger.info(
-                                "Persona %s pins driver %s", persona_name, pinned_driver
-                            )
+                            logger.info("Persona %s pins driver %s", persona_name, pinned_driver)
                             return driver
             except Exception:
                 logger.warning("Failed to check persona driver pin", exc_info=True)
@@ -514,9 +514,7 @@ class TaskDispatcher:
         if local and await local.available():
             return local
 
-        raise DispatchError(
-            f"No driver available for task type '{task_type}'"
-        )
+        raise DispatchError(f"No driver available for task type '{task_type}'")
 
     async def _check_wip_limits(
         self,
@@ -547,9 +545,7 @@ class TaskDispatcher:
             tenant_wip = result.scalar() or 0
 
             if tenant_wip >= MAX_WIP_PER_TENANT:
-                raise DispatchError(
-                    f"Tenant WIP limit reached ({tenant_wip}/{MAX_WIP_PER_TENANT})"
-                )
+                raise DispatchError(f"Tenant WIP limit reached ({tenant_wip}/{MAX_WIP_PER_TENANT})")
 
             # Project-level WIP
             if project_uuid is not None:
@@ -680,14 +676,11 @@ class TaskDispatcher:
         Returns:
             DriverResult if bounce succeeded verification, None if it also failed.
         """
-        failures = [
-            f"- {r.verifier}: {r.evidence}" for r in failure_report if not r.passed
-        ]
+        failures = [f"- {r.verifier}: {r.evidence}" for r in failure_report if not r.passed]
         bounce_instruction = (
             f"{packet.instruction}\n\n"
             f"--- PREVIOUS ATTEMPT FAILED VERIFICATION ---\n"
-            f"Fix these issues and try again:\n"
-            + "\n".join(failures)
+            f"Fix these issues and try again:\n" + "\n".join(failures)
         )
 
         # Update packet with bounce instruction
@@ -770,13 +763,9 @@ class TaskDispatcher:
                 status="pending",
             )
             session.add(entry)
-            logger.info(
-                "Created second-opinion approval entry for task %s", task_id
-            )
+            logger.info("Created second-opinion approval entry for task %s", task_id)
         except Exception:
-            logger.warning(
-                "Failed to create dissent approval entry", exc_info=True
-            )
+            logger.warning("Failed to create dissent approval entry", exc_info=True)
 
     async def _create_approval_entry(
         self,
@@ -806,9 +795,7 @@ class TaskDispatcher:
                 status="pending",
             )
             session.add(entry)
-            logger.info(
-                "Created approval entry for task %s — needs human review", task_id
-            )
+            logger.info("Created approval entry for task %s — needs human review", task_id)
         except Exception:
             logger.warning("Failed to create approval entry", exc_info=True)
 

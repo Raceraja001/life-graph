@@ -37,7 +37,9 @@ _DECISION_PATTERNS: list[re.Pattern[str]] = [
 _PROCEDURE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\bevery\s+time\s+I\s+(.+?)(?:,\s*I\s+(.+))", re.IGNORECASE),
     re.compile(r"\bI\s+always\s+(?:start|begin)\s+by\s+(.+)", re.IGNORECASE),
-    re.compile(r"\bmy\s+(?:usual\s+)?(?:process|workflow|routine)\s+(?:is|for)\s+(.+)", re.IGNORECASE),
+    re.compile(
+        r"\bmy\s+(?:usual\s+)?(?:process|workflow|routine)\s+(?:is|for)\s+(.+)", re.IGNORECASE
+    ),
     re.compile(r"\bstep\s+\d+\s*[:.]?\s*(.+)", re.IGNORECASE),
 ]
 
@@ -86,9 +88,9 @@ class CaptureProcessors:
                 from life_graph.models.db import CaptureEvent
 
                 result = await session.execute(
-                    __import__("sqlalchemy").select(CaptureEvent).where(
-                        CaptureEvent.id == uuid.UUID(capture_event_id)
-                    )
+                    __import__("sqlalchemy")
+                    .select(CaptureEvent)
+                    .where(CaptureEvent.id == uuid.UUID(capture_event_id))
                 )
                 capture_evt = result.scalars().first()
                 if not capture_evt:
@@ -114,7 +116,9 @@ class CaptureProcessors:
                         extraction.tier3_count,
                     )
                 except Exception:
-                    logger.warning("Extraction pipeline failed for %s", capture_event_id, exc_info=True)
+                    logger.warning(
+                        "Extraction pipeline failed for %s", capture_event_id, exc_info=True
+                    )
 
                 # ── 2. Decision candidate detection ─────────────────
                 decisions = self._detect_decisions(content)

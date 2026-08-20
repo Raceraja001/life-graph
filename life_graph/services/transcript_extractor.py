@@ -146,12 +146,14 @@ class TranscriptExtractor:
         # Process each extracted preference
         for pref in extracted:
             action = await self._process_preference(tenant_id, pref, source)
-            result.details.append({
-                "topic": pref.topic,
-                "choice": pref.choice,
-                "confidence": pref.confidence,
-                "action": action,
-            })
+            result.details.append(
+                {
+                    "topic": pref.topic,
+                    "choice": pref.choice,
+                    "confidence": pref.confidence,
+                    "action": action,
+                }
+            )
             if action == "created":
                 result.preferences_extracted += 1
             elif action == "reinforced":
@@ -171,9 +173,7 @@ class TranscriptExtractor:
 
     # ── Parsing ───────────────────────────────────────────────
 
-    def _parse_messages(
-        self, messages: list[dict], format: str
-    ) -> list[ParsedMessage]:
+    def _parse_messages(self, messages: list[dict], format: str) -> list[ParsedMessage]:
         """Parse messages based on format type."""
         if format == "chatgpt":
             return self._parse_chatgpt(messages)
@@ -310,13 +310,15 @@ class TranscriptExtractor:
                 key = (topic.lower(), choice.lower())
                 if key not in seen:
                     seen.add(key)
-                    results.append(ExtractedPreference(
-                        topic=topic,
-                        choice=choice,
-                        confidence=confidence,
-                        pattern=ptype,
-                        source_text=match.group(0),
-                    ))
+                    results.append(
+                        ExtractedPreference(
+                            topic=topic,
+                            choice=choice,
+                            confidence=confidence,
+                            pattern=ptype,
+                            source_text=match.group(0),
+                        )
+                    )
 
         return results
 
@@ -355,9 +357,7 @@ class TranscriptExtractor:
         await self._create_preference(tenant_id, pref, source)
         return "created"
 
-    async def _find_existing(
-        self, tenant_id: str, topic: str, choice: str
-    ) -> Preference | None:
+    async def _find_existing(self, tenant_id: str, topic: str, choice: str) -> Preference | None:
         """Find an exact topic+choice match."""
         async with self._session_factory() as session:
             stmt = select(Preference).where(
@@ -368,9 +368,7 @@ class TranscriptExtractor:
             )
             return (await session.execute(stmt)).scalar_one_or_none()
 
-    async def _dedup_check(
-        self, tenant_id: str, pref: ExtractedPreference
-    ) -> Preference | None:
+    async def _dedup_check(self, tenant_id: str, pref: ExtractedPreference) -> Preference | None:
         """Check if a semantically similar preference exists (cosine ≥ 0.90)."""
         try:
             pref_text = f"{pref.topic}: {pref.choice}"
@@ -382,13 +380,10 @@ class TranscriptExtractor:
             return None
 
         async with self._session_factory() as session:
-            stmt = (
-                select(Preference)
-                .where(
-                    Preference.tenant_id == tenant_id,
-                    Preference.status == "active",
-                    Preference.embedding.is_not(None),
-                )
+            stmt = select(Preference).where(
+                Preference.tenant_id == tenant_id,
+                Preference.status == "active",
+                Preference.embedding.is_not(None),
             )
             rows = (await session.execute(stmt)).scalars().all()
 
@@ -410,7 +405,11 @@ class TranscriptExtractor:
                 if sim >= DEDUP_THRESHOLD:
                     logger.debug(
                         "Dedup match: '%s: %s' ≈ '%s: %s' (sim=%.3f)",
-                        pref.topic, pref.choice, row.topic, row.choice, sim,
+                        pref.topic,
+                        pref.choice,
+                        row.topic,
+                        row.choice,
+                        sim,
                     )
                     return row
 
@@ -431,13 +430,14 @@ class TranscriptExtractor:
             if existing:
                 logger.info(
                     "Contradiction detected: '%s: %s' vs existing '%s: %s'",
-                    pref.topic, pref.choice, existing.topic, existing.choice,
+                    pref.topic,
+                    pref.choice,
+                    existing.topic,
+                    existing.choice,
                 )
             return existing
 
-    async def _reinforce(
-        self, existing: Preference, pref: ExtractedPreference
-    ) -> None:
+    async def _reinforce(self, existing: Preference, pref: ExtractedPreference) -> None:
         """Reinforce an existing preference."""
         async with self._session_factory() as session:
             # Merge the detached instance
@@ -459,7 +459,9 @@ class TranscriptExtractor:
             )
             session.add(evidence)
             await session.commit()
-            logger.debug("Reinforced preference %s (count=%d)", existing.id, existing.reinforced_count)
+            logger.debug(
+                "Reinforced preference %s (count=%d)", existing.id, existing.reinforced_count
+            )
 
     async def _create_preference(
         self,
@@ -506,6 +508,9 @@ class TranscriptExtractor:
 
             logger.info(
                 "Created preference: %s → %s (confidence=%.2f, source=%s)",
-                pref.topic, pref.choice, pref.confidence, source,
+                pref.topic,
+                pref.choice,
+                pref.confidence,
+                source,
             )
             return row

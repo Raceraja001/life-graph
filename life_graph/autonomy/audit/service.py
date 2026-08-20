@@ -246,13 +246,23 @@ class AuditService:
             if filters.get("project_id"):
                 q = q.where(AuditLogEntry.project_id == filters["project_id"])
             if filters.get("start_date"):
-                q = q.where(AuditLogEntry.created_at >= datetime.combine(
-                    filters["start_date"], datetime.min.time(), tzinfo=UTC,
-                ))
+                q = q.where(
+                    AuditLogEntry.created_at
+                    >= datetime.combine(
+                        filters["start_date"],
+                        datetime.min.time(),
+                        tzinfo=UTC,
+                    )
+                )
             if filters.get("end_date"):
-                q = q.where(AuditLogEntry.created_at <= datetime.combine(
-                    filters["end_date"], datetime.max.time(), tzinfo=UTC,
-                ))
+                q = q.where(
+                    AuditLogEntry.created_at
+                    <= datetime.combine(
+                        filters["end_date"],
+                        datetime.max.time(),
+                        tzinfo=UTC,
+                    )
+                )
 
             limit = filters.get("limit", 50)
             offset = filters.get("offset", 0)
@@ -277,11 +287,17 @@ class AuditService:
         async with self._session_factory() as session:
             q = select(AuditLogEntry).where(
                 AuditLogEntry.tenant_id == tenant_id,
-                AuditLogEntry.created_at >= datetime.combine(
-                    start_date, datetime.min.time(), tzinfo=UTC,
+                AuditLogEntry.created_at
+                >= datetime.combine(
+                    start_date,
+                    datetime.min.time(),
+                    tzinfo=UTC,
                 ),
-                AuditLogEntry.created_at <= datetime.combine(
-                    end_date, datetime.max.time(), tzinfo=UTC,
+                AuditLogEntry.created_at
+                <= datetime.combine(
+                    end_date,
+                    datetime.max.time(),
+                    tzinfo=UTC,
                 ),
             )
 
@@ -294,19 +310,21 @@ class AuditService:
 
         lines = []
         for entry in entries:
-            line = json.dumps({
-                "id": str(entry.id),
-                "tenant_id": entry.tenant_id,
-                "action_type": entry.action_type,
-                "action_id": str(entry.auto_action_id) if entry.auto_action_id else None,
-                "agent_id": entry.agent_id,
-                "project_id": entry.project_id,
-                "risk_level": entry.risk_level,
-                "command": entry.action_command,
-                "result": entry.result,
-                "details": entry.classification_reasoning,
-                "created_at": entry.created_at.isoformat(),
-            })
+            line = json.dumps(
+                {
+                    "id": str(entry.id),
+                    "tenant_id": entry.tenant_id,
+                    "action_type": entry.action_type,
+                    "action_id": str(entry.auto_action_id) if entry.auto_action_id else None,
+                    "agent_id": entry.agent_id,
+                    "project_id": entry.project_id,
+                    "risk_level": entry.risk_level,
+                    "command": entry.action_command,
+                    "result": entry.result,
+                    "details": entry.classification_reasoning,
+                    "created_at": entry.created_at.isoformat(),
+                }
+            )
             lines.append(line)
 
         return "\n".join(lines)

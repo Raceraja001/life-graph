@@ -39,9 +39,7 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 class HeartbeatRequest(BaseModel):
     """Body for mid-session context update."""
 
-    context: dict[str, Any] = Field(
-        ..., description="Updated session context to merge"
-    )
+    context: dict[str, Any] = Field(..., description="Updated session context to merge")
 
 
 class EndSessionRequest(BaseModel):
@@ -136,6 +134,7 @@ async def end_session(
     # Update impact scores for recalled memories
     if outcome and outcome in ("success", "failure", "neutral"):
         from life_graph.services.impact import ImpactScorer
+
         scorer = ImpactScorer()
         await scorer.record_outcome(session_id, outcome)
 
@@ -153,12 +152,15 @@ async def _run_micro_consolidation(session_id: uuid.UUID) -> None:
     """Background task: run micro-consolidation for a session."""
     try:
         from life_graph.api.dependencies import get_micro_consolidator
+
         consolidator = get_micro_consolidator()
         report = await consolidator.run(session_id)
         logger.info(
             "Micro-consolidation %s complete: %d processed, %d deduped (%.2fs)",
-            session_id, report.memories_processed,
-            report.duplicates_removed, report.duration_seconds,
+            session_id,
+            report.memories_processed,
+            report.duplicates_removed,
+            report.duration_seconds,
         )
     except Exception:
         logger.exception("Micro-consolidation failed for session %s", session_id)

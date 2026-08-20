@@ -106,9 +106,7 @@ class DashboardService:
             "total_eval_cost_usd": round(total_eval_cost, 4),
         }
 
-    async def get_accuracy_trends(
-        self, tenant_id: str, days: int = 30
-    ) -> list[dict[str, Any]]:
+    async def get_accuracy_trends(self, tenant_id: str, days: int = 30) -> list[dict[str, Any]]:
         """Time series of accuracy per task_type over the last N days."""
         from life_graph.self_improving.models import EvalRun, EvalSuite
 
@@ -141,9 +139,7 @@ class DashboardService:
             for row in rows
         ]
 
-    async def get_per_task_accuracy(
-        self, tenant_id: str
-    ) -> list[dict[str, Any]]:
+    async def get_per_task_accuracy(self, tenant_id: str) -> list[dict[str, Any]]:
         """Current accuracy per task_type with color-coded status."""
         from life_graph.config import settings
         from life_graph.self_improving.models import EvalRun, EvalSuite
@@ -201,17 +197,13 @@ class DashboardService:
                     "suite_name": row.name,
                     "accuracy_pct": round(accuracy, 1),
                     "status": status_color,
-                    "last_eval": row.completed_at.isoformat()
-                    if row.completed_at
-                    else None,
+                    "last_eval": row.completed_at.isoformat() if row.completed_at else None,
                 }
             )
 
         return tasks
 
-    async def get_auto_fixes(
-        self, tenant_id: str, days: int = 7
-    ) -> list[dict[str, Any]]:
+    async def get_auto_fixes(self, tenant_id: str, days: int = 7) -> list[dict[str, Any]]:
         """Deployed optimizations in the last N days."""
         from life_graph.self_improving.models import EvalSuite, OptimizationRun
 
@@ -250,9 +242,7 @@ class DashboardService:
 
         return fixes
 
-    async def get_cost_trends(
-        self, tenant_id: str, days: int = 30
-    ) -> list[dict[str, Any]]:
+    async def get_cost_trends(self, tenant_id: str, days: int = 30) -> list[dict[str, Any]]:
         """Daily eval + optimization costs over the last N days."""
         from life_graph.self_improving.models import EvalRun, EvalSuite
 
@@ -284,9 +274,7 @@ class DashboardService:
             for row in rows
         ]
 
-    async def get_pending_reviews(
-        self, tenant_id: str
-    ) -> list[dict[str, Any]]:
+    async def get_pending_reviews(self, tenant_id: str) -> list[dict[str, Any]]:
         """Optimization runs with status='needs_review'."""
         from life_graph.self_improving.models import EvalSuite, OptimizationRun
 
@@ -313,9 +301,7 @@ class DashboardService:
                     "baseline_accuracy": details.get("baseline_accuracy"),
                     "candidate_accuracy": details.get("candidate_accuracy"),
                     "regression_found": details.get("regression_found", False),
-                    "started_at": opt_run.started_at.isoformat()
-                    if opt_run.started_at
-                    else None,
+                    "started_at": opt_run.started_at.isoformat() if opt_run.started_at else None,
                 }
             )
 

@@ -58,11 +58,13 @@ class PreferenceStore:
             reason=data.get("reason"),
             context=data.get("context"),
             confidence=confidence,
-            confidence_history=[{
-                "value": confidence,
-                "at": datetime.now(UTC).isoformat(),
-                "reason": "initial",
-            }],
+            confidence_history=[
+                {
+                    "value": confidence,
+                    "at": datetime.now(UTC).isoformat(),
+                    "reason": "initial",
+                }
+            ],
             source=source,
             source_detail=data.get("source_detail"),
             tags=data.get("tags"),
@@ -159,11 +161,13 @@ class PreferenceStore:
             # Track confidence changes
             if "confidence" in data and data["confidence"] is not None:
                 history = list(pref.confidence_history or [])
-                history.append({
-                    "value": data["confidence"],
-                    "at": datetime.now(UTC).isoformat(),
-                    "reason": "manual_update",
-                })
+                history.append(
+                    {
+                        "value": data["confidence"],
+                        "at": datetime.now(UTC).isoformat(),
+                        "reason": "manual_update",
+                    }
+                )
                 pref.confidence_history = history
 
             # Regenerate embedding if topic/choice changed
@@ -230,16 +234,11 @@ class PreferenceStore:
             result = await session.execute(stmt)
             rows = result.all()
 
-        return [
-            {"preference": row[0], "similarity": float(row[1])}
-            for row in rows
-        ]
+        return [{"preference": row[0], "similarity": float(row[1])} for row in rows]
 
     # ── Stale Preferences ────────────────────────────────────
 
-    async def get_stale(
-        self, tenant_id: str, stale_days: int = 90
-    ) -> list[Preference]:
+    async def get_stale(self, tenant_id: str, stale_days: int = 90) -> list[Preference]:
         """Get preferences not validated in N days."""
         cutoff = datetime.now(UTC) - timedelta(days=stale_days)
         stmt = (

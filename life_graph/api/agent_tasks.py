@@ -86,7 +86,9 @@ async def update_task(
     """Update a task (partial update with status history tracking)."""
     try:
         task = await engine.update_task(
-            tenant_id, task_id, data.model_dump(exclude_none=True),
+            tenant_id,
+            task_id,
+            data.model_dump(exclude_none=True),
         )
         return success_response(data=AgentTaskResponse.model_validate(task))
     except ValueError as e:
@@ -106,4 +108,3 @@ async def cancel_task(
         return success_response(data=AgentTaskResponse.model_validate(task))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-

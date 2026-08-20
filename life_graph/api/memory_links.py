@@ -92,9 +92,7 @@ async def list_links(
         link_type=link_type,
         tenant_id=tenant_id,
     )
-    return success_response(
-        data=[MemoryLinkResponse.model_validate(link) for link in links]
-    )
+    return success_response(data=[MemoryLinkResponse.model_validate(link) for link in links])
 
 
 @router.delete(

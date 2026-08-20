@@ -113,9 +113,7 @@ class ActionClassifier:
             )
 
         # 3. Get trust score and autonomy level
-        trust = await self._get_effective_trust(
-            tenant_id, agent_id, action_name, project_id
-        )
+        trust = await self._get_effective_trust(tenant_id, agent_id, action_name, project_id)
         autonomy = await self._get_autonomy_level(tenant_id, project_id)
 
         # 4. Start with rule's risk level
@@ -141,9 +139,7 @@ class ActionClassifier:
             )
 
         # 6. Upgrade risk if trust is below threshold
-        effective_risk = self._upgrade_risk(
-            base_risk, trust, float(rule.trust_threshold)
-        )
+        effective_risk = self._upgrade_risk(base_risk, trust, float(rule.trust_threshold))
         risk_upgraded = effective_risk != base_risk
 
         # 7. Determine recommendation from matrix
@@ -241,9 +237,7 @@ class ActionClassifier:
 
         return min(effective_scores) if effective_scores else 0.0
 
-    def _upgrade_risk(
-        self, risk: RiskLevel, trust_score: float, threshold: float
-    ) -> RiskLevel:
+    def _upgrade_risk(self, risk: RiskLevel, trust_score: float, threshold: float) -> RiskLevel:
         """Upgrade risk level if trust is below the rule's threshold."""
         if trust_score >= threshold:
             return risk
@@ -254,18 +248,14 @@ class ActionClassifier:
             return RiskLevel.DANGEROUS
         return RiskLevel.DANGEROUS
 
-    def _determine_recommendation(
-        self, risk: RiskLevel, autonomy_level: str
-    ) -> Recommendation:
+    def _determine_recommendation(self, risk: RiskLevel, autonomy_level: str) -> Recommendation:
         """Apply the risk × autonomy matrix to get a recommendation."""
         level_matrix = _RECOMMENDATION_MATRIX.get(autonomy_level)
         if level_matrix is None:
             return Recommendation.QUEUE_FOR_APPROVAL
         return level_matrix.get(risk, Recommendation.QUEUE_FOR_APPROVAL)
 
-    async def _get_autonomy_level(
-        self, tenant_id: str, project_id: str | None
-    ) -> str:
+    async def _get_autonomy_level(self, tenant_id: str, project_id: str | None) -> str:
         """Load the autonomy level for a tenant–project pair."""
         if project_id is None:
             return "L0"

@@ -89,20 +89,12 @@ class NotificationEngine:
         if deliver_at_brief and priority != "critical":
             metadata = {**(metadata or {}), "deliver_at_brief": True}
         if priority not in VALID_PRIORITIES:
-            raise ValueError(
-                f"Invalid priority {priority!r},"
-                f" must be one of {VALID_PRIORITIES}"
-            )
+            raise ValueError(f"Invalid priority {priority!r}, must be one of {VALID_PRIORITIES}")
         if channel not in VALID_CHANNELS:
-            raise ValueError(
-                f"Invalid channel {channel!r},"
-                f" must be one of {VALID_CHANNELS}"
-            )
+            raise ValueError(f"Invalid channel {channel!r}, must be one of {VALID_CHANNELS}")
 
         notif_id = uuid.uuid4()
-        parsed_source_id = (
-            uuid.UUID(source_id) if source_id else None
-        )
+        parsed_source_id = uuid.UUID(source_id) if source_id else None
 
         async with self._session_factory() as session:
             notif = Notification(
@@ -124,7 +116,9 @@ class NotificationEngine:
 
             logger.info(
                 "Created notification %s [%s] %s",
-                notif_id, priority, title[:60],
+                notif_id,
+                priority,
+                title[:60],
             )
             return self._notif_to_dict(notif)
 
@@ -177,14 +171,8 @@ class NotificationEngine:
 
             total = None
             if include_total:
-                count_stmt = (
-                    select(func.count())
-                    .select_from(Notification)
-                    .where(*base_where)
-                )
-                total = (
-                    await session.execute(count_stmt)
-                ).scalar() or 0
+                count_stmt = select(func.count()).select_from(Notification).where(*base_where)
+                total = (await session.execute(count_stmt)).scalar() or 0
 
             unread_count = None
             if include_unread_count:
@@ -196,9 +184,7 @@ class NotificationEngine:
                         Notification.is_read.is_(False),
                     )
                 )
-                unread_count = (
-                    await session.execute(unread_stmt)
-                ).scalar() or 0
+                unread_count = (await session.execute(unread_stmt)).scalar() or 0
 
             # Fetch page
             query = (
@@ -209,10 +195,7 @@ class NotificationEngine:
                 .offset(offset)
             )
             result = await session.execute(query)
-            notifs = [
-                self._notif_to_dict(n)
-                for n in result.scalars().all()
-            ]
+            notifs = [self._notif_to_dict(n) for n in result.scalars().all()]
 
             return notifs, total, unread_count
 
@@ -261,7 +244,8 @@ class NotificationEngine:
                 return None
 
             logger.info(
-                "Marked notification %s as read", uid,
+                "Marked notification %s as read",
+                uid,
             )
             return self._notif_to_dict(notif)
 
@@ -293,9 +277,9 @@ class NotificationEngine:
 
             count = result.rowcount
             logger.info(
-                "Marked %d notifications as read"
-                " for tenant %s",
-                count, tenant_id,
+                "Marked %d notifications as read for tenant %s",
+                count,
+                tenant_id,
             )
             return count
 
@@ -342,15 +326,9 @@ class NotificationEngine:
             "metadata": notif.extra_metadata or {},
             "is_read": notif.is_read,
             "is_delivered": notif.is_delivered,
-            "delivered_at": (
-                notif.delivered_at.isoformat()
-                if notif.delivered_at else None
-            ),
+            "delivered_at": (notif.delivered_at.isoformat() if notif.delivered_at else None),
             "delivery_error": notif.delivery_error,
             "source_type": notif.source_type,
-            "source_id": (
-                str(notif.source_id)
-                if notif.source_id else None
-            ),
+            "source_id": (str(notif.source_id) if notif.source_id else None),
             "created_at": notif.created_at.isoformat(),
         }

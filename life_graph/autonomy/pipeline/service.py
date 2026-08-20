@@ -118,7 +118,8 @@ class AutoFixService:
         # AgentOrchestrator, Governor budget gate, verifier chain) instead of
         # the command-path CommandExecutor.
         self._dispatcher = dispatcher or TaskDispatcher(
-            session_factory=session_factory, event_bus=event_bus,
+            session_factory=session_factory,
+            event_bus=event_bus,
         )
         self._project_locks: dict[str, asyncio.Lock] = {}
 
@@ -159,12 +160,16 @@ class AutoFixService:
         except Exception:
             logger.warning(
                 "Failed to resolve repo project %r for tenant %s",
-                AMBIENT_REPO_PROJECT_NAME, tenant_id, exc_info=True,
+                AMBIENT_REPO_PROJECT_NAME,
+                tenant_id,
+                exc_info=True,
             )
             return None
 
     async def process(
-        self, tenant_id: str, request: AutoFixRequest,
+        self,
+        tenant_id: str,
+        request: AutoFixRequest,
     ) -> AutoFixResponse:
         """Orchestrate: classify → route → execute/queue.
 
@@ -233,13 +238,18 @@ class AutoFixService:
             if shadow.shadow:
                 routing = "shadow_recorded"
                 await self._record_shadow(
-                    tenant_id, auto_action, shadow.enrollment_id,
+                    tenant_id,
+                    auto_action,
+                    shadow.enrollment_id,
                     {"reasoning": reasoning},
                 )
             else:
                 routing = "auto_executed"
                 await self._auto_execute(
-                    tenant_id, auto_action, rule_id, request.timeout_seconds,
+                    tenant_id,
+                    auto_action,
+                    rule_id,
+                    request.timeout_seconds,
                 )
         elif recommendation == Recommendation.NOTIFY_BEFORE:
             routing = "notify_before"
@@ -250,9 +260,7 @@ class AutoFixService:
 
         # 4. Refresh and return
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(AutoAction).where(AutoAction.id == action_id)
-            )
+            result = await session.execute(select(AutoAction).where(AutoAction.id == action_id))
             refreshed = result.scalar_one()
             action_resp = _to_response(refreshed)
 
@@ -263,7 +271,11 @@ class AutoFixService:
         )
 
     async def _record_shadow(
-        self, tenant_id: str, auto_action, enrollment_id: str, classification: dict,
+        self,
+        tenant_id: str,
+        auto_action,
+        enrollment_id: str,
+        classification: dict,
     ) -> None:
         """Shadowed actor: record what it WOULD have done; do NOT execute."""
         from life_graph.autonomy.models import AutoAction
@@ -277,8 +289,10 @@ class AutoFixService:
             risk_level=auto_action.risk_level,
             project_id=auto_action.project_id,
             would_have_routed="auto_executed",
-            rationale={"risk_level": auto_action.risk_level,
-                       "classification": classification.get("reasoning")},
+            rationale={
+                "risk_level": auto_action.risk_level,
+                "classification": classification.get("reasoning"),
+            },
         )
         async with self._session_factory() as session:
             await session.execute(
@@ -301,7 +315,10 @@ class AutoFixService:
         return exit_code, stdout, stderr, duration_ms
 
     async def _run_action(
-        self, tenant_id: str, auto_action, timeout_seconds: int = 60,
+        self,
+        tenant_id: str,
+        auto_action,
+        timeout_seconds: int = 60,
     ):
         """Run ``auto_action`` (command or agent_task) and record the outcome.
 
@@ -495,7 +512,11 @@ class AutoFixService:
         )
 
     async def _auto_execute(
-        self, tenant_id: str, auto_action, rule, timeout_seconds: int = 60,
+        self,
+        tenant_id: str,
+        auto_action,
+        rule,
+        timeout_seconds: int = 60,
     ) -> None:
         """L1+ safe action: execute immediately with project lock."""
         status, _ = await self._run_action(tenant_id, auto_action, timeout_seconds)
@@ -503,14 +524,19 @@ class AutoFixService:
         # Record for level promotion tracking
         if self._level_service:
             await self._level_service.record_action(
-                tenant_id, auto_action.project_id,
-                auto_action.risk_level, status == "success",
+                tenant_id,
+                auto_action.project_id,
+                auto_action.risk_level,
+                status == "success",
             )
 
         await self._emit_completed(auto_action, status)
 
     async def _notify_before_execute(
-        self, tenant_id: str, auto_action, rule,
+        self,
+        tenant_id: str,
+        auto_action,
+        rule,
     ) -> None:
         """L2 moderate flow: create approval entry but auto-approve after delay."""
         from life_graph.autonomy.models import AutoAction
@@ -553,7 +579,10 @@ class AutoFixService:
         )
 
     async def _queue_for_approval(
-        self, tenant_id: str, auto_action, rule,
+        self,
+        tenant_id: str,
+        auto_action,
+        rule,
     ) -> None:
         """Queue the action for human approval."""
         from life_graph.autonomy.models import AutoAction
@@ -597,7 +626,9 @@ class AutoFixService:
         )
 
     async def execute_pending(
-        self, tenant_id: str, auto_action_id: str,
+        self,
+        tenant_id: str,
+        auto_action_id: str,
     ) -> AutoActionResponse:
         """Execute an approved (``status="pending"``) ``AutoAction`` by id.
 
@@ -641,8 +672,10 @@ class AutoFixService:
         # advances and it can never promote to L1 auto-execute.
         if self._level_service:
             await self._level_service.record_action(
-                tenant_id, action.project_id,
-                action.risk_level, status == "success",
+                tenant_id,
+                action.project_id,
+                action.risk_level,
+                status == "success",
             )
 
         await self._emit_completed(action, status)

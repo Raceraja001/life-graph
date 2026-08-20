@@ -46,26 +46,100 @@ def is_predominantly_non_latin(text: str, threshold: float = 0.3) -> bool:
 
 TECH_TERMS: set[str] = {
     # Languages
-    "python", "javascript", "typescript", "rust", "go", "java", "c++", "c#",
-    "ruby", "php", "swift", "kotlin", "elixir", "haskell", "lua", "zig",
+    "python",
+    "javascript",
+    "typescript",
+    "rust",
+    "go",
+    "java",
+    "c++",
+    "c#",
+    "ruby",
+    "php",
+    "swift",
+    "kotlin",
+    "elixir",
+    "haskell",
+    "lua",
+    "zig",
     # Frameworks / Libraries
-    "fastapi", "django", "flask", "express", "nestjs", "spring", "rails",
-    "react", "nextjs", "next.js", "vue", "svelte", "angular", "htmx",
-    "sqlalchemy", "pydantic", "celery", "pytest", "numpy", "pandas",
-    "pytorch", "tensorflow", "scikit-learn", "spacy", "transformers",
-    "sentence-transformers", "litellm", "crewai", "langchain", "llamaindex",
+    "fastapi",
+    "django",
+    "flask",
+    "express",
+    "nestjs",
+    "spring",
+    "rails",
+    "react",
+    "nextjs",
+    "next.js",
+    "vue",
+    "svelte",
+    "angular",
+    "htmx",
+    "sqlalchemy",
+    "pydantic",
+    "celery",
+    "pytest",
+    "numpy",
+    "pandas",
+    "pytorch",
+    "tensorflow",
+    "scikit-learn",
+    "spacy",
+    "transformers",
+    "sentence-transformers",
+    "litellm",
+    "crewai",
+    "langchain",
+    "llamaindex",
     # Databases
-    "postgresql", "postgres", "mysql", "sqlite", "mongodb", "redis",
-    "elasticsearch", "chromadb", "pinecone", "weaviate", "qdrant",
-    "pgvector", "apache age",
+    "postgresql",
+    "postgres",
+    "mysql",
+    "sqlite",
+    "mongodb",
+    "redis",
+    "elasticsearch",
+    "chromadb",
+    "pinecone",
+    "weaviate",
+    "qdrant",
+    "pgvector",
+    "apache age",
     # Infrastructure
-    "docker", "kubernetes", "k8s", "nginx", "caddy", "traefik",
-    "terraform", "ansible", "github actions", "gitlab ci",
-    "aws", "gcp", "azure", "vercel", "cloudflare", "minio",
+    "docker",
+    "kubernetes",
+    "k8s",
+    "nginx",
+    "caddy",
+    "traefik",
+    "terraform",
+    "ansible",
+    "github actions",
+    "gitlab ci",
+    "aws",
+    "gcp",
+    "azure",
+    "vercel",
+    "cloudflare",
+    "minio",
     # Tools
-    "git", "vim", "neovim", "vscode", "vs code", "cursor",
-    "pycharm", "jetbrains", "obsidian", "notion", "linux", "windows",
-    "wireguard", "tailscale", "restic",
+    "git",
+    "vim",
+    "neovim",
+    "vscode",
+    "vs code",
+    "cursor",
+    "pycharm",
+    "jetbrains",
+    "obsidian",
+    "notion",
+    "linux",
+    "windows",
+    "wireguard",
+    "tailscale",
+    "restic",
 }
 
 # Build a lookup keyed by lowercase first word for fast pre-filtering
@@ -76,8 +150,21 @@ _TECH_FIRST_WORDS: set[str] = {term.split()[0] for term in TECH_TERMS}
 # ---------------------------------------------------------------------------
 
 _NEGATION_LEMMAS: set[str] = {
-    "not", "never", "no", "neither", "nor", "n't", "stop", "stopped",
-    "quit", "drop", "dropped", "remove", "removed", "avoid", "avoided",
+    "not",
+    "never",
+    "no",
+    "neither",
+    "nor",
+    "n't",
+    "stop",
+    "stopped",
+    "quit",
+    "drop",
+    "dropped",
+    "remove",
+    "removed",
+    "avoid",
+    "avoided",
 }
 
 # ---------------------------------------------------------------------------
@@ -85,8 +172,15 @@ _NEGATION_LEMMAS: set[str] = {
 # ---------------------------------------------------------------------------
 
 _TRANSITION_VERBS: set[str] = {
-    "switch", "replace", "migrate", "move", "transition", "upgrade",
-    "downgrade", "convert", "change",
+    "switch",
+    "replace",
+    "migrate",
+    "move",
+    "transition",
+    "upgrade",
+    "downgrade",
+    "convert",
+    "change",
 }
 
 
@@ -320,7 +414,9 @@ def _negation_in_window(text_lower: str, idx: int, window: int = 40) -> bool:
     """Heuristic: check for negation words within *window* chars before idx."""
     start = max(0, idx - window)
     window_text = text_lower[start:idx]
-    return any(neg in window_text for neg in ("not ", "never ", "no ", "don't ", "avoid ", "stopped "))
+    return any(
+        neg in window_text for neg in ("not ", "never ", "no ", "don't ", "avoid ", "stopped ")
+    )
 
 
 def _snippet(text: str, idx: int, length: int, context: int = 60) -> str:

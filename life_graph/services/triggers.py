@@ -68,7 +68,8 @@ class TriggerMatcher:
         return intentions
 
     async def check_context_triggers(
-        self, context: ContextFingerprint,
+        self,
+        context: ContextFingerprint,
     ) -> list[Intention]:
         """Find pending intentions matching the current context.
 
@@ -101,7 +102,8 @@ class TriggerMatcher:
 
         logger.debug(
             "Found %d context-triggered intentions (checked %d)",
-            len(matched), len(all_intentions),
+            len(matched),
+            len(all_intentions),
         )
         return matched
 
@@ -128,10 +130,7 @@ class TriggerMatcher:
             select(Memory)
             .where(Memory.status == "active")
             .where(Memory.importance >= min_importance)
-            .where(
-                (Memory.last_accessed <= cutoff)
-                | (Memory.last_accessed.is_(None))
-            )
+            .where((Memory.last_accessed <= cutoff) | (Memory.last_accessed.is_(None)))
             .order_by(Memory.importance.desc())
             .limit(20)
         )
@@ -142,12 +141,15 @@ class TriggerMatcher:
 
         logger.debug(
             "Found %d stale memories (importance >= %.2f, not accessed in %d days)",
-            len(memories), min_importance, stale_days,
+            len(memories),
+            min_importance,
+            stale_days,
         )
         return memories
 
     async def check_all(
-        self, context: ContextFingerprint,
+        self,
+        context: ContextFingerprint,
     ) -> dict[str, list[Any]]:
         """Run all trigger checks and return grouped results.
 

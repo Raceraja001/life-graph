@@ -105,14 +105,16 @@ class BaseWatcher(abc.ABC):
             if config is None:
                 self.logger.warning(
                     "No config found for watcher %s, tenant %s",
-                    self.name, self.tenant_id,
+                    self.name,
+                    self.tenant_id,
                 )
                 return {"status": "skipped", "reason": "no_config"}
 
             if not config.enabled:
                 self.logger.info(
                     "Watcher %s disabled for tenant %s",
-                    self.name, self.tenant_id,
+                    self.name,
+                    self.tenant_id,
                 )
                 return {"status": "skipped", "reason": "disabled"}
 
@@ -120,12 +122,11 @@ class BaseWatcher(abc.ABC):
             if config.consecutive_failures >= 5:
                 self.logger.warning(
                     "Watcher %s auto-disabled after %d consecutive failures",
-                    self.name, config.consecutive_failures,
+                    self.name,
+                    config.consecutive_failures,
                 )
                 await session.execute(
-                    update(WatchConfig)
-                    .where(WatchConfig.id == config.id)
-                    .values(enabled=False)
+                    update(WatchConfig).where(WatchConfig.id == config.id).values(enabled=False)
                 )
                 await session.commit()
                 return {"status": "skipped", "reason": "auto_disabled"}
@@ -188,7 +189,9 @@ class BaseWatcher(abc.ABC):
 
             self.logger.info(
                 "Watcher %s completed: %d events in %dms",
-                self.name, len(self._events), elapsed_ms,
+                self.name,
+                len(self._events),
+                elapsed_ms,
             )
             return {
                 "status": "success",

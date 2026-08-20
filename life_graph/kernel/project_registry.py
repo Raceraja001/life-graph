@@ -61,10 +61,24 @@ _FRAMEWORK_MARKERS: dict[str, str] = {
 
 # File extensions to count
 _CODE_EXTENSIONS = {
-    ".py", ".ts", ".tsx", ".js", ".jsx",
-    ".rs", ".go", ".java", ".rb", ".ex",
-    ".html", ".css", ".sql", ".md",
-    ".yaml", ".yml", ".toml", ".json",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".rs",
+    ".go",
+    ".java",
+    ".rb",
+    ".ex",
+    ".html",
+    ".css",
+    ".sql",
+    ".md",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".json",
 }
 
 
@@ -99,7 +113,8 @@ def detect_framework(project_path: str) -> str | None:
     if pyproject.exists():
         try:
             content = pyproject.read_text(
-                encoding="utf-8", errors="ignore",
+                encoding="utf-8",
+                errors="ignore",
             ).lower()
             for keyword, framework in _FRAMEWORK_MARKERS.items():
                 if keyword in content:
@@ -112,7 +127,8 @@ def detect_framework(project_path: str) -> str | None:
     if pkg_json.exists():
         try:
             content = pkg_json.read_text(
-                encoding="utf-8", errors="ignore",
+                encoding="utf-8",
+                errors="ignore",
             ).lower()
             for keyword, framework in _FRAMEWORK_MARKERS.items():
                 if keyword in content:
@@ -134,9 +150,17 @@ def count_files(project_path: str) -> int:
         Number of code files found.
     """
     skip_dirs = {
-        ".git", "node_modules", "__pycache__",
-        ".venv", "venv", ".tox", "dist", "build",
-        ".next", ".nuxt", "target",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        "dist",
+        "build",
+        ".next",
+        ".nuxt",
+        "target",
     }
     count = 0
     root = Path(project_path)
@@ -144,11 +168,7 @@ def count_files(project_path: str) -> int:
     try:
         for dirpath, dirnames, filenames in os.walk(root):
             # Skip hidden and excluded dirs
-            dirnames[:] = [
-                d for d in dirnames
-                if d not in skip_dirs
-                and not d.startswith(".")
-            ]
+            dirnames[:] = [d for d in dirnames if d not in skip_dirs and not d.startswith(".")]
             for f in filenames:
                 if Path(f).suffix in _CODE_EXTENSIONS:
                     count += 1
@@ -159,7 +179,8 @@ def count_files(project_path: str) -> int:
 
 
 def count_dependencies(
-    project_path: str, dep_file: str | None,
+    project_path: str,
+    dep_file: str | None,
 ) -> int:
     """Count dependencies from a dependency file.
 
@@ -177,7 +198,8 @@ def count_dependencies(
 
     try:
         content = dep_path.read_text(
-            encoding="utf-8", errors="ignore",
+            encoding="utf-8",
+            errors="ignore",
         )
 
         if dep_file == "pyproject.toml":
@@ -199,6 +221,7 @@ def count_dependencies(
 
         elif dep_file == "package.json":
             import json
+
             data = json.loads(content)
             deps = data.get("dependencies", {})
             dev_deps = data.get("devDependencies", {})
@@ -237,7 +260,10 @@ def get_git_info(
     try:
         result = subprocess.run(
             [
-                "git", "log", "--oneline", "-10",
+                "git",
+                "log",
+                "--oneline",
+                "-10",
                 "--format=%h|%s|%an|%aI",
             ],
             cwd=project_path,
@@ -249,12 +275,14 @@ def get_git_info(
             for line in result.stdout.strip().splitlines():
                 parts = line.split("|", 3)
                 if len(parts) == 4:
-                    commits.append({
-                        "hash": parts[0],
-                        "message": parts[1],
-                        "author": parts[2],
-                        "date": parts[3],
-                    })
+                    commits.append(
+                        {
+                            "hash": parts[0],
+                            "message": parts[1],
+                            "author": parts[2],
+                            "date": parts[3],
+                        }
+                    )
     except (OSError, subprocess.TimeoutExpired):
         pass
 
@@ -304,9 +332,7 @@ class ProjectRegistry:
 
         # Validate path exists
         if not Path(path).is_dir():
-            raise ValueError(
-                f"Path does not exist: {path!r}"
-            )
+            raise ValueError(f"Path does not exist: {path!r}")
 
         async with self._session_factory() as session:
             # Check uniqueness
@@ -317,9 +343,7 @@ class ProjectRegistry:
                 )
             )
             if existing.scalar_one_or_none() is not None:
-                raise ValueError(
-                    f"Project '{name}' already exists"
-                )
+                raise ValueError(f"Project '{name}' already exists")
 
             # Auto-scan
             lang, dep_file = detect_language(path)
@@ -351,7 +375,10 @@ class ProjectRegistry:
 
             logger.info(
                 "Registered project '%s' (%s/%s, %d files)",
-                name, lang, framework, file_cnt,
+                name,
+                lang,
+                framework,
+                file_cnt,
             )
             return self._project_to_dict(project)
 
@@ -399,14 +426,13 @@ class ProjectRegistry:
                 Project.name.asc(),
             )
             result = await session.execute(stmt)
-            projects = [
-                self._project_to_summary(p)
-                for p in result.scalars().all()
-            ]
+            projects = [self._project_to_summary(p) for p in result.scalars().all()]
             return projects, total
 
     async def get_by_id(
-        self, tenant_id: str, project_id: str,
+        self,
+        tenant_id: str,
+        project_id: str,
     ) -> dict[str, Any] | None:
         """Get full project details by UUID."""
         async with self._session_factory() as session:
@@ -421,7 +447,9 @@ class ProjectRegistry:
             return self._project_to_dict(project)
 
     async def scan(
-        self, tenant_id: str, project_id: str,
+        self,
+        tenant_id: str,
+        project_id: str,
     ) -> dict[str, Any] | None:
         """Re-scan a project for updated metadata.
 
@@ -446,7 +474,8 @@ class ProjectRegistry:
         # Run scan outside of DB session
         if not Path(path).is_dir():
             return await self.get_by_id(
-                tenant_id, project_id,
+                tenant_id,
+                project_id,
             )
 
         lang, dep_file = detect_language(path)
@@ -459,11 +488,8 @@ class ProjectRegistry:
         scan_meta = {
             "total_lines": 0,
             "test_files": 0,
-            "has_docker": (
-                Path(path) / "Dockerfile"
-            ).exists() or (
-                Path(path) / "docker-compose.yml"
-            ).exists(),
+            "has_docker": (Path(path) / "Dockerfile").exists()
+            or (Path(path) / "docker-compose.yml").exists(),
             "has_ci": any(
                 (Path(path) / d).exists()
                 for d in [
@@ -499,18 +525,24 @@ class ProjectRegistry:
 
         logger.info(
             "Scanned project %s (%d files, %d deps)",
-            project_id, file_cnt, dep_cnt,
+            project_id,
+            file_cnt,
+            dep_cnt,
         )
         return await self.get_by_id(
-            tenant_id, project_id,
+            tenant_id,
+            project_id,
         )
 
     async def delete(
-        self, tenant_id: str, project_id: str,
+        self,
+        tenant_id: str,
+        project_id: str,
     ) -> dict[str, Any] | None:
         """Soft-delete a project."""
         project = await self.get_by_id(
-            tenant_id, project_id,
+            tenant_id,
+            project_id,
         )
         if project is None:
             return None
@@ -538,7 +570,9 @@ class ProjectRegistry:
     # ── Context Builder ───────────────────────────────────
 
     async def build_context(
-        self, tenant_id: str, project_id: str,
+        self,
+        tenant_id: str,
+        project_id: str,
     ) -> str | None:
         """Build a project context string for agent prompts.
 
@@ -549,7 +583,8 @@ class ProjectRegistry:
             Context string, or None if project not found.
         """
         project = await self.get_by_id(
-            tenant_id, project_id,
+            tenant_id,
+            project_id,
         )
         if project is None:
             return None
@@ -559,36 +594,21 @@ class ProjectRegistry:
             f"- Path: {project['path']}",
         ]
         if project.get("description"):
-            lines.append(
-                f"- Description: {project['description']}"
-            )
+            lines.append(f"- Description: {project['description']}")
         if project.get("language"):
-            lines.append(
-                f"- Language: {project['language']}"
-            )
+            lines.append(f"- Language: {project['language']}")
         if project.get("framework"):
-            lines.append(
-                f"- Framework: {project['framework']}"
-            )
+            lines.append(f"- Framework: {project['framework']}")
         if project.get("git_branch"):
-            lines.append(
-                f"- Branch: {project['git_branch']}"
-            )
-        lines.append(
-            f"- Files: {project.get('file_count', 0)}"
-        )
-        lines.append(
-            f"- Dependencies: "
-            f"{project.get('dependency_count', 0)}"
-        )
+            lines.append(f"- Branch: {project['git_branch']}")
+        lines.append(f"- Files: {project.get('file_count', 0)}")
+        lines.append(f"- Dependencies: {project.get('dependency_count', 0)}")
 
         commits = project.get("recent_commits", [])
         if commits:
             lines.append("- Recent commits:")
             for c in commits[:5]:
-                lines.append(
-                    f"  - {c['hash']} {c['message']}"
-                )
+                lines.append(f"  - {c['hash']} {c['message']}")
 
         return "\n".join(lines)
 
@@ -615,8 +635,7 @@ class ProjectRegistry:
             "recent_commits": project.recent_commits or [],
             "scan_metadata": project.scan_metadata or {},
             "last_scanned_at": (
-                project.last_scanned_at.isoformat()
-                if project.last_scanned_at else None
+                project.last_scanned_at.isoformat() if project.last_scanned_at else None
             ),
             "is_active": project.is_active,
             "created_at": project.created_at.isoformat(),
@@ -636,7 +655,6 @@ class ProjectRegistry:
             "git_branch": project.git_branch,
             "file_count": project.file_count,
             "last_scanned_at": (
-                project.last_scanned_at.isoformat()
-                if project.last_scanned_at else None
+                project.last_scanned_at.isoformat() if project.last_scanned_at else None
             ),
         }

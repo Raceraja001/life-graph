@@ -121,9 +121,7 @@ async def list_decisions(
     svc: JudgmentService = Depends(_get_judgment_service),
     tenant_id: str = Depends(get_current_tenant_id),
     domain: str | None = Query(None, description="Filter by domain tag"),
-    decision_status: str | None = Query(
-        None, alias="status", description="Filter by status"
-    ),
+    decision_status: str | None = Query(None, alias="status", description="Filter by status"),
     limit: int = Query(50, ge=1, le=200, description="Max results to return"),
 ):
     """List decisions for the current tenant.
@@ -157,6 +155,7 @@ async def get_decision(
     decision = await svc.get_decision(tenant_id=tenant_id, decision_id=decision_id)
     if not decision:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="Decision not found")
 
     predictions = await svc.get_predictions_for_decision(
@@ -210,9 +209,7 @@ async def list_predictions(
     prediction_status: str | None = Query(
         None, alias="status", description="Filter by outcome status"
     ),
-    due_before: datetime | None = Query(
-        None, description="Only predictions due before this date"
-    ),
+    due_before: datetime | None = Query(None, description="Only predictions due before this date"),
     limit: int = Query(50, ge=1, le=200, description="Max results to return"),
 ):
     """List predictions for the current tenant.
@@ -264,16 +261,10 @@ async def resolve_prediction(
         except ValueError as exc:
             msg = str(exc)
             if "not found" in msg.lower():
-                raise HTTPException(
-                    status_code=404, detail=msg
-                ) from exc
-            raise HTTPException(
-                status_code=400, detail=msg
-            ) from exc
+                raise HTTPException(status_code=404, detail=msg) from exc
+            raise HTTPException(status_code=400, detail=msg) from exc
 
-    return success_response(
-        data=PredictionResponse.model_validate(prediction)
-    )
+    return success_response(data=PredictionResponse.model_validate(prediction))
 
 
 # ── Calibration Routes ────────────────────────────────────────
@@ -285,12 +276,8 @@ async def resolve_prediction(
 )
 async def get_calibration(
     tenant_id: str = Depends(get_current_tenant_id),
-    domain: str | None = Query(
-        None, description="Filter by domain"
-    ),
-    window: int = Query(
-        90, ge=1, le=365, description="Window in days"
-    ),
+    domain: str | None = Query(None, description="Filter by domain"),
+    window: int = Query(90, ge=1, le=365, description="Window in days"),
 ):
     """Get the latest calibration snapshot for the tenant.
 
@@ -304,27 +291,19 @@ async def get_calibration(
     async with async_session() as session:
         stmt = (
             select(CalibrationSnapshot)
-            .where(
-                CalibrationSnapshot.tenant_id == tenant_id
-            )
-            .order_by(
-                CalibrationSnapshot.computed_at.desc()
-            )
+            .where(CalibrationSnapshot.tenant_id == tenant_id)
+            .order_by(CalibrationSnapshot.computed_at.desc())
             .limit(1)
         )
         if domain:
-            stmt = stmt.where(
-                CalibrationSnapshot.domain == domain
-            )
+            stmt = stmt.where(CalibrationSnapshot.domain == domain)
         result = await session.execute(stmt)
         snap = result.scalars().first()
 
     if not snap:
         return success_response(data=None)
 
-    return success_response(
-        data=CalibrationResponse.model_validate(snap)
-    )
+    return success_response(data=CalibrationResponse.model_validate(snap))
 
 
 @router.get(
@@ -333,9 +312,7 @@ async def get_calibration(
 )
 async def get_calibration_curve(
     tenant_id: str = Depends(get_current_tenant_id),
-    domain: str | None = Query(
-        None, description="Filter by domain"
-    ),
+    domain: str | None = Query(None, description="Filter by domain"),
 ):
     """Get bucket data for plotting a calibration curve.
 
@@ -349,18 +326,12 @@ async def get_calibration_curve(
     async with async_session() as session:
         stmt = (
             select(CalibrationSnapshot)
-            .where(
-                CalibrationSnapshot.tenant_id == tenant_id
-            )
-            .order_by(
-                CalibrationSnapshot.computed_at.desc()
-            )
+            .where(CalibrationSnapshot.tenant_id == tenant_id)
+            .order_by(CalibrationSnapshot.computed_at.desc())
             .limit(1)
         )
         if domain:
-            stmt = stmt.where(
-                CalibrationSnapshot.domain == domain
-            )
+            stmt = stmt.where(CalibrationSnapshot.domain == domain)
         result = await session.execute(stmt)
         snap = result.scalars().first()
 
@@ -399,9 +370,7 @@ async def get_stats(
     async with async_session() as session:
         # Total decisions
         total_dec = await session.execute(
-            sa_select(func.count())
-            .select_from(Decision)
-            .where(Decision.tenant_id == tenant_id)
+            sa_select(func.count()).select_from(Decision).where(Decision.tenant_id == tenant_id)
         )
         total_decisions = total_dec.scalar() or 0
 
@@ -429,8 +398,7 @@ async def get_stats(
 
         # Average Brier score from latest snapshots
         brier = await session.execute(
-            sa_select(func.avg(CalibrationSnapshot.brier_score))
-            .where(
+            sa_select(func.avg(CalibrationSnapshot.brier_score)).where(
                 CalibrationSnapshot.tenant_id == tenant_id,
                 CalibrationSnapshot.brier_score.isnot(None),
             )
@@ -444,10 +412,7 @@ async def get_stats(
             total_decisions=total_decisions,
             pending_predictions=pending_predictions,
             resolved_predictions=resolved_predictions,
-            avg_brier=(
-                round(avg_brier, 4) if avg_brier is not None
-                else None
-            ),
+            avg_brier=(round(avg_brier, 4) if avg_brier is not None else None),
             sufficient_data=sufficient,
         )
     )
@@ -473,12 +438,8 @@ async def create_challenge(
     and LLM-generated dissent. Each challenge also creates a tracked
     prediction.
     """
-    challenge = await advisor.challenge(
-        tenant_id=tenant_id, proposal=body.proposal
-    )
-    return success_response(
-        data=ChallengeResponse.model_validate(challenge)
-    )
+    challenge = await advisor.challenge(tenant_id=tenant_id, proposal=body.proposal)
+    return success_response(data=ChallengeResponse.model_validate(challenge))
 
 
 @router.post(
@@ -505,13 +466,7 @@ async def resolve_challenge(
     except ValueError as exc:
         msg = str(exc)
         if "not found" in msg.lower():
-            raise HTTPException(
-                status_code=404, detail=msg
-            ) from exc
-        raise HTTPException(
-            status_code=400, detail=msg
-        ) from exc
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
 
-    return success_response(
-        data=ChallengeResponse.model_validate(challenge)
-    )
+    return success_response(data=ChallengeResponse.model_validate(challenge))

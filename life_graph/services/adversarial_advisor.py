@@ -50,17 +50,13 @@ class AdversarialAdvisor:
     method returns.
     """
 
-    def __init__(
-        self, session: AsyncSession, event_bus: EventBus | None = None
-    ) -> None:
+    def __init__(self, session: AsyncSession, event_bus: EventBus | None = None) -> None:
         self.session = session
         self.event_bus = event_bus
 
     # ── Public API ────────────────────────────────────────────
 
-    async def challenge(
-        self, tenant_id: str, proposal: str
-    ) -> Challenge:
+    async def challenge(self, tenant_id: str, proposal: str) -> Challenge:
         """Generate a full adversarial challenge report for a proposal.
 
         Builds 5 report sections (4 local + 1 LLM), creates a tracked
@@ -285,10 +281,7 @@ class AdversarialAdvisor:
             ]
             for d in matches:
                 status_info = f"[{d.status}]"
-                lines.append(
-                    f"  • {d.title} {status_info} "
-                    f"(decided: {d.decided_at or 'pending'})"
-                )
+                lines.append(f"  • {d.title} {status_info} (decided: {d.decided_at or 'pending'})")
             content = "\n".join(lines)
         else:
             content = "No similar past decisions found."
@@ -318,9 +311,7 @@ class AdversarialAdvisor:
         """
         # Count total decisions
         total_result = await self.session.execute(
-            select(func.count())
-            .select_from(Decision)
-            .where(Decision.tenant_id == tenant_id)
+            select(func.count()).select_from(Decision).where(Decision.tenant_id == tenant_id)
         )
         total_decisions = total_result.scalar() or 0
 
@@ -401,16 +392,13 @@ class AdversarialAdvisor:
                 f"Calibration snapshot "
                 f"(domain: {snap.domain or 'all'}, "
                 f"window: {snap.window_days}d):",
-                f"  • Brier score: "
-                f"{snap.brier_score:.4f}" if snap.brier_score is not None
+                f"  • Brier score: {snap.brier_score:.4f}"
+                if snap.brier_score is not None
                 else "  • Brier score: N/A",
                 f"  • Resolved count: {snap.resolved_count}",
             ]
             if snap.estimate_multiplier is not None:
-                lines.append(
-                    f"  • Estimate multiplier: "
-                    f"{snap.estimate_multiplier:.2f}"
-                )
+                lines.append(f"  • Estimate multiplier: {snap.estimate_multiplier:.2f}")
             if snap.bias_findings:
                 lines.append("  • Bias findings:")
                 for finding in snap.bias_findings[:3]:
@@ -461,17 +449,10 @@ class AdversarialAdvisor:
         conflicts = list(result.scalars().all())
 
         if conflicts:
-            lines = [
-                f"Found {len(conflicts)} contradicting evidence "
-                f"item(s) in your beliefs:"
-            ]
+            lines = [f"Found {len(conflicts)} contradicting evidence item(s) in your beliefs:"]
             for e in conflicts:
-                source_info = (
-                    f" ({e.source_type})" if e.source_type else ""
-                )
-                lines.append(
-                    f"  • {e.summary[:120]}{source_info}"
-                )
+                source_info = f" ({e.source_type})" if e.source_type else ""
+                lines.append(f"  • {e.summary[:120]}{source_info}")
             content = "\n".join(lines)
         else:
             content = "No contradicting evidence found in your beliefs."
@@ -505,6 +486,7 @@ class AdversarialAdvisor:
             from life_graph.services.multi_model_advisor import (  # noqa: F401
                 MultiModelAdvisor,
             )
+
             content = (
                 "Automated dissent via multi-model advisor is available "
                 "but requires async session factory configuration. "
@@ -528,9 +510,7 @@ class AdversarialAdvisor:
 
     # ── Helpers ───────────────────────────────────────────────
 
-    async def _safe_section(
-        self, section_fn, *args, **kwargs
-    ) -> dict | None:
+    async def _safe_section(self, section_fn, *args, **kwargs) -> dict | None:
         """Call a section builder with error handling.
 
         If the section function raises, logs a warning and returns
@@ -568,22 +548,108 @@ def _extract_keywords(text: str) -> list[str]:
         List of lowercase keyword strings.
     """
     stop_words = {
-        "the", "a", "an", "is", "are", "was", "were", "be", "been",
-        "being", "have", "has", "had", "do", "does", "did", "will",
-        "would", "could", "should", "may", "might", "shall", "can",
-        "to", "of", "in", "for", "on", "with", "at", "by", "from",
-        "as", "into", "through", "during", "before", "after", "and",
-        "but", "or", "nor", "not", "so", "yet", "both", "either",
-        "neither", "each", "every", "all", "any", "few", "more",
-        "most", "other", "some", "such", "no", "only", "own", "same",
-        "than", "too", "very", "just", "about", "above", "also",
-        "this", "that", "these", "those", "it", "its", "i", "me",
-        "my", "we", "our", "you", "your", "he", "him", "his", "she",
-        "her", "they", "them", "their", "what", "which", "who",
-        "whom", "how", "when", "where", "why", "if", "then", "else",
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "shall",
+        "can",
+        "to",
+        "of",
+        "in",
+        "for",
+        "on",
+        "with",
+        "at",
+        "by",
+        "from",
+        "as",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "and",
+        "but",
+        "or",
+        "nor",
+        "not",
+        "so",
+        "yet",
+        "both",
+        "either",
+        "neither",
+        "each",
+        "every",
+        "all",
+        "any",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "only",
+        "own",
+        "same",
+        "than",
+        "too",
+        "very",
+        "just",
+        "about",
+        "above",
+        "also",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "i",
+        "me",
+        "my",
+        "we",
+        "our",
+        "you",
+        "your",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "they",
+        "them",
+        "their",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "how",
+        "when",
+        "where",
+        "why",
+        "if",
+        "then",
+        "else",
     }
     words = text.lower().split()
-    return [
-        w for w in words
-        if len(w) > 2 and w.isalpha() and w not in stop_words
-    ][:20]
+    return [w for w in words if len(w) > 2 and w.isalpha() and w not in stop_words][:20]

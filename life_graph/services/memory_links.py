@@ -25,14 +25,16 @@ from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
 
-VALID_LINK_TYPES = frozenset({
-    "BECAUSE",
-    "EVIDENCED_BY",
-    "RELATED_TO",
-    "CONTRADICTS",
-    "SUPERSEDES",
-    "LEADS_TO",
-})
+VALID_LINK_TYPES = frozenset(
+    {
+        "BECAUSE",
+        "EVIDENCED_BY",
+        "RELATED_TO",
+        "CONTRADICTS",
+        "SUPERSEDES",
+        "LEADS_TO",
+    }
+)
 
 
 async def create_link(
@@ -60,7 +62,9 @@ async def create_link(
         ValueError: If link_type is invalid or source_id == target_id.
     """
     if link_type not in VALID_LINK_TYPES:
-        raise ValueError(f"Invalid link_type '{link_type}'. Must be one of {sorted(VALID_LINK_TYPES)}")
+        raise ValueError(
+            f"Invalid link_type '{link_type}'. Must be one of {sorted(VALID_LINK_TYPES)}"
+        )
     if source_id == target_id:
         raise ValueError("Cannot link a memory to itself")
 
@@ -193,13 +197,15 @@ async def get_link_graph(
                 next_frontier.add(neighbor_id)
                 neighbor_ids.add(neighbor_id)
 
-                results.append({
-                    "memory_id": str(neighbor_id),
-                    "link_type": link.link_type,
-                    "strength": link.strength,
-                    "depth": current_depth,
-                    "link_id": str(link.id),
-                })
+                results.append(
+                    {
+                        "memory_id": str(neighbor_id),
+                        "link_type": link.link_type,
+                        "strength": link.strength,
+                        "depth": current_depth,
+                        "link_id": str(link.id),
+                    }
+                )
 
             # Fetch actual memory data for neighbors found at this depth
             if neighbor_ids:
@@ -268,7 +274,10 @@ async def auto_link_memories(
                         target_id=embedded[j].id,
                         link_type="RELATED_TO",
                         strength=round(similarity, 4),
-                        properties={"auto_detected": True, "cosine_similarity": round(similarity, 4)},
+                        properties={
+                            "auto_detected": True,
+                            "cosine_similarity": round(similarity, 4),
+                        },
                         tenant_id=tenant_id,
                     )
                     links_created += 1

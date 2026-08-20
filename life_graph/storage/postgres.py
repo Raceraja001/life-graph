@@ -50,9 +50,7 @@ class PostgresMemoryStore:
         """
         from life_graph.config import settings
 
-        content_hash = hashlib.sha256(
-            memory.content.strip().lower().encode()
-        ).hexdigest()
+        content_hash = hashlib.sha256(memory.content.strip().lower().encode()).hexdigest()
 
         row = Memory(
             content=memory.content,
@@ -69,8 +67,7 @@ class PostgresMemoryStore:
         if embedding:
             row.embedding = embedding
             row.embedding_model = (
-                settings.lm_embedding_model if settings.use_local_llm
-                else settings.embedding_model
+                settings.lm_embedding_model if settings.use_local_llm else settings.embedding_model
             )
         async with async_session() as session:
             session.add(row)
@@ -310,18 +307,12 @@ class PostgresMemoryStore:
             score_map = {sid: score for sid, score in scored_ids}
 
             orm_result = await session.execute(
-                select(Memory)
-                .where(Memory.id.in_(id_list))
-                .options(defer(Memory.embedding))
+                select(Memory).where(Memory.id.in_(id_list)).options(defer(Memory.embedding))
             )
             rows = {r.id: r for r in orm_result.scalars().all()}
 
             # Return in hybrid_score order with ORM objects
-            return [
-                (rows[mid], score_map[mid])
-                for mid in id_list
-                if mid in rows
-            ]
+            return [(rows[mid], score_map[mid]) for mid in id_list if mid in rows]
 
     # ── List ──────────────────────────────────────────────────
 
@@ -364,10 +355,7 @@ class PostgresMemoryStore:
             cur = decode_cursor(cursor)
             cursor_ts = datetime.fromisoformat(cur["k"])
             cursor_id = uuid.UUID(cur["id"])
-            stmt = stmt.where(
-                tuple_(Memory.created_at, Memory.id)
-                < tuple_(cursor_ts, cursor_id)
-            )
+            stmt = stmt.where(tuple_(Memory.created_at, Memory.id) < tuple_(cursor_ts, cursor_id))
         else:
             stmt = stmt.offset(offset)
 
@@ -535,10 +523,7 @@ class PostgresMemoryStore:
             cur = decode_cursor(cursor)
             cursor_ts = datetime.fromisoformat(cur["k"])
             cursor_id = uuid.UUID(cur["id"])
-            stmt = stmt.where(
-                tuple_(Session.started_at, Session.id)
-                < tuple_(cursor_ts, cursor_id)
-            )
+            stmt = stmt.where(tuple_(Session.started_at, Session.id) < tuple_(cursor_ts, cursor_id))
 
         stmt = stmt.limit(limit + 1)
 
@@ -602,8 +587,7 @@ class PostgresMemoryStore:
         tenant_id = get_current_tenant_id()
         async with async_session() as session:
             result = await session.scalar(
-                select(func.count(MemorySession.memory_id))
-                .where(
+                select(func.count(MemorySession.memory_id)).where(
                     MemorySession.session_id == session_id,
                     MemorySession.tenant_id == tenant_id,
                 )
@@ -777,11 +761,15 @@ class PostgresMemoryStore:
     async def find_exact_duplicate(self, content_hash: str) -> Memory | None:
         """Find a memory with matching content hash (O(1) via index)."""
         async with async_session() as session:
-            query = select(Memory).where(
-                Memory.tenant_id == get_current_tenant_id(),
-                Memory.content_hash == content_hash,
-                Memory.status.in_(("active", "pending")),
-            ).limit(1)
+            query = (
+                select(Memory)
+                .where(
+                    Memory.tenant_id == get_current_tenant_id(),
+                    Memory.content_hash == content_hash,
+                    Memory.status.in_(("active", "pending")),
+                )
+                .limit(1)
+            )
             result = await session.execute(query)
             return result.scalar_one_or_none()
 
@@ -856,7 +844,9 @@ class PostgresMemoryStore:
     # ── Impact Scoring (Feature 5) ────────────────────────────
 
     async def link_recall_to_session(
-        self, memory_id: uuid.UUID, session_id: uuid.UUID,
+        self,
+        memory_id: uuid.UUID,
+        session_id: uuid.UUID,
     ) -> None:
         """Link a recalled memory to a session with role='recalled'.
 
@@ -867,28 +857,27 @@ class PostgresMemoryStore:
         from sqlalchemy.dialects.postgresql import insert as pg_insert
 
         async with async_session() as session:
-            stmt = pg_insert(MemorySession).values(
-                memory_id=memory_id,
-                session_id=session_id,
-                role="recalled",
-            ).on_conflict_do_nothing(
-                index_elements=["memory_id", "session_id"]
+            stmt = (
+                pg_insert(MemorySession)
+                .values(
+                    memory_id=memory_id,
+                    session_id=session_id,
+                    role="recalled",
+                )
+                .on_conflict_do_nothing(index_elements=["memory_id", "session_id"])
             )
             await session.execute(stmt)
             await session.commit()
 
     async def get_recalled_memory_ids(
-        self, session_id: uuid.UUID,
+        self,
+        session_id: uuid.UUID,
     ) -> list[uuid.UUID]:
         """Get IDs of all memories recalled (not created) in a session."""
         async with async_session() as session:
-            stmt = (
-                select(MemorySession.memory_id)
-                .where(
-                    MemorySession.session_id == session_id,
-                    MemorySession.role == "recalled",
-                )
+            stmt = select(MemorySession.memory_id).where(
+                MemorySession.session_id == session_id,
+                MemorySession.role == "recalled",
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
-

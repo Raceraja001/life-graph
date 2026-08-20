@@ -122,15 +122,15 @@ class EvidenceStore:
         )
         logger.info(
             "Created evidence %s (%s) for preference %s",
-            evidence.id, evidence.stance, preference_id,
+            evidence.id,
+            evidence.stance,
+            preference_id,
         )
         return evidence
 
     # ── List for Preference ───────────────────────────────────
 
-    async def list_for_preference(
-        self, tenant_id: str, preference_id: uuid.UUID
-    ) -> dict[str, Any]:
+    async def list_for_preference(self, tenant_id: str, preference_id: uuid.UUID) -> dict[str, Any]:
         """List evidence grouped by stance with net score calculation."""
         # EvidenceResponse never serializes embedding or raw_content (can be
         # a full article body) -- this was fetching and discarding both on
@@ -158,12 +158,8 @@ class EvidenceStore:
             grouped.setdefault(item.stance, []).append(item)
 
         # Net score = sum(supporting weights) - sum(contradicting weights)
-        support_score = sum(
-            e.weight * self.freshness_score(e) for e in grouped["supports"]
-        )
-        contradict_score = sum(
-            e.weight * self.freshness_score(e) for e in grouped["contradicts"]
-        )
+        support_score = sum(e.weight * self.freshness_score(e) for e in grouped["supports"])
+        contradict_score = sum(e.weight * self.freshness_score(e) for e in grouped["contradicts"])
         net_score = support_score - contradict_score
 
         return {
@@ -176,9 +172,7 @@ class EvidenceStore:
 
     # ── Get ───────────────────────────────────────────────────
 
-    async def get(
-        self, tenant_id: str, evidence_id: uuid.UUID
-    ) -> Evidence | None:
+    async def get(self, tenant_id: str, evidence_id: uuid.UUID) -> Evidence | None:
         """Get a single evidence item."""
         stmt = (
             select(Evidence)
@@ -218,16 +212,11 @@ class EvidenceStore:
             result = await session.execute(stmt)
             rows = result.all()
 
-        return [
-            {"evidence": row[0], "similarity": float(row[1])}
-            for row in rows
-        ]
+        return [{"evidence": row[0], "similarity": float(row[1])} for row in rows]
 
     # ── Delete (soft) ─────────────────────────────────────────
 
-    async def delete(
-        self, tenant_id: str, evidence_id: uuid.UUID
-    ) -> bool:
+    async def delete(self, tenant_id: str, evidence_id: uuid.UUID) -> bool:
         """Soft-delete evidence and recalculate parent preference confidence."""
         async with self._session_factory() as session:
             evidence = await session.get(Evidence, evidence_id)
@@ -254,9 +243,7 @@ class EvidenceStore:
 
     # ── Internal: Recalculate Confidence ──────────────────────
 
-    async def _recalculate_confidence(
-        self, tenant_id: str, preference_id: uuid.UUID
-    ) -> None:
+    async def _recalculate_confidence(self, tenant_id: str, preference_id: uuid.UUID) -> None:
         """Recalculate preference confidence based on active evidence."""
         async with self._session_factory() as session:
             pref = await session.get(Preference, preference_id)
@@ -274,12 +261,10 @@ class EvidenceStore:
                 return  # Keep existing confidence if no evidence
 
             support = sum(
-                e.weight * self.freshness_score(e)
-                for e in items if e.stance == "supports"
+                e.weight * self.freshness_score(e) for e in items if e.stance == "supports"
             )
             contradict = sum(
-                e.weight * self.freshness_score(e)
-                for e in items if e.stance == "contradicts"
+                e.weight * self.freshness_score(e) for e in items if e.stance == "contradicts"
             )
 
             total = support + contradict
@@ -291,11 +276,13 @@ class EvidenceStore:
 
             # Update confidence and history
             history = list(pref.confidence_history or [])
-            history.append({
-                "value": new_confidence,
-                "at": datetime.now(UTC).isoformat(),
-                "reason": "evidence_recalc",
-            })
+            history.append(
+                {
+                    "value": new_confidence,
+                    "at": datetime.now(UTC).isoformat(),
+                    "reason": "evidence_recalc",
+                }
+            )
             pref.confidence = new_confidence
             pref.confidence_history = history
             pref.updated_at = datetime.now(UTC)

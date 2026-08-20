@@ -155,9 +155,7 @@ async def lifespan(app: FastAPI):
         seeded = await persona_svc.seed_builtins("default")
         if seeded:
             # Inserted OR reconciled — seed_builtins logs the breakdown.
-            logger.info(
-                "Seeded/reconciled %d built-in personas for default tenant", seeded
-            )
+            logger.info("Seeded/reconciled %d built-in personas for default tenant", seeded)
     except Exception:
         logger.warning("Failed to seed kernel personas", exc_info=True)
 
@@ -211,6 +209,7 @@ async def lifespan(app: FastAPI):
     # Startup — wire daily brief -> Web Push delivery
     try:
         from life_graph.services.push_delivery import push_delivery_handler
+
         push_delivery_handler.subscribe()
         logger.info("Web push brief delivery enabled")
     except Exception:

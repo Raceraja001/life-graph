@@ -84,12 +84,14 @@ async def reembed_table(target: _EmbedTarget, *, batch_size: int = BATCH_SIZE) -
     while True:
         async with async_session() as session:
             rows = (
-                await session.execute(
-                    select(model)
-                    .where(_needs_embedding_clause(target))
-                    .limit(batch_size)
+                (
+                    await session.execute(
+                        select(model).where(_needs_embedding_clause(target)).limit(batch_size)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             if not rows:
                 break
 
@@ -108,7 +110,9 @@ async def reembed_table(target: _EmbedTarget, *, batch_size: int = BATCH_SIZE) -
 
         logger.info(
             "Re-embedded %s: %d done, %d failed so far",
-            model.__tablename__, processed, failed,
+            model.__tablename__,
+            processed,
+            failed,
         )
         # Safety: if a whole batch failed (no progress possible), stop to avoid
         # an infinite loop on rows that can never be embedded.

@@ -195,9 +195,7 @@ class DecayCalculator:
         Returns:
             ``True`` if the memory should be verified with the user.
         """
-        eff = self.effective_confidence(
-            confidence, created_at, last_reinforced, reinforced_count
-        )
+        eff = self.effective_confidence(confidence, created_at, last_reinforced, reinforced_count)
         return eff < threshold
 
     def verification_prompt(self, content: str, days_stale: int) -> str:
@@ -213,4 +211,3 @@ class DecayCalculator:
         # Truncate long content for the prompt
         short = content[:80] + "..." if len(content) > 80 else content
         return f'I remember: "{short}" ({days_stale}d ago) — is that still true?'
-

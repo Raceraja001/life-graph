@@ -22,25 +22,80 @@ from life_graph.watchers.scrapers.reddit import scrape_tech_subreddits
 logger = logging.getLogger(__name__)
 
 # Keywords that boost tech-relevance score
-TECH_KEYWORDS = frozenset({
-    "python", "rust", "go", "javascript", "typescript", "react",
-    "ai", "ml", "llm", "gpt", "transformer", "neural", "deep learning",
-    "kubernetes", "docker", "devops", "ci/cd", "cloud",
-    "api", "microservice", "serverless", "database", "sql", "nosql",
-    "security", "vulnerability", "cve", "exploit",
-    "open source", "github", "framework", "library",
-    "performance", "benchmark", "optimization",
-    "web", "backend", "frontend", "fullstack",
-    "startup", "funding", "acquisition",
-    "linux", "windows", "macos",
-    "fastapi", "django", "flask", "nextjs", "vue", "svelte",
-    "postgresql", "redis", "mongodb", "kafka",
-    "aws", "gcp", "azure",
-    "wasm", "webassembly", "edge computing",
-    "blockchain", "crypto", "web3",
-    "robotics", "iot", "embedded",
-    "compiler", "interpreter", "language design",
-})
+TECH_KEYWORDS = frozenset(
+    {
+        "python",
+        "rust",
+        "go",
+        "javascript",
+        "typescript",
+        "react",
+        "ai",
+        "ml",
+        "llm",
+        "gpt",
+        "transformer",
+        "neural",
+        "deep learning",
+        "kubernetes",
+        "docker",
+        "devops",
+        "ci/cd",
+        "cloud",
+        "api",
+        "microservice",
+        "serverless",
+        "database",
+        "sql",
+        "nosql",
+        "security",
+        "vulnerability",
+        "cve",
+        "exploit",
+        "open source",
+        "github",
+        "framework",
+        "library",
+        "performance",
+        "benchmark",
+        "optimization",
+        "web",
+        "backend",
+        "frontend",
+        "fullstack",
+        "startup",
+        "funding",
+        "acquisition",
+        "linux",
+        "windows",
+        "macos",
+        "fastapi",
+        "django",
+        "flask",
+        "nextjs",
+        "vue",
+        "svelte",
+        "postgresql",
+        "redis",
+        "mongodb",
+        "kafka",
+        "aws",
+        "gcp",
+        "azure",
+        "wasm",
+        "webassembly",
+        "edge computing",
+        "blockchain",
+        "crypto",
+        "web3",
+        "robotics",
+        "iot",
+        "embedded",
+        "compiler",
+        "interpreter",
+        "language design",
+    }
+)
 
 # Source credibility bonuses
 SOURCE_CREDIBILITY: dict[str, int] = {
@@ -116,7 +171,9 @@ class TechRadarWatcher(BaseWatcher):
         github_task = asyncio.create_task(scrape_github_trending(days=1, limit=30))
 
         results = await asyncio.gather(
-            hn_task, reddit_task, github_task,
+            hn_task,
+            reddit_task,
+            github_task,
             return_exceptions=True,
         )
 
@@ -142,7 +199,9 @@ class TechRadarWatcher(BaseWatcher):
 
         self.logger.info(
             "Scraped %d HN, %d Reddit, %d GitHub articles",
-            len(hn_articles), len(reddit_articles), len(github_articles),
+            len(hn_articles),
+            len(reddit_articles),
+            len(github_articles),
         )
 
         # ── Score and filter ──────────────────────────────────
@@ -161,22 +220,23 @@ class TechRadarWatcher(BaseWatcher):
                 article.get("description", ""),
             )
 
-            scored.append({
-                "tenant_id": self.tenant_id,
-                "title": article.get("title", "")[:500],
-                "url": url[:2000],
-                "source": source,
-                "source_id": article.get("source_id"),
-                "subreddit": article.get("subreddit"),
-                "score": article_score,
-                "upvotes": article.get("upvotes", 0) or 0,
-                "comments": article.get("comments", 0) or 0,
-                "summary": (
-                    (article.get("description") or article.get("summary", ""))[:1000]
-                    or None
-                ),
-                "tags": tags,
-            })
+            scored.append(
+                {
+                    "tenant_id": self.tenant_id,
+                    "title": article.get("title", "")[:500],
+                    "url": url[:2000],
+                    "source": source,
+                    "source_id": article.get("source_id"),
+                    "subreddit": article.get("subreddit"),
+                    "score": article_score,
+                    "upvotes": article.get("upvotes", 0) or 0,
+                    "comments": article.get("comments", 0) or 0,
+                    "summary": (
+                        (article.get("description") or article.get("summary", ""))[:1000] or None
+                    ),
+                    "tags": tags,
+                }
+            )
 
         self.logger.info("%d articles scored > 60", len(scored))
 
@@ -212,9 +272,7 @@ class TechRadarWatcher(BaseWatcher):
             "",
         ]
         for i, a in enumerate(top_articles, 1):
-            digest_lines.append(
-                f"   {i}. [{a['score']}] {a['title'][:80]} ({a['source']})"
-            )
+            digest_lines.append(f"   {i}. [{a['score']}] {a['title'][:80]} ({a['source']})")
 
         digest_text = "\n".join(digest_lines)
 

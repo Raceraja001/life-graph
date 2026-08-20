@@ -156,11 +156,10 @@ async def bulk_import_cases(
         ]
     )
     cases = await eval_service.bulk_add_cases(
-        suite_id=suite_id, data=bulk_data,
+        suite_id=suite_id,
+        data=bulk_data,
     )
-    return success_response(
-        data={"imported": len(cases), "cases": [_serialize(c) for c in cases]}
-    )
+    return success_response(data={"imported": len(cases), "cases": [_serialize(c) for c in cases]})
 
 
 @router.post(
@@ -328,9 +327,7 @@ async def trigger_optimization(
     tenant_id = get_current_tenant_id()
 
     # Run eval first to get a baseline
-    run = await eval_service.run_suite(
-        tenant_id=tenant_id, suite_id=suite_id
-    )
+    run = await eval_service.run_suite(tenant_id=tenant_id, suite_id=suite_id)
 
     result = await optimizer.optimize(
         tenant_id=tenant_id,
@@ -398,9 +395,7 @@ async def review_optimization(
             result = opt_run.result or {}
             candidate_id = result.get("candidate_version_id")
             if candidate_id:
-                await prompt_service.activate_version(
-                    tenant_id, uuid.UUID(candidate_id)
-                )
+                await prompt_service.activate_version(tenant_id, uuid.UUID(candidate_id))
             opt_run.status = "deployed"
         else:
             opt_run.status = "rejected"

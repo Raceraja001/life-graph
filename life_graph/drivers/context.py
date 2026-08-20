@@ -172,10 +172,13 @@ class ContextPacketBuilder:
             from life_graph.models.db import Procedure
 
             result = await session.execute(
-                select(Procedure).where(
+                select(Procedure)
+                .where(
                     Procedure.tenant_id == tenant_id,
                     Procedure.status == "active",
-                ).order_by(Procedure.confidence.desc()).limit(5)
+                )
+                .order_by(Procedure.confidence.desc())
+                .limit(5)
             )
             procedures = result.scalars().all()
 
@@ -206,10 +209,13 @@ class ContextPacketBuilder:
             from life_graph.models.db import Preference
 
             result = await session.execute(
-                select(Preference).where(
+                select(Preference)
+                .where(
                     Preference.tenant_id == tenant_id,
                     Preference.status == "active",
-                ).order_by(Preference.confidence.desc()).limit(10)
+                )
+                .order_by(Preference.confidence.desc())
+                .limit(10)
             )
             preferences = result.scalars().all()
 
@@ -244,13 +250,16 @@ class ContextPacketBuilder:
             from life_graph.models.db import Memory
 
             result = await session.execute(
-                select(Memory).where(
+                select(Memory)
+                .where(
                     Memory.tenant_id == tenant_id,
                     Memory.status == "active",
-                ).order_by(
+                )
+                .order_by(
                     Memory.importance.desc(),
                     Memory.created_at.desc(),
-                ).limit(10)
+                )
+                .limit(10)
             )
             memories = result.scalars().all()
 
@@ -286,9 +295,12 @@ class ContextPacketBuilder:
             from life_graph.models.db import CalibrationSnapshot
 
             result = await session.execute(
-                select(CalibrationSnapshot).where(
+                select(CalibrationSnapshot)
+                .where(
                     CalibrationSnapshot.tenant_id == tenant_id,
-                ).order_by(CalibrationSnapshot.computed_at.desc()).limit(1)
+                )
+                .order_by(CalibrationSnapshot.computed_at.desc())
+                .limit(1)
             )
             snapshot = result.scalar_one_or_none()
             if not snapshot:
@@ -314,6 +326,7 @@ class ContextPacketBuilder:
             packet: The context packet to truncate in-place.
             max_tokens: Maximum token budget.
         """
+
         def _estimate_tokens(obj: object) -> int:
             """Estimate token count from an object's JSON representation."""
             return len(json.dumps(obj, default=str)) // 4
@@ -337,7 +350,9 @@ class ContextPacketBuilder:
                 setattr(packet, attr_name, {} if isinstance(section_data, dict) else [])
                 logger.debug(
                     "Truncated %s from context packet (budget: %d, used: %d)",
-                    attr_name, max_tokens, total,
+                    attr_name,
+                    max_tokens,
+                    total,
                 )
             else:
                 total += section_tokens

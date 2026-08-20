@@ -28,7 +28,10 @@ class AgentMessagingService:
         self._sf = session_factory
 
     async def send(
-        self, tenant_id: str, sender_agent: str, data: dict,
+        self,
+        tenant_id: str,
+        sender_agent: str,
+        data: dict,
     ) -> AgentMessage:
         """Send a message between agents."""
         async with self._sf() as session:
@@ -55,7 +58,8 @@ class AgentMessagingService:
                     task = AgentTask(
                         tenant_id=tenant_id,
                         title=data["payload"].get(
-                            "title", data.get("subject", "Untitled task"),
+                            "title",
+                            data.get("subject", "Untitled task"),
                         ),
                         description=data["payload"].get("description"),
                         assigned_agent=data["recipient_agent"],
@@ -74,7 +78,8 @@ class AgentMessagingService:
                     await session.commit()
                 except Exception:
                     logger.warning(
-                        "Failed to auto-create task from message", exc_info=True,
+                        "Failed to auto-create task from message",
+                        exc_info=True,
                     )
 
             # Publish to Redis for real-time delivery
@@ -142,7 +147,9 @@ class AgentMessagingService:
             return list(result.scalars().all())
 
     async def mark_read(
-        self, tenant_id: str, message_id: uuid.UUID,
+        self,
+        tenant_id: str,
+        message_id: uuid.UUID,
     ) -> AgentMessage:
         """Mark a message as read."""
         async with self._sf() as session:

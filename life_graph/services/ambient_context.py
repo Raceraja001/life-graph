@@ -41,16 +41,20 @@ async def _memory_signal_tags(tenant_id: str, limit: int = 5) -> list[str]:
 
         async with async_session() as session:
             rows = (
-                await session.execute(
-                    select(Memory)
-                    .where(Memory.tenant_id == tenant_id)
-                    .order_by(Memory.created_at.desc())
-                    .limit(40)
+                (
+                    await session.execute(
+                        select(Memory)
+                        .where(Memory.tenant_id == tenant_id)
+                        .order_by(Memory.created_at.desc())
+                        .limit(40)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         counts: dict[str, int] = {}
         for m in rows:
-            for tag in (getattr(m, "tags", None) or []):
+            for tag in getattr(m, "tags", None) or []:
                 counts[tag] = counts.get(tag, 0) + 1
         return [t for t, _ in sorted(counts.items(), key=lambda kv: -kv[1])][:limit]
     except Exception:

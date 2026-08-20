@@ -71,7 +71,8 @@ class RecallEngine:
     # ── Main Entry: Session Start ─────────────────────────────
 
     async def session_start_recall(
-        self, context: dict[str, Any],
+        self,
+        context: dict[str, Any],
     ) -> RecallContext:
         """Proactively recall memories at session start.
 
@@ -131,7 +132,10 @@ class RecallEngine:
 
         logger.info(
             "Session recall: %d identity, %d decisions, %d intentions, %d warnings",
-            len(identity), len(decisions), len(triggered_intentions), len(warnings),
+            len(identity),
+            len(decisions),
+            len(triggered_intentions),
+            len(warnings),
         )
         return recall_ctx
 
@@ -172,7 +176,7 @@ class RecallEngine:
         filtered = self._apply_anti_annoyance(reranked)
         results: list[MemoryResponse] = []
 
-        for mem_dict in filtered[:settings.recall_max_during_session]:
+        for mem_dict in filtered[: settings.recall_max_during_session]:
             response = _dict_to_memory_response(mem_dict)
             if response:
                 results.append(response)
@@ -199,13 +203,17 @@ class RecallEngine:
         self._surfaced_memory_ids[memory_id] = datetime.now(UTC)
         logger.debug(
             "Dismissed memory %s (category=%s, total dismissals=%d)",
-            memory_id, category, self._dismissed_categories[category],
+            memory_id,
+            category,
+            self._dismissed_categories[category],
         )
 
     # ── Internal Helpers ──────────────────────────────────────
 
     async def _retrieve_candidates(
-        self, fingerprint: ContextFingerprint, limit: int = 50,
+        self,
+        fingerprint: ContextFingerprint,
+        limit: int = 50,
     ) -> list[dict[str, Any]]:
         """Query store for active memories matching the context fingerprint."""
         filters: dict[str, Any] = {"status": "active"}
@@ -249,7 +257,8 @@ class RecallEngine:
         return candidates
 
     def _apply_anti_annoyance(
-        self, candidates: list[dict[str, Any]],
+        self,
+        candidates: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         """Filter candidates through anti-annoyance controls."""
         now = datetime.now(UTC)
@@ -281,7 +290,8 @@ class RecallEngine:
         return filtered
 
     def _categorize_memories(
-        self, candidates: list[dict[str, Any]],
+        self,
+        candidates: list[dict[str, Any]],
     ) -> tuple[list[MemoryResponse], list[MemoryResponse], list[MemoryResponse]]:
         """Sort memories into identity, decisions, and warnings buckets."""
         identity: list[MemoryResponse] = []
@@ -311,7 +321,8 @@ class RecallEngine:
         return identity, decisions, warnings
 
     async def _check_intentions(
-        self, fingerprint: ContextFingerprint,
+        self,
+        fingerprint: ContextFingerprint,
     ) -> list[IntentionResponse]:
         """Check for triggered intentions matching the current context."""
         trigger_results = await self._trigger_matcher.check_all(fingerprint)
@@ -347,6 +358,7 @@ def _dict_to_memory_response(mem_dict: dict[str, Any]) -> MemoryResponse | None:
         verify = False
         try:
             from life_graph.scoring.decay import DecayCalculator
+
             calc = DecayCalculator()
             verify = calc.needs_verification(
                 confidence=confidence,

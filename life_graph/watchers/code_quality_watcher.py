@@ -24,6 +24,7 @@ def _get_git():
     if not _git_checked:
         try:
             import git
+
             _git = git
         except ImportError:
             logger.warning(
@@ -64,13 +65,15 @@ class CodeQualityWatcher:
         """
         git_mod = _get_git()
         if git_mod is None:
-            return [{
-                "severity": "important",
-                "title": "Code quality watcher skipped — gitpython not installed",
-                "details": "Install gitpython to enable code quality analysis.",
-                "watcher_name": self.name,
-                "timestamp": datetime.now(UTC),
-            }]
+            return [
+                {
+                    "severity": "important",
+                    "title": "Code quality watcher skipped — gitpython not installed",
+                    "details": "Install gitpython to enable code quality analysis.",
+                    "watcher_name": self.name,
+                    "timestamp": datetime.now(UTC),
+                }
+            ]
 
         projects = self.config.get("projects", [])
         if not projects:
@@ -83,13 +86,15 @@ class CodeQualityWatcher:
                 project_events = self._analyze_project(project)
                 events.extend(project_events)
             except Exception as e:
-                events.append({
-                    "severity": "important",
-                    "title": f"Code quality analysis failed: {project.get('name', project.get('path', 'unknown'))}",
-                    "details": str(e),
-                    "watcher_name": self.name,
-                    "timestamp": datetime.now(UTC),
-                })
+                events.append(
+                    {
+                        "severity": "important",
+                        "title": f"Code quality analysis failed: {project.get('name', project.get('path', 'unknown'))}",
+                        "details": str(e),
+                        "watcher_name": self.name,
+                        "timestamp": datetime.now(UTC),
+                    }
+                )
 
         return events
 
@@ -162,9 +167,7 @@ class CodeQualityWatcher:
         try:
             for commit in repo.iter_commits(since=since.isoformat()):
                 commit_count += 1
-                commit_dt = datetime.fromtimestamp(
-                    commit.committed_date, tz=UTC
-                )
+                commit_dt = datetime.fromtimestamp(commit.committed_date, tz=UTC)
                 day_key = commit_dt.strftime("%A")
                 commit_by_day[day_key] += 1
                 commit_by_hour[commit_dt.hour] += 1
@@ -195,9 +198,7 @@ class CodeQualityWatcher:
 
         # Test-to-source ratio
         test_ratio = (
-            len(test_files_changed) / len(source_files_changed)
-            if source_files_changed
-            else 0.0
+            len(test_files_changed) / len(source_files_changed) if source_files_changed else 0.0
         )
 
         return {
@@ -229,17 +230,19 @@ class CodeQualityWatcher:
 
             if current_ratio < rolling_ratio * 0.7:
                 drop_pct = ((rolling_ratio - current_ratio) / rolling_ratio) * 100
-                events.append({
-                    "severity": "important",
-                    "title": f"Test coverage drop in {project_name}",
-                    "details": (
-                        f"Test-to-source ratio dropped {drop_pct:.0f}% "
-                        f"(current: {current_ratio:.2f}, "
-                        f"4-week avg: {rolling_ratio:.2f})"
-                    ),
-                    "watcher_name": self.name,
-                    "timestamp": datetime.now(UTC),
-                })
+                events.append(
+                    {
+                        "severity": "important",
+                        "title": f"Test coverage drop in {project_name}",
+                        "details": (
+                            f"Test-to-source ratio dropped {drop_pct:.0f}% "
+                            f"(current: {current_ratio:.2f}, "
+                            f"4-week avg: {rolling_ratio:.2f})"
+                        ),
+                        "watcher_name": self.name,
+                        "timestamp": datetime.now(UTC),
+                    }
+                )
 
         return events
 
@@ -257,27 +260,26 @@ class CodeQualityWatcher:
         file_counts = metrics.get("file_commit_counts", {})
         threshold = commit_count * self.HIGH_CHURN_THRESHOLD
 
-        high_churn = [
-            (f, c) for f, c in file_counts.items() if c >= threshold
-        ]
+        high_churn = [(f, c) for f, c in file_counts.items() if c >= threshold]
 
         if high_churn:
             # Sort by count descending
             high_churn.sort(key=lambda x: x[1], reverse=True)
             files_list = "\n".join(
-                f"  • {f} ({c}/{commit_count} commits)"
-                for f, c in high_churn[:10]
+                f"  • {f} ({c}/{commit_count} commits)" for f, c in high_churn[:10]
             )
-            events.append({
-                "severity": "info",
-                "title": f"High-churn files in {project_name}",
-                "details": (
-                    f"{len(high_churn)} files appeared in >50% of "
-                    f"commits this week:\n{files_list}"
-                ),
-                "watcher_name": self.name,
-                "timestamp": datetime.now(UTC),
-            })
+            events.append(
+                {
+                    "severity": "info",
+                    "title": f"High-churn files in {project_name}",
+                    "details": (
+                        f"{len(high_churn)} files appeared in >50% of "
+                        f"commits this week:\n{files_list}"
+                    ),
+                    "watcher_name": self.name,
+                    "timestamp": datetime.now(UTC),
+                }
+            )
 
         return events
 
@@ -290,24 +292,24 @@ class CodeQualityWatcher:
         events: list[dict[str, Any]] = []
         commit_by_hour = metrics.get("commit_by_hour", {})
 
-        late_night = sum(
-            commit_by_hour.get(h, 0) for h in range(0, 6)
-        )
+        late_night = sum(commit_by_hour.get(h, 0) for h in range(0, 6))
         total = metrics.get("commit_count", 0)
 
         if total > 0 and late_night > 0:
             pct = (late_night / total) * 100
             if pct >= 20:
-                events.append({
-                    "severity": "info",
-                    "title": f"Unusual commit hours in {project_name}",
-                    "details": (
-                        f"{late_night}/{total} commits ({pct:.0f}%) "
-                        f"were made between midnight and 6 AM."
-                    ),
-                    "watcher_name": self.name,
-                    "timestamp": datetime.now(UTC),
-                })
+                events.append(
+                    {
+                        "severity": "info",
+                        "title": f"Unusual commit hours in {project_name}",
+                        "details": (
+                            f"{late_night}/{total} commits ({pct:.0f}%) "
+                            f"were made between midnight and 6 AM."
+                        ),
+                        "watcher_name": self.name,
+                        "timestamp": datetime.now(UTC),
+                    }
+                )
 
         return events
 
@@ -331,10 +333,12 @@ class CodeQualityWatcher:
             direction = "▲" if delta > 0 else "▼" if delta < 0 else "─"
             details += f"\nVs 4-week avg: {direction} {abs(delta):.0f} commits"
 
-        return [{
-            "severity": "info",
-            "title": f"Weekly code quality summary: {project_name}",
-            "details": details,
-            "watcher_name": self.name,
-            "timestamp": datetime.now(UTC),
-        }]
+        return [
+            {
+                "severity": "info",
+                "title": f"Weekly code quality summary: {project_name}",
+                "details": details,
+                "watcher_name": self.name,
+                "timestamp": datetime.now(UTC),
+            }
+        ]

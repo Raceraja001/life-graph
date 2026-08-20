@@ -34,9 +34,9 @@ LEVEL_NAMES = {
 
 # Promotion thresholds: safe_count needed to promote to next level
 PROMOTION_THRESHOLDS = {
-    0: {"safe_count": 10, "failure_max": 0},   # L0 → L1: 10 safe, 0 failures
-    1: {"safe_count": 25, "failure_max": 2},   # L1 → L2: 25 safe, ≤2 failures
-    2: {"safe_count": 50, "failure_max": 3},   # L2 → L3: 50 safe, ≤3 failures
+    0: {"safe_count": 10, "failure_max": 0},  # L0 → L1: 10 safe, 0 failures
+    1: {"safe_count": 25, "failure_max": 2},  # L1 → L2: 25 safe, ≤2 failures
+    2: {"safe_count": 50, "failure_max": 3},  # L2 → L3: 50 safe, ≤3 failures
 }
 
 
@@ -89,7 +89,9 @@ class AutonomyLevelService:
         return level
 
     async def check_promotion(
-        self, tenant_id: str, project_id: str,
+        self,
+        tenant_id: str,
+        project_id: str,
     ) -> PromotionCheck:
         """Check if a project is eligible for level promotion."""
         level = await self.get_level(tenant_id, project_id)
@@ -177,7 +179,9 @@ class AutonomyLevelService:
 
         logger.info(
             "Promoted project %s from L%d to L%d",
-            project_id, check.current_level, new_level,
+            project_id,
+            check.current_level,
+            new_level,
         )
 
         return new_level
@@ -223,7 +227,10 @@ class AutonomyLevelService:
 
         logger.info(
             "Demoted project %s from L%d to L%d: %s",
-            project_id, level.current_level, new_level, reason,
+            project_id,
+            level.current_level,
+            new_level,
+            reason,
         )
 
         return new_level
@@ -277,7 +284,11 @@ class AutonomyLevelService:
 
         logger.info(
             "Manual level set for project %s: L%d → L%d by %s (%s)",
-            project_id, old_level, level, by, reason,
+            project_id,
+            old_level,
+            level,
+            by,
+            reason,
         )
 
         return level

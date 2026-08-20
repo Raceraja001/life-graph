@@ -68,10 +68,14 @@ class PushService:
         payload = json.dumps({"title": title, "body": body[:_MAX_BODY], "url": url})
         async with self._session_factory() as session:
             rows = (
-                await session.execute(
-                    select(PushSubscription).where(PushSubscription.tenant_id == tenant_id)
+                (
+                    await session.execute(
+                        select(PushSubscription).where(PushSubscription.tenant_id == tenant_id)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             delivered = 0
             dead: list[str] = []
             for row in rows:

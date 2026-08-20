@@ -63,27 +63,19 @@ class ColdStartBootstrap:
         for repo_path in git_repos:
             logger.info("Processing repository: %s", repo_path)
 
-            git_memories = self._run_safe(
-                "GitAnalyzer", self._git.analyze, repo_path, author_name
-            )
+            git_memories = self._run_safe("GitAnalyzer", self._git.analyze, repo_path, author_name)
             all_memories.extend(git_memories)
             source_counts["git"] += len(git_memories)
 
-            config_memories = self._run_safe(
-                "ConfigParser", self._config.parse, repo_path
-            )
+            config_memories = self._run_safe("ConfigParser", self._config.parse, repo_path)
             all_memories.extend(config_memories)
             source_counts["config"] += len(config_memories)
 
-            code_memories = self._run_safe(
-                "CodeAnalyzer", self._code.analyze, repo_path
-            )
+            code_memories = self._run_safe("CodeAnalyzer", self._code.analyze, repo_path)
             all_memories.extend(code_memories)
             source_counts["code"] += len(code_memories)
 
-        logger.info(
-            "Phase 1 complete: %d raw memories collected", len(all_memories)
-        )
+        logger.info("Phase 1 complete: %d raw memories collected", len(all_memories))
 
         # ── Phase 2: Deduplicate ──────────────────────────────
         pre_dedup = len(all_memories)
@@ -91,7 +83,8 @@ class ColdStartBootstrap:
         dupes_removed = pre_dedup - len(all_memories)
         logger.info(
             "Phase 2 complete: %d duplicates removed, %d remaining",
-            dupes_removed, len(all_memories),
+            dupes_removed,
+            len(all_memories),
         )
 
         # ── Phase 3: Generate embeddings ──────────────────────
@@ -139,19 +132,18 @@ class ColdStartBootstrap:
         }
 
         logger.info(
-            "Cold start complete: %d memories stored in %.1fs "
-            "(git=%d, config=%d, code=%d)",
-            stored_count, elapsed,
-            source_counts["git"], source_counts["config"],
+            "Cold start complete: %d memories stored in %.1fs (git=%d, config=%d, code=%d)",
+            stored_count,
+            elapsed,
+            source_counts["git"],
+            source_counts["config"],
             source_counts["code"],
         )
         return summary
 
     # ── Private Helpers ───────────────────────────────────────
 
-    def _run_safe(
-        self, name: str, func: Any, *args: Any
-    ) -> list[dict[str, Any]]:
+    def _run_safe(self, name: str, func: Any, *args: Any) -> list[dict[str, Any]]:
         """Run an analyzer function and catch any exceptions."""
         try:
             return func(*args)
@@ -159,9 +151,7 @@ class ColdStartBootstrap:
             logger.exception("%s failed", name)
             return []
 
-    def _deduplicate(
-        self, memories: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
+    def _deduplicate(self, memories: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Remove near-duplicate memories by content hash.
 
         When duplicates are found, keeps the one with highest importance.
@@ -169,18 +159,14 @@ class ColdStartBootstrap:
         seen: dict[str, dict[str, Any]] = {}
 
         for memory in memories:
-            key = hashlib.md5(
-                memory["content"].lower().strip().encode()
-            ).hexdigest()
+            key = hashlib.md5(memory["content"].lower().strip().encode()).hexdigest()
 
             if key not in seen or memory.get("importance", 0) > seen[key].get("importance", 0):
                 seen[key] = memory
 
         return list(seen.values())
 
-    async def _set_embedding(
-        self, memory_id: Any, embedding: list[float]
-    ) -> None:
+    async def _set_embedding(self, memory_id: Any, embedding: list[float]) -> None:
         """Update the embedding column for a stored memory."""
         from sqlalchemy import update
 
@@ -189,8 +175,6 @@ class ColdStartBootstrap:
 
         async with async_session() as session:
             await session.execute(
-                update(Memory)
-                .where(Memory.id == memory_id)
-                .values(embedding=embedding)
+                update(Memory).where(Memory.id == memory_id).values(embedding=embedding)
             )
             await session.commit()

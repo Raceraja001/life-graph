@@ -51,9 +51,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     for request tracing and log correlation.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         request.state.request_id = request_id
 
@@ -70,9 +68,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     service API keys. Skips auth for exempt paths and dev mode.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         try:
             verify_service_key(request)
         except Exception as e:
@@ -99,9 +95,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
     In dev mode, defaults to "dev" tenant when header is missing.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Skip for exempt paths
         if is_exempt_path(request.url.path):
             return await call_next(request)
@@ -120,9 +114,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
                         "error": {
                             "code": "MISSING_TENANT",
                             "message": "X-Tenant-ID header is required",
-                            "request_id": getattr(
-                                request.state, "request_id", ""
-                            ),
+                            "request_id": getattr(request.state, "request_id", ""),
                         }
                     },
                 )
@@ -137,9 +129,9 @@ class TenantMiddleware(BaseHTTPMiddleware):
         # GET requests are always allowed. Admin paths are exempt so
         # operators can still reactivate or delete the tenant.
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
-            if not request.url.path.startswith(
-                "/admin"
-            ) and not request.url.path.startswith("/api/v1/admin"):
+            if not request.url.path.startswith("/admin") and not request.url.path.startswith(
+                "/api/v1/admin"
+            ):
                 cached = _tenant_status_cache.get(tenant_id)
                 now = time.monotonic()
                 if cached is not None and cached[0] > now:
@@ -185,9 +177,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     for observability.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         start = time.perf_counter()
 
         response = await call_next(request)
@@ -232,9 +222,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     when exceeded. Adds X-RateLimit-* headers to all responses.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Skip for exempt paths
         if is_exempt_path(request.url.path):
             return await call_next(request)
@@ -258,7 +246,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 },
                 headers={
                     **result.headers,
-                    "Retry-After": str(result.reset_at - int(__import__('time').time())),
+                    "Retry-After": str(result.reset_at - int(__import__("time").time())),
                 },
             )
 

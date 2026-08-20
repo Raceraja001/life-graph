@@ -84,9 +84,7 @@ class ToolRegistry:
             try:
                 await hook(observation)
             except Exception:
-                logger.debug(
-                    "post-exec hook failed for tool %s", name, exc_info=True
-                )
+                logger.debug("post-exec hook failed for tool %s", name, exc_info=True)
 
     def register(
         self,
@@ -119,7 +117,9 @@ class ToolRegistry:
             description=description,
             parameters_schema=parameters_schema,
             handler=handler,
-            timeout_seconds=timeout_seconds if timeout_seconds is not None else TOOL_TIMEOUT_SECONDS,
+            timeout_seconds=timeout_seconds
+            if timeout_seconds is not None
+            else TOOL_TIMEOUT_SECONDS,
         )
         logger.info("Registered tool: %s", name)
 
@@ -141,9 +141,7 @@ class ToolRegistry:
             for entry in self._tools.values()
         ]
 
-    async def execute(
-        self, name: str, args: dict[str, Any]
-    ) -> str:
+    async def execute(self, name: str, args: dict[str, Any]) -> str:
         """Execute a registered tool by name.
 
         Handles both sync and async handlers transparently.
@@ -182,9 +180,11 @@ class ToolRegistry:
         except Exception as exc:
             logger.exception("Tool '%s' failed: %s", name, exc)
             await self._fire_post_exec(name, args, "error", start)
-            return json.dumps({
-                "error": f"Tool execution failed: {exc}",
-            })
+            return json.dumps(
+                {
+                    "error": f"Tool execution failed: {exc}",
+                }
+            )
 
         await self._fire_post_exec(name, args, "ok", start)
 
@@ -194,7 +194,9 @@ class ToolRegistry:
         if len(output) > MAX_TOOL_RESULT_CHARS:
             logger.warning(
                 "Tool '%s' result truncated: %d -> %d chars",
-                name, len(output), MAX_TOOL_RESULT_CHARS,
+                name,
+                len(output),
+                MAX_TOOL_RESULT_CHARS,
             )
             # Try to truncate JSON arrays intelligently
             try:
@@ -213,7 +215,9 @@ class ToolRegistry:
                         output = output[:MAX_TOOL_RESULT_CHARS] + '..."}'
                 elif isinstance(parsed, list) and len(parsed) > 3:
                     truncated_list = parsed[:5]
-                    output = json.dumps({"results": truncated_list, "_truncated": True, "_total_items": len(parsed)})
+                    output = json.dumps(
+                        {"results": truncated_list, "_truncated": True, "_total_items": len(parsed)}
+                    )
                 else:
                     output = output[:MAX_TOOL_RESULT_CHARS] + '..."}'
             except (json.JSONDecodeError, TypeError):

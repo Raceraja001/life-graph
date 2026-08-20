@@ -21,12 +21,8 @@ class MemoryCreate(BaseModel):
     content: str = Field(..., min_length=1, description="The memory content text")
     reasoning: str | None = Field(None, description="Why this memory was captured")
     tags: list[str] | None = Field(None, description="Free-form tags for categorization")
-    properties: dict[str, Any] | None = Field(
-        None, description="Schema-less JSONB properties"
-    )
-    importance: float | None = Field(
-        None, ge=0.0, le=1.0, description="Importance score 0–1"
-    )
+    properties: dict[str, Any] | None = Field(None, description="Schema-less JSONB properties")
+    importance: float | None = Field(None, ge=0.0, le=1.0, description="Importance score 0–1")
     source_type: str | None = Field(None, description="e.g. explicit, inferred, cold_start")
     skip_dedup: bool = Field(False, description="Skip deduplication check on ingest")
 
@@ -76,10 +72,11 @@ class MemoryResponse(BaseModel):
         if not self.needs_verification and self.confidence > 0:
             try:
                 import math
+
                 anchor = self.last_reinforced or self.created_at
                 if anchor.tzinfo is None:
                     anchor = anchor.replace(tzinfo=UTC)
-                now = datetime.now(anchor.tzinfo or __import__('datetime').timezone.utc)
+                now = datetime.now(anchor.tzinfo or __import__("datetime").timezone.utc)
                 days = max((now - anchor).total_seconds() / 86400.0, 0.0)
                 adj_rate = 0.03 / max(1 + self.reinforced_count * 0.5, 1.0)
                 eff_conf = self.confidence * math.exp(-adj_rate * days)
@@ -176,7 +173,9 @@ class ProcedureResponse(BaseModel):
 class MemoryLinkCreate(BaseModel):
     """Payload for creating a link between two memories."""
 
-    source_memory_id: str = Field(..., description="Source memory UUID (ignored in path-based routes)")
+    source_memory_id: str = Field(
+        ..., description="Source memory UUID (ignored in path-based routes)"
+    )
     target_memory_id: str = Field(..., description="Target memory UUID")
     link_type: str = Field(
         ...,
@@ -250,9 +249,15 @@ class SearchQuery(BaseModel):
         None, ge=0.0, le=1.0, description="Minimum importance threshold"
     )
     tags: list[str] | None = Field(None, description="Filter by tag overlap")
-    created_after: datetime | None = Field(None, description="Only memories created after this timestamp")
-    created_before: datetime | None = Field(None, description="Only memories created before this timestamp")
-    source_type: str | None = Field(None, description="Filter by source type (e.g. explicit, inferred, chat)")
+    created_after: datetime | None = Field(
+        None, description="Only memories created after this timestamp"
+    )
+    created_before: datetime | None = Field(
+        None, description="Only memories created before this timestamp"
+    )
+    source_type: str | None = Field(
+        None, description="Filter by source type (e.g. explicit, inferred, chat)"
+    )
     status: str = Field("active", description="Memory status filter (default: active only)")
     include_pending: bool = Field(
         False,
@@ -484,7 +489,9 @@ class AgentTaskCreate(BaseModel):
     project_id: uuid.UUID | None = Field(None, description="Associated project")
     session_id: uuid.UUID | None = Field(None, description="Associated session")
     workflow_run_id: uuid.UUID | None = Field(None, description="Workflow run if part of workflow")
-    workflow_step_id: uuid.UUID | None = Field(None, description="Workflow step if part of workflow")
+    workflow_step_id: uuid.UUID | None = Field(
+        None, description="Workflow step if part of workflow"
+    )
     properties: dict[str, Any] | None = Field(None, description="Extensible JSONB properties")
     tags: list[str] | None = Field(None, description="Searchable tags")
 
@@ -501,7 +508,9 @@ class AgentTaskUpdate(BaseModel):
     result: dict[str, Any] | None = Field(None, description="Task result payload")
     error: str | None = Field(None, description="Error message if failed")
     cancel_reason: str | None = Field(None, description="Reason for cancellation")
-    on_child_failure: str | None = Field(None, max_length=20, description="Updated child failure policy")
+    on_child_failure: str | None = Field(
+        None, max_length=20, description="Updated child failure policy"
+    )
     deadline: datetime | None = Field(None, description="Updated deadline")
     properties: dict[str, Any] | None = Field(None, description="Updated properties")
     tags: list[str] | None = Field(None, description="Updated tags")
@@ -700,7 +709,9 @@ class WorkflowRunTrigger(BaseModel):
     """Payload for triggering a workflow run."""
 
     trigger: str = Field("manual", max_length=40, description="Trigger source")
-    triggered_by: str | None = Field(None, max_length=64, description="Agent that triggered the run")
+    triggered_by: str | None = Field(
+        None, max_length=64, description="Agent that triggered the run"
+    )
     input_params: dict[str, Any] | None = Field(None, description="Input parameters")
     properties: dict[str, Any] | None = Field(None, description="Extensible properties")
 
@@ -752,10 +763,14 @@ class SharedContextCreate(BaseModel):
 
     title: str = Field(..., max_length=200, description="Context title")
     content: str = Field(..., min_length=1, description="Context content")
-    content_type: str = Field("finding", max_length=30, description="finding|decision|artifact|note")
+    content_type: str = Field(
+        "finding", max_length=30, description="finding|decision|artifact|note"
+    )
     project_id: str | None = Field(None, max_length=128, description="Associated project")
     source_task_id: uuid.UUID | None = Field(None, description="Task that produced this context")
-    source_agent: str | None = Field(None, max_length=64, description="Agent that produced this context")
+    source_agent: str | None = Field(
+        None, max_length=64, description="Agent that produced this context"
+    )
     tags: list[str] | None = Field(None, description="Searchable tags")
     relevance_score: float = Field(1.0, ge=0.0, le=1.0, description="Relevance score 0–1")
     properties: dict[str, Any] | None = Field(None, description="Extensible properties")
@@ -889,9 +904,7 @@ class DecisionCreate(BaseModel):
 
     title: str = Field(..., min_length=1, description="Decision title")
     reasoning: str | None = Field(default=None, description="Why this decision was made")
-    options: list[dict[str, Any]] = Field(
-        default_factory=list, description="[{label, pros, cons}]"
-    )
+    options: list[dict[str, Any]] = Field(default_factory=list, description="[{label, pros, cons}]")
     chosen_option: str | None = Field(default=None, description="Selected option")
     status: str = Field(default="decided", description="candidate|decided")
     source: str = Field(default="explicit", description="conversation|explicit|challenge")
@@ -1000,29 +1013,21 @@ class ChallengeResponse(BaseModel):
 class PredictionResolveRequest(BaseModel):
     """Payload for resolving a prediction outcome."""
 
-    outcome: str = Field(
-        ..., description="Resolution outcome: correct|incorrect|ambiguous"
-    )
+    outcome: str = Field(..., description="Resolution outcome: correct|incorrect|ambiguous")
     source: str = Field(..., description="Resolution source identifier")
-    evidence: dict[str, Any] = Field(
-        default_factory=dict, description="Supporting evidence"
-    )
+    evidence: dict[str, Any] = Field(default_factory=dict, description="Supporting evidence")
 
 
 class ChallengeRequest(BaseModel):
     """Payload for creating an adversarial challenge."""
 
-    proposal: str = Field(
-        ..., min_length=1, description="What you're considering doing"
-    )
+    proposal: str = Field(..., min_length=1, description="What you're considering doing")
 
 
 class ChallengeResolveRequest(BaseModel):
     """Payload for recording the action taken on a challenge."""
 
-    action_taken: str = Field(
-        ..., description="What the user did: followed|ignored|modified"
-    )
+    action_taken: str = Field(..., description="What the user did: followed|ignored|modified")
 
 
 class JudgmentStatsResponse(BaseModel):

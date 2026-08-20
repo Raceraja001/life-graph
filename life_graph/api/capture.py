@@ -175,8 +175,6 @@ async def export_correction_triples(
         _stream(),
         media_type="application/x-ndjson",
         headers={
-            "Content-Disposition": (
-                "attachment; filename=correction_triples.ndjson"
-            ),
+            "Content-Disposition": ("attachment; filename=correction_triples.ndjson"),
         },
     )

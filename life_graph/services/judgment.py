@@ -59,9 +59,7 @@ _BIG_DECISION_SIGNALS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
-def detect_big_decision(
-    title: str | None, reasoning: str | None = None
-) -> tuple[bool, list[str]]:
+def detect_big_decision(title: str | None, reasoning: str | None = None) -> tuple[bool, list[str]]:
     """Heuristically decide whether a decision is "big".
 
     Args:
@@ -355,10 +353,12 @@ class JudgmentService:
             List of ``Prediction`` rows for that decision.
         """
         result = await self.session.execute(
-            select(Prediction).where(
+            select(Prediction)
+            .where(
                 Prediction.tenant_id == tenant_id,
                 Prediction.decision_id == decision_id,
-            ).order_by(Prediction.created_at.desc())
+            )
+            .order_by(Prediction.created_at.desc())
         )
         return list(result.scalars().all())
 
@@ -418,14 +418,13 @@ class _DecisionCandidateListener:
                     source=source,
                     domain_tags=[BIG_DECISION_TAG] if is_big else None,
                     importance=BIG_DECISION_IMPORTANCE if is_big else 0.5,
-                    capture_event_id=(
-                        uuid.UUID(capture_event_id) if capture_event_id else None
-                    ),
+                    capture_event_id=(uuid.UUID(capture_event_id) if capture_event_id else None),
                 )
                 await session.commit()
                 logger.info(
                     "Auto-created %scandidate decision: %s",
-                    "BIG " if is_big else "", title[:80],
+                    "BIG " if is_big else "",
+                    title[:80],
                 )
         except Exception:
             logger.error(

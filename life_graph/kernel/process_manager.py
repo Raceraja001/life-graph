@@ -323,11 +323,7 @@ class ProcessManager:
             if agent_name:
                 base = base.where(AgentTask.agent_name == agent_name)
 
-            stmt = (
-                base.order_by(AgentTask.created_at.desc())
-                .limit(limit + 1)
-                .offset(offset)
-            )
+            stmt = base.order_by(AgentTask.created_at.desc()).limit(limit + 1).offset(offset)
             result = await session.execute(stmt)
             tasks = list(result.scalars().all())
             has_more = len(tasks) > limit

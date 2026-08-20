@@ -62,9 +62,7 @@ class TrustCalculator:
 
         recency_bonus = 0.0
         if current.last_action_at is not None:
-            days_since = (
-                datetime.now(UTC) - current.last_action_at
-            ).total_seconds() / 86400
+            days_since = (datetime.now(UTC) - current.last_action_at).total_seconds() / 86400
             if days_since < 7:
                 recency_bonus = 0.02
 
@@ -119,9 +117,7 @@ class TrustCalculator:
         if last_action_at is None:
             return score
 
-        weeks = (
-            datetime.now(UTC) - last_action_at
-        ).total_seconds() / (7 * 86400)
+        weeks = (datetime.now(UTC) - last_action_at).total_seconds() / (7 * 86400)
 
         if weeks < 1:
             return score

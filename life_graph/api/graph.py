@@ -30,12 +30,8 @@ class CypherQuery(BaseModel):
     """Body for executing a raw Cypher query."""
 
     cypher: str = Field(..., min_length=1, description="Cypher query string")
-    params: dict[str, Any] | None = Field(
-        None, description="Optional query parameters"
-    )
-    columns: list[str] | None = Field(
-        None, description="Result column names (default: ['v'])"
-    )
+    params: dict[str, Any] | None = Field(None, description="Optional query parameters")
+    columns: list[str] | None = Field(None, description="Result column names (default: ['v'])")
 
 
 class GraphEntity(BaseModel):
@@ -85,6 +81,7 @@ def _get_graph_store():
     global _graph_store
     if _graph_store is None:
         from life_graph.storage.graph import GraphStore
+
         _graph_store = GraphStore()
     return _graph_store
 
@@ -94,6 +91,7 @@ def _get_hybrid_engine():
     global _hybrid_engine
     if _hybrid_engine is None:
         from life_graph.storage.hybrid import HybridQueryEngine
+
         _hybrid_engine = HybridQueryEngine()
     return _hybrid_engine
 
@@ -217,12 +215,14 @@ async def find_path(
             detail=f"Graph query failed: {exc}",
         ) from exc
 
-    return success_response(data={
-        "from": from_name,
-        "to": to_name,
-        "path": path,
-        "found": len(path) > 0,
-    })
+    return success_response(
+        data={
+            "from": from_name,
+            "to": to_name,
+            "path": path,
+            "found": len(path) > 0,
+        }
+    )
 
 
 @router.post(
@@ -256,8 +256,10 @@ async def hybrid_search(body: GraphSearchRequest):
             detail=f"Hybrid search error: {exc}",
         ) from exc
 
-    return success_response(data=GraphSearchResult(
-        entities=result.get("entities", []),
-        memories=result.get("memories", []),
-        graph_context=result.get("graph_context", []),
-    ))
+    return success_response(
+        data=GraphSearchResult(
+            entities=result.get("entities", []),
+            memories=result.get("memories", []),
+            graph_context=result.get("graph_context", []),
+        )
+    )

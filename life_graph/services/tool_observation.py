@@ -54,10 +54,7 @@ class ToolObservationHook:
     @staticmethod
     def is_low_signal(observation: dict) -> bool:
         """Low-signal = succeeded and not tied to a project (routine noise)."""
-        return (
-            observation.get("exit_status") == "ok"
-            and not observation.get("project_id")
-        )
+        return observation.get("exit_status") == "ok" and not observation.get("project_id")
 
     def should_store(self, count_today: int, low_signal: bool) -> bool:
         """Decide whether to persist, applying the daily cap to noise only.
@@ -101,9 +98,7 @@ class ToolObservationHook:
 
     async def _today_count(self, tenant_id: str) -> int:
         """Count today's tool-exhaust observations for the tenant (UTC day)."""
-        start_of_day = datetime.now(UTC).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         async with self._session_factory() as session:
             result = await session.execute(
                 select(func.count())

@@ -132,18 +132,14 @@ class DSPyOptimizerService:
                 tenant_id, task_type
             )
             if current_prompt is None:
-                await self._update_run_status(
-                    run_id, "error", {"reason": "no_active_prompt"}
-                )
+                await self._update_run_status(run_id, "error", {"reason": "no_active_prompt"})
                 return {
                     "status": "error",
                     "optimization_run_id": run_id,
                     "details": f"No active prompt for task_type={task_type}",
                 }
 
-            optimized = await self._run_dspy_optimization(
-                training_data, current_prompt
-            )
+            optimized = await self._run_dspy_optimization(training_data, current_prompt)
 
             if optimized is None:
                 await self._update_run_status(
@@ -173,9 +169,7 @@ class DSPyOptimizerService:
             )
 
             candidate_accuracy = test_run.accuracy_pct or 0.0
-            baseline_accuracy = await self._get_baseline_accuracy(
-                trigger_eval_run_id
-            )
+            baseline_accuracy = await self._get_baseline_accuracy(trigger_eval_run_id)
             improvement = candidate_accuracy - baseline_accuracy
 
             # ── Step 6: Check cross-task regressions ──────────
@@ -198,9 +192,7 @@ class DSPyOptimizerService:
                 await self._update_run_status(run_id, status, result_details)
             elif improvement >= self.MIN_IMPROVEMENT_PCT:
                 status = "deployed"
-                await self.prompt_version_service.activate_version(
-                    tenant_id, candidate_version.id
-                )
+                await self.prompt_version_service.activate_version(tenant_id, candidate_version.id)
                 await self._update_run_status(run_id, status, result_details)
             else:
                 status = "no_improvement"
@@ -213,12 +205,8 @@ class DSPyOptimizerService:
             }
 
         except Exception as e:
-            logger.exception(
-                "Optimization pipeline failed for suite %s", suite_id
-            )
-            await self._update_run_status(
-                run_id, "error", {"error": str(e)}
-            )
+            logger.exception("Optimization pipeline failed for suite %s", suite_id)
+            await self._update_run_status(run_id, "error", {"error": str(e)})
             return {
                 "status": "error",
                 "optimization_run_id": run_id,
@@ -227,9 +215,7 @@ class DSPyOptimizerService:
 
     # ── Training Data Collection ──────────────────────────────
 
-    async def _collect_training_data(
-        self, run_id: uuid.UUID
-    ) -> dict[str, list[dict]]:
+    async def _collect_training_data(self, run_id: uuid.UUID) -> dict[str, list[dict]]:
         """Query EvalResult for pass/fail examples from a specific eval run."""
         from life_graph.self_improving.models import EvalResult
 
@@ -312,6 +298,7 @@ class DSPyOptimizerService:
             # Define a simple signature for optimization
             class TaskSignature(dspy.Signature):
                 """Process input and produce output."""
+
                 input: str = dspy.InputField()
                 output: str = dspy.OutputField()
 
@@ -328,9 +315,7 @@ class DSPyOptimizerService:
                 max_rounds=3,
             )
 
-            optimized_predictor = optimizer.compile(
-                predictor, trainset=trainset
-            )
+            optimized_predictor = optimizer.compile(predictor, trainset=trainset)
 
             # Extract optimized prompt and few-shot examples
             few_shot_examples = []
@@ -349,9 +334,7 @@ class DSPyOptimizerService:
                 examples_block = "\n\n## Examples:\n"
                 for i, ex in enumerate(few_shot_examples, 1):
                     examples_block += (
-                        f"\n### Example {i}:\n"
-                        f"Input: {ex['input']}\n"
-                        f"Output: {ex['output']}\n"
+                        f"\n### Example {i}:\nInput: {ex['input']}\nOutput: {ex['output']}\n"
                     )
                 optimized_prompt = optimized_prompt + examples_block
 
@@ -399,24 +382,19 @@ class DSPyOptimizerService:
                     )
 
                     # Compare against latest baseline for this suite
-                    baseline = await self._get_latest_suite_accuracy(
-                        suite.id
-                    )
+                    baseline = await self._get_latest_suite_accuracy(suite.id)
                     if baseline is not None:
                         drop = baseline - (test_run.accuracy_pct or 0.0)
                         if drop > self.MAX_REGRESSION_PCT:
                             logger.warning(
-                                "Cross-task regression detected: "
-                                "suite=%s task=%s drop=%.1f%%",
+                                "Cross-task regression detected: suite=%s task=%s drop=%.1f%%",
                                 suite.id,
                                 suite.task_type,
                                 drop,
                             )
                             return True
                 except Exception:
-                    logger.exception(
-                        "Failed cross-task check for suite %s", suite.id
-                    )
+                    logger.exception("Failed cross-task check for suite %s", suite.id)
                     # Conservative: flag as regression if we can't verify
                     return True
 
@@ -428,9 +406,7 @@ class DSPyOptimizerService:
 
     # ── Helpers ───────────────────────────────────────────────
 
-    async def _get_baseline_accuracy(
-        self, eval_run_id: uuid.UUID
-    ) -> float:
+    async def _get_baseline_accuracy(self, eval_run_id: uuid.UUID) -> float:
         """Get accuracy from the trigger eval run."""
         from life_graph.self_improving.models import EvalRun
 
@@ -440,9 +416,7 @@ class DSPyOptimizerService:
                 return run.accuracy_pct
         return 0.0
 
-    async def _get_latest_suite_accuracy(
-        self, suite_id: uuid.UUID
-    ) -> float | None:
+    async def _get_latest_suite_accuracy(self, suite_id: uuid.UUID) -> float | None:
         """Get accuracy from the most recent completed run for a suite."""
         from life_graph.self_improving.models import EvalRun
 

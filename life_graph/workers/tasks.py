@@ -69,6 +69,7 @@ async def run_tenant_consolidation(ctx: dict, tenant_id: str) -> dict:
     try:
         # Run the consolidation pipeline
         from life_graph.api.dependencies import get_consolidation_pipeline
+
         pipeline = get_consolidation_pipeline()
         report = await pipeline.run()
 
@@ -131,9 +132,7 @@ async def run_all_consolidations(ctx: dict) -> dict:
 
     # Find all active tenants
     async with async_session() as session:
-        result = await session.execute(
-            select(Memory.tenant_id).distinct()
-        )
+        result = await session.execute(select(Memory.tenant_id).distinct())
         tenant_ids = [row[0] for row in result.fetchall()]
 
     if not tenant_ids:
@@ -205,20 +204,17 @@ async def run_all_research(ctx: dict) -> dict:
 
     # Find all active tenants with preferences
     async with async_session() as session:
-        result = await session.execute(
-            select(Preference.tenant_id).distinct()
-        )
+        result = await session.execute(select(Preference.tenant_id).distinct())
         tenant_ids = [row[0] for row in result.fetchall()]
 
     if not tenant_ids:
         logger.info("No tenants with preferences found, skipping research")
         return {"tenants": 0}
 
-    logger.info(
-        "Running research for %d tenants: %s", len(tenant_ids), tenant_ids
-    )
+    logger.info("Running research for %d tenants: %s", len(tenant_ids), tenant_ids)
 
     from life_graph.api.dependencies import get_research_engine
+
     engine = get_research_engine()
 
     results = {}
@@ -252,18 +248,14 @@ async def run_nightly_self_heal(ctx: dict) -> dict:
 
     # Find all tenants with eval suites
     async with async_session() as session:
-        result = await session.execute(
-            select(EvalSuite.tenant_id).distinct()
-        )
+        result = await session.execute(select(EvalSuite.tenant_id).distinct())
         tenant_ids = [row[0] for row in result.fetchall()]
 
     if not tenant_ids:
         logger.info("No tenants with eval suites found, skipping self-heal")
         return {"tenants": 0}
 
-    logger.info(
-        "Running self-heal for %d tenants: %s", len(tenant_ids), tenant_ids
-    )
+    logger.info("Running self-heal for %d tenants: %s", len(tenant_ids), tenant_ids)
 
     eval_service = get_eval_service()
     prompt_service = get_prompt_version_service()
@@ -324,6 +316,7 @@ async def run_watchers(ctx: dict) -> dict:
     try:
         from life_graph.api.dependencies import get_process_manager
         from life_graph.watchers.origination import TaskOriginationService
+
         origination = TaskOriginationService(get_process_manager())
     except Exception:
         logger.warning("Task origination unavailable — findings won't spawn tasks", exc_info=True)
@@ -331,9 +324,7 @@ async def run_watchers(ctx: dict) -> dict:
 
     # Find all tenants with watcher configs
     async with async_session() as session:
-        result = await session.execute(
-            select(WatchConfig.tenant_id).distinct()
-        )
+        result = await session.execute(select(WatchConfig.tenant_id).distinct())
         tenant_ids = [row[0] for row in result.fetchall()]
 
     if not tenant_ids:
@@ -364,6 +355,7 @@ async def run_watchers(ctx: dict) -> dict:
 
             # Create run record
             import time
+
             run_id = uuid.uuid4()
             t_start = time.monotonic()
 
@@ -442,7 +434,9 @@ async def run_watchers(ctx: dict) -> dict:
                     except Exception:
                         logger.warning(
                             "Origination failed for watcher %s / tenant %s",
-                            wconfig.watcher_name, tid, exc_info=True,
+                            wconfig.watcher_name,
+                            tid,
+                            exc_info=True,
                         )
 
             except Exception as e:
@@ -500,12 +494,11 @@ async def run_daily_digest(ctx: dict) -> dict:
         return {"status": "skipped"}
 
     from life_graph.api.dependencies import get_digest_generator
+
     digest_gen = get_digest_generator()
 
     async with async_session() as session:
-        result = await session.execute(
-            select(WatchConfig.tenant_id).distinct()
-        )
+        result = await session.execute(select(WatchConfig.tenant_id).distinct())
         tenant_ids = [row[0] for row in result.fetchall()]
 
     results = {}
@@ -547,9 +540,7 @@ async def decay_trust_scores(ctx: dict) -> dict:
 
     # Find all tenants with trust scores
     async with async_session() as session:
-        result = await session.execute(
-            select(TrustScore.tenant_id).distinct()
-        )
+        result = await session.execute(select(TrustScore.tenant_id).distinct())
         tenant_ids = [row[0] for row in result.fetchall()]
 
     if not tenant_ids:
@@ -602,8 +593,6 @@ async def send_approval_escalations(ctx: dict) -> dict:
     except Exception:
         logger.exception("Approval escalation check failed")
         return {"status": "error"}
-
-
 
 
 # ── Capture Spine: Daily Brief (Phase G) ─────────────────────────────────
@@ -685,7 +674,8 @@ async def failure_pattern_mining(ctx: dict) -> dict:
 
     logger.info(
         "Failure-pattern mining: %d tenants, %d patterns stored",
-        len(tenant_ids), total_stored,
+        len(tenant_ids),
+        total_stored,
     )
     return {"tenants": len(tenant_ids), "patterns_stored": total_stored, "results": results}
 
