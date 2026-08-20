@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../orbit"
+		},
+		{
+			"path": "../agentic"
+		},
+		{
+			"path": "../uzhavu.race"
+		},
+		{
+			"path": "../lca"
+		},
+		{
+			"path": "../../../Projects/engineering-handbook"
+		},
+		{
+			"path": "../../../Projects/ssh_client"
+		},
+		{
+			"path": "C:/xampp/htdocs/sdlc-core"
+		}
+	],
+	"settings": {}
+}
