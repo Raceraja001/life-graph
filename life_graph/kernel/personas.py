@@ -315,7 +315,22 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         ),
         "intent_tags": [],
         "temperature": 0.4,
-        "allowed_tools": ["delegate_to_persona"],
+        "allowed_tools": [
+            "web_search",
+            "browse_web",
+            "memory_search",
+            "get_current_datetime",
+            "calculator",
+            "git_status",
+            "git_log",
+            "git_diff",
+            "git_branch",
+            "run_command",
+            "file_read",
+            "file_write",
+            "inspect_system",
+            "delegate_to_persona",
+        ],
     },
 ]
 
