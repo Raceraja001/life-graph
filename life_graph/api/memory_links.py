@@ -59,14 +59,14 @@ async def create_link(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
-        )
+        ) from exc
     except Exception as exc:
         # Catch unique constraint violations
         if "unique" in str(exc).lower() or "duplicate" in str(exc).lower():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Link already exists between these memories with this type",
-            )
+            ) from exc
         raise
 
     return success_response(data=MemoryLinkResponse.model_validate(link))

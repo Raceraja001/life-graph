@@ -73,7 +73,7 @@ async def get_task_tree(
 
         return success_response(data=serialize(tree))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.patch("/{task_id}")
@@ -90,7 +90,7 @@ async def update_task(
         )
         return success_response(data=AgentTaskResponse.model_validate(task))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.post("/{task_id}/cancel")
@@ -105,5 +105,5 @@ async def cancel_task(
         task = await engine.cancel_task(task_id, tenant_id, reason)
         return success_response(data=AgentTaskResponse.model_validate(task))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 

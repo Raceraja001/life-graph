@@ -234,4 +234,4 @@ async def dispatch_task(body: DispatchRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Dispatch failed: {str(e)}",
-        )
+        ) from e

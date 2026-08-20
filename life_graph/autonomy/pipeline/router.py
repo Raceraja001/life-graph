@@ -88,7 +88,7 @@ async def rollback_action(action_id: str):
     try:
         result = await service.rollback(tenant_id, action_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     return success_response(
         data=result.model_dump(mode="json"),

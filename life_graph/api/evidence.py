@@ -52,11 +52,11 @@ async def create_evidence(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=err_msg,
-            )
+            ) from e
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=err_msg,
-        )
+        ) from e
     return success_response(data=EvidenceResponse.model_validate(evidence))
 
 

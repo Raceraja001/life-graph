@@ -90,7 +90,7 @@ async def create_workflow(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
     return success_response(data={
         "id": str(workflow.id),
@@ -130,7 +130,7 @@ async def start_run(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
-        )
+        ) from e
 
     return success_response(data={
         "id": str(run.id),

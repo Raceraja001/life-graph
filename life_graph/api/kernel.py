@@ -206,7 +206,7 @@ async def create_task(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
-        )
+        ) from exc
 
     # spawn() returns dict or string depending on implementation
     if isinstance(spawn_result, dict):
@@ -432,7 +432,7 @@ async def create_persona(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
-        )
+        ) from exc
 
     return success_response(data=persona)
 
@@ -548,7 +548,7 @@ async def delete_persona(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
-        )
+        ) from exc
 
     if result is None:
         raise HTTPException(
@@ -637,7 +637,7 @@ async def route_message(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
-        )
+        ) from exc
 
     return success_response(data=result)
 
@@ -931,7 +931,7 @@ async def create_schedule(
         raise HTTPException(
             status_code=code,
             detail=detail,
-        )
+        ) from exc
 
     return success_response(data=job)
 
@@ -1010,7 +1010,7 @@ async def update_schedule(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
-        )
+        ) from exc
 
     if updated is None:
         raise HTTPException(
@@ -1105,7 +1105,7 @@ async def register_project(
         raise HTTPException(
             status_code=code,
             detail=detail,
-        )
+        ) from exc
 
     return success_response(data=project)
 

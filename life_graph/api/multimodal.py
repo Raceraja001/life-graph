@@ -107,12 +107,12 @@ async def ingest_voice(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
-        )
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
-        )
+        ) from exc
     except Exception:
         logger.exception("Voice processing failed for %s", filename)
         raise HTTPException(
@@ -145,12 +145,12 @@ async def ingest_transcribe(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
-        )
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
-        )
+        ) from exc
     except Exception:
         logger.exception("Transcription failed for %s", filename)
         raise HTTPException(
@@ -186,12 +186,12 @@ async def ingest_image(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
-        )
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
-        )
+        ) from exc
     except Exception:
         logger.exception("Image processing failed for %s", filename)
         raise HTTPException(
@@ -228,12 +228,12 @@ async def ingest_document(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
-        )
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
-        )
+        ) from exc
     except Exception:
         logger.exception("Document processing failed for %s", filename)
         raise HTTPException(

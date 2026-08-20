@@ -57,7 +57,7 @@ async def mark_read(
         msg = await svc.mark_read(tenant_id, message_id)
         return success_response(data=AgentMessageResponse.model_validate(msg))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.post("/{message_id}/reply", status_code=201)
@@ -76,5 +76,5 @@ async def reply_to_message(
         )
         return success_response(data=AgentMessageResponse.model_validate(msg))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 

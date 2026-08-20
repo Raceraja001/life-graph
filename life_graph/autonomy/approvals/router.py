@@ -76,7 +76,7 @@ async def resolve_approval(approval_id: str, request: ResolveRequest):
             also_trust=request.also_trust,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     resolved_status = "approved" if request.decision == "approve" else "rejected"
     return success_response(
