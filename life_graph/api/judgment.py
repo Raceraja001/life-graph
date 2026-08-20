@@ -297,6 +297,8 @@ async def get_calibration(
     Returns Brier scores, bucket analysis, and bias findings
     for the specified domain and time window.
     """
+    from sqlalchemy import select
+
     from life_graph.models.db import CalibrationSnapshot
 
     async with async_session() as session:
@@ -340,6 +342,8 @@ async def get_calibration_curve(
     Returns the buckets array from the latest calibration snapshot,
     suitable for rendering a calibration chart.
     """
+    from sqlalchemy import select
+
     from life_graph.models.db import CalibrationSnapshot
 
     async with async_session() as session:

@@ -7,6 +7,10 @@ memory layer for semantic retrieval.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from life_graph.storage.protocol import MemoryStore
 
 logger = logging.getLogger(__name__)
 
