@@ -1,0 +1,51 @@
+# Build context hygiene.
+#
+# Without this the context was 5.4 GB — 5.3 GB of it the local .venv — sent
+# to the daemon on every build, including the `docker compose build` that
+# scripts/deploy.sh runs against the production VM. The Dockerfile only ever
+# COPYs explicit paths, so none of this reached the image; it was pure
+# transfer cost.
+
+# Local environments
+.venv/
+venv/
+env/
+node_modules/
+__pycache__/
+*.py[cod]
+
+# Secrets — belong in the runtime env, never in a build context
+.env
+.env.*
+!.env.example
+
+# VCS and CI
+.git/
+.github/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.turbo/
+.next/
+
+# Local runtime state produced by start.sh
+.run/
+logs/
+*.log
+
+# Agent/editor state
+.claude/
+.playwright-mcp/
+.comms/
+.forge/
+.firecrawl/
+
+# Not needed to build a runtime image
+docs/
+tests/
+dashboard/
+
+# Large local artifacts
+*.zip
