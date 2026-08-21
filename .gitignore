@@ -64,3 +64,7 @@ uvicorn_err.txt
 # preserved in the 2026-08-20 backup
 Frontend application design-handoff.zip
 Frontend application design-handoff/
+
+# start.sh runtime state
+.run/
+logs/

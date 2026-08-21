@@ -41,13 +41,23 @@ npm run build
 npm run lint     # eslint
 ```
 
-Full local stack (Windows/PowerShell — the developer's primary workflow):
+Full local stack — Linux (the repo now lives on ext4 at `~/projects/life-graph`):
 
-```powershell
-.\start.ps1          # Postgres+Redis in Docker, uvicorn on :8080, Next.js on :3000
-.\start.ps1 -Infra   # only Postgres + Redis; also -Backend / -Dashboard / -All
-.\stop.ps1 ; .\status.ps1
+```bash
+./start.sh           # Postgres+Redis in containers, uvicorn on :8080, Next.js on :3000
+./start.sh --infra   # only Postgres + Redis; also --backend / --dashboard / --all
+./stop.sh ; ./status.sh
 ```
+
+`start.sh` refuses to reclaim a port held by a process outside this repo — several
+of the developer's projects run dev servers on the same default ports. It also
+reads the Postgres/Redis ports from the app's own settings (`55432`/`56379` via
+`docker-compose.override.yml`), not the 5432/6379 defaults, and auto-detects
+`podman compose` when the Docker daemon isn't reachable — this machine runs
+rootless podman. Background process pids land in `.run/`, output in `logs/`.
+
+The equivalent Windows scripts (`start.ps1`, `stop.ps1`, `status.ps1`) are kept
+for the Windows side of the dual boot.
 
 Docker: `docker compose up -d` runs `app`, `worker` (ARQ), `mcp`, `postgres`, `redis`, `minio`.
 Health check: `curl http://localhost:8080/health` (deep — checks DB + Redis, 503 if critical).
