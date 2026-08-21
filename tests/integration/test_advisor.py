@@ -29,17 +29,17 @@ TENANT_HEADERS = {
 }
 
 
-
-
 def _mock_llm_response(recommendation: str = "Use FastAPI") -> MagicMock:
     """Create a mock litellm.acompletion response with valid JSON."""
-    structured_response = json.dumps({
-        "recommendation": recommendation,
-        "pros": ["Fast", "Modern", "Async"],
-        "cons": ["Learning curve"],
-        "confidence": 0.85,
-        "reasoning": "FastAPI is the best choice for async APIs.",
-    })
+    structured_response = json.dumps(
+        {
+            "recommendation": recommendation,
+            "pros": ["Fast", "Modern", "Async"],
+            "cons": ["Learning curve"],
+            "confidence": 0.85,
+            "reasoning": "FastAPI is the best choice for async APIs.",
+        }
+    )
 
     mock_message = MagicMock()
     mock_message.content = structured_response
@@ -78,7 +78,9 @@ class TestAskAdvisor:
     @skip_on_db_error
     @patch("litellm.acompletion")
     async def test_ask_advisor_returns_200(
-        self, mock_acompletion: AsyncMock, client: AsyncClient,
+        self,
+        mock_acompletion: AsyncMock,
+        client: AsyncClient,
     ):
         """Querying the advisor with mocked LLM returns 200."""
         mock_acompletion.return_value = _mock_llm_response()
@@ -88,8 +90,7 @@ class TestAskAdvisor:
             json={"question": "Should I use FastAPI or Django for my new API?"},
         )
         assert response.status_code in (200, 500), (
-            f"Expected 200 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 200 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 200:
@@ -131,7 +132,8 @@ class TestGetSession:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_nonexistent_session_returns_404(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Requesting a non-existent session returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
@@ -148,7 +150,9 @@ class TestChooseRecommendation:
     @skip_on_db_error
     @patch("litellm.acompletion")
     async def test_choose_recommendation(
-        self, mock_acompletion: AsyncMock, client: AsyncClient,
+        self,
+        mock_acompletion: AsyncMock,
+        client: AsyncClient,
     ):
         """Create a session via ask, then choose a model's recommendation."""
         mock_acompletion.return_value = _mock_llm_response()
@@ -176,7 +180,8 @@ class TestChooseRecommendation:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_choose_nonexistent_session_returns_404(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Choosing on a non-existent session returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"

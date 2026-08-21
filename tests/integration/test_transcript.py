@@ -24,8 +24,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for transcript API tests."""
@@ -44,7 +42,8 @@ class TestIngestTranscript:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_ingest_plain_text_returns_200(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Ingesting a plain text transcript returns 200."""
         response = await client.post(
@@ -60,8 +59,7 @@ class TestIngestTranscript:
             },
         )
         assert response.status_code in (200, 500), (
-            f"Expected 200 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 200 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 200:
@@ -75,7 +73,8 @@ class TestIngestTranscript:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_extract_prefer_statement(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Extract preferences from 'I prefer X over Y' statements."""
         response = await client.post(
@@ -100,7 +99,8 @@ class TestIngestTranscript:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_detect_reinforcement(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Submitting the same preference twice detects reinforcement."""
         messages = {
@@ -132,7 +132,8 @@ class TestIngestTranscript:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_empty_messages_returns_422(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Empty messages array returns 422."""
         response = await client.post(
@@ -148,7 +149,8 @@ class TestIngestTranscript:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_multiple_preferences_in_conversation(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Multiple preference statements in a conversation are extracted."""
         response = await client.post(

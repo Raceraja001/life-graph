@@ -53,9 +53,7 @@ class TestPipeline:
 
     async def test_trigger_missing_field_is_422(self, client: AsyncClient):
         # Genuinely invalid input (missing required fields) MUST 422.
-        resp = await client.post(
-            "/api/v1/autonomy/auto-actions", json={"agent_id": "only"}
-        )
+        resp = await client.post("/api/v1/autonomy/auto-actions", json={"agent_id": "only"})
         assert resp.status_code == 422, resp.text
 
     @skip_on_db_error
@@ -72,9 +70,7 @@ class TestPipeline:
         created = await client.post("/api/v1/autonomy/auto-actions", json=req)
         if created.status_code not in (201, 202):
             return
-        listing = await client.get(
-            f"/api/v1/autonomy/auto-actions?project_id={req['project_id']}"
-        )
+        listing = await client.get(f"/api/v1/autonomy/auto-actions?project_id={req['project_id']}")
         assert listing.status_code == 200, listing.text
         rows = listing.json()["data"]
         assert any(r["action_name"] == req["action_type"] for r in rows)

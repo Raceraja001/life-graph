@@ -99,13 +99,13 @@ class TestAllowedToolsEnforcement:
             fake_run,
         ):
             await pm._run_agent(
-                "test_tenant", "test_persona",
-                {"message": "hi"}, persona,
+                "test_tenant",
+                "test_persona",
+                {"message": "hi"},
+                persona,
             )
 
-        tool_names = {
-            t["function"]["name"] for t in captured_kwargs["tools"]
-        }
+        tool_names = {t["function"]["name"] for t in captured_kwargs["tools"]}
         assert tool_names == {"get_current_datetime"}
 
     @pytest.mark.asyncio
@@ -131,8 +131,10 @@ class TestAllowedToolsEnforcement:
             fake_run,
         ):
             await pm._run_agent(
-                "test_tenant", "chief",
-                {"message": "hi"}, persona,
+                "test_tenant",
+                "chief",
+                {"message": "hi"},
+                persona,
             )
 
         assert captured_kwargs["tools"] is None
@@ -168,6 +170,7 @@ class TestDelegateToPersonaTool:
             },
         )
         import json
+
         result = json.loads(result_json)
 
         assert result["status"] in ("completed", "failed", "still_running")
@@ -175,7 +178,8 @@ class TestDelegateToPersonaTool:
         # Whatever the outcome, the child task must be correctly linked.
         tasks, _total, _has_more = await pm.list_tasks(TENANT_ID, agent_name="chief")
         child = next(
-            (t for t in tasks if str(t.parent_task_id) == root_id), None,
+            (t for t in tasks if str(t.parent_task_id) == root_id),
+            None,
         )
         assert child is not None
         assert str(child.root_task_id) == root_id
@@ -191,7 +195,8 @@ class TestDelegateToPersonaTool:
             input_data={"message": "root"},
         )
         set_task_context(
-            task_id=uuid.UUID(root["task_id"]), tenant_id=TENANT_ID,
+            task_id=uuid.UUID(root["task_id"]),
+            tenant_id=TENANT_ID,
         )
 
         result_json = await tool_registry.execute(
@@ -199,6 +204,7 @@ class TestDelegateToPersonaTool:
             {"persona": "nonexistent_persona_xyz", "subtask": "do it"},
         )
         import json
+
         result = json.loads(result_json)
         assert "error" in result
 
@@ -214,6 +220,7 @@ class TestDelegateToPersonaTool:
                 {"persona": "chief", "subtask": "do it"},
             )
             import json
+
             result = json.loads(result_json)
             assert "error" in result
             assert "task context" in result["error"].lower()
@@ -231,7 +238,8 @@ class TestDelegateToPersonaTool:
             depth=ProcessManager.MAX_DELEGATION_DEPTH,
         )
         set_task_context(
-            task_id=uuid.UUID(root["task_id"]), tenant_id=TENANT_ID,
+            task_id=uuid.UUID(root["task_id"]),
+            tenant_id=TENANT_ID,
         )
 
         result_json = await tool_registry.execute(
@@ -239,6 +247,7 @@ class TestDelegateToPersonaTool:
             {"persona": "chief", "subtask": "one too deep"},
         )
         import json
+
         result = json.loads(result_json)
         assert "error" in result
         assert "delegation depth" in result["error"].lower()

@@ -34,8 +34,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for notification API tests."""
@@ -55,10 +53,12 @@ def _make_mock_notification(**overrides: Any) -> MagicMock:
     """Build a mock Notification ORM object."""
     notif = MagicMock()
     notif.id = overrides.get(
-        "id", uuid.uuid4(),
+        "id",
+        uuid.uuid4(),
     )
     notif.tenant_id = overrides.get(
-        "tenant_id", "test_notification_tenant",
+        "tenant_id",
+        "test_notification_tenant",
     )
     notif.priority = overrides.get("priority", "info")
     notif.channel = overrides.get("channel", "terminal")
@@ -67,16 +67,19 @@ def _make_mock_notification(**overrides: Any) -> MagicMock:
     notif.extra_metadata = overrides.get("metadata", {})
     notif.is_read = overrides.get("is_read", False)
     notif.is_delivered = overrides.get(
-        "is_delivered", False,
+        "is_delivered",
+        False,
     )
     notif.delivered_at = overrides.get("delivered_at", None)
     notif.delivery_error = overrides.get(
-        "delivery_error", None,
+        "delivery_error",
+        None,
     )
     notif.source_type = overrides.get("source_type", None)
     notif.source_id = overrides.get("source_id", None)
     notif.created_at = overrides.get(
-        "created_at", datetime.now(timezone.utc),
+        "created_at",
+        datetime.now(timezone.utc),
     )
     return notif
 
@@ -185,8 +188,11 @@ class TestNotificationEngineValidation:
         from life_graph.kernel.notification_engine import (
             VALID_PRIORITIES,
         )
+
         assert VALID_PRIORITIES == {
-            "critical", "important", "info",
+            "critical",
+            "important",
+            "info",
         }
 
     def test_valid_channels_exist(self):
@@ -194,8 +200,11 @@ class TestNotificationEngineValidation:
         from life_graph.kernel.notification_engine import (
             VALID_CHANNELS,
         )
+
         assert VALID_CHANNELS == {
-            "terminal", "email", "webhook",
+            "terminal",
+            "email",
+            "webhook",
         }
 
 
@@ -208,7 +217,8 @@ class TestListNotifications:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_returns_200_or_500(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """List endpoint returns 200 or 500 (DB down)."""
         response = await client.get(
@@ -225,7 +235,8 @@ class TestListNotifications:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_with_priority_filter(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Filter by priority returns 200 or 500."""
         response = await client.get(
@@ -237,7 +248,8 @@ class TestListNotifications:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_with_read_filter(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Filter by read state returns 200 or 500."""
         response = await client.get(
@@ -249,7 +261,8 @@ class TestListNotifications:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_with_pagination(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Pagination params accepted."""
         response = await client.get(
@@ -261,7 +274,8 @@ class TestListNotifications:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_combined_filters(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Multiple filters combined."""
         response = await client.get(
@@ -285,7 +299,8 @@ class TestMarkRead:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_mark_read_not_found(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Non-existent notification returns 404 or 500."""
         fake_id = "00000000-0000-0000-0000-000000000000"
@@ -297,7 +312,8 @@ class TestMarkRead:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_mark_read_invalid_uuid(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Invalid UUID returns 422."""
         response = await client.patch(
@@ -315,7 +331,8 @@ class TestMarkAllRead:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_mark_all_read_returns_200_or_500(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Mark-all-read returns 200 or 500."""
         response = await client.post(
@@ -337,7 +354,8 @@ class TestNotificationFlow:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_notification_engine_create_and_list(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Create via engine, verify in list endpoint.
 
@@ -357,7 +375,8 @@ class TestNotificationFlow:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_mark_all_clears_unread(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """After mark-all-read, unread count should be 0."""
         resp = await client.post(
@@ -371,8 +390,11 @@ class TestNotificationFlow:
         # Verify unread count
         list_resp = await client.get(
             "/api/v1/kernel/notifications",
-            params={"read": "false"},
+            # total and unread_count are opt-in — each costs an extra DB
+            # query, so they are null unless asked for. This test predates
+            # that optimisation and was asserting against the default null.
+            params={"read": "false", "include_total": "true"},
         )
-        if list_resp.status_code == 200:
-            data = list_resp.json()["data"]
-            assert data["total"] == 0
+        assert list_resp.status_code == 200
+        data = list_resp.json()["data"]
+        assert data["total"] == 0

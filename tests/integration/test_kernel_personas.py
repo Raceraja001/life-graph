@@ -27,8 +27,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for persona API tests."""
@@ -50,7 +48,8 @@ class TestCreatePersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_persona_returns_201(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Creating a persona with valid input returns 201."""
         pname = f"test_analyst_{uuid.uuid4().hex[:6]}"
@@ -77,7 +76,8 @@ class TestCreatePersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_persona_missing_name(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Missing required name returns 422."""
         response = await client.post(
@@ -91,7 +91,8 @@ class TestCreatePersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_persona_missing_system_prompt(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Missing required system_prompt returns 422."""
         response = await client.post(
@@ -105,7 +106,8 @@ class TestCreatePersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_persona_duplicate_name(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Duplicate name for same tenant returns 409."""
         payload = {
@@ -113,20 +115,23 @@ class TestCreatePersona:
             "system_prompt": "Test prompt.",
         }
         first = await client.post(
-            "/api/v1/kernel/personas", json=payload,
+            "/api/v1/kernel/personas",
+            json=payload,
         )
         if first.status_code != 201:
             pytest.skip("DB unavailable")
 
         second = await client.post(
-            "/api/v1/kernel/personas", json=payload,
+            "/api/v1/kernel/personas",
+            json=payload,
         )
         assert second.status_code in (409, 500)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_persona_with_tools(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Persona with allowed_tools is created correctly."""
         response = await client.post(
@@ -135,7 +140,8 @@ class TestCreatePersona:
                 "name": f"tooled_persona_{uuid.uuid4().hex[:6]}",
                 "system_prompt": "You have tools.",
                 "allowed_tools": [
-                    "file_read", "web_search",
+                    "file_read",
+                    "web_search",
                 ],
             },
         )
@@ -144,13 +150,15 @@ class TestCreatePersona:
         if response.status_code == 201:
             data = response.json()["data"]
             assert data["allowed_tools"] == [
-                "file_read", "web_search",
+                "file_read",
+                "web_search",
             ]
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_persona_invalid_temperature(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Temperature out of range returns 422."""
         response = await client.post(
@@ -173,7 +181,8 @@ class TestListPersonas:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_personas_returns_200(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Listing personas returns 200 with total count."""
         response = await client.get("/api/v1/kernel/personas")
@@ -190,7 +199,8 @@ class TestListPersonas:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_personas_include_inactive(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """include_inactive=true also returns deactivated."""
         response = await client.get(
@@ -202,7 +212,8 @@ class TestListPersonas:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_personas_includes_temperature_and_max_tokens(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """List response includes temperature/max_tokens per persona, not just
         the narrow summary fields — the model picker renders every persona as
@@ -231,7 +242,8 @@ class TestGetPersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_persona_not_found(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Non-existent persona returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
@@ -243,7 +255,8 @@ class TestGetPersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_persona_invalid_uuid(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Invalid UUID returns 422."""
         response = await client.get(
@@ -254,7 +267,8 @@ class TestGetPersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_persona_after_create(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Get returns full detail after creation."""
         pname = f"detail_test_persona_{uuid.uuid4().hex[:6]}"
@@ -292,7 +306,8 @@ class TestUpdatePersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_update_persona_not_found(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Updating non-existent persona returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
@@ -305,7 +320,8 @@ class TestUpdatePersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_update_persona_temperature(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Updating temperature returns success message."""
         create_resp = await client.post(
@@ -332,7 +348,8 @@ class TestUpdatePersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_update_persona_system_prompt(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Updating system_prompt works correctly."""
         create_resp = await client.post(
@@ -356,10 +373,7 @@ class TestUpdatePersona:
             f"/api/v1/kernel/personas/{pid}",
         )
         assert detail.status_code in (200, 500)
-        assert (
-            detail.json()["data"]["system_prompt"]
-            == "Updated prompt."
-        )
+        assert detail.json()["data"]["system_prompt"] == "Updated prompt."
 
 
 # ── Delete Persona ───────────────────────────────────────────
@@ -371,7 +385,8 @@ class TestDeletePersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_delete_persona_not_found(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Deleting non-existent persona returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
@@ -383,7 +398,8 @@ class TestDeletePersona:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_delete_custom_persona(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Deleting a custom persona returns success."""
         pname = f"delete_me_persona_{uuid.uuid4().hex[:6]}"
@@ -417,18 +433,25 @@ class TestToolPermissions:
     def service(self):
         """Create a PersonaService with a dummy factory."""
         from life_graph.kernel.personas import PersonaService
+
         return PersonaService(session_factory=None)  # type: ignore
 
     def test_admin_tenant_gets_all_tools(self, service):
         """Admin tenants get the full allowed_tools list."""
         persona = {
             "allowed_tools": [
-                "terminal", "git", "file_read", "web_search",
+                "terminal",
+                "git",
+                "file_read",
+                "web_search",
             ],
         }
         tools = service.resolve_tools(persona, "default")
         assert tools == [
-            "terminal", "git", "file_read", "web_search",
+            "terminal",
+            "git",
+            "file_read",
+            "web_search",
         ]
 
     def test_legacy_tenant_gets_all_tools(self, service):
@@ -443,41 +466,53 @@ class TestToolPermissions:
         """Personal tenants get full access."""
         persona = {
             "allowed_tools": [
-                "terminal", "git", "file_write",
+                "terminal",
+                "git",
+                "file_write",
             ],
         }
         tools = service.resolve_tools(
-            persona, "personal-user-123",
+            persona,
+            "personal-user-123",
         )
         assert tools == ["terminal", "git", "file_write"]
 
     def test_customer_tenant_strips_system_tools(
-        self, service,
+        self,
+        service,
     ):
         """Customer tenants lose system/write tools."""
         persona = {
             "allowed_tools": [
-                "terminal", "git", "file_read",
-                "web_search", "docker", "file_write",
+                "terminal",
+                "git",
+                "file_read",
+                "web_search",
+                "docker",
+                "file_write",
             ],
         }
         tools = service.resolve_tools(
-            persona, "customer-acme-corp",
+            persona,
+            "customer-acme-corp",
         )
         # Only safe tools survive
         assert tools == ["file_read", "web_search"]
 
     def test_customer_tenant_with_only_safe_tools(
-        self, service,
+        self,
+        service,
     ):
         """Customer with safe-only tools gets all of them."""
         persona = {
             "allowed_tools": [
-                "memory_search", "file_read",
+                "memory_search",
+                "file_read",
             ],
         }
         tools = service.resolve_tools(
-            persona, "customer-tenant-42",
+            persona,
+            "customer-tenant-42",
         )
         assert tools == ["memory_search", "file_read"]
 
@@ -503,7 +538,8 @@ class TestSeedBuiltinsIdempotency:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_seed_backfills_new_persona_for_already_seeded_tenant(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         from unittest.mock import patch
 
@@ -542,7 +578,8 @@ class TestSeedBuiltinsIdempotency:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_concurrent_seed_calls_do_not_lose_personas(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Two overlapping seed_builtins() calls for the same tenant
         (e.g. two instances starting up at once) race on the unique
@@ -573,7 +610,6 @@ class TestSeedBuiltinsIdempotency:
         )
         # No duplicate rows for any name either.
         assert total == len(personas_module._BUILTIN_PERSONAS)
-
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -685,7 +721,8 @@ class TestNewPersonalRolesPersonas:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_seeding_creates_all_five_new_personas(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         from life_graph.api.dependencies import get_persona_service
 
@@ -700,7 +737,8 @@ class TestNewPersonalRolesPersonas:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_scout_and_admin_have_no_action_tools(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         from life_graph.api.dependencies import get_persona_service
 
@@ -713,14 +751,13 @@ class TestNewPersonalRolesPersonas:
             persona = await svc.get_by_name(tenant, name)
             assert persona is not None
             allowed = set(persona["allowed_tools"] or [])
-            assert not (allowed & forbidden), (
-                f"{name} has a forbidden tool: {allowed & forbidden}"
-            )
+            assert not (allowed & forbidden), f"{name} has a forbidden tool: {allowed & forbidden}"
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_swe_lead_and_jarvis_can_delegate(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         from life_graph.api.dependencies import get_persona_service
 
@@ -736,7 +773,8 @@ class TestNewPersonalRolesPersonas:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_swe_lead_has_verifier_chain(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         from life_graph.api.dependencies import get_persona_service
 

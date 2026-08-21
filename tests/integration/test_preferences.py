@@ -27,8 +27,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for preference API tests."""
@@ -61,8 +59,7 @@ class TestCreatePreference:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:
@@ -123,7 +120,8 @@ class TestListPreferences:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_preferences_with_category_filter(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Listing preferences with category filter returns filtered results."""
         response = await client.get(

@@ -30,8 +30,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for watcher API tests."""
@@ -53,8 +51,7 @@ class TestListWatcherConfigs:
         """Listing watcher configs returns 200 with data array."""
         response = await client.get("/api/v1/watchers/configs")
         assert response.status_code in (200, 500), (
-            f"Expected 200 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 200 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 200:
@@ -75,8 +72,7 @@ class TestUpdateWatcherConfig:
             json={"enabled": False},
         )
         assert response.status_code in (404, 500), (
-            f"Expected 404 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 404 or 500, got {response.status_code}: {response.text}"
         )
 
 
@@ -203,8 +199,7 @@ class TestCreateNotificationChannel:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:

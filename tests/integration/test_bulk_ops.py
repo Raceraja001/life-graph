@@ -21,9 +21,7 @@ async def client() -> AsyncClient:
     """Authenticated test client."""
     transport = ASGITransport(app=app)
     headers = {"X-Tenant-ID": "test_tenant", "X-User-ID": "user-test"}
-    async with AsyncClient(
-        transport=transport, base_url="http://test", headers=headers
-    ) as c:
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:
         yield c
 
 
@@ -142,10 +140,7 @@ class TestBulkImport:
     @skip_on_db_error
     async def test_import_multiple_memories(self, client: AsyncClient):
         """Import several memory items in one request."""
-        memories = [
-            {"content": f"bulk memory {i}", "tags": ["bulk"]}
-            for i in range(5)
-        ]
+        memories = [{"content": f"bulk memory {i}", "tags": ["bulk"]} for i in range(5)]
         r = await client.post(
             "/api/v1/admin/bulk/import",
             json={"memories": memories, "generate_embeddings": False},
@@ -176,9 +171,7 @@ class TestBulkImport:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_import_exceeds_max_length_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_import_exceeds_max_length_returns_422(self, client: AsyncClient):
         """Importing >500 memories must be rejected by max_length validation."""
         memories = [{"content": f"mem {i}"} for i in range(501)]
         r = await client.post(
@@ -214,9 +207,7 @@ class TestBulkImport:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_import_invalid_importance_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_import_invalid_importance_returns_422(self, client: AsyncClient):
         """Importance outside 0-1 range must fail Pydantic validation."""
         r = await client.post(
             "/api/v1/admin/bulk/import",
@@ -229,9 +220,7 @@ class TestBulkImport:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_import_empty_content_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_import_empty_content_returns_422(self, client: AsyncClient):
         """A memory item with empty content must fail min_length=1."""
         r = await client.post(
             "/api/v1/admin/bulk/import",
@@ -244,9 +233,7 @@ class TestBulkImport:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_import_missing_memories_key_returns_422(
-        self, client: AsyncClient
-    ):
+    async def test_import_missing_memories_key_returns_422(self, client: AsyncClient):
         """Omitting the required 'memories' field triggers 422."""
         r = await client.post(
             "/api/v1/admin/bulk/import",

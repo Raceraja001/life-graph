@@ -20,8 +20,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for agent networks API tests."""
@@ -54,8 +52,7 @@ class TestCreateAgentTask:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:
@@ -174,8 +171,7 @@ class TestAgentMessaging:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:
@@ -306,8 +302,7 @@ class TestWorkflows:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:
@@ -365,8 +360,7 @@ class TestSharedContext:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:

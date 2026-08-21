@@ -21,9 +21,7 @@ async def client() -> AsyncClient:
     """Authenticated test client."""
     transport = ASGITransport(app=app)
     headers = {"X-Tenant-ID": "test_tenant", "X-User-ID": "user-test"}
-    async with AsyncClient(
-        transport=transport, base_url="http://test", headers=headers
-    ) as c:
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:
         yield c
 
 
@@ -104,9 +102,7 @@ class TestMemoryPagination:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_list_memories_total_absent_by_default(
-        self, client: AsyncClient
-    ):
+    async def test_list_memories_total_absent_by_default(self, client: AsyncClient):
         """Without include_total, meta.total should be null."""
         r = await client.get("/api/v1/memories/", params={"limit": 5})
         assert r.status_code in (200, 500)
@@ -129,9 +125,7 @@ class TestMemoryPagination:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_list_memories_has_more_false_when_empty(
-        self, client: AsyncClient
-    ):
+    async def test_list_memories_has_more_false_when_empty(self, client: AsyncClient):
         """On an empty DB, has_more must be false."""
         r = await client.get("/api/v1/memories/", params={"limit": 100})
         assert r.status_code in (200, 500)
@@ -144,9 +138,7 @@ class TestMemoryPagination:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_list_memories_next_cursor_null_when_no_more(
-        self, client: AsyncClient
-    ):
+    async def test_list_memories_next_cursor_null_when_no_more(self, client: AsyncClient):
         """When has_more is false, next_cursor should be null."""
         r = await client.get("/api/v1/memories/", params={"limit": 100})
         assert r.status_code in (200, 500)
@@ -227,9 +219,7 @@ class TestSessionPagination:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_list_sessions_total_absent_by_default(
-        self, client: AsyncClient
-    ):
+    async def test_list_sessions_total_absent_by_default(self, client: AsyncClient):
         """Without include_total, meta.total should be null."""
         r = await client.get("/api/v1/sessions/", params={"limit": 5})
         assert r.status_code in (200, 500)
@@ -278,9 +268,7 @@ class TestEnvelopeConsistency:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_memories_and_sessions_share_envelope_keys(
-        self, client: AsyncClient
-    ):
+    async def test_memories_and_sessions_share_envelope_keys(self, client: AsyncClient):
         """Both endpoints must return identical top-level keys."""
         r_mem = await client.get("/api/v1/memories/", params={"limit": 5})
         r_ses = await client.get("/api/v1/sessions/", params={"limit": 5})
@@ -294,9 +282,7 @@ class TestEnvelopeConsistency:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_memories_and_sessions_share_meta_keys(
-        self, client: AsyncClient
-    ):
+    async def test_memories_and_sessions_share_meta_keys(self, client: AsyncClient):
         """Both endpoints must have identical meta keys."""
         r_mem = await client.get("/api/v1/memories/", params={"limit": 5})
         r_ses = await client.get("/api/v1/sessions/", params={"limit": 5})

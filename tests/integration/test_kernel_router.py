@@ -25,8 +25,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for router API tests."""
@@ -51,6 +49,7 @@ class TestIntentClassification:
         from life_graph.kernel.chief_router import (
             ChiefRouter,
         )
+
         return ChiefRouter(
             session_factory=None,  # type: ignore
             persona_service=None,
@@ -59,84 +58,62 @@ class TestIntentClassification:
 
     def test_classify_code_intent(self, router):
         """Code-related messages classify as 'code'."""
-        intent, conf = router.classify(
-            "Can you refactor the user service class?"
-        )
+        intent, conf = router.classify("Can you refactor the user service class?")
         assert intent == "code"
         assert conf >= 0.4
 
     def test_classify_code_debug(self, router):
         """Debug messages classify as 'code'."""
-        intent, conf = router.classify(
-            "Fix the bug in the login endpoint"
-        )
+        intent, conf = router.classify("Fix the bug in the login endpoint")
         assert intent == "code"
         assert conf >= 0.4
 
     def test_classify_code_multiple_patterns(self, router):
         """Multiple code patterns increase confidence."""
-        intent, conf = router.classify(
-            "Write a function to refactor the endpoint"
-        )
+        intent, conf = router.classify("Write a function to refactor the endpoint")
         assert intent == "code"
         # Multiple matches → higher confidence
         assert conf >= 0.55
 
     def test_classify_research_intent(self, router):
         """Research messages classify as 'research'."""
-        intent, conf = router.classify(
-            "Research the best approach for caching"
-        )
+        intent, conf = router.classify("Research the best approach for caching")
         assert intent == "research"
         assert conf >= 0.4
 
     def test_classify_research_comparison(self, router):
         """Comparison queries classify as 'research'."""
-        intent, conf = router.classify(
-            "Compare Redis vs Memcached pros and cons"
-        )
+        intent, conf = router.classify("Compare Redis vs Memcached pros and cons")
         assert intent == "research"
 
     def test_classify_deploy_intent(self, router):
         """Deploy messages classify as 'deploy'."""
-        intent, conf = router.classify(
-            "Deploy the app to production using Docker"
-        )
+        intent, conf = router.classify("Deploy the app to production using Docker")
         assert intent == "deploy"
 
     def test_classify_monitor_intent(self, router):
         """Monitor messages classify as 'monitor'."""
-        intent, conf = router.classify(
-            "Check the health status and metrics"
-        )
+        intent, conf = router.classify("Check the health status and metrics")
         assert intent == "monitor"
 
     def test_classify_data_intent(self, router):
         """Data messages classify as 'data'."""
-        intent, conf = router.classify(
-            "Write a SQL query for the database migration"
-        )
+        intent, conf = router.classify("Write a SQL query for the database migration")
         assert intent == "data"
 
     def test_classify_docs_intent(self, router):
         """Documentation messages classify as 'docs'."""
-        intent, conf = router.classify(
-            "Update the README with API documentation"
-        )
+        intent, conf = router.classify("Update the README with API documentation")
         assert intent == "docs"
 
     def test_classify_question_intent(self, router):
         """Questions classify as 'question'."""
-        intent, conf = router.classify(
-            "How do I reset my password?"
-        )
+        intent, conf = router.classify("How do I reset my password?")
         assert intent == "question"
 
     def test_classify_general_fallback(self, router):
         """Unmatched messages fall back to 'general'."""
-        intent, conf = router.classify(
-            "Hello there, nice weather today"
-        )
+        intent, conf = router.classify("Hello there, nice weather today")
         assert intent == "general"
         assert conf == 0.3
 
@@ -157,9 +134,16 @@ class TestDefaultRouting:
         from life_graph.kernel.chief_router import (
             DEFAULT_ROUTING,
         )
+
         expected_intents = {
-            "code", "research", "deploy", "monitor",
-            "data", "docs", "question", "general",
+            "code",
+            "research",
+            "deploy",
+            "monitor",
+            "data",
+            "docs",
+            "question",
+            "general",
         }
         assert set(DEFAULT_ROUTING.keys()) == expected_intents
 
@@ -167,6 +151,7 @@ class TestDefaultRouting:
         from life_graph.kernel.chief_router import (
             DEFAULT_ROUTING,
         )
+
         assert DEFAULT_ROUTING["code"] == "cody"
         assert DEFAULT_ROUTING["research"] == "rex"
         assert DEFAULT_ROUTING["deploy"] == "ops"
@@ -186,7 +171,8 @@ class TestClassifyEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_classify_returns_200(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Classify endpoint returns intent metadata."""
         response = await client.post(
@@ -203,7 +189,8 @@ class TestClassifyEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_classify_general_fallback(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Unmatched messages return 'general' intent."""
         response = await client.post(
@@ -218,7 +205,8 @@ class TestClassifyEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_classify_missing_message(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Missing message returns 422."""
         response = await client.post(
@@ -230,14 +218,14 @@ class TestClassifyEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_classify_research_intent(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Research message is classified correctly."""
         response = await client.post(
             "/api/v1/kernel/classify",
             json={
-                "message": "Investigate the best practices"
-                " for WebSocket scaling",
+                "message": "Investigate the best practices for WebSocket scaling",
             },
         )
         assert response.status_code in (200, 500)
@@ -248,14 +236,14 @@ class TestClassifyEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_classify_shows_all_scores(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Classify returns all non-zero intent scores."""
         response = await client.post(
             "/api/v1/kernel/classify",
             json={
-                "message": "Research and implement a"
-                " code refactoring tool",
+                "message": "Research and implement a code refactoring tool",
             },
         )
         assert response.status_code in (200, 500)
@@ -273,7 +261,8 @@ class TestRouteEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_route_returns_201(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Routing a message creates session and task."""
         response = await client.post(
@@ -293,21 +282,25 @@ class TestRouteEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_route_missing_message(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Missing message returns 422."""
         response = await client.post(
-            "/api/v1/kernel/route", json={},
+            "/api/v1/kernel/route",
+            json={},
         )
         assert response.status_code in (422, 500)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_route_with_project_id(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Route with project_id passes it through."""
         import uuid as _uuid
+
         response = await client.post(
             "/api/v1/kernel/route",
             json={
@@ -327,7 +320,8 @@ class TestSessionsEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_sessions_returns_200(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Listing sessions returns paginated data."""
         response = await client.get(
@@ -344,7 +338,8 @@ class TestSessionsEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_sessions_with_intent_filter(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Sessions can be filtered by intent."""
         response = await client.get(
@@ -356,7 +351,8 @@ class TestSessionsEndpoint:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_sessions_pagination(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Pagination params are respected."""
         response = await client.get(
@@ -379,7 +375,8 @@ class TestTargetAgentOverride:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_target_agent_bypasses_classification(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         response = await client.post(
             "/api/v1/kernel/route",
@@ -402,7 +399,9 @@ class TestTargetAgentOverride:
         from life_graph.kernel.chief_router import ChiefRouter
 
         router = ChiefRouter(
-            session_factory=None, persona_service=None, process_manager=None,
+            session_factory=None,
+            persona_service=None,
+            process_manager=None,
         )
         router.classify = AsyncMock()  # type: ignore[method-assign]
         router._create_session = AsyncMock(return_value=_uuid.uuid4())  # type: ignore[method-assign]

@@ -31,11 +31,11 @@ class TestAppBoot:
         monkeypatch.setattr("life_graph.config.settings.mcp_servers", "[]", raising=False)
 
         transport = ASGITransport(app=app)
-        async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as client:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
             async with app.router.lifespan_context(app):
                 resp = await client.get("/health")
 
         # Accept 200 (healthy) or 503 (infrastructure unavailable in CI)
-        assert resp.status_code in (200, 503), f"Unexpected status: {resp.status_code}, body: {resp.text}"
+        assert resp.status_code in (200, 503), (
+            f"Unexpected status: {resp.status_code}, body: {resp.text}"
+        )

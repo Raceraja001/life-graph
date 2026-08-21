@@ -101,9 +101,7 @@ class TestAsk:
         cid = await _create_conversation(client)
         if cid is None:
             return
-        resp = await client.post(
-            f"/api/v1/conversations/{cid}/messages", json={"content": "   "}
-        )
+        resp = await client.post(f"/api/v1/conversations/{cid}/messages", json={"content": "   "})
         assert resp.status_code == 422
 
     @skip_on_db_error

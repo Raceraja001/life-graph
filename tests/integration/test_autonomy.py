@@ -31,8 +31,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for autonomy API tests."""
@@ -62,8 +60,7 @@ class TestSafetyRules:
             },
         )
         assert response.status_code in (200, 201, 500), (
-            f"Expected 200/201/500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 200/201/500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code in (200, 201):

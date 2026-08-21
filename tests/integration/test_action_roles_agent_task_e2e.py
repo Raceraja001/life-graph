@@ -54,7 +54,7 @@ AGENT_TASK_PROPOSAL_RESULT = (
 
 
 @pytest.mark.asyncio
-async def test_proposal_bridge_dispatches_agent_task_autofix_request():
+async def test_proposal_bridge_dispatches_agent_task_autofix_request(autonomy_enabled):
     """A proposed agent_task item -> exactly one AutoFixService.process call
     carrying kind="agent_task" and the raw instruction text."""
 
@@ -148,7 +148,7 @@ class _RoutingFakeSession:
 
 
 @pytest.mark.asyncio
-async def test_process_agent_task_always_queues_even_when_classifier_says_auto():
+async def test_process_agent_task_always_queues_even_when_classifier_says_auto(autonomy_enabled):
     """Mirrors test_agent_task_routing.py: the classifier recommends
     AUTO_EXECUTE, but B2-D2's override still forces queued_for_approval for
     an agent_task request — never auto, as part of the full E2E file."""

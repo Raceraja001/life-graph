@@ -26,9 +26,7 @@ async def admin_client() -> AsyncClient:
     """Authenticated admin test client."""
     transport = ASGITransport(app=app)
     headers = {"X-Tenant-ID": "test_admin", "X-User-ID": "admin-user"}
-    async with AsyncClient(
-        transport=transport, base_url="http://test", headers=headers
-    ) as c:
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:
         yield c
 
 

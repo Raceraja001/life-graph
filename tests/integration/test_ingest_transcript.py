@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
 from tests.integration.conftest import skip_on_db_error
+
+from .conftest import minio_available
 
 TENANT_HEADERS = {"X-Tenant-ID": "test-transcript-ingest"}
 
@@ -33,11 +36,15 @@ async def client() -> AsyncClient:
 class TestIngestTranscript:
     @skip_on_db_error
     async def test_valid_batch_is_accepted(self, client: AsyncClient):
+        # Transcript bodies are archived to object storage, so this path
+        # needs MinIO. Skip precisely when it is absent rather than accept a
+        # 500 — accepting the 500 would let a real regression pass here.
+        if not minio_available():
+            pytest.skip("transcript archival needs MinIO (docker compose up minio)")
         resp = await client.post("/api/v1/ingest/external-transcript", json=VALID)
         assert resp.status_code != 422, resp.text
-        assert resp.status_code in (200, 202, 500), resp.text
-        if resp.status_code in (200, 202):
-            assert resp.json()["data"]["session_id"] == "sess-abc"
+        assert resp.status_code in (200, 202), resp.text
+        assert resp.json()["data"]["session_id"] == "sess-abc"
 
     async def test_unknown_tool_rejected(self, client: AsyncClient):
         bad = {**VALID, "tool": "not-a-real-tool"}

@@ -27,8 +27,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for evidence API tests."""
@@ -79,8 +77,7 @@ class TestCreateEvidence:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:
@@ -121,7 +118,8 @@ class TestListEvidence:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_evidence_grouped_by_stance(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Evidence for a preference is returned grouped by stance."""
         pref_id = await _create_preference(client)

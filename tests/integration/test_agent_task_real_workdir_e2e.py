@@ -148,7 +148,7 @@ def _make_service(session, dispatcher) -> AutoFixService:
 
 
 @pytest.mark.asyncio
-async def test_registered_project_resolves_real_uuid_and_requests_isolation():
+async def test_registered_project_resolves_real_uuid_and_requests_isolation(autonomy_enabled):
     """A registered ``"life-graph"`` Project row -> _resolve_repo_project_id
     reaches it -> dispatch_task receives its real UUID, isolate_workdir=True,
     and the diff-scoped verify chain."""
@@ -180,7 +180,7 @@ async def test_registered_project_resolves_real_uuid_and_requests_isolation():
 
 
 @pytest.mark.asyncio
-async def test_no_registered_project_falls_back_to_none_and_still_succeeds():
+async def test_no_registered_project_falls_back_to_none_and_still_succeeds(autonomy_enabled):
     """No registered project -> project_id=None on the dispatch call, and
     the dispatch still succeeds — today's fallback behavior, unbroken."""
     auto_action = _make_pending_agent_task_auto_action()

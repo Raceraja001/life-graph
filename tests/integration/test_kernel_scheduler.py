@@ -14,21 +14,19 @@ cron validation (unit tests, no DB needed).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-
 from tests.integration.conftest import skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test_scheduler_tenant",
     "X-User-ID": "scheduler-test-user",
 }
-
-
 
 
 @pytest_asyncio.fixture
@@ -54,14 +52,13 @@ class TestCronExpression:
         from life_graph.kernel.scheduler import (
             CronExpression,
         )
+
         return CronExpression
 
     def test_parse_every_minute(self, cron_cls):
         """'* * * * *' should parse without error."""
         cron = cron_cls("* * * * *")
-        next_fire = cron.next_fire_time(
-            datetime(2026, 7, 7, 12, 0, 0, tzinfo=timezone.utc)
-        )
+        next_fire = cron.next_fire_time(datetime(2026, 7, 7, 12, 0, 0, tzinfo=UTC))
         assert next_fire is not None
         assert next_fire.minute == 1  # next minute
 
@@ -69,7 +66,13 @@ class TestCronExpression:
         """'0 3 * * *' → next fire at 3:00 AM."""
         cron = cron_cls("0 3 * * *")
         after = datetime(
-            2026, 7, 7, 4, 0, 0, tzinfo=timezone.utc,
+            2026,
+            7,
+            7,
+            4,
+            0,
+            0,
+            tzinfo=UTC,
         )
         next_fire = cron.next_fire_time(after)
         assert next_fire.hour == 3
@@ -80,7 +83,13 @@ class TestCronExpression:
         """'*/15 * * * *' → every 15 minutes."""
         cron = cron_cls("*/15 * * * *")
         after = datetime(
-            2026, 7, 7, 12, 0, 0, tzinfo=timezone.utc,
+            2026,
+            7,
+            7,
+            12,
+            0,
+            0,
+            tzinfo=UTC,
         )
         next_fire = cron.next_fire_time(after)
         assert next_fire.minute in (0, 15, 30, 45)
@@ -89,7 +98,13 @@ class TestCronExpression:
         """'0 9-17 * * *' → hours 9 to 17."""
         cron = cron_cls("0 9-17 * * *")
         after = datetime(
-            2026, 7, 7, 18, 0, 0, tzinfo=timezone.utc,
+            2026,
+            7,
+            7,
+            18,
+            0,
+            0,
+            tzinfo=UTC,
         )
         next_fire = cron.next_fire_time(after)
         assert 9 <= next_fire.hour <= 17
@@ -98,20 +113,28 @@ class TestCronExpression:
         """'0 0 1,15 * *' → 1st and 15th of month."""
         cron = cron_cls("0 0 1,15 * *")
         after = datetime(
-            2026, 7, 2, 0, 0, 0, tzinfo=timezone.utc,
+            2026,
+            7,
+            2,
+            0,
+            0,
+            0,
+            tzinfo=UTC,
         )
         next_fire = cron.next_fire_time(after)
         assert next_fire.day in (1, 15)
 
     def test_invalid_expression_too_few_fields(
-        self, cron_cls,
+        self,
+        cron_cls,
     ):
         """Less than 5 fields raises ValueError."""
         with pytest.raises(ValueError, match="5 fields"):
             cron_cls("0 3 * *")
 
     def test_invalid_expression_too_many_fields(
-        self, cron_cls,
+        self,
+        cron_cls,
     ):
         """More than 5 fields raises ValueError."""
         with pytest.raises(ValueError, match="5 fields"):
@@ -131,7 +154,13 @@ class TestCronExpression:
         """'0 1-10/3 * * *' → hours 1, 4, 7, 10."""
         cron = cron_cls("0 1-10/3 * * *")
         after = datetime(
-            2026, 7, 7, 0, 0, 0, tzinfo=timezone.utc,
+            2026,
+            7,
+            7,
+            0,
+            0,
+            0,
+            tzinfo=UTC,
         )
         next_fire = cron.next_fire_time(after)
         assert next_fire.hour in (1, 4, 7, 10)
@@ -141,7 +170,13 @@ class TestCronExpression:
         cron = cron_cls("0 0 * * 1")
         # 2026-07-07 is a Tuesday
         after = datetime(
-            2026, 7, 7, 1, 0, 0, tzinfo=timezone.utc,
+            2026,
+            7,
+            7,
+            1,
+            0,
+            0,
+            tzinfo=UTC,
         )
         next_fire = cron.next_fire_time(after)
         # Python weekday: Monday = 0
@@ -158,6 +193,7 @@ class TestSchedulerValidation:
         from life_graph.kernel.scheduler import (
             CronExpression,
         )
+
         assert CronExpression.validate("0 3 * * *")
         assert not CronExpression.validate("bad")
 
@@ -171,32 +207,34 @@ class TestCreateSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_schedule_returns_201(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Valid schedule returns 201."""
+        # Unique per run — a fixed name 409s on re-runs.
+        name = f"test-nightly-analysis-{uuid.uuid4().hex[:8]}"
         response = await client.post(
             "/api/v1/kernel/schedules",
             json={
-                "name": "test-nightly-analysis",
+                "name": name,
                 "cron_expression": "0 3 * * *",
                 "agent_name": "cody",
                 "description": "Nightly test job",
                 "input": {"message": "Run tests"},
             },
         )
-        assert response.status_code in (201, 500)
-
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert data["name"] == "test-nightly-analysis"
-            assert data["cron_expression"] == "0 3 * * *"
-            assert data["is_active"] is True
-            assert data["next_run_at"] is not None
+        assert response.status_code == 201
+        data = response.json()["data"]
+        assert data["name"] == name
+        assert data["cron_expression"] == "0 3 * * *"
+        assert data["is_active"] is True
+        assert data["next_run_at"] is not None
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_schedule_invalid_cron(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Invalid cron expression returns 400."""
         response = await client.post(
@@ -212,7 +250,8 @@ class TestCreateSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_schedule_missing_name(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Missing name returns 422."""
         response = await client.post(
@@ -227,7 +266,8 @@ class TestCreateSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_schedule_missing_cron(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Missing cron_expression returns 422."""
         response = await client.post(
@@ -242,7 +282,8 @@ class TestCreateSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_schedule_duplicate_name(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Duplicate name returns 409."""
         payload = {
@@ -251,13 +292,15 @@ class TestCreateSchedule:
             "agent_name": "cody",
         }
         first = await client.post(
-            "/api/v1/kernel/schedules", json=payload,
+            "/api/v1/kernel/schedules",
+            json=payload,
         )
         if first.status_code != 201:
             pytest.skip("DB unavailable")
 
         second = await client.post(
-            "/api/v1/kernel/schedules", json=payload,
+            "/api/v1/kernel/schedules",
+            json=payload,
         )
         assert second.status_code in (409, 500)
 
@@ -271,7 +314,8 @@ class TestListSchedules:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_schedules_returns_200(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """List returns 200 with total."""
         response = await client.get(
@@ -287,7 +331,8 @@ class TestListSchedules:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_schedules_include_inactive(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """include_inactive=true shows disabled jobs."""
         response = await client.get(
@@ -306,7 +351,8 @@ class TestGetSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_schedule_not_found(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Non-existent schedule returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
@@ -318,7 +364,8 @@ class TestGetSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_schedule_invalid_uuid(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Invalid UUID returns 422."""
         response = await client.get(
@@ -336,7 +383,8 @@ class TestUpdateSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_update_schedule_not_found(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Updating non-existent schedule returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
@@ -349,7 +397,8 @@ class TestUpdateSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_update_schedule_bad_cron(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Updating with invalid cron returns 400."""
         # Create first
@@ -381,7 +430,8 @@ class TestDeleteSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_delete_schedule_not_found(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Deleting non-existent schedule returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
@@ -393,7 +443,8 @@ class TestDeleteSchedule:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_delete_schedule_success(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Deleting an existing schedule returns success."""
         resp = await client.post(
@@ -442,9 +493,7 @@ class TestAmbientRoleScheduling:
                 "cron_expression": "0 8 * * *",
                 "agent_name": "scout",
                 "input": {
-                    "message": (
-                        "Review your tracked topics and surface anything new."
-                    ),
+                    "message": ("Review your tracked topics and surface anything new."),
                 },
             },
         )

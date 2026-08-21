@@ -29,10 +29,7 @@ def test_advisory_allowed_tools_are_read_only():
         )
         assert persona is not None, f"Persona {name} not found in _BUILTIN_PERSONAS"
         allowed = set(persona.get("allowed_tools") or [])
-        assert allowed <= read_only, (
-            f"{name} has non-read-only tools: "
-            f"{allowed - read_only}"
-        )
+        assert allowed <= read_only, f"{name} has non-read-only tools: {allowed - read_only}"
 
 
 def test_process_manager_filters_tools_by_allowed_set():
@@ -52,12 +49,6 @@ def test_process_manager_filters_tools_by_allowed_set():
     src = inspect.getsource(process_manager.ProcessManager._run_agent)
 
     # Verify the tool filtering logic exists
-    assert "allowed_tools" in src, (
-        "_run_agent must read allowed_tools from persona"
-    )
-    assert "get_tools()" in src, (
-        "_run_agent must call get_tools() to fetch all tools"
-    )
-    assert "tools=tools" in src, (
-        "_run_agent must pass filtered tools to orchestrator.run()"
-    )
+    assert "allowed_tools" in src, "_run_agent must read allowed_tools from persona"
+    assert "get_tools()" in src, "_run_agent must call get_tools() to fetch all tools"
+    assert "tools=tools" in src, "_run_agent must pass filtered tools to orchestrator.run()"

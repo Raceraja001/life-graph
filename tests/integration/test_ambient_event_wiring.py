@@ -11,6 +11,7 @@ must reach `_on_task_completed` -> the advisory-agent gate -> `process_result`.
 
 No Postgres needed: the only DB touchpoint (`_load_task_result`) is patched.
 """
+
 from __future__ import annotations
 
 import uuid

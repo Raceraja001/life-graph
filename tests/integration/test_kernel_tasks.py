@@ -26,8 +26,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for kernel API tests."""
@@ -57,8 +55,7 @@ class TestCreateTask:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:
@@ -74,7 +71,8 @@ class TestCreateTask:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_task_missing_agent_name(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Missing required field agent_name returns 422."""
         response = await client.post(
@@ -88,7 +86,8 @@ class TestCreateTask:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_task_invalid_priority(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Invalid priority value returns 422."""
         response = await client.post(
@@ -104,7 +103,8 @@ class TestCreateTask:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_task_invalid_agent_name(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Non-existent persona name returns 400."""
         response = await client.post(
@@ -120,7 +120,8 @@ class TestCreateTask:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_task_with_all_optional_fields(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Task creation with all optional fields works correctly."""
         response = await client.post(
@@ -147,7 +148,8 @@ class TestCreateTask:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_task_default_values(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Task creation uses correct defaults for optional fields."""
         response = await client.post(
@@ -187,11 +189,13 @@ class TestListTasks:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_tasks_with_status_filter(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Listing tasks with status filter returns filtered results."""
         response = await client.get(
-            "/api/v1/kernel/tasks", params={"status": "queued"},
+            "/api/v1/kernel/tasks",
+            params={"status": "queued"},
         )
         assert response.status_code in (200, 500)
 
@@ -203,11 +207,13 @@ class TestListTasks:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_tasks_with_agent_name_filter(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Listing tasks filtered by agent_name returns matching results."""
         response = await client.get(
-            "/api/v1/kernel/tasks", params={"agent_name": "cody"},
+            "/api/v1/kernel/tasks",
+            params={"agent_name": "cody"},
         )
         assert response.status_code in (200, 500)
 
@@ -256,7 +262,8 @@ class TestGetTask:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_task_detail_after_create(
-        self, client: AsyncClient,
+        self,
+        client: AsyncClient,
     ):
         """Task detail endpoint returns full data after creation."""
         # Create a task first

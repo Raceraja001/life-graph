@@ -29,8 +29,6 @@ TENANT_HEADERS = {
 }
 
 
-
-
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for self-improving API tests."""
@@ -60,8 +58,7 @@ class TestCreateEvalSuite:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:
@@ -112,8 +109,7 @@ class TestAddEvalCase:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
 
@@ -134,8 +130,7 @@ class TestCreatePromptVersion:
             },
         )
         assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 201 or 500, got {response.status_code}: {response.text}"
         )
 
         if response.status_code == 201:
@@ -169,8 +164,7 @@ class TestActivatePromptVersion:
             f"/api/v1/self-improving/prompt-versions/{version_id}/activate",
         )
         assert response.status_code in (200, 500), (
-            f"Expected 200 or 500, got {response.status_code}: "
-            f"{response.text}"
+            f"Expected 200 or 500, got {response.status_code}: {response.text}"
         )
 
 
