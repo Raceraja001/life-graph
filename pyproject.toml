@@ -16,6 +16,14 @@ dependencies = [
     # Database
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.29",
+    # Alembic connects over the SYNC url (alembic/env.py uses
+    # settings.database_url_sync, i.e. postgresql://), which needs a psycopg2
+    # driver — asyncpg cannot serve it. This was only ever installed by a
+    # manual append in the Dockerfile, so containers worked while
+    # `pip install -e ".[dev]"` produced a tree where `alembic upgrade head`
+    # died with ModuleNotFoundError. Migrations run in production too, via
+    # scripts/entrypoint.sh, so this belongs in the runtime dependencies.
+    "psycopg2-binary>=2.9",
     "alembic>=1.13",
     "pgvector>=0.3",
 
@@ -144,6 +152,14 @@ known-first-party = ["life_graph"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# The engine in life_graph/storage/database.py is created at import time with
+# a real connection pool. pytest-asyncio otherwise gives each test its own
+# event loop, so pooled connections bind to the first loop and every later
+# test fails with "attached to a different loop" — then exhausts the pool,
+# because connections on abandoned loops are never returned. Sharing one loop
+# across the session keeps the pool valid.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-v --tb=short"
