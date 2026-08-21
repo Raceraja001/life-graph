@@ -197,17 +197,38 @@ class NotificationEngine:
         event: dict[str, Any],
         status: str = "queued",
     ) -> None:
-        """Store an event notification in DB for later delivery."""
+        """Store an event notification in DB for later delivery.
+
+        ``event_id`` is NOT NULL and a FK to ``watch_events.id``, so an event
+        dict without an ``id`` cannot be persisted — watcher event dicts do
+        not carry one until the WatchEvent row has been written, so the
+        caller must inject it.
+        """
+        raw_id = event.get("id")
+        if not raw_id:
+            logger.warning(
+                "Skipping notification for tenant %s: event has no id (title=%r)",
+                tenant_id,
+                event.get("title", ""),
+            )
+            return
+
         try:
-            from life_graph.watchers.models import Notification
+            event_id = raw_id if isinstance(raw_id, uuid.UUID) else uuid.UUID(str(raw_id))
+        except (ValueError, AttributeError, TypeError):
+            logger.warning("Skipping notification: event id %r is not a UUID", raw_id)
+            return
+
+        try:
+            from life_graph.watchers.models import WatcherNotification
 
             async with self._session_factory() as session:
-                notif = Notification(
+                notif = WatcherNotification(
                     id=uuid.uuid4(),
                     tenant_id=tenant_id,
-                    event_id=event.get("id"),
-                    channel_type=self._get_primary_channel_type(tenant_id),
-                    title=event.get("title", ""),
+                    event_id=event_id,
+                    channel=self._get_primary_channel_type(tenant_id),
+                    subject=event.get("title", ""),
                     body=event.get("details", ""),
                     severity=event.get("severity", "info"),
                     status=status,
@@ -230,16 +251,16 @@ class NotificationEngine:
             Number of notifications successfully sent.
         """
         try:
-            from life_graph.watchers.models import Notification
+            from life_graph.watchers.models import WatcherNotification
 
             async with self._session_factory() as session:
                 result = await session.execute(
-                    select(Notification)
+                    select(WatcherNotification)
                     .where(
-                        Notification.tenant_id == tenant_id,
-                        Notification.status == "queued",
+                        WatcherNotification.tenant_id == tenant_id,
+                        WatcherNotification.status == "queued",
                     )
-                    .order_by(Notification.created_at)
+                    .order_by(WatcherNotification.created_at)
                 )
                 pending = result.scalars().all()
 
@@ -248,22 +269,22 @@ class NotificationEngine:
                 event = {
                     "id": str(notif.event_id) if notif.event_id else str(notif.id),
                     "severity": notif.severity,
-                    "title": notif.title,
+                    "title": notif.subject,
                     "details": notif.body,
                     "watcher_name": "queued",
                 }
 
                 success = await self.send(
                     tenant_id,
-                    notif.channel_type or "terminal",
+                    notif.channel or "terminal",
                     event,
                 )
 
                 new_status = "sent" if success else "failed"
                 async with self._session_factory() as session:
                     await session.execute(
-                        update(Notification)
-                        .where(Notification.id == notif.id)
+                        update(WatcherNotification)
+                        .where(WatcherNotification.id == notif.id)
                         .values(
                             status=new_status,
                             sent_at=datetime.now(UTC) if success else None,

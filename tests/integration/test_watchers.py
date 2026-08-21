@@ -237,3 +237,45 @@ class TestListNotificationChannels:
             body = response.json()
             assert "data" in body
             assert isinstance(body["data"], list)
+
+
+class TestListNotifications:
+    """GET /api/v1/watchers/notifications
+
+    This route was absent from the suite and returned 500 on every call: it
+    imported ``Notification`` from ``life_graph.watchers.models``, which only
+    defines ``WatcherNotification``. These assert 200 exactly — not the usual
+    ``(200, 500)`` — because ``skip_on_db_error`` already handles an absent
+    database, so a 500 here can only be the ImportError coming back.
+    """
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_list_notifications(self, client: AsyncClient):
+        response = await client.get("/api/v1/watchers/notifications")
+        assert response.status_code == 200, response.text
+
+        body = response.json()
+        assert "data" in body
+        assert isinstance(body["data"], list)
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_list_notifications_filtered_by_status(self, client: AsyncClient):
+        response = await client.get("/api/v1/watchers/notifications?status=queued")
+        assert response.status_code == 200, response.text
+        assert isinstance(response.json()["data"], list)
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_list_notifications_filtered_by_channel(self, client: AsyncClient):
+        """`channel` filters on the WatcherNotification.channel column."""
+        response = await client.get("/api/v1/watchers/notifications?channel=terminal")
+        assert response.status_code == 200, response.text
+        assert isinstance(response.json()["data"], list)
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_list_notifications_rejects_bad_limit(self, client: AsyncClient):
+        response = await client.get("/api/v1/watchers/notifications?limit=0")
+        assert response.status_code == 422

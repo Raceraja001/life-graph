@@ -385,9 +385,10 @@ async def run_watchers(ctx: dict) -> dict:
 
                 # Store events
                 for evt_data in events:
+                    event_id = uuid.uuid4()
                     async with async_session() as session:
                         event = WatchEvent(
-                            id=uuid.uuid4(),
+                            id=event_id,
                             tenant_id=tid,
                             watcher_name=wconfig.watcher_name,
                             severity=evt_data.get("severity", "info"),
@@ -398,7 +399,11 @@ async def run_watchers(ctx: dict) -> dict:
                         session.add(event)
                         await session.commit()
 
-                    # Route notification
+                    # Route notification. WatcherNotification.event_id is NOT
+                    # NULL and FKs to watch_events.id, but watcher event dicts
+                    # carry no id of their own — hand over the row we just
+                    # wrote, or the notification cannot be persisted.
+                    evt_data["id"] = str(event_id)
                     await notification_engine.route_event(tid, evt_data)
 
                 duration_ms = (time.monotonic() - t_start) * 1000

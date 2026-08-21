@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 # ── Watch Config ──────────────────────────────────────────────────────────────
 
@@ -183,15 +183,23 @@ class NotificationChannelUpdate(BaseModel):
 
 
 class NotificationResponse(BaseModel):
-    """Serialized notification record."""
+    """Serialized notification record.
 
-    model_config = ConfigDict(from_attributes=True)
+    The wire names ``channel_type`` and ``title`` predate the table; the
+    WatcherNotification columns are ``channel`` and ``subject``. The aliases
+    keep the public shape stable while actually reading the model — without
+    them both fields serialized as null for every row.
+    """
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     tenant_id: str
     event_id: uuid.UUID | None = None
-    channel_type: str | None = None
-    title: str | None = None
+    channel_type: str | None = Field(
+        default=None, validation_alias=AliasChoices("channel", "channel_type")
+    )
+    title: str | None = Field(default=None, validation_alias=AliasChoices("subject", "title"))
     body: str | None = None
     severity: str | None = None
     status: str = "pending"

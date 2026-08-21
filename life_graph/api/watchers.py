@@ -541,18 +541,18 @@ async def list_notifications(
     limit: int = Query(50, ge=1, le=200),
 ):
     """List notifications with optional filters."""
-    from life_graph.watchers.models import Notification
+    from life_graph.watchers.models import WatcherNotification
 
     tenant_id = _get_tenant()
 
-    query = select(Notification).where(Notification.tenant_id == tenant_id)
+    query = select(WatcherNotification).where(WatcherNotification.tenant_id == tenant_id)
 
     if notification_status:
-        query = query.where(Notification.status == notification_status)
+        query = query.where(WatcherNotification.status == notification_status)
     if channel:
-        query = query.where(Notification.channel_type == channel)
+        query = query.where(WatcherNotification.channel == channel)
 
-    query = query.order_by(Notification.created_at.desc()).limit(limit)
+    query = query.order_by(WatcherNotification.created_at.desc()).limit(limit)
 
     async with async_session() as session:
         result = await session.execute(query)

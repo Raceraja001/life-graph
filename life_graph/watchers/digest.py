@@ -71,7 +71,7 @@ class DigestGenerator:
             Summary dict.
         """
         try:
-            from life_graph.watchers.models import Notification, WatchEvent
+            from life_graph.watchers.models import WatcherNotification, WatchEvent
 
             # Fetch digest-pending events
             async with self._session_factory() as session:
@@ -114,11 +114,11 @@ class DigestGenerator:
             # Mark processed notifications as sent
             async with self._session_factory() as session:
                 await session.execute(
-                    update(Notification)
+                    update(WatcherNotification)
                     .where(
-                        Notification.tenant_id == tenant_id,
-                        Notification.status == "digest_pending",
-                        Notification.created_at >= since,
+                        WatcherNotification.tenant_id == tenant_id,
+                        WatcherNotification.status == "digest_pending",
+                        WatcherNotification.created_at >= since,
                     )
                     .values(status="digested")
                 )
