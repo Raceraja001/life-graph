@@ -1,8 +1,9 @@
 # tests/integration/test_ambient_end_to_end.py
 """Seed → ticker → advisory task completes → findings become notifications."""
 
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, patch
 
 
 @pytest.mark.asyncio

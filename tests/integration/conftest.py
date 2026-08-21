@@ -1,90 +1,94 @@
 """
 Shared test helpers for integration tests.
 
-Provides the skip_on_db_error decorator that catches any DB-related
-exception and skips the test. This handles:
-- ConnectionRefusedError (DB not running)
-- OSError (network issues)
-- ProgrammingError (missing tables/columns from unmigrated schema)
-- anyio.EndOfStream / WouldBlock from middleware crashes
-- RuntimeError from event loop shutdown
-- AttributeError from asyncpg connection teardown on Windows
+``skip_on_db_error`` exists so the suite can run in an environment with no
+database — CI's lint and unit jobs, a fresh checkout — without every
+DB-backed test failing.
+
+It deliberately does NOT decide that from the exception. It used to: any
+error whose text contained a marker like "relation", "asyncpg" or "does not
+exist" was treated as "no database" and skipped. Those strings appear in
+plenty of genuine failures, so real bugs were silently reported as skips,
+and when the containers died mid-run 263 tests skipped rather than failing.
+
+Instead it asks the database directly, once per session. If Postgres is
+reachable, every exception is a real failure and propagates. Only when the
+database genuinely cannot be reached does a test skip.
 """
 
 from __future__ import annotations
 
+import socket
 from functools import wraps
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 
-# Error messages that indicate a DB schema or connection issue
-_DB_ERROR_MARKERS = (
-    "UndefinedTableError",
-    "UndefinedColumnError",
-    "does not exist",
-    "connection is closed",
-    "connection was reset",
-    "SSL connection has been closed",
-    "object has no attribute 'send'",
-    "Cannot operate on a closed database",
-    "connection was refused",
-    "tenant_webhooks",
-    "relation",
-    "asyncpg",
-    "InterfaceError",
-    "InvalidCachedStatementError",
-    "ConnectionDoesNotExistError",
-    "InFailedSqlTransaction",
-    "EndOfStream",
-    "WouldBlock",
-    "Event loop is closed",
-    "is an invalid keyword argument",
-)
+# ── Database reachability ─────────────────────────────────────
 
-# Exception type names (matched against type(e).__name__)
-_DB_ERROR_TYPES = {
-    "EndOfStream",
-    "WouldBlock",
-    "ProgrammingError",
-    "InterfaceError",
-    "InternalError",
-    "OperationalError",
-    "InvalidCachedStatementError",
-    "ConnectionDoesNotExistError",
-}
+_db_reachable_cache: bool | None = None
+
+
+def db_reachable() -> bool:
+    """True if the configured Postgres accepts a TCP connection.
+
+    Checked once per session — a test run does not start and stop its own
+    database, so re-probing per test would only add latency.
+    """
+    global _db_reachable_cache
+    if _db_reachable_cache is not None:
+        return _db_reachable_cache
+
+    from life_graph.config import settings
+
+    url = settings.database_url
+    try:
+        parsed = urlparse(url.split("+")[0] + "://" + url.split("://", 1)[1])
+        host, port = parsed.hostname or "127.0.0.1", parsed.port or 5432
+    except Exception:
+        host, port = "127.0.0.1", 5432
+
+    with socket.socket() as s:
+        s.settimeout(1.0)
+        _db_reachable_cache = s.connect_ex((host, port)) == 0
+    return _db_reachable_cache
+
+
+def pytest_report_header(config) -> str:
+    """Say plainly whether the database is there.
+
+    Without this, a run against a stopped database looks like a pile of
+    skips with no explanation at the top of the output.
+    """
+    if db_reachable():
+        return "database: reachable — DB-backed tests will run"
+    return (
+        "database: UNREACHABLE — DB-backed tests will SKIP, not fail. "
+        "Start it with ./start.sh --infra"
+    )
 
 
 def skip_on_db_error(func):
-    """Decorator: skip test if any DB-related error occurs.
+    """Skip *func* only when the database is genuinely unreachable.
 
-    Catches connection errors, schema mismatch errors (missing tables/columns),
-    asyncpg connection pool corruption, and anyio stream errors from middleware
-    crashes caused by DB issues.
+    With Postgres up, every exception propagates — a schema mismatch, a
+    constraint violation or a bug in the code under test is a failure, not a
+    skip. This is the whole point: the previous version pattern-matched
+    exception text and turned real defects into green runs.
     """
 
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any):
         try:
             return await func(*args, **kwargs)
-        except (ConnectionRefusedError, OSError):
-            pytest.skip("DB unavailable — connection refused")
-        except RuntimeError as e:
-            if "Event loop is closed" in str(e):
-                pytest.skip("Event loop closed — async cleanup issue")
-            raise
-        except Exception as e:
-            err_type = type(e).__name__
-            err_str = str(e)
-
-            # Check by exception type name
-            if err_type in _DB_ERROR_TYPES:
-                pytest.skip(f"DB error — {err_type}: {err_str[:100]}")
-
-            # Check by error message content
-            if any(marker in f"{err_type}: {err_str}" for marker in _DB_ERROR_MARKERS):
-                pytest.skip(f"DB error — {err_type}: {err_str[:100]}")
-
+        except (ConnectionRefusedError, OSError) as exc:
+            # A refused connection is unambiguous, whether or not the probe
+            # agrees (the DB may have died mid-run).
+            pytest.skip(f"DB unavailable — {type(exc).__name__}: {str(exc)[:100]}")
+        except Exception:
+            if not db_reachable():
+                pytest.skip("DB unavailable — no Postgres on the configured port")
             raise
 
     return wrapper

@@ -11,7 +11,6 @@ lifespan context works, especially after wiring the MCP bridge.
 
 from __future__ import annotations
 
-import pytest
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app

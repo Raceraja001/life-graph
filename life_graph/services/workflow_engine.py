@@ -188,25 +188,40 @@ class WorkflowEngine:
             raise ValueError(error)
 
         async with self._session_factory() as session:
+            # project_id, trigger_type and config have no columns on
+            # Workflow — passing them raised TypeError, so every workflow
+            # creation 500'd before it reached the step loop. They are kept
+            # in the properties JSONB rather than dropped, so a caller's
+            # values still round-trip.
+            properties = dict(data.get("properties") or {})
+            properties.update(
+                {
+                    "project_id": (str(data["project_id"]) if data.get("project_id") else None),
+                    "trigger_type": data.get("trigger_type", "manual"),
+                    "config": data.get("config", {}),
+                }
+            )
             workflow = AgentWorkflow(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
                 name=data["name"],
                 description=data.get("description"),
-                project_id=data.get("project_id"),
-                trigger_type=data.get("trigger_type", "manual"),
-                config=data.get("config", {}),
+                properties=properties,
             )
             session.add(workflow)
 
             for idx, step_data in enumerate(steps_data):
+                # The columns are assigned_agent and properties; agent_name
+                # and config do not exist on WorkflowStep, so this raised
+                # TypeError and no workflow could ever be created.
                 step = WorkflowStep(
                     id=uuid.uuid4(),
                     workflow_id=workflow.id,
                     step_key=step_data["step_key"],
-                    agent_name=step_data["agent_name"],
+                    name=step_data.get("name") or step_data["step_key"],
+                    assigned_agent=step_data["agent_name"],
                     step_order=idx,
-                    config=step_data.get("config", {}),
+                    properties=step_data.get("config", {}),
                     depends_on=step_data.get("depends_on", []),
                     condition=step_data.get("condition"),
                     timeout_seconds=step_data.get("timeout_seconds", 300),
@@ -285,11 +300,12 @@ class WorkflowEngine:
             # Create step runs for all steps
             step_runs = []
             for step in workflow.steps:
+                # workflow_run_id / workflow_step_id are the real foreign
+                # keys; run_id, step_id and step_key are not columns here.
                 sr = WorkflowStepRun(
                     id=uuid.uuid4(),
-                    run_id=run.id,
-                    step_id=step.id,
-                    step_key=step.step_key,
+                    workflow_run_id=run.id,
+                    workflow_step_id=step.id,
                     status="pending",
                 )
                 session.add(sr)

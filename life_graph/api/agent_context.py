@@ -68,7 +68,7 @@ async def create_context(
         data={
             "id": str(entry.id),
             "content": entry.content,
-            "context_type": entry.context_type,
+            "context_type": entry.content_type,
             "project_id": str(entry.project_id) if entry.project_id else None,
             "source_agent": entry.source_agent,
             "relevance_score": entry.relevance_score,

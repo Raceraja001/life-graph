@@ -32,6 +32,14 @@ class DelegationEngine:
         async with self._sf() as session:
             task = AgentTask(
                 tenant_id=tenant_id,
+                # task_name/agent_name are the original columns and
+                # agent_name is NOT NULL. Only title/assigned_agent were
+                # being populated here, so every POST /agent-tasks died on a
+                # NotNullViolation before it ever reached the delegation
+                # logic. agent_name is required by AgentTaskCreate, so it is
+                # always present; assigned_agent is the newer alias.
+                task_name=data.get("task_name") or data.get("title") or "Untitled Task",
+                agent_name=data.get("agent_name") or data.get("assigned_agent") or "unassigned",
                 title=data.get("title") or data.get("task_name", "Untitled Task"),
                 description=data.get("description"),
                 task_type=data.get("task_type", "general"),

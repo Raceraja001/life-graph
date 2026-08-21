@@ -4,7 +4,6 @@ and the delegate_to_persona tool (added across Tasks 2, 3, 6)."""
 import uuid
 
 import pytest
-import pytest_asyncio
 
 import life_graph.tools.datetime_tool  # noqa: F401
 from life_graph.api.dependencies import get_process_manager
@@ -68,7 +67,7 @@ class TestSpawnDelegationTree:
             )
 
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from life_graph.kernel.process_manager import ProcessManager
 

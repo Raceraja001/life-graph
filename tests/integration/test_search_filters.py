@@ -12,7 +12,6 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-
 from tests.integration.conftest import skip_on_db_error
 
 

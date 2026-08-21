@@ -99,7 +99,9 @@ async def create_workflow(
             "id": str(workflow.id),
             "name": workflow.name,
             "description": workflow.description,
-            "trigger_type": workflow.trigger_type,
+            # These three have no columns on Workflow and are stored in
+            # the properties JSONB (see workflow_engine.create_workflow).
+            "trigger_type": (workflow.properties or {}).get("trigger_type", "manual"),
             "created_at": workflow.created_at.isoformat() if workflow.created_at else None,
         }
     )

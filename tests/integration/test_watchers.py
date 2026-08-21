@@ -17,16 +17,21 @@ defensive assertions accepting 500 if DB unreachable.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-
 from tests.integration.conftest import skip_on_db_error
 
+# Fresh tenant per run. Several rows here are unique-constrained on
+# (tenant_id, <semantic value>) — task_type, channel_type, action_name —
+# so a fixed tenant makes the second run collide. The suffix follows the
+# convention the persona tests already use.
 TENANT_HEADERS = {
-    "X-Tenant-ID": "test-watchers-tenant",
+    "X-Tenant-ID": f"test-watchers-{uuid.uuid4().hex[:8]}",
 }
 
 

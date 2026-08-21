@@ -16,16 +16,21 @@ Eval runs and optimization require LLM calls — 500/422 accepted.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-
 from tests.integration.conftest import skip_on_db_error
 
+# Fresh tenant per run. Several rows here are unique-constrained on
+# (tenant_id, <semantic value>) — task_type, channel_type, action_name —
+# so a fixed tenant makes the second run collide. The suffix follows the
+# convention the persona tests already use.
 TENANT_HEADERS = {
-    "X-Tenant-ID": "test-self-improving-tenant",
+    "X-Tenant-ID": f"test-self-improving-{uuid.uuid4().hex[:8]}",
 }
 
 

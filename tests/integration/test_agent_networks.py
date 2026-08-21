@@ -7,12 +7,13 @@ defensive assertions accepting 500 if DB unreachable.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-
 from tests.integration.conftest import skip_on_db_error
 
 TENANT_HEADERS = {
@@ -275,10 +276,12 @@ class TestWorkflows:
     @skip_on_db_error
     async def test_create_workflow(self, client: AsyncClient):
         """POST /api/v1/workflows/ — create a workflow DAG."""
+        # Unique per run — (tenant_id, name) is unique-constrained.
+        name = f"CI Pipeline {uuid.uuid4().hex[:8]}"
         response = await client.post(
             "/api/v1/workflows/",
             json={
-                "name": "CI Pipeline",
+                "name": name,
                 "description": "Build → Test → Deploy",
                 "steps": [
                     {
@@ -301,14 +304,10 @@ class TestWorkflows:
                 ],
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
-
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert "id" in data
-            assert data["name"] == "CI Pipeline"
+        assert response.status_code == 201, response.text
+        data = response.json()["data"]
+        assert "id" in data
+        assert data["name"] == name
 
     @pytest.mark.asyncio
     @skip_on_db_error

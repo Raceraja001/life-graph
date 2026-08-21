@@ -566,10 +566,13 @@ class PostgresMemoryStore:
         """Create a MemorySession link and bump session counters."""
         tenant_id = get_current_tenant_id()
         async with async_session() as session:
+            # MemorySession is the memory<->session association row and has
+            # no tenant_id of its own; both sides already carry one. Passing
+            # it raised TypeError on every link write. The tenant is still
+            # needed to scope the Session counter update below.
             link = MemorySession(
                 memory_id=memory_id,
                 session_id=session_id,
-                tenant_id=tenant_id,
             )
             session.add(link)
             await session.execute(

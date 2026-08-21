@@ -13,9 +13,10 @@ Prerequisites:
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 import pytest_asyncio
-import uuid
 from httpx import ASGITransport, AsyncClient
 
 
@@ -28,7 +29,6 @@ def _service_up(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from life_graph.main import app
 from tests.integration.conftest import skip_on_db_error
@@ -415,6 +415,7 @@ class TestEventBus:
 
     def test_subscribe_and_emit(self):
         import asyncio
+
         from life_graph.core.events import EventBus, EventType
 
         bus = EventBus()
@@ -437,6 +438,7 @@ class TestEventBus:
 
     def test_global_handler(self):
         import asyncio
+
         from life_graph.core.events import EventBus, EventType
 
         bus = EventBus()
@@ -461,16 +463,17 @@ class TestPluginSystem:
     """Test the plugin loader."""
 
     def test_plugin_manager_import(self):
-        from life_graph.core.plugins import PluginManager
         from life_graph.core.events import event_bus
+        from life_graph.core.plugins import PluginManager
 
         pm = PluginManager(event_bus)
         assert pm is not None
 
     def test_discover_plugins(self):
-        from life_graph.core.plugins import PluginManager
-        from life_graph.core.events import event_bus
         from pathlib import Path
+
+        from life_graph.core.events import event_bus
+        from life_graph.core.plugins import PluginManager
 
         # Was hardcoded to Path("D:/DevTools/Projects/agents/plugins") — a
         # Windows path into a *different* repo, so this could never pass here.

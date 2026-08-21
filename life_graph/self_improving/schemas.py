@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 # ── Eval Suites ───────────────────────────────────────────────────────────────
 
@@ -96,7 +96,7 @@ class EvalCaseBulkCreate(BaseModel):
 class EvalCaseResponse(BaseModel):
     """Serialized eval case returned by the API."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     suite_id: uuid.UUID
@@ -104,7 +104,14 @@ class EvalCaseResponse(BaseModel):
     expected_output: str
     scoring_type: str
     scoring_config: dict[str, Any] = Field(default_factory=dict)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    # The ORM attribute is `metadata_` (mapped to the column named
+    # "metadata", since `metadata` is reserved on a declarative class).
+    # Without the alias, from_attributes read EvalCase.metadata — SQLAlchemy's
+    # MetaData registry — and every add-case call failed validation.
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("metadata_", "metadata"),
+    )
     source: str
     is_active: bool
     created_at: datetime

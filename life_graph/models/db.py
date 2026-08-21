@@ -1304,7 +1304,7 @@ class Evidence(Base):
     source_title: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Content ───────────────────────────────────────────────
-    stance: Mapped[str] = mapped_column(String(10), nullable=False, default="supports")
+    stance: Mapped[str] = mapped_column(String(20), nullable=False, default="supports")
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -17,7 +17,6 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-
 from tests.integration.conftest import skip_on_db_error
 
 TENANT_HEADERS = {
@@ -44,7 +43,7 @@ class TestCreateTask:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_task_returns_201(self, client: AsyncClient):
-        """Creating a task with valid input returns 201 with queued status."""
+        """Creating a task returns 201 and an actively-spawned task."""
         response = await client.post(
             "/api/v1/kernel/tasks",
             json={
@@ -54,19 +53,19 @@ class TestCreateTask:
                 "priority": "normal",
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
-
-        if response.status_code == 201:
-            data = response.json()
-            assert "data" in data
-            task = data["data"]
-            assert task["agent_name"] == "cody"
-            assert task["status"] == "queued"
-            assert task["priority"] == "normal"
-            assert "id" in task
-            assert "created_at" in task
+        assert response.status_code == 201, response.text
+        data = response.json()
+        assert "data" in data
+        task = data["data"]
+        assert task["agent_name"] == "cody"
+        # spawn() writes 'queued' and immediately launches execution; the
+        # endpoint then re-reads the row, so a task that starts promptly is
+        # already 'running'. Both are correct just-spawned states — pinning
+        # exactly 'queued' asserts on a scheduling race, not on behaviour.
+        assert task["status"] in ("queued", "running")
+        assert task["priority"] == "normal"
+        assert "id" in task
+        assert "created_at" in task
 
     @pytest.mark.asyncio
     @skip_on_db_error

@@ -12,12 +12,10 @@ with mock session_factory, no DB needed).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import (
-    AsyncMock,
     MagicMock,
-    patch,
 )
 
 import pytest
@@ -25,7 +23,6 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-
 from tests.integration.conftest import skip_on_db_error
 
 TENANT_HEADERS = {
@@ -70,16 +67,13 @@ def _make_mock_notification(**overrides: Any) -> MagicMock:
         "is_delivered",
         False,
     )
-    notif.delivered_at = overrides.get("delivered_at", None)
-    notif.delivery_error = overrides.get(
-        "delivery_error",
-        None,
-    )
-    notif.source_type = overrides.get("source_type", None)
-    notif.source_id = overrides.get("source_id", None)
+    notif.delivered_at = overrides.get("delivered_at")
+    notif.delivery_error = overrides.get("delivery_error")
+    notif.source_type = overrides.get("source_type")
+    notif.source_id = overrides.get("source_id")
     notif.created_at = overrides.get(
         "created_at",
-        datetime.now(timezone.utc),
+        datetime.now(UTC),
     )
     return notif
 
@@ -94,7 +88,7 @@ class TestNotifToDict:
         )
 
         notif_id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         mock_notif = _make_mock_notification(
             id=notif_id,
             priority="critical",
@@ -189,11 +183,11 @@ class TestNotificationEngineValidation:
             VALID_PRIORITIES,
         )
 
-        assert VALID_PRIORITIES == {
+        assert {
             "critical",
             "important",
             "info",
-        }
+        } == VALID_PRIORITIES
 
     def test_valid_channels_exist(self):
         """VALID_CHANNELS has the expected values."""
@@ -201,11 +195,11 @@ class TestNotificationEngineValidation:
             VALID_CHANNELS,
         )
 
-        assert VALID_CHANNELS == {
+        assert {
             "terminal",
             "email",
             "webhook",
-        }
+        } == VALID_CHANNELS
 
 
 # ── List Notifications Endpoint ──────────────────────────────

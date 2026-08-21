@@ -132,7 +132,9 @@ class SharedContextService:
                 title=data.get("title") or content[:50],
                 content=content,
                 content_hash=content_hash,
-                context_type=data.get("context_type", "observation"),
+                # The column is content_type; context_type does not exist,
+                # so this raised TypeError on every shared-context write.
+                content_type=data.get("content_type") or data.get("context_type", "observation"),
                 source_agent=data.get("source_agent"),
                 source_task_id=data.get("source_task_id"),
                 embedding=embedding if embedding else None,
@@ -147,7 +149,7 @@ class SharedContextService:
             EventType.MEMORY_CREATED,
             {
                 "shared_context_id": str(entry.id),
-                "context_type": entry.context_type,
+                "context_type": entry.content_type,
                 "project_id": str(entry.project_id) if entry.project_id else None,
             },
             source="shared_context",
@@ -156,7 +158,7 @@ class SharedContextService:
         logger.info(
             "Created shared context %s (type=%s) for tenant %s",
             entry.id,
-            entry.context_type,
+            entry.content_type,
             tenant_id,
         )
         return entry
@@ -191,7 +193,7 @@ class SharedContextService:
             async with self._session_factory() as session:
                 stmt = select(SharedContextEntry).where(SharedContextEntry.tenant_id == tenant_id)
                 if project_id:
-                    stmt = stmt.where(SharedContextEntry.project_id == project_id)
+                    stmt = stmt.where(SharedContextEntry.project_id == str(project_id))
                 stmt = stmt.order_by(SharedContextEntry.created_at.desc()).limit(limit)
 
                 result = await session.execute(stmt)
@@ -215,7 +217,7 @@ class SharedContextService:
                 SharedContextEntry.embedding.isnot(None),
             )
             if project_id:
-                stmt = stmt.where(SharedContextEntry.project_id == project_id)
+                stmt = stmt.where(SharedContextEntry.project_id == str(project_id))
 
             stmt = stmt.order_by(distance).limit(limit)
 
@@ -363,7 +365,7 @@ class SharedContextService:
             SharedContextEntry.embedding.isnot(None),
         )
         if project_id:
-            stmt = stmt.where(SharedContextEntry.project_id == project_id)
+            stmt = stmt.where(SharedContextEntry.project_id == str(project_id))
 
         stmt = stmt.order_by(distance).limit(1)
         result = await session.execute(stmt)
@@ -381,7 +383,7 @@ class SharedContextService:
             "tenant_id": entry.tenant_id,
             "project_id": str(entry.project_id) if entry.project_id else None,
             "content": entry.content,
-            "context_type": entry.context_type,
+            "context_type": entry.content_type,
             "source_agent": entry.source_agent,
             "source_task_id": str(entry.source_task_id) if entry.source_task_id else None,
             "relevance_score": entry.relevance_score,

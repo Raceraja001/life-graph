@@ -5,8 +5,8 @@ already exists). It fails only if someone later widens the allowed_tools
 on an advisory persona or drops the tool filter in process_manager.
 """
 
-from life_graph.kernel.personas import _BUILTIN_PERSONAS
 from life_graph.kernel.ambient import AMBIENT_ADVISORY
+from life_graph.kernel.personas import _BUILTIN_PERSONAS
 
 
 def test_advisory_allowed_tools_are_read_only():
@@ -43,6 +43,7 @@ def test_process_manager_filters_tools_by_allowed_set():
     This ensures scheduled advisory runs cannot call write tools.
     """
     import inspect
+
     from life_graph.kernel import process_manager
 
     # Get the source of ProcessManager._run_agent

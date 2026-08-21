@@ -175,8 +175,10 @@ async def create_task(
 ):
     """Spawn a new agent task via the Process Manager.
 
-    The task is created with status 'queued' and picked up
-    asynchronously by the process manager for execution.
+    The row is created with status 'queued' and execution starts immediately
+    in the background. The response re-reads the row, so a fast-starting task
+    can legitimately come back as 'running' — callers must not treat 'queued'
+    as guaranteed.
     """
     tenant_id = get_current_tenant_id()
 
