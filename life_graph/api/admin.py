@@ -135,12 +135,27 @@ class TenantProvisionRequest(BaseModel):
     summary="System statistics",
 )
 async def get_stats():
-    """Return aggregate counts for memories, intentions, gaps, and sessions."""
+    """Return aggregate counts for memories, intentions, gaps, and sessions.
+
+    Scoped to the calling tenant. These four counts previously ran unfiltered,
+    so every tenant saw global totals — a cross-tenant leak, and a breach of
+    the invariant that every query filters by tenant_id. The same file already
+    scopes its other count queries this way.
+    """
+    tenant_id = get_current_tenant_id()
     async with async_session() as session:
-        memory_count = await session.scalar(select(func.count(Memory.id)))
-        intention_count = await session.scalar(select(func.count(Intention.id)))
-        gap_count = await session.scalar(select(func.count(KnowledgeGap.id)))
-        session_count = await session.scalar(select(func.count(Session.id)))
+        memory_count = await session.scalar(
+            select(func.count(Memory.id)).where(Memory.tenant_id == tenant_id)
+        )
+        intention_count = await session.scalar(
+            select(func.count(Intention.id)).where(Intention.tenant_id == tenant_id)
+        )
+        gap_count = await session.scalar(
+            select(func.count(KnowledgeGap.id)).where(KnowledgeGap.tenant_id == tenant_id)
+        )
+        session_count = await session.scalar(
+            select(func.count(Session.id)).where(Session.tenant_id == tenant_id)
+        )
 
     return success_response(
         data=SystemStats(
