@@ -8,6 +8,7 @@ creation goes directly to the store.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 
@@ -55,7 +56,11 @@ async def create_memory(
 
     if is_structured:
         row = await store.store(body)
-        return [MemoryResponse.model_validate(row)]
+        # All three exits below return the same shape. Two of them previously
+        # returned a bare list while the third wrapped in success_response(),
+        # so the response shape depended on whether extraction happened to
+        # yield anything — the caller could not know which it would get.
+        return success_response(data=[MemoryResponse.model_validate(row)])
 
     # Full ingestion pipeline for free-form text
     memories = await manager.ingest(
@@ -66,10 +71,21 @@ async def create_memory(
     )
 
     if not memories:
-        # Nothing extracted — store as-is so the user's input isn't lost
+        # Nothing extracted — store as-is so the user's input isn't lost.
+        #
+        # This path bypasses MemoryManager.ingest(), and with it the dedup
+        # pipeline, so it has to run the exact-hash check itself. Without it,
+        # every re-capture of text the extractor cannot parse inserted another
+        # row: the same note submitted N times produced N identical pending
+        # memories, which is precisely what a memory system must not do.
+        content_hash = hashlib.sha256(body.content.strip().lower().encode()).hexdigest()
+        existing = await store.find_exact_duplicate(content_hash)
+        if existing is not None:
+            return success_response(data=[MemoryResponse.model_validate(existing)])
+
         embedding = await manager.generate_embedding(body.content)
         row = await store.store(body, embedding=embedding)
-        return [MemoryResponse.model_validate(row)]
+        return success_response(data=[MemoryResponse.model_validate(row)])
 
     return success_response(
         data=[MemoryResponse.model_validate(m) for m in memories],

@@ -442,8 +442,13 @@ class TranscriptExtractor:
         async with self._session_factory() as session:
             # Merge the detached instance
             existing = await session.merge(existing)
-            existing.reinforced_count += 1
-            existing.last_reinforced = datetime.now(UTC)
+            # Preference tracks reinforcement as validated_count /
+            # last_validated_at. This referenced reinforced_count and
+            # last_reinforced, which exist on Memory but not on Preference, so
+            # every reinforcement raised AttributeError and took the whole
+            # transcript ingest with it.
+            existing.validated_count = (existing.validated_count or 0) + 1
+            existing.last_validated_at = datetime.now(UTC)
             # Boost confidence slightly
             existing.confidence = min(1.0, existing.confidence + 0.05)
 
@@ -460,7 +465,7 @@ class TranscriptExtractor:
             session.add(evidence)
             await session.commit()
             logger.debug(
-                "Reinforced preference %s (count=%d)", existing.id, existing.reinforced_count
+                "Reinforced preference %s (count=%d)", existing.id, existing.validated_count
             )
 
     async def _create_preference(

@@ -43,9 +43,7 @@ async def test_patch_cannot_set_approval_statuses(client: AsyncClient):
     data = create.json()["data"]
     row = data[0] if isinstance(data, list) else data
     for forbidden in ("pending", "rejected", "active"):
-        resp = await client.patch(
-            f"/api/v1/memories/{row['id']}", json={"status": forbidden}
-        )
+        resp = await client.patch(f"/api/v1/memories/{row['id']}", json={"status": forbidden})
         assert resp.status_code == 422, f"PATCH status={forbidden} must be rejected"
 
 
@@ -119,6 +117,34 @@ async def test_bulk_and_count(client: AsyncClient):
     assert body["approved"] == 1 and body["rejected"] == 1
 
 
+def _embeddings_available() -> bool:
+    """True when the configured embedding backend is reachable.
+
+    Vector search cannot return a row that has no embedding, so with
+    LIFE_GRAPH_USE_LOCAL_LLM=true and LM Studio down these searches
+    legitimately find nothing. Skip precisely rather than let the assertion
+    pass on an empty result.
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    from life_graph.config import settings
+
+    if not settings.use_local_llm:
+        return True  # a hosted backend; assume reachable
+    u = urlparse(settings.lm_studio_url)
+    with socket.socket() as s:
+        s.settimeout(0.3)
+        return s.connect_ex((u.hostname or "127.0.0.1", u.port or 80)) == 0
+
+
+_needs_embeddings = pytest.mark.skipif(
+    not _embeddings_available(),
+    reason="vector search needs the embedding backend (LM Studio on :1234)",
+)
+
+
+@_needs_embeddings
 @skip_on_db_error
 @pytest.mark.asyncio
 async def test_search_shows_pending_to_dashboard(client: AsyncClient):
@@ -132,9 +158,12 @@ async def test_search_shows_pending_to_dashboard(client: AsyncClient):
     assert resp.status_code in (200, 500)
     if resp.status_code == 200:
         contents = str(resp.json())
-        assert "6644" in contents, "dashboard search (include_pending=true) must include pending memories"
+        assert "6644" in contents, (
+            "dashboard search (include_pending=true) must include pending memories"
+        )
 
 
+@_needs_embeddings
 @skip_on_db_error
 @pytest.mark.asyncio
 async def test_search_without_include_pending_hides_pending(client: AsyncClient):
@@ -152,6 +181,7 @@ async def test_search_without_include_pending_hides_pending(client: AsyncClient)
         assert "9977" not in contents, "default (agent) search must NOT include pending memories"
 
 
+@_needs_embeddings
 @skip_on_db_error
 @pytest.mark.asyncio
 async def test_search_include_pending_shows_pending(client: AsyncClient):
@@ -188,9 +218,7 @@ async def test_bulk_import_is_pending(client: AsyncClient):
         pytest.skip("DB unavailable")
     assert resp.json()["data"]["imported"] == 1
 
-    pending = await client.get(
-        "/api/v1/memories/", params={"status": "pending", "limit": "100"}
-    )
+    pending = await client.get("/api/v1/memories/", params={"status": "pending", "limit": "100"})
     assert pending.status_code == 200
     assert any(r["content"] == text for r in pending.json()["data"]), (
         "bulk-imported memory must land in the pending queue"
