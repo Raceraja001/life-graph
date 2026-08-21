@@ -37,6 +37,15 @@ def encode_cursor(sort_key: str, item_id: str) -> str:
     return base64.urlsafe_b64encode(payload.encode()).decode()
 
 
+class InvalidCursorError(ValueError):
+    """A pagination cursor could not be decoded.
+
+    A malformed cursor is bad client input, not a server fault, so main.py
+    maps this to 422. It previously escaped as a bare ValueError and became
+    an unhandled 500.
+    """
+
+
 def decode_cursor(cursor: str) -> dict[str, str]:
     """Decode a cursor back to sort key and item ID.
 
@@ -44,13 +53,13 @@ def decode_cursor(cursor: str) -> dict[str, str]:
         Dict with 'k' (sort key) and 'id' fields.
 
     Raises:
-        ValueError: If the cursor is invalid.
+        InvalidCursorError: If the cursor is not valid base64 JSON.
     """
     try:
         payload = base64.urlsafe_b64decode(cursor.encode()).decode()
         return json.loads(payload)
     except Exception as exc:
-        raise ValueError("Invalid cursor format") from exc
+        raise InvalidCursorError("Invalid cursor format") from exc
 
 
 # ── Response Helpers ─────────────────────────────────────────

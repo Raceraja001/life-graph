@@ -123,9 +123,9 @@ class TestMemoryPagination:
             "/api/v1/memories/",
             params={"limit": 5, "cursor": "invalidcursor"},
         )
-        # The endpoint may return an empty result, a 400 for bad cursor,
-        # or a 500 if the decode raises unhandled
-        assert r.status_code in (200, 400, 422, 500)
+        # A malformed cursor is client error. This used to escape as an
+        # unhandled ValueError; InvalidCursorError now maps to 422.
+        assert r.status_code == 422
 
     @pytest.mark.asyncio
     @skip_on_db_error

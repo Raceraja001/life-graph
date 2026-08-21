@@ -298,12 +298,12 @@ class TestEvalRunEndpoints:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_get_eval_run_failures_not_found(self, client: AsyncClient):
-        """Getting failures for a nonexistent run returns 404 or 500."""
+        """Getting failures for a nonexistent run returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
         response = await client.get(
             f"/api/v1/self-improving/eval-runs/{fake_id}/failures",
         )
-        assert response.status_code in (404, 500)
+        assert response.status_code == 404
 
 
 class TestOptimizationEndpoints:

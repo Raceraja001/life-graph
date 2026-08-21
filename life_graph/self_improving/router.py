@@ -15,6 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import inspect as sa_inspect
 
 from life_graph.api.dependencies import (
     get_dashboard_service,
@@ -218,6 +219,18 @@ async def get_eval_run_failures(
     eval_service=Depends(get_eval_service),
 ):
     """Get failure analysis for an eval run."""
+    # Confirm the run exists first. Returning 200 with an empty list for a
+    # run that does not exist makes "this run had no failures" — a good
+    # result — indistinguishable from "there is no such run". The sibling
+    # GET /eval-runs/{run_id} already 404s this way.
+    try:
+        await eval_service.get_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"EvalRun {run_id} not found",
+        ) from exc
+
     failures = await eval_service.get_failures(run_id)
     return success_response(data=[f.model_dump() for f in failures])
 
@@ -499,6 +512,15 @@ def _serialize(obj: Any) -> dict:
     """Convert an ORM model to a JSON-safe dict.
 
     Handles UUID, datetime, and nested dict/list fields.
+
+    Column names come from the SQLAlchemy mapper rather than dir(). Walking
+    dir() swept up framework internals as if they were data: `model_fields`
+    is a dict of Pydantic FieldInfo objects, which passed the isinstance
+    check for dict and went straight into the response, where
+    jsonable_encoder failed with "'FieldInfo' object is not iterable" and
+    the whole endpoint 500'd. Every route in this router that serialized an
+    ORM row was affected. Naming the columns explicitly cannot regress that
+    way when a dependency adds another dunder-free attribute.
     """
     if obj is None:
         return {}
@@ -506,10 +528,29 @@ def _serialize(obj: Any) -> dict:
     if isinstance(obj, dict):
         return obj
 
+    try:
+        keys = [attr.key for attr in sa_inspect(obj).mapper.column_attrs]
+    except Exception:
+        # Not a mapped instance — fall back to the public attribute scan,
+        # minus the framework internals that caused the original failure.
+        keys = [
+            k
+            for k in dir(obj)
+            if not k.startswith("_")
+            and k
+            not in {
+                "metadata",
+                "registry",
+                "model_fields",
+                "model_config",
+                "model_computed_fields",
+                "model_extra",
+                "model_fields_set",
+            }
+        ]
+
     data = {}
-    for key in dir(obj):
-        if key.startswith("_") or key == "metadata" or key == "registry":
-            continue
+    for key in keys:
         try:
             val = getattr(obj, key)
         except Exception:

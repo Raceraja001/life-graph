@@ -25,7 +25,7 @@ from life_graph.api.middleware import (
     TenantMiddleware,
 )
 from life_graph.api.multimodal import router as multimodal_router
-from life_graph.api.responses import error_response
+from life_graph.api.responses import InvalidCursorError, error_response
 from life_graph.api.websocket import websocket_endpoint, ws_event_handler
 from life_graph.config import settings
 from life_graph.core.events import enable_redis_bridge, event_bus
@@ -273,6 +273,15 @@ app = FastAPI(
 
 
 # ── Global Exception Handlers ────────────────────────────────
+
+
+@app.exception_handler(InvalidCursorError)
+async def invalid_cursor_handler(request: Request, exc: InvalidCursorError) -> JSONResponse:
+    """A malformed pagination cursor is client error, not a server fault."""
+    return JSONResponse(
+        status_code=422,
+        content={"detail": str(exc), "request_id": getattr(request.state, "request_id", None)},
+    )
 
 
 @app.exception_handler(Exception)

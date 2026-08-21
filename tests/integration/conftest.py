@@ -86,3 +86,46 @@ def skip_on_db_error(func):
 
             raise
     return wrapper
+
+
+# ── Built-in personas ─────────────────────────────────────────
+#
+# The app seeds built-in personas during lifespan startup, but the
+# integration tests drive the app through ASGITransport, which does not run
+# the lifespan. Anything that routes to a persona — delegation, the chief
+# router, kernel task dispatch — then fails with
+# "Unknown agent persona: 'chief'". Seeding here is what the running app
+# would have done, and seed_builtins() is idempotent, so repeated calls
+# reconcile rather than duplicate.
+
+import pytest_asyncio  # noqa: E402
+
+_SEEDED: set[str] = set()
+
+
+def _module_tenant(module) -> str | None:
+    """The tenant a test module operates as, however it declares it."""
+    tenant = getattr(module, "TENANT_ID", None)
+    if isinstance(tenant, str):
+        return tenant
+    headers = getattr(module, "TENANT_HEADERS", None)
+    if isinstance(headers, dict):
+        return headers.get("X-Tenant-ID")
+    return None
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _seed_builtin_personas(request):
+    """Seed built-in personas for this module's tenant, once per session."""
+    tenant = _module_tenant(request.module)
+    if tenant is None or tenant in _SEEDED:
+        return
+    try:
+        from life_graph.api.dependencies import get_persona_service
+
+        await get_persona_service().seed_builtins(tenant)
+        _SEEDED.add(tenant)
+    except Exception:
+        # No database, or a schema mismatch — the test's own
+        # skip_on_db_error will report it far more precisely than we can.
+        pass
