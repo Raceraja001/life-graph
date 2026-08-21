@@ -68,3 +68,6 @@ Frontend application design-handoff/
 # start.sh runtime state
 .run/
 logs/
+
+# Handoff note from an unrelated work/fin-tech session — not part of this repo
+continued-from-fintech-session.md
