@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 from life_graph.scoring.decay import DecayCalculator
 from life_graph.scoring.importance import ImportanceTagger
@@ -68,6 +69,16 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
     return dot / (norm_a * norm_b)
+
+
+def _tenant() -> str:
+    """Tenant this consolidation run belongs to.
+
+    Fails closed: the pipeline is invoked once per tenant by
+    ``run_all_consolidations``, so a missing context must raise rather than
+    silently widen every query to all tenants.
+    """
+    return get_current_tenant_id()
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
@@ -172,6 +183,7 @@ class ConsolidationPipeline:
         cutoff = datetime.now(UTC) - timedelta(hours=24)
         stmt = (
             select(Memory)
+            .where(Memory.tenant_id == _tenant())
             .where(Memory.created_at > cutoff)
             .where(Memory.status == "active")
             .order_by(Memory.created_at.desc())
@@ -275,6 +287,7 @@ class ConsolidationPipeline:
                 await session.execute(
                     update(Memory)
                     .where(Memory.id == mem.id)
+                    .where(Memory.tenant_id == _tenant())
                     .values(importance=score, importance_tier=tier)
                 )
             await session.commit()
@@ -320,6 +333,7 @@ class ConsolidationPipeline:
 
                 # Store as new memory
                 new_memory = Memory(
+                    tenant_id=_tenant(),
                     content=principle_text,
                     reasoning=f"Distilled from {len(cluster)} related memories",
                     tags=["principle", "distilled"],
@@ -372,7 +386,10 @@ class ConsolidationPipeline:
 
         Returns the number of memories archived.
         """
-        stmt = select(Memory).where(Memory.status == "active")
+        stmt = select(Memory).where(
+            Memory.tenant_id == _tenant(),
+            Memory.status == "active",
+        )
         async with self._session_factory() as session:
             result = await session.execute(stmt)
             active = list(result.scalars().all())
@@ -407,6 +424,7 @@ class ConsolidationPipeline:
                 await session.execute(
                     update(Memory)
                     .where(Memory.id.in_([uuid.UUID(mid) for mid in to_archive]))
+                    .where(Memory.tenant_id == _tenant())
                     .values(status="archived")
                 )
                 await session.commit()

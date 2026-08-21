@@ -74,12 +74,18 @@ async def run_tenant_consolidation(ctx: dict, tenant_id: str) -> dict:
         report = await pipeline.run()
 
         # Update job as success
+        # Direct attribute access, not getattr(..., 0): four of these keys
+        # previously named fields ConsolidationReport does not have, so every
+        # nightly JobRun recorded zeros. A rename should fail loudly here.
         result_data = {
-            "clusters_found": getattr(report, "clusters_found", 0),
-            "duplicates_merged": getattr(report, "duplicates_merged", 0),
-            "memories_scored": getattr(report, "memories_scored", 0),
-            "distilled": getattr(report, "distilled", 0),
-            "decayed": getattr(report, "decayed", 0),
+            "gathered": report.gathered,
+            "clusters_found": report.clusters_found,
+            "duplicates_removed": report.duplicates_removed,
+            "principles_created": report.principles_created,
+            "memories_archived": report.memories_archived,
+            "contradictions_found": report.contradictions_found,
+            "llm_cost_usd": report.llm_cost_usd,
+            "duration_seconds": report.duration_seconds,
         }
 
         async with async_session() as session:
