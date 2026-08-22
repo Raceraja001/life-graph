@@ -64,6 +64,12 @@ class Settings(BaseSettings):
 
     # ── Decay ──────────────────────────────────────────
     decay_archive_threshold: float = 0.01
+    decay_proposal_limit: int = 50
+    """Most archive proposals one decay sweep may queue for a tenant.
+
+    Decay proposes rather than archives, so an unbounded first sweep over a
+    long-neglected corpus would bury the approval queue. Lowest effective
+    importance first, so the clearest candidates surface soonest."""
     decay_default_lambda: float = 0.1
 
     # ── Deduplication ──────────────────────────────────

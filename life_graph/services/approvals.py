@@ -191,6 +191,8 @@ class ApprovalService:
             await self._apply_promotion(tenant_id, appr, approve, resolved_by)
         elif appr.kind == "merge":
             await self._apply_merge(tenant_id, appr, approve)
+        elif appr.kind == "archive":
+            await self._apply_archive(tenant_id, appr, approve)
         elif appr.kind == "contradiction":
             await self._apply_contradiction(tenant_id, appr, approve)
         elif appr.kind == "autonomous_action":
@@ -294,6 +296,36 @@ class ApprovalService:
         loser.status = "superseded"
         loser.superseded_by = winner.id
         winner.supersedes = loser.id
+
+    async def _apply_archive(self, tenant_id: str, appr: Approval, approve: bool) -> None:
+        """Archive a decayed memory (approve) or leave it alone (reject).
+
+        Decay no longer archives anything by itself — it proposes, and a
+        memory stays active and fully recallable until someone approves the
+        proposal here. Rejecting is a genuine no-op: the memory was never
+        touched, and the resolved approval keeps the sweep from re-queueing
+        it, since proposals are idempotent on source_ref.
+
+        Archiving is still reversible — PostgresMemoryStore.unarchive() sets
+        status back to active — so this is a demotion out of recall, not a
+        deletion. Nothing in the decay path ever deletes a memory.
+        """
+        if not approve:
+            return
+
+        memory_id = (appr.payload or {}).get("memory_id")
+        if not memory_id:
+            return
+        try:
+            memory = await self.session.get(Memory, uuid.UUID(str(memory_id)))
+        except (ValueError, TypeError):
+            return
+        if memory is None or memory.tenant_id != tenant_id:
+            return
+        # Recalled since the proposal was raised — it has earned its place.
+        if memory.status != "active":
+            return
+        memory.status = "archived"
 
     async def _apply_contradiction(self, tenant_id: str, appr: Approval, approve: bool) -> None:
         """Confirm an auto-supersede (approve, no-op) or UNDO it (reject).

@@ -7,7 +7,7 @@ Implements exponential decay for memory importance::
 where ``days_since_activity = NOW() - COALESCE(last_accessed, created_at)``.
 
 Memories whose effective importance falls below the configured threshold
-(``settings.decay_archive_threshold``) are archived in bulk via a single
+(``settings.decay_archive_threshold``) are proposed for archival via a single
 SQL UPDATE.
 
 Entry points:
@@ -24,10 +24,63 @@ from datetime import UTC, datetime
 from sqlalchemy import select, text, update
 
 from life_graph.config import settings
-from life_graph.models.db import JobRun, Memory
+from life_graph.models.db import Approval, JobRun, Memory
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
+
+
+async def _queue_archive_proposals(session, tenant_id: str, candidates) -> int:
+    """Queue an ``archive`` approval per decayed memory. Returns how many.
+
+    Idempotent on ``source_ref`` (the memory id) so a nightly sweep does not
+    re-queue what is already pending, and does not resurrect a proposal a
+    human already rejected.
+    """
+    if not candidates:
+        return 0
+
+    ids = [str(row.id) for row in candidates]
+    existing = await session.execute(
+        select(Approval.source_ref).where(
+            Approval.tenant_id == tenant_id,
+            Approval.kind == "archive",
+            Approval.source_ref.in_(ids),
+        )
+    )
+    seen = {ref for (ref,) in existing}
+
+    queued = 0
+    for row in candidates:
+        ref = str(row.id)
+        if ref in seen:
+            continue
+        session.add(
+            Approval(
+                tenant_id=tenant_id,
+                kind="archive",
+                source="decay",
+                source_ref=ref,
+                title="Archive a decayed memory",
+                detail=(
+                    f"decay · effective importance "
+                    f"{float(row.effective_importance):.4f} · "
+                    f"tier {row.importance_tier} · "
+                    f"\u201c{(row.content or '')[:80]}\u201d"
+                ),
+                payload={
+                    "memory_id": ref,
+                    "effective_importance": round(float(row.effective_importance), 6),
+                    "importance": round(float(row.importance), 4),
+                    "importance_tier": row.importance_tier,
+                },
+            )
+        )
+        queued += 1
+
+    if queued:
+        await session.flush()
+    return queued
 
 
 async def run_decay_sweep(ctx: dict, tenant_id: str) -> dict:
@@ -45,7 +98,7 @@ async def run_decay_sweep(ctx: dict, tenant_id: str) -> dict:
         tenant_id: The tenant whose memories should be evaluated.
 
     Returns:
-        Dict with ``archived_count`` and ``evaluated_count``.
+        Dict with ``proposed_count``, ``candidate_count`` and ``evaluated_count``.
 
     Raises:
         Exception: Re-raised after marking the job as failed.
@@ -77,41 +130,55 @@ async def run_decay_sweep(ctx: dict, tenant_id: str) -> dict:
             )
             total_active = count_result.scalar() or 0
 
-            # Bulk archive: compute effective importance in SQL and
-            # archive memories that fall below threshold.
+            # Decay lowers a memory's standing; it does not remove it.
+            #
+            # This used to be a bulk UPDATE ... SET status = 'archived', which
+            # every query filters out — so a decayed memory disappeared from
+            # recall with no record and no way back short of a manual
+            # unarchive(). Ranking already demotes stale memories on its own:
+            # the recency and frequency signals are computed from exactly the
+            # inputs decay uses, so a memory nobody touches sinks down the
+            # order without anything hiding it.
+            #
+            # Removal is a separate decision, taken deliberately. Candidates
+            # are queued as approvals, mirroring workers/cleanup.py, and
+            # nothing changes status until someone says so.
             #
             # Formula: importance * exp(-decay_rate * days_since_activity)
-            # days_since_activity = EXTRACT(EPOCH FROM (NOW() - ref_time)) / 86400
             # ref_time = COALESCE(last_accessed, created_at)
             result = await session.execute(
                 text("""
-                    WITH decay_calc AS (
-                        SELECT id,
-                               importance * exp(
-                                   -decay_rate *
-                                   EXTRACT(EPOCH FROM (NOW() - COALESCE(last_accessed, created_at)))
-                                   / 86400.0
-                               ) AS effective_importance
-                        FROM memories
-                        WHERE tenant_id = :tenant_id
-                          AND status = 'active'
-                    )
-                    UPDATE memories m
-                    SET status = 'archived', updated_at = NOW()
-                    FROM decay_calc d
-                    WHERE m.id = d.id
-                      AND d.effective_importance < :threshold
-                    RETURNING m.id
+                    SELECT id, content, importance, importance_tier,
+                           importance * exp(
+                               -decay_rate *
+                               EXTRACT(EPOCH FROM (NOW() - COALESCE(last_accessed, created_at)))
+                               / 86400.0
+                           ) AS effective_importance
+                    FROM memories
+                    WHERE tenant_id = :tenant_id
+                      AND status = 'active'
+                      AND importance_tier <> 'critical'
+                      AND importance * exp(
+                              -decay_rate *
+                              EXTRACT(EPOCH FROM (NOW() - COALESCE(last_accessed, created_at)))
+                              / 86400.0
+                          ) < :threshold
+                    ORDER BY effective_importance ASC
+                    LIMIT :cap
                 """),
-                {"tenant_id": tenant_id, "threshold": threshold},
+                {
+                    "tenant_id": tenant_id,
+                    "threshold": threshold,
+                    "cap": settings.decay_proposal_limit,
+                },
             )
-
-            archived_ids = result.fetchall()
-            archived_count = len(archived_ids)
+            candidates = result.fetchall()
+            proposed = await _queue_archive_proposals(session, tenant_id, candidates)
             await session.commit()
 
         result_data = {
-            "archived_count": archived_count,
+            "proposed_count": proposed,
+            "candidate_count": len(candidates),
             "evaluated_count": total_active,
         }
 
@@ -129,9 +196,10 @@ async def run_decay_sweep(ctx: dict, tenant_id: str) -> dict:
             await session.commit()
 
         logger.info(
-            "Decay sweep for %s: archived=%d, evaluated=%d",
+            "Decay sweep for %s: proposed=%d of %d candidates, evaluated=%d",
             tenant_id,
-            archived_count,
+            proposed,
+            len(candidates),
             total_active,
         )
         return result_data

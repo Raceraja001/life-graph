@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -32,6 +31,8 @@ from life_graph.services.contradiction import ContradictionDetector
 from life_graph.storage.postgres import PostgresMemoryStore
 
 if TYPE_CHECKING:
+    import uuid
+
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from life_graph.services.embeddings import EmbeddingService
@@ -416,24 +417,29 @@ class ConsolidationPipeline:
 
         decay_results = self._decay.batch_calculate(mem_dicts)
 
-        # Archive those that should be
-        to_archive: list[str] = []
-        for mem_id, _score, should_archive in decay_results:
-            if should_archive:
-                to_archive.append(mem_id)
+        # Decay demotes; it does not remove.
+        #
+        # This used to flip status to 'archived' in place. Every recall query
+        # filters on status = 'active', so a decayed memory silently vanished
+        # from recall with no record of the decision and no way back short of
+        # a manual unarchive(). Ranking already handles the demotion on its
+        # own — recency and frequency are computed from the same inputs decay
+        # uses, so an untouched memory sinks in the order without being
+        # hidden.
+        #
+        # Removal is proposed, not performed. workers/decay.py queues the
+        # approvals; this step only reports what qualified, so the nightly
+        # consolidation and the decay sweep cannot both queue the same thing.
+        decayed = [mem_id for mem_id, _score, should_archive in decay_results if should_archive]
 
-        if to_archive:
-            async with self._session_factory() as session:
-                await session.execute(
-                    update(Memory)
-                    .where(Memory.id.in_([uuid.UUID(mid) for mid in to_archive]))
-                    .where(Memory.tenant_id == _tenant())
-                    .values(status="archived")
-                )
-                await session.commit()
-            logger.info("Archived %d decayed memories", len(to_archive))
+        if decayed:
+            logger.info(
+                "Consolidation: %d memories are below the decay threshold "
+                "(left active; workers.decay proposes removal for approval)",
+                len(decayed),
+            )
 
-        return len(to_archive)
+        return len(decayed)
 
     # ── Step 7: Audit ─────────────────────────────────────────
 
