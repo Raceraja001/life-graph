@@ -82,9 +82,18 @@ class PreferenceStore:
             await session.commit()
             await session.refresh(pref)
 
+        # PreferenceGraphService mirrors this into the knowledge graph and
+        # reads choice/confidence off the payload. Omitting them wrote every
+        # node with choice="" and confidence=0.5.
         await event_bus.emit(
             EventType.PREFERENCE_CREATED,
-            {"id": str(pref.id), "tenant_id": tenant_id, "topic": pref.topic},
+            {
+                "id": str(pref.id),
+                "tenant_id": tenant_id,
+                "topic": pref.topic,
+                "choice": pref.choice,
+                "confidence": pref.confidence,
+            },
             source="preference_store",
         )
         logger.info("Created preference %s for tenant %s", pref.id, tenant_id)
@@ -185,9 +194,19 @@ class PreferenceStore:
             await session.commit()
             await session.refresh(pref)
 
+        # The graph sync upserts, so an id-only payload does not merely skip
+        # the update — it rewrites the node as topic="unknown", choice="",
+        # confidence=0.5, discarding what was correct at creation. Send the
+        # current record.
         await event_bus.emit(
             EventType.PREFERENCE_UPDATED,
-            {"id": str(pref.id), "tenant_id": tenant_id},
+            {
+                "id": str(pref.id),
+                "tenant_id": tenant_id,
+                "topic": pref.topic,
+                "choice": pref.choice,
+                "confidence": pref.confidence,
+            },
             source="preference_store",
         )
         return pref

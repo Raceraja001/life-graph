@@ -120,6 +120,10 @@ class EvidenceStore:
                 "tenant_id": tenant_id,
                 "preference_id": str(preference_id),
                 "stance": evidence.stance,
+                # The graph sync uses weight (falling back to credibility) as
+                # the edge strength. Without them every edge was written 1.0.
+                "weight": evidence.weight,
+                "credibility": evidence.credibility,
             },
             source="evidence_store",
         )
