@@ -467,19 +467,6 @@ def get_autonomy_level_service():
     )
 
 
-def get_trust_service():
-    """Return a trust-score service bound to a fresh session.
-
-    ``TrustScoreService`` takes a live ``AsyncSession`` (not a factory), so this
-    is not an lru-cached singleton — callers use it within their own session
-    scope. Currently used by the trust-decay worker (which degrades gracefully
-    if unavailable).
-    """
-    from life_graph.autonomy.trust.service import TrustScoreService
-
-    return TrustScoreService(async_session())
-
-
 @lru_cache(maxsize=1)
 def get_autofix_service():
     """Return the singleton autofix pipeline service.

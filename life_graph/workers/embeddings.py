@@ -52,7 +52,7 @@ async def generate_embeddings_batch(
     Raises:
         Exception: Re-raised after marking the job as failed so ARQ retries.
     """
-    from life_graph.services.embedding import get_embedding_service
+    from life_graph.api.dependencies import get_embedding_service
 
     # Create job record
     job_id = uuid.uuid4()

@@ -532,22 +532,18 @@ async def decay_trust_scores(ctx: dict) -> dict:
     """Nightly cron (05:00 UTC): decay trust scores for inactive agents.
 
     Queries all tenants with trust scores and applies time-based decay.
+
+    Note the imports: TrustScore lives in ``autonomy.models``, and the method
+    is ``decay_all`` (not ``decay_scores``). Both were wrong here, and both
+    failures were swallowed — the job reported "skipped" or
+    "decay_not_implemented" every night and never decayed anything. They are
+    no longer guarded: if the model cannot be imported the job should fail
+    loudly rather than report a successful no-op.
     """
     logger.info("Starting nightly trust score decay")
 
-    try:
-        from life_graph.models.db import TrustScore
-    except ImportError:
-        logger.warning("TrustScore model not available — skipping decay")
-        return {"status": "skipped", "reason": "models_unavailable"}
-
-    from life_graph.api.dependencies import get_trust_service
-
-    try:
-        trust_service = get_trust_service()
-    except Exception:
-        logger.warning("Trust service not available — skipping decay")
-        return {"status": "skipped", "reason": "service_unavailable"}
+    from life_graph.autonomy.models import TrustScore
+    from life_graph.autonomy.trust.service import TrustScoreService
 
     # Find all tenants with trust scores
     async with async_session() as session:
@@ -559,19 +555,23 @@ async def decay_trust_scores(ctx: dict) -> dict:
         return {"tenants": 0}
 
     results = {}
+    total = 0
     for tid in tenant_ids:
         try:
             set_tenant_context(tid, "system")
-            if hasattr(trust_service, "decay_scores"):
-                count = await trust_service.decay_scores(tid)
-                results[tid] = {"decayed": count}
-            else:
-                results[tid] = {"status": "decay_not_implemented"}
+            # decay_all() only flushes; the session must be committed here or
+            # the recalculated scores are discarded when it closes.
+            async with async_session() as session:
+                count = await TrustScoreService(session).decay_all(tid)
+                await session.commit()
+            results[tid] = {"decayed": count}
+            total += count
         except Exception:
             logger.exception("Trust decay failed for tenant %s", tid)
             results[tid] = {"status": "error"}
 
-    return {"tenants": len(tenant_ids), "results": results}
+    logger.info("Trust decay: %d tenants, %d scores decayed", len(tenant_ids), total)
+    return {"tenants": len(tenant_ids), "decayed": total, "results": results}
 
 
 async def check_approval_timeouts(ctx: dict) -> dict:
