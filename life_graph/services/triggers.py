@@ -12,14 +12,16 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
 from life_graph.models.db import Intention, Memory
-from life_graph.services.context import ContextFingerprint
 from life_graph.storage.database import async_session
-from life_graph.storage.postgres import PostgresMemoryStore
+
+if TYPE_CHECKING:
+    from life_graph.services.context import ContextFingerprint
+    from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
 

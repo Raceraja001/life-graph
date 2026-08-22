@@ -19,15 +19,17 @@ import asyncio
 import contextlib
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Query, WebSocket, WebSocketDisconnect
 
 from life_graph.api.auth import extract_api_key
 from life_graph.config import settings
-from life_graph.core.events import Event
 from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
 from life_graph.storage.redis import get_redis
+
+if TYPE_CHECKING:
+    from life_graph.core.events import Event
 
 logger = logging.getLogger(__name__)
 

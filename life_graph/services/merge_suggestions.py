@@ -12,12 +12,17 @@ See docs/specs/approvals-feed.md.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.config import settings
 from life_graph.models.db import Approval
-from life_graph.storage.postgres import PostgresMemoryStore
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from life_graph.storage.postgres import PostgresMemoryStore
 
 
 def _pair_key(id_a: str, id_b: str) -> str:

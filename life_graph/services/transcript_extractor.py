@@ -12,13 +12,17 @@ import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import numpy as np
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.models.db import Evidence, Preference
-from life_graph.services.embeddings import EmbeddingService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from life_graph.services.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
 

@@ -7,17 +7,21 @@ All operations are tenant-scoped and emit events.
 from __future__ import annotations
 
 import logging
-import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import defer
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Preference
-from life_graph.services.embeddings import EmbeddingService
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from life_graph.services.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
 

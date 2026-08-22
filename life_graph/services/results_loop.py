@@ -11,12 +11,16 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.core.events import EventBus, EventType
-from life_graph.drivers.base import DriverResult
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from life_graph.drivers.base import DriverResult
 
 logger = logging.getLogger(__name__)
 

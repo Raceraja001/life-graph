@@ -7,8 +7,10 @@ querying agent drivers by name or task type capability.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
-from life_graph.drivers.base import AgentDriver
+if TYPE_CHECKING:
+    from life_graph.drivers.base import AgentDriver
 
 logger = logging.getLogger(__name__)
 

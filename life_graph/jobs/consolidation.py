@@ -20,18 +20,21 @@ import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 from life_graph.scoring.decay import DecayCalculator
 from life_graph.scoring.importance import ImportanceTagger
 from life_graph.services.contradiction import ContradictionDetector
-from life_graph.services.embeddings import EmbeddingService
 from life_graph.storage.postgres import PostgresMemoryStore
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from life_graph.services.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
 

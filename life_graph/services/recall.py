@@ -15,7 +15,7 @@ import logging
 import uuid
 from collections import Counter
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from life_graph.config import settings
 from life_graph.models.schemas import (
@@ -23,10 +23,12 @@ from life_graph.models.schemas import (
     MemoryResponse,
     RecallContext,
 )
-from life_graph.scoring.ranking import RecallRanker
-from life_graph.services.context import ContextBuilder, ContextFingerprint
 from life_graph.services.triggers import TriggerMatcher
-from life_graph.storage.postgres import PostgresMemoryStore
+
+if TYPE_CHECKING:
+    from life_graph.scoring.ranking import RecallRanker
+    from life_graph.services.context import ContextBuilder, ContextFingerprint
+    from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
 

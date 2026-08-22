@@ -18,15 +18,17 @@ import asyncio
 import hashlib
 import logging
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from life_graph.extraction.pipeline import ExtractionPipeline
-from life_graph.extraction.rules import ExtractedFact
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryUpdate
-from life_graph.scoring.importance import ImportanceTagger
-from life_graph.services.contradiction import Contradiction, ContradictionDetector
-from life_graph.storage.postgres import PostgresMemoryStore
+
+if TYPE_CHECKING:
+    from life_graph.extraction.pipeline import ExtractionPipeline
+    from life_graph.extraction.rules import ExtractedFact
+    from life_graph.scoring.importance import ImportanceTagger
+    from life_graph.services.contradiction import Contradiction, ContradictionDetector
+    from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
 

@@ -14,13 +14,16 @@ import logging
 import re
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.models.db import Decision, Prediction
 from life_graph.storage.database import async_session
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

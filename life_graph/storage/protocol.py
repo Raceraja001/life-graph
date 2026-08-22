@@ -7,11 +7,13 @@ base class.  Any object that implements these async methods is a valid
 
 from __future__ import annotations
 
-import uuid
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from life_graph.models.db import Memory
-from life_graph.models.schemas import MemoryCreate, MemoryUpdate
+if TYPE_CHECKING:
+    import uuid
+
+    from life_graph.models.db import Memory
+    from life_graph.models.schemas import MemoryCreate, MemoryUpdate
 
 
 @runtime_checkable

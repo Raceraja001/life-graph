@@ -10,14 +10,16 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from life_graph.cold_start.code_analyzer import CodeAnalyzer
 from life_graph.cold_start.config_parser import ConfigParser
 from life_graph.cold_start.git_analyzer import GitAnalyzer
 from life_graph.models.schemas import MemoryCreate
-from life_graph.services.embeddings import EmbeddingService
-from life_graph.storage.postgres import PostgresMemoryStore
+
+if TYPE_CHECKING:
+    from life_graph.services.embeddings import EmbeddingService
+    from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
 

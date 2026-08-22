@@ -16,15 +16,17 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.config import settings
 from life_graph.core.events import EventBus, EventType
 from life_graph.models.db import CaptureEvent, Decision, Memory, Notification
 from life_graph.services.interview import InterviewService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = logging.getLogger(__name__)
 

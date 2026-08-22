@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import contextlib
-import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Conversation, ConversationMessage, _utcnow
+
+if TYPE_CHECKING:
+    import uuid
 
 _TITLE_MAX = 60
 _HISTORY_TURNS = 6

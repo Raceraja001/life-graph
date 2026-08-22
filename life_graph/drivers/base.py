@@ -6,10 +6,12 @@ as interchangeable workers that receive context packets and return results.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    import uuid
+    from pathlib import Path
 
 
 @dataclass

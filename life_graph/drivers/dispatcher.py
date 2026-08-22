@@ -22,9 +22,9 @@ import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.core.budget import BudgetCategory
 from life_graph.core.events import EventBus, EventType
@@ -34,6 +34,9 @@ from life_graph.drivers.registry import driver_registry
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.services.governor import governor
 from life_graph.services.verifiers import VerifierResult, verifier_chain
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

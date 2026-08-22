@@ -6,17 +6,21 @@ Supports create, activate (atomic swap), rollback, and version listing.
 from __future__ import annotations
 
 import logging
-import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.self_improving.models import PromptVersion
 from life_graph.self_improving.schemas import (
     PromptVersionCreate,
     PromptVersionResponse,
 )
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = logging.getLogger(__name__)
 

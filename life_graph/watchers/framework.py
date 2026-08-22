@@ -7,12 +7,14 @@ automatic config provisioning for new tenants.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
-from life_graph.watchers.base import BaseWatcher
 from life_graph.watchers.models import WatchConfig
+
+if TYPE_CHECKING:
+    from life_graph.watchers.base import BaseWatcher
 
 
 class WatcherFramework:

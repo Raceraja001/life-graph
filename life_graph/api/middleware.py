@@ -13,9 +13,9 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from typing import TYPE_CHECKING
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from life_graph.api.auth import is_exempt_path, verify_service_key
@@ -23,6 +23,9 @@ from life_graph.config import settings
 from life_graph.core.metrics import track_request
 from life_graph.core.rate_limit import check_rate_limit
 from life_graph.core.tenant import set_tenant_context
+
+if TYPE_CHECKING:
+    from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 

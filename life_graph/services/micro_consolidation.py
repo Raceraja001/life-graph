@@ -18,16 +18,21 @@ from __future__ import annotations
 import contextlib
 import logging
 import time
-import uuid
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.models.db import Memory, MemorySession
 from life_graph.scoring.importance import ImportanceTagger
-from life_graph.services.embeddings import EmbeddingService
 from life_graph.storage.postgres import PostgresMemoryStore
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from life_graph.services.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
 

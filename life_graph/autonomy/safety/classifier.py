@@ -10,12 +10,15 @@ import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 from fnmatch import fnmatch
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.autonomy.models import ActionSafetyRule, AutonomyLevel, TrustScore
 from life_graph.autonomy.trust.calculator import TrustCalculator
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

@@ -22,11 +22,12 @@ from __future__ import annotations
 import importlib
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from life_graph.core.events import EventBus
+if TYPE_CHECKING:
+    from life_graph.core.events import EventBus
 
 logger = logging.getLogger(__name__)
 

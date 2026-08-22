@@ -9,6 +9,7 @@ import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy.orm import defer
@@ -16,8 +17,10 @@ from sqlalchemy.orm import defer
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, coerce_tier
 from life_graph.models.db import Memory, MemorySession, Session
-from life_graph.models.schemas import MemoryCreate, MemoryUpdate
 from life_graph.storage.database import async_session
+
+if TYPE_CHECKING:
+    from life_graph.models.schemas import MemoryCreate, MemoryUpdate
 
 logger = logging.getLogger(__name__)
 

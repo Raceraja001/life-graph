@@ -9,14 +9,18 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, case, desc, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import AgentMessage, AgentTask
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = logging.getLogger(__name__)
 

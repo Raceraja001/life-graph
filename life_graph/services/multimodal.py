@@ -26,12 +26,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from life_graph.core.events import EventBus
     from life_graph.core.memory_manager import MemoryManager
+    from life_graph.storage.minio_client import MinIOStorage
 
-from life_graph.core.events import EventBus
 from life_graph.extraction.pipeline import ExtractionPipeline
 from life_graph.models.schemas import MemoryCreate
-from life_graph.storage.minio_client import MinIOStorage
 
 logger = logging.getLogger(__name__)
 

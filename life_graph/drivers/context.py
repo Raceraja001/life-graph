@@ -16,12 +16,15 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.core.trust import fence_untrusted, is_excluded_from_agents, is_untrusted
 from life_graph.drivers.base import ContextPacket
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

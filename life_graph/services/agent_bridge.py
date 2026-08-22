@@ -18,13 +18,15 @@ Usage::
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from life_graph.core.memory_manager import MemoryManager
 from life_graph.models.schemas import MemoryResponse, RecallContext
-from life_graph.services.intentions import IntentionService
-from life_graph.services.recall import RecallEngine
-from life_graph.storage.postgres import PostgresMemoryStore
+
+if TYPE_CHECKING:
+    from life_graph.core.memory_manager import MemoryManager
+    from life_graph.services.intentions import IntentionService
+    from life_graph.services.recall import RecallEngine
+    from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
 

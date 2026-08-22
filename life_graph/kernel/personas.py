@@ -13,16 +13,18 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.kernel.propose_contract import (
     AGENT_TASK_PROPOSE_CONTRACT,
     COMMAND_PROPOSE_CONTRACT,
 )
 from life_graph.models.db import AgentPersona
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = logging.getLogger(__name__)
 

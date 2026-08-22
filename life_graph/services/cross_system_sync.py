@@ -10,13 +10,16 @@ import asyncio
 import logging
 import time
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import CrossSystemSync, Memory, Preference
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = logging.getLogger(__name__)
 

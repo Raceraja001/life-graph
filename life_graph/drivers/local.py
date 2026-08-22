@@ -11,9 +11,12 @@ from __future__ import annotations
 import json
 import logging
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from life_graph.drivers.base import ContextPacket, DriverResult
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

@@ -8,9 +8,12 @@ currently executing under — mirrors core/tenant.py's pattern.
 
 from __future__ import annotations
 
-import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import uuid
 
 _task_context_var: ContextVar[TaskContext | None] = ContextVar("task_context", default=None)
 

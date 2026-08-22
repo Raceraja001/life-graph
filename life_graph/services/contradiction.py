@@ -14,9 +14,11 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from life_graph.models.db import Memory
-from life_graph.storage.postgres import PostgresMemoryStore
+if TYPE_CHECKING:
+    from life_graph.models.db import Memory
+    from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
 

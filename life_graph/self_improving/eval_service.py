@@ -9,15 +9,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-import uuid
 from collections import defaultdict
-from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from life_graph.self_improving.eval_scorer import EvalScorer
@@ -37,6 +34,12 @@ from life_graph.self_improving.schemas import (
     EvalSuiteResponse,
     FailureAnalysis,
 )
+
+if TYPE_CHECKING:
+    import uuid
+    from collections.abc import Callable
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 logger = logging.getLogger(__name__)
 

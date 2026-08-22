@@ -9,14 +9,17 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.core.events import EventBus, EventType
 from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
 from life_graph.models.db import CaptureEvent, Correction
 from life_graph.storage.database import async_session
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class CaptureService:

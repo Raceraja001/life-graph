@@ -11,15 +11,18 @@ import logging
 import math
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import defer
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Evidence, Preference
-from life_graph.services.embeddings import EmbeddingService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from life_graph.services.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
 

@@ -13,20 +13,23 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from life_graph.config import Settings
 from life_graph.core.budget import BudgetCategory
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Evidence, Preference, ResearchRun
-from life_graph.services.evidence_store import EvidenceStore
 from life_graph.services.governor import governor
-from life_graph.services.multi_model_advisor import MultiModelAdvisor
-from life_graph.services.preference_store import PreferenceStore
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from life_graph.config import Settings
+    from life_graph.services.evidence_store import EvidenceStore
+    from life_graph.services.multi_model_advisor import MultiModelAdvisor
+    from life_graph.services.preference_store import PreferenceStore
 
 logger = logging.getLogger(__name__)
 

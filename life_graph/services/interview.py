@@ -18,9 +18,9 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.core.events import EventBus, EventType
 from life_graph.models.db import (
@@ -31,6 +31,9 @@ from life_graph.models.db import (
 )
 from life_graph.services.capture import CaptureService
 from life_graph.services.outcome_resolver import OutcomeResolver
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

@@ -23,15 +23,18 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.config import settings
 from life_graph.core.tenant import set_tenant_context
 from life_graph.models.db import Approval, Memory
 from life_graph.storage.database import async_session
 from life_graph.storage.postgres import PostgresMemoryStore
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

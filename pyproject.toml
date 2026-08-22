@@ -100,14 +100,7 @@ select = [
     "UP",   # pyupgrade
     "B",    # flake8-bugbear
     "SIM",  # flake8-simplify
-    # "TCH" — flake8-type-checking is OFF. It asks for 165 imports to move
-    # into TYPE_CHECKING blocks across api/ and services/. FastAPI and
-    # Pydantic resolve annotations at runtime, so whether each move is safe
-    # depends on request-time behaviour that the current DB-less test suite
-    # cannot exercise — integration tests skip rather than run. The rule has
-    # never been satisfied since it was selected, so leaving it off changes
-    # nothing operationally. Re-enable once integration tests run against a
-    # real Postgres and can actually prove the moves safe.
+    "TC",   # flake8-type-checking (see per-file-ignores for route modules)
 ]
 ignore = ["E501"]  # line length handled by formatter
 
@@ -115,9 +108,26 @@ ignore = ["E501"]  # line length handled by formatter
 # main.py imports routers mid-file on purpose, interleaved with the
 # include_router call each one feeds, to keep the wiring readable and to
 # sidestep import cycles. Hoisting 27 imports to the top would obscure that.
-"life_graph/main.py" = ["E402"]
 # schemas.py defers two imports past a runtime guard for the same reason.
 "life_graph/autonomy/safety/schemas.py" = ["E402"]
+# TC is off for modules that DEFINE FastAPI routes. FastAPI resolves each
+# handler's signature at runtime via get_type_hints() to build validation and
+# the OpenAPI schema; a name that only exists under TYPE_CHECKING raises
+# PydanticUserError("... is not fully defined") when the schema is built.
+# `runtime-evaluated-base-classes` below covers Pydantic/SQLAlchemy models but
+# not route handler parameters, which are plain function annotations.
+#
+# This was verified rather than assumed: applying the rule everywhere broke
+# `app.openapi()` (205 paths / 242 operations / 99 schemas). Restricting it to
+# non-route modules fixes 121 of the 165 findings with the schema build and
+# both suites unchanged. The remaining 44 live in the modules below.
+#
+# The globs cover all 45 route-defining modules, so a new route file is
+# exempt automatically rather than failing CI on its first import.
+"life_graph/api/*.py" = ["TC"]
+"life_graph/**/router.py" = ["TC"]
+"life_graph/main.py" = ["E402", "TC"]
+"life_graph/core/metrics.py" = ["TC"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency-injection callables are *meant* to be evaluated in

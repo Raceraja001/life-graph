@@ -7,11 +7,14 @@ metering counters, and job queue coordination.
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 
 import redis.asyncio as aioredis
 
 from life_graph.config import settings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 

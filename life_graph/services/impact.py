@@ -9,14 +9,16 @@ get penalized (asymmetrically — boost > penalty).
 from __future__ import annotations
 
 import logging
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
 from life_graph.config import settings
 from life_graph.models.db import Memory, MemorySession
 from life_graph.storage.database import async_session
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
