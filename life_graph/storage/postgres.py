@@ -391,6 +391,32 @@ class PostgresMemoryStore:
             )
             await session.commit()
 
+    async def touch_many(self, memory_ids: list[uuid.UUID]) -> int:
+        """Record an access against several memories in one statement.
+
+        Recall surfaces up to five memories at a time; touching them
+        individually would be five round trips for bookkeeping.
+
+        Returns the number of rows updated.
+        """
+        if not memory_ids:
+            return 0
+
+        async with async_session() as session:
+            result = await session.execute(
+                update(Memory)
+                .where(
+                    Memory.id.in_(memory_ids),
+                    Memory.tenant_id == get_current_tenant_id(),
+                )
+                .values(
+                    access_count=Memory.access_count + 1,
+                    last_accessed=datetime.now(UTC),
+                )
+            )
+            await session.commit()
+            return result.rowcount or 0
+
     # ── Private Helpers ───────────────────────────────────────
 
     @staticmethod

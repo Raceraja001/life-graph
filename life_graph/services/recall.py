@@ -125,6 +125,8 @@ class RecallEngine:
                 self._surfaced_memory_ids[mem_id] = datetime.now(UTC)
                 self._session_surface_count += 1
 
+        await self._record_access(filtered)
+
         recall_ctx = RecallContext(
             identity=identity,
             decisions=decisions,
@@ -178,15 +180,18 @@ class RecallEngine:
         filtered = self._apply_anti_annoyance(reranked)
         results: list[MemoryResponse] = []
 
+        surfaced: list[dict[str, Any]] = []
         for mem_dict in filtered[: settings.recall_max_during_session]:
             response = _dict_to_memory_response(mem_dict)
             if response:
                 results.append(response)
+                surfaced.append(mem_dict)
                 mem_id = str(mem_dict.get("id", ""))
                 if mem_id:
                     self._surfaced_memory_ids[mem_id] = datetime.now(UTC)
                     self._session_surface_count += 1
 
+        await self._record_access(surfaced)
         return results
 
     # ── Dismiss ───────────────────────────────────────────────
@@ -211,6 +216,37 @@ class RecallEngine:
         )
 
     # ── Internal Helpers ──────────────────────────────────────
+
+    async def _record_access(self, surfaced: list[dict[str, Any]]) -> None:
+        """Count a recall as an access on the memories it surfaced.
+
+        Nothing did this before, so 916 of 922 memories in the live database
+        had access_count = 0 and last_accessed NULL. Decay resolves
+        days-since-access from last_accessed and falls back to created_at, so
+        it was measuring age rather than disuse and archived every
+        non-critical memory 24-51 days after it was written however often it
+        had been recalled. The frequency ranking signal was constant for the
+        same reason.
+
+        Best-effort: bookkeeping must never cost the caller its recall.
+        """
+        ids: list[uuid.UUID] = []
+        for mem in surfaced:
+            raw = mem.get("id")
+            if not raw:
+                continue
+            try:
+                ids.append(raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw)))
+            except (ValueError, AttributeError, TypeError):
+                continue
+
+        if not ids:
+            return
+
+        try:
+            await self._store.touch_many(ids)
+        except Exception:
+            logger.warning("Failed to record access for %d memories", len(ids), exc_info=True)
 
     async def _retrieve_candidates(
         self,
