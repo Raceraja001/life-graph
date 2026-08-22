@@ -7,10 +7,13 @@ Includes diversity-aware reranking to avoid topic clustering.
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Weight configuration
@@ -23,6 +26,44 @@ _WEIGHT_IMPACT: float = 0.15
 _WEIGHT_RECENCY: float = 0.15
 _WEIGHT_FREQUENCY: float = 0.10
 _WEIGHT_TRUST: float = 0.05
+
+_SIGNAL_WEIGHTS: dict[str, float] = {
+    "semantic": _WEIGHT_SEMANTIC,
+    "context": _WEIGHT_CONTEXT,
+    "importance": _WEIGHT_IMPORTANCE,
+    "impact": _WEIGHT_IMPACT,
+    "recency": _WEIGHT_RECENCY,
+    "frequency": _WEIGHT_FREQUENCY,
+    "trust": _WEIGHT_TRUST,
+}
+
+# Inert-signal reporting is memoised per process so a per-session recall does
+# not repeat the same line forever.
+_reported_inert: set[frozenset[str]] = set()
+
+
+def inert_signals(scored: list[dict[str, Any]]) -> dict[str, float]:
+    """Signals identical across every candidate, and the weight they waste.
+
+    A weighted signal with the same value on every candidate adds a constant
+    to each final score. It does not misorder anything — it simply takes no
+    part in the ordering, and the weight it was given is spent on nothing.
+
+    That is exactly how two defects stayed invisible here. ``context`` scored
+    0.0 for every candidate because the four keys it reads were never written
+    into Memory.properties, and ``semantic`` is still a hardcoded 0.5 while
+    retrieval is non-vector. Between them, 40% of the weight was inert while
+    every score looked plausible.
+    """
+    if len(scored) < 2:
+        return {}
+
+    inert: dict[str, float] = {}
+    for signal, weight in _SIGNAL_WEIGHTS.items():
+        values = {c.get("_sub_scores", {}).get(signal) for c in scored}
+        if len(values) == 1:
+            inert[signal] = weight
+    return inert
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +243,33 @@ class RecallRanker:
             scored.append(enriched)
 
         scored.sort(key=lambda c: c["final_score"], reverse=True)
+        self._report_inert(scored)
         return scored
+
+    @staticmethod
+    def _report_inert(scored: list[dict[str, Any]]) -> None:
+        """Surface weights that took no part in this ordering.
+
+        Logged rather than raised: a constant signal is legitimate in small
+        or homogeneous result sets, and recall must never fail because of it.
+        Reported once per distinct signal set per process.
+        """
+        inert = inert_signals(scored)
+        if not inert:
+            return
+
+        key = frozenset(inert)
+        wasted = sum(inert.values())
+        message = (
+            "Ranking signals identical across all %d candidates, so %.0f%% of "
+            "the weight took no part in the ordering: %s"
+        )
+        args = (len(scored), wasted * 100, ", ".join(sorted(inert)))
+        if key in _reported_inert:
+            logger.debug(message, *args)
+        else:
+            _reported_inert.add(key)
+            logger.info(message, *args)
 
     def rerank(
         self,
