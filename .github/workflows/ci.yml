@@ -109,6 +109,25 @@ jobs:
       - name: Run integration tests
         run: python -m pytest tests/integration/ -q --tb=short
 
+  dashboard:
+    name: Dashboard Build + Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      # `npm run lint` is deliberately NOT gated yet: eslint reports 90
+      # pre-existing errors (mostly react-hooks/immutability) that predate
+      # this job. Adding it would make CI red on arrival. Fix those, then
+      # add the step.
+
   sdk-typescript:
     name: TypeScript SDK Build
     runs-on: ubuntu-latest
