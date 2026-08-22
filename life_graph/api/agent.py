@@ -104,9 +104,13 @@ async def learn_from_task(
     if body.context and body.context.get("source"):
         source = body.context["source"]
 
+    # Forward the whole context, not just `source`. The rest of it — project,
+    # module, tools, files — is what RecallRanker later scores relevance
+    # against, and dropping it here is why that score was always zero.
     memories = await bridge.learn_from_task(
         conversation=body.conversation,
         source=source,
+        context=body.context,
     )
     logger.info("Learned %d memories from agent task", len(memories))
     return success_response(data=memories)

@@ -138,6 +138,7 @@ class LifeGraphBridge:
         self,
         conversation: str,
         source: str = "agent_task",
+        context: dict[str, Any] | None = None,
     ) -> list[MemoryResponse]:
         """Extract and store memories from an agent's task conversation.
 
@@ -147,6 +148,15 @@ class LifeGraphBridge:
         Args:
             conversation: Full text of the agent conversation.
             source: Source identifier for provenance tracking.
+            context: Scope metadata (project, module, tools, files) merged
+                into each memory's ``properties`` by the ingestion pipeline.
+
+                This is the same shape ``build_agent_context`` passes to
+                recall. RecallRanker scores context relevance by comparing
+                the two, so a memory stored without it can never match on
+                project — which was the case for every memory: the four keys
+                the ranker reads appeared on no row in the database, leaving
+                20% of the ranking weight permanently at zero.
 
         Returns:
             List of MemoryResponse objects created from the conversation.
@@ -154,6 +164,7 @@ class LifeGraphBridge:
         memories = await self.manager.ingest(
             text=conversation,
             source=source,
+            context=context,
         )
 
         logger.info(
