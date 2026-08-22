@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     recall_cooldown_days: int = 7
     recall_confidence_threshold: float = 0.7
 
+    # ── Agent drivers ──────────────────────────────────
+    driver_land_verified_work: bool = True
+    """Commit a verified dispatch onto an ``lg/task-<id>`` branch.
+
+    The dispatch worktree is detached and removed unconditionally after the
+    run, so without this a verified change is deleted and the pipeline
+    reports success having landed nothing. Landing never merges, never
+    pushes, and never touches the default branch -- it leaves a reviewable
+    branch for the approval step."""
+
     # ── Decay ──────────────────────────────────────────
     decay_archive_threshold: float = 0.01
     """Effective-importance floor below which removal is *proposed*.

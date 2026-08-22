@@ -80,6 +80,84 @@ async def resolve_workdir(packet: ContextPacket, fallback: Path) -> tuple[Path, 
     return worktree, worktree
 
 
+async def preserve_verified_work(
+    worktree: Path,
+    repo_path: str | Path,
+    task_id: str,
+    summary: str | None = None,
+) -> str | None:
+    """Commit a verified dispatch onto a branch so cleanup cannot discard it.
+
+    ``resolve_workdir`` creates the worktree with ``--detach``, so any commit
+    made inside it is unreferenced and ``remove_worktree`` takes the work with
+    it. The dispatcher ran the verifier chain, proved the change good, and
+    then deleted it -- reporting success while landing nothing.
+
+    This commits the worktree's changes and points a branch at them. The
+    branch lives in the shared object store, so it survives the worktree
+    being removed and is visible from the origin checkout. Nothing is merged,
+    nothing is pushed, and the default branch is never touched: the result is
+    a reviewable branch, which is what an approval step needs to act on.
+
+    Returns the branch name, or ``None`` when there was nothing to commit or
+    git refused. Never raises -- landing is best-effort and must not turn a
+    verified dispatch into a failed one.
+    """
+    branch = f"lg/task-{str(task_id)[:8]}"
+    message = summary or f"Verified change from Life Graph task {task_id}"
+    # Keep the subject to one line; the driver's summary can be a paragraph.
+    subject = message.strip().splitlines()[0][:72] if message.strip() else message
+
+    async def _git(*args: str, cwd: Path | str) -> tuple[int, str]:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                *args,
+                cwd=str(cwd),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await proc.communicate()
+        except Exception as exc:  # git absent, permissions, ...
+            logger.warning("Landing could not run git %s (%s)", args[:2], exc)
+            return 1, str(exc)
+        return proc.returncode, (out + err).decode(errors="replace").strip()
+
+    code, _ = await _git("add", "-A", cwd=worktree)
+    if code != 0:
+        return None
+
+    # Nothing staged means the driver changed no files; that is not a failure.
+    code, _ = await _git("diff", "--cached", "--quiet", cwd=worktree)
+    if code == 0:
+        logger.info("Task %s produced no file changes — nothing to land", task_id)
+        return None
+
+    code, out = await _git(
+        "-c",
+        "user.email=life-graph@localhost",
+        "-c",
+        "user.name=Life Graph",
+        "commit",
+        "-m",
+        subject,
+        cwd=worktree,
+    )
+    if code != 0:
+        logger.warning("Landing could not commit task %s: %s", task_id, out[:200])
+        return None
+
+    # Name the commit from the ORIGIN repo: the worktree is detached, so a
+    # branch created here is what keeps the commit reachable after removal.
+    code, out = await _git("branch", "--force", branch, "HEAD", cwd=worktree)
+    if code != 0:
+        logger.warning("Landing could not create branch %s: %s", branch, out[:200])
+        return None
+
+    logger.info("Task %s landed on branch %s", task_id, branch)
+    return branch
+
+
 async def remove_worktree(
     packet: ContextPacket, worktree: Path, repo_path: str | Path | None = None
 ) -> None:

@@ -26,12 +26,18 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
 
+from life_graph.autonomy.safety.classifier import RiskLevel
+from life_graph.config import settings
 from life_graph.core.budget import BudgetCategory
 from life_graph.core.events import EventBus, EventType
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import ContextPacketBuilder
 from life_graph.drivers.registry import driver_registry
-from life_graph.drivers.workdir import remove_worktree, resolve_workdir
+from life_graph.drivers.workdir import (
+    preserve_verified_work,
+    remove_worktree,
+    resolve_workdir,
+)
 from life_graph.services.governor import governor
 from life_graph.services.verifiers import VerifierResult, verifier_chain
 
@@ -376,6 +382,30 @@ class TaskDispatcher:
                             },
                         )
 
+            # Step 6b: Land the verified work before cleanup can discard it.
+            #
+            # The worktree is created with --detach and removed unconditionally
+            # in the finally below, so a verified change was deleted along with
+            # it: the pipeline fixed the bug, proved it with the verifier
+            # chain, then reported success having landed nothing. Committing
+            # onto a branch keeps it reachable after removal, without merging,
+            # pushing, or touching the default branch -- a reviewable branch is
+            # what the approval step needs to act on.
+            if (
+                result.success
+                and worktree is not None
+                and worktree_origin
+                and settings.driver_land_verified_work
+            ):
+                landed_branch = await preserve_verified_work(
+                    worktree=worktree,
+                    repo_path=worktree_origin,
+                    task_id=task_id,
+                    summary=result.output,
+                )
+                if landed_branch:
+                    result.metadata = {**(result.metadata or {}), "landed_branch": landed_branch}
+
             # Step 7: Record stats + emit result
             await self._record_stats(tenant_id, driver.name, task_type, result, session)
 
@@ -481,8 +511,19 @@ class TaskDispatcher:
             try:
                 if persona is None:
                     persona = await self._load_persona(tenant_id, persona_name, session)
-                if persona and persona.properties:
-                    pinned_driver = persona.properties.get("driver")
+                if persona is not None:
+                    # agent_personas.driver is a real column (migration 021).
+                    # This read only looked in `properties`, which the seeder
+                    # leaves as {}, so the pin was always None and both
+                    # driver-pinned personas -- uzhavu-ops and
+                    # dependency-updater, the two that exist specifically to
+                    # run on claude_code -- silently fell through to
+                    # cheapest-capable selection instead. The properties
+                    # lookup stays as a fallback for personas configured that
+                    # way by hand.
+                    pinned_driver = getattr(persona, "driver", None) or (
+                        (persona.properties or {}).get("driver")
+                    )
                     if pinned_driver:
                         driver = driver_registry.get(pinned_driver)
                         if driver and await driver.available():
@@ -754,7 +795,11 @@ class TaskDispatcher:
                 agent_id=driver_name,
                 action_name="driver_second_opinion_dissent",
                 action_command=f"review task {task_id}",
-                risk_level="medium",
+                # approval_queue.ck_aq_risk_level allows only moderate/dangerous.
+                # This said "medium", which is not in RiskLevel at all, so every
+                # escalation to human review died on a CheckViolationError and
+                # the driver's whole safety net silently failed closed.
+                risk_level=RiskLevel.MODERATE.value,
                 category="driver",
                 trigger_type="driver_review",
                 trigger_detail=(
@@ -787,7 +832,11 @@ class TaskDispatcher:
                 agent_id=driver_name,
                 action_name="driver_verification_failed",
                 action_command=f"review task {task_id}",
-                risk_level="medium",
+                # approval_queue.ck_aq_risk_level allows only moderate/dangerous.
+                # This said "medium", which is not in RiskLevel at all, so every
+                # escalation to human review died on a CheckViolationError and
+                # the driver's whole safety net silently failed closed.
+                risk_level=RiskLevel.MODERATE.value,
                 category="driver",
                 trigger_type="driver_review",
                 trigger_detail=(
