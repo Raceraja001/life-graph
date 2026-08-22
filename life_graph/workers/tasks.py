@@ -289,6 +289,87 @@ async def run_nightly_self_heal(ctx: dict) -> dict:
 # ── Watcher Framework (Era 6) ────────────────────────────────────────────────
 
 
+# ── Watcher dispatch helpers ─────────────────────────────────────────────────
+
+
+async def _run_lifecycle_watcher(watcher_cls, tenant_id, wconfig, WatchEvent):  # noqa: N803
+    """Run a BaseWatcher subclass and return (events, run_id).
+
+    ``BaseWatcher.run()`` persists its own WatcherRun and WatchEvent rows and
+    reports only counts, so the events are read back by run_id in order to
+    route notifications for them. Returns ``(None, None)`` when the watcher
+    skipped itself (no config, disabled, or auto-disabled after 5 consecutive
+    failures) — a case the ad-hoc path has no equivalent of.
+    """
+    watcher = watcher_cls(
+        tenant_id=tenant_id,
+        session_factory=async_session,
+        settings=wconfig.config or {},
+    )
+    outcome = await watcher.run()
+
+    if outcome.get("status") != "success":
+        logger.info(
+            "Watcher %s for tenant %s: %s (%s)",
+            wconfig.watcher_name,
+            tenant_id,
+            outcome.get("status"),
+            outcome.get("reason", ""),
+        )
+        return None, None
+
+    run_id = uuid.UUID(outcome["run_id"])
+    async with async_session() as session:
+        result = await session.execute(
+            select(WatchEvent).where(
+                WatchEvent.tenant_id == tenant_id,
+                WatchEvent.run_id == run_id,
+            )
+        )
+        rows = result.scalars().all()
+
+    events = [
+        {
+            "id": str(row.id),
+            "severity": row.severity,
+            "title": row.title,
+            "details": row.details,
+            "watcher_name": row.watcher_name,
+        }
+        for row in rows
+    ]
+    return events, run_id
+
+
+async def _announce_watcher_events(watcher_name, tenant_id, events, duration_ms, origination):
+    """Emit WATCHER_COMPLETED and spawn kernel tasks from actionable findings.
+
+    Shared by both watcher conventions so a BaseWatcher subclass originates
+    tasks exactly like an ad-hoc one.
+    """
+    from life_graph.core.events import EventType, event_bus
+
+    payload = {
+        "watcher_name": watcher_name,
+        "tenant_id": tenant_id,
+        "events_created": len(events),
+        "duration_ms": duration_ms,
+        "findings": list(events),
+    }
+    await event_bus.emit(EventType.WATCHER_COMPLETED, payload, source="watcher_framework")
+
+    if origination is not None:
+        try:
+            await origination.originate(payload)
+        except Exception:
+            logger.warning(
+                "Origination failed for watcher %s / tenant %s",
+                watcher_name,
+                tenant_id,
+                exc_info=True,
+            )
+
+
 async def run_watchers(ctx: dict) -> dict:
     """Hourly cron: run all enabled watchers for all tenants.
 
@@ -305,12 +386,26 @@ async def run_watchers(ctx: dict) -> dict:
 
     from life_graph.api.dependencies import get_watcher_notification_engine
     from life_graph.core.events import EventType, event_bus
+    from life_graph.watchers.base import BaseWatcher
     from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
+    from life_graph.watchers.dependency_watcher import DependencyWatcher
     from life_graph.watchers.server_health_watcher import ServerHealthWatcher
+    from life_graph.watchers.tech_radar_watcher import TechRadarWatcher
 
+    # Keyed by WatchConfig.watcher_name — a config naming something absent
+    # here is skipped in silence, so every implemented watcher must appear.
+    # Two calling conventions coexist:
+    #   BaseWatcher subclasses  __init__(tenant_id, session_factory, settings)
+    #                           execute() -> None, emits via self.emit_event(),
+    #                           and run() owns the whole lifecycle
+    #   ad-hoc watchers         __init__(config, session_factory)
+    #                           execute() -> list[dict], no lifecycle
+    # dispatch_watcher() below handles both.
     watcher_map = {
-        "server_health": ServerHealthWatcher,
-        "code_quality": CodeQualityWatcher,
+        ServerHealthWatcher.name: ServerHealthWatcher,
+        CodeQualityWatcher.name: CodeQualityWatcher,
+        DependencyWatcher.name: DependencyWatcher,
+        TechRadarWatcher.name: TechRadarWatcher,
     }
 
     notification_engine = get_watcher_notification_engine()
@@ -365,6 +460,26 @@ async def run_watchers(ctx: dict) -> dict:
             run_id = uuid.uuid4()
             t_start = time.monotonic()
 
+            # BaseWatcher subclasses own their whole lifecycle — config load,
+            # enabled + auto-disable checks, WatcherRun record, event
+            # persistence. Running the ad-hoc path over them would duplicate
+            # the run record and call an execute() that returns None.
+            if issubclass(watcher_cls, BaseWatcher):
+                events, run_id = await _run_lifecycle_watcher(watcher_cls, tid, wconfig, WatchEvent)
+                if events is None:  # skipped by its own preconditions
+                    continue
+                for evt_data in events:
+                    await notification_engine.route_event(tid, evt_data)
+                tenant_events += len(events)
+                await _announce_watcher_events(
+                    wconfig.watcher_name,
+                    tid,
+                    events,
+                    (time.monotonic() - t_start) * 1000,
+                    origination,
+                )
+                continue
+
             async with async_session() as session:
                 run = WatcherRun(
                     id=run_id,
@@ -415,7 +530,7 @@ async def run_watchers(ctx: dict) -> dict:
                         .values(
                             status="success",
                             completed_at=datetime.now(UTC),
-                            events_created=len(events),
+                            events_generated=len(events),
                             duration_ms=duration_ms,
                         )
                     )

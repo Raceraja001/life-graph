@@ -7,16 +7,35 @@ and stale-critical re-sends.
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
+
+
+def _as_text(value: Any) -> str:
+    """Render an event's ``details`` for a text column.
+
+    WatchEvent.details is JSONB and genuinely holds either shape: the ad-hoc
+    watchers store a string, BaseWatcher.emit_event() stores a dict. The
+    notification body is a Text column, so a dict reaching it raises
+    asyncpg DataError("expected str, got dict") at insert time.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, default=str)
+    except (TypeError, ValueError):
+        return str(value)
 
 
 class NotificationEngine:
@@ -229,7 +248,7 @@ class NotificationEngine:
                     event_id=event_id,
                     channel=self._get_primary_channel_type(tenant_id),
                     subject=event.get("title", ""),
-                    body=event.get("details", ""),
+                    body=_as_text(event.get("details")),
                     severity=event.get("severity", "info"),
                     status=status,
                 )
@@ -301,24 +320,45 @@ class NotificationEngine:
             logger.error("Failed to process pending notifications: %s", e)
             return 0
 
+    _MAX_CRITICAL_RETRIES = 3
+
     async def check_stale_critical(self, tenant_id: str) -> int:
         """Re-send unacknowledged critical events older than 24h.
 
-        Max 3 retries per event.  Returns number of re-sends attempted.
+        Max 3 retries per event. Returns number of re-sends attempted.
+
+        WatchEvent has neither an ``acknowledged`` flag nor a ``retry_count``
+        column — acknowledgement is recorded as ``acknowledged_at``, and the
+        retry counter lives on WatcherNotification, which is where deliveries
+        are tracked. This method referenced all three of the non-existent
+        names; nothing calls it, so nothing ever raised.
         """
         try:
-            from life_graph.watchers.models import WatchEvent
+            from life_graph.watchers.models import WatcherNotification, WatchEvent
 
             cutoff = datetime.now(UTC) - timedelta(hours=24)
 
+            # Highest retry count recorded against each event's notifications.
+            retries = (
+                select(
+                    WatcherNotification.event_id.label("event_id"),
+                    func.max(WatcherNotification.retry_count).label("retries"),
+                )
+                .where(WatcherNotification.tenant_id == tenant_id)
+                .group_by(WatcherNotification.event_id)
+                .subquery()
+            )
+
             async with self._session_factory() as session:
                 result = await session.execute(
-                    select(WatchEvent).where(
+                    select(WatchEvent)
+                    .outerjoin(retries, retries.c.event_id == WatchEvent.id)
+                    .where(
                         WatchEvent.tenant_id == tenant_id,
                         WatchEvent.severity == "critical",
-                        WatchEvent.acknowledged == False,  # noqa: E712
+                        WatchEvent.acknowledged_at.is_(None),
                         WatchEvent.created_at <= cutoff,
-                        WatchEvent.retry_count < 3,
+                        func.coalesce(retries.c.retries, 0) < self._MAX_CRITICAL_RETRIES,
                     )
                 )
                 stale = result.scalars().all()
@@ -334,16 +374,7 @@ class NotificationEngine:
                     "timestamp": evt.created_at,
                 }
                 await self._send_critical(tenant_id, event_dict)
-
-                # Increment retry counter
-                async with self._session_factory() as session:
-                    await session.execute(
-                        update(WatchEvent)
-                        .where(WatchEvent.id == evt.id)
-                        .values(retry_count=WatchEvent.retry_count + 1)
-                    )
-                    await session.commit()
-
+                await self._record_retry(tenant_id, evt)
                 resent += 1
 
             if resent:
@@ -358,6 +389,50 @@ class NotificationEngine:
         except Exception as e:
             logger.error("Failed to check stale criticals: %s", e)
             return 0
+
+    async def _record_retry(self, tenant_id: str, evt: Any) -> None:
+        """Bump the retry counter for one event's notifications.
+
+        Creates a row when the event has none — ``_send_critical`` dispatches
+        straight to the channels without persisting, so a critical event that
+        was never queued has nothing to count.
+        """
+        from life_graph.watchers.models import WatcherNotification
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(WatcherNotification).where(
+                    WatcherNotification.tenant_id == tenant_id,
+                    WatcherNotification.event_id == evt.id,
+                )
+            )
+            existing = result.scalars().all()
+
+            if existing:
+                await session.execute(
+                    update(WatcherNotification)
+                    .where(
+                        WatcherNotification.tenant_id == tenant_id,
+                        WatcherNotification.event_id == evt.id,
+                    )
+                    .values(retry_count=WatcherNotification.retry_count + 1)
+                )
+            else:
+                session.add(
+                    WatcherNotification(
+                        id=uuid.uuid4(),
+                        tenant_id=tenant_id,
+                        event_id=evt.id,
+                        channel=self._get_primary_channel_type(tenant_id),
+                        severity="critical",
+                        status="sent",
+                        subject=evt.title,
+                        body=_as_text(evt.details),
+                        sent_at=datetime.now(UTC),
+                        retry_count=1,
+                    )
+                )
+            await session.commit()
 
     @staticmethod
     def _build_html_body(event: dict[str, Any]) -> str:

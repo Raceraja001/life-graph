@@ -90,9 +90,14 @@ class BulkAcknowledgeRequest(BaseModel):
 
 
 class WatcherRunResponse(BaseModel):
-    """Serialized watcher run record."""
+    """Serialized watcher run record.
 
-    model_config = ConfigDict(from_attributes=True)
+    ``events_created`` is the wire name; the column is ``events_generated``.
+    Without the alias, from_attributes found no such attribute and fell back
+    to the default, so every run reported 0 events regardless of what it did.
+    """
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     tenant_id: str
@@ -100,7 +105,9 @@ class WatcherRunResponse(BaseModel):
     status: str
     started_at: datetime
     completed_at: datetime | None = None
-    events_created: int = 0
+    events_created: int = Field(
+        default=0, validation_alias=AliasChoices("events_generated", "events_created")
+    )
     error: str | None = None
     duration_ms: float | None = None
 
