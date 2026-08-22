@@ -20,6 +20,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryUpdate
 
@@ -221,11 +222,17 @@ class MemoryManager:
         async with async_session() as session:
             # Set superseded_by on old memory
             await session.execute(
-                update(Memory).where(Memory.id == old_uuid).values(superseded_by=new_uuid)
+                update(Memory)
+                .where(Memory.id == old_uuid)
+                .where(Memory.tenant_id == get_current_tenant_id())
+                .values(superseded_by=new_uuid)
             )
             # Set supersedes on new memory
             await session.execute(
-                update(Memory).where(Memory.id == new_uuid).values(supersedes=old_uuid)
+                update(Memory)
+                .where(Memory.id == new_uuid)
+                .where(Memory.tenant_id == get_current_tenant_id())
+                .values(supersedes=old_uuid)
             )
             await session.commit()
 

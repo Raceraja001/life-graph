@@ -255,7 +255,14 @@ class ApprovalService:
         return {"resolved_count": len(resolved_ids), "resolved_ids": resolved_ids}
 
     async def check_expirations(self) -> int:
-        """Auto-approve expired (notify-before) entries. Returns count."""
+        """Auto-approve expired (notify-before) entries. Returns count.
+
+        Intentionally cross-tenant: this runs as a system cron
+        (workers.tasks.check_approval_timeouts) with no tenant context, and
+        sweeps every tenant in one pass. See tests/unit/test_tenant_scoping.py,
+        which allowlists it by name rather than tolerating unscoped queries
+        generally.
+        """
         from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
 
         now = datetime.now(UTC)
@@ -310,6 +317,7 @@ class ApprovalService:
         escalated_count = 0
 
         async with self._session_factory() as session:
+            # Cross-tenant by design — a system cron sweeping every tenant.
             result = await session.execute(
                 select(ApprovalQueueEntry).where(
                     ApprovalQueueEntry.status == "pending",

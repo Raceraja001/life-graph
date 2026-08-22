@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select, update
 
 from life_graph.config import settings
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory, MemorySession
 from life_graph.storage.database import async_session
 
@@ -101,6 +102,7 @@ class ImpactScorer:
                 update_stmt = (
                     update(Memory)
                     .where(Memory.id.in_(recalled_ids))
+                    .where(Memory.tenant_id == get_current_tenant_id())
                     .values(
                         impact_score=new_score,
                         impact_confidence=new_confidence,

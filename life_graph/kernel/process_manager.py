@@ -18,6 +18,7 @@ from sqlalchemy.orm import defer
 
 from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import AgentTask
 
 if TYPE_CHECKING:
@@ -778,6 +779,13 @@ class ProcessManager:
             values["completed_at"] = completed_at
 
         async with self._session_factory() as session:
-            stmt = update(AgentTask).where(AgentTask.id == task_id).values(**values)
+            stmt = (
+                update(AgentTask)
+                .where(
+                    AgentTask.id == task_id,
+                    AgentTask.tenant_id == get_current_tenant_id(),
+                )
+                .values(**values)
+            )
             await session.execute(stmt)
             await session.commit()

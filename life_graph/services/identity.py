@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_, select
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 
 if TYPE_CHECKING:
@@ -68,6 +69,7 @@ class IdentityService:
         """
         stmt = (
             select(Memory)
+            .where(Memory.tenant_id == get_current_tenant_id())
             .where(Memory.status == "active")
             .where(Memory.tags.overlap(_IDENTITY_TAGS))
             .order_by(Memory.importance.desc())
@@ -92,6 +94,7 @@ class IdentityService:
         """
         stmt = (
             select(Memory)
+            .where(Memory.tenant_id == get_current_tenant_id())
             .where(Memory.tags.overlap(_IDENTITY_TAGS))
             .order_by(Memory.valid_from.asc())
         )
@@ -184,6 +187,7 @@ class IdentityService:
         cutoff = datetime.now(UTC) - timedelta(days=stale_months * 30)
         stmt = (
             select(Memory)
+            .where(Memory.tenant_id == get_current_tenant_id())
             .where(Memory.status == "active")
             .where(Memory.tags.overlap(_IDENTITY_TAGS))
             .where(

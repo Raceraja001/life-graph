@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.self_improving.models import PromptVersion
 from life_graph.self_improving.schemas import (
     PromptVersionCreate,
@@ -173,6 +174,7 @@ class PromptVersionService:
         async with self._sf() as session:
             stmt = select(PromptVersion).where(
                 PromptVersion.id == version_id,
+                PromptVersion.tenant_id == get_current_tenant_id(),
             )
             result = await session.execute(stmt)
             version = result.scalar_one_or_none()

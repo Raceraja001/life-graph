@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Intention
 
 if TYPE_CHECKING:
@@ -95,6 +96,7 @@ class IntentionService:
         """
         stmt = (
             select(Intention)
+            .where(Intention.tenant_id == get_current_tenant_id())
             .where(Intention.status == "pending")
             .order_by(Intention.created_at.desc())
             .limit(limit)
@@ -123,6 +125,7 @@ class IntentionService:
         async with self._session_factory() as session:
             # ── Time-based triggers ───────────────────────────────
             time_stmt = select(Intention).where(
+                Intention.tenant_id == get_current_tenant_id(),
                 Intention.status == "pending",
                 Intention.trigger_type == "time",
                 Intention.trigger_time <= now,
@@ -132,6 +135,7 @@ class IntentionService:
 
             # ── Context/event triggers ────────────────────────────
             ctx_stmt = select(Intention).where(
+                Intention.tenant_id == get_current_tenant_id(),
                 Intention.status == "pending",
                 Intention.trigger_type.in_(["event", "context"]),
                 Intention.context_match.isnot(None),
@@ -162,6 +166,7 @@ class IntentionService:
             stmt = (
                 update(Intention)
                 .where(Intention.id == uid)
+                .where(Intention.tenant_id == get_current_tenant_id())
                 .values(status="completed", completed_at=now)
                 .returning(Intention)
             )
@@ -190,6 +195,7 @@ class IntentionService:
             stmt = (
                 update(Intention)
                 .where(Intention.id == uid)
+                .where(Intention.tenant_id == get_current_tenant_id())
                 .values(status="dismissed")
                 .returning(Intention)
             )
@@ -212,6 +218,10 @@ class IntentionService:
             stmt = (
                 update(Intention)
                 .where(
+                    # Unscoped, this expired every tenant's overdue intentions
+                    # in one sweep. Nothing calls it yet; when a cron does, it
+                    # must set tenant context per tenant as consolidation does.
+                    Intention.tenant_id == get_current_tenant_id(),
                     Intention.status == "pending",
                     Intention.expires_at.isnot(None),
                     Intention.expires_at <= now,

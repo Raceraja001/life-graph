@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Intention, Memory
 from life_graph.storage.database import async_session
 
@@ -56,6 +57,7 @@ class TriggerMatcher:
 
         stmt = (
             select(Intention)
+            .where(Intention.tenant_id == get_current_tenant_id())
             .where(Intention.trigger_type == "time")
             .where(Intention.status == "pending")
             .where(Intention.trigger_time <= now)
@@ -87,6 +89,7 @@ class TriggerMatcher:
         """
         stmt = (
             select(Intention)
+            .where(Intention.tenant_id == get_current_tenant_id())
             .where(Intention.trigger_type.in_(["event", "context"]))
             .where(Intention.status == "pending")
             .where(Intention.context_match.is_not(None))
@@ -130,6 +133,7 @@ class TriggerMatcher:
 
         stmt = (
             select(Memory)
+            .where(Memory.tenant_id == get_current_tenant_id())
             .where(Memory.status == "active")
             .where(Memory.importance >= min_importance)
             .where((Memory.last_accessed <= cutoff) | (Memory.last_accessed.is_(None)))

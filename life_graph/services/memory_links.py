@@ -20,6 +20,7 @@ from typing import Any
 
 from sqlalchemy import and_, delete, or_, select
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory, MemoryLink
 from life_graph.storage.database import async_session
 
@@ -136,7 +137,10 @@ async def delete_link(link_id: uuid.UUID) -> bool:
         True if a link was deleted, False otherwise.
     """
     async with async_session() as session:
-        stmt = delete(MemoryLink).where(MemoryLink.id == link_id)
+        stmt = delete(MemoryLink).where(
+            MemoryLink.id == link_id,
+            MemoryLink.tenant_id == get_current_tenant_id(),
+        )
         result = await session.execute(stmt)
         await session.commit()
         return result.rowcount > 0

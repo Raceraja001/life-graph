@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory, MemorySession
 from life_graph.scoring.importance import ImportanceTagger
 from life_graph.storage.postgres import PostgresMemoryStore
@@ -158,6 +159,7 @@ class MicroConsolidator:
             select(Memory)
             .join(MemorySession, Memory.id == MemorySession.memory_id)
             .where(
+                Memory.tenant_id == get_current_tenant_id(),
                 MemorySession.session_id == session_id,
                 Memory.status == "active",
             )
@@ -213,6 +215,7 @@ class MicroConsolidator:
                         await session.execute(
                             update(Memory)
                             .where(Memory.id == mem.id)
+                            .where(Memory.tenant_id == get_current_tenant_id())
                             .values(
                                 status="superseded",
                                 superseded_by=existing.id,
@@ -250,6 +253,7 @@ class MicroConsolidator:
                     await session.execute(
                         update(Memory)
                         .where(Memory.id == mem.id)
+                        .where(Memory.tenant_id == get_current_tenant_id())
                         .values(
                             importance=new_score,
                             importance_tier=new_tier,

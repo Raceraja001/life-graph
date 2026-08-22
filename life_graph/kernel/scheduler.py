@@ -483,6 +483,7 @@ class SchedulerService:
             task_id = result.get("task_id") if isinstance(result, dict) else str(result)
 
             await self._record_run(
+                tenant_id,
                 job_id,
                 "completed",
                 task_id,
@@ -496,6 +497,7 @@ class SchedulerService:
                 exc,
             )
             await self._record_run(
+                tenant_id,
                 job_id,
                 "failed",
                 None,
@@ -504,6 +506,7 @@ class SchedulerService:
 
     async def _record_run(
         self,
+        tenant_id: str,
         job_id: str,
         status: str,
         task_id: str | None,
@@ -520,6 +523,7 @@ class SchedulerService:
             # Read current state
             stmt = select(ScheduledJob).where(
                 ScheduledJob.id == uuid.UUID(job_id),
+                ScheduledJob.tenant_id == tenant_id,
             )
             result = await session.execute(stmt)
             job = result.scalar_one_or_none()
@@ -561,6 +565,7 @@ class SchedulerService:
                 update(ScheduledJob)
                 .where(
                     ScheduledJob.id == uuid.UUID(job_id),
+                    ScheduledJob.tenant_id == tenant_id,
                 )
                 .values(**values)
             )

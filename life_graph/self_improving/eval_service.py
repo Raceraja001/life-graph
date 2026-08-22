@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.self_improving.eval_scorer import EvalScorer
 from life_graph.self_improving.models import (
     EvalCase,
@@ -116,7 +117,10 @@ class EvalService:
             # Increment case_count atomically
             await session.execute(
                 update(EvalSuite)
-                .where(EvalSuite.id == suite_id)
+                .where(
+                    EvalSuite.id == suite_id,
+                    EvalSuite.tenant_id == get_current_tenant_id(),
+                )
                 .values(case_count=EvalSuite.case_count + 1)
             )
 
@@ -148,7 +152,10 @@ class EvalService:
             # Increment case_count atomically
             await session.execute(
                 update(EvalSuite)
-                .where(EvalSuite.id == suite_id)
+                .where(
+                    EvalSuite.id == suite_id,
+                    EvalSuite.tenant_id == get_current_tenant_id(),
+                )
                 .values(case_count=EvalSuite.case_count + len(data.cases))
             )
 

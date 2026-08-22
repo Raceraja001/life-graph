@@ -24,6 +24,7 @@ from life_graph.api.responses import (
     paginated_response,
     success_response,
 )
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import MemorySession, Session
 from life_graph.models.schemas import SessionCreate, SessionResponse
 from life_graph.storage.database import async_session
@@ -208,6 +209,7 @@ async def list_sessions(
     """
     stmt = (
         select(Session)
+        .where(Session.tenant_id == get_current_tenant_id())
         .order_by(Session.started_at.desc())
         .limit(limit + 1)  # Fetch one extra to detect has_more
     )

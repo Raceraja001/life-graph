@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from life_graph.cold_start.code_analyzer import CodeAnalyzer
 from life_graph.cold_start.config_parser import ConfigParser
 from life_graph.cold_start.git_analyzer import GitAnalyzer
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import MemoryCreate
 
 if TYPE_CHECKING:
@@ -177,6 +178,11 @@ class ColdStartBootstrap:
 
         async with async_session() as session:
             await session.execute(
-                update(Memory).where(Memory.id == memory_id).values(embedding=embedding)
+                update(Memory)
+                .where(
+                    Memory.id == memory_id,
+                    Memory.tenant_id == get_current_tenant_id(),
+                )
+                .values(embedding=embedding)
             )
             await session.commit()

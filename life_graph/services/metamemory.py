@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, update
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import KnowledgeGap
 
 if TYPE_CHECKING:
@@ -72,6 +73,7 @@ class MetamemoryTracker:
                 stmt = (
                     update(KnowledgeGap)
                     .where(KnowledgeGap.id == existing.id)
+                    .where(KnowledgeGap.tenant_id == get_current_tenant_id())
                     .values(
                         query_count=KnowledgeGap.query_count + 1,
                         last_asked=now,
@@ -108,6 +110,7 @@ class MetamemoryTracker:
         stmt = (
             select(KnowledgeGap)
             .where(
+                KnowledgeGap.tenant_id == get_current_tenant_id(),
                 KnowledgeGap.resolved == False,  # noqa: E712
                 KnowledgeGap.query_count >= min_query_count,
             )
@@ -133,6 +136,7 @@ class MetamemoryTracker:
             stmt = (
                 update(KnowledgeGap)
                 .where(KnowledgeGap.id == uuid.UUID(gap_id))
+                .where(KnowledgeGap.tenant_id == get_current_tenant_id())
                 .values(
                     resolved=True,
                     resolved_by=uuid.UUID(memory_id),
@@ -211,6 +215,7 @@ class MetamemoryTracker:
         stmt = (
             select(KnowledgeGap)
             .where(
+                KnowledgeGap.tenant_id == get_current_tenant_id(),
                 KnowledgeGap.resolved == False,  # noqa: E712
                 func.lower(KnowledgeGap.topic) == topic.lower(),
             )

@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from life_graph.api.responses import success_response
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Procedure
 from life_graph.models.schemas import ProcedureCreate, ProcedureResponse, ProcedureUpdate
 from life_graph.storage.database import async_session
@@ -67,7 +68,12 @@ async def list_procedures(
     limit: int = Query(20, ge=1, le=100),
 ):
     """List all procedures, optionally filtered by status or tag."""
-    stmt = select(Procedure).order_by(Procedure.confidence.desc()).limit(limit)
+    stmt = (
+        select(Procedure)
+        .where(Procedure.tenant_id == get_current_tenant_id())
+        .order_by(Procedure.confidence.desc())
+        .limit(limit)
+    )
 
     if status_filter:
         stmt = stmt.where(Procedure.status == status_filter)
@@ -213,6 +219,7 @@ async def match_procedures(
     stmt = (
         select(Procedure)
         .where(
+            Procedure.tenant_id == get_current_tenant_id(),
             Procedure.status == "active",
             Procedure.trigger.ilike(f"%{query}%"),
         )

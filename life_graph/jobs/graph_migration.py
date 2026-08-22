@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 
 if TYPE_CHECKING:
@@ -319,7 +320,14 @@ class GraphMigrationJob:
 
     async def _fetch_memories(self) -> list[Memory]:
         """Fetch all active memories from the database."""
-        stmt = select(Memory).where(Memory.status == "active").order_by(Memory.created_at.desc())
+        stmt = (
+            select(Memory)
+            .where(
+                Memory.tenant_id == get_current_tenant_id(),
+                Memory.status == "active",
+            )
+            .order_by(Memory.created_at.desc())
+        )
         async with self._session_factory() as session:
             result = await session.execute(stmt)
             return list(result.scalars().all())

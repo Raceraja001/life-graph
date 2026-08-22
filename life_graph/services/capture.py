@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 
 from life_graph.core.events import EventBus, EventType
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
 from life_graph.models.db import CaptureEvent, Correction
 from life_graph.storage.database import async_session
@@ -302,7 +303,10 @@ class CaptureService:
             delta: How much to increment (default 1).
         """
         result = await self.session.execute(
-            select(CaptureEvent).where(CaptureEvent.id == capture_event_id)
+            select(CaptureEvent).where(
+                CaptureEvent.id == capture_event_id,
+                CaptureEvent.tenant_id == get_current_tenant_id(),
+            )
         )
         if event := result.scalars().first():
             event.yield_count = (event.yield_count or 0) + delta
