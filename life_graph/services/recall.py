@@ -246,6 +246,17 @@ class RecallEngine:
                 "status": mem.status,
                 "confidence": mem.confidence,
                 "reasoning": mem.reasoning,
+                # Provenance and reinforcement. _dict_to_memory_response reads
+                # all six; without them it saw None/0 and computed
+                # needs_verification as though the memory had never been
+                # confirmed — so a fact the user had reinforced repeatedly was
+                # still surfaced as unverified.
+                "extraction_tier": mem.extraction_tier,
+                "extraction_confidence": mem.extraction_confidence,
+                "supersedes": mem.supersedes,
+                "superseded_by": mem.superseded_by,
+                "last_reinforced": mem.last_reinforced,
+                "reinforced_count": mem.reinforced_count,
                 # Context fields from properties for ranker
                 "project": (mem.properties or {}).get("project", ""),
                 "module": (mem.properties or {}).get("module", ""),
