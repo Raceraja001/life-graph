@@ -242,6 +242,18 @@ HEALTH_CHECK = {
                     "checks": {
                         "postgres": {"status": "healthy", "latency_ms": 1.5},
                         "redis": {"status": "healthy", "latency_ms": 0.8},
+                        "startup": {
+                            "status": "degraded",
+                            "total": 15,
+                            "failed": ["judgment_engine"],
+                            "subsystems": {
+                                "capture_processors": {"status": "ok"},
+                                "judgment_engine": {
+                                    "status": "failed",
+                                    "error": "ImportError: cannot import name ...",
+                                },
+                            },
+                        },
                     },
                 }
             }

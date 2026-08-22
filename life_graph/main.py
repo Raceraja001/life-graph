@@ -6,7 +6,8 @@ service-to-service auth, API versioned under /api/v1/, and middleware pipeline:
 """
 
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
@@ -40,9 +41,79 @@ setup_logging(format=settings.log_format, level=settings.log_level)
 logger = logging.getLogger(__name__)
 
 
+# ── Startup step tracking ─────────────────────────────────────
+
+
+@dataclass
+class StartupStep:
+    """Outcome of one optional startup step."""
+
+    name: str
+    ok: bool
+    error: str | None = None
+
+    def as_dict(self) -> dict:
+        d: dict = {"status": "ok" if self.ok else "failed"}
+        if self.error:
+            d["error"] = self.error
+        return d
+
+
+class StartupReport:
+    """Records which optional startup steps succeeded.
+
+    Every step in ``lifespan`` is optional by design — a missing Redis or an
+    unavailable driver must not stop the process from serving. But each was
+    previously wrapped in its own ``try/except`` that logged a warning and
+    moved on, so a subsystem that failed to wire itself left no trace anywhere
+    a probe could see it: ``/health`` reported "healthy" while the judgment
+    engine, the capture processors or the webhook handler were simply absent.
+
+    This records each outcome so ``/health`` can report ``degraded`` and name
+    what is missing.
+    """
+
+    def __init__(self) -> None:
+        self._steps: dict[str, StartupStep] = {}
+
+    def record(self, name: str, ok: bool, error: str | None = None) -> None:
+        self._steps[name] = StartupStep(name=name, ok=ok, error=error)
+
+    @property
+    def failed(self) -> list[str]:
+        return sorted(n for n, s in self._steps.items() if not s.ok)
+
+    @property
+    def ok(self) -> bool:
+        return not self.failed
+
+    def as_dict(self) -> dict:
+        return {name: step.as_dict() for name, step in sorted(self._steps.items())}
+
+
+@contextmanager
+def startup_step(report: StartupReport, name: str):
+    """Run one optional startup step, recording success or failure.
+
+    Replaces the bare ``try/except Exception: logger.warning(...)`` blocks.
+    Behaviour on failure is unchanged — the exception is logged and startup
+    continues — but the outcome is now recorded rather than only logged.
+    """
+    try:
+        yield
+    except Exception as e:  # noqa: BLE001 - startup must never abort here
+        logger.warning("Startup step %r failed: %s", name, e, exc_info=True)
+        report.record(name, ok=False, error=f"{type(e).__name__}: {e}")
+    else:
+        report.record(name, ok=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: startup and shutdown."""
+    report = StartupReport()
+    app.state.startup_report = report
+
     # Startup — log environment
     logger.info(
         "Starting Life Graph v%s [%s mode]",
@@ -54,17 +125,15 @@ async def lifespan(app: FastAPI):
 
     # Startup — enable Langfuse tracing via LiteLLM (if configured)
     if settings.langfuse_public_key:
-        try:
+        with startup_step(report, "langfuse_tracing"):
             import litellm
 
             litellm.success_callback = ["langfuse"]
             litellm.failure_callback = ["langfuse"]
             logger.info("Langfuse tracing enabled → %s", settings.langfuse_host)
-        except Exception:
-            logger.warning("Failed to enable Langfuse tracing")
 
     # Startup — register agent tools (import triggers @tool decorator)
-    try:
+    with startup_step(report, "agent_tools"):
         import life_graph.tools.browser  # noqa: F401
         import life_graph.tools.calculator  # noqa: F401
         import life_graph.tools.datetime_tool  # noqa: F401
@@ -84,20 +153,14 @@ async def lifespan(app: FastAPI):
 
         registry.add_post_exec_hook(ToolObservationHook())
         logger.info("Tool-exhaust observation hook registered")
-    except Exception:
-        logger.warning("Failed to register agent tools", exc_info=True)
 
     # Startup — connect configured external MCP servers (bridge)
-    from contextlib import AsyncExitStack
-
     app.state.mcp_exit_stack = AsyncExitStack()
-    try:
+    with startup_step(report, "mcp_bridge"):
         from life_graph.services.mcp_bridge import connect_all
 
         bridged_count = await connect_all(app.state.mcp_exit_stack)
         logger.info("MCP bridge: %d external tool(s) registered", bridged_count)
-    except Exception:
-        logger.warning("MCP bridge startup failed", exc_info=True)
 
     # Startup — load plugins
     plugins_dir = Path(__file__).resolve().parent.parent / "plugins"
@@ -116,14 +179,12 @@ async def lifespan(app: FastAPI):
     logger.info("WebSocket event handler registered")
 
     # Startup — Redis
-    try:
+    with startup_step(report, "redis"):
         await init_redis()
         enable_redis_bridge()
-    except Exception:
-        logger.warning("Redis not available — rate limiting/pub-sub disabled", exc_info=True)
 
     # Startup — wire webhook event handler
-    try:
+    with startup_step(report, "webhook_handler"):
         from life_graph.integrations.webhook import WebhookEventHandler
 
         webhook_handler = WebhookEventHandler(event_bus)
@@ -132,7 +193,7 @@ async def lifespan(app: FastAPI):
         logger.info("Webhook event handler started")
 
         # Wire ARQ pool for async webhook delivery
-        try:
+        with startup_step(report, "webhook_arq_pool"):
             from arq import create_pool
 
             from life_graph.workers.settings import parse_redis_settings
@@ -140,15 +201,9 @@ async def lifespan(app: FastAPI):
             arq_pool = await create_pool(parse_redis_settings())
             webhook_handler.set_arq_pool(arq_pool)
             logger.info("Webhook ARQ pool connected")
-        except Exception:
-            logger.warning(
-                "ARQ pool not available — webhooks will log but not deliver", exc_info=True
-            )
-    except Exception:
-        logger.warning("Webhook handler not available", exc_info=True)
 
     # Startup — seed kernel personas for default tenant
-    try:
+    with startup_step(report, "seed_personas"):
         from life_graph.api.dependencies import get_persona_service
 
         persona_svc = get_persona_service()
@@ -156,87 +211,69 @@ async def lifespan(app: FastAPI):
         if seeded:
             # Inserted OR reconciled — seed_builtins logs the breakdown.
             logger.info("Seeded/reconciled %d built-in personas for default tenant", seeded)
-    except Exception:
-        logger.warning("Failed to seed kernel personas", exc_info=True)
 
     # Startup — seed ambient scheduled jobs for default tenant
-    try:
+    with startup_step(report, "seed_ambient_jobs"):
         from life_graph.api.dependencies import get_scheduler_service
         from life_graph.kernel.ambient import seed_ambient_jobs
 
         seeded_jobs = await seed_ambient_jobs(get_scheduler_service(), "default")
         if seeded_jobs:
             logger.info("Seeded %d ambient scheduled jobs for default tenant", seeded_jobs)
-    except Exception:
-        logger.warning("Failed to seed ambient scheduled jobs", exc_info=True)
 
     # Startup — seed ambient project safety rules + L1 autonomy level (Sub-project B)
-    try:
+    with startup_step(report, "seed_ambient_autonomy"):
         from life_graph.autonomy.safety.ambient_rules import seed_ambient_autonomy
 
         await seed_ambient_autonomy("default")
         logger.info("Seeded ambient autonomy safety rules + L1 level for default tenant")
-    except Exception:
-        logger.warning("Failed to seed ambient autonomy rules", exc_info=True)
 
     # Startup — wire preference → knowledge graph sync
-    try:
+    with startup_step(report, "preference_graph_sync"):
         from life_graph.services.preference_graph import preference_graph_service
 
         preference_graph_service.subscribe()
         logger.info("Preference graph sync enabled (auto-sync via EventBus)")
-    except Exception:
-        logger.warning("Preference graph sync not available", exc_info=True)
 
     # Startup — wire capture spine processors
-    try:
+    with startup_step(report, "capture_processors"):
         from life_graph.services.capture_processors import capture_processors
 
         capture_processors.subscribe()
         logger.info("Capture spine processors enabled (extraction + decision detection)")
-    except Exception:
-        logger.warning("Capture spine processors not available", exc_info=True)
 
     # Startup — wire judgment engine
-    try:
+    with startup_step(report, "judgment_engine"):
         from life_graph.services.judgment import judgment_service
 
         judgment_service.subscribe()
         logger.info("Judgment engine enabled (decision candidate listener)")
-    except Exception:
-        logger.warning("Judgment engine not available", exc_info=True)
 
     # Startup — wire daily brief -> Web Push delivery
-    try:
+    with startup_step(report, "push_delivery"):
         from life_graph.services.push_delivery import push_delivery_handler
 
         push_delivery_handler.subscribe()
         logger.info("Web push brief delivery enabled")
-    except Exception:
-        logger.warning("Push delivery handler not available", exc_info=True)
 
     # Startup — wire advisory runs -> notifications/push
-    try:
+    with startup_step(report, "findings_bridge"):
         from life_graph.services.findings_bridge import findings_bridge_handler
 
         findings_bridge_handler.subscribe()
         logger.info("Ambient findings bridge enabled (web)")
-    except Exception:
-        logger.warning("Findings bridge not available", exc_info=True)
 
     # Startup — wire ops proposal runs -> autonomy engine, and pending actions -> approvals feed
-    try:
+    with startup_step(report, "autonomous_action_bridges"):
         from life_graph.services.action_proposal_bridge import action_proposal_handler
         from life_graph.services.autonomous_approvals import autonomous_approval_producer
 
         action_proposal_handler.subscribe()
         autonomous_approval_producer.subscribe()
         logger.info("Autonomous action bridges enabled (web)")
-    except Exception:
-        logger.warning("Autonomous action bridges not available", exc_info=True)
 
     # Startup — register agent drivers
-    try:
+    with startup_step(report, "agent_drivers"):
         from life_graph.drivers.claude_code import ClaudeCodeDriver
         from life_graph.drivers.local import LocalDriver
         from life_graph.drivers.registry import driver_registry
@@ -244,8 +281,15 @@ async def lifespan(app: FastAPI):
         driver_registry.register(LocalDriver())
         driver_registry.register(ClaudeCodeDriver())
         logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
-    except Exception:
-        logger.warning("Agent drivers not available", exc_info=True)
+
+    if report.failed:
+        logger.warning(
+            "Startup finished with %d degraded subsystem(s): %s",
+            len(report.failed),
+            ", ".join(report.failed),
+        )
+    else:
+        logger.info("Startup complete — all %d optional subsystems wired", len(report.as_dict()))
 
     yield
 
@@ -515,16 +559,36 @@ async def health_check():
     if redis_status != "ok":
         checks["redis"]["error"] = redis_status
 
+    # Startup subsystems — wired once at boot, each optional and each
+    # previously failing silently. A subsystem that never subscribed cannot
+    # be detected by probing Postgres or Redis, so report it here.
+    report: StartupReport | None = getattr(app.state, "startup_report", None)
+    if report is None:
+        # Lifespan never ran (e.g. bare ASGITransport in tests).
+        subsystems: dict = {}
+        startup_failures: list[str] = []
+    else:
+        subsystems = report.as_dict()
+        startup_failures = report.failed
+
+    checks["startup"] = {
+        "status": "healthy" if not startup_failures else "degraded",
+        "total": len(subsystems),
+        "failed": startup_failures,
+        "subsystems": subsystems,
+    }
+
     # Overall status
     pg_ok = checks["postgres"]["status"] == "healthy"
     redis_ok = checks["redis"]["status"] == "healthy"
 
-    if pg_ok and redis_ok:
-        overall = "healthy"
-    elif pg_ok:
-        overall = "degraded"
-    else:
+    if not pg_ok:
+        # Postgres is the only critical dependency — everything else degrades.
         overall = "unhealthy"
+    elif redis_ok and not startup_failures:
+        overall = "healthy"
+    else:
+        overall = "degraded"
 
     from fastapi.responses import JSONResponse
 
