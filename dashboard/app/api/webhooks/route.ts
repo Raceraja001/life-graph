@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     // Broadcast to connected clients via SSE or just log for now
     // In future: use a pub/sub mechanism
     return NextResponse.json({ received: true, type: event.type });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 }

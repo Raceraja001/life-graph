@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brain, Scale, BarChart3, ClipboardList, Bot, Activity, Settings, Zap, Menu, X } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const NAV = [
   { label: "Overview", href: "/", icon: Zap },
@@ -22,8 +22,15 @@ export function AppSidebar({ wsStatus = "disconnected" }: { wsStatus?: string })
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  // Close sidebar on route change (mobile)
-  useEffect(() => { setOpen(false); }, [pathname]);
+  // Close the drawer on route change (mobile). Adjusting state during render
+  // when a value changes is React's documented alternative to a setState
+  // effect — it re-renders before the browser paints instead of causing a
+  // second, cascading render pass.
+  const [lastPathname, setLastPathname] = useState(pathname);
+  if (pathname !== lastPathname) {
+    setLastPathname(pathname);
+    setOpen(false);
+  }
 
   return (
     <>

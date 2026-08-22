@@ -9,7 +9,20 @@ export interface QueueItem {
   id: string;
   content: string;
   createdAt: number;
+  /**
+   * Tiebreak for items enqueued within the same millisecond.
+   *
+   * createdAt is Date.now(), so two captures made in quick succession share a
+   * timestamp and sorting by it alone leaves their replay order undefined.
+   * Absent on rows written before this field existed, hence the ?? 0 below.
+   */
+  seq?: number;
 }
+
+// Monotonic within a page session, which is the window in which same-
+// millisecond collisions actually happen. Across sessions createdAt separates
+// the items on its own.
+let seq = 0;
 
 function available() {
   return typeof indexedDB !== "undefined";
@@ -48,7 +61,7 @@ async function withStore<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore
 
 export async function enqueue(content: string): Promise<QueueItem | null> {
   if (!available()) return null;
-  const item: QueueItem = { id: newId(), content, createdAt: Date.now() };
+  const item: QueueItem = { id: newId(), content, createdAt: Date.now(), seq: seq++ };
   await withStore("readwrite", (s) => s.add(item));
   return item;
 }
@@ -56,7 +69,9 @@ export async function enqueue(content: string): Promise<QueueItem | null> {
 export async function getAll(): Promise<QueueItem[]> {
   if (!available()) return [];
   const items = await withStore<QueueItem[]>("readonly", (s) => s.getAll());
-  return (items ?? []).sort((a, b) => a.createdAt - b.createdAt);
+  return (items ?? []).sort(
+    (a, b) => a.createdAt - b.createdAt || (a.seq ?? 0) - (b.seq ?? 0),
+  );
 }
 
 export async function remove(id: string): Promise<void> {

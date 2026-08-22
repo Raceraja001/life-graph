@@ -35,12 +35,20 @@ export function MobileStateProvider({ children }: { children: React.ReactNode })
   }, [qc]);
 
   // Keep the latest flush in a ref so the mount-only listeners never go stale.
+  // Assigned in an effect, not during render: a ref written while rendering
+  // is not guaranteed to survive a discarded render pass.
   const flushRef = useRef(flush);
-  flushRef.current = flush;
+  useEffect(() => {
+    flushRef.current = flush;
+  }, [flush]);
 
   useEffect(() => {
     let active = true;
     count().then((c) => active && setQueued(c));
+    // Read after hydration on purpose. navigator.onLine is unavailable during
+    // SSR, so seeding useState with it would render a different value on the
+    // server than on the client and trip a hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (typeof navigator !== "undefined") setOnline(navigator.onLine);
 
     const goOnline = () => {

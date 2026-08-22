@@ -36,6 +36,10 @@ export function useWebSocket() {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mountedRef = useRef(true);
   const [status, setStatus] = useState<WSStatus>("disconnected");
+  // The reconnect timer has to call `connect`, but a useCallback cannot
+  // reference itself — the identity it closes over is the previous one. Going
+  // through a ref keeps the retry pointed at the current callback.
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     if (typeof window === "undefined" || !mountedRef.current) return;
@@ -96,7 +100,7 @@ export function useWebSocket() {
       if (mountedRef.current) {
         setStatus("disconnected");
         // Reconnect with backoff — only if still mounted
-        reconnectTimer.current = setTimeout(connect, 10_000);
+        reconnectTimer.current = setTimeout(() => connectRef.current(), 10_000);
       }
     };
 
@@ -104,6 +108,10 @@ export function useWebSocket() {
       ws.close();
     };
   }, [qc]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   useEffect(() => {
     mountedRef.current = true;

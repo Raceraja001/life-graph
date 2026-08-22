@@ -1,5 +1,5 @@
 "use client";
-import { ClipboardList, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react";
+import { ClipboardList, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { useTasks } from "@/lib/hooks";
 
 const COLUMNS = [

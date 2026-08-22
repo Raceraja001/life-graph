@@ -52,7 +52,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener("push", (event) => {
   let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
   const title = data.title || "Life Graph";
   const body = data.body || "";
   const url = data.url || "/m";
