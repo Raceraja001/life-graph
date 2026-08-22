@@ -233,6 +233,12 @@ class NotificationChannel(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
     channel_type: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        doc="Human-readable label. The create API has always accepted this; "
+        "before migration 034 there was no column and it was discarded.",
+    )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

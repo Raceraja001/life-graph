@@ -6,11 +6,19 @@ constructed directly from SQLAlchemy ORM model instances.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+)
 
 # ── Watch Config ──────────────────────────────────────────────────────────────
 
@@ -42,7 +50,18 @@ class WatchConfigUpdate(BaseModel):
 
 
 class WatchEventResponse(BaseModel):
-    """Serialized watch event returned by the API."""
+    """Serialized watch event returned by the API.
+
+    ``acknowledged`` is derived, not stored: WatchEvent records the fact as
+    ``acknowledged_at``. It was previously a plain field with a False default,
+    which from_attributes could never populate — so an acknowledged event kept
+    reporting ``acknowledged: false`` and the UI kept showing it as pending.
+
+    A ``retry_count`` field used to sit here too. WatchEvent has no such
+    column — the retry counter belongs to WatcherNotification, which is where
+    deliveries are tracked — so it reported 0 for every event regardless.
+    Removed rather than aliased: there is no per-event retry count to report.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,12 +71,34 @@ class WatchEventResponse(BaseModel):
     severity: str
     title: str
     details: str | None = None
-    acknowledged: bool = False
     acknowledged_at: datetime | None = None
     acknowledged_by: str | None = None
-    retry_count: int = 0
     run_id: uuid.UUID | None = None
     created_at: datetime
+
+    @computed_field
+    @property
+    def acknowledged(self) -> bool:
+        return self.acknowledged_at is not None
+
+    @field_validator("details", mode="before")
+    @classmethod
+    def _details_as_text(cls, v: Any) -> str | None:
+        """WatchEvent.details is JSONB and genuinely holds either shape.
+
+        The ad-hoc watchers store a string; BaseWatcher.emit_event() stores a
+        dict. A dict reaching this ``str | None`` field raised ValidationError,
+        so listing events 500'd for any event a lifecycle watcher produced —
+        which is every event from dependency_watcher and tech_radar now that
+        both are registered. Rendered to text here for a stable wire contract,
+        matching how notification bodies are handled.
+        """
+        if v is None or isinstance(v, str):
+            return v
+        try:
+            return json.dumps(v, default=str)
+        except (TypeError, ValueError):
+            return str(v)
 
 
 class WatchEventSummary(BaseModel):
@@ -116,9 +157,21 @@ class WatcherRunResponse(BaseModel):
 
 
 class TechRadarResponse(BaseModel):
-    """Serialized tech radar article returned by the API."""
+    """Serialized tech radar article returned by the API.
 
-    model_config = ConfigDict(from_attributes=True)
+    Three of these fields named nothing on TechRadarItem. ``created_at`` was
+    required with no counterpart, so this endpoint returned 200 while the
+    table was empty and 500 the moment it held a single row. ``relevance_score``
+    is the ``score`` column and ``created_at`` is ``scraped_at``; both keep
+    their wire names via aliases.
+
+    A ``published_at`` field is gone. TechRadarItem records when an item was
+    scraped, never when it was published, so the field could only ever be
+    null — aliasing it to scraped_at would have reported a scrape time as a
+    publication time.
+    """
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     tenant_id: str
@@ -126,10 +179,11 @@ class TechRadarResponse(BaseModel):
     title: str
     url: str | None = None
     summary: str | None = None
-    relevance_score: float = 0.0
+    relevance_score: float = Field(
+        default=0.0, validation_alias=AliasChoices("score", "relevance_score")
+    )
     tags: list[str] | None = None
-    published_at: datetime | None = None
-    created_at: datetime
+    created_at: datetime = Field(validation_alias=AliasChoices("scraped_at", "created_at"))
 
 
 class TechRadarQuery(BaseModel):

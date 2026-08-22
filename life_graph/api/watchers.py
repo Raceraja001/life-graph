@@ -437,6 +437,7 @@ async def create_notification_channel(body: NotificationChannelCreate):
         id=uuid.uuid4(),
         tenant_id=tenant_id,
         channel_type=body.channel_type,
+        name=body.name,
         config=body.config,
         priority=body.priority,
         enabled=body.enabled,
