@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import socket
 import sys
 from contextlib import AsyncExitStack
@@ -19,9 +20,20 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-async def _wait_for_port(port: int, timeout: float = 10.0) -> None:
+async def _wait_for_port(port: int, proc=None, timeout: float = 10.0) -> None:
+    """Wait until *port* accepts connections.
+
+    Gives up early if *proc* has already exited: a server that crashed on
+    startup will never open the port, and waiting the full timeout to report
+    "never opened port N" hides the actual reason.
+    """
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
+        if proc is not None and proc.returncode is not None:
+            raise RuntimeError(
+                f"reference HTTP server exited with code {proc.returncode} "
+                f"before opening port {port}"
+            )
         try:
             reader, writer = await asyncio.open_connection("127.0.0.1", port)
             writer.close()
@@ -101,23 +113,67 @@ async def http_reference_server():
     """Spawns the reference MCP server as a real HTTP subprocess (not a
     mock) — mirrors the stdio tests' philosophy of exercising the real MCP
     protocol. Yields its base URL once the port is actually accepting
-    connections."""
-    port = _free_port()
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable, FIXTURE, "--http", str(port),
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    try:
-        await _wait_for_port(port)
-        yield f"http://127.0.0.1:{port}/mcp"
-    finally:
-        proc.terminate()
+    connections.
+
+    Startup is retried because _free_port() is inherently racy: it binds a
+    port, reads the number, closes the socket, and only then does the child
+    bind it. Anything on the machine can take the port in that window, and
+    the loser fails with a bare "never opened port N".
+
+    stderr is captured rather than discarded. It used to go to DEVNULL, so a
+    fixture failure said only that the port never opened — the server's own
+    traceback, which is the thing worth reading, was thrown away.
+    """
+    last_error: Exception | None = None
+
+    for attempt in range(3):
+        port = _free_port()
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            FIXTURE,
+            "--http",
+            str(port),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
         try:
-            await asyncio.wait_for(proc.wait(), timeout=5.0)
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
+            await _wait_for_port(port, proc)
+        except (RuntimeError, TimeoutError) as exc:
+            last_error = exc
+            # Terminate only if it is still running — a process that already
+            # exited raises ProcessLookupError, and suppressing that together
+            # with the read would discard the stderr this exists to surface.
+            if proc.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    proc.terminate()
+            stderr = b""
+            with contextlib.suppress(Exception):
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            if attempt == 2:
+                detail = stderr.decode(errors="replace").strip()
+                raise RuntimeError(
+                    f"reference HTTP server failed to start after 3 attempts "
+                    f"(last port {port}): {exc}"
+                    + (
+                        f"\n--- server stderr ---\n{detail}"
+                        if detail
+                        else "\n(server produced no stderr)"
+                    )
+                ) from exc
+            continue
+
+        try:
+            yield f"http://127.0.0.1:{port}/mcp"
+        finally:
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except TimeoutError:
+                proc.kill()
+                await proc.wait()
+        return
+
+    raise AssertionError(f"unreachable: {last_error}")
 
 
 @pytest.mark.asyncio
@@ -163,12 +219,15 @@ async def test_bridged_tool_call_round_trips_through_registry():
 @pytest.mark.asyncio
 async def test_bad_server_config_skipped_second_server_still_connects(monkeypatch):
     import json
+
     monkeypatch.setattr(
         "life_graph.config.settings.mcp_servers",
-        json.dumps([
-            {"name": "broken", "command": "this-binary-does-not-exist", "args": []},
-            {"name": "ref", "command": sys.executable, "args": [FIXTURE]},
-        ]),
+        json.dumps(
+            [
+                {"name": "broken", "command": "this-binary-does-not-exist", "args": []},
+                {"name": "ref", "command": sys.executable, "args": [FIXTURE]},
+            ]
+        ),
         raising=False,
     )
     async with AsyncExitStack() as stack:
@@ -222,9 +281,7 @@ async def test_connect_one_skips_tool_with_invalid_composed_name(monkeypatch):
     fake_session = _FakeSession(tools=[good, bad_dotted, bad_too_long])
 
     monkeypatch.setattr(mcp_bridge, "stdio_client", lambda params: _FakeAsyncCM((None, None)))
-    monkeypatch.setattr(
-        mcp_bridge, "ClientSession", lambda read, write: _FakeAsyncCM(fake_session)
-    )
+    monkeypatch.setattr(mcp_bridge, "ClientSession", lambda read, write: _FakeAsyncCM(fake_session))
 
     server_config = {"name": "srv", "command": "unused", "args": []}
     async with AsyncExitStack() as stack:
@@ -269,10 +326,12 @@ async def test_http_transport_bad_url_is_isolated_like_stdio(monkeypatch):
 
     monkeypatch.setattr(
         "life_graph.config.settings.mcp_servers",
-        json.dumps([
-            {"name": "broken", "transport": "http", "url": "http://127.0.0.1:1/mcp"},
-            {"name": "ref", "command": sys.executable, "args": [FIXTURE]},
-        ]),
+        json.dumps(
+            [
+                {"name": "broken", "transport": "http", "url": "http://127.0.0.1:1/mcp"},
+                {"name": "ref", "command": sys.executable, "args": [FIXTURE]},
+            ]
+        ),
         raising=False,
     )
     async with AsyncExitStack() as stack:
