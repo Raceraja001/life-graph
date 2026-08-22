@@ -64,6 +64,15 @@ class Settings(BaseSettings):
 
     # ── Decay ──────────────────────────────────────────
     decay_archive_threshold: float = 0.01
+    """Effective-importance floor below which removal is *proposed*.
+
+    A memory's effective importance is ``importance * exp(-decay_rate *
+    days_since_activity)``. Falling below this floor makes it a candidate for
+    an archive approval -- nothing is archived without one. With the default
+    ``memories.decay_rate`` of 0.0217 the horizon is ~180 days since last
+    activity for importance 0.5, ~212 days for 1.0. Recall never touches this:
+    ranking demotes stale memories on its own recency curve."""
+
     decay_proposal_limit: int = 50
     """Most archive proposals one decay sweep may queue for a tenant.
 

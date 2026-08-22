@@ -101,7 +101,20 @@ class Memory(Base):
     # ── Access & Decay ────────────────────────────────────────
     access_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_accessed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    decay_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.1)
+    decay_rate: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.0217,
+        doc=(
+            "Lambda for the archive-proposal curve: "
+            "importance * exp(-decay_rate * days_since_activity). Crossing "
+            "settings.decay_archive_threshold makes a memory a candidate for a "
+            "removal proposal -- it is never archived automatically. At 0.0217 "
+            "that horizon is ~180 days for importance 0.5 and ~212 for 1.0. "
+            "This does not drive recall ordering; scoring/ranking.py has its "
+            "own recency curve."
+        ),
+    )
 
     # ── Reinforcement (Confidence Decay) ──────────────────────
     last_reinforced: Mapped[datetime | None] = mapped_column(

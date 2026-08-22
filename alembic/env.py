@@ -81,10 +81,18 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
-        global _AGE_LABELS
-        _AGE_LABELS = _load_age_labels(connection)
+    # Read the AGE label list on its own connection.
+    #
+    # Doing it on the migration connection breaks every migration silently:
+    # the query opens an implicit transaction, so alembic's
+    # context.begin_transaction() finds one already in progress and becomes a
+    # no-op, and nothing is ever committed. `alembic upgrade head` then logs
+    # "Running upgrade ..." and exits 0 having changed nothing.
+    global _AGE_LABELS
+    with connectable.connect() as probe:
+        _AGE_LABELS = _load_age_labels(probe)
 
+    with connectable.connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

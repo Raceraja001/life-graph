@@ -30,7 +30,7 @@ class DecayCalculator:
         importance: float,
         access_count: int,
         days_since_access: float,
-        decay_rate: float = 0.1,
+        decay_rate: float = 0.0217,
     ) -> float:
         """Compute the current decay score for a single memory.
 
@@ -39,7 +39,8 @@ class DecayCalculator:
             access_count: Number of times the memory was accessed.
                 Treated as minimum 1 to avoid zeroing out.
             days_since_access: Days elapsed since the last access.
-            decay_rate: Exponential decay lambda (default 0.1).
+            decay_rate: Exponential decay lambda (default 0.0217, matching
+                the ``memories.decay_rate`` column default).
 
         Returns:
             Decay-adjusted score (non-negative float).
@@ -100,7 +101,7 @@ class DecayCalculator:
                 importance=mem["importance"],
                 access_count=mem["access_count"],
                 days_since_access=days,
-                decay_rate=mem.get("decay_rate", 0.1),
+                decay_rate=mem.get("decay_rate", 0.0217),
             )
             archive = self.should_archive(
                 score=score,

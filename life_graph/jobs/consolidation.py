@@ -385,10 +385,11 @@ class ConsolidationPipeline:
     async def _update_decay_scores(self) -> int:
         """Recalculate decay scores for all active memories.
 
-        Archives memories that fall below the threshold, except
-        those with importance_tier = 'critical'.
+        Reports how many have fallen below the decay threshold. Nothing is
+        archived here: ``workers/decay.py`` queues those as approvals, and
+        only an approved proposal changes a memory's status.
 
-        Returns the number of memories archived.
+        Returns the number of memories below the threshold.
         """
         stmt = select(Memory).where(
             Memory.tenant_id == _tenant(),
