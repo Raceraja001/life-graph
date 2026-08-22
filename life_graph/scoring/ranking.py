@@ -27,6 +27,10 @@ _WEIGHT_RECENCY: float = 0.15
 _WEIGHT_FREQUENCY: float = 0.10
 _WEIGHT_TRUST: float = 0.05
 
+# Soft ceiling per type bucket in rerank(): beyond this a candidate is
+# deferred to the top-up pass, not dropped.
+_MAX_PER_TYPE: int = 3
+
 _SIGNAL_WEIGHTS: dict[str, float] = {
     "semantic": _WEIGHT_SEMANTIC,
     "context": _WEIGHT_CONTEXT,
@@ -300,6 +304,9 @@ class RecallRanker:
         type_counts: dict[str, int] = defaultdict(int)
         now = datetime.now(UTC)
         results: list[dict[str, Any]] = []
+        # Passed over by the type rule only. Type diversity is a preference,
+        # so these are eligible again if the first pass comes up short.
+        deferred: list[dict[str, Any]] = []
 
         for cand in ranked:
             if len(results) >= max_results:
@@ -315,21 +322,48 @@ class RecallRanker:
                 continue
 
             # --- type diversity (soft: prefer under-represented) ---
-            mem_type = cand.get("type", "unknown")
-            # We still add it, but types with 3+ entries get deprioritised
-            # by being skipped if there are remaining candidates
-            if type_counts[mem_type] >= 3 and len(ranked) > max_results:
+            mem_type = self._candidate_type(cand)
+            if type_counts[mem_type] >= _MAX_PER_TYPE and len(ranked) > max_results:
+                deferred.append(cand)
                 continue
 
             results.append(cand)
             topic_counts[topic] += 1
             type_counts[mem_type] += 1
 
+        # Top up from the type-deferred candidates, still in score order.
+        #
+        # This pass is what makes the type rule a preference rather than a
+        # cap. Without it the single pass dropped those candidates for good:
+        # no candidate carried a "type" key at all, so every one collapsed to
+        # "unknown" and the rule truncated proactive recall to
+        # _MAX_PER_TYPE results — asking for 5 returned 3. Topic caps and
+        # cooldown are real limits and are not revisited here.
+        for cand in deferred:
+            if len(results) >= max_results:
+                break
+            topic = self._extract_topic(cand)
+            if topic_counts[topic] >= max_per_topic:
+                continue
+            results.append(cand)
+            topic_counts[topic] += 1
+            type_counts[self._candidate_type(cand)] += 1
+
         return results
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _candidate_type(candidate: dict[str, Any]) -> str:
+        """Type bucket for the diversity preference.
+
+        Falls back to ``source_type``, which retrieval actually populates.
+        The core is schema-less and has no memory-type column, so reading
+        only ``type`` bucketed every candidate as "unknown".
+        """
+        return str(candidate.get("type") or candidate.get("source_type") or "unknown")
 
     @staticmethod
     def _extract_topic(candidate: dict[str, Any]) -> str:

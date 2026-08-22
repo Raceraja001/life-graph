@@ -20,6 +20,7 @@ from life_graph.services.recall import (
     _dict_to_memory_response,
     _has_any_tag,
 )
+from tests.unit.test_recall_touch import _Memory as _TouchMemory
 
 # ── Fakes ─────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ class _Memory:
         self.properties = kw.get("properties", {})
         self.importance = kw.get("importance", 0.5)
         self.trust_score = kw.get("trust_score", 0.5)
+        self.impact_score = kw.get("impact_score", 0.5)
         self.access_count = kw.get("access_count", 0)
         self.last_accessed = kw.get("last_accessed", now)
         self.created_at = kw.get("created_at", now)
@@ -53,10 +55,10 @@ class _Memory:
 def _engine(rows=()):
     store = MagicMock()
 
-    async def _list(**kw):
-        return list(rows), False
+    async def _candidates(**kw):
+        return list(rows)
 
-    store.list_memories = _list
+    store.list_recall_candidates = _candidates
 
     ranker = MagicMock()
     ranker.rank = lambda c, current_context=None: list(c)
@@ -377,3 +379,43 @@ async def test_mid_session_returns_at_most_the_configured_maximum():
     out = await engine.mid_session_recall({}, "error_encountered")
 
     assert len(out) <= settings.recall_max_during_session
+
+
+# ── The stand-in must not drift from what retrieval actually reads ──────
+
+
+def _attributes_retrieval_reads() -> set[str]:
+    """Attribute names read off the ORM row inside _retrieve_candidates."""
+    import ast
+    import pathlib
+
+    recall_py = (
+        pathlib.Path(__file__).resolve().parents[2] / "life_graph" / "services" / "recall.py"
+    )
+    tree = ast.parse(recall_py.read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "_retrieve_candidates":
+            return {
+                sub.attr
+                for sub in ast.walk(node)
+                if isinstance(sub, ast.Attribute)
+                and isinstance(sub.value, ast.Name)
+                and sub.value.id == "mem"
+            }
+    raise AssertionError("recall.py has no _retrieve_candidates()")
+
+
+@pytest.mark.parametrize("fake_cls", [_Memory, _TouchMemory])
+def test_fake_row_has_every_column_retrieval_reads(fake_cls):
+    """These fakes claim completeness; nothing was checking the claim.
+
+    When retrieval started reading ``impact_score`` the fakes did not have
+    it, and MagicMock would happily have handed back a mock for any missing
+    attribute -- a signal silently scored on a Mock rather than a number.
+    """
+    row = fake_cls()
+    missing = sorted(a for a in _attributes_retrieval_reads() if not hasattr(row, a))
+    assert not missing, (
+        f"{fake_cls.__module__}.{fake_cls.__name__} is missing {missing}, which "
+        "_retrieve_candidates reads off every row. Add them to the fake."
+    )

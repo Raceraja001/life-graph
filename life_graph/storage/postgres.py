@@ -373,6 +373,63 @@ class PostgresMemoryStore:
             rows = rows[:limit]
         return rows, has_more
 
+    async def list_recall_candidates(
+        self,
+        filters: dict | None = None,
+        limit: int = 50,
+    ) -> list[Memory]:
+        """Best candidates for proactive recall, ranked in SQL.
+
+        Proactive recall used ``list_memories()``, which orders by
+        ``created_at DESC``. That made the candidate pool "the newest N
+        memories" — on the current database, 61% of one tenant's active
+        memories could never be surfaced at all, however important, and
+        the Python ranker only ever re-sorted an arbitrary slice. Because
+        surfacing is what refreshes ``last_accessed``, memories outside the
+        window could never be reinforced either, so they were the ones that
+        reached the removal horizon regardless of value.
+
+        The ordering here mirrors ``scoring/ranking.py`` for the five signals
+        computable in SQL — importance, impact, trust, recency and frequency,
+        0.60 of the total weight. The remaining 0.40 (context similarity, and
+        the semantic placeholder) is applied by the ranker over this pool, so
+        this is a pre-filter, not the final order. Keep the weights in step
+        with the ranker; ``tests/unit/test_recall_candidate_pool.py`` asserts
+        they match.
+        """
+        base_score = (
+            0.15 * Memory.importance
+            + 0.15 * Memory.impact_score
+            + 0.05 * Memory.trust_score
+            + 0.15
+            * func.exp(
+                -0.02
+                * func.greatest(
+                    func.extract(
+                        "epoch",
+                        func.now() - func.coalesce(Memory.last_accessed, Memory.created_at),
+                    )
+                    / 86400.0,
+                    0.0,
+                )
+            )
+            + 0.10
+            * func.least(
+                func.power(func.greatest(Memory.access_count, 1), 0.3) / 10.0,
+                1.0,
+            )
+        )
+
+        stmt = select(Memory).where(Memory.tenant_id == get_current_tenant_id())
+        stmt = self._apply_filters(stmt, Memory, filters)
+        # created_at/id break ties so the pool is deterministic across calls.
+        stmt = stmt.order_by(base_score.desc(), Memory.created_at.desc(), Memory.id.desc())
+        stmt = stmt.limit(limit)
+
+        async with async_session() as session:
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+
     # ── Touch ─────────────────────────────────────────────────
 
     async def touch(self, memory_id: uuid.UUID) -> None:

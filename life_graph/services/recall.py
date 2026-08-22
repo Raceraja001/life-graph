@@ -260,7 +260,11 @@ class RecallEngine:
         if fingerprint.project:
             filters["properties"] = {"project": fingerprint.project}
 
-        memories, _has_more = await self._store.list_memories(
+        # Ranked in SQL by the signals that do not need the fingerprint, not
+        # by created_at. list_memories() orders newest-first, which made the
+        # pool "the newest N memories" and put everything older permanently
+        # out of reach of proactive recall.
+        memories = await self._store.list_recall_candidates(
             filters=filters,
             limit=limit,
         )
@@ -298,7 +302,19 @@ class RecallEngine:
                 "module": (mem.properties or {}).get("module", ""),
                 "tools": (mem.properties or {}).get("tools", []),
                 "files": (mem.properties or {}).get("files", []),
-                # Semantic score placeholder — 0.5 for non-vector retrieval
+                # Learned usefulness from outcomes. services/impact.py
+                # maintains this column, but it was never read into the
+                # candidate, so the ranker fell back to its 0.5 default and
+                # 0.15 of every score was a constant — the impact
+                # subsystem's output was discarded at the one place it is
+                # meant to decide anything.
+                "impact_score": mem.impact_score,
+                # The one deliberate constant. Retrieval here is filter-based,
+                # not vector-based, so there is no query embedding to compare
+                # against; scoring this properly means embedding the context
+                # fingerprint on every recall. Until then 0.20 of the weight
+                # is inert, which flattens the spread but does not reorder
+                # anything, since a constant shifts every candidate equally.
                 "semantic_score": 0.5,
             }
             candidates.append(cand)

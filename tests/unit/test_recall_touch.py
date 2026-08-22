@@ -49,6 +49,7 @@ class _Memory:
         self.properties = kw.get("properties", {})
         self.importance = kw.get("importance", 0.5)
         self.trust_score = 0.5
+        self.impact_score = kw.get("impact_score", 0.5)
         self.access_count = kw.get("access_count", 0)
         self.last_accessed = kw.get("last_accessed")
         self.created_at = now
@@ -67,10 +68,10 @@ class _Memory:
 def _engine(rows=()):
     store = MagicMock()
 
-    async def _list(**kw):
-        return list(rows), False
+    async def _candidates(**kw):
+        return list(rows)
 
-    store.list_memories = _list
+    store.list_recall_candidates = _candidates
     store.touch_many = AsyncMock()
 
     ranker = MagicMock()
