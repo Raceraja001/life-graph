@@ -300,7 +300,39 @@ class TaskDispatcher:
                 }
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
 
-                if not verifier_chain.all_passed(v_results):
+                # An inconclusive check means the gate never ran — the tool it
+                # needs is not installed for this project. Re-dispatching the
+                # agent cannot install it, so bouncing would burn a second
+                # frontier call to reach the same state. Escalate directly,
+                # and say plainly that the work was not verified rather than
+                # that it failed.
+                unverifiable = verifier_chain.inconclusive(v_results)
+                if unverifiable:
+                    names = ", ".join(r.verifier for r in unverifiable)
+                    logger.warning(
+                        "Task %s could not be verified (%s) — escalating without bounce",
+                        task_id,
+                        names,
+                    )
+                    await self._create_approval_entry(
+                        tenant_id=tenant_id,
+                        task_id=task_id,
+                        driver_name=driver.name,
+                        v_results=v_results,
+                        session=session,
+                    )
+                    result = DriverResult(
+                        success=False,
+                        output=result.output,
+                        error=f"Could not verify — checks did not run: {names}",
+                        cost_usd=result.cost_usd,
+                        duration_ms=result.duration_ms,
+                        metadata={
+                            "needs_human": True,
+                            "unverifiable": [asdict(r) for r in unverifiable],
+                        },
+                    )
+                elif not verifier_chain.all_passed(v_results):
                     # Step 6: One-bounce rule
                     await self._emit(
                         EventType.VERIFICATION_FAILED,
@@ -826,11 +858,32 @@ class TaskDispatcher:
         try:
             from life_graph.autonomy.models import ApprovalQueueEntry
 
-            failures = ", ".join(r.verifier for r in v_results if not r.passed)
+            unverifiable = [r for r in v_results if r.inconclusive]
+            if unverifiable:
+                # Distinct from a failure: nothing is wrong with the work, the
+                # gate simply never ran. Saying "failed verification" here
+                # would send you looking for a bug in a change that was never
+                # checked.
+                names = ", ".join(r.verifier for r in unverifiable)
+                action_name = "driver_verification_unavailable"
+                detail = (
+                    f"Task {task_id} ran on driver '{driver_name}', but these "
+                    f"checks could not be performed: {names}. The change is "
+                    f"UNVERIFIED — not known good and not known bad. Install "
+                    f"the missing tooling in the project environment, or "
+                    f"review the diff by hand."
+                )
+            else:
+                failures = ", ".join(r.verifier for r in v_results if not r.passed)
+                action_name = "driver_verification_failed"
+                detail = (
+                    f"Driver '{driver_name}' failed verification for task {task_id} "
+                    f"after one bounce. Failures: {failures}"
+                )
             entry = ApprovalQueueEntry(
                 tenant_id=tenant_id,
                 agent_id=driver_name,
-                action_name="driver_verification_failed",
+                action_name=action_name,
                 action_command=f"review task {task_id}",
                 # approval_queue.ck_aq_risk_level allows only moderate/dangerous.
                 # This said "medium", which is not in RiskLevel at all, so every
@@ -839,10 +892,7 @@ class TaskDispatcher:
                 risk_level=RiskLevel.MODERATE.value,
                 category="driver",
                 trigger_type="driver_review",
-                trigger_detail=(
-                    f"Driver '{driver_name}' failed verification for task {task_id} "
-                    f"after one bounce. Failures: {failures}"
-                ),
+                trigger_detail=detail,
                 status="pending",
             )
             session.add(entry)

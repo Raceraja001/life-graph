@@ -7,6 +7,7 @@ One-bounce rule: failed → re-dispatch once → second failure → needs_human.
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -23,13 +24,26 @@ class VerifierResult:
 
     Attributes:
         verifier: Name of the verifier that produced this result.
-        passed: Whether the verification passed.
+        passed: Whether the verification passed. Always ``False`` when
+            ``inconclusive``, so existing ``all_passed``-style checks stay
+            correct without knowing about the third state.
         evidence: Supporting data for the pass/fail decision.
+        inconclusive: The check could not be performed at all — the tool it
+            needs is not installed, or is a different tool than the project
+            uses. This is NOT a pass and NOT a failure of the agent's work.
+
+            Without this state each verifier had to squeeze "could not
+            check" into a boolean and they disagreed: lint_clean_diff
+            returned True (a missing linter silently satisfied the gate),
+            while lint_clean and tests_pass returned False (indistinguishable
+            from the agent genuinely breaking the build, and unfixable by the
+            re-dispatch it triggered).
     """
 
     verifier: str
     passed: bool
     evidence: dict
+    inconclusive: bool = False
 
 
 class VerifierChain:
@@ -74,15 +88,29 @@ class VerifierChain:
                 continue
             try:
                 passed, evidence = await verifier(workdir, task_context)
-                results.append(VerifierResult(name, passed, evidence))
+                if passed is None:
+                    # Sentinel: the verifier could not run its tool. Kept as a
+                    # 2-tuple so third-party verifiers registered against the
+                    # documented (bool, dict) contract keep working unchanged.
+                    results.append(VerifierResult(name, False, evidence, inconclusive=True))
+                else:
+                    results.append(VerifierResult(name, bool(passed), evidence))
             except Exception as e:
                 logger.warning("Verifier %s failed: %s", name, e, exc_info=True)
                 results.append(VerifierResult(name, False, {"error": str(e)}))
         return results
 
     def all_passed(self, results: list[VerifierResult]) -> bool:
-        """Check if all verifiers in the results list passed."""
-        return all(r.passed for r in results)
+        """Whether every verifier actually ran AND passed.
+
+        An inconclusive check is not a pass: the gate did not happen.
+        """
+        return all(r.passed and not r.inconclusive for r in results)
+
+    @staticmethod
+    def inconclusive(results: list[VerifierResult]) -> list[VerifierResult]:
+        """Checks that could not be performed. Re-dispatching cannot fix these."""
+        return [r for r in results if r.inconclusive]
 
     def _register_builtins(self) -> None:
         """Register the built-in verifiers."""
@@ -98,38 +126,104 @@ class VerifierChain:
 
 
 # ── 9 Built-in Verifiers ─────────────────────────────────────
+# ── Toolchain resolution ─────────────────────────────────────
+#
+# A verifier must run the TARGET project's toolchain, not Life Graph's and
+# not whatever the server process happens to have on PATH. Running the wrong
+# interpreter is worse than running none: Life Graph's venv has pytest but
+# not the project's dependencies, so every test would fail on ImportError and
+# the agent would be blamed for it. When no suitable tool is found the
+# verifier reports inconclusive rather than guessing.
+
+_VENV_DIRS: tuple[str, ...] = (".venv", "venv", "env")
+_BIN_DIRS: tuple[str, ...] = ("bin", "Scripts")
 
 
-async def _verify_tests_pass(workdir: Path, ctx: dict) -> tuple[bool, dict]:
-    """Run pytest and check exit code."""
+def _project_tool(workdir: Path, tool: str) -> str | None:
+    """Find *tool* in the project's own virtualenv, else on PATH."""
+    for venv in _VENV_DIRS:
+        for bindir in _BIN_DIRS:
+            for name in (tool, f"{tool}.exe"):
+                candidate = workdir / venv / bindir / name
+                if candidate.is_file():
+                    return str(candidate)
+    return shutil.which(tool)
+
+
+def _project_python(workdir: Path) -> str | None:
+    """The interpreter the project's tests should run under."""
+    for venv in _VENV_DIRS:
+        for bindir, name in (("bin", "python"), ("Scripts", "python.exe")):
+            candidate = workdir / venv / bindir / name
+            if candidate.is_file():
+                return str(candidate)
+    # Deliberately NOT sys.executable: that is Life Graph's interpreter, which
+    # carries none of the target project's dependencies.
+    return shutil.which("python") or shutil.which("python3")
+
+
+def _missing_module(result: subprocess.CompletedProcess, module: str) -> bool:
+    """Whether the run failed because *module* is not installed.
+
+    ``python -m pytest`` exits 1 for "No module named pytest" — the same code
+    as a genuine test failure. Read literally that made an uninstalled test
+    runner look exactly like broken code.
+    """
+    blob = f"{result.stdout}\n{result.stderr}"
+    return f"No module named {module}" in blob
+
+
+async def _verify_tests_pass(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
+    """Run the project's test suite. Inconclusive if it has no runner."""
+    python = _project_python(workdir)
+    if python is None:
+        return None, {"note": "no Python interpreter found for this project"}
     try:
         result = subprocess.run(
-            ["python", "-m", "pytest", str(workdir), "-q", "--tb=no", "-x"],
+            [python, "-m", "pytest", str(workdir), "-q", "--tb=no", "-x"],
             capture_output=True,
             text=True,
             timeout=120,
             cwd=str(workdir),
         )
-        passed = result.returncode == 0
-        return passed, {"stdout": result.stdout[-500:], "returncode": result.returncode}
+    except FileNotFoundError:
+        return None, {"note": f"interpreter {python!r} disappeared before it could run"}
     except Exception as e:
         return False, {"error": str(e)}
 
+    if _missing_module(result, "pytest"):
+        # Not a test failure: this project's environment has no test runner.
+        return None, {
+            "note": "pytest is not installed in the project environment",
+            "python": python,
+        }
+    passed = result.returncode == 0
+    return passed, {
+        "stdout": result.stdout[-500:],
+        "returncode": result.returncode,
+        "python": python,
+    }
 
-async def _verify_lint_clean(workdir: Path, ctx: dict) -> tuple[bool, dict]:
-    """Run ruff check."""
+
+async def _verify_lint_clean(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
+    """Run ruff over the project. Inconclusive if ruff is not available."""
+    ruff = _project_tool(workdir, "ruff")
+    if ruff is None:
+        return None, {"note": "ruff not available for this project"}
     try:
         result = subprocess.run(
-            ["ruff", "check", str(workdir), "--no-fix"],
+            [ruff, "check", str(workdir), "--no-fix"],
             capture_output=True,
             text=True,
             timeout=60,
             cwd=str(workdir),
         )
-        passed = result.returncode == 0
-        return passed, {"issues": result.stdout[-500:], "returncode": result.returncode}
+    except FileNotFoundError:
+        return None, {"note": f"ruff at {ruff!r} disappeared before it could run"}
     except Exception as e:
         return False, {"error": str(e)}
+    passed = result.returncode == 0
+    return passed, {"issues": result.stdout[-500:], "returncode": result.returncode, "ruff": ruff}
 
 
 async def _verify_build_ok(workdir: Path, ctx: dict) -> tuple[bool, dict]:
@@ -199,31 +293,34 @@ async def _verify_build_ok_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
     return passed, {"errors": errors[:10], "checked": len(changed)}
 
 
-async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
     """Like lint_clean, but only lints files changed since HEAD."""
     changed = _changed_python_files(workdir)
     if not changed:
         return True, {"note": "No changed .py files"}
+
+    ruff = _project_tool(workdir, "ruff")
+    if ruff is None:
+        # A missing linter is not a lint failure — but it is not a pass
+        # either. This used to return True, so on any host without ruff (the
+        # production image installs no dev tooling) the lint gate silently
+        # reported success on every dispatch while checking nothing.
+        logger.warning("lint_clean_diff: ruff not available — check not performed")
+        return None, {"note": "ruff not available for this project"}
     try:
         result = subprocess.run(
-            ["ruff", "check", "--no-fix", *[str(f) for f in changed]],
+            [ruff, "check", "--no-fix", *[str(f) for f in changed]],
             capture_output=True,
             text=True,
             timeout=60,
             cwd=str(workdir),
         )
     except FileNotFoundError:
-        # No ruff binary on this host (e.g. the production image installs
-        # no dev tooling). A missing linter is NOT a lint failure — failing
-        # here would bounce → needs_human on EVERY dispatch that touched a
-        # .py file. Skip instead. A ruff that IS installed and reports
-        # issues still fails below.
-        logger.warning("lint_clean_diff: ruff not available — skipping lint check")
-        return True, {"note": "ruff not available — skipped"}
+        return None, {"note": f"ruff at {ruff!r} disappeared before it could run"}
     except Exception as e:
         return False, {"error": str(e)}
     passed = result.returncode == 0
-    return passed, {"issues": result.stdout[-500:], "returncode": result.returncode}
+    return passed, {"issues": result.stdout[-500:], "returncode": result.returncode, "ruff": ruff}
 
 
 async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dict]:

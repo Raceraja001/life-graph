@@ -16,9 +16,20 @@ from life_graph.services.verifiers import verifier_chain
 def _init_repo(path):
     subprocess.run(["git", "init"], cwd=str(path), check=True, capture_output=True)
     subprocess.run(
-        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit",
-         "--allow-empty", "-m", "init"],
-        cwd=str(path), check=True, capture_output=True,
+        [
+            "git",
+            "-c",
+            "user.email=t@t.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "init",
+        ],
+        cwd=str(path),
+        check=True,
+        capture_output=True,
     )
 
 
@@ -32,7 +43,9 @@ async def test_lint_clean_diff_ignores_pre_existing_issues_outside_the_diff(tmp_
     subprocess.run(["git", "add", "old.py"], cwd=str(tmp_path), check=True, capture_output=True)
     subprocess.run(
         ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-m", "pre-existing"],
-        cwd=str(tmp_path), check=True, capture_output=True,
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
     )
     # A NEW, clean file — the actual change under test. Staged (not committed)
     # so `git diff --name-only HEAD` picks it up — an untracked file would
@@ -57,7 +70,9 @@ async def test_build_ok_diff_only_compiles_changed_files(tmp_path):
     subprocess.run(["git", "add", "broken.py"], cwd=str(tmp_path), check=True, capture_output=True)
     subprocess.run(
         ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-m", "pre-existing"],
-        cwd=str(tmp_path), check=True, capture_output=True,
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
     )
     # Staged (not committed) so `git diff --name-only HEAD` picks it up —
     # see the comment in test_lint_clean_diff_ignores_pre_existing_issues_
@@ -87,9 +102,7 @@ async def test_build_ok_diff_fails_on_a_syntax_error_in_the_diff(tmp_path):
 async def test_diff_scoped_verifiers_tolerate_a_non_git_directory(tmp_path):
     """No .git at all (the scratch-temp-dir fallback case) — must not raise,
     trivially passes (nothing to check)."""
-    results = await verifier_chain.run_chain(
-        ["build_ok_diff", "lint_clean_diff"], tmp_path, {}
-    )
+    results = await verifier_chain.run_chain(["build_ok_diff", "lint_clean_diff"], tmp_path, {})
 
     assert all(r.passed for r in results)
 
@@ -135,13 +148,12 @@ async def test_diff_verifiers_ignore_gitignored_untracked_files(tmp_path):
     """--exclude-standard: a .gitignore'd file is not part of the change."""
     _init_repo(tmp_path)
     (tmp_path / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".gitignore"], cwd=str(tmp_path), check=True, capture_output=True)
     subprocess.run(
-        ["git", "add", ".gitignore"], cwd=str(tmp_path), check=True, capture_output=True
-    )
-    subprocess.run(
-        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit",
-         "-m", "ignore"],
-        cwd=str(tmp_path), check=True, capture_output=True,
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-m", "ignore"],
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
     )
     (tmp_path / "ignored").mkdir()
     (tmp_path / "ignored" / "broken.py").write_text("def f(:\n", encoding="utf-8")
@@ -153,27 +165,28 @@ async def test_diff_verifiers_ignore_gitignored_untracked_files(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_lint_clean_diff_skips_when_ruff_is_not_installed(tmp_path, monkeypatch):
-    """A missing linter is not a lint failure — failing here would bounce →
-    needs_human on every dispatch that touched a .py file (the production
-    image ships no ruff)."""
+async def test_lint_clean_diff_is_inconclusive_when_ruff_is_not_installed(tmp_path, monkeypatch):
+    """A missing linter is neither a pass nor a failure.
+
+    This used to assert ``passed is True``: on any host without ruff (the
+    production image ships no dev tooling) the lint gate reported success on
+    every dispatch while checking nothing. Failing instead is no better — it
+    would bounce to needs_human on every dispatch touching a .py file, and
+    re-running the agent cannot install a linter. The check simply did not
+    happen, and that is now what it says.
+    """
     import life_graph.services.verifiers as verifiers_mod
 
     _init_repo(tmp_path)
     (tmp_path / "new.py").write_text("x = 1\n", encoding="utf-8")
 
-    real_run = subprocess.run
-
-    def _fake_run(cmd, *a, **kw):
-        if cmd and cmd[0] == "ruff":
-            raise FileNotFoundError("ruff not found")
-        return real_run(cmd, *a, **kw)
-
-    monkeypatch.setattr(verifiers_mod.subprocess, "run", _fake_run)
+    monkeypatch.setattr(verifiers_mod, "_project_tool", lambda workdir, tool: None)
 
     results = await verifier_chain.run_chain(["lint_clean_diff"], tmp_path, {})
 
-    assert results[0].passed is True
+    assert results[0].inconclusive is True
+    assert results[0].passed is False, "inconclusive must never read as a pass"
+    assert not verifier_chain.all_passed(results)
     assert "ruff not available" in results[0].evidence["note"]
 
 
