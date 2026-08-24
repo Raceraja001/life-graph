@@ -482,10 +482,18 @@ class SchedulerService:
 
             task_id = result.get("task_id") if isinstance(result, dict) else str(result)
 
+            # "dispatched", not "completed": spawn() only enqueues — the
+            # AgentTask it creates is status="queued" and has not run yet.
+            # Recording success here meant a schedule whose task failed every
+            # single time still reported completed, consecutive_failures never
+            # left 0, and auto-disable could not fire for a broken job — only
+            # for one that could not be enqueued at all. The real outcome
+            # arrives later on TASK_COMPLETED / TASK_FAILED; see
+            # :meth:`subscribe`.
             await self._record_run(
                 tenant_id,
                 job_id,
-                "completed",
+                "dispatched",
                 task_id,
             )
             return result
@@ -504,14 +512,65 @@ class SchedulerService:
             )
             return None
 
+    # ── Outcome reconciliation ────────────────────────────────
+
+    def subscribe(self) -> None:
+        """Listen for the real outcome of the tasks this scheduler fired.
+
+        ``fire_job`` only enqueues, so at fire time the outcome is unknown.
+        These handlers close the loop: when the AgentTask a schedule spawned
+        finishes, the schedule's own run record catches up, and only then can
+        a genuinely broken job accumulate consecutive_failures and be
+        auto-disabled.
+        """
+        event_bus.subscribe(EventType.TASK_COMPLETED, self._on_task_settled)
+        event_bus.subscribe(EventType.TASK_FAILED, self._on_task_settled)
+        event_bus.subscribe(EventType.TASK_TIMEOUT, self._on_task_settled)
+
+    async def _on_task_settled(self, event: Any) -> None:
+        """Apply a finished task's outcome to the schedule that fired it."""
+        payload = event.payload or {}
+        task_id = payload.get("task_id")
+        tenant_id = payload.get("tenant_id")
+        if not task_id or not tenant_id:
+            return
+
+        status = "completed" if event.type == EventType.TASK_COMPLETED else "failed"
+
+        try:
+            task_uuid = uuid.UUID(str(task_id))
+        except (ValueError, AttributeError, TypeError):
+            return
+
+        # Only a schedule that fired THIS task is affected. Most tasks have no
+        # schedule behind them, so this is normally a miss and costs one
+        # indexed lookup.
+        async with self._session_factory() as session:
+            stmt = select(ScheduledJob).where(
+                ScheduledJob.tenant_id == tenant_id,
+                ScheduledJob.last_run_task_id == task_uuid,
+            )
+            job = (await session.execute(stmt)).scalar_one_or_none()
+            if job is None:
+                return
+            job_id = str(job.id)
+
+        # count_run=False: fire_job already counted this run and advanced
+        # next_run_at. This is the same run settling, not another one.
+        await self._record_run(tenant_id, job_id, status, str(task_id), count_run=False)
+
     async def _record_run(
         self,
         tenant_id: str,
         job_id: str,
         status: str,
         task_id: str | None,
+        count_run: bool = True,
     ) -> None:
         """Record a job run and check failure threshold.
+
+        ``count_run=False`` when an already-counted run merely settles into
+        its final status, so run_count and next_run_at are left alone.
 
         Updates last_run_at, last_run_status, run_count,
         and consecutive_failures. If failures exceed
@@ -530,7 +589,12 @@ class SchedulerService:
             if job is None:
                 return
 
-            new_failures = 0 if status == "completed" else job.consecutive_failures + 1
+            # "dispatched" is neither outcome yet — leave the counter alone so
+            # an enqueue does not reset a failure streak the job has earned.
+            if status == "dispatched":
+                new_failures = job.consecutive_failures
+            else:
+                new_failures = 0 if status == "completed" else job.consecutive_failures + 1
 
             # Compute next run
             try:
@@ -540,13 +604,14 @@ class SchedulerService:
                 next_run = None
 
             values: dict[str, Any] = {
-                "last_run_at": now,
                 "last_run_status": status,
-                "run_count": job.run_count + 1,
                 "consecutive_failures": new_failures,
-                "next_run_at": next_run,
                 "updated_at": now,
             }
+            if count_run:
+                values["last_run_at"] = now
+                values["run_count"] = job.run_count + 1
+                values["next_run_at"] = next_run
             if task_id:
                 values["last_run_task_id"] = uuid.UUID(task_id)
 

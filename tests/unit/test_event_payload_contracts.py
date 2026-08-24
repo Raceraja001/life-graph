@@ -48,14 +48,46 @@ def trees() -> dict[pathlib.Path, ast.Module]:
     return out
 
 
-def _event_type(node) -> str | None:
+def _event_types(node, aliases: dict[str, set[str]] | None = None) -> set[str]:
+    """Every EventType this expression can evaluate to.
+
+    A bare ``EventType.X`` is the common case, but an emit site may pass a
+    variable chosen just above it::
+
+        event_type = EventType.TASK_TIMEOUT if timed_out else EventType.TASK_FAILED
+        await event_bus.emit(event_type, {...})
+
+    Resolving only literals reported those two events as emitting nothing,
+    so any subscriber to them looked like it was reading keys that never
+    existed. A scan that reports gaps which are not there gets ignored, which
+    costs more than the gaps it would have caught.
+    """
     if (
         isinstance(node, ast.Attribute)
         and isinstance(node.value, ast.Name)
         and node.value.id == "EventType"
     ):
-        return node.attr
-    return None
+        return {node.attr}
+    if isinstance(node, ast.IfExp):
+        return _event_types(node.body, aliases) | _event_types(node.orelse, aliases)
+    if isinstance(node, ast.Name) and aliases:
+        return set(aliases.get(node.id, ()))
+    return set()
+
+
+def _event_aliases(fn) -> dict[str, set[str]]:
+    """Local names assigned an EventType (directly or by a conditional)."""
+    aliases: dict[str, set[str]] = {}
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ):
+            found = _event_types(node.value)
+            if found:
+                aliases[node.targets[0].id] = found
+    return aliases
 
 
 def _dict_keys(node: ast.Dict) -> set[str]:
@@ -90,8 +122,8 @@ def _collect_producers(trees) -> tuple[dict[str, set[str]], set[str]]:
                     and node.args
                 ):
                     continue
-                event = _event_type(node.args[0])
-                if event is None:
+                events = _event_types(node.args[0], _event_aliases(fn))
+                if not events:
                     continue
 
                 payload = (
@@ -99,12 +131,13 @@ def _collect_producers(trees) -> tuple[dict[str, set[str]], set[str]]:
                     if len(node.args) > 1
                     else next((kw.value for kw in node.keywords if kw.arg == "payload"), None)
                 )
-                if isinstance(payload, ast.Dict):
-                    emitted[event] |= _dict_keys(payload)
-                elif isinstance(payload, ast.Name) and payload.id in local:
-                    emitted[event] |= local[payload.id]
-                else:
-                    opaque.add(event)
+                for event in events:
+                    if isinstance(payload, ast.Dict):
+                        emitted[event] |= _dict_keys(payload)
+                    elif isinstance(payload, ast.Name) and payload.id in local:
+                        emitted[event] |= local[payload.id]
+                    else:
+                        opaque.add(event)
 
     return emitted, opaque
 
@@ -120,7 +153,7 @@ def _collect_subscriptions(trees) -> list[tuple[str, str, pathlib.Path]]:
                 and len(node.args) == 2
             ):
                 continue
-            event = _event_type(node.args[0])
+            events = _event_types(node.args[0])
             handler = node.args[1]
             name = (
                 handler.attr
@@ -129,8 +162,8 @@ def _collect_subscriptions(trees) -> list[tuple[str, str, pathlib.Path]]:
                 if isinstance(handler, ast.Name)
                 else None
             )
-            if event and name:
-                subs.append((event, name, path))
+            if events and name:
+                subs.extend((event, name, path) for event in events)
     return subs
 
 

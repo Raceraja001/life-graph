@@ -228,6 +228,19 @@ async def lifespan(app: FastAPI):
         await seed_ambient_autonomy("default")
         logger.info("Seeded ambient autonomy safety rules + L1 level for default tenant")
 
+    # Startup — wire schedule outcome reconciliation
+    with startup_step(report, "scheduler_outcomes"):
+        from life_graph.api.dependencies import get_scheduler_service
+
+        # fire_job only enqueues, so a schedule cannot know whether its work
+        # succeeded until the task settles. Without this subscription every
+        # run stays "dispatched" forever and a permanently failing job is
+        # never auto-disabled. The handler needs no per-instance state — it
+        # reads the shared session factory — so subscribing one instance is
+        # enough even though the provider builds a fresh service per call.
+        get_scheduler_service().subscribe()
+        logger.info("Scheduler outcome reconciliation enabled (via EventBus)")
+
     # Startup — wire preference → knowledge graph sync
     with startup_step(report, "preference_graph_sync"):
         from life_graph.services.preference_graph import preference_graph_service
