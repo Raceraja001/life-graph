@@ -18,12 +18,14 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from life_graph.config import settings
+from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import (
     IntentionResponse,
     MemoryResponse,
     RecallContext,
 )
 from life_graph.services.triggers import TriggerMatcher
+from life_graph.storage.redis import get_redis
 
 if TYPE_CHECKING:
     from life_graph.scoring.ranking import RecallRanker
@@ -66,9 +68,60 @@ class RecallEngine:
         self._trigger_matcher = TriggerMatcher(store)
 
         # Anti-annoyance state (per engine instance = per session)
+        #
+        # The in-process dict is a cache, not the record. A 7-day cooldown
+        # held only here is not a cooldown: it is lost on every restart and
+        # every worker keeps its own copy, so a memory suppressed in the web
+        # process resurfaces immediately from the ARQ worker or after a
+        # deploy. Redis holds the durable copy, keyed per tenant with a TTL
+        # equal to the cooldown so it expires itself.
         self._surfaced_memory_ids: dict[str, datetime] = {}
         self._session_surface_count: int = 0
         self._dismissed_categories: Counter[str] = Counter()
+
+    # ── Durable cooldown ──────────────────────────────────────
+
+    @staticmethod
+    def _cooldown_key(tenant_id: str, memory_id: str) -> str:
+        return f"lg:recall:surfaced:{tenant_id}:{memory_id}"
+
+    async def _remember_surfaced(self, memory_ids: list[str]) -> None:
+        """Record a surfacing so other processes and later restarts see it.
+
+        Best-effort in both directions: recall must not fail because Redis is
+        unavailable, and a lost key means a memory resurfaces early — mildly
+        annoying, never wrong.
+        """
+        if not memory_ids or _COOLDOWN_SECONDS <= 0:
+            return
+        redis = get_redis()
+        if redis is None:
+            return
+        try:
+            tenant_id = get_current_tenant_id()
+            pipe = redis.pipeline()
+            for mem_id in memory_ids:
+                pipe.setex(self._cooldown_key(tenant_id, mem_id), _COOLDOWN_SECONDS, "1")
+            await pipe.execute()
+        except Exception:
+            logger.debug("Could not persist recall cooldown", exc_info=True)
+
+    async def _on_cooldown(self, memory_ids: list[str]) -> set[str]:
+        """Which of *memory_ids* were surfaced recently by ANY process."""
+        if not memory_ids or _COOLDOWN_SECONDS <= 0:
+            return set()
+        redis = get_redis()
+        if redis is None:
+            return set()
+        try:
+            tenant_id = get_current_tenant_id()
+            keys = [self._cooldown_key(tenant_id, m) for m in memory_ids]
+            found = await redis.mget(keys)
+        except Exception:
+            # Fail open: an unreachable Redis must not block recall entirely.
+            logger.debug("Could not read recall cooldown", exc_info=True)
+            return set()
+        return {mem_id for mem_id, hit in zip(memory_ids, found, strict=False) if hit}
 
     # ── Main Entry: Session Start ─────────────────────────────
 
@@ -110,7 +163,7 @@ class RecallEngine:
         )
 
         # Filter through anti-annoyance
-        filtered = self._apply_anti_annoyance(reranked)
+        filtered = await self._apply_anti_annoyance(reranked)
 
         # Categorize memories by purpose
         identity, decisions, warnings = self._categorize_memories(filtered)
@@ -118,12 +171,15 @@ class RecallEngine:
         # Check intentions
         triggered_intentions = await self._check_intentions(fingerprint)
 
-        # Track surfaced memories
+        # Track surfaced memories, in process and durably.
+        surfaced_ids: list[str] = []
         for mem in filtered:
             mem_id = str(mem.get("id", ""))
             if mem_id:
                 self._surfaced_memory_ids[mem_id] = datetime.now(UTC)
+                surfaced_ids.append(mem_id)
                 self._session_surface_count += 1
+        await self._remember_surfaced(surfaced_ids)
 
         await self._record_access(filtered)
 
@@ -177,10 +233,11 @@ class RecallEngine:
             max_results=settings.recall_max_during_session,
         )
 
-        filtered = self._apply_anti_annoyance(reranked)
+        filtered = await self._apply_anti_annoyance(reranked)
         results: list[MemoryResponse] = []
 
         surfaced: list[dict[str, Any]] = []
+        surfaced_ids: list[str] = []
         for mem_dict in filtered[: settings.recall_max_during_session]:
             response = _dict_to_memory_response(mem_dict)
             if response:
@@ -189,8 +246,10 @@ class RecallEngine:
                 mem_id = str(mem_dict.get("id", ""))
                 if mem_id:
                     self._surfaced_memory_ids[mem_id] = datetime.now(UTC)
+                    surfaced_ids.append(mem_id)
                     self._session_surface_count += 1
 
+        await self._remember_surfaced(surfaced_ids)
         await self._record_access(surfaced)
         return results
 
@@ -321,13 +380,18 @@ class RecallEngine:
 
         return candidates
 
-    def _apply_anti_annoyance(
+    async def _apply_anti_annoyance(
         self,
         candidates: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         """Filter candidates through anti-annoyance controls."""
         now = datetime.now(UTC)
         filtered: list[dict[str, Any]] = []
+
+        # One round trip for the whole batch, not one per candidate.
+        durable_cooldown = await self._on_cooldown(
+            [str(c.get("id", "")) for c in candidates if c.get("id")]
+        )
 
         for cand in candidates:
             # Session cap
@@ -336,7 +400,9 @@ class RecallEngine:
 
             mem_id = str(cand.get("id", ""))
 
-            # Cooldown check
+            # Cooldown check — durable record first, in-process cache second.
+            if mem_id in durable_cooldown:
+                continue
             if mem_id in self._surfaced_memory_ids:
                 last_surfaced = self._surfaced_memory_ids[mem_id]
                 elapsed = (now - last_surfaced).total_seconds()

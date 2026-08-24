@@ -205,21 +205,24 @@ def _cand(mem_id=None, tags=None):
     return {"id": str(mem_id or uuid.uuid4()), "tags": tags or []}
 
 
-def test_anti_annoyance_passes_fresh_candidates():
+@pytest.mark.asyncio
+async def test_anti_annoyance_passes_fresh_candidates():
     engine = _engine()
     cands = [_cand() for _ in range(3)]
-    assert len(engine._apply_anti_annoyance(cands)) == 3
+    assert len(await engine._apply_anti_annoyance(cands)) == 3
 
 
-def test_anti_annoyance_suppresses_recently_surfaced():
+@pytest.mark.asyncio
+async def test_anti_annoyance_suppresses_recently_surfaced():
     engine = _engine()
     c = _cand()
     engine._surfaced_memory_ids[c["id"]] = datetime.now(UTC)
 
-    assert engine._apply_anti_annoyance([c]) == []
+    assert await engine._apply_anti_annoyance([c]) == []
 
 
-def test_anti_annoyance_releases_after_the_cooldown():
+@pytest.mark.asyncio
+async def test_anti_annoyance_releases_after_the_cooldown():
     from life_graph.services.recall import _COOLDOWN_SECONDS
 
     engine = _engine()
@@ -228,48 +231,53 @@ def test_anti_annoyance_releases_after_the_cooldown():
         seconds=_COOLDOWN_SECONDS + 60
     )
 
-    assert len(engine._apply_anti_annoyance([c])) == 1
+    assert len(await engine._apply_anti_annoyance([c])) == 1
 
 
-def test_anti_annoyance_drops_categories_dismissed_three_times():
+@pytest.mark.asyncio
+async def test_anti_annoyance_drops_categories_dismissed_three_times():
     engine = _engine()
     for _ in range(3):
         engine.dismiss(str(uuid.uuid4()), "noise")
 
-    assert engine._apply_anti_annoyance([_cand(tags=["noise"])]) == []
+    assert await engine._apply_anti_annoyance([_cand(tags=["noise"])]) == []
 
 
-def test_two_dismissals_are_not_enough_to_suppress():
+@pytest.mark.asyncio
+async def test_two_dismissals_are_not_enough_to_suppress():
     engine = _engine()
     for _ in range(2):
         engine.dismiss(str(uuid.uuid4()), "noise")
 
-    assert len(engine._apply_anti_annoyance([_cand(tags=["noise"])])) == 1
+    assert len(await engine._apply_anti_annoyance([_cand(tags=["noise"])])) == 1
 
 
-def test_anti_annoyance_enforces_the_session_cap():
+@pytest.mark.asyncio
+async def test_anti_annoyance_enforces_the_session_cap():
     from life_graph.services.recall import _MAX_SESSION_SURFACES
 
     engine = _engine()
-    out = engine._apply_anti_annoyance([_cand() for _ in range(_MAX_SESSION_SURFACES + 5)])
+    out = await engine._apply_anti_annoyance([_cand() for _ in range(_MAX_SESSION_SURFACES + 5)])
     assert len(out) == _MAX_SESSION_SURFACES
 
 
-def test_session_cap_accounts_for_already_surfaced():
+@pytest.mark.asyncio
+async def test_session_cap_accounts_for_already_surfaced():
     from life_graph.services.recall import _MAX_SESSION_SURFACES
 
     engine = _engine()
     engine._session_surface_count = _MAX_SESSION_SURFACES - 2
 
-    assert len(engine._apply_anti_annoyance([_cand() for _ in range(5)])) == 2
+    assert len(await engine._apply_anti_annoyance([_cand() for _ in range(5)])) == 2
 
 
-def test_dismiss_also_starts_the_cooldown():
+@pytest.mark.asyncio
+async def test_dismiss_also_starts_the_cooldown():
     engine = _engine()
     c = _cand()
     engine.dismiss(c["id"], "cat")
 
-    assert engine._apply_anti_annoyance([c]) == []
+    assert await engine._apply_anti_annoyance([c]) == []
 
 
 # ── Categorization ────────────────────────────────────────────────────
