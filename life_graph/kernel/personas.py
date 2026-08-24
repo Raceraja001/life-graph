@@ -173,7 +173,12 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         ],
         "driver": "claude_code",
         "task_types": ["deploy_check", "incident_fix"],
-        "verifier_chain": ["build_ok", "tests_pass"],
+        # build_ok_diff, not build_ok: the whole-repo variant compiles every
+        # .py file in the project, so one unparseable legacy file anywhere
+        # fails the gate on work that never touched it. tests_pass stays
+        # whole-suite on purpose — an incident fix must not break anything
+        # elsewhere, which is exactly what a repo-wide test run checks.
+        "verifier_chain": ["build_ok_diff", "tests_pass"],
         "context_profile": {"domains": ["uzhavu", "infra"]},
     },
     {
@@ -471,6 +476,11 @@ class PersonaService:
                 AgentPersona.is_builtin,
                 AgentPersona.allowed_tools,
                 AgentPersona.system_prompt,
+                # Reconciled too — a tenant seeded before migration 021 has
+                # these NULL/empty and nothing else ever fills them in.
+                AgentPersona.driver,
+                AgentPersona.verifier_chain,
+                AgentPersona.task_types,
             ).where(
                 AgentPersona.tenant_id == tenant_id,
             )
@@ -548,9 +558,19 @@ class PersonaService:
         """Bring one already-seeded built-in row back in line with its
         definition. Returns 1 if an UPDATE was issued, else 0.
 
-        Only ``allowed_tools`` and ``system_prompt`` are reconciled — see
-        :meth:`seed_builtins`. A row whose ``is_builtin`` is False is a
-        user-owned persona that merely shares the name; it is left alone.
+        Reconciles ``allowed_tools``, ``system_prompt``, and the three
+        driver-loop columns added in migration 021 — ``driver``,
+        ``verifier_chain``, ``task_types``. A row whose ``is_builtin`` is
+        False is a user-owned persona that merely shares the name; it is
+        left alone.
+
+        The driver-loop columns were previously excluded, which meant a
+        tenant seeded before 021 kept ``driver = NULL`` forever: the pins on
+        uzhavu-ops and dependency-updater — the whole reason those personas
+        exist — never arrived, and no amount of restarting fixed it. They are
+        safe to overwrite because :meth:`update` does not list them as
+        updatable fields, so unlike ``allowed_tools`` (which can carry
+        hand-granted MCP tools) there is no user edit to clobber.
 
         Bridged MCP tool names (``mcp_<server>_<tool>``, see
         ``services/mcp_bridge.py``) are excluded from the ``allowed_tools``
@@ -579,6 +599,20 @@ class PersonaService:
                 values["allowed_tools"] = target_tools
         if row.system_prompt != defn["system_prompt"]:
             values["system_prompt"] = defn["system_prompt"]
+
+        # Driver-loop columns. Normalised through list() because these are
+        # JSONB and come back as plain lists, while the definitions are
+        # literals — a bare != would compare fine but be fragile if either
+        # side ever became a tuple.
+        if row.driver != defn.get("driver"):
+            values["driver"] = defn.get("driver")
+        target_chain = list(defn.get("verifier_chain", []))
+        if list(row.verifier_chain or []) != target_chain:
+            values["verifier_chain"] = target_chain
+        target_types = list(defn.get("task_types", []))
+        if list(row.task_types or []) != target_types:
+            values["task_types"] = target_types
+
         if not values:
             return 0
 

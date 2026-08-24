@@ -9,6 +9,8 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from life_graph.drivers.dispatcher import DEFAULT_VERIFY_CHAIN
 from sqlalchemy.sql.dml import Update
 from sqlalchemy.sql.selectable import Select
 
@@ -121,6 +123,11 @@ async def test_run_action_agent_task_passes_real_project_and_isolation_to_dispat
     kwargs = dispatcher.dispatch_task.call_args.kwargs
     assert kwargs["project_id"] == str(real_id)
     assert kwargs["isolate_workdir"] is True
-    assert kwargs["verify_chain"] == ["build_ok_diff", "lint_clean_diff"]
+    # Deferred to the dispatcher rather than pinned here. Pinning it made the
+    # pipeline override every persona that declared stricter checks; the
+    # dispatcher applies persona.verifier_chain when there is one and the
+    # diff-scoped DEFAULT_VERIFY_CHAIN — this same pair — when there is not.
+    assert kwargs["verify_chain"] is None
+    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff"]
     # the AutoAction's OWN project_id column is untouched
     assert box["action"].project_id == "ambient"

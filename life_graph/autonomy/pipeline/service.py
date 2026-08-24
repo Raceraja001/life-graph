@@ -372,7 +372,13 @@ class AutoFixService:
                             task_type="general",
                             project_id=repo_project_id,
                             persona_name=auto_action.agent_id,
-                            verify_chain=["build_ok_diff", "lint_clean_diff"],
+                            # Left to the dispatcher: it applies this
+                            # persona's own verifier_chain when it declares
+                            # one, and the diff-scoped default otherwise —
+                            # which is what this hardcoded list was. Pinning
+                            # it here silently overrode every persona that
+                            # asked for stricter checks than build+lint.
+                            verify_chain=None,
                             interactive=False,
                             cost_cap_usd=DEFAULT_AGENT_TASK_COST_CAP,
                             isolate_workdir=True,

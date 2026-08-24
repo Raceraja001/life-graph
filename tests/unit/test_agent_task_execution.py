@@ -16,6 +16,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from life_graph.drivers.dispatcher import DEFAULT_VERIFY_CHAIN
 from sqlalchemy.sql.dml import Update
 from sqlalchemy.sql.selectable import Select
 
@@ -201,7 +203,12 @@ async def test_run_action_agent_task_dispatches(agent_task_service_with_dispatch
     # test_agent_task_real_project.py for the resolution behavior itself.
     assert kwargs["project_id"] is None
     assert kwargs["task_type"] == "general"
-    assert kwargs["verify_chain"] == ["build_ok_diff", "lint_clean_diff"]
+    # Deferred to the dispatcher rather than pinned here. Pinning it made the
+    # pipeline override every persona that declared stricter checks; the
+    # dispatcher applies persona.verifier_chain when there is one and the
+    # diff-scoped DEFAULT_VERIFY_CHAIN — this same pair — when there is not.
+    assert kwargs["verify_chain"] is None
+    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff"]
     assert kwargs["cost_cap_usd"] == DEFAULT_AGENT_TASK_COST_CAP
     assert kwargs["isolate_workdir"] is True
 

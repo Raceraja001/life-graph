@@ -22,9 +22,17 @@ from life_graph.kernel.personas import _BUILTIN_PERSONAS, PersonaService
 
 
 class _FakeRow:
-    """Mimics a SQLAlchemy Row of the (name, is_builtin, allowed_tools,
-    system_prompt) select seed_builtins issues — indexable AND attribute
-    accessible, like the real thing."""
+    """Mimics a SQLAlchemy Row of the select seed_builtins issues — indexable
+    AND attribute accessible, like the real thing.
+
+    Defaults for the driver-loop columns come from the persona's own
+    definition, so a row is "already correct" unless a test says otherwise.
+    A real Row raises AttributeError for a column the SELECT omitted, which
+    is how a fake that lags the query surfaces at all — see
+    tests/unit/test_persona_reconciliation.py for the guard on that.
+    """
+
+    _SENTINEL = object()
 
     def __init__(
         self,
@@ -32,14 +40,37 @@ class _FakeRow:
         is_builtin: bool = True,
         allowed_tools: list[str] | None = None,
         system_prompt: str = "",
+        driver=_SENTINEL,
+        verifier_chain=_SENTINEL,
+        task_types=_SENTINEL,
     ) -> None:
+        from life_graph.kernel.personas import _BUILTIN_PERSONAS
+
+        defn = next((d for d in _BUILTIN_PERSONAS if d["name"] == name), {})
         self.name = name
         self.is_builtin = is_builtin
         self.allowed_tools = allowed_tools
         self.system_prompt = system_prompt
+        self.driver = defn.get("driver") if driver is self._SENTINEL else driver
+        self.verifier_chain = (
+            list(defn.get("verifier_chain", []))
+            if verifier_chain is self._SENTINEL
+            else verifier_chain
+        )
+        self.task_types = (
+            list(defn.get("task_types", [])) if task_types is self._SENTINEL else task_types
+        )
 
     def __getitem__(self, idx: int):
-        return (self.name, self.is_builtin, self.allowed_tools, self.system_prompt)[idx]
+        return (
+            self.name,
+            self.is_builtin,
+            self.allowed_tools,
+            self.system_prompt,
+            self.driver,
+            self.verifier_chain,
+            self.task_types,
+        )[idx]
 
 
 class _FakeSelectResult:

@@ -52,7 +52,13 @@ MAX_WIP_PER_PROJECT = 2
 MAX_WIP_PER_TENANT = 5
 DEFAULT_COST_CAP_USD = 2.0
 MIN_TRUST_THRESHOLD = 0.6
-DEFAULT_VERIFY_CHAIN = ["build_ok", "lint_clean"]
+# Diff-scoped on purpose: the whole-repo variants lint every file in the
+# project, so on any codebase with pre-existing debt they fail on files the
+# agent never touched. That is not a verdict on the change — it bounced the
+# task once (a wasted frontier call) and then escalated to needs_human, every
+# time, forever. A verifier chain judges the diff; a persona may ask for
+# something stricter via its own verifier_chain.
+DEFAULT_VERIFY_CHAIN = ["build_ok_diff", "lint_clean_diff"]
 
 
 class DispatchError(Exception):
@@ -81,6 +87,16 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
             project_id,
         )
         return None
+
+
+def _resolve_verify_chain(caller_chain: list[str] | None, persona) -> list[str]:
+    """Precedence: explicit caller argument > persona's own chain > default."""
+    if caller_chain is not None:
+        return list(caller_chain)
+    persona_chain = getattr(persona, "verifier_chain", None) if persona is not None else None
+    if persona_chain:
+        return list(persona_chain)
+    return list(DEFAULT_VERIFY_CHAIN)
 
 
 class TaskDispatcher:
@@ -164,8 +180,9 @@ class TaskDispatcher:
         Raises:
             DispatchError: If WIP limits are exceeded or no driver available.
         """
-        if verify_chain is None:
-            verify_chain = list(DEFAULT_VERIFY_CHAIN)
+        # verify_chain is resolved after the persona loads (Step 2b): the
+        # precedence is caller argument > persona.verifier_chain > default.
+        caller_verify_chain = verify_chain
 
         owns_session = session is None
         if owns_session:
@@ -203,6 +220,13 @@ class TaskDispatcher:
                 packet.persona_system_prompt = getattr(persona, "system_prompt", None)
                 allowed = getattr(persona, "allowed_tools", None)
                 packet.allowed_tools = list(allowed) if allowed is not None else None
+
+            # A persona declares the checks its own work must clear —
+            # dependency-updater asks for tests_pass because its whole job is
+            # "run the project's tests before landing". Nothing read that
+            # column, so it landed on the generic default instead and its
+            # tests never ran. An explicit caller argument still wins.
+            verify_chain = _resolve_verify_chain(caller_verify_chain, persona)
 
             # Step 2c: opt-in workdir isolation — only when the caller asked
             # for it AND a real project path resolved. A no-op flag on a

@@ -43,6 +43,7 @@ from sqlalchemy.sql.selectable import Select
 
 from life_graph.autonomy.pipeline.service import AutoFixService
 from life_graph.drivers.base import ContextPacket, DriverResult
+from life_graph.drivers.dispatcher import DEFAULT_VERIFY_CHAIN
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.services.verifiers import verifier_chain
 
@@ -169,7 +170,12 @@ async def test_registered_project_resolves_real_uuid_and_requests_isolation(auto
     _, kwargs = disp.dispatch_task.await_args
     assert kwargs["project_id"] == str(real_project_id)
     assert kwargs["isolate_workdir"] is True
-    assert kwargs["verify_chain"] == ["build_ok_diff", "lint_clean_diff"]
+    # Deferred to the dispatcher rather than pinned at the call site: pinning
+    # it overrode every persona that declared a stricter chain of its own.
+    # The dispatcher applies persona.verifier_chain when there is one, and
+    # this same diff-scoped pair as DEFAULT_VERIFY_CHAIN when there is not.
+    assert kwargs["verify_chain"] is None
+    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff"]
     assert kwargs["tenant_id"] == TENANT
     assert kwargs["persona_name"] == "cody"
     assert kwargs["interactive"] is False
@@ -201,7 +207,12 @@ async def test_no_registered_project_falls_back_to_none_and_still_succeeds(auton
     assert (
         kwargs["isolate_workdir"] is True
     )  # requested unconditionally; workdir resolution degrades on its own
-    assert kwargs["verify_chain"] == ["build_ok_diff", "lint_clean_diff"]
+    # Deferred to the dispatcher rather than pinned at the call site: pinning
+    # it overrode every persona that declared a stricter chain of its own.
+    # The dispatcher applies persona.verifier_chain when there is one, and
+    # this same diff-scoped pair as DEFAULT_VERIFY_CHAIN when there is not.
+    assert kwargs["verify_chain"] is None
+    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff"]
 
     assert status == "success"
     assert exit_code == 0

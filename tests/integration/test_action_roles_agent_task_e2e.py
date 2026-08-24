@@ -35,7 +35,7 @@ from life_graph.autonomy.pipeline.schemas import AutoActionResponse, AutoFixRequ
 from life_graph.autonomy.pipeline.service import DEFAULT_AGENT_TASK_COST_CAP, AutoFixService
 from life_graph.autonomy.safety.classifier import ClassificationResult, Recommendation, RiskLevel
 from life_graph.drivers.base import DriverResult
-from life_graph.drivers.dispatcher import DispatchError
+from life_graph.drivers.dispatcher import DEFAULT_VERIFY_CHAIN, DispatchError
 from life_graph.models.db import Approval
 from life_graph.services.action_proposal_bridge import AMBIENT_PROJECT_ID, ActionProposalBridge
 from life_graph.services.approvals import ApprovalService
@@ -359,7 +359,12 @@ async def test_approve_dispatches_agent_task_and_ends_success(monkeypatch):
     assert kwargs["task_id"] == "auto-1"
     assert kwargs["instruction"] == "Investigate and fix the flaky test_worker_retry test"
     assert kwargs["persona_name"] == "cody"
-    assert kwargs["verify_chain"] == ["build_ok_diff", "lint_clean_diff"]
+    # Deferred to the dispatcher rather than pinned at the call site: pinning
+    # it overrode every persona that declared a stricter chain of its own.
+    # The dispatcher applies persona.verifier_chain when there is one, and
+    # this same diff-scoped pair as DEFAULT_VERIFY_CHAIN when there is not.
+    assert kwargs["verify_chain"] is None
+    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff"]
     assert kwargs["interactive"] is False
     assert kwargs["cost_cap_usd"] == DEFAULT_AGENT_TASK_COST_CAP
 
