@@ -179,6 +179,7 @@ class SchedulerService:
         self._session_factory = session_factory
         self._process_manager = process_manager
         self._max_failures = settings.kernel_max_consecutive_failures
+        self._subscribed = False
 
     # ── CRUD ──────────────────────────────────────────────
 
@@ -522,10 +523,20 @@ class SchedulerService:
         finishes, the schedule's own run record catches up, and only then can
         a genuinely broken job accumulate consecutive_failures and be
         auto-disabled.
+
+        Safe to call multiple times — subscriptions are idempotent. The
+        provider is ``@lru_cache``d, so a second lifespan in the same process
+        (which the test suite does) hands back this same instance and would
+        otherwise register the handler again, running it twice per event.
         """
+        if self._subscribed:
+            return
+
         event_bus.subscribe(EventType.TASK_COMPLETED, self._on_task_settled)
         event_bus.subscribe(EventType.TASK_FAILED, self._on_task_settled)
         event_bus.subscribe(EventType.TASK_TIMEOUT, self._on_task_settled)
+
+        self._subscribed = True
 
     async def _on_task_settled(self, event: Any) -> None:
         """Apply a finished task's outcome to the schedule that fired it."""

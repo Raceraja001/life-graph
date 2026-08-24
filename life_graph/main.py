@@ -235,9 +235,11 @@ async def lifespan(app: FastAPI):
         # fire_job only enqueues, so a schedule cannot know whether its work
         # succeeded until the task settles. Without this subscription every
         # run stays "dispatched" forever and a permanently failing job is
-        # never auto-disabled. The handler needs no per-instance state — it
-        # reads the shared session factory — so subscribing one instance is
-        # enough even though the provider builds a fresh service per call.
+        # never auto-disabled.
+        #
+        # get_scheduler_service is @lru_cache(maxsize=1), so this subscribes
+        # the same instance the request handlers and the ARQ tick use — the
+        # subscription is not stranded on a throwaway object.
         get_scheduler_service().subscribe()
         logger.info("Scheduler outcome reconciliation enabled (via EventBus)")
 
