@@ -214,6 +214,14 @@ def healthy_deps(monkeypatch):
     monkeypatch.setattr("life_graph.main.check_redis", AsyncMock(return_value="ok"))
     monkeypatch.setattr("life_graph.storage.graph.graph_status", AsyncMock(return_value="disabled"))
 
+    # app.state.startup_report is process-global: any earlier test that ran the
+    # real lifespan leaves its result behind, and a failed optional subsystem
+    # there would degrade the overall verdict no matter what the embedder says.
+    # Pin it to "lifespan never ran" so this test measures only the embedder.
+    from life_graph.main import app
+
+    monkeypatch.setattr(app.state, "startup_report", None, raising=False)
+
     def _set_embedding_status(status: str):
         svc = MagicMock()
         svc.probe = AsyncMock(return_value=status)
