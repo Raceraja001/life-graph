@@ -7,6 +7,28 @@ Orchestrates the three-stage recall pipeline:
 
 Includes anti-annoyance controls: cooldown periods, session caps,
 and dismissal tracking to avoid spamming the user.
+
+Bookkeeping is tied to *disclosure*, not to retrieval
+---------------------------------------------------
+Two side effects fire when recall hands a memory to a caller: a durable
+7-day cooldown (so it is not resurfaced), and ``touch_many`` (which feeds
+both the decay horizon and the ``frequency`` ranking signal).
+
+Both belong to the moment the memory's content is actually delivered. A full
+recall *is* that moment — the content goes out in the response — so it
+records exactly as before. An index-only recall is not: it returns a
+truncated line so the caller can decide what to ask for, and the caller may
+ask for none of it. Recording there would burn a week of cooldown on
+memories nobody read and inflate ``access_count`` for every candidate that
+was ever merely listed, which is the same class of defect as measuring decay
+from ``created_at`` — bookkeeping that describes something other than use.
+
+So ``index_only=True`` records **nothing at all**: no cooldown key, no
+touch. Not even a short-TTL key, because a short cooldown protects nothing
+(re-listing a memory within the same session is not the nuisance a
+next-day resurfacing is) while adding a second TTL to reason about. The
+expand step — ``POST /api/v1/memories/batch`` → :meth:`RecallEngine.record_disclosure`
+— is where an index-mode surfacing is recorded.
 """
 
 from __future__ import annotations
@@ -21,9 +43,11 @@ from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import (
     IntentionResponse,
+    MemoryIndexItem,
     MemoryResponse,
     RecallContext,
 )
+from life_graph.scoring.ranking import to_index
 from life_graph.services.triggers import TriggerMatcher
 from life_graph.storage.redis import get_redis
 
@@ -128,6 +152,8 @@ class RecallEngine:
     async def session_start_recall(
         self,
         context: dict[str, Any],
+        *,
+        index_only: bool = False,
     ) -> RecallContext:
         """Proactively recall memories at session start.
 
@@ -141,9 +167,37 @@ class RecallEngine:
 
         Args:
             context: Raw session context dict.
+            index_only: Return a compact index instead of full memory
+                objects. Nothing is recorded in this mode — no cooldown, no
+                access — because nothing has been disclosed yet; see the
+                module docstring.
 
         Returns:
-            RecallContext with identity, decisions, intentions, warnings.
+            RecallContext with identity, decisions, intentions, warnings —
+            or, when *index_only*, with ``index`` populated and the four
+            buckets empty.
+        """
+        payload, _ = await self.session_start_recall_measured(context, index_only=index_only)
+        return payload
+
+    async def session_start_recall_measured(
+        self,
+        context: dict[str, Any],
+        *,
+        index_only: bool = False,
+    ) -> tuple[RecallContext, RecallContext | None]:
+        """:meth:`session_start_recall`, plus the payload index mode replaced.
+
+        The second element is the full ``RecallContext`` an ``index_only``
+        call would otherwise have returned, so the route can report a real
+        ``tokens_saved`` rather than an estimate. It is ``None`` in full
+        mode, where nothing was saved.
+
+        The pipeline runs **once**. Re-calling
+        :meth:`session_start_recall` to obtain the comparison would run the
+        retrieval again and — worse — record a surfacing, burning the
+        cooldown that index mode exists to protect. Rendering a second view
+        of candidates already in memory has no such side effect.
         """
         fingerprint = self._context_builder.build(context)
         logger.info("Session start recall — fingerprint: %s", fingerprint.as_dict())
@@ -165,39 +219,54 @@ class RecallEngine:
         # Filter through anti-annoyance
         filtered = await self._apply_anti_annoyance(reranked)
 
-        # Categorize memories by purpose
-        identity, decisions, warnings = self._categorize_memories(filtered)
-
-        # Check intentions
+        # Check intentions (cheap, and useful in both modes)
         triggered_intentions = await self._check_intentions(fingerprint)
 
-        # Track surfaced memories, in process and durably.
-        surfaced_ids: list[str] = []
-        for mem in filtered:
-            mem_id = str(mem.get("id", ""))
-            if mem_id:
-                self._surfaced_memory_ids[mem_id] = datetime.now(UTC)
-                surfaced_ids.append(mem_id)
-                self._session_surface_count += 1
-        await self._remember_surfaced(surfaced_ids)
+        if index_only:
+            # Nothing disclosed yet, so nothing recorded. The expand step
+            # (record_disclosure) owns the cooldown and the access count.
+            index = [MemoryIndexItem.model_validate(item) for item in to_index(filtered)]
+            logger.info(
+                "Session recall (index): %d entries, %d intentions",
+                len(index),
+                len(triggered_intentions),
+            )
+            payload = RecallContext(
+                intentions=triggered_intentions,
+                result_mode="index",
+                index=index,
+            )
+            return payload, self._as_full_context(filtered, triggered_intentions)
 
-        await self._record_access(filtered)
+        recall_ctx = self._as_full_context(filtered, triggered_intentions)
 
-        recall_ctx = RecallContext(
-            identity=identity,
-            decisions=decisions,
-            intentions=triggered_intentions,
-            warnings=warnings,
-        )
+        # Full content is going out in this response — that is the
+        # disclosure, so record it.
+        await self._record_surfacing(filtered)
 
         logger.info(
             "Session recall: %d identity, %d decisions, %d intentions, %d warnings",
-            len(identity),
-            len(decisions),
-            len(triggered_intentions),
-            len(warnings),
+            len(recall_ctx.identity),
+            len(recall_ctx.decisions),
+            len(recall_ctx.intentions),
+            len(recall_ctx.warnings),
         )
-        return recall_ctx
+        return recall_ctx, None
+
+    def _as_full_context(
+        self,
+        filtered: list[dict[str, Any]],
+        intentions: list[IntentionResponse],
+    ) -> RecallContext:
+        """Render candidates as the full four-bucket payload. No side effects."""
+        identity, decisions, warnings = self._categorize_memories(filtered)
+        return RecallContext(
+            identity=identity,
+            decisions=decisions,
+            intentions=intentions,
+            warnings=warnings,
+            result_mode="full",
+        )
 
     # ── Mid-Session Recall ────────────────────────────────────
 
@@ -205,7 +274,9 @@ class RecallEngine:
         self,
         context: dict[str, Any],
         event: str,
-    ) -> list[MemoryResponse]:
+        *,
+        index_only: bool = False,
+    ) -> list[MemoryResponse] | list[dict[str, Any]]:
         """Lighter recall for mid-session events.
 
         Triggered by events like ``file_opened`` or ``error_encountered``.
@@ -214,9 +285,13 @@ class RecallEngine:
         Args:
             context: Current session context dict.
             event: Event type that triggered the recall.
+            index_only: Return compact index dicts instead of full memory
+                objects. As at session start, nothing is recorded in this
+                mode — see the module docstring.
 
         Returns:
-            List of up to 2 relevant MemoryResponse objects.
+            List of up to 2 relevant MemoryResponse objects, or the same
+            number of compact index dicts when *index_only*.
         """
         if self._session_surface_count >= _MAX_SESSION_SURFACES:
             logger.debug("Session surface cap reached, skipping mid-session recall")
@@ -234,24 +309,65 @@ class RecallEngine:
         )
 
         filtered = await self._apply_anti_annoyance(reranked)
-        results: list[MemoryResponse] = []
+        capped = filtered[: settings.recall_max_during_session]
 
+        if index_only:
+            # Listed, not disclosed: no cooldown, no access recorded.
+            return to_index(capped)
+
+        results, surfaced = self._as_responses(capped)
+        await self._record_surfacing(surfaced)
+        return results
+
+    async def mid_session_recall_measured(
+        self,
+        context: dict[str, Any],
+        event: str,
+        *,
+        index_only: bool = False,
+    ) -> tuple[list[MemoryResponse] | list[dict[str, Any]], list[MemoryResponse] | None]:
+        """:meth:`mid_session_recall`, plus the payload index mode replaced.
+
+        Same contract as :meth:`session_start_recall_measured`: the second
+        element is the full payload an ``index_only`` call would otherwise
+        have returned, rendered from candidates already in memory so the
+        comparison costs no extra query and records no surfacing.
+        """
+        if not index_only:
+            return await self.mid_session_recall(context, event), None
+
+        if self._session_surface_count >= _MAX_SESSION_SURFACES:
+            logger.debug("Session surface cap reached, skipping mid-session recall")
+            return [], []
+
+        fingerprint = self._context_builder.build(context)
+        candidates = await self._retrieve_candidates(fingerprint, limit=20)
+        ranked = self._ranker.rank(candidates, current_context=context)
+        reranked = self._ranker.rerank(
+            ranked,
+            max_results=settings.recall_max_during_session,
+        )
+        capped = (await self._apply_anti_annoyance(reranked))[: settings.recall_max_during_session]
+        full, _ = self._as_responses(capped)
+        return to_index(capped), full
+
+    @staticmethod
+    def _as_responses(
+        candidates: list[dict[str, Any]],
+    ) -> tuple[list[MemoryResponse], list[dict[str, Any]]]:
+        """Convert candidates to full responses, dropping unconvertible ones.
+
+        Returns the responses and the candidate dicts that produced them, so
+        bookkeeping records exactly what went out.
+        """
+        results: list[MemoryResponse] = []
         surfaced: list[dict[str, Any]] = []
-        surfaced_ids: list[str] = []
-        for mem_dict in filtered[: settings.recall_max_during_session]:
+        for mem_dict in candidates:
             response = _dict_to_memory_response(mem_dict)
             if response:
                 results.append(response)
                 surfaced.append(mem_dict)
-                mem_id = str(mem_dict.get("id", ""))
-                if mem_id:
-                    self._surfaced_memory_ids[mem_id] = datetime.now(UTC)
-                    surfaced_ids.append(mem_id)
-                    self._session_surface_count += 1
-
-        await self._remember_surfaced(surfaced_ids)
-        await self._record_access(surfaced)
-        return results
+        return results, surfaced
 
     # ── Dismiss ───────────────────────────────────────────────
 
@@ -274,10 +390,64 @@ class RecallEngine:
             self._dismissed_categories[category],
         )
 
+    # ── Disclosure bookkeeping ────────────────────────────────
+
+    async def record_disclosure(
+        self,
+        memory_ids: list[uuid.UUID] | list[str],
+        *,
+        count_toward_session_cap: bool = False,
+    ) -> None:
+        """Record that these memories' full content reached a caller.
+
+        This is the single place the two surfacing side effects live: the
+        durable 7-day cooldown, and the access count that feeds decay and
+        the ``frequency`` ranking signal. It is called by full recall (where
+        the response carries the content) and by the expand endpoint
+        ``POST /api/v1/memories/batch`` (where an index-mode caller finally
+        asks for it). It is deliberately *not* called for an index-only
+        recall — see the module docstring.
+
+        Args:
+            memory_ids: Ids whose content was delivered.
+            count_toward_session_cap: Whether this counts against
+                ``_MAX_SESSION_SURFACES``. True for pushed recall, which is
+                what the cap exists to limit. False for an expand, which is
+                a pull the caller asked for: rate-limiting it would let a
+                caller lock itself out of proactive recall by reading its
+                own memories.
+
+        Best-effort throughout: bookkeeping must never cost the caller its
+        result.
+        """
+        ids = _as_uuids(memory_ids)
+        if not ids:
+            return
+
+        now = datetime.now(UTC)
+        for mem_id in ids:
+            self._surfaced_memory_ids[str(mem_id)] = now
+            if count_toward_session_cap:
+                self._session_surface_count += 1
+
+        await self._remember_surfaced([str(m) for m in ids])
+        await self._record_access(ids)
+
     # ── Internal Helpers ──────────────────────────────────────
 
-    async def _record_access(self, surfaced: list[dict[str, Any]]) -> None:
-        """Count a recall as an access on the memories it surfaced.
+    async def _record_surfacing(self, surfaced: list[dict[str, Any]]) -> None:
+        """Record a *full-content* surfacing of these candidate dicts.
+
+        The dict-shaped front door to :meth:`record_disclosure`, used by the
+        two recall paths that put content in their response.
+        """
+        await self.record_disclosure(
+            [str(mem.get("id", "")) for mem in surfaced if mem.get("id")],
+            count_toward_session_cap=True,
+        )
+
+    async def _record_access(self, memory_ids: list[uuid.UUID]) -> None:
+        """Count a disclosure as an access on the memories it delivered.
 
         Nothing did this before, so 916 of 922 memories in the live database
         had access_count = 0 and last_accessed NULL. Decay resolves
@@ -289,16 +459,7 @@ class RecallEngine:
 
         Best-effort: bookkeeping must never cost the caller its recall.
         """
-        ids: list[uuid.UUID] = []
-        for mem in surfaced:
-            raw = mem.get("id")
-            if not raw:
-                continue
-            try:
-                ids.append(raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw)))
-            except (ValueError, AttributeError, TypeError):
-                continue
-
+        ids = _as_uuids(memory_ids)
         if not ids:
             return
 
@@ -468,6 +629,19 @@ class RecallEngine:
 
 
 # ── Module-Level Helpers ──────────────────────────────────────
+
+
+def _as_uuids(raw_ids: list[uuid.UUID] | list[str]) -> list[uuid.UUID]:
+    """Coerce a mixed list of ids to UUIDs, dropping anything unparseable."""
+    ids: list[uuid.UUID] = []
+    for raw in raw_ids:
+        if not raw:
+            continue
+        try:
+            ids.append(raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw)))
+        except (ValueError, AttributeError, TypeError):
+            continue
+    return ids
 
 
 def _dict_to_memory_response(mem_dict: dict[str, Any]) -> MemoryResponse | None:

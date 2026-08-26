@@ -10,9 +10,14 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from typing import TYPE_CHECKING
 
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.storage.database import async_session
+
+if TYPE_CHECKING:
+    from life_graph.extraction.rules import ExtractedFact
+    from life_graph.models.db import CaptureEvent
 
 logger = logging.getLogger(__name__)
 
@@ -101,12 +106,13 @@ class CaptureProcessors:
                 yield_count = 0
 
                 # ── 1. Run extraction pipeline ──────────────────────
+                facts: list[ExtractedFact] = []
                 try:
                     from life_graph.extraction.pipeline import ExtractionPipeline
 
                     pipeline = ExtractionPipeline()
                     extraction = await pipeline.extract(content)
-                    yield_count += len(extraction.facts)
+                    facts = list(extraction.facts)
                     logger.info(
                         "Extraction from capture %s: %d facts (T1=%d T2=%d T3=%d)",
                         capture_event_id,
@@ -119,6 +125,14 @@ class CaptureProcessors:
                     logger.warning(
                         "Extraction pipeline failed for %s", capture_event_id, exc_info=True
                     )
+
+                # ── 1b. Persist those facts as memories ─────────────
+                # Extraction alone yields nothing durable — the facts have to
+                # go through MemoryManager (embed → dedup → score → pending
+                # gate) to become memories. Only what actually lands counts
+                # towards the capture's yield.
+                if facts:
+                    yield_count += await self._store_memories(facts, capture_evt, tenant_id)
 
                 # ── 2. Decision candidate detection ─────────────────
                 decisions = self._detect_decisions(content)
@@ -161,6 +175,75 @@ class CaptureProcessors:
 
         except Exception:
             logger.error("CaptureProcessor failed for %s", capture_event_id, exc_info=True)
+
+    async def _store_memories(
+        self,
+        facts: list[ExtractedFact],
+        capture_evt: CaptureEvent,
+        tenant_id: str | None,
+    ) -> int:
+        """Persist extracted facts as memories; return how many were stored.
+
+        The trust tier recorded on the capture event (derived default-deny from
+        its surface) is threaded through to every memory, so facts from
+        EXTERNAL / HOSTILE_POSSIBLE surfaces stay marked as untrusted. Every new
+        memory lands ``pending`` behind the existing approval gate regardless of
+        tier — that policy lives in ``PostgresMemoryStore.store``.
+
+        Failures are logged and swallowed: memory persistence must never break
+        capture ingestion.
+
+        Args:
+            facts: Facts produced by the extraction pipeline.
+            capture_evt: The originating ``CaptureEvent`` row.
+            tenant_id: Tenant from the event payload, used to set the tenant
+                contextvar when this handler runs outside a request.
+
+        Returns:
+            Number of memories actually stored (post-dedup), 0 on failure.
+        """
+        try:
+            from life_graph.api.dependencies import get_memory_manager
+            from life_graph.core.tenant import has_tenant_context, set_tenant_context
+            from life_graph.core.trust import classify_surface, coerce_tier
+
+            # EventBus handlers can run outside a request (worker, cron), where
+            # the tenant contextvar the storage layer reads is unset.
+            if tenant_id and not has_tenant_context():
+                set_tenant_context(tenant_id, "system")
+
+            surface = getattr(capture_evt, "surface", None)
+            # The row's tier is authoritative when present (a caller may have
+            # asserted something stricter than the surface implies, e.g. a
+            # watcher carrying a raw web body); otherwise classify the surface,
+            # which is default-deny — unknown surfaces resolve to EXTERNAL.
+            tier = coerce_tier(
+                getattr(capture_evt, "trust_tier", None),
+                default=classify_surface(surface),
+            )
+
+            memories = await get_memory_manager().store_facts(
+                facts,
+                context={
+                    "capture_event_id": str(capture_evt.id),
+                    "surface": surface,
+                },
+                source="capture",
+                trust_tier=tier.value,
+            )
+            logger.info(
+                "Capture %s: stored %d/%d facts as memories (trust_tier=%s)",
+                capture_evt.id,
+                len(memories),
+                len(facts),
+                tier.value,
+            )
+            return len(memories)
+        except Exception:
+            logger.warning(
+                "Memory persistence failed for capture %s", capture_evt.id, exc_info=True
+            )
+            return 0
 
     @staticmethod
     def _detect_decisions(text: str) -> list[str]:

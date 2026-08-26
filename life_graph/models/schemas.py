@@ -271,6 +271,36 @@ class SearchQuery(BaseModel):
         "hybrid",
         description="Search strategy: 'vector' (cosine only), 'hybrid' (vector+BM25), 'tri_hybrid' (vector+BM25+graph)",
     )
+    index_only: bool = Field(
+        False,
+        description=(
+            "Opt-in: return a compact index (id, truncated content, tags, score, "
+            "status) instead of full memory objects, roughly a tenth of the "
+            "tokens. Off by default so existing callers keep the shape they "
+            "parse today; a model-facing caller should set it and expand the "
+            "few ids it actually needs via POST /api/v1/memories/batch."
+        ),
+    )
+
+
+class MemoryIndexItem(BaseModel):
+    """One line of a progressive-disclosure index.
+
+    The compact half of the recall contract: enough for a model to decide
+    whether it wants a memory, not enough to be the memory. ``content`` is
+    truncated; expand via ``POST /api/v1/memories/batch`` to get the full
+    :class:`MemoryResponse`.
+
+    ``status`` is carried deliberately rather than dropped as bookkeeping —
+    it is the only handle callers (and the approval-gate tests) have on
+    whether an item is ``active`` or ``pending``.
+    """
+
+    id: uuid.UUID
+    content: str = Field(description="Truncated memory content")
+    tags: list[str] = Field(default_factory=list)
+    score: float = Field(0.0, description="Ranking / relevance score")
+    status: str = "active"
 
 
 class SearchResult(BaseModel):
@@ -280,6 +310,10 @@ class SearchResult(BaseModel):
     total_count: int
     query_time_ms: float
     search_mode: str = "vector"
+    # Echoed back like search_mode: the mode actually used, not the mode
+    # asked for. "full" = `memories` is populated; "index" = `index` is.
+    result_mode: str = "full"
+    index: list[MemoryIndexItem] = Field(default_factory=list)
 
 
 # ── Proactive Recall ──────────────────────────────────────────────────────────
@@ -302,6 +336,20 @@ class RecallContext(BaseModel):
     )
     warnings: list[MemoryResponse] = Field(
         default_factory=list, description="Contradictions, lessons learned, caveats"
+    )
+    # Echoed back like SearchQuery.search_mode: the mode actually used.
+    result_mode: str = Field(
+        "full",
+        description="'full' = the four buckets are populated; 'index' = `index` is",
+    )
+    index: list[MemoryIndexItem] = Field(
+        default_factory=list,
+        description=(
+            "Compact index, highest-scoring first, when index_only was requested. "
+            "The buckets stay empty in that mode: categorising requires building "
+            "the full objects the index exists to avoid. Tags carry the same "
+            "signal the buckets are derived from."
+        ),
     )
 
 

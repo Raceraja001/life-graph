@@ -51,8 +51,18 @@ _SURFACE_TIER: dict[str, TrustTier] = {
     "image": TrustTier.SELF,
     "interview_answer": TrustTier.SELF,
     "orchestrator": TrustTier.SELF,
+    # The user's own words, arriving through a first-party path: notes typed
+    # into the API by hand and turns of the user's own conversation. Without
+    # these two the default-deny fallback would fence the user's own writing
+    # from their own agents, which is not what untrusted provenance means.
+    "manual": TrustTier.SELF,
+    "chat": TrustTier.SELF,
     # System-generated, deterministic observations of our own work.
     "tool_exhaust": TrustTier.VERIFIED,
+    # Produced by our own agents and pipelines, not by a third party. Trusted
+    # more than an unknown surface, less than something the user wrote.
+    "agent_task": TrustTier.VERIFIED,
+    "inferred": TrustTier.VERIFIED,
     "project_scan": TrustTier.VERIFIED,
     "kernel_task": TrustTier.VERIFIED,
     # Authenticated but non-first-party channels, or surfaces that can carry
@@ -62,6 +72,39 @@ _SURFACE_TIER: dict[str, TrustTier] = {
     "watcher": TrustTier.EXTERNAL,
     # Content authored by other people.
     "whatsapp": TrustTier.HOSTILE_POSSIBLE,
+    # ── memories.source_type vocabulary ──────────────────────────────────
+    # Everything above grew from capture *surfaces* — how content entered the
+    # system. `memories.source_type` is a second, overlapping vocabulary
+    # naming which producer wrote a memory, and the same policy has to cover
+    # it: api/memories.py classifies an inbound POST from its declared
+    # source_type, so any producer missing here is fenced by default-deny.
+    # The two vocabularies share this one map on purpose — a value must not
+    # mean "trusted" on one and "untrusted" on the other.
+    #
+    # The user stated it outright, as opposed to it being derived.
+    "explicit": TrustTier.SELF,
+    # System producers: our own jobs, agents and pipelines writing about our
+    # own work. Trusted more than an unknown source, less than the user's
+    # own words.
+    "consolidation": TrustTier.VERIFIED,
+    "cold_start": TrustTier.VERIFIED,
+    "brief": TrustTier.VERIFIED,
+    "belief_challenge": TrustTier.VERIFIED,
+    "reinforcement": TrustTier.VERIFIED,
+    "autonomous_action": TrustTier.VERIFIED,
+    "ops": TrustTier.VERIFIED,
+    # The admin bulk-import endpoint: an authenticated operator loading their
+    # own corpus, not a third party posting content.
+    "bulk_import": TrustTier.VERIFIED,
+    # A transcript of the user's own session, uploaded from the user's own
+    # machine. VERIFIED rather than SELF because a transcript also carries
+    # tool output and quoted web pages, which are not the user's words.
+    "transcript": TrustTier.VERIFIED,
+    # Cross-system sync from another first-party project of the developer's.
+    "uzhavu_sync": TrustTier.VERIFIED,
+    # Deliberately absent: "test". Fixture data has no provenance worth
+    # trusting, and naming it here would make the policy lie in production to
+    # make a dev database look tidier.
 }
 
 # System preamble that precedes any fenced untrusted block.

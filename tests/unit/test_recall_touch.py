@@ -27,6 +27,15 @@ That propagates into three separate behaviours, none of which raise:
              was written rather than how long ago it was used.
 
 A forgetting curve where use does not reinforce is not a forgetting curve.
+
+The counterpart is that only *use* may reinforce. Progressive disclosure
+splits recall in two: an index-only recall returns truncated lines so the
+caller can choose, and the caller may choose nothing. Touching there would
+put the frequency signal and the decay horizon right back to measuring
+something other than use — this time "was listed once" instead of "was
+written N days ago". So the touch follows the content: full recall touches,
+an index does not, and the expand step (record_disclosure, behind
+POST /api/v1/memories/batch) touches what it hands over.
 """
 
 from __future__ import annotations
@@ -96,6 +105,7 @@ def _engine(rows=()):
 
 @pytest.mark.asyncio
 async def test_session_start_touches_what_it_surfaced():
+    """Full recall delivers the content, so it counts as an access."""
     rows = [_Memory(content="a"), _Memory(content="b")]
     engine, store = _engine(rows)
 
@@ -107,6 +117,35 @@ async def test_session_start_touches_what_it_surfaced():
 
 
 @pytest.mark.asyncio
+async def test_index_only_session_start_touches_nothing():
+    """An index is a table of contents; nobody has read anything yet."""
+    engine, store = _engine([_Memory(content="a"), _Memory(content="b")])
+
+    result = await engine.session_start_recall({}, index_only=True)
+
+    assert len(result.index) == 2, "the memories were still listed"
+    store.touch_many.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_expanding_touches_exactly_what_was_expanded():
+    """The touch moved to the expand step — it did not disappear."""
+    rows = [_Memory(content="a"), _Memory(content="b")]
+    engine, store = _engine(rows)
+
+    result = await engine.session_start_recall({}, index_only=True)
+    store.touch_many.assert_not_awaited()
+
+    wanted = result.index[0].id
+    await engine.record_disclosure([wanted])
+
+    store.touch_many.assert_awaited_once()
+    assert set(store.touch_many.await_args.args[0]) == {wanted}, (
+        "expanding one memory must not count an access on the other"
+    )
+
+
+@pytest.mark.asyncio
 async def test_mid_session_touches_what_it_surfaced():
     rows = [_Memory(content="a")]
     engine, store = _engine(rows)
@@ -115,6 +154,16 @@ async def test_mid_session_touches_what_it_surfaced():
 
     assert results
     store.touch_many.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_index_only_mid_session_touches_nothing():
+    engine, store = _engine([_Memory(content="a")])
+
+    results = await engine.mid_session_recall({}, "file_opened", index_only=True)
+
+    assert results, "the event still surfaces an index entry"
+    store.touch_many.assert_not_awaited()
 
 
 @pytest.mark.asyncio

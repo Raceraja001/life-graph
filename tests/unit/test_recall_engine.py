@@ -341,6 +341,7 @@ def test_unconvertible_candidates_are_skipped_not_fatal():
 
 @pytest.mark.asyncio
 async def test_session_start_tracks_what_it_surfaced():
+    """Full recall puts the content in the response, so it records it."""
     engine = _engine([_Memory(tags=["decision"]), _Memory(tags=["warning"])])
 
     result = await engine.session_start_recall({})
@@ -349,6 +350,91 @@ async def test_session_start_tracks_what_it_surfaced():
     assert len(engine._surfaced_memory_ids) == 2
     assert len(result.decisions) == 1
     assert len(result.warnings) == 1
+    assert result.result_mode == "full"
+    assert result.index == []
+
+
+@pytest.mark.asyncio
+async def test_index_only_session_start_records_nothing():
+    """The load-bearing half: an index discloses nothing, so it marks nothing.
+
+    Recording here would burn the 7-day cooldown and inflate access_count on
+    memories the caller never expanded — the cooldown would suppress them for
+    a week and the frequency signal would rank them as used. Only
+    record_disclosure (the expand step) may do that.
+    """
+    engine = _engine([_Memory(tags=["decision"]), _Memory(tags=["warning"])])
+
+    result = await engine.session_start_recall({}, index_only=True)
+
+    assert result.result_mode == "index"
+    assert len(result.index) == 2, "the index must still list both memories"
+    assert engine._session_surface_count == 0
+    assert engine._surfaced_memory_ids == {}
+    assert result.identity == [] and result.decisions == [] and result.warnings == []
+
+
+@pytest.mark.asyncio
+async def test_index_lines_carry_id_content_tags_score_and_status():
+    """Enough to choose from, not enough to be the memory."""
+    engine = _engine([_Memory(tags=["decision"], content="x" * 400)])
+
+    result = await engine.session_start_recall({}, index_only=True)
+
+    item = result.index[0]
+    assert item.id is not None
+    assert item.tags == ["decision"]
+    assert item.status == "active"
+    assert len(item.content) < 400, "index content must be truncated"
+
+
+@pytest.mark.asyncio
+async def test_expanding_after_an_index_is_what_records_the_surfacing():
+    """The cooldown and the access count move to the expand step, not vanish."""
+    mem = _Memory(tags=["decision"])
+    engine = _engine([mem])
+
+    result = await engine.session_start_recall({}, index_only=True)
+    assert engine._surfaced_memory_ids == {}
+
+    await engine.record_disclosure([item.id for item in result.index])
+
+    assert str(mem.id) in engine._surfaced_memory_ids
+
+
+@pytest.mark.asyncio
+async def test_expanding_does_not_consume_the_session_surface_cap():
+    """An expand is a pull the caller asked for, not a push at the user."""
+    engine = _engine([_Memory(tags=["decision"])])
+    result = await engine.session_start_recall({}, index_only=True)
+
+    await engine.record_disclosure([item.id for item in result.index])
+
+    assert engine._session_surface_count == 0
+
+
+@pytest.mark.asyncio
+async def test_measured_session_start_runs_the_pipeline_once():
+    """tokens_saved must not cost a second retrieval — or a second surfacing."""
+    calls = {"n": 0}
+    rows = [_Memory(tags=["decision"])]
+    engine = _engine(rows)
+    inner = engine._retrieve_candidates
+
+    async def _counting(fp, limit=50):
+        calls["n"] += 1
+        return await inner(fp, limit=limit)
+
+    engine._retrieve_candidates = _counting
+
+    payload, full = await engine.session_start_recall_measured({}, index_only=True)
+
+    assert calls["n"] == 1
+    assert payload.result_mode == "index" and len(payload.index) == 1
+    assert full is not None and len(full.decisions) == 1
+    assert engine._surfaced_memory_ids == {}, (
+        "rendering the counterfactual must not record a surfacing"
+    )
 
 
 @pytest.mark.asyncio
@@ -366,6 +452,35 @@ async def test_a_second_session_start_surfaces_nothing_new():
     second = await engine.session_start_recall({})
 
     assert len(first.decisions) == 1
+    assert len(second.decisions) == 0
+
+
+@pytest.mark.asyncio
+async def test_an_index_only_recall_does_not_suppress_the_next_one():
+    """A listing that was never expanded must stay eligible to be surfaced.
+
+    This is the behaviour the relocation buys: under the old code the index
+    would have burned the cooldown and the memory would have been invisible
+    to recall for seven days without ever having been read.
+    """
+    engine = _engine([_Memory(tags=["decision"])])
+
+    first = await engine.session_start_recall({}, index_only=True)
+    second = await engine.session_start_recall({})
+
+    assert len(first.index) == 1
+    assert len(second.decisions) == 1, "an unexpanded index entry must not be suppressed"
+
+
+@pytest.mark.asyncio
+async def test_expanding_an_indexed_memory_does_suppress_the_next_recall():
+    """...but once it is actually read, the cooldown applies as before."""
+    engine = _engine([_Memory(tags=["decision"])])
+
+    first = await engine.session_start_recall({}, index_only=True)
+    await engine.record_disclosure([item.id for item in first.index])
+    second = await engine.session_start_recall({})
+
     assert len(second.decisions) == 0
 
 

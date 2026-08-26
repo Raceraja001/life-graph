@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from life_graph.core.memory_manager import MemoryManager
     from life_graph.storage.minio_client import MinIOStorage
 
+from life_graph.core.trust import classify_surface
 from life_graph.extraction.pipeline import ExtractionPipeline
 from life_graph.models.schemas import MemoryCreate
 
@@ -66,12 +67,23 @@ async def ingest_or_fallback(manager: MemoryManager, text: str, source: str) -> 
     Mirrors the fallback in ``life_graph.api.memories.create_memory``:
     when the extraction pipeline finds no facts, store the original
     text as-is rather than lose the user's input.
+
+    The trust tier is derived from *source* via the default-deny surface
+    map rather than left to the store's default. ``PostgresMemoryStore.store``
+    falls back to ``verified`` when no tier is passed, so omitting it here
+    tagged an uploaded ``document`` — arbitrary third-party content, and the
+    obvious prompt-injection vector — as trusted, defeating the ``is_untrusted``
+    fencing and ``is_excluded_from_agents`` checks downstream. ``document`` is
+    not in the surface map and correctly resolves to ``EXTERNAL``.
     """
-    memories = await manager.ingest(text, source=source, capture=True)
+    tier = classify_surface(source).value
+    memories = await manager.ingest(text, source=source, capture=True, trust_tier=tier)
     if not memories:
         embedding = await manager.generate_embedding(text)
         row = await manager.store.store(
-            MemoryCreate(content=text, source_type=source), embedding=embedding
+            MemoryCreate(content=text, source_type=source),
+            embedding=embedding,
+            trust_tier=tier,
         )
         memories = [row]
     return memories

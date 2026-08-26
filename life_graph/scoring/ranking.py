@@ -13,6 +13,8 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
 
+from life_graph.config import settings
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -44,6 +46,58 @@ _SIGNAL_WEIGHTS: dict[str, float] = {
 # Inert-signal reporting is memoised per process so a per-session recall does
 # not repeat the same line forever.
 _reported_inert: set[frozenset[str]] = set()
+
+# How much of a memory's text a compact index line carries. Long enough to
+# recognise a memory, short enough that the line stays ~12 tokens instead of
+# the ~150 a full MemoryResponse costs. Tune with
+# LIFE_GRAPH_RECALL_INDEX_CONTENT_CHARS. Read once at import, so it is a
+# deployment setting rather than a per-request one; to_index() still takes an
+# explicit content_chars for callers that need to override it.
+INDEX_CONTENT_CHARS: int = settings.recall_index_content_chars
+
+
+def to_index(
+    candidates: list[dict[str, Any]],
+    *,
+    content_chars: int = INDEX_CONTENT_CHARS,
+) -> list[dict[str, Any]]:
+    """Project ranked candidates onto a compact progressive-disclosure index.
+
+    Built here, from the plain dicts :meth:`RecallRanker.rank` already
+    produces, rather than downstream from ``MemoryResponse``. A
+    ``MemoryResponse`` costs a ``math.exp`` and a ``datetime.now()`` per item
+    in ``model_post_init`` and serialises twenty fields — three UUIDs, three
+    timestamps, five floats and an unbounded JSONB blob — of which only the
+    content is read by a model. Projecting before that construction is both
+    the cheaper payload and the cheaper computation.
+
+    Only keys retrieval actually populates are read (``id``, ``content``,
+    ``tags``, ``status``) plus ``final_score``, which ``rank()`` writes onto
+    its own output.
+
+    Args:
+        candidates: Scored candidate dicts, already in the desired order.
+        content_chars: Maximum characters of content per line.
+
+    Returns:
+        List of ``{id, content, tags, score, status}`` dicts, order preserved.
+    """
+    index: list[dict[str, Any]] = []
+    for cand in candidates:
+        content = str(cand.get("content", "") or "")
+        if len(content) > content_chars:
+            content = content[:content_chars].rstrip() + "…"
+        tags = cand.get("tags") or []
+        index.append(
+            {
+                "id": str(cand.get("id", "")),
+                "content": content,
+                "tags": list(tags) if isinstance(tags, list) else [],
+                "score": round(float(cand.get("final_score", 0.0) or 0.0), 4),
+                "status": str(cand.get("status", "active") or "active"),
+            }
+        )
+    return index
 
 
 def inert_signals(scored: list[dict[str, Any]]) -> dict[str, float]:

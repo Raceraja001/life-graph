@@ -15,14 +15,18 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
-from life_graph.api.dependencies import get_memory_manager, get_store
+from life_graph.api.dependencies import get_memory_manager, get_recall_engine, get_store
 from life_graph.api.openapi_examples import MEMORY_CREATED
 from life_graph.api.responses import encode_cursor, paginated_response, success_response
+from life_graph.api.token_meta import token_meta
+from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.core.trust import classify_surface
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryResponse, MemoryUpdate
+from life_graph.services.recall import RecallEngine
 from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
@@ -48,6 +52,14 @@ async def create_memory(
     contradiction detection → storage). Otherwise, the memory is
     stored directly.
     """
+    # Provenance is decided server-side from the declared source, never taken
+    # from the client. An unrecognised or absent source_type falls to EXTERNAL
+    # (default-deny in classify_surface), so content arriving over the API
+    # without a first-party source is fenced when an agent reads it. Omitting
+    # this let PostgresMemoryStore.store() apply its "verified" default, which
+    # marked arbitrary third-party text as trusted.
+    tier = classify_surface(body.source_type).value
+
     # Heuristic: if tags/properties already provided and content is short,
     # treat as structured input and store directly.
     is_structured = (
@@ -55,7 +67,7 @@ async def create_memory(
     )
 
     if is_structured:
-        row = await store.store(body)
+        row = await store.store(body, trust_tier=tier)
         # All three exits below return the same shape. Two of them previously
         # returned a bare list while the third wrapped in success_response(),
         # so the response shape depended on whether extraction happened to
@@ -68,6 +80,7 @@ async def create_memory(
         context=body.properties,
         source=body.source_type,
         capture=True,
+        trust_tier=tier,
     )
 
     if not memories:
@@ -84,11 +97,85 @@ async def create_memory(
             return success_response(data=[MemoryResponse.model_validate(existing)])
 
         embedding = await manager.generate_embedding(body.content)
-        row = await store.store(body, embedding=embedding)
+        row = await store.store(body, embedding=embedding, trust_tier=tier)
         return success_response(data=[MemoryResponse.model_validate(row)])
 
     return success_response(
         data=[MemoryResponse.model_validate(m) for m in memories],
+    )
+
+
+# Cap on one expand request. Recall hands back at most a few dozen index
+# lines, so a caller with a legitimate reason to expand more than this is
+# really asking for a list endpoint.
+#
+# Tune with LIFE_GRAPH_MEMORY_BATCH_MAX. Read once at import because it is
+# baked into the request schema's max_length below.
+_BATCH_EXPAND_MAX: int = settings.memory_batch_max
+
+
+class MemoryBatchRequest(BaseModel):
+    """Payload for expanding a set of memory ids to full objects."""
+
+    ids: list[uuid.UUID] = Field(
+        ...,
+        min_length=1,
+        max_length=_BATCH_EXPAND_MAX,
+        description=f"Memory ids to expand (1–{_BATCH_EXPAND_MAX})",
+    )
+    record_access: bool = Field(
+        True,
+        description=(
+            "Whether this expand counts as the memories being surfaced: writes "
+            "the recall cooldown and increments access_count/last_accessed. "
+            "On by default — expanding is the disclosure the bookkeeping is "
+            "about. Turn it off for inspection that should leave no trace "
+            "(dashboards, admin tooling)."
+        ),
+    )
+
+
+@router.post(
+    "/batch",
+    summary="Expand memory ids to full memories (progressive-disclosure step 2)",
+)
+async def batch_get_memories(
+    body: MemoryBatchRequest,
+    store: PostgresMemoryStore = Depends(get_store),
+    engine: RecallEngine = Depends(get_recall_engine),
+):
+    """Fetch several memories by id in one round trip.
+
+    The expand half of progressive disclosure. A caller runs recall or search
+    with ``index_only`` — a compact ``{id, content, tags, score, status}``
+    line per memory — then comes back here for the few it actually wants.
+
+    **This is where surfacing is recorded.** The recall cooldown and the
+    access count (which feed decay and the ``frequency`` ranking signal) fire
+    on the expand, not on the index: an index-only recall discloses nothing,
+    so recording it there would burn a week of cooldown and inflate
+    ``access_count`` on memories nobody read. Full (non-index) recall still
+    records at recall time, because there the content *is* in the response.
+
+    Unknown or other-tenant ids are silently absent from the result rather
+    than an error — ``meta.requested`` vs ``meta.found`` tells the caller.
+    """
+    rows = await store.retrieve_many(body.ids)
+    memories = [MemoryResponse.model_validate(r) for r in rows]
+
+    if body.record_access and memories:
+        # A pull, not a push: it must not consume the session surface cap,
+        # or a caller reading its own memories would lock itself out of
+        # proactive recall.
+        await engine.record_disclosure([m.id for m in memories])
+
+    return success_response(
+        data=memories,
+        meta=token_meta(
+            memories,
+            requested=len(body.ids),
+            found=len(memories),
+        ),
     )
 
 

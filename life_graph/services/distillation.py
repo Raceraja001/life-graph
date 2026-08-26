@@ -25,6 +25,7 @@ from sqlalchemy import select
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.core.trust import classify_surface
 from life_graph.models.db import Conversation, ConversationMessage, _utcnow
 from life_graph.models.schemas import MemoryUpdate
 from life_graph.services.conversation import ConversationNotFoundError
@@ -106,6 +107,11 @@ class ConversationDistiller:
                 text,
                 context={"conversation_id": str(conversation_id)},
                 source="chat",
+                # These are the user's own conversation turns, so they resolve
+                # to SELF via the surface map rather than inheriting the
+                # store's "verified" default. Passed through classify_surface
+                # so the map stays the single source of truth for the policy.
+                trust_tier=classify_surface("chat").value,
             )
             # Append the "chat" tag to each distilled memory for identification.
             for mem in memories:

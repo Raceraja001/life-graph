@@ -109,7 +109,9 @@ async def test_process_voice_queues_ingestion(monkeypatch):
     assert result["ingest"] == "queued"
     assert "memories_created" not in result
     enqueue.assert_awaited_once_with(
-        "call amma tonight", "voice", TENANT_ID,
+        "call amma tonight",
+        "voice",
+        TENANT_ID,
         meta={"filename": "note.webm", "minio_key": result["minio_key"]},
     )
     minio.upload.assert_called_once()
@@ -168,7 +170,9 @@ async def test_process_image_queues_ocr_text(monkeypatch):
     assert result["ingest"] == "queued"
     assert "memories_created" not in result
     enqueue.assert_awaited_once_with(
-        "Receipt total Rs 450", "image", TENANT_ID,
+        "Receipt total Rs 450",
+        "image",
+        TENANT_ID,
         meta={"filename": "receipt.png", "minio_key": result["minio_key"]},
     )
 
@@ -195,7 +199,9 @@ async def test_process_document_queues_full_text_as_one_job(monkeypatch):
     assert result["chunks"] == 1
     assert "memories_created" not in result
     enqueue.assert_awaited_once_with(
-        "hello world text", "document", TENANT_ID,
+        "hello world text",
+        "document",
+        TENANT_ID,
         meta={"filename": "note.txt", "minio_key": result["minio_key"]},
     )
 
@@ -228,7 +234,8 @@ async def test_process_document_multi_chunk_still_enqueues_one_job(monkeypatch):
     assert args[1] == "document"
     assert args[2] == TENANT_ID
     assert enqueue.await_args.kwargs["meta"] == {
-        "filename": "big.txt", "minio_key": result["minio_key"],
+        "filename": "big.txt",
+        "minio_key": result["minio_key"],
     }
 
 
@@ -291,7 +298,9 @@ async def test_groq_backend_used_when_configured(monkeypatch):
     assert "file" in req["files"]
     assert req["data"]["model"] == "whisper-large-v3-turbo"
     enqueue.assert_awaited_once_with(
-        "hello from groq", "voice", TENANT_ID,
+        "hello from groq",
+        "voice",
+        TENANT_ID,
         meta={"filename": "note.webm", "minio_key": result["minio_key"]},
     )
     minio.upload.assert_called_once()
@@ -329,7 +338,9 @@ async def test_process_voice_uses_local_whisper_when_no_cf_credentials(monkeypat
     svc._transcribe_audio.assert_called_once_with(b"RIFFfake", "note.wav")
     assert result["transcript"] == "local whisper transcript"
     enqueue.assert_awaited_once_with(
-        "local whisper transcript", "voice", TENANT_ID,
+        "local whisper transcript",
+        "voice",
+        TENANT_ID,
         meta={"filename": "note.wav", "minio_key": result["minio_key"]},
     )
     minio.upload.assert_called_once()
@@ -353,11 +364,17 @@ async def test_enqueue_ingest_job_passes_meta_to_pool(monkeypatch):
     monkeypatch.setattr("arq.create_pool", fake_create_pool)
 
     await multimodal_module._enqueue_ingest_job(
-        "some text", "voice", TENANT_ID, meta={"filename": "note.webm", "minio_key": "abc/note.webm"}
+        "some text",
+        "voice",
+        TENANT_ID,
+        meta={"filename": "note.webm", "minio_key": "abc/note.webm"},
     )
 
     fake_pool.enqueue_job.assert_awaited_once_with(
-        multimodal_module.INGEST_CAPTURE_JOB_NAME, "some text", "voice", TENANT_ID,
+        multimodal_module.INGEST_CAPTURE_JOB_NAME,
+        "some text",
+        "voice",
+        TENANT_ID,
         {"filename": "note.webm", "minio_key": "abc/note.webm"},
     )
     fake_pool.close.assert_awaited_once()
@@ -388,7 +405,9 @@ async def test_ingest_or_fallback_returns_ingest_result_when_nonempty():
     result = await ingest_or_fallback(manager, "some text", "voice")
 
     assert len(result) == 2
-    manager.ingest.assert_awaited_once_with("some text", source="voice", capture=True)
+    manager.ingest.assert_awaited_once_with(
+        "some text", source="voice", capture=True, trust_tier="self"
+    )
     manager.store.store.assert_not_awaited()
 
 

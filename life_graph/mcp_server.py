@@ -17,17 +17,35 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
 import httpx
 from fastmcp import FastMCP
+from fastmcp.tools import ToolResult
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
 API_BASE = os.environ.get("LIFE_GRAPH_API_URL", "http://localhost:8000")
 DEFAULT_TENANT = os.environ.get("LIFE_GRAPH_DEFAULT_TENANT", "personal")
 API_KEY = os.environ.get("LIFE_GRAPH_API_KEY", "")
+
+# Progressive-disclosure default for `search` and `recall`. On, because the
+# whole point of the index is that a model rarely needs twenty full memory
+# objects to decide which two matter: an index line costs roughly a tenth of
+# the tokens, and `get_memories` expands the ids that survive that decision.
+# The HTTP API keeps defaulting to full objects — this flips the MCP surface
+# only, where the caller is always a language model paying per token.
+# Set LIFE_GRAPH_MCP_INDEX_ONLY_DEFAULT=false to restore full objects.
+INDEX_ONLY_DEFAULT = os.environ.get(
+    "LIFE_GRAPH_MCP_INDEX_ONLY_DEFAULT", "true"
+).strip().lower() not in {
+    "false",
+    "0",
+    "no",
+    "off",
+}
 
 mcp = FastMCP(
     "Life Graph Memory",
@@ -56,6 +74,29 @@ def _extract_data(response: dict[str, Any]) -> Any:
     return response
 
 
+def _result(payload: Any) -> ToolResult:
+    """Return a payload as exactly one compact text block.
+
+    Every tool here used to be annotated ``-> dict[str, Any]``. FastMCP reads
+    that annotation, derives an output schema from it, and then sends the
+    payload **twice**: once JSON-encoded as a text block in ``content``, and
+    again as ``structured_content``. Measured on fastmcp 3.4.5, that is
+    almost exactly double the bytes for every call, and a model reads the
+    text block.
+
+    Returning ``ToolResult`` opts out of that derivation — the deprecation
+    note on ``Tool.serializer`` in ``fastmcp/tools/base.py`` points here:
+    "Return ToolResult from your tools for full control over serialization."
+    One text block, no structured duplicate, no output schema.
+
+    ``separators`` drops the spaces json.dumps adds by default; ``default=str``
+    keeps UUIDs and timestamps from raising.
+    """
+    if isinstance(payload, str):
+        return ToolResult(content=payload)
+    return ToolResult(content=json.dumps(payload, separators=(",", ":"), default=str))
+
+
 # ── Memory Tools ─────────────────────────────────────────────────────────────
 
 
@@ -66,7 +107,7 @@ async def remember(
     tags: list[str] | None = None,
     importance: float | None = None,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Store a new memory. The system automatically:
     - Extracts facts using a 3-tier pipeline (regex → spaCy → LLM)
     - Scores importance
@@ -89,7 +130,7 @@ async def remember(
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post("/api/v1/memories/", json=body, headers=_headers(tenant_id))
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 @mcp.tool()
@@ -99,8 +140,9 @@ async def search(
     search_mode: str = "hybrid",
     min_importance: float | None = None,
     tags: list[str] | None = None,
+    index_only: bool = INDEX_ONLY_DEFAULT,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Search across all memories with configurable strategy.
 
     Modes:
@@ -114,12 +156,17 @@ async def search(
         search_mode: Search strategy (vector, hybrid, or tri_hybrid)
         min_importance: Only return memories above this importance threshold
         tags: Filter by these tags
+        index_only: Return a compact index (id, truncated content, tags, score,
+            status) instead of full memory objects — about a tenth of the
+            tokens. On by default: pair with `get_memories` to expand only the
+            ids you need. Pass false when you genuinely want every full object.
         tenant_id: Tenant scope
     """
     body: dict[str, Any] = {
         "query": query,
         "limit": limit,
         "search_mode": search_mode,
+        "index_only": index_only,
     }
     if min_importance is not None:
         body["min_importance"] = min_importance
@@ -129,14 +176,15 @@ async def search(
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post("/api/v1/search/", json=body, headers=_headers(tenant_id))
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 @mcp.tool()
 async def recall(
     context: dict[str, Any],
+    index_only: bool = INDEX_ONLY_DEFAULT,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Proactive recall — retrieves the most relevant memories for the current context.
 
     Returns memories grouped by category:
@@ -145,28 +193,33 @@ async def recall(
     - intentions: Pending to-dos or reminders matching this context
     - warnings: Lessons learned, contradictions, caveats
 
-    Uses 6-signal ranking (similarity, context, importance, recency, access frequency,
-    trust) with anti-annoyance controls (cooldowns, session caps, dismissal tracking).
+    Uses 7-signal ranking (semantic similarity, context match, importance, impact,
+    recency, access frequency, trust) with anti-annoyance controls (cooldowns,
+    session caps, dismissal tracking).
 
     Args:
         context: Current context dict (e.g. {"project": "my-app", "task": "deploy"})
+        index_only: Return a compact index instead of the four populated buckets —
+            about a tenth of the tokens. On by default; nothing is marked as
+            surfaced until you expand an id with `get_memories`. Pass false to
+            get the four populated buckets directly.
         tenant_id: Tenant scope
     """
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post(
             "/api/v1/search/recall",
-            json={"context": context},
+            json={"context": context, "index_only": index_only},
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 @mcp.tool()
 async def ask(
     question: str,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Ask a natural language question and get a synthesized answer from memories.
 
     The system searches for relevant memories, then uses an LLM to compose
@@ -183,14 +236,43 @@ async def ask(
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
+
+
+@mcp.tool()
+async def get_memories(
+    ids: list[str],
+    tenant_id: str | None = None,
+) -> ToolResult:
+    """Expand memory ids to their full content — step 2 of progressive disclosure.
+
+    `search(index_only=True)` and `recall(index_only=True)` return compact lines
+    with truncated content. Pass the ids you actually care about here to get the
+    full memories in one round trip.
+
+    This is also what marks those memories as surfaced: it sets the recall
+    cooldown and records an access (which feeds decay and the frequency ranking
+    signal). Listing a memory in an index does none of that — only reading it does.
+
+    Args:
+        ids: Memory UUIDs to expand (1-50)
+        tenant_id: Tenant scope
+    """
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
+        resp = await client.post(
+            "/api/v1/memories/batch",
+            json={"ids": ids},
+            headers=_headers(tenant_id),
+        )
+        resp.raise_for_status()
+        return _result(_extract_data(resp.json()))
 
 
 @mcp.tool()
 async def forget(
     memory_id: str,
     tenant_id: str | None = None,
-) -> dict[str, str]:
+) -> ToolResult:
     """Delete a specific memory by ID (soft delete — can be unarchived later).
 
     Args:
@@ -200,14 +282,14 @@ async def forget(
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.delete(f"/api/v1/memories/{memory_id}", headers=_headers(tenant_id))
         resp.raise_for_status()
-        return {"status": "deleted", "memory_id": memory_id}
+        return _result({"status": "deleted", "memory_id": memory_id})
 
 
 @mcp.tool()
 async def reinforce(
     memory_id: str,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Confirm that a memory is still accurate (reinforce it).
 
     Resets confidence to 0.9, updates the last_reinforced timestamp,
@@ -224,7 +306,7 @@ async def reinforce(
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 @mcp.tool()
@@ -232,7 +314,7 @@ async def deny(
     memory_id: str,
     replacement: str | None = None,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Mark a memory as no longer accurate (deny it).
 
     The memory is marked as 'superseded'. If a replacement string is provided,
@@ -254,7 +336,7 @@ async def deny(
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 # ── Identity Tools ───────────────────────────────────────────────────────────
@@ -263,7 +345,7 @@ async def deny(
 @mcp.tool()
 async def beliefs(
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Get the user's current active beliefs and preferences.
 
     Returns identity memories — things the system believes are true about the user
@@ -275,14 +357,14 @@ async def beliefs(
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.get("/api/v1/identity/beliefs", headers=_headers(tenant_id))
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 @mcp.tool()
 async def stale_beliefs(
     days: int = 90,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Find beliefs that haven't been accessed in a while and may be outdated.
 
     Returns stale memories with suggested challenge prompts like:
@@ -299,7 +381,7 @@ async def stale_beliefs(
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 # ── Session Tools ────────────────────────────────────────────────────────────
@@ -309,7 +391,7 @@ async def stale_beliefs(
 async def start_session(
     context: dict[str, Any] | None = None,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Start a new conversation session. Returns session ID for tracking.
 
     Starting a session enables memory linking — memories created during this
@@ -326,7 +408,7 @@ async def start_session(
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 @mcp.tool()
@@ -334,7 +416,7 @@ async def end_session(
     session_id: str,
     summary: str | None = None,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """End a conversation session. Generates an LLM summary and links memories.
 
     Args:
@@ -353,7 +435,7 @@ async def end_session(
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 # ── Intention Tools ──────────────────────────────────────────────────────────
@@ -365,7 +447,7 @@ async def set_intention(
     trigger_type: str = "context",
     trigger_condition: str | None = None,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Create a prospective memory (future intention / reminder).
 
     The system will surface this when the trigger condition is met.
@@ -386,7 +468,7 @@ async def set_intention(
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post("/api/v1/intentions/", json=body, headers=_headers(tenant_id))
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 # ── Graph Tools ──────────────────────────────────────────────────────────────
@@ -396,7 +478,7 @@ async def set_intention(
 async def graph_search(
     query: str,
     tenant_id: str | None = None,
-) -> dict[str, Any]:
+) -> ToolResult:
     """Hybrid search combining knowledge graph traversal with vector similarity.
 
     Finds entities related to the query via the graph, then refines by
@@ -414,7 +496,7 @@ async def graph_search(
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
-        return _extract_data(resp.json())
+        return _result(_extract_data(resp.json()))
 
 
 # ── Resources ────────────────────────────────────────────────────────────────

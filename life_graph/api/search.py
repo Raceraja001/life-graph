@@ -23,12 +23,15 @@ from life_graph.api.dependencies import (
     get_synthesis_service,
 )
 from life_graph.api.responses import success_response
+from life_graph.api.token_meta import token_meta
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.models.schemas import (
+    MemoryIndexItem,
     MemoryResponse,
     SearchQuery,
     SearchResult,
 )
+from life_graph.scoring.ranking import to_index
 from life_graph.services.metamemory import MetamemoryTracker
 from life_graph.services.recall import RecallEngine
 from life_graph.storage.postgres import PostgresMemoryStore
@@ -41,12 +44,22 @@ router = APIRouter(prefix="/search", tags=["search"])
 # ── Request schemas specific to these routes ─────────────────
 
 
+_INDEX_ONLY_DESCRIPTION = (
+    "Opt-in: return a compact index (id, truncated content, tags, score, "
+    "status) instead of full memory objects — roughly a tenth of the tokens. "
+    "Off by default so existing callers keep the shape they parse today. "
+    "Expand the ids you actually want via POST /api/v1/memories/batch, which "
+    "is also where the recall cooldown and access count are recorded."
+)
+
+
 class RecallRequest(BaseModel):
     """Body for session-start proactive recall."""
 
     context: dict[str, Any] = Field(
         ..., description="Session context (project, tools, files, etc.)"
     )
+    index_only: bool = Field(False, description=_INDEX_ONLY_DESCRIPTION)
 
 
 class MidSessionRecallRequest(BaseModel):
@@ -54,6 +67,7 @@ class MidSessionRecallRequest(BaseModel):
 
     context: dict[str, Any] = Field(..., description="Current session context")
     event: str = Field(..., min_length=1, description="Event that triggered the recall")
+    index_only: bool = Field(False, description=_INDEX_ONLY_DESCRIPTION)
 
 
 class AskRequest(BaseModel):
@@ -61,6 +75,15 @@ class AskRequest(BaseModel):
 
     question: str = Field(..., min_length=1, description="Natural language question")
     limit: int = Field(default=10, ge=1, le=50, description="Max memories to use")
+    index_only: bool = Field(
+        False,
+        description=(
+            "Opt-in: drop the source memories from the response and return a "
+            "compact index of them instead. `answer` already summarises them, "
+            "so returning both is near-pure duplication — the answer IS the "
+            "disclosure. Off by default to keep the existing response shape."
+        ),
+    )
 
 
 class AskResponse(BaseModel):
@@ -71,6 +94,54 @@ class AskResponse(BaseModel):
     model: str | None = None
     memories: list[MemoryResponse] = []
     query_time_ms: float = 0.0
+    # Echoed back like SearchResult.search_mode: the mode actually used.
+    result_mode: str = "full"
+    index: list[MemoryIndexItem] = []
+
+
+# ── Projection helpers ───────────────────────────────────────
+#
+# A "hit" is (row-or-dict, relevance score). The three search paths produce
+# different shapes — ORM rows from the vector and hybrid stores, scored dicts
+# from tri-hybrid — so both projections normalise here rather than in each
+# branch.
+
+
+def _to_memory_responses(hits: list[tuple[Any, float]]) -> list[MemoryResponse]:
+    """Full twenty-field objects, the pre-existing response shape."""
+    from life_graph.services.recall import _dict_to_memory_response
+
+    out: list[MemoryResponse] = []
+    for obj, _score in hits:
+        if isinstance(obj, dict):
+            # Tri-hybrid dicts are assembled from a graph join and have
+            # always been allowed to be individually unconvertible.
+            try:
+                resp = _dict_to_memory_response(obj)
+            except Exception:
+                resp = None
+            if resp:
+                out.append(resp)
+        else:
+            out.append(MemoryResponse.model_validate(obj))
+    return out
+
+
+def _to_index_items(hits: list[tuple[Any, float]]) -> list[MemoryIndexItem]:
+    """Compact index lines — the same projection recall uses, same truncation."""
+    flat: list[dict[str, Any]] = []
+    for obj, score in hits:
+        read = obj.get if isinstance(obj, dict) else (lambda k, _o=obj: getattr(_o, k, None))
+        flat.append(
+            {
+                "id": read("id"),
+                "content": read("content"),
+                "tags": read("tags"),
+                "status": read("status"),
+                "final_score": score,
+            }
+        )
+    return [MemoryIndexItem.model_validate(item) for item in to_index(flat)]
 
 
 # ── Routes ───────────────────────────────────────────────────
@@ -101,7 +172,16 @@ async def semantic_search(
         logger.warning("Embedding generation unavailable — returning empty results")
         query_time_ms = (time.perf_counter() - t0) * 1000
         await metamemory.track_query(body.query, 0, 0.0, embedding=None)
-        return SearchResult(memories=[], total_count=0, query_time_ms=query_time_ms)
+        # Same envelope as the happy path: this branch is still a 200, and a
+        # caller that unwraps `data` must not have to special-case the one
+        # response shape it gets when the embedding provider is down.
+        empty = SearchResult(
+            memories=[],
+            total_count=0,
+            query_time_ms=query_time_ms,
+            result_mode="index" if body.index_only else "full",
+        )
+        return success_response(data=empty, meta=token_meta(empty))
 
     # Build filters from search query
     filters: dict[str, Any] = {}
@@ -134,7 +214,11 @@ async def semantic_search(
         filters["statuses"] = list(statuses)
 
     search_mode = body.search_mode
-    memories: list[MemoryResponse] = []
+    # (row-or-dict, relevance score). Conversion to MemoryResponse is deferred
+    # to the end so index mode can skip it entirely: model_post_init costs a
+    # math.exp and a datetime.now() per item, and serializes twenty fields the
+    # index does not carry.
+    hits: list[tuple[Any, float]] = []
 
     if search_mode == "tri_hybrid":
         # ── Tri-hybrid: vector + BM25 + graph ────────────────
@@ -147,16 +231,10 @@ async def semantic_search(
                 limit=body.limit,
                 statuses=statuses,
             )
-            # Convert scored dicts to MemoryResponse
-            for mem_dict in result.get("memories", []):
-                try:
-                    from life_graph.services.recall import _dict_to_memory_response
-
-                    resp = _dict_to_memory_response(mem_dict)
-                    if resp:
-                        memories.append(resp)
-                except Exception:
-                    pass
+            hits = [
+                (mem_dict, float(mem_dict.get("final_score", 0.0) or 0.0))
+                for mem_dict in result.get("memories", [])
+            ]
         except Exception:
             logger.warning("Tri-hybrid search failed — falling back to hybrid", exc_info=True)
             search_mode = "hybrid"
@@ -171,7 +249,7 @@ async def semantic_search(
                 filters=filters or None,
                 statuses=statuses,
             )
-            memories = [MemoryResponse.model_validate(mem) for mem, _score in hybrid_results]
+            hits = [(mem, float(score or 0.0)) for mem, score in hybrid_results]
         except Exception:
             logger.warning("Hybrid search failed — falling back to vector", exc_info=True)
             search_mode = "vector"
@@ -184,27 +262,52 @@ async def semantic_search(
             filters=filters or None,
             include_embedding=False,  # MemoryResponse never serializes it
         )
-        memories = [MemoryResponse.model_validate(r) for r in rows]
+        # search_similar returns rows without a score; 0.0 is the honest value.
+        hits = [(r, 0.0) for r in rows]
+
+    memories: list[MemoryResponse] = []
+    index: list[MemoryIndexItem] = []
+    if body.index_only:
+        index = _to_index_items(hits)
+    else:
+        memories = _to_memory_responses(hits)
 
     query_time_ms = (time.perf_counter() - t0) * 1000
 
-    # Track in metamemory
+    # Track in metamemory. Index mode has no confidence to report — the
+    # compact line does not carry it — so the gap tracker sees 0.0 rather
+    # than a number invented for it.
     max_confidence = max((m.confidence for m in memories), default=0.0)
+    result_count = len(index) if body.index_only else len(memories)
     await metamemory.track_query(
         body.query,
-        len(memories),
+        result_count,
         max_confidence,
         embedding=embedding,
     )
 
-    return success_response(
-        data=SearchResult(
-            memories=memories,
-            total_count=len(memories),
-            query_time_ms=round(query_time_ms, 2),
+    payload = SearchResult(
+        memories=memories,
+        total_count=result_count,
+        query_time_ms=round(query_time_ms, 2),
+        search_mode=search_mode,
+        result_mode="index" if body.index_only else "full",
+        index=index,
+    )
+    # tokens_saved is a counterfactual, so measuring it honestly means
+    # building the payload that was not sent. The rows are already in memory;
+    # this is a serialize, not a query, and only happens in index mode.
+    full = (
+        SearchResult(
+            memories=_to_memory_responses(hits),
+            total_count=len(hits),
+            query_time_ms=payload.query_time_ms,
             search_mode=search_mode,
         )
+        if body.index_only
+        else None
     )
+    return success_response(data=payload, meta=token_meta(payload, full))
 
 
 @router.post(
@@ -219,8 +322,16 @@ async def session_start_recall(
 
     Runs the full proactive recall pipeline: retrieve → rank → rerank
     → anti-annoyance filtering → categorize.
+
+    With ``index_only``, returns a compact index instead of the four
+    populated buckets and records nothing — no cooldown, no access count.
+    Expand what you want via ``POST /api/v1/memories/batch``, which is where
+    that bookkeeping then happens.
     """
-    return success_response(data=await engine.session_start_recall(body.context))
+    payload, full = await engine.session_start_recall_measured(
+        body.context, index_only=body.index_only
+    )
+    return success_response(data=payload, meta=token_meta(payload, full))
 
 
 @router.post(
@@ -235,8 +346,21 @@ async def mid_session_recall(
 
     Lighter than session-start recall — fewer candidates, smaller
     result set, respects session surface cap.
+
+    ``index_only`` behaves as it does at session start: compact lines, and
+    no surfacing recorded until the caller expands.
     """
-    return success_response(data=await engine.mid_session_recall(body.context, body.event))
+    results, full = await engine.mid_session_recall_measured(
+        body.context, body.event, index_only=body.index_only
+    )
+    return success_response(
+        data=results,
+        meta=token_meta(
+            results,
+            full,
+            result_mode="index" if body.index_only else "full",
+        ),
+    )
 
 
 @router.post(
@@ -298,12 +422,27 @@ async def ask_brain(
 
     query_time_ms = (time.perf_counter() - t0) * 1000
 
-    return success_response(
-        data=AskResponse(
+    # The synthesized answer already contains what these memories said, so
+    # returning both is near-pure duplication — the answer IS the disclosure.
+    # index_only keeps the citation handles (ids) and drops the rest.
+    payload = AskResponse(
+        answer=result["answer"],
+        source_count=result["source_count"],
+        model=result["model"],
+        memories=[] if body.index_only else memories,
+        query_time_ms=round(query_time_ms, 2),
+        result_mode="index" if body.index_only else "full",
+        index=_to_index_items([(r, 0.0) for r in rows]) if body.index_only else [],
+    )
+    full = (
+        AskResponse(
             answer=result["answer"],
             source_count=result["source_count"],
             model=result["model"],
             memories=memories,
-            query_time_ms=round(query_time_ms, 2),
+            query_time_ms=payload.query_time_ms,
         )
+        if body.index_only
+        else None
     )
+    return success_response(data=payload, meta=token_meta(payload, full))

@@ -67,7 +67,9 @@ async def test_ingest_capture_text_voice_is_a_single_chunk(monkeypatch):
 
     total = await ingest_capture_text({}, "call amma tonight", "voice", TENANT_ID)
 
-    manager.ingest.assert_awaited_once_with("call amma tonight", source="voice", capture=True)
+    manager.ingest.assert_awaited_once_with(
+        "call amma tonight", source="voice", capture=True, trust_tier="self"
+    )
     assert total == 2
 
 
@@ -80,7 +82,9 @@ async def test_ingest_capture_text_image_is_a_single_chunk(monkeypatch):
 
     total = await ingest_capture_text({}, "Receipt total Rs 450", "image", TENANT_ID)
 
-    manager.ingest.assert_awaited_once_with("Receipt total Rs 450", source="image", capture=True)
+    manager.ingest.assert_awaited_once_with(
+        "Receipt total Rs 450", source="image", capture=True, trust_tier="self"
+    )
     assert total == 1
 
 
@@ -114,7 +118,9 @@ async def test_ingest_capture_text_document_loops_over_real_chunks(monkeypatch):
     itself (real split_into_chunks, not mocked) and ingests each one."""
     monkeypatch.setattr(ingest_capture_module, "set_tenant_context", MagicMock())
     manager = AsyncMock()
-    manager.ingest.side_effect = lambda text, source, capture: [MagicMock()]  # 1 memory/chunk
+    manager.ingest.side_effect = lambda text, source, capture, trust_tier: [
+        MagicMock()
+    ]  # 1 memory/chunk
     _patch_manager(monkeypatch, manager)
 
     long_text = " ".join(f"word{i}" for i in range(1200))  # > _MAX_CHUNK_WORDS (500)
@@ -138,7 +144,11 @@ async def test_ingest_capture_text_document_single_chunk_short_text(monkeypatch)
 
     total = await ingest_capture_text({}, "short document text", "document", TENANT_ID)
 
-    manager.ingest.assert_awaited_once_with("short document text", source="document", capture=True)
+    # A document is arbitrary third-party content: it is not in the surface map,
+    # so it must resolve to EXTERNAL rather than the store's "verified" default.
+    manager.ingest.assert_awaited_once_with(
+        "short document text", source="document", capture=True, trust_tier="external"
+    )
     assert total == 1
 
 
@@ -158,7 +168,10 @@ async def test_ingest_capture_text_emits_voice_transcribed_with_real_count_and_m
     emit_mock = _patch_event_bus(monkeypatch)
 
     total = await ingest_capture_text(
-        {}, "call amma tonight", "voice", TENANT_ID,
+        {},
+        "call amma tonight",
+        "voice",
+        TENANT_ID,
         meta={"filename": "note.webm", "minio_key": "abc/note.webm"},
     )
 
@@ -184,7 +197,10 @@ async def test_ingest_capture_text_emits_image_processed_with_real_count_and_met
     emit_mock = _patch_event_bus(monkeypatch)
 
     total = await ingest_capture_text(
-        {}, "Receipt total Rs 450", "image", TENANT_ID,
+        {},
+        "Receipt total Rs 450",
+        "image",
+        TENANT_ID,
         meta={"filename": "receipt.png", "minio_key": "xyz/receipt.png"},
     )
 
@@ -204,14 +220,19 @@ async def test_ingest_capture_text_emits_document_imported_with_chunks_and_real_
 ):
     monkeypatch.setattr(ingest_capture_module, "set_tenant_context", MagicMock())
     manager = AsyncMock()
-    manager.ingest.side_effect = lambda text, source, capture: [MagicMock()]  # 1 memory/chunk
+    manager.ingest.side_effect = lambda text, source, capture, trust_tier: [
+        MagicMock()
+    ]  # 1 memory/chunk
     _patch_manager(monkeypatch, manager)
     emit_mock = _patch_event_bus(monkeypatch)
 
     long_text = " ".join(f"word{i}" for i in range(1200))  # multiple chunks
 
     total = await ingest_capture_text(
-        {}, long_text, "document", TENANT_ID,
+        {},
+        long_text,
+        "document",
+        TENANT_ID,
         meta={"filename": "big.txt", "minio_key": "doc/big.txt"},
     )
 
@@ -237,7 +258,10 @@ async def test_ingest_capture_text_emits_once_even_when_nothing_extracted(monkey
     emit_mock = _patch_event_bus(monkeypatch)
 
     total = await ingest_capture_text(
-        {}, "just rambling, no facts here", "voice", TENANT_ID,
+        {},
+        "just rambling, no facts here",
+        "voice",
+        TENANT_ID,
         meta={"filename": "note.webm", "minio_key": "abc/note.webm"},
     )
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from life_graph.core.trust import classify_surface
 from life_graph.models.schemas import MemoryResponse, RecallContext
 
 if TYPE_CHECKING:
@@ -165,6 +166,10 @@ class LifeGraphBridge:
             text=conversation,
             source=source,
             context=context,
+            # Agent output is system-produced, not first-party writing, so the
+            # map grades it VERIFIED. A caller passing some other source gets
+            # whatever that surface maps to, defaulting to EXTERNAL.
+            trust_tier=classify_surface(source).value,
         )
 
         logger.info(

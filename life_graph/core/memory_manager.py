@@ -164,11 +164,27 @@ class MemoryManager:
         facts: list[ExtractedFact],
         context: dict[str, Any] | None = None,
         source: str | None = None,
+        trust_tier: str | None = None,
     ) -> list[Memory]:
         """Persist already-extracted facts through the store-side path (embed,
         dedup, score, pending) — bypassing the note-tuned extraction tiers.
 
-        Used by transcript distillation, which extracts facts itself.
+        Used by transcript distillation and the capture spine, both of which
+        extract their own facts.
+
+        Args:
+            facts: Already-extracted facts to persist.
+            context: Extra properties merged onto every stored memory.
+            source: ``source_type`` recorded on every stored memory.
+            trust_tier: Provenance of these facts, decided server-side by the
+                caller (e.g. ``classify_surface()`` on a capture surface). It is
+                recorded on each memory so untrusted content can be fenced or
+                withheld from acting agents later. ``None`` leaves the store's
+                default ("verified", i.e. system-produced).
+
+        Returns:
+            The memories actually stored (duplicates dropped by dedup are not
+            included).
         """
         embeddings = await asyncio.gather(
             *(self._generate_embedding(fact.content) for fact in facts)
@@ -177,7 +193,7 @@ class MemoryManager:
         stored: list[Memory] = []
         for fact, embedding in zip(facts, embeddings, strict=False):
             memory = await self._process_fact(
-                fact, context, source, skip_dedup=False, trust_tier=None, embedding=embedding
+                fact, context, source, skip_dedup=False, trust_tier=trust_tier, embedding=embedding
             )
             if memory:
                 stored.append(memory)
