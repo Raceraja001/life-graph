@@ -189,6 +189,49 @@ async def test_process_image_empty_ocr_raises_and_enqueues_nothing(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_process_image_ingests_the_caption_with_the_ocr_text(monkeypatch):
+    """A photo and its caption are one thought, so they become one memory.
+
+    Splitting them would mean a search for the caption's words found the
+    caption and missed what the picture actually said.
+    """
+    svc, _minio, _bus = _service()
+    svc._ocr_image = MagicMock(return_value="Ship the migration Friday")
+    enqueue = _mock_enqueue(monkeypatch)
+
+    await svc.process_image(b"pngbytes", "board.png", TENANT_ID, caption="notes from standup")
+
+    queued = enqueue.await_args.args[0]
+    assert "notes from standup" in queued
+    assert "Ship the migration Friday" in queued
+
+
+@pytest.mark.asyncio
+async def test_process_image_keeps_a_caption_when_ocr_finds_nothing(monkeypatch):
+    """A photo of a face has no text, but "my new bike" is still worth keeping."""
+    svc, _minio, _bus = _service()
+    svc._ocr_image = MagicMock(return_value="")
+    enqueue = _mock_enqueue(monkeypatch)
+
+    result = await svc.process_image(b"pngbytes", "bike.png", TENANT_ID, caption="my new bike")
+
+    assert result["ingest"] == "queued"
+    assert enqueue.await_args.args[0] == "my new bike"
+
+
+@pytest.mark.asyncio
+async def test_process_image_with_neither_text_nor_caption_still_raises(monkeypatch):
+    """The caption argument must not weaken the "nothing to remember" guard."""
+    svc, _minio, _bus = _service()
+    svc._ocr_image = MagicMock(return_value="")
+    enqueue = _mock_enqueue(monkeypatch)
+
+    with pytest.raises(ValueError):
+        await svc.process_image(b"pngbytes", "blank.png", TENANT_ID, caption="   ")
+    enqueue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_process_document_queues_full_text_as_one_job(monkeypatch):
     svc, _minio, _bus = _service()
     enqueue = _mock_enqueue(monkeypatch)

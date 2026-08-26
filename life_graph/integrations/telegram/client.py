@@ -124,6 +124,38 @@ class TelegramClient:
         result = await self._call("getFile", {"file_id": file_id})
         return result["file_path"]
 
+    async def download_file(self, file_path: str, *, max_bytes: int) -> bytes:
+        """Fetch a file previously resolved by :meth:`get_file_path`.
+
+        ``max_bytes`` is enforced while streaming rather than after the fact:
+        the ``file_size`` a message advertises is Telegram's word, and the
+        bytes land in memory before anything else looks at them. Streaming
+        means a file that lies about its size costs one chunk, not all of it.
+
+        Note the different host path — downloads live under ``/file/bot<token>/``
+        rather than the method endpoint, so this cannot go through ``_call``.
+        """
+        if not self._token:
+            raise TelegramError("Telegram bot token is not configured")
+        if self._client is None:
+            raise RuntimeError("TelegramClient used outside its async context manager")
+
+        url = f"{API_BASE}/file/bot{self._token}/{file_path}"
+        chunks: list[bytes] = []
+        total = 0
+        async with self._client.stream("GET", url) as response:
+            if response.status_code != 200:
+                raise TelegramError(
+                    f"file download failed ({response.status_code})",
+                    error_code=response.status_code,
+                )
+            async for chunk in response.aiter_bytes():
+                total += len(chunk)
+                if total > max_bytes:
+                    raise TelegramError(f"file exceeds {max_bytes} bytes")
+                chunks.append(chunk)
+        return b"".join(chunks)
+
     # ── Internals ─────────────────────────────────────────────
 
     async def _call(

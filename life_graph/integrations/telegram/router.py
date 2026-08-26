@@ -8,7 +8,8 @@ chat id and no authentication, so the order of checks here matters:
    an unknown chat is refused without disclosing whether the bot is in use.
 3. A bound chat is rate limited, so a compromised or runaway client cannot
    flood the capture spine.
-4. Plain text goes to the capture spine under the tenant the binding names.
+4. Plain text goes to the capture spine under the tenant the binding names;
+   photos and voice notes go through :mod:`media` to the same spine.
 
 Everything after the binding check runs inside a ``tenant_scope`` so that the
 storage layer — which reads the tenant from a contextvar rather than taking it
@@ -34,6 +35,7 @@ from life_graph.core.redaction import redact_secrets
 from life_graph.core.tenant import tenant_scope
 from life_graph.core.trust import TrustTier
 from life_graph.integrations.telegram import commands as tg_commands
+from life_graph.integrations.telegram import media as tg_media
 from life_graph.integrations.telegram.client import TelegramClient, TelegramError
 from life_graph.services.capture import CaptureService
 from life_graph.services.telegram_binding import PairingError, TelegramBindingService
@@ -56,6 +58,7 @@ _UNBOUND_REPLY = (
 _HELP = (
     "Life Graph\n\n"
     "Send any message to save it as a memory.\n\n"
+    "Send a photo or a voice note and I'll read or transcribe it.\n\n"
     "/help — this message\n"
     "/recall <query> — search your memories\n"
     "/pending — items awaiting your decision\n"
@@ -118,11 +121,17 @@ async def handle_message(msg: dict[str, Any], session: AsyncSession) -> None:
             await _handle_command(chat_id, tenant_id, text, session)
             return
 
+        # Media is checked before text because a photo or voice note may carry
+        # a caption. Treating the caption as the whole message would file the
+        # words and silently discard the recording they describe.
+        media = tg_media.extract(msg)
+        if media is not None:
+            await tg_media.handle(media, msg, chat_id, tenant_id, text, _reply)
+            return
+
         if not text:
-            # A sticker, photo without a caption, or voice note. Phase 5 routes
-            # these through the multimodal path; until then, say so rather than
-            # dropping them silently.
-            await _reply(chat_id, "I can only read text messages so far.")
+            # A sticker, a location, a document — nothing this bridge reads.
+            await _reply(chat_id, "I can only read text, photos and voice notes.")
             return
 
         await _capture(msg, chat_id, tenant_id, text, session)

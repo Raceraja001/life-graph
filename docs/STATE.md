@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-08-26 11:57 UTC` from `master` @ `0cd2ae3`
+Generated `2026-08-26 14:24 UTC` from `master` @ `38257a3`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-08-26 11:57 UTC` from `master` @ `0cd2ae3`
 
 | | |
 |---|---|
-| HTTP operations | **243** across 206 paths, 36 tags |
+| HTTP operations | **247** across 210 paths, 37 tags |
 | Database tables | **66** |
 | Migrations | **37** (head: `037_telegram_bridge`) |
 | Event types | **77** |
@@ -24,15 +24,15 @@ Generated `2026-08-26 11:57 UTC` from `master` @ `0cd2ae3`
 | Agent tools | **13** |
 | Scheduled jobs | **14** |
 | Config settings | **148** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2004** in 209 files |
+| Test functions | **2064** in 212 files |
 | Dashboard pages | **18** |
-| Python | 284 files, 67,848 lines |
+| Python | 286 files, 68,457 lines |
 
 ---
 
 ## HTTP API
 
-243 operations, grouped by OpenAPI tag.
+247 operations, grouped by OpenAPI tag.
 
 ### `autonomy` — 28
 
@@ -368,6 +368,15 @@ Generated `2026-08-26 11:57 UTC` from `master` @ `0cd2ae3`
 | POST | `/api/v1/search/ask` | Ask a question — get a synthesized answer from memories |
 | POST | `/api/v1/search/recall` | Proactive recall at session start |
 | POST | `/api/v1/search/recall/event` | Mid-session event-driven recall |
+
+### `telegram` — 4
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/integrations/telegram/bindings` | List the Telegram chats linked to this tenant |
+| DELETE | `/api/v1/integrations/telegram/bindings/{binding_id}` | Revoke a Telegram binding |
+| POST | `/api/v1/integrations/telegram/pair` | Mint a pairing code for a Telegram chat |
+| GET | `/api/v1/integrations/telegram/status` | Report whether the Telegram bridge is running |
 
 ### `workflows` — 4
 
@@ -734,7 +743,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `prompt-registry` | Built | `life_graph/self_improving/prompt_version_service.py` |
 | `pwa-mobile` | Built | `dashboard/app/(mobile)/m/page.tsx` |
 | `razorpay-upi` | Not this product | — |
-| `telegram-bridge` | Spec'd, not built | — |
+| `telegram-bridge` | Built | `life_graph/api/integrations_telegram.py` |
 | `template-gallery` | Not this product | — |
 | `whatsapp-bot` | Not this product | — |
 
@@ -754,10 +763,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 158 | 1488 |
-| `tests/integration/` | 50 | 504 |
+| `tests/unit/` | 160 | 1524 |
+| `tests/integration/` | 51 | 528 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **209** | **2004** |
+| **total** | **212** | **2064** |
 
 ---
 

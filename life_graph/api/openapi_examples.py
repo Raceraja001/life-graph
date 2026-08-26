@@ -249,6 +249,14 @@ HEALTH_CHECK = {
                         # healthy/unreachable/unavailable — a backend that is
                         # configured but down degrades without a 503.
                         "embeddings": {"status": "healthy", "latency_ms": 12.4},
+                        # Telegram bridge poller, observed through Redis:
+                        # leading/stopped/disabled/unknown. Never a 503, and
+                        # never degrades the overall status.
+                        "telegram": {
+                            "poller": "leading",
+                            "last_poll_at": "2026-08-26T18:41:03Z",
+                            "last_update_at": "2026-08-26T18:40:11Z",
+                        },
                         "startup": {
                             "status": "degraded",
                             "total": 15,
@@ -283,4 +291,72 @@ HEALTH_CHECK = {
             }
         },
     },
+}
+
+
+# ── Telegram Bridge Responses ───────────────────────────────────
+
+TELEGRAM_BINDING_EXAMPLE = {
+    "id": "9c1e7b3a-2d4f-4a80-9f11-6b0d2e5c8a77",
+    "chat_id": 123456789,
+    "chat_type": "private",
+    "username": "ada",
+    "bound_at": "2026-08-26T09:12:00Z",
+    "last_seen_at": "2026-08-26T18:40:11Z",
+}
+
+TELEGRAM_PAIR_CREATED = {
+    201: {
+        "description": (
+            "Pairing code issued. Single-use, expires in ten minutes, and is "
+            "not retrievable afterwards — send it to the bot as /start <code>."
+        ),
+        "content": {
+            "application/json": {
+                "example": {
+                    "data": {
+                        "code": "K7M2QX",
+                        "expires_at": "2026-08-26T09:22:00Z",
+                        # null when the bot token is unset or getMe failed; the
+                        # code still works, the instructions are just vaguer.
+                        "bot_username": "my_life_graph_bot",
+                    }
+                }
+            }
+        },
+    }
+}
+
+TELEGRAM_BINDING_LIST = {
+    200: {
+        "description": "Active bindings for this tenant, newest first",
+        "content": {"application/json": {"example": {"data": [TELEGRAM_BINDING_EXAMPLE]}}},
+    }
+}
+
+TELEGRAM_STATUS = {
+    200: {
+        "description": "Bridge configuration and poller liveness",
+        "content": {
+            "application/json": {
+                "example": {
+                    "data": {
+                        "configured": True,
+                        "bound_chats": 1,
+                        # leading  — a poller holds the lease
+                        # stopped  — nobody holds it
+                        # disabled — no bot token configured
+                        # unknown  — Redis unreachable, so nothing can be said
+                        "poller": "leading",
+                        # Rewritten every completed poll cycle: this is the
+                        # liveness signal. A lease without a recent stamp means
+                        # a leader that stopped turning.
+                        "last_poll_at": "2026-08-26T18:41:03Z",
+                        # Last time a batch actually contained a message.
+                        "last_update_at": "2026-08-26T18:40:11Z",
+                    }
+                }
+            }
+        },
+    }
 }

@@ -435,7 +435,7 @@ class MultiModalService:
     # ── Image ─────────────────────────────────────────────────
 
     async def process_image(
-        self, image_bytes: bytes, filename: str, tenant_id: str
+        self, image_bytes: bytes, filename: str, tenant_id: str, caption: str | None = None
     ) -> dict[str, Any]:
         """OCR an image, store the original in MinIO, queue ingestion.
 
@@ -443,26 +443,38 @@ class MultiModalService:
             image_bytes: Raw image file bytes.
             filename: Original filename.
             tenant_id: Owning tenant, propagated to the queued job.
+            caption: Words the user attached to the image. When given it is
+                ingested together with the OCR text as a single memory, and it
+                alone is enough to make the image worth keeping.
+
+                A photo of a whiteboard captioned "notes from standup" is one
+                thought, not two: splitting it would mean a search for
+                "standup" found the caption and missed the whiteboard. Callers
+                that pass nothing here get exactly the previous behaviour,
+                including the ``ValueError`` on an image with no text.
 
         Returns:
             Dict with ``ocr_text``, ``ingest`` (``"queued"``), and ``minio_key``.
 
         Raises:
-            ValueError: If OCR finds no text (nothing persisted, nothing queued).
+            ValueError: If there is nothing to remember — no OCR text *and* no
+                caption. Nothing is persisted and nothing is queued.
         """
         key = f"{uuid.uuid4()}/{filename}"
         content_type = _content_type_for(filename)
         self.minio.upload(_IMAGE_BUCKET, key, image_bytes, content_type)
 
         ocr_text = await asyncio.to_thread(self._ocr_image, image_bytes)
-        if not ocr_text.strip():
+        caption = (caption or "").strip()
+        content = "\n\n".join(part for part in (caption, ocr_text.strip()) if part)
+        if not content:
             raise ValueError("No text found in the image — nothing to remember")
 
         # Queue the slow ingestion work instead of running it inline. The
         # domain event (IMAGE_PROCESSED) is emitted by the job on
         # completion, with the real memory count.
         await _enqueue_ingest_job(
-            ocr_text, "image", tenant_id, meta={"filename": filename, "minio_key": key}
+            content, "image", tenant_id, meta={"filename": filename, "minio_key": key}
         )
 
         return {

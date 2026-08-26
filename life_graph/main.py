@@ -545,6 +545,10 @@ from life_graph.api import model_health as model_health_api
 
 v1_router.include_router(model_health_api.router)
 
+from life_graph.api import integrations_telegram as telegram_api
+
+v1_router.include_router(telegram_api.router)
+
 app.include_router(v1_router)
 
 
@@ -580,6 +584,9 @@ async def health_check():
     ``checks.embeddings`` probes the embedding backend (``healthy`` /
     ``unreachable`` / ``unavailable``); a backend that is down degrades the
     overall status but likewise never causes a 503.
+    ``checks.telegram`` reports the bridge's poller (``leading`` / ``stopped``
+    / ``disabled`` / ``unknown``) as observed through Redis; it affects
+    neither the 503 nor the overall status.
     """
     import time
 
@@ -634,6 +641,15 @@ async def health_check():
         "status": await get_embedding_service().probe(),
         "latency_ms": round((time.monotonic() - t0) * 1000, 1),
     }
+
+    # Telegram bridge (non-critical). The poller runs in the ARQ worker, so
+    # this reports what that process published to Redis rather than anything
+    # in this one. It never affects the 503 and never degrades the overall
+    # status: running the API without the worker is a normal way to develop,
+    # and a permanently degraded /health is a health check nobody reads.
+    from life_graph.api.integrations_telegram import poller_state
+
+    checks["telegram"] = await poller_state()
 
     # Startup subsystems — wired once at boot, each optional and each
     # previously failing silently. A subsystem that never subscribed cannot

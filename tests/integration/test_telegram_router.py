@@ -16,6 +16,7 @@ import pytest_asyncio
 from sqlalchemy import delete, select
 
 from life_graph.core.trust import TrustTier
+from life_graph.integrations.telegram import media as tg_media
 from life_graph.integrations.telegram import router as tg_router
 from life_graph.models.db import CaptureEvent, TelegramBinding, TelegramPairingCode
 from life_graph.services.telegram_binding import TelegramBindingService
@@ -132,6 +133,78 @@ async def test_an_ordinary_message_keeps_the_surface_tier(bound_chat, replies):
 
     events = await _events()
     assert events[0].trust_tier == TrustTier.SELF.value
+
+
+# ── Media ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def media_calls(monkeypatch):
+    """Intercept the multimodal hand-off; transcription is tested elsewhere."""
+    calls: list[dict] = []
+
+    async def fake_handle(media, msg, chat_id, tenant_id, caption, reply):
+        calls.append({"media": media, "tenant_id": tenant_id, "caption": caption})
+
+    monkeypatch.setattr(tg_media, "handle", fake_handle)
+    return calls
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_voice_note_goes_to_the_multimodal_path(bound_chat, replies, media_calls):
+    msg = _msg("", voice={"file_id": "v1", "duration": 8})
+    del msg["text"]
+    async with async_session() as session:
+        await tg_router.handle_message(msg, session)
+
+    assert len(media_calls) == 1
+    assert media_calls[0]["media"]["kind"] == "voice"
+    assert media_calls[0]["tenant_id"] == TENANT
+    assert await _events() == [], "the transcript is ingested by the multimodal path, not here"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_captioned_photo_does_not_lose_the_photo(bound_chat, replies, media_calls):
+    """The caption used to be treated as the whole message.
+
+    A photo of a whiteboard captioned "notes from standup" would then store six
+    words and silently discard the whiteboard, which is the part worth keeping.
+    """
+    msg = _msg("", photo=[{"file_id": "small"}, {"file_id": "large"}])
+    del msg["text"]
+    msg["caption"] = "notes from standup"
+    async with async_session() as session:
+        await tg_router.handle_message(msg, session)
+
+    assert len(media_calls) == 1
+    assert media_calls[0]["caption"] == "notes from standup"
+    assert media_calls[0]["media"]["file_id"] == "large"
+    assert await _events() == [], "the caption must travel with the image, not alone"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_an_unbound_chat_cannot_send_media(replies, media_calls):
+    msg = _msg("", chat_id=UNBOUND_CHAT, voice={"file_id": "v1", "duration": 8})
+    del msg["text"]
+    async with async_session() as session:
+        await tg_router.handle_message(msg, session)
+
+    assert media_calls == [], "media must be behind the binding check like everything else"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_sticker_is_still_refused_politely(bound_chat, replies, media_calls):
+    msg = _msg("", sticker={"file_id": "s1"})
+    del msg["text"]
+    async with async_session() as session:
+        await tg_router.handle_message(msg, session)
+
+    assert media_calls == []
+    assert replies and "text, photos and voice notes" in replies[-1][1]
 
 
 # ── Refusals ──────────────────────────────────────────────────────

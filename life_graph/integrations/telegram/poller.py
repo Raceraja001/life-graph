@@ -22,6 +22,7 @@ import contextlib
 import logging
 import os
 import uuid
+from datetime import UTC, datetime
 
 import httpx
 
@@ -34,6 +35,18 @@ logger = logging.getLogger(__name__)
 
 LEASE_KEY = "telegram:poller:lease"
 OFFSET_KEY = "telegram:poller:offset"
+
+# The API process cannot see this object — the poller runs in the ARQ worker —
+# so liveness has to be published somewhere both can read. The lease already
+# proves *a* leader exists, but not that its loop is still turning: these two
+# stamps are what /status reports.
+#
+# HEARTBEAT is written every completed poll cycle and expires, so a stopped
+# poller stops answering rather than leaving a stale "last seen" behind.
+# LAST_UPDATE is written only when a batch actually contained something and
+# never expires, because "nothing since Tuesday" is a fact worth keeping.
+HEARTBEAT_KEY = "telegram:poller:heartbeat"
+LAST_UPDATE_KEY = "telegram:poller:last_update"
 
 # The lease must outlive one long poll or the leader loses it mid-call and a
 # standby starts a competing getUpdates. Renewed every loop, so the only way it
@@ -116,6 +129,9 @@ class TelegramPoller:
                         # After handling, never before: a crash mid-handler
                         # replays the update instead of losing it.
                         await self._store_offset(int(update["update_id"]) + 1)
+                    await self._stamp(HEARTBEAT_KEY, ttl=LEASE_TTL_SECONDS)
+                    if updates:
+                        await self._stamp(LAST_UPDATE_KEY)
                     backoff = BACKOFF_START_SECONDS
 
                 except asyncio.CancelledError:
@@ -216,6 +232,20 @@ class TelegramPoller:
             return
         with contextlib.suppress(Exception):
             await redis.set(OFFSET_KEY, offset)
+
+    # ── Liveness ──────────────────────────────────────────────
+
+    async def _stamp(self, key: str, ttl: int | None = None) -> None:
+        """Record "this happened just now" for the status endpoint to read.
+
+        Suppresses everything: a status stamp that fails must never take down
+        the loop it exists to describe.
+        """
+        redis = _redis()
+        if redis is None:
+            return
+        with contextlib.suppress(Exception):
+            await redis.set(key, datetime.now(UTC).isoformat(), ex=ttl)
 
 
 def _redis():  # noqa: ANN202

@@ -1,18 +1,20 @@
 # Telegram Bridge — Phone as Capture Surface and Delivery Channel — Feature Spec
 
-> **Status: Partially built** — phases 1–4 of 6.
+> **Status: Partially built** — phases 1–5 of 6.
 >
 > Built: the binding schema (migration 037), pairing (`services/telegram_binding.py`),
 > the Bot API client, the long-poll consumer and the message router
 > (`integrations/telegram/`), outbound delivery (`watchers/channels/telegram_channel.py`
-> plus `services/telegram_delivery.py`), and the chat commands
-> (`integrations/telegram/commands.py`). Messages flow both ways.
+> plus `services/telegram_delivery.py`), the chat commands
+> (`integrations/telegram/commands.py`), and the management API
+> (`api/integrations_telegram.py`) with photo and voice-note capture
+> (`integrations/telegram/media.py`). The bridge is usable end to end: a code
+> can be issued from the dashboard, a chat paired, and text, photos and voice
+> notes captured from a phone.
 >
-> Not built: the management API (phase 5) — which means there is still no way
-> to *issue* a pairing code except by writing the row by hand — and the
-> remaining test work (phase 6). The
-> generated status in [docs/STATE.md](../STATE.md) probes phase 5's router, so it
-> stays "Spec'd, not built" until the whole spec is real.
+> Not built: the remaining test work (phase 6). The generated status in
+> [docs/STATE.md](../STATE.md) probes phase 5's router, so it now reads "Built"
+> — phase 6 adds coverage rather than capability.
 
 > **Purpose**: Give Life Graph a two-way channel to the phone. Inbound, any message
 > sent to a personal bot becomes a capture event, so a thought can be recorded while
@@ -245,7 +247,9 @@ DELETE /api/v1/integrations/telegram/bindings/{id}
 → 204
 
 GET /api/v1/integrations/telegram/status
-→ 200 {"success": true, "data": {"configured": true, "poller": "leading" | "standby" | "stopped", "last_update_at": "...", "bound_chats": 1}}
+→ 200 {"success": true, "data": {"configured": true, "poller": "leading" | "stopped" | "disabled" | "unknown", "last_poll_at": "...", "last_update_at": "...", "bound_chats": 1}}
+   # As built. "standby" is not reachable from this process and "disabled"/"unknown"
+   # were added; see "Why /status reads Redis instead of asking the poller" in phase 5.
 ```
 
 `/status` exists because a long-polling consumer fails silently by design — the same
@@ -465,9 +469,68 @@ gained a `tenant_scope()` context manager for this, and the router wraps
 everything after the binding check in it.
 
 ### Phase 5: API + observability (~0.5 day)
-- [ ] `api/integrations_telegram.py` — pair, list, delete, status — with OpenAPI examples
-- [ ] `/health` gains a non-critical `telegram` check
-- [ ] Voice notes and photo captions through the existing multimodal path
+- [x] `api/integrations_telegram.py` — pair, list, delete, status — with OpenAPI examples
+- [x] `/health` gains a non-critical `telegram` check
+- [x] Voice notes and photo captions through the existing multimodal path
+
+#### Why `/status` reads Redis instead of asking the poller
+
+The poller runs in the ARQ worker process. The API serving `/status` runs in
+another. `TelegramPoller.status` exists and is correct, but the instance the API
+process can reach has never been started, so asking it would return `stopped`
+forever regardless of what the worker is doing.
+
+So the poller publishes its state and the endpoint reads it. The lease was
+already in Redis; phase 5 added two stamps beside it. `telegram:poller:heartbeat`
+is rewritten after every completed poll cycle and expires with the lease TTL,
+which is the actual liveness signal — a leader that holds the lease but has
+stopped turning shows a lease and no recent stamp. `telegram:poller:last_update`
+records the last batch that actually contained a message and never expires,
+because "nothing since Tuesday" is worth knowing.
+
+Two consequences for the contract below. First, `standby` is never returned by
+this endpoint: a standby instance is by definition the one that failed to take
+the lease, so it writes nothing, and from outside the worker a standby is
+indistinguishable from an absence. The value stays in the vocabulary because
+`poller.status` inside the worker does distinguish it. Second, an unreachable
+Redis reports `unknown` rather than `stopped` — reporting a verdict where there
+is no observation would send someone to debug a poller that is running fine.
+The response carries `last_poll_at` in addition to the contract's
+`last_update_at` for the same reason.
+
+The `/health` check reports the same structure and deliberately affects neither
+the 503 nor the overall status. Running the API without the worker is a normal
+way to develop, and a health check that is permanently red is one nobody reads.
+
+#### Why forwarded photos and voice notes are refused
+
+Phase 4 established that a forwarded *text* message is filed as `EXTERNAL`
+rather than `SELF`: the trust argument for the `telegram` surface is that the
+user typed it, and that argument does not extend to something they merely
+relayed.
+
+The multimodal path cannot make the same distinction. It derives a memory's
+trust tier from its source, and both `voice` and `image` map to `SELF`; there
+is no per-item override. Running a forwarded voice message through it would
+file a stranger's words at the owner's own tier — precisely the content an
+injection arrives in, and precisely the fencing that `is_untrusted` exists to
+apply. So the bridge declines forwarded media and says why, rather than
+laundering it. Lifting this needs a trust-tier argument threaded through
+`process_voice`/`process_image` and the `ingest_capture_text` job; it is not
+a Telegram-side fix.
+
+#### One message, one memory
+
+`process_image` gained an optional `caption` argument. A photo of a whiteboard
+captioned "notes from standup" is one thought: ingesting the caption separately
+would mean a search for "standup" found six words and missed the whiteboard.
+The caption is now ingested together with the OCR text, and is enough on its
+own to make an image with no text worth keeping. Callers that pass nothing get
+the previous behaviour unchanged, including the `ValueError` on a blank image.
+
+This also fixed an ordering bug in the router: media is now checked *before*
+text, because `text` is populated from `caption` when there is no message body,
+and checking text first stored the caption while silently discarding the photo.
 
 ### Phase 6: Tests (~1 day)
 - [ ] Unit: pairing (valid, expired, reused, wrong tenant, rebind attempt)
