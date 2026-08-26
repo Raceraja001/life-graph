@@ -1,5 +1,7 @@
 # AI Eval Harness — Systematic AI Evaluation Framework
 
+> **Status: Built.** Implemented in `life_graph/self_improving/eval_service.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: Provide a built-in evaluation framework for testing, scoring, and comparing AI outputs. Any tenant using AI features can create eval suites, run them against different model/prompt combinations, detect regressions, and A/B test prompts — all from within the platform.
 >
 > **Context**: Uzhavu is a multi-tenant SaaS monorepo (Turborepo + pnpm) with NestJS API, Next.js frontend, FastAPI AI engine, and PostgreSQL. All data is scoped by `orgId`. The eval harness integrates with the existing AI engine by calling it internally via HTTP for eval execution.

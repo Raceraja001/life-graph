@@ -1,5 +1,7 @@
 # Prompt Registry & Version Control — Feature Spec
 
+> **Status: Built.** Implemented in `life_graph/self_improving/prompt_version_service.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: Version, test, and manage all AI prompts across the uzhavu platform. Like Git for prompts — full version history, A/B testing, environment promotion, and analytics.
 >
 > **Architecture ref**: `APP_ARCHITECTURE.md` — follows manifest + module config pattern

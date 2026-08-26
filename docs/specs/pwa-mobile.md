@@ -1,5 +1,7 @@
 # PWA Mobile App — Progressive Web App Conversion
 
+> **Status: Built.** Implemented in `dashboard/app/(mobile)/m/page.tsx`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: Convert the existing Next.js frontend into a fully installable Progressive Web App with offline support, push notifications, background sync, camera integration, and share target capabilities. Users should be able to install the app on Android/iOS home screens and use core features without an internet connection.
 >
 > **Context**: Uzhavu is a multi-tenant SaaS monorepo (Turborepo + pnpm) with NestJS API, Next.js frontend, FastAPI AI engine, and PostgreSQL. All data is scoped by `orgId`. The PWA must integrate with the product factory system — each product domain gets its own manifest with correct branding.

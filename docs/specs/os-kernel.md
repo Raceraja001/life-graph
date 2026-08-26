@@ -1,5 +1,7 @@
 # Life Graph OS Kernel — Feature Spec
 
+> **Status: Built.** Implemented in `life_graph/kernel/process_manager.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: The core operating system layer that transforms Life Graph from a memory microservice into an always-running AI system. The kernel manages agent personas, task execution, intelligent routing, scheduled jobs, project awareness, and notifications — making Life Graph the brain that drives autonomous agent workflows.
 >
 > **Architecture ref**: `docs/ARCHITECTURE.md` — extends the existing service layer

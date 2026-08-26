@@ -1,5 +1,7 @@
 # Era 4 — Personal AI (Knowledge Engine) — Feature Spec
 
+> **Status: Built.** Implemented in `life_graph/api/advisor.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: An AI system that stores your preferences, challenges your assumptions with evidence from multiple AI models, and actively researches whether your opinions still hold. This is the CORE PRODUCT — the thing nobody else has.
 >
 > **Architecture ref**: `KNOWLEDGE.md` — builds on existing Life Graph memory system

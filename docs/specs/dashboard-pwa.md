@@ -1,5 +1,7 @@
 # Life Graph Dashboard — Kiro-Style Spec (v2)
 
+> **Status: Built.** Implemented in `dashboard/app/(mobile)/m/page.tsx`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Identity:** Chat + Canvas SaaS dashboard (you = client #1)
 > **Tech:** Next.js 15 PWA | `@uzhavu/ui` product factory | webhooks for real-time
 > **Repo location:** `d:\DevTools\Projects\agents\dashboard\`

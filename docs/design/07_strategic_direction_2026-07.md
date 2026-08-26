@@ -114,13 +114,13 @@ This document records the strategic decisions made during the July 2026 directio
 3. **Personal/client data boundary.** Before Uzhavu's ai-engine delegates memory here: client-tenant data is hermetically separated across storage, backups, logs, and embeddings; it **never enters personal context packets**; it is deletable on customer request without touching personal history. Prerequisite for the D5 business path.
 4. **Open-source trigger (decided, not scheduled).** Launch when ALL of: calibration screen works end-to-end, quickstart runs clean on a fresh machine, Lifeline restore-drill green. Minimal launch kit: outsider-facing README, demo GIF, dependency license check.
 
-**Planning status: CLOSED as of 2026-07-08.** New concepts go to the Horizon appendix as one paragraph, or nowhere. Execution starts at START_HERE.md roadmap F0.
+**Planning status: CLOSED as of 2026-07-08.** New concepts go to the Horizon appendix as one paragraph, or nowhere. Execution starts at roadmap F0.
 
 ---
 
 ## Priority order
 
-**The canonical build order lives in `START_HERE.md` §Roadmap — one source of truth, maintained there only.** This document records *why*; that table records *what and when*.
+**What is actually built now lives in [`docs/STATE.md`](../STATE.md), generated from the code; what remains open lives in [`CHARTER.md`](../../CHARTER.md#current-frontier).** This document records *why* — it is not a status page, and the roadmap table it used to defer to (`START_HERE.md` §Roadmap) has been retired.
 
 **What we are explicitly NOT doing now:** SaaS billing pages and plan tiers; persona-chain agent pipelines; a second UI codebase; a standalone learning platform (Growth Engine concepts fold into Life Graph later, right-sized); multi-device CRDT sync (VPS + thin clients suffices for years); Rewind-style screen recording (storage/privacy cost ≫ signal vs. tool exhaust already captured); building eval/tracing/workflow tools that exist as OSS (see `.comms/context/strategic-decision.md`).
 

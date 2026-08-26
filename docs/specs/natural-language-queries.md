@@ -1,5 +1,7 @@
 # Natural Language Queries — AI-Powered Business Data Querying
 
+> **Status: Built.** Implemented in `life_graph/api/search.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: Allow users to query their business data using plain language. The AI engine translates natural language to SQL, validates and executes it safely, and returns formatted results as tables, charts, or summary cards. Users can save frequently used queries and schedule automated reports.
 >
 > **Context**: Uzhavu is a multi-tenant SaaS monorepo (Turborepo + pnpm) with NestJS API, Next.js frontend, FastAPI AI engine, and PostgreSQL. All data is scoped by `orgId`. The natural language query system extends the existing AI chat by adding a data querying tool to the agent's tool registry.

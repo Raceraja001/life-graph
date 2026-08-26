@@ -1,5 +1,7 @@
 # Approvals Feed — Unified Human-in-the-Loop Queue — Feature Spec
 
+> **Status: Built.** Implemented in `life_graph/api/approvals.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > 🚧 **STATUS: SPEC / PHASE 4 of the mobile app build (July 2026).** New migration `026_approvals.py`; new `models/db.py` `Approval`; new `services/approvals.py`; new `api/approvals.py` (prefix `/approvals`); tests `tests/integration/test_approvals.py`. Frontend consumed by the mobile app's Approvals tab (`dashboard/app/(mobile)/m/approvals`). **Scope for this phase: the durable table + API + events + tests, populated from ONE real source (`self_improving` promotions awaiting review). The other three sources are specified as follow-up producers and are NOT built in this phase.**
 >
 > **Purpose**: Give the human one place to see and resolve everything the system has queued for their decision. Today there is no such place — pending items are scattered: `self_improving` promotions sit in `optimization_runs.status='needs_review'`; dedup merges and contradiction resolutions happen automatically with no gate; weekly-review drafts are generated on demand. This feature introduces a **polymorphic `approvals` table** that any subsystem can enqueue into, plus a small API to list and resolve items, with the resolution triggering the source's real side-effect.

@@ -1,5 +1,7 @@
 # Personal Roles — Feature Spec
 
+> **Status: Built.** Implemented in `life_graph/kernel/ambient.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: Turn the kernel's single-role chat routing into a personal-assistant model with
 > multiple specialized roles (SWE Team, Tech Tutor, Knowledge Scout, Work & Life Admin, and more
 > over time) that Jarvis can invoke — reactively on request, or ambiently on a schedule — while

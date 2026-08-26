@@ -26,10 +26,10 @@ It contains a full inventory of everything already built — 110 Prisma models, 
 
 ## Active Projects
 
-### 1. Life Graph (`d:\DevTools\Projects\agents`)
+### 1. Life Graph (`~/projects/life-graph`)
 - **Status**: Architecture designed, core code exists, building agent layer
 - **Tech**: Python, FastAPI, PostgreSQL + pgvector + Apache AGE, CrewAI, LiteLLM
-- **Key docs**: `KNOWLEDGE.md`, `docs/design/`
+- **Key docs**: `CHARTER.md` (intent), `docs/STATE.md` (generated inventory), `AGENTS.md` (conventions), `docs/design/`
 - **Current focus**: AI colleague team (multi-agent system)
 
 ### 2. Uzhavu (`\\RACE\Race - D - Com\DevTools\Projects\uzhavu.race`)

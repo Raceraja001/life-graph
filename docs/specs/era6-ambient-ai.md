@@ -1,5 +1,7 @@
 # Era 6 — Ambient AI (Watchers) Feature Spec
 
+> **Status: Built.** Implemented in `life_graph/watchers/framework.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: Build proactive AI background services ("watchers") that monitor your world — dependencies, server health, tech trends, code quality — and come to YOU with important information. AI that helps without being asked.
 >
 > **Architecture ref**: `KNOWLEDGE.md` — follows ARQ worker + EventBus patterns

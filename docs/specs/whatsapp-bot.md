@@ -1,5 +1,7 @@
 # WhatsApp Bot Integration — Feature Spec
 
+> **Status: Not this product.** This spec describes separate commercial work, not Life Graph. Kept for reference only — nothing here is implemented in this repository.
+
 > **Purpose**: Integrate WhatsApp Business Cloud API into the uzhavu platform so tenants can send invoices, payment reminders, order notifications, and run AI-powered customer chat — all via WhatsApp.
 >
 > **Architecture ref**: `APP_ARCHITECTURE.md` — follows manifest + module config pattern

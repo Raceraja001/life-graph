@@ -1,6 +1,8 @@
 # Capture Spine — Universal Input Layer — Feature Spec
 
-> ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `019_capture_spine.py`; `services/capture.py`, `services/capture_processors.py`; API `api/capture.py`; tests `tests/unit/test_capture_processors.py`. Interview system and daily brief added July 11, 2026. **Still pending**: tool-registry post-execution observation hook; correction-triple NDJSON export. See START_HERE.md "Remaining Gaps". **Do not rebuild what exists.**
+> **Status: Built.** Implemented in `life_graph/services/capture.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
+> ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `019_capture_spine.py`; `services/capture.py`, `services/capture_processors.py`; API `api/capture.py`; tests `tests/unit/test_capture_processors.py`. Interview system and daily brief added July 11, 2026. **Still pending**: tool-registry post-execution observation hook; correction-triple NDJSON export. See [CHARTER.md](../../CHARTER.md#current-frontier) for what is genuinely still open. **Do not rebuild what exists.**
 
 > **Purpose**: The single input architecture every intelligence feature eats from. Four capture layers — ambient observation, conversation-as-capture, system-initiated interviews, and deliberate moments — so the user **never does data entry**. They work, talk, correct, and answer good questions; the system captures everything else silently.
 >

@@ -1,5 +1,7 @@
 # LLM Trace Viewer — AI Observability & Tracing System
 
+> **Status: Built.** Implemented in `life_graph/api/model_health.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: Provide built-in tracing and observability for all AI/LLM calls across the platform. Every LLM call is automatically traced end-to-end with full context — like Langfuse, but built into the uzhavu platform. Enables cost monitoring, latency analysis, error tracking, and quality annotation.
 >
 > **Context**: Uzhavu is a multi-tenant SaaS monorepo (Turborepo + pnpm) with NestJS API, Next.js frontend, FastAPI AI engine, and PostgreSQL. All data is scoped by `orgId`. Tracing is implemented as middleware in the AI engine that wraps every LiteLLM call.

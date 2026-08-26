@@ -1,22 +1,23 @@
 # Life Graph — Complete Feature Catalog
 
+> **⚠️ Partial and dated.** This catalog covers the **memory core only** — it predates the
+> OS kernel, autonomy, drivers, judgment, and ambient layers, and its counts were written by
+> hand and have since drifted. It is kept for the per-feature prose, not as an inventory.
+>
+> For the complete, current inventory generated from the code, read
+> [STATE.md](STATE.md). For what the project is trying to be, read
+> [CHARTER.md](../CHARTER.md).
+
 > **What is Life Graph?** A memory layer for AI agents. It gives any LLM persistent, searchable, evolving memory — like giving an AI a brain that remembers across conversations.
 
 ---
 
 ## 📊 By The Numbers
 
-| Metric | Count |
-|--------|-------|
-| API Endpoints | **45 + 1 WebSocket** |
-| Database Models | **9 tables** |
-| Services | **12 modules** |
-| Background Workers | **6 tasks + 2 cron jobs** |
-| Middleware Layers | **5** |
-| Storage Backends | **4** (Postgres+pgvector, Apache AGE, Redis, MinIO) |
-| Alembic Migrations | **5** |
-| Integration Tests | **87** |
-| Python Files | **107** |
+Removed. Every count here was hand-maintained and every one of them had gone stale.
+The live figures — endpoints, tables, events, personas, tools, jobs, config flags,
+migrations, and tests — are generated into [STATE.md](STATE.md) by
+`scripts/gen_state.py`.
 
 ---
 

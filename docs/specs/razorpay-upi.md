@@ -1,5 +1,7 @@
 # Razorpay UPI Payment Integration — Feature Spec
 
+> **Status: Not this product.** This spec describes separate commercial work, not Life Graph. Kept for reference only — nothing here is implemented in this repository.
+
 > **Purpose**: Integrate Razorpay payment gateway into the uzhavu platform so tenants can collect payments via UPI, cards, and netbanking — with auto-reconciliation, QR codes, refunds, and subscription billing.
 >
 > **Architecture ref**: `APP_ARCHITECTURE.md` — follows manifest + module config pattern

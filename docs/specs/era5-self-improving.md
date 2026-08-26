@@ -1,5 +1,7 @@
 # Era 5 — Self-Improving Agent System
 
+> **Status: Built.** Implemented in `life_graph/self_improving/optimizer_service.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: An agent system that automatically detects its weaknesses, optimizes its own prompts, and deploys improvements — without human intervention. The complete feedback loop: eval → detect weakness → optimize → test → deploy.
 >
 > **Context**: Life Graph is a brain-inspired memory microservice (FastAPI + PostgreSQL + pgvector). All prompts used by the AI pipeline (extraction, scoring, contradiction detection, consolidation) are candidates for self-optimization. This system layers on top of the existing architecture, adding closed-loop prompt quality management.

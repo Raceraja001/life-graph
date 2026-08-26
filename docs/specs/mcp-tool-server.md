@@ -1,5 +1,7 @@
 # MCP Tool Server — Feature Spec
 
+> **Status: Built.** Implemented in `life_graph/mcp_server.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > **Purpose**: Expose the uzhavu AI engine's tools via the Model Context Protocol (MCP) standard. Any MCP-compatible AI client (Claude Desktop, Cursor, Windsurf, custom agents) can discover and use uzhavu's tools — Gmail, calendar, web search, knowledge base, business data queries — all scoped to the authenticated org.
 >
 > **Architecture ref**: `APP_ARCHITECTURE.md` — follows manifest + module config pattern

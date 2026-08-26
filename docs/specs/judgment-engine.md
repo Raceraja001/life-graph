@@ -1,6 +1,8 @@
 # Judgment Engine — Calibration, Decisions & the Adversarial Advisor — Feature Spec
 
-> ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `020_judgment_engine.py`; `services/judgment.py`, `services/outcome_resolver.py`, `services/adversarial_advisor.py`, `services/multi_model_advisor.py`, `scoring/calibration.py`; API `api/judgment.py`; tests `tests/unit/test_calibration.py`. **Still pending**: monthly failure-pattern mining job; big-decision detection heuristic. See START_HERE.md "Remaining Gaps". **Do not rebuild what exists.**
+> **Status: Built.** Implemented in `life_graph/services/judgment.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
+> ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `020_judgment_engine.py`; `services/judgment.py`, `services/outcome_resolver.py`, `services/adversarial_advisor.py`, `services/multi_model_advisor.py`, `scoring/calibration.py`; API `api/judgment.py`; tests `tests/unit/test_calibration.py`. **Still pending**: monthly failure-pattern mining job; big-decision detection heuristic. See [CHARTER.md](../../CHARTER.md#current-frontier) for what is genuinely still open. **Do not rebuild what exists.**
 
 > **Purpose**: The system that makes the user's judgment measurably better over time. Execution is being commoditized by agents; judgment is the residual human bottleneck. The Judgment Engine closes a loop no product closes today: **Decide** (advisor challenges you with your own history) → **Predict** (confidence logged) → **Act** → **Observe** (outcomes resolved automatically) → **Recalibrate** (your personal bias model updates nightly). The flagship demo is one screen: *your calibration curve improving over months.*
 >

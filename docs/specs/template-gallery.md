@@ -1,5 +1,7 @@
 # Template Gallery — Pre-Built Business Configurations
 
+> **Status: Not this product.** This spec describes separate commercial work, not Life Graph. Kept for reference only — nothing here is implemented in this repository.
+
 > **Purpose**: Let new users pick a pre-configured business setup (School, Gym, Clinic, Restaurant, etc.) instead of starting from scratch. One click creates categories, custom fields, sample products, invoice templates, task templates, and dashboard widgets — giving them a fully configured workspace in seconds.
 >
 > **Context**: Uzhavu is a multi-tenant SaaS monorepo (Turborepo + pnpm) with NestJS API, Next.js frontend, FastAPI AI engine, and PostgreSQL. All data is scoped by `orgId`. Templates integrate with the product factory system — each product config can define which templates are available to its users.

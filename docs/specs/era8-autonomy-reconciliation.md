@@ -1,5 +1,7 @@
 # Era-8 Autonomy — Model/Code Reconciliation — Remediation Spec
 
+> **Status: Built.** Implemented in `life_graph/autonomy/kill_switch.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+
 > ✅ **STATUS: IMPLEMENTED (July 2026)** on branch `fix/era8-autonomy-reconciliation`. Discovered
 > while auditing the pre-existing `/autonomy/approvals` bug during the mobile-app build. Scope grew
 > on inspection: the entire Era-8 autonomy execution path — pipeline, approvals, dispatcher producers,
