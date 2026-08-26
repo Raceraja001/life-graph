@@ -71,3 +71,9 @@ logs/
 
 # Handoff note from an unrelated work/fin-tech session — not part of this repo
 continued-from-fintech-session.md
+
+# Loose screenshots dropped in the repo root — browser-sized captures from
+# Playwright/MCP sessions that landed here instead of .playwright-mcp/. Nothing
+# in the repo references them. Root-level only, so dashboard/public/icons/*.png
+# stay tracked.
+/*.png
