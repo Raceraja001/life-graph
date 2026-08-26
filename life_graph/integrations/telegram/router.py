@@ -10,8 +10,15 @@ chat id and no authentication, so the order of checks here matters:
    flood the capture spine.
 4. Plain text goes to the capture spine under the tenant the binding names.
 
-Commands beyond ``/start`` are Phase 4; this module routes to a stub that says
-so rather than silently ignoring them.
+Everything after the binding check runs inside a ``tenant_scope`` so that the
+storage layer — which reads the tenant from a contextvar rather than taking it
+as an argument — cannot serve one chat from another chat's tenant. The poller
+handles every chat sequentially in one asyncio task, so an unrestored contextvar
+would persist into the next update.
+
+Command handling lives in :mod:`commands`; this module keeps the security
+ordering and owns the one outbound path, so that redaction is applied in a
+single place rather than per-handler.
 """
 
 from __future__ import annotations
@@ -23,7 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.config import settings
 from life_graph.core.events import event_bus
+from life_graph.core.redaction import redact_secrets
+from life_graph.core.tenant import tenant_scope
 from life_graph.core.trust import TrustTier
+from life_graph.integrations.telegram import commands as tg_commands
 from life_graph.integrations.telegram.client import TelegramClient, TelegramError
 from life_graph.services.capture import CaptureService
 from life_graph.services.telegram_binding import PairingError, TelegramBindingService
@@ -102,18 +112,20 @@ async def handle_message(msg: dict[str, Any], session: AsyncSession) -> None:
 
     await service.touch(chat_id)
 
-    if text.startswith("/"):
-        await _handle_command(chat_id, tenant_id, text, session)
-        return
+    # Past this point the message has a tenant, so give the storage layer one.
+    with tenant_scope(tenant_id, "telegram"):
+        if text.startswith("/"):
+            await _handle_command(chat_id, tenant_id, text, session)
+            return
 
-    if not text:
-        # A sticker, photo without a caption, or voice note. Phase 5 routes
-        # these through the multimodal path; until then, say so rather than
-        # dropping them silently.
-        await _reply(chat_id, "I can only read text messages so far.")
-        return
+        if not text:
+            # A sticker, photo without a caption, or voice note. Phase 5 routes
+            # these through the multimodal path; until then, say so rather than
+            # dropping them silently.
+            await _reply(chat_id, "I can only read text messages so far.")
+            return
 
-    await _capture(msg, chat_id, tenant_id, text, session)
+        await _capture(msg, chat_id, tenant_id, text, session)
 
 
 # ── Pairing ───────────────────────────────────────────────────────
@@ -211,8 +223,8 @@ async def _handle_command(chat_id: int, tenant_id: str, text: str, session: Asyn
             "Doing it there proves it's you.",
         )
         return
-    if command in {"recall", "pending", "approve", "reject"}:
-        await _reply(chat_id, f"/{command} isn't wired up yet.")
+    if command in {"recall", "pending", "approve", "reject", "yes", "confirm"}:
+        await tg_commands.handle(chat_id, tenant_id, text, session, _reply)
         return
 
     await _reply(chat_id, f"Unknown command: /{command}\n\n{_HELP}")
@@ -222,11 +234,18 @@ async def _handle_command(chat_id: int, tenant_id: str, text: str, session: Asyn
 
 
 async def _reply(chat_id: int, text: str) -> None:
-    """Best-effort reply. A failure to reply must not fail the message."""
+    """Best-effort reply. A failure to reply must not fail the message.
+
+    Every outbound message is redacted here rather than in each handler:
+    Telegram retains chat history on its own servers indefinitely and ordinary
+    cloud chats are not end-to-end encrypted, so a recalled memory containing
+    an API key would otherwise be copied somewhere we cannot delete it. One
+    choke point means a new command cannot forget to do it.
+    """
     async with TelegramClient() as client:
         if not client.configured:
             return
-        await client.send_message(chat_id, text)
+        await client.send_message(chat_id, redact_secrets(text))
 
 
 async def _within_rate_limit(chat_id: int) -> bool:

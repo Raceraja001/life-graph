@@ -1,15 +1,16 @@
 # Telegram Bridge — Phone as Capture Surface and Delivery Channel — Feature Spec
 
-> **Status: Partially built** — phases 1–3 of 6.
+> **Status: Partially built** — phases 1–4 of 6.
 >
 > Built: the binding schema (migration 037), pairing (`services/telegram_binding.py`),
 > the Bot API client, the long-poll consumer and the message router
-> (`integrations/telegram/`), and outbound delivery (`watchers/channels/telegram_channel.py`
-> plus `services/telegram_delivery.py`). Messages flow both ways.
+> (`integrations/telegram/`), outbound delivery (`watchers/channels/telegram_channel.py`
+> plus `services/telegram_delivery.py`), and the chat commands
+> (`integrations/telegram/commands.py`). Messages flow both ways.
 >
-> Not built: chat commands beyond `/start` and `/help` (phase 4), and the
-> management API (phase 5) — which means there is still no way to *issue*
-> a pairing code except by writing the row by hand. The
+> Not built: the management API (phase 5) — which means there is still no way
+> to *issue* a pairing code except by writing the row by hand — and the
+> remaining test work (phase 6). The
 > generated status in [docs/STATE.md](../STATE.md) probes phase 5's router, so it
 > stays "Spec'd, not built" until the whole spec is real.
 
@@ -444,9 +445,24 @@ of the *scheduled* daily brief does not currently fire. That is pre-existing and
 out of scope here, but it is the same one-line fix in the same block.
 
 ### Phase 4: Commands (~0.5 day)
-- [ ] `/help`, `/recall <query>` (index lines), `/pending`
-- [ ] `/approve` and `/reject` behind `LIFE_GRAPH_TELEGRAM_ALLOW_APPROVALS` with confirmation
-- [ ] `redact_secrets` on every outbound path
+- [x] `/help`, `/recall <query>` (index lines), `/pending`
+- [x] `/approve` and `/reject` behind `LIFE_GRAPH_TELEGRAM_ALLOW_APPROVALS` with confirmation
+- [x] `redact_secrets` on every outbound path — applied in `router._reply`, the single
+      outbound choke point, so a new command cannot forget it
+
+#### Why commands run inside a `tenant_scope`
+
+`storage/postgres.py` reads the tenant from a contextvar
+(`core/tenant.get_current_tenant_id`) rather than taking it as an argument, and
+raises when it is unset. A request gets one from `TenantMiddleware`; the poller
+does not, so any command touching the store has to set it.
+
+Setting alone is not enough. The poller handles every chat sequentially inside
+one asyncio task and therefore one context, so a `set_tenant_context` that is
+never restored stays in place for the *next* chat's update — and the failure is
+silent, because a wrong-but-present tenant reads as a valid scope. `core/tenant`
+gained a `tenant_scope()` context manager for this, and the router wraps
+everything after the binding check in it.
 
 ### Phase 5: API + observability (~0.5 day)
 - [ ] `api/integrations_telegram.py` — pair, list, delete, status — with OpenAPI examples
