@@ -25,6 +25,7 @@ import logging
 from typing import Any
 
 from life_graph.core.events import Event, EventType, event_bus
+from life_graph.storage.graph import graph_available
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,21 @@ def _get_graph_store():
 
         _graph_store = GraphStore()
     return _graph_store
+
+
+async def _graph_ready(kind: str, ref: str) -> bool:
+    """Whether a write to the knowledge graph is worth attempting.
+
+    The write paths run from EventBus handlers, and ``EventBus.emit`` gathers
+    handlers with ``return_exceptions=True`` and logs failures at ERROR. On a
+    database without Apache AGE that turns *every* preference and evidence
+    write into a permanent ERROR line, so check first and skip quietly. The
+    relational record is the source of truth; the graph is a mirror.
+    """
+    if await graph_available():
+        return True
+    logger.debug("Knowledge graph unavailable — skipping %s sync for %s", kind, ref)
+    return False
 
 
 # ── Allowed inter-preference relationship types ──────────────
@@ -167,6 +183,9 @@ class PreferenceGraphService:
             choice: The selected choice.
             confidence: Current confidence score.
         """
+        if not await _graph_ready("preference", preference_id):
+            return
+
         store = _get_graph_store()
         await store.create_preference_node(
             tenant_id=tenant_id,
@@ -201,6 +220,9 @@ class PreferenceGraphService:
             stance: ``"supports"`` | ``"contradicts"`` | ``"neutral"``.
             strength: Credibility-weighted strength of the evidence.
         """
+        if not await _graph_ready("evidence", evidence_id):
+            return
+
         store = _get_graph_store()
         await store.create_evidence_node(
             tenant_id=tenant_id,
@@ -239,6 +261,9 @@ class PreferenceGraphService:
             raise ValueError(
                 f"Invalid rel_type {rel_type!r}; must be one of {sorted(_ALLOWED_REL_TYPES)}"
             )
+
+        if not await _graph_ready("preference link", from_preference_id):
+            return
 
         store = _get_graph_store()
         await store.create_preference_relationship(

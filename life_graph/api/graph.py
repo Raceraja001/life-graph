@@ -17,8 +17,14 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from life_graph.api.responses import success_response
+from life_graph.storage.graph import graph_available
 
 logger = logging.getLogger(__name__)
+
+# Meta flag returned when Apache AGE is not installed (managed Postgres, or a
+# stock pgvector image). The graph routes then answer 200 with an empty result
+# instead of 4xx/5xx: an absent optional subsystem is not a failed request.
+_GRAPH_OFF_META = {"graph_enabled": False}
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -109,7 +115,13 @@ async def list_entities(
     """List all entities in the knowledge graph.
 
     Optionally filter by vertex label (e.g. ``Technology``, ``Person``).
+
+    Returns an empty list with ``meta.graph_enabled = false`` when Apache AGE
+    is not installed.
     """
+    if not await graph_available():
+        return success_response(data=[], meta=_GRAPH_OFF_META)
+
     store = _get_graph_store()
     try:
         raw = await store.get_all_entities(label=label)
@@ -159,6 +171,9 @@ async def execute_cypher(body: CypherQuery):
 
     **Admin-level endpoint** — allows arbitrary read queries.
     Write operations (CREATE, SET, DELETE, MERGE, REMOVE, DROP) are blocked.
+
+    Returns an empty list with ``meta.graph_enabled = false`` when Apache AGE
+    is not installed. A malformed query against a working install is still 400.
     """
     # Security: block write operations
     _write_keywords = re.compile(
@@ -171,6 +186,9 @@ async def execute_cypher(body: CypherQuery):
             detail="Write operations are not allowed via the API. Use read-only Cypher.",
         )
 
+    if not await graph_available():
+        return success_response(data=[], meta=_GRAPH_OFF_META)
+
     store = _get_graph_store()
     try:
         result = await store.execute_cypher(
@@ -180,6 +198,8 @@ async def execute_cypher(body: CypherQuery):
         )
         return success_response(data=result)
     except Exception as exc:
+        # Reached only on a working AGE install, so this is a real Cypher
+        # error — still a 400. Only the unavailable case degrades above.
         logger.exception("Cypher query failed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -198,7 +218,17 @@ async def find_path(
     to_label: str = Query("Entity", description="Target vertex label"),
     max_depth: int = Query(5, ge=1, le=10, description="Maximum path depth"),
 ):
-    """Find a connecting path between two entities in the knowledge graph."""
+    """Find a connecting path between two entities in the knowledge graph.
+
+    Returns ``found: false`` with ``meta.graph_enabled = false`` when Apache
+    AGE is not installed.
+    """
+    if not await graph_available():
+        return success_response(
+            data={"from": from_name, "to": to_name, "path": [], "found": False},
+            meta=_GRAPH_OFF_META,
+        )
+
     store = _get_graph_store()
     try:
         path = await store.find_path(

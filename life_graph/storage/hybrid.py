@@ -17,6 +17,10 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+class _GraphUnavailableError(Exception):
+    """Internal signal: the optional knowledge graph is not usable."""
+
+
 class HybridQueryEngine:
     """Query engine that blends graph traversal with vector search.
 
@@ -225,7 +229,8 @@ class HybridQueryEngine:
 
         Returns:
             Dict with ``memories`` (scored and ranked), ``entities`` (graph hits),
-            ``search_mode`` ("tri_hybrid"), and score breakdown.
+            ``search_mode`` (``"tri_hybrid"``, or ``"hybrid"`` when the graph leg
+            was skipped or failed), and score breakdown.
         """
         # ── Step 1: Vector + BM25 hybrid (from PostgresMemoryStore) ──
         scored_memories: list[dict[str, Any]] = []
@@ -267,15 +272,25 @@ class HybridQueryEngine:
 
         except Exception:
             logger.warning(
-                "Hybrid search failed — falling back to graph-only",
+                "Vector+BM25 search failed — the graph leg alone cannot produce "
+                "results, so this query returns nothing",
                 exc_info=True,
             )
 
         # ── Step 2: Graph entity lookup for proximity boosting ──
         graph_entities: list[dict[str, Any]] = []
         entity_names: set[str] = set()
+        graph_applied = False
+
+        from life_graph.storage.graph import graph_available
 
         try:
+            if not await graph_available():
+                # Apache AGE is optional. Skip the leg entirely rather than
+                # running the boost loop over an empty entity set, which would
+                # otherwise look like a graph pass that simply found nothing.
+                raise _GraphUnavailableError
+
             entity_results = await self.graph_store.search_entities(query)
             graph_entities = [e.get("properties", {}) for e in entity_results[:10]]
             entity_names = {e.get("name", "").lower() for e in graph_entities if e.get("name")}
@@ -317,6 +332,10 @@ class HybridQueryEngine:
                 # Recalculate final score with graph boost
                 mem["final_score"] = mem["base_score"] + mem["graph_boost"]
 
+            graph_applied = True
+
+        except _GraphUnavailableError:
+            logger.debug("Knowledge graph unavailable — vector+BM25 ranking only")
         except Exception:
             logger.warning(
                 "Graph search failed — returning vector+BM25 only",
@@ -330,7 +349,10 @@ class HybridQueryEngine:
         return {
             "memories": scored_memories,
             "entities": graph_entities,
-            "search_mode": "tri_hybrid",
+            # Only claim three signals when three ran. Apache AGE is optional,
+            # so the graph leg is skipped outright on a plain-Postgres install
+            # and every graph_boost stays 0.0 — that is vector+BM25 "hybrid".
+            "search_mode": "tri_hybrid" if graph_applied else "hybrid",
             "signals": {
                 "vector_weight": vector_weight,
                 "bm25_weight": bm25_weight,

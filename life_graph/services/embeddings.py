@@ -1,8 +1,11 @@
 """Local embedding service using sentence-transformers.
 
 Provides lazy-loaded, 768-dimensional embeddings via all-mpnet-base-v2.
-Falls back gracefully (empty vectors) when sentence-transformers is not
-installed, so the rest of the system keeps working.
+When sentence-transformers is not installed and no remote backend is
+configured, :attr:`available` is False and embedding calls return empty
+vectors. That is a genuinely degraded state — semantic search stops
+working — so ``main.py`` refuses to start in it unless
+``LIFE_GRAPH_REQUIRE_EMBEDDING_BACKEND=false`` is set explicitly.
 """
 
 from __future__ import annotations
@@ -40,6 +43,42 @@ class EmbeddingService:
                     "sentence-transformers not installed — "
                     "EmbeddingService will return empty vectors"
                 )
+
+    @property
+    def available(self) -> bool:
+        """Whether an embedding backend is reachable.
+
+        False means every :meth:`embed` call returns an empty vector, which
+        disables semantic search rather than degrading it.
+        """
+        return self._available
+
+    async def probe(self) -> str:
+        """Live check that the configured backend actually returns a vector.
+
+        ``available`` is decided once, at construction, and so cannot see a
+        backend that was configured and has since gone down. That failure is
+        silent in the worst way for a memory system: ingestion keeps reporting
+        success while every vector comes back empty and semantic search quietly
+        returns nothing. ``/health`` calls this so the degradation is visible.
+
+        Returns ``"healthy"``, ``"unavailable"`` (no backend at all) or
+        ``"unreachable"`` (configured, not answering).
+
+        The in-process sentence-transformers path is reported from the static
+        flag rather than probed: a real probe would load a multi-gigabyte model
+        on the first health check and block the event loop while it did.
+        """
+        if not self._available:
+            return "unavailable"
+        if not self._use_local():
+            return "healthy"
+        try:
+            vector = await self._lm_client.embed("health")
+        except Exception as e:
+            logger.warning("Embedding backend probe failed: %s", e)
+            return "unreachable"
+        return "healthy" if vector else "unreachable"
 
     def _use_local(self) -> bool:
         """Check if local LM Studio should be used for embeddings."""

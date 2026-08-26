@@ -32,6 +32,12 @@ def graph(monkeypatch):
     store.create_evidence_node = AsyncMock()
     store.create_edge = AsyncMock()
     monkeypatch.setattr("life_graph.services.preference_graph._get_graph_store", lambda: store)
+    # Apache AGE is optional, and the sync methods now skip the graph when it
+    # is unavailable rather than ERROR-logging on every preference write. These
+    # tests are about what reaches the store, so force the graph on.
+    monkeypatch.setattr(
+        "life_graph.services.preference_graph.graph_available", AsyncMock(return_value=True)
+    )
     return store
 
 

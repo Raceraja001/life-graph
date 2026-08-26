@@ -41,10 +41,31 @@ class Settings(BaseSettings):
     # ── Redis ──────────────────────────────────────────
     redis_url: str = "redis://localhost:6379/0"
 
+    # ── Knowledge Graph (Apache AGE) ───────────────────
+    graph_enabled: bool = True
+    """Whether the Apache AGE knowledge graph is available.
+
+    AGE is a *compiled* Postgres extension needing ``shared_preload_libraries
+    = age``, so it cannot be installed on managed Postgres (Supabase, Neon,
+    RDS) or on the stock ``pgvector/pgvector:pg16`` image. Setting this to
+    ``False`` short-circuits every graph call to an empty result instead of a
+    connection attempt, and search degrades from vector+BM25+graph to
+    vector+BM25. Nothing is lost in correctness: the graph leg only ever adds
+    a proximity *boost* on top of the vector+BM25 score, so ranking is
+    unchanged in kind, only in the ordering of entity-adjacent hits. Leave it
+    ``True`` on a self-hosted server built from ``Dockerfile.postgres``; the
+    runtime probes for AGE anyway and disables itself if it is missing."""
+
     # ── Embeddings ─────────────────────────────────────
     # Modern multilingual local embedder (D6). Dimension is the single source of
     # truth for the pgvector columns (Vector(settings.embedding_dimension)) and
     # the null-and-rebuild migration — keep the two in sync when swapping models.
+    # When no embedding backend is reachable the service used to return empty
+    # vectors and log a warning, so semantic search silently stopped working
+    # while ingestion still reported success. For a memory system that is the
+    # wrong failure mode: refuse to start instead. Set false to opt into the
+    # degraded mode deliberately (e.g. a keyword-only deployment).
+    require_embedding_backend: bool = True
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimension: int = 1024
 
@@ -61,6 +82,20 @@ class Settings(BaseSettings):
     recall_max_during_session: int = 2
     recall_cooldown_days: int = 7
     recall_confidence_threshold: float = 0.7
+
+    # ── Progressive disclosure ─────────────────────────
+    # Two halves of the same protocol: an index line names a memory cheaply,
+    # then a batch expand fetches the ones that matter.
+    #
+    # How much of a memory's text a compact index line carries when search or
+    # recall is called with index_only. Long enough to recognise a memory,
+    # short enough that the line costs ~12 tokens instead of the ~150 a full
+    # memory object costs.
+    recall_index_content_chars: int = 120
+    # Cap on one POST /api/v1/memories/batch expand. Recall hands back at most
+    # a few dozen index lines, so a caller with a legitimate reason to expand
+    # more than this is really asking for a list endpoint.
+    memory_batch_max: int = 50
 
     # ── Agent drivers ──────────────────────────────────
     driver_land_verified_work: bool = True

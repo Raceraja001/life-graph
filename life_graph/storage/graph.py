@@ -6,10 +6,17 @@ the ``life_graph`` graph in PostgreSQL via the Apache AGE extension.
 AGE requires per-connection setup (``LOAD 'age'`` and ``SET search_path``),
 so this module maintains its own asyncpg connection pool rather than
 sharing the SQLAlchemy engine.
+
+AGE is **optional**. It is a compiled extension that managed Postgres
+(Supabase, Neon, RDS) and the stock ``pgvector/pgvector:pg16`` image do not
+carry, so every entry point here degrades to an empty result rather than
+raising when the extension, the graph, or ``settings.graph_enabled`` is
+missing. See :func:`_get_pool`.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -23,6 +30,27 @@ logger = logging.getLogger(__name__)
 
 # Graph name used throughout the application
 GRAPH_NAME = "life_graph"
+
+
+# ── Process-wide pool + availability probe ────────────────────
+#
+# Both are module-level on purpose.
+#
+# The pool was previously declared as a class attribute but assigned as an
+# instance attribute, so every ``GraphStore()`` built its own pool — and
+# callers like ``services/memory_links.py`` construct one per link and never
+# close it. One pool per process is the intent.
+#
+# The availability answer is cached for the same reason, but more sharply: on
+# a database without AGE, ``asyncpg.create_pool`` fails in ``init`` (``LOAD
+# 'age'``) and leaves the pool unset, so an uncached probe would retry the
+# connection on *every* call for the life of the process. One failed probe
+# disables the graph until restart.
+_pool: asyncpg.Pool | None = None
+_pool_lock = asyncio.Lock()
+
+# None = not probed yet, True/False = the cached answer.
+_available: bool | None = None
 
 
 def _parse_dsn(database_url: str) -> str:
@@ -78,6 +106,108 @@ def _to_cypher_props(props: dict[str, Any]) -> str:
     return "{" + ", ".join(parts) + "}"
 
 
+async def _get_pool() -> asyncpg.Pool | None:
+    """Return the process-wide AGE pool, or ``None`` if the graph is unusable.
+
+    ``None`` is returned when the graph is switched off
+    (``LIFE_GRAPH_GRAPH_ENABLED=false``), when the AGE extension is missing, or
+    when the ``life_graph`` graph was never created — the three ways a plain
+    ``pgvector/pgvector:pg16`` or managed-Postgres deployment looks. The answer
+    is cached for the process; a caller that gets ``None`` should return an
+    empty result, not raise.
+    """
+    global _pool, _available
+
+    if not settings.graph_enabled:
+        return None
+    if _available is False:
+        return None
+    if _pool is not None:
+        return _pool
+
+    async with _pool_lock:
+        # Re-check under the lock — concurrent callers race to the first probe.
+        if _available is False:
+            return None
+        if _pool is not None:
+            return _pool
+
+        dsn = _parse_dsn(settings.database_url)
+        try:
+            pool = await asyncpg.create_pool(
+                dsn=dsn,
+                min_size=2,
+                max_size=settings.database_pool_size,
+                init=GraphStore._init_connection,
+            )
+        except Exception:
+            _available = False
+            logger.warning(
+                "Apache AGE is unavailable (LOAD 'age' failed) — graph search is "
+                "disabled for this process; vector+BM25 search is unaffected.",
+                exc_info=True,
+            )
+            return None
+
+        try:
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT 1 FROM ag_catalog.ag_graph WHERE name = $1", GRAPH_NAME
+                )
+        except Exception:
+            await pool.close()
+            _available = False
+            logger.warning(
+                "Apache AGE graph catalog unreadable — graph search is disabled for this process.",
+                exc_info=True,
+            )
+            return None
+
+        if row is None:
+            await pool.close()
+            _available = False
+            logger.warning(
+                "Graph %r does not exist (migration 002 was skipped) — graph "
+                "search is disabled for this process.",
+                GRAPH_NAME,
+            )
+            return None
+
+        _pool = pool
+        _available = True
+        return _pool
+
+
+async def close_pool() -> None:
+    """Close the process-wide pool and forget the cached probe result."""
+    global _pool, _available
+    if _pool is not None:
+        await _pool.close()
+        _pool = None
+    _available = None
+
+
+async def graph_available() -> bool:
+    """Whether Cypher queries can run right now (probing once, then cached)."""
+    return await _get_pool() is not None
+
+
+async def graph_status(probe: bool = False) -> str:
+    """``"disabled"`` | ``"unavailable"`` | ``"enabled"`` — for /health.
+
+    Args:
+        probe: Connect once to settle the answer if it has not been settled
+            yet. Off by default so a status read never opens a connection.
+    """
+    if not settings.graph_enabled:
+        return "disabled"
+    if _available is None and probe:
+        await _get_pool()
+    if _available is False:
+        return "unavailable"
+    return "enabled"
+
+
 class GraphStore:
     """Async graph store backed by Apache AGE (Cypher over PostgreSQL).
 
@@ -87,9 +217,12 @@ class GraphStore:
             MATCH (n:Technology) RETURN n
         $$) AS (v agtype);
 
-    The store lazily creates a connection pool on first use and
-    configures each connection with AGE's required ``LOAD`` and
-    ``SET search_path`` commands.
+    Connections come from one process-wide pool, created on first use and
+    configured with AGE's required ``LOAD`` and ``SET search_path`` commands.
+    Instances are therefore cheap and interchangeable.
+
+    Every method returns an empty result (``[]`` / ``""`` / ``None`` / an empty
+    dict) rather than raising when the graph is unavailable.
 
     Usage::
 
@@ -99,19 +232,9 @@ class GraphStore:
         )
     """
 
-    _pool: asyncpg.Pool | None = None
-
-    async def _get_pool(self) -> asyncpg.Pool:
-        """Get or create the asyncpg connection pool."""
-        if self._pool is None:
-            dsn = _parse_dsn(settings.database_url)
-            self._pool = await asyncpg.create_pool(
-                dsn=dsn,
-                min_size=2,
-                max_size=settings.database_pool_size,
-                init=self._init_connection,
-            )
-        return self._pool
+    async def _get_pool(self) -> asyncpg.Pool | None:
+        """The process-wide asyncpg pool, or ``None`` when AGE is unusable."""
+        return await _get_pool()
 
     @staticmethod
     async def _init_connection(conn: asyncpg.Connection) -> None:
@@ -120,10 +243,8 @@ class GraphStore:
         await conn.execute('SET search_path = ag_catalog, "$user", public')
 
     async def close(self) -> None:
-        """Close the connection pool."""
-        if self._pool is not None:
-            await self._pool.close()
-            self._pool = None
+        """Close the shared connection pool."""
+        await close_pool()
 
     # ── Core Cypher Execution ─────────────────────────────────
 
@@ -143,7 +264,8 @@ class GraphStore:
                      to ``["v"]`` for single-column results.
 
         Returns:
-            List of dicts, one per result row.
+            List of dicts, one per result row. Empty when the graph is
+            disabled or Apache AGE is unavailable.
         """
         if columns is None:
             columns = ["v"]
@@ -171,7 +293,14 @@ class GraphStore:
 
         sql = f"SELECT * FROM cypher('{GRAPH_NAME}', $$ {resolved_cypher} $$) AS ({col_spec})"
 
-        pool = await self._get_pool()
+        # Short-circuit *before* touching the pool: ``_get_pool`` is not inside
+        # the try/except below, so a connection failure here would escape as an
+        # exception rather than an empty result.
+        pool = await _get_pool()
+        if pool is None:
+            logger.debug("Graph disabled — skipping Cypher: %s", resolved_cypher[:120])
+            return []
+
         async with pool.acquire() as conn:
             # AGE requires search_path to include ag_catalog.
             # asyncpg resets search_path (via RESET ALL) when returning

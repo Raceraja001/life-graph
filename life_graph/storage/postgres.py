@@ -108,6 +108,31 @@ class PostgresMemoryStore:
             )
             return result.scalar_one_or_none()
 
+    async def retrieve_many(self, memory_ids: list[uuid.UUID]) -> list[Memory]:
+        """Fetch several memories by primary key in one round trip.
+
+        The read half of progressive disclosure: an index-mode caller comes
+        back with the handful of ids it actually wants, and expanding them
+        one ``retrieve()`` at a time would cost more than never having
+        compacted the payload in the first place.
+
+        Tenant-scoped like every other query here — an id is guessable and
+        must not be a way across tenants. Unknown or other-tenant ids are
+        simply absent from the result; this is a lookup, not an assertion.
+        Order is not guaranteed to match *memory_ids*.
+        """
+        if not memory_ids:
+            return []
+
+        async with async_session() as session:
+            result = await session.execute(
+                select(Memory).where(
+                    Memory.id.in_(memory_ids),
+                    Memory.tenant_id == get_current_tenant_id(),
+                )
+            )
+            return list(result.scalars().all())
+
     # ── Update ────────────────────────────────────────────────
 
     async def update(self, memory_id: uuid.UUID, updates: MemoryUpdate) -> Memory:

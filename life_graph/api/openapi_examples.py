@@ -236,12 +236,19 @@ HEALTH_CHECK = {
         "content": {
             "application/json": {
                 "example": {
-                    "status": "healthy",
-                    "version": "1.0.0",
+                    # "degraded", not "healthy": a failed startup subsystem is
+                    # reported below. Only Postgres being down yields a 503.
+                    "status": "degraded",
+                    "version": "1.1.0",
                     "environment": "production",
                     "checks": {
                         "postgres": {"status": "healthy", "latency_ms": 1.5},
                         "redis": {"status": "healthy", "latency_ms": 0.8},
+                        # Optional Apache AGE extension: enabled/disabled/unavailable.
+                        "graph": {"status": "enabled"},
+                        # healthy/unreachable/unavailable — a backend that is
+                        # configured but down degrades without a 503.
+                        "embeddings": {"status": "healthy", "latency_ms": 12.4},
                         "startup": {
                             "status": "degraded",
                             "total": 15,

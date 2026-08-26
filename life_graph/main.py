@@ -123,6 +123,31 @@ async def lifespan(app: FastAPI):
     if settings.is_development:
         logger.warning("Running in DEVELOPMENT mode — auth/tenant requirements relaxed")
 
+    # Startup — refuse to boot with no embedding backend at all.
+    #
+    # With neither sentence-transformers installed nor a remote backend wired,
+    # every embed() call returns an empty vector: ingestion keeps reporting
+    # success while semantic search quietly returns nothing. That is the worst
+    # failure mode a memory system can have, so it is fatal by default.
+    #
+    # Deliberately NOT wrapped in startup_step() — that helper swallows
+    # exceptions so an optional step can never abort boot, and this one must.
+    # It only catches the statically knowable case (no local model, no client);
+    # a configured backend that happens to be down still fails at call time.
+    from life_graph.api.dependencies import get_embedding_service
+
+    if not get_embedding_service().available:
+        msg = (
+            "No embedding backend is available — semantic search would silently "
+            "return nothing. Install the local extra "
+            "(pip install 'life-graph[local-nlp]') or configure a remote backend "
+            "(LIFE_GRAPH_USE_LOCAL_LLM=true). To run without embeddings on "
+            "purpose, set LIFE_GRAPH_REQUIRE_EMBEDDING_BACKEND=false."
+        )
+        if settings.require_embedding_backend:
+            raise RuntimeError(msg)
+        logger.warning("%s — continuing, require_embedding_backend is false", msg)
+
     # Startup — enable Langfuse tracing via LiteLLM (if configured)
     if settings.langfuse_public_key:
         with startup_step(report, "langfuse_tracing"):
@@ -543,6 +568,11 @@ async def health_check():
 
     Returns per-dependency status and latency. HTTP 503 if Postgres
     is unreachable (critical), 200 otherwise (even if Redis is down).
+    ``checks.graph`` reports the optional Apache AGE knowledge graph as
+    ``enabled`` / ``disabled`` / ``unavailable`` and never affects the 503.
+    ``checks.embeddings`` probes the embedding backend (``healthy`` /
+    ``unreachable`` / ``unavailable``); a backend that is down degrades the
+    overall status but likewise never causes a 503.
     """
     import time
 
@@ -563,6 +593,7 @@ async def health_check():
             "error": str(e),
             "latency_ms": round((time.monotonic() - t0) * 1000, 1),
         }
+    pg_ok = checks["postgres"]["status"] == "healthy"
 
     # Redis check (non-critical)
     t0 = time.monotonic()
@@ -573,6 +604,29 @@ async def health_check():
     }
     if redis_status != "ok":
         checks["redis"]["error"] = redis_status
+
+    # Knowledge graph (non-critical). Apache AGE is a compiled extension that
+    # managed Postgres cannot install, so its absence is a supported
+    # configuration, not a fault — it never affects the 503 decision below.
+    # Probing only once Postgres is known healthy keeps a momentary DB outage
+    # from latching the graph off for the rest of the process.
+    from life_graph.storage.graph import graph_status
+
+    checks["graph"] = {"status": await graph_status(probe=pg_ok)}
+
+    # Embedding backend (non-critical). Startup refuses to boot when no backend
+    # is configured at all, but one that was configured and has since gone down
+    # — LM Studio not running, a remote provider unreachable — fails silently:
+    # writes keep succeeding while every vector comes back empty and semantic
+    # search returns nothing. Probe it so the degradation is visible. It never
+    # affects the 503, which stays Postgres-only.
+    from life_graph.api.dependencies import get_embedding_service
+
+    t0 = time.monotonic()
+    checks["embeddings"] = {
+        "status": await get_embedding_service().probe(),
+        "latency_ms": round((time.monotonic() - t0) * 1000, 1),
+    }
 
     # Startup subsystems — wired once at boot, each optional and each
     # previously failing silently. A subsystem that never subscribed cannot
@@ -594,13 +648,13 @@ async def health_check():
     }
 
     # Overall status
-    pg_ok = checks["postgres"]["status"] == "healthy"
     redis_ok = checks["redis"]["status"] == "healthy"
+    embeddings_ok = checks["embeddings"]["status"] == "healthy"
 
     if not pg_ok:
         # Postgres is the only critical dependency — everything else degrades.
         overall = "unhealthy"
-    elif redis_ok and not startup_failures:
+    elif redis_ok and embeddings_ok and not startup_failures:
         overall = "healthy"
     else:
         overall = "degraded"

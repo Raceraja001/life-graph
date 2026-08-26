@@ -1,0 +1,65 @@
+# Life Graph — plain Postgres profile (managed-Postgres compatible)
+#
+# Stock `pgvector/pgvector:pg16`: no build step, no Apache AGE, no
+# `shared_preload_libraries`. This is the shape of every managed Postgres
+# (Supabase, Neon, RDS), so if the app runs here it runs there.
+#
+# What you give up: the Apache AGE knowledge graph. Migration 002 detects the
+# missing extension and skips itself, the remaining migrations run normally,
+# and search degrades from vector+BM25+graph to vector+BM25 — the graph only
+# ever contributed an additive proximity boost, so ranking stays correct.
+# `/graph/*` routes answer 200 with `meta.graph_enabled: false`.
+#
+# Usage:
+#   docker compose -f docker-compose.plain.yml up -d      # or: podman compose
+#   python -m alembic upgrade head
+#
+# Ports match docker-compose.override.yml (55432 / 56379) so the same
+# LIFE_GRAPH_DATABASE_URL works against either profile. Volumes are distinct
+# from the AGE profile's — the two are separate databases, not one shared one.
+# They therefore cannot run at the same time: stop one profile before starting
+# the other (`docker compose down` / `docker compose -f docker-compose.plain.yml down`).
+#
+# Set LIFE_GRAPH_GRAPH_ENABLED=false to skip the runtime AGE probe entirely.
+
+services:
+  # ── PostgreSQL + pgvector (no Apache AGE) ────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: life_graph_db_plain
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-life_graph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-life_graph}
+      POSTGRES_DB: ${POSTGRES_DB:-life_graph}
+    ports:
+      - "55432:5432"
+    volumes:
+      - pg_data_plain:/var/lib/postgresql/data
+    # No init script: migration 001 runs `CREATE EXTENSION IF NOT EXISTS
+    # vector` itself, and scripts/init_db.sql would fail on `CREATE EXTENSION
+    # age`.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-life_graph}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis (rate limiting, pub/sub, job queue) ────────
+  redis:
+    image: redis:7-alpine
+    container_name: life_graph_redis_plain
+    ports:
+      - "56379:6379"
+    volumes:
+      - redis_data_plain:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pg_data_plain:
+  redis_data_plain:
