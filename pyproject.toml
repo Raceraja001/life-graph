@@ -1,10 +1,38 @@
 [project]
 name = "life-graph"
-version = "1.0.0"
+# Kept in step with the newest released heading in CHANGELOG.md. `pyproject.toml`
+# had drifted behind at 1.0.0 while the changelog already documented 1.1.0.
+version = "1.1.0"
 description = "Brain-inspired memory microservice for SaaS applications"
+readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "racer"}]
+keywords = [
+    "memory",
+    "ai-agents",
+    "llm",
+    "rag",
+    "vector-search",
+    "knowledge-graph",
+    "pgvector",
+    "fastapi",
+    "multi-tenant",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 
 dependencies = [
     # API
@@ -27,18 +55,31 @@ dependencies = [
     "alembic>=1.13",
     "pgvector>=0.3",
 
-    # NLP & ML (local, no API cost)
-    "spacy>=3.7",
-    "sentence-transformers>=3.0",
+    # numpy is a REAL core dependency: services/transcript_extractor.py imports
+    # it at module level, so `import life_graph.main` fails without it. It was
+    # never declared because spacy/sentence-transformers dragged it in
+    # transitively; moving those to an extra exposed the omission.
+    "numpy>=1.26",
+
+    # NLP & ML: spacy and sentence-transformers moved to the `local-nlp` extra
+    # (see below). Between them they pulled the CUDA torch stack — nvidia
+    # 2.7 GB + torch 1.1 GB + triton 690 MB — into every install, GPU or not,
+    # making `pip install life-graph` a 5.4 GB download. Both are imported
+    # lazily behind guards (extraction/nlp.py loads spaCy inside a method;
+    # services/embeddings.py catches ImportError), so their absence is a
+    # supported state, not a crash.
 
     # LLM (routing only, minimal usage)
     "litellm>=1.40",
     "google-auth>=2.30",  # Vertex AI credential handling (litellm's vertex_ai/* provider)
 
     # Cold Start
-    "pydriller>=2.6",
+    # pydriller and radon moved to the `cold-start` extra (see below):
+    # radon is imported nowhere in life_graph/, and pydriller is imported
+    # lazily inside ColdStartGitAnalyzer with an ImportError guard that logs
+    # "pydriller not installed — skipping Git analysis" and returns [].
+    # pyyaml stays: it is a hard dependency of the cold-start config loader.
     "pyyaml>=6.0",
-    "radon>=6.0",
 
     # Utilities
     "httpx>=0.27",
@@ -70,6 +111,26 @@ multimodal = [
     "pymupdf>=1.24",
     "Pillow>=10.0",
 ]
+# Repo mining for the cold-start bootstrap (`life-graph cold-start`). Both are
+# optional at runtime; without them git analysis is skipped with a warning.
+cold-start = [
+    "pydriller>=2.6",
+    "radon>=6.0",
+]
+# Local NLP and embeddings. Without this extra there is no in-process
+# embedding model, so an embedding backend must be configured instead
+# (LIFE_GRAPH_USE_LOCAL_LLM with LM Studio, or a remote provider) — with no
+# backend configured at all the app refuses to start rather than silently
+# storing empty vectors.
+#
+# This pulls the default CUDA build of torch. For CPU-only machines install
+# torch first from the CPU index, which drops ~3.4 GB:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   pip install "life-graph[local-nlp]"
+local-nlp = [
+    "spacy>=3.7",
+    "sentence-transformers>=3.0",
+]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
@@ -78,13 +139,83 @@ dev = [
     "httpx>=0.27",
     "testcontainers[postgres]>=4.7",
 ]
+# Everything a full self-hosted deployment uses, so `pip install life-graph[all]`
+# reproduces the old all-in-one install in one line.
+all = [
+    "life-graph[multimodal,cold-start,local-nlp]",
+]
 
 [project.scripts]
 life-graph = "life_graph.cli:main"
 
+[project.urls]
+Homepage = "https://github.com/Raceraja001/life-graph"
+Repository = "https://github.com/Raceraja001/life-graph"
+Issues = "https://github.com/Raceraja001/life-graph/issues"
+Documentation = "https://github.com/Raceraja001/life-graph/blob/master/docs/STATE.md"
+Changelog = "https://github.com/Raceraja001/life-graph/blob/master/CHANGELOG.md"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# ── Packaging ────────────────────────────────────────────────────────────────
+# NOTE FOR FUTURE MAINTAINERS: this project builds with **hatchling**, not
+# setuptools, so a `MANIFEST.in` would be silently ignored. The sdist/wheel
+# contents are controlled entirely by the two tables below.
+
+[tool.hatch.build.targets.wheel]
+# A directory, not a module list: hatchling walks `life_graph/` recursively, so
+# every current and future subpackage (life_graph/integrations/, …) is picked up
+# automatically. Do NOT replace this with an explicit per-package list — a new
+# subpackage would then be dropped from the wheel with no error.
+packages = ["life_graph"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# Alembic revisions live outside the package but are needed to create the schema.
+# A wheel install would otherwise have no way to run `alembic upgrade head`.
+# These ship as inert data today; wiring a `life-graph migrate` command to them
+# is a source-level change tracked separately (see docs/RELEASE.md).
+"alembic" = "life_graph/_alembic"
+"alembic.ini" = "life_graph/_alembic/alembic.ini"
+
+[tool.hatch.build.targets.sdist]
+# Allow-list, not a deny-list: anything not named here cannot leak into the
+# tarball, which is what keeps .env, .comms/, logs/, .run/ and friends out even
+# when a new secret-bearing file appears at the repo root.
+include = [
+    "/life_graph",
+    "/alembic",
+    "/alembic.ini",
+    "/tests",
+    "/scripts",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/CHARTER.md",
+    "/AGENTS.md",
+    "/CLAUDE.md",
+    "/docs/STATE.md",
+    "/docs/QUICKSTART.md",
+    "/docs/OPERATIONS.md",
+    "/docs/RELEASE.md",
+    "/docs/ARCHITECTURE.md",
+    "/pyproject.toml",
+    "/.env.example",
+]
+exclude = [
+    "**/__pycache__",
+    "**/*.py[cod]",
+    "**/.pytest_cache",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.zip",
+    "**/.ruff_cache",
+]
+# tests/fixtures IS shipped, deliberately. It is 48 KB of plain text and four
+# unit modules import from it, so dropping it would put a test suite in the
+# tarball that cannot run. To leave tests out of the sdist entirely, remove
+# "/tests" from `include` above rather than excluding the fixtures.
 
 [tool.ruff]
 target-version = "py311"

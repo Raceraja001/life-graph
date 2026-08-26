@@ -52,6 +52,25 @@ curl http://localhost:8000/health
 > [!TIP]
 > If `curl` returns `{"status": "ok"}`, you're good to go. Jump to [First API Call](#-first-api-call).
 
+> [!NOTE]
+> **Plain Postgres / managed Postgres.** The `postgres` service above is built
+> from `Dockerfile.postgres` because Apache AGE is a compiled extension needing
+> `shared_preload_libraries = age` — which Supabase, Neon and RDS do not allow.
+> To run against stock Postgres instead:
+>
+> ```bash
+> docker compose -f docker-compose.plain.yml up -d   # pgvector/pgvector:pg16
+> alembic upgrade head
+> ```
+>
+> Migration 002 probes for AGE, skips itself when it is absent, and the
+> remaining migrations run normally. The knowledge graph is then off:
+> `/graph/*` answers 200 with `meta.graph_enabled: false`, `/health` reports
+> `checks.graph: "unavailable"`, and search uses vector+BM25 instead of
+> vector+BM25+graph. Ranking stays correct — the graph leg only ever added an
+> additive proximity boost. Set `LIFE_GRAPH_GRAPH_ENABLED=false` to skip the
+> runtime probe as well.
+
 ---
 
 ## 🛠️ Option 2: Local Development
@@ -73,8 +92,22 @@ source .venv/bin/activate
 ### 2. Install dependencies
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,local-nlp]"
 python -m spacy download en_core_web_sm
+```
+
+`local-nlp` carries spaCy and sentence-transformers. They are optional because
+between them they pull the CUDA torch stack (~4.5 GB), but without them there is
+no in-process embedding model, so the app refuses to start unless some backend
+is configured — a remote one via `LIFE_GRAPH_USE_LOCAL_LLM=true`, or an explicit
+opt-out via `LIFE_GRAPH_REQUIRE_EMBEDDING_BACKEND=false`. The check is a
+configuration check, not a reachability probe: a backend that is configured but
+offline still fails per-call rather than at boot. On a CPU-only machine install the
+smaller torch build first:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -e ".[dev,local-nlp]"
 ```
 
 ### 3. Start infrastructure services

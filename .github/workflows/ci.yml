@@ -46,7 +46,16 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: |
+          # torch from the CPU index first: sentence-transformers would
+          # otherwise drag in the ~3.4 GB CUDA build, which no runner uses.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          # local-nlp carries spaCy and sentence-transformers. They left the
+          # core dependency set when the base install was cut from 5.4 GB to
+          # 369 MB, but CI still needs them: the spaCy model download below
+          # and the API server's embedding-backend startup check both fail
+          # without them.
+          pip install -e ".[dev,local-nlp]"
 
       - name: Download spaCy model
         run: python -m spacy download en_core_web_sm
@@ -58,20 +67,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: unit-tests
 
+    # Postgres is NOT a service container here. Life Graph needs pgvector *and*
+    # Apache AGE in the same server, and no published image carries both — AGE
+    # is compiled from source by Dockerfile.postgres, which is exactly the image
+    # the local stack and production run. `services:` can only pull a pre-built
+    # image, so this job builds that Dockerfile and starts it by hand instead.
+    #
+    # Before this, CI used pgvector/pgvector:pg16, migration 002 hit
+    # `extension "age" is not available`, and the job died at the migration
+    # step — the integration suite had never actually executed here.
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: life_graph
-          POSTGRES_PASSWORD: life_graph_dev
-          POSTGRES_DB: life_graph
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
       minio:
         image: minio/minio
         env:
@@ -79,13 +84,71 @@ jobs:
           MINIO_ROOT_PASSWORD: minioadmin
         ports:
           - 9000:9000
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     env:
       LIFE_GRAPH_DATABASE_URL: postgresql+asyncpg://life_graph:life_graph_dev@localhost:5432/life_graph
       LIFE_GRAPH_DATABASE_URL_SYNC: postgresql://life_graph:life_graph_dev@localhost:5432/life_graph
+      LIFE_GRAPH_REDIS_URL: redis://localhost:6379/0
 
     steps:
       - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Compiling AGE takes minutes from cold; the layer cache makes repeat runs
+      # near-instant, so this costs full price only when the Dockerfile or its
+      # base image actually changes.
+      - name: Build Postgres image (pgvector + Apache AGE)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.postgres
+          tags: life-graph-postgres:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start Postgres
+        run: |
+          docker run -d --name life_graph_ci_db \
+            -e POSTGRES_USER=life_graph \
+            -e POSTGRES_PASSWORD=life_graph_dev \
+            -e POSTGRES_DB=life_graph \
+            -p 5432:5432 \
+            -v "${{ github.workspace }}/scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro" \
+            life-graph-postgres:ci \
+            postgres -c shared_preload_libraries=age
+
+      - name: Wait for Postgres
+        run: |
+          for _ in $(seq 1 60); do
+            if docker exec life_graph_ci_db pg_isready -U life_graph -d life_graph >/dev/null 2>&1; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "postgres never became ready" >&2
+          docker logs life_graph_ci_db >&2
+          exit 1
+
+      # Fail loudly here if the image is missing an extension, rather than
+      # letting it surface as a confusing failure inside a migration.
+      - name: Verify pgvector + AGE are present
+        run: |
+          docker exec life_graph_ci_db psql -U life_graph -d life_graph -v ON_ERROR_STOP=1 \
+            -c "CREATE EXTENSION IF NOT EXISTS vector;" \
+            -c "CREATE EXTENSION IF NOT EXISTS age;" \
+            -c "SELECT extname, extversion FROM pg_extension WHERE extname IN ('vector', 'age') ORDER BY extname;"
 
       - uses: actions/setup-python@v5
         with:
@@ -93,13 +156,31 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: |
+          # torch from the CPU index first: sentence-transformers would
+          # otherwise drag in the ~3.4 GB CUDA build, which no runner uses.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          # local-nlp carries spaCy and sentence-transformers. They left the
+          # core dependency set when the base install was cut from 5.4 GB to
+          # 369 MB, but CI still needs them: the spaCy model download below
+          # and the API server's embedding-backend startup check both fail
+          # without them.
+          pip install -e ".[dev,local-nlp]"
 
       - name: Download spaCy model
         run: python -m spacy download en_core_web_sm
 
       - name: Run database migrations
         run: python -m alembic upgrade head
+
+      # A migration that leaves its connection mid-transaction applies nothing
+      # while `alembic upgrade head` still exits 0. Assert the schema is really
+      # there instead of trusting the exit code.
+      - name: Verify migrations actually landed
+        run: |
+          docker exec life_graph_ci_db psql -U life_graph -d life_graph -v ON_ERROR_STOP=1 \
+            -c "SELECT version_num FROM alembic_version;" \
+            -c "SELECT to_regclass('public.memories') IS NOT NULL AS memories_exists;"
 
       - name: Start API server
         run: |
@@ -108,6 +189,10 @@ jobs:
 
       - name: Run integration tests
         run: python -m pytest tests/integration/ -q --tb=short
+
+      - name: Postgres logs on failure
+        if: failure()
+        run: docker logs life_graph_ci_db
 
   dashboard:
     name: Dashboard Lint + Build + Tests

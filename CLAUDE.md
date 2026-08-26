@@ -6,12 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Life Graph is a brain-inspired memory + agent "AI operating system": a multi-tenant FastAPI
 backend (`life_graph/`) with a Next.js dashboard (`dashboard/`). Before designing features, read
-the deeper onboarding docs, which are kept current and authoritative:
+the two canonical docs — they are split by how fast they change, so neither goes stale:
 
-- **START_HERE.md** — current build state, what's done vs. spec'd, verified roadmap table.
-- **KNOWLEDGE.md** — full architecture, DB schema, event list, design decisions, "you want to… look at…" file map.
-- **AGENTS.md** — developer preferences, code conventions, spec-driven build order, inter-agent `.comms/` protocol.
-- **docs/specs/** — Kiro-style specs (SQL, API contracts, code, task checklists) for each phase/era.
+- **CHARTER.md** — *intent.* Why the project exists, the five design invariants, the layer
+  model, non-goals, and the genuinely open gaps. Hand-written; contains no counts.
+- **docs/STATE.md** — *state.* The exact current inventory: endpoints, tables (with the
+  migration that created each), events, personas, tools, scheduled jobs, config flags,
+  migrations, tests, dashboard routes, and spec status. **Generated** by
+  `scripts/gen_state.py` — never hand-edit it, regenerate it. `--html` also refreshes
+  `docs/feature-inventory.html`; `--check` exits 1 when it is stale.
+- **AGENTS.md** — developer preferences, code conventions, the spec-driven build loop, inter-agent `.comms/` protocol.
+- **docs/specs/** — Kiro-style specs (SQL, API contracts, code, task checklists) for each phase/era; each carries a `Built` / `Spec'd, not built` / `Not this product` status header.
+
+`KNOWLEDGE.md` and `START_HERE.md` are now redirects to the above. `docs/archive/` holds
+historical build records and is explicitly not authoritative. If a number in any prose
+document disagrees with `docs/STATE.md`, `docs/STATE.md` is right.
 
 Note the two names: the Python **package** is `life_graph/` (underscore); the git repo root is `life-graph/`
 (hyphen). The untracked `life-graph/` subfolder is a stray `.claude` dir — ignore it.
@@ -21,7 +30,8 @@ Note the two names: the Python **package** is `life_graph/` (underscore); the gi
 Backend (Python 3.11+, run from repo root; `python` = your venv):
 
 ```bash
-pip install -e ".[dev]"              # install (optional extras: ".[dev,multimodal]")
+pip install -e ".[dev,local-nlp]"    # local-nlp = spaCy + sentence-transformers (CUDA torch, ~4.5GB)
+                                     # other extras: multimodal, cold-start, all
 python -m alembic upgrade head       # apply migrations (21 revisions in alembic/versions/)
 python -m alembic revision --autogenerate -m "add <feature> tables"
 python -m uvicorn life_graph.main:app --host 0.0.0.0 --port 8080 --reload --reload-dir life_graph
@@ -91,7 +101,7 @@ Built on top of the memory core are the "OS" layers, each backed by its own Alem
 spec — `kernel/` (process manager, personas, router, scheduler, projects, notifications),
 `agents/` + `tools/` (`@tool` decorator, OpenAI function-calling), plus eras: `self_improving/`,
 `watchers/`, `autonomy/`, `drivers/` (agent execution), capture (`services/capture*.py`), and
-judgment (`services/judgment.py`). START_HERE.md maps each migration (014–021) to its module.
+judgment (`services/judgment.py`). `docs/STATE.md` maps every table to the migration that created it.
 
 Two design invariants worth internalizing: the core is **schema-less** (facts live in a JSONB
 `properties` column with dynamic tag arrays — no hardcoded type/domain enums), and behavior is
@@ -106,5 +116,6 @@ services directly.
 - Test pattern: `httpx.AsyncClient` + `ASGITransport` (in-process, no running server) with
   `@pytest_asyncio.fixture` and tenant headers. Tests are defensive — they accept 500 when the DB is
   unreachable but must not accept 422 for valid input. `conftest.py` mocks pgvector so unit tests run without Postgres.
-- The developer works solo on Windows, self-hosts, is cost-conscious (favors cheap models like Gemini
-  Flash/DeepSeek), and asks to **approve implementation plans before you start building**.
+- The developer works solo, dual-boots Linux (primary) and Windows, self-hosts, is cost-conscious
+  (favors cheap models like Gemini Flash/DeepSeek), and asks to **approve implementation plans
+  before you start building**.

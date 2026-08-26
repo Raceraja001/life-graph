@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # no local package build, hence no source tree yet.
 COPY pyproject.toml .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -c "import tomllib; d = tomllib.load(open('pyproject.toml', 'rb')); open('requirements.lock.txt', 'w').write('\n'.join(d['project']['dependencies'] + d['project']['optional-dependencies']['multimodal']))" && \
+    python -c "import tomllib; d = tomllib.load(open('pyproject.toml', 'rb')); open('requirements.lock.txt', 'w').write('\n'.join(d['project']['dependencies'] + d['project']['optional-dependencies']['multimodal'] + d['project']['optional-dependencies']['local-nlp']))" && \
     pip install --prefix=/install \
     --extra-index-url https://pypi.org/simple \
     --index-url https://download.pytorch.org/whl/cpu \

@@ -52,9 +52,38 @@ Life Graph is a multi-tenant SaaS backend that stores, scores, searches, and evo
 
 ## 🚀 Quick Start
 
+### Option A — install the package
+
+Needs a PostgreSQL with the `pgvector` extension; the schema is created by the
+packaged Alembic revisions, so no source checkout is required.
+
 ```bash
-# Clone & start with Docker
-git clone <repo-url> && cd agents
+pip install "life-graph[local-nlp]"   # or [all] to add voice/OCR/PDF + repo mining
+
+export LIFE_GRAPH_DATABASE_URL_SYNC=postgresql://life_graph:life_graph@localhost:5432/life_graph
+life-graph migrate                    # applies the packaged migrations
+life-graph --help
+```
+
+`local-nlp` (spaCy + sentence-transformers) is optional because it pulls the
+CUDA torch stack — roughly 4.5 GB. The bare `pip install life-graph` is small
+but has no in-process embedding model, and the server **refuses to start when no
+embedding backend is configured at all** rather than silently storing empty
+vectors: either install this extra, point at a remote backend with
+`LIFE_GRAPH_USE_LOCAL_LLM=true`, or opt into the degraded mode with
+`LIFE_GRAPH_REQUIRE_EMBEDDING_BACKEND=false`. (A backend that is configured but
+down still fails at call time, not at startup.)
+CPU-only machines should install the smaller torch build first:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install "life-graph[local-nlp]"
+```
+
+### Option B — run the full stack with Docker
+
+```bash
+git clone https://github.com/Raceraja001/life-graph.git && cd life-graph
 cp .env.example .env
 docker compose up -d
 
@@ -64,6 +93,14 @@ docker compose exec app alembic upgrade head
 # Verify
 curl http://localhost:8000/health
 ```
+
+> **No Apache AGE?** `docker-compose.yml` builds Postgres from source to get
+> AGE, which managed Postgres (Supabase, Neon, RDS) cannot install. Use
+> `docker compose -f docker-compose.plain.yml up -d` for a stock
+> `pgvector/pgvector:pg16` instead. Migration 002 detects the missing extension
+> and skips itself, every other migration runs, and search degrades from
+> vector+BM25+graph to vector+BM25 — the graph only ever added a proximity
+> boost. Set `LIFE_GRAPH_GRAPH_ENABLED=false` to skip the runtime probe too.
 
 ```bash
 # Create your first memory
@@ -169,7 +206,7 @@ life_graph/
 ## 🧪 Testing
 
 ```bash
-# All tests (107 files, 87 integration tests)
+# All tests (current counts live in docs/STATE.md, which is generated)
 pytest tests/ -v
 
 # Unit tests only
@@ -183,12 +220,26 @@ pytest tests/integration/ -v
 
 ## 📚 Documentation
 
+Two documents are canonical. They are split by how fast they change, so neither drifts:
+
+| Document | Description |
+|----------|-------------|
+| **[CHARTER.md](CHARTER.md)** | **Intent** — what Life Graph is, the design invariants, the layer model, non-goals, and what's still open. Hand-written; contains no counts. |
+| **[STATE.md](docs/STATE.md)** | **State** — the exact current inventory: endpoints, tables, events, personas, tools, jobs, config, migrations, tests. Generated from the code by `scripts/gen_state.py`; never hand-edited. |
+| [feature-inventory.html](docs/feature-inventory.html) | The same inventory as a browsable, self-contained page |
+
+Supporting docs:
+
 | Document | Description |
 |----------|-------------|
 | [QUICKSTART.md](docs/QUICKSTART.md) | Setup guide with Docker and local dev instructions |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture with data flow diagrams |
+| [OPERATIONS.md](docs/OPERATIONS.md) | Operations, backup, and restore drills |
+| [AGENTS.md](AGENTS.md) | Conventions, the spec-driven build loop, the `.comms/` protocol |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and API versioning policy |
-| [FEATURES.md](docs/FEATURES.md) | Exhaustive feature catalog (45+ endpoints) |
+| [FEATURES.md](docs/FEATURES.md) | Narrative catalog of the memory core — partial and dated; see STATE.md for counts |
+| [docs/specs/](docs/specs/) | Per-feature specs, each with a `Built` / `Spec'd, not built` / `Not this product` header |
+| [docs/archive/](docs/archive/) | Historical build records — explicitly not authoritative |
 
 ### Research & Design
 | Document | Description |
@@ -231,7 +282,7 @@ LIFE_GRAPH_DEDUP_THRESHOLD=0.92
 
 ## 📜 License
 
-MIT
+MIT — see [LICENSE](LICENSE).
 
 ---
 
