@@ -1,0 +1,10 @@
+{
+  "name": "life-graph",
+  "description": "Feed Claude Code sessions into Life Graph's capture spine, and inject proactive recall back at session start.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Life Graph"
+  },
+  "homepage": "https://github.com/life-graph/life-graph",
+  "keywords": ["memory", "capture", "recall", "life-graph"]
+}
