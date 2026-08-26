@@ -29,12 +29,41 @@ import type {
 // ── Tiny React import shim ─────────────────────────────────────
 // We dynamically import React so this module doesn't hard-fail
 // when React isn't installed (the hooks simply won't work).
+//
+// The shim is typed structurally rather than as `any`. As `any`, every
+// `useState<T>()` below was a call on an untyped value, which TypeScript
+// rejects outright (TS2347) — so the package emitted its JavaScript fine and
+// then failed the declaration build. Describing just the three hooks this
+// module actually uses fixes that while keeping the zero-dependency design:
+// no `react` import, no `@types/react`, nothing added to package.json.
+//
+// `require` is declared locally for the same reason. It is module-scoped, so
+// it shadows nothing globally and does not drag @types/node (and with it the
+// whole Node global surface) into a DOM-targeted SDK.
 
-let React: any
+type Dispatch<S> = (value: S | ((prev: S) => S)) => void
+
+interface ReactShim {
+  useState<S>(initial: S | (() => S)): [S, Dispatch<S>]
+  useEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void
+  useCallback<T extends (...args: never[]) => unknown>(
+    fn: T,
+    deps?: readonly unknown[],
+  ): T
+}
+
+declare const require: ((id: string) => unknown) | undefined
+
+// Definite assignment: the try/catch may legitimately leave this unset when
+// React is absent, which is exactly what ensureReact() reports at call time.
+let React!: ReactShim
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  React = require('react')
+  // Optional call because ESM output has no `require`. When the identifier is
+  // absent entirely this throws a ReferenceError, which the catch handles the
+  // same way as a missing `react` package.
+  React = require?.('react') as ReactShim
 } catch {
   // React not available — hooks will throw at call-time
 }
