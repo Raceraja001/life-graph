@@ -2333,6 +2333,88 @@ class PushSubscription(Base):
         return f"<PushSubscription(id={self.id!s:.8}, tenant={self.tenant_id})>"
 
 
+# ── Telegram Bridge Models ─────────────────────────────────────────
+
+
+class TelegramBinding(Base):
+    """Links one Telegram chat to one tenant.
+
+    The Bot API gives us a ``chat_id`` and no authentication of its own, so this
+    table is where a message acquires a tenant. Code that handles an inbound
+    update must look the chat up here and drop the message when there is no
+    active binding — there is no default tenant to fall back to.
+    """
+
+    __tablename__ = "telegram_bindings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String, nullable=False)
+    chat_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        doc="Telegram chat id. BigInteger because supergroup ids exceed int4.",
+    )
+    chat_type: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="private",
+        doc="Telegram chat type: private, group, supergroup, channel",
+    )
+    username: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, doc="@handle at bind time, for display only"
+    )
+    active: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        doc="Revoking sets this False rather than deleting, keeping the audit trail",
+    )
+    bound_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    properties: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+    __table_args__ = (
+        # Partial unique: one active binding per chat, so a chat can never be
+        # bound to two tenants at once. Enforced here rather than in code
+        # because concurrent pairing attempts would race a SELECT-then-INSERT.
+        Index("ix_telegram_bindings_chat", "chat_id", unique=True, postgresql_where=text("active")),
+        Index("ix_telegram_bindings_tenant", "tenant_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<TelegramBinding(chat={self.chat_id}, tenant={self.tenant_id}, active={self.active})>"
+        )
+
+
+class TelegramPairingCode(Base):
+    """A short-lived, single-use code that binds a chat to a tenant.
+
+    The code is the only secret between a stranger and a write into someone
+    else's memory, so it is short-lived, single-use (``used_at``), and issued
+    only to an already-authenticated API caller.
+    """
+
+    __tablename__ = "telegram_pairing_codes"
+
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, doc="Set on redemption; a set value means spent"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (Index("ix_telegram_pairing_expires", "expires_at"),)
+
+    def __repr__(self) -> str:
+        return f"<TelegramPairingCode(tenant={self.tenant_id}, used={self.used_at is not None})>"
+
+
 # ── Agent Driver Models ────────────────────────────────────────────
 
 

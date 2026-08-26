@@ -35,6 +35,7 @@ from life_graph.core.trust import (
         ("api", TrustTier.EXTERNAL),
         ("mcp", TrustTier.EXTERNAL),
         ("watcher", TrustTier.EXTERNAL),
+        ("telegram", TrustTier.SELF),
         ("whatsapp", TrustTier.HOSTILE_POSSIBLE),
     ],
 )
@@ -42,7 +43,10 @@ def test_classify_surface_maps_every_known_surface(surface, expected):
     assert classify_surface(surface) == expected
 
 
-@pytest.mark.parametrize("surface", ["", None, "unknown", "telegram", "email", "TOTALLY_NEW"])
+# "telegram" used to stand here as an unmapped example. It is mapped now
+# (see _SURFACE_TIER), so the example moved to the table above rather than
+# being deleted — the point of this test is the default, not the surface.
+@pytest.mark.parametrize("surface", ["", None, "unknown", "email", "sms", "TOTALLY_NEW"])
 def test_classify_surface_defaults_deny_to_external(surface):
     """Unknown / empty / None surfaces are untrusted, never trusted."""
     assert classify_surface(surface) == TrustTier.EXTERNAL

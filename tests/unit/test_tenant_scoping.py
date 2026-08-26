@@ -59,6 +59,20 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     ("autonomy/approvals/service.py", "send_escalations"): (
         "system cron with no tenant context; sweeps every tenant in one pass"
     ),
+    # A Telegram update arrives with a chat id and nothing else. These lookups are
+    # what *establish* the tenant, so they cannot filter by one — the binding row
+    # is the answer, not the query key. The chat id is the scope: a partial unique
+    # index guarantees at most one active binding per chat, so this can never
+    # return another tenant's row by accident.
+    ("services/telegram_binding.py", "_active_binding_for_chat"): (
+        "resolves chat_id -> tenant; filtering by tenant would beg the question"
+    ),
+    ("services/telegram_binding.py", "touch"): (
+        "keyed by chat_id, which the partial unique index scopes to one tenant"
+    ),
+    ("services/telegram_binding.py", "purge_expired_codes"): (
+        "housekeeping sweep of expired codes across every tenant, like the crons above"
+    ),
 }
 
 

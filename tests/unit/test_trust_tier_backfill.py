@@ -38,8 +38,32 @@ def migration():
     return _migration_module()
 
 
+# Surfaces added to _SURFACE_TIER *after* migration 036 was written and applied.
+#
+# 036 is a one-time backfill of rows that existed when it ran, and it has run.
+# Editing an applied migration to mention a surface that had no rows at the time
+# would rewrite history to no effect, so the migration is left as the snapshot it
+# is and new surfaces are recorded here instead.
+#
+# This stays an explicit list rather than a loosened assertion: adding a surface
+# to core/trust.py still fails these tests until someone writes it down, which is
+# the moment to ask whether existing rows need a backfill of their own. Entries
+# are only correct here if the surface genuinely postdates 036 and has no rows
+# predating it.
+_ADDED_AFTER_036 = {
+    # Telegram bridge, migration 037. No rows can predate it: the tables that
+    # produce this surface are created by that same migration.
+    "telegram",
+}
+
+
 def _expected(tier: TrustTier) -> set[str]:
-    return {surface for surface, t in _SURFACE_TIER.items() if t is tier}
+    """Surfaces at `tier` that migration 036 was written to cover."""
+    return {
+        surface
+        for surface, t in _SURFACE_TIER.items()
+        if t is tier and surface not in _ADDED_AFTER_036
+    }
 
 
 @pytest.mark.parametrize(
@@ -61,7 +85,7 @@ def test_external_surfaces_are_left_to_the_default_branch(migration):
     """EXTERNAL is the ELSE, so listing it too would be a second, silent copy."""
     listed = set(migration._SELF) | set(migration._VERIFIED) | set(migration._HOSTILE)
     assert listed.isdisjoint(_expected(TrustTier.EXTERNAL))
-    assert listed == set(_SURFACE_TIER) - _expected(TrustTier.EXTERNAL)
+    assert listed == set(_SURFACE_TIER) - _ADDED_AFTER_036 - _expected(TrustTier.EXTERNAL)
 
 
 def test_every_mapped_surface_appears_exactly_once(migration):
@@ -133,3 +157,14 @@ def test_the_two_vocabularies_share_one_map():
         assert surface in _SURFACE_TIER
     for source_type in ("manual", "inferred", "bulk_import", "consolidation"):
         assert source_type in _SURFACE_TIER
+
+
+def test_the_post_036_allowlist_is_honest(migration):
+    """The allowlist must not hide a surface the migration does cover, or a typo."""
+    listed = set(migration._SELF) | set(migration._VERIFIED) | set(migration._HOSTILE)
+    assert _ADDED_AFTER_036.isdisjoint(listed), (
+        "a surface cannot both postdate migration 036 and be listed in it"
+    )
+    assert set(_SURFACE_TIER) >= _ADDED_AFTER_036, (
+        "_ADDED_AFTER_036 names a surface that is no longer in _SURFACE_TIER — remove it here too"
+    )

@@ -70,6 +70,14 @@ _SURFACE_TIER: dict[str, TrustTier] = {
     "api": TrustTier.EXTERNAL,
     "mcp": TrustTier.EXTERNAL,
     "watcher": TrustTier.EXTERNAL,
+    # The user texting their own bot from their own phone. SELF rather than
+    # HOSTILE_POSSIBLE — the opposite of "whatsapp" below — because the bot
+    # answers only chats the user explicitly paired with a one-time code, and
+    # an unpaired chat is dropped rather than ingested. Content the user
+    # *forwards* from someone else is not covered by that reasoning, so the
+    # Telegram router passes TrustTier.EXTERNAL explicitly for forwards
+    # instead of letting this default apply.
+    "telegram": TrustTier.SELF,
     # Content authored by other people.
     "whatsapp": TrustTier.HOSTILE_POSSIBLE,
     # ── memories.source_type vocabulary ──────────────────────────────────

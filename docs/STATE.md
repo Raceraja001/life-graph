@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-08-26 05:45 UTC` from `master` @ `94b108f`
+Generated `2026-08-26 11:05 UTC` from `master` @ `66d430b`
 
 ---
 
@@ -17,16 +17,16 @@ Generated `2026-08-26 05:45 UTC` from `master` @ `94b108f`
 | | |
 |---|---|
 | HTTP operations | **243** across 206 paths, 36 tags |
-| Database tables | **64** |
-| Migrations | **36** (head: `036_backfill_memory_trust_tiers`) |
+| Database tables | **66** |
+| Migrations | **37** (head: `037_telegram_bridge`) |
 | Event types | **77** |
 | Built-in personas | **13** |
 | Agent tools | **13** |
 | Scheduled jobs | **14** |
 | Config settings | **144** (prefix `LIFE_GRAPH_`) |
-| Test functions | **1921** in 202 files |
+| Test functions | **1936** in 203 files |
 | Dashboard pages | **18** |
-| Python | 276 files, 66,224 lines |
+| Python | 277 files, 66,519 lines |
 
 ---
 
@@ -461,7 +461,7 @@ Generated `2026-08-26 05:45 UTC` from `master` @ `94b108f`
 
 ## Database tables
 
-64 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+66 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -517,6 +517,8 @@ Generated `2026-08-26 05:45 UTC` from `master` @ `94b108f`
 | `shadow_runs` | 14 | ✓ | `024_shadow_mode` |
 | `shared_context` | 17 | ✓ | `017_agent_networks` |
 | `tech_radar` | 13 | ✓ | `016_ambient_ai` |
+| `telegram_bindings` | 9 | ✓ | `037_telegram_bridge` |
+| `telegram_pairing_codes` | 5 | ✓ | `037_telegram_bridge` |
 | `tenant_configs` | 8 | ✓ | `004_webhooks_tenants_dedup` |
 | `tenant_usage` | 7 | ✓ | `003_multi_tenancy` |
 | `tenant_webhooks` | 9 | ✓ | `004_webhooks_tenants_dedup` |
@@ -732,6 +734,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `prompt-registry` | Built | `life_graph/self_improving/prompt_version_service.py` |
 | `pwa-mobile` | Built | `dashboard/app/(mobile)/m/page.tsx` |
 | `razorpay-upi` | Not this product | — |
+| `telegram-bridge` | Spec'd, not built | — |
 | `template-gallery` | Not this product | — |
 | `whatsapp-bot` | Not this product | — |
 
@@ -739,9 +742,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-36 revisions, head `036_backfill_memory_trust_tiers`.
+37 revisions, head `037_telegram_bridge`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge`
 
 ---
 
@@ -751,10 +754,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 155 | 1442 |
-| `tests/integration/` | 46 | 467 |
+| `tests/unit/` | 155 | 1443 |
+| `tests/integration/` | 47 | 481 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **202** | **1921** |
+| **total** | **203** | **1936** |
 
 ---
 

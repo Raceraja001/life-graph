@@ -425,6 +425,9 @@ def collect_specs() -> dict[str, Any]:
         "prompt-registry": ("life_graph/self_improving/prompt_version_service.py", "Built"),
         "natural-language-queries": ("life_graph/api/search.py", "Built"),
         "llm-trace-viewer": ("life_graph/api/model_health.py", "Built"),
+        # Probes the poller rather than the binding tables: Phase 1 lands the
+        # schema, but the bridge is not real until something consumes updates.
+        "telegram-bridge": ("life_graph/integrations/telegram/poller.py", "Built"),
     }
     # Specs that describe a different product (Uzhavu SaaS / commercial work).
     other_product = {"razorpay-upi", "whatsapp-bot", "template-gallery"}
