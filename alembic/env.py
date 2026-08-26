@@ -28,7 +28,14 @@ config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url_sync)
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers defaults to True, which sets .disabled on every
+    # logger that already exists — the whole of life_graph, since this file
+    # imports the models above. Harmless when `alembic upgrade` is its own
+    # process, but this env also runs in-process (the integration test suite
+    # migrates at session start), and there it silences application logging
+    # for the rest of the run: no warnings, no errors, and caplog captures
+    # nothing.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
