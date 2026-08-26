@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-08-26 14:24 UTC` from `master` @ `38257a3`
+Generated `2026-08-26 14:55 UTC` from `master` @ `f554ec3`
 
 ---
 
@@ -22,11 +22,11 @@ Generated `2026-08-26 14:24 UTC` from `master` @ `38257a3`
 | Event types | **77** |
 | Built-in personas | **13** |
 | Agent tools | **13** |
-| Scheduled jobs | **14** |
+| Scheduled jobs | **15** |
 | Config settings | **148** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2064** in 212 files |
+| Test functions | **2071** in 213 files |
 | Dashboard pages | **18** |
-| Python | 286 files, 68,457 lines |
+| Python | 287 files, 68,507 lines |
 
 ---
 
@@ -669,7 +669,7 @@ Generated `2026-08-26 14:24 UTC` from `master` @ `38257a3`
 
 ## Scheduled jobs
 
-14 ARQ cron jobs (times are UTC).
+15 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -677,6 +677,7 @@ Generated `2026-08-26 14:24 UTC` from `master` @ `38257a3`
 | `decay_trust_scores` | 05:00 | `life_graph.workers.tasks.decay_trust_scores` |
 | `distill_idle_conversations` | every 15 min | `life_graph.workers.distill.distill_idle_conversations` |
 | `failure_pattern_mining` | 02:30 | `life_graph.workers.tasks.failure_pattern_mining` |
+| `purge_telegram_pairing_codes` | 04:30 | `life_graph.workers.telegram.purge_telegram_pairing_codes` |
 | `run_all_consolidations` | 03:00 | `life_graph.workers.tasks.run_all_consolidations` |
 | `run_all_decay_sweeps` | 04:00 | `life_graph.workers.decay.run_all_decay_sweeps` |
 | `run_all_merge_suggestions` | 03:45 | `life_graph.workers.tasks.run_all_merge_suggestions` |
@@ -763,10 +764,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 160 | 1524 |
-| `tests/integration/` | 51 | 528 |
+| `tests/unit/` | 161 | 1529 |
+| `tests/integration/` | 51 | 530 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **212** | **2064** |
+| **total** | **213** | **2071** |
 
 ---
 

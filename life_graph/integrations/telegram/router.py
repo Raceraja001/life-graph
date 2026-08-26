@@ -228,8 +228,10 @@ async def _handle_command(chat_id: int, tenant_id: str, text: str, session: Asyn
     if command == "unlink":
         await _reply(
             chat_id,
-            "Unlink this chat from the dashboard's integrations page. "
-            "Doing it there proves it's you.",
+            # Deliberately not actionable from here: revoking a binding takes
+            # proof of who you are, and this chat has none to offer.
+            "Unlink from Life Graph itself, where you're signed in — "
+            "revoking a chat needs proof it's you, so it can't be done from here.",
         )
         return
     if command in {"recall", "pending", "approve", "reject", "yes", "confirm"}:

@@ -269,14 +269,22 @@ async def test_a_command_is_not_stored_as_a_memory(bound_chat, replies):
 
 @pytest.mark.asyncio
 @skip_on_db_error
-async def test_unlink_directs_the_user_to_the_dashboard(bound_chat, replies):
-    """A chat that may be compromised must not be able to unbind itself."""
+async def test_unlink_refuses_and_points_somewhere_that_exists(bound_chat, replies):
+    """A chat that may be compromised must not be able to unbind itself.
+
+    The reply must also not name a destination the product does not have: there
+    is no dashboard page for the bridge yet, and sending someone to look for one
+    is worse than telling them plainly that this takes a signed-in session.
+    """
     async with async_session() as session:
         await tg_router.handle_message(_msg("/unlink"), session)
 
     async with async_session() as session:
         assert await TelegramBindingService(session).tenant_for_chat(CHAT) == TENANT
-    assert "dashboard" in replies[-1][1].lower()
+
+    reply = replies[-1][1].lower()
+    assert "signed in" in reply
+    assert "dashboard" not in reply, "no dashboard page for the bridge exists yet"
 
 
 @pytest.mark.asyncio
@@ -316,3 +324,40 @@ async def test_a_malformed_update_is_swallowed_rather_than_wedging_the_queue(rep
 
 async def _always_allow(chat_id):
     return True
+
+
+# ── Replay safety ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_the_same_update_delivered_twice_is_captured_once(bound_chat, replies):
+    """The poller advances its offset only after handling, so a crash between
+    the two replays the batch. That is only safe if a repeated update is
+    absorbed — which the capture spine does by hashing the content per surface.
+    """
+    update = {"update_id": 90001, "message": _msg("the same thought twice")}
+
+    async with async_session() as session:
+        await tg_router.handle_update(update, session)
+    async with async_session() as session:
+        await tg_router.handle_update(update, session)
+
+    events = await _events()
+    assert len(events) == 1, "a replayed update must not create a second memory"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_two_different_messages_are_still_two_captures(bound_chat, replies):
+    """Guards the test above: dedup must absorb the replay, not everything."""
+    async with async_session() as session:
+        await tg_router.handle_update(
+            {"update_id": 90002, "message": _msg("first thought")}, session
+        )
+    async with async_session() as session:
+        await tg_router.handle_update(
+            {"update_id": 90003, "message": _msg("second thought")}, session
+        )
+
+    assert len(await _events()) == 2

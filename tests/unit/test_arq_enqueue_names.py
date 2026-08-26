@@ -44,3 +44,19 @@ def test_distill_enqueue_names_are_registered():
     assert DISTILL_JOB_NAME in WorkerSettings.functions
     # The cron target must be registered too.
     assert "life_graph.workers.distill.distill_idle_conversations" in WorkerSettings.functions
+
+
+def test_all_cron_targets_are_registered_and_callable():
+    """A cron whose target is missing from ``functions`` is a job nobody runs.
+
+    ARQ resolves a cron's dotted path at import time, so a typo'd module fails
+    loudly. A *registered* path is a different matter: the repo's convention is
+    that every cron target also appears in ``WorkerSettings.functions`` so the
+    same job can be enqueued by hand (a backfill, a retry from the dashboard).
+    Nothing enforces that at runtime, so it is enforced here.
+    """
+    registered = _registered_names()
+    for job in WorkerSettings.cron_jobs:
+        target = job.name.removeprefix("cron:")
+        assert target in registered, f"cron target not in WorkerSettings.functions: {target}"
+        assert callable(job.coroutine), f"cron target is not callable: {target}"

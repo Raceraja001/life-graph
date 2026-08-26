@@ -1,6 +1,6 @@
 # Telegram Bridge — Phone as Capture Surface and Delivery Channel — Feature Spec
 
-> **Status: Partially built** — phases 1–5 of 6.
+> **Status: Built** — all 6 phases.
 >
 > Built: the binding schema (migration 037), pairing (`services/telegram_binding.py`),
 > the Bot API client, the long-poll consumer and the message router
@@ -9,12 +9,17 @@
 > (`integrations/telegram/commands.py`), and the management API
 > (`api/integrations_telegram.py`) with photo and voice-note capture
 > (`integrations/telegram/media.py`). The bridge is usable end to end: a code
-> can be issued from the dashboard, a chat paired, and text, photos and voice
-> notes captured from a phone.
+> can be issued over the API, a chat paired, and text, photos and voice
+> notes captured from a phone. A nightly cron
+> (`workers/telegram.purge_telegram_pairing_codes`, 04:30 UTC) sweeps expired
+> pairing codes.
 >
-> Not built: the remaining test work (phase 6). The generated status in
-> [docs/STATE.md](../STATE.md) probes phase 5's router, so it now reads "Built"
-> — phase 6 adds coverage rather than capability.
+> Not built: a **dashboard page** for the bridge. The four management endpoints
+> exist and are tested, but nothing under `dashboard/app/` calls them, so issuing
+> a pairing code or revoking a chat currently means calling the API by hand. This
+> spec never scoped that UI; it is noted here because `/unlink` in chat has to
+> tell the user where to go, and until the page exists the honest answer is
+> "wherever you are signed in", not "the integrations page".
 
 > **Purpose**: Give Life Graph a two-way channel to the phone. Inbound, any message
 > sent to a personal bot becomes a capture event, so a thought can be recorded while
@@ -533,12 +538,28 @@ text, because `text` is populated from `caption` when there is no message body,
 and checking text first stored the caption while silently discarding the photo.
 
 ### Phase 6: Tests (~1 day)
-- [ ] Unit: pairing (valid, expired, reused, wrong tenant, rebind attempt)
-- [ ] Unit: router dispatch, unbound drop, group-chat ignore, forward → `EXTERNAL`
-- [ ] Unit: offset only advances after successful handling; duplicate `update_id` processed once
-- [ ] Unit: lease contention — the standby instance does not call `getUpdates`
-- [ ] Unit: channel returns `False` on failure and never raises
-- [ ] Integration: `httpx.AsyncClient` + `ASGITransport` over the four endpoints
-- [ ] `python scripts/gen_state.py --html` — new table, endpoints, and job appear in the diff
+- [x] Unit: pairing (valid, expired, reused, wrong tenant, rebind attempt) — `tests/integration/test_telegram_binding.py`
+- [x] Unit: router dispatch, unbound drop, group-chat ignore, forward → `EXTERNAL` — `tests/integration/test_telegram_router.py`
+- [x] Unit: offset only advances after successful handling; duplicate `update_id` processed once — `tests/unit/test_telegram_poller.py` (offset) and `tests/integration/test_telegram_router.py` (replay)
+- [x] Unit: lease contention — the standby instance does not call `getUpdates` — `tests/unit/test_telegram_poller.py`
+- [x] Unit: channel returns `False` on failure and never raises — `tests/unit/test_telegram_channel.py`
+- [x] Integration: `httpx.AsyncClient` + `ASGITransport` over the four endpoints — `tests/integration/test_telegram_api.py`
+- [x] `python scripts/gen_state.py --html` — new table, endpoints, and job appear in the diff
+
+Two gaps this audit found and closed, both of which the checklist above only
+implied:
+
+- **The job that was never written.** `purge_expired_codes` existed on the
+  binding service and was tested, but nothing in production called it, so
+  expired pairing codes would have accumulated for the life of the deployment.
+  It is now `workers/telegram.purge_telegram_pairing_codes`, registered in
+  `WorkerSettings.functions` and crons at 04:30 UTC. A new guard test asserts
+  that *every* cron target is also a registered, importable callable, so the
+  next job wired this way cannot go missing the same way.
+- **Replay safety was asserted but never demonstrated.** The poller advances its
+  offset only after handling, which means a crash mid-batch replays it. The
+  design justifies that with the capture spine's content-hash dedup; there was
+  no test proving the two fit together. There is now, plus a companion test
+  proving dedup does not swallow genuinely different messages.
 
 **Total: ~4 days.**

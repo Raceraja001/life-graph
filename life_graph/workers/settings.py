@@ -145,6 +145,7 @@ class WorkerSettings:
         "life_graph.workers.distill.distill_idle_conversations",
         "life_graph.workers.distill_transcript.distill_transcript",
         "life_graph.workers.tasks.tick_scheduled_jobs",
+        "life_graph.workers.telegram.purge_telegram_pairing_codes",
     ]
 
     cron_jobs = [
@@ -311,6 +312,13 @@ class WorkerSettings:
         cron(
             "life_graph.workers.tasks.tick_scheduled_jobs",
             minute=set(range(60)),
+            run_at_startup=False,
+        ),
+        # ── Telegram bridge: sweep expired pairing codes ──
+        cron(
+            "life_graph.workers.telegram.purge_telegram_pairing_codes",
+            hour=4,
+            minute=30,
             run_at_startup=False,
         ),
     ]
