@@ -1,13 +1,15 @@
 # Telegram Bridge — Phone as Capture Surface and Delivery Channel — Feature Spec
 
-> **Status: Partially built** — phases 1–2 of 6.
+> **Status: Partially built** — phases 1–3 of 6.
 >
 > Built: the binding schema (migration 037), pairing (`services/telegram_binding.py`),
 > the Bot API client, the long-poll consumer and the message router
-> (`integrations/telegram/`). Inbound capture works end to end.
+> (`integrations/telegram/`), and outbound delivery (`watchers/channels/telegram_channel.py`
+> plus `services/telegram_delivery.py`). Messages flow both ways.
 >
-> Not built: outbound notification delivery (phase 3), chat commands beyond
-> `/start` and `/help` (phase 4), and the management API (phase 5). The
+> Not built: chat commands beyond `/start` and `/help` (phase 4), and the
+> management API (phase 5) — which means there is still no way to *issue*
+> a pairing code except by writing the row by hand. The
 > generated status in [docs/STATE.md](../STATE.md) probes phase 5's router, so it
 > stays "Spec'd, not built" until the whole spec is real.
 
@@ -423,10 +425,23 @@ LIFE_GRAPH_TELEGRAM_RATE_LIMIT_PER_MIN=20 # inbound messages per bound chat
 - [ ] Launch from `workers/settings.py` `on_startup`
 
 ### Phase 3: Outbound (~0.5 day)
-- [ ] `watchers/channels/telegram_channel.py`
-- [ ] Register in `NotificationEngine._ensure_channels()` **and** add the `elif` dispatch branch in `NotificationEngine.send()`
-- [ ] `services/telegram_delivery.py` subscribing to `BRIEF_COMPOSED`, modelled on `push_delivery.py`
-- [ ] Subscribe it in the `main.py` lifespan
+- [x] `watchers/channels/telegram_channel.py`
+- [x] Register in `NotificationEngine._ensure_channels()` **and** add the `elif` dispatch branch in `NotificationEngine.send()`
+- [x] `services/telegram_delivery.py` subscribing to `BRIEF_COMPOSED`, modelled on `push_delivery.py`
+- [x] Subscribe it in the `main.py` lifespan **and** in `WorkerSettings.on_startup` — see below
+
+#### Where the delivery handler has to be subscribed
+
+`BRIEF_COMPOSED` is emitted by the 03:00 cron, which runs in the **ARQ worker**.
+The `EventBus` is per-process: its Redis bridge is one-way fan-out feeding the
+WebSocket relay in `api/websocket.py`, not a cross-process re-emit. A handler
+subscribed only in the `main.py` lifespan therefore never hears the cron — it
+only fires for the manual `POST /brief/compose`. `telegram_delivery_handler` is
+subscribed in **both** places for that reason.
+
+Note that `push_delivery_handler` is subscribed only in `main.py`, so Web Push
+of the *scheduled* daily brief does not currently fire. That is pre-existing and
+out of scope here, but it is the same one-line fix in the same block.
 
 ### Phase 4: Commands (~0.5 day)
 - [ ] `/help`, `/recall <query>` (index lines), `/pending`

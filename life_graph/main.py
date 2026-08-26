@@ -296,6 +296,13 @@ async def lifespan(app: FastAPI):
         push_delivery_handler.subscribe()
         logger.info("Web push brief delivery enabled")
 
+    # Startup — wire daily brief -> Telegram delivery
+    with startup_step(report, "telegram_delivery"):
+        from life_graph.services.telegram_delivery import telegram_delivery_handler
+
+        telegram_delivery_handler.subscribe()
+        logger.info("Telegram brief delivery enabled")
+
     # Startup — wire advisory runs -> notifications/push
     with startup_step(report, "findings_bridge"):
         from life_graph.services.findings_bridge import findings_bridge_handler

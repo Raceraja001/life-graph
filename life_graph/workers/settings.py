@@ -74,6 +74,15 @@ class WorkerSettings:
         except Exception:
             logger.warning("Autonomous action bridges not available in worker", exc_info=True)
 
+        # The daily brief cron runs in THIS process, so its BRIEF_COMPOSED
+        # event is only heard by handlers subscribed here.
+        try:
+            from life_graph.services.telegram_delivery import telegram_delivery_handler
+
+            telegram_delivery_handler.subscribe()
+        except Exception:
+            logger.warning("Telegram brief delivery not available in worker", exc_info=True)
+
         # The Telegram poller keeps its lease and its getUpdates offset in Redis,
         # and nothing in this process had initialised the shared client — only
         # main.py's lifespan does, and that runs in the API process. Without this

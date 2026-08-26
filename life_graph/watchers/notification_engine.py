@@ -58,6 +58,7 @@ class NotificationEngine:
             return
 
         from life_graph.watchers.channels.email_channel import EmailChannel
+        from life_graph.watchers.channels.telegram_channel import TelegramChannel
         from life_graph.watchers.channels.terminal_channel import TerminalChannel
         from life_graph.watchers.channels.webhook_channel import WebhookChannel
 
@@ -65,6 +66,7 @@ class NotificationEngine:
             "email": EmailChannel(),
             "webhook": WebhookChannel(),
             "terminal": TerminalChannel(),
+            "telegram": TelegramChannel(),
         }
         self._loaded = True
 
@@ -189,6 +191,18 @@ class NotificationEngine:
                     watcher_name=event.get("watcher_name", "unknown"),
                     title=event.get("title", ""),
                     details=event.get("details", ""),
+                )
+            elif channel_type == "telegram":
+                # The only channel that needs the tenant: its destinations come
+                # from telegram_bindings, not from the config blob, because a
+                # chat_id only exists after the user pairs a chat.
+                return await channel.send(
+                    config=config,
+                    tenant_id=tenant_id,
+                    severity=event.get("severity", "info"),
+                    title=event.get("title", ""),
+                    details=_as_text(event.get("details")),
+                    watcher_name=event.get("watcher_name", "unknown"),
                 )
             else:
                 logger.error("Unsupported channel type: %s", channel_type)
