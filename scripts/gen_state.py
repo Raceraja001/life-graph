@@ -908,7 +908,19 @@ def render_html(d: dict[str, Any]) -> str:
 
 
 def _strip_timestamp(text: str) -> str:
-    """Drop the generation timestamp so --check compares content, not clock."""
+    """Drop the provenance stamp so --check compares content, not clock or SHA.
+
+    The stamp records the commit the file was generated from, which is by
+    construction the commit *before* the one that records the file itself.
+    Comparing it would make --check report drift after every single commit
+    while the inventory was in fact identical, so the whole line is
+    normalised, not just the timestamp.
+    """
+    text = re.sub(
+        r"Generated `[^`]*` from `[^`]*` @ `[^`]*`",
+        "Generated `<ts>` from `<branch>` @ `<commit>`",
+        text,
+    )
     return re.sub(r"Generated `[^`]*`", "Generated `<ts>`", text)
 
 
