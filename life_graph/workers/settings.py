@@ -74,6 +74,41 @@ class WorkerSettings:
         except Exception:
             logger.warning("Autonomous action bridges not available in worker", exc_info=True)
 
+        # The Telegram poller keeps its lease and its getUpdates offset in Redis,
+        # and nothing in this process had initialised the shared client — only
+        # main.py's lifespan does, and that runs in the API process. Without this
+        # the poller would still work but lose its offset on every restart,
+        # replaying up to 24 hours of messages each time.
+        try:
+            from life_graph.storage.redis import init_redis
+
+            await init_redis()
+        except Exception:
+            logger.warning("Redis not available in worker", exc_info=True)
+
+        # The poller lives here rather than in the API process on purpose: the
+        # API may run several workers behind a reloader, and each one would open
+        # a competing getUpdates. Telegram gives each update to exactly one
+        # caller, so competing pollers split a conversation rather than
+        # duplicating it — a much quieter failure than an outage.
+        try:
+            from life_graph.integrations.telegram.poller import poller
+
+            if await poller.start():
+                logger.info("Telegram poller started")
+        except Exception:
+            logger.warning("Telegram poller failed to start", exc_info=True)
+
+    @staticmethod
+    async def on_shutdown(ctx: dict) -> None:
+        """Release the Telegram lease so a replacement can lead immediately."""
+        try:
+            from life_graph.integrations.telegram.poller import poller
+
+            await poller.stop()
+        except Exception:
+            logger.warning("Telegram poller shutdown failed", exc_info=True)
+
     # Import task functions lazily to avoid circular imports
     functions = [
         "life_graph.workers.tasks.run_tenant_consolidation",

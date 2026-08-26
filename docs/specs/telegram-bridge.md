@@ -1,6 +1,15 @@
 # Telegram Bridge — Phone as Capture Surface and Delivery Channel — Feature Spec
 
-> **Status: Spec'd, not built.** Nothing in `life_graph/` implements this yet. When it is built, update this header and regenerate [docs/STATE.md](../STATE.md).
+> **Status: Partially built** — phases 1–2 of 6.
+>
+> Built: the binding schema (migration 037), pairing (`services/telegram_binding.py`),
+> the Bot API client, the long-poll consumer and the message router
+> (`integrations/telegram/`). Inbound capture works end to end.
+>
+> Not built: outbound notification delivery (phase 3), chat commands beyond
+> `/start` and `/help` (phase 4), and the management API (phase 5). The
+> generated status in [docs/STATE.md](../STATE.md) probes phase 5's router, so it
+> stays "Spec'd, not built" until the whole spec is real.
 
 > **Purpose**: Give Life Graph a two-way channel to the phone. Inbound, any message
 > sent to a personal bot becomes a capture event, so a thought can be recorded while

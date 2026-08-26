@@ -336,6 +336,17 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""  # Set LIFE_GRAPH_VAPID_PRIVATE_KEY (VM only, never git)
     vapid_subject: str = "mailto:tolokanathan@gmail.com"  # VAPID contact
 
+    # ── Telegram Bridge ─────────────────────────────────
+    # Empty token disables the bridge entirely: the poller never starts and the
+    # notification channel reports itself unconfigured rather than failing.
+    telegram_bot_token: str = ""  # Set LIFE_GRAPH_TELEGRAM_BOT_TOKEN (never git)
+    telegram_poll_timeout: int = 25  # getUpdates long-poll seconds; < Telegram's 50s cap
+    telegram_rate_limit_per_min: int = 20  # Inbound messages accepted per bound chat
+    # Approving a dangerous action from a chat app is off by default: one
+    # mistapped message should not be sufficient authority to run something
+    # irreversible. /pending stays available regardless — reading is not deciding.
+    telegram_allow_approvals: bool = False
+
     # ── Derived Properties ─────────────────────────────
 
     @property
