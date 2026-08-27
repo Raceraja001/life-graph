@@ -19,6 +19,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/levels", tags=["autonomy-levels"])
 
 
+async def _level_payload(service, tenant_id: str, project_id: str) -> dict:
+    """Build the full autonomy-level representation for a project.
+
+    Shared by the read and the write route so both answer with the same shape —
+    a client that has just set a level should not have to make a second call to
+    learn the counters and promotion state.
+    """
+    level = await service.get_level(tenant_id, project_id)
+    check = await service.check_promotion(tenant_id, project_id)
+
+    return AutonomyLevelResponse(
+        id=level.id,
+        tenant_id=level.tenant_id,
+        project_id=level.project_id,
+        current_level=level.current_level,
+        level_name=LEVEL_DESCRIPTIONS.get(level.current_level, "Unknown"),
+        safe_count=level.safe_count,
+        moderate_count=level.moderate_count,
+        failure_count=level.failure_count,
+        promotion_eligible=check.eligible,
+        promotion_reason=check.reason,
+        created_at=level.created_at,
+        updated_at=level.updated_at,
+    ).model_dump(mode="json")
+
+
 @router.get("/{project_id}", response_model=None)
 async def get_autonomy_level(project_id: str):
     """Get the autonomy level for a project, with promotion progress."""
@@ -28,25 +54,7 @@ async def get_autonomy_level(project_id: str):
 
     service = get_autonomy_level_service()
 
-    level = await service.get_level(tenant_id, project_id)
-    check = await service.check_promotion(tenant_id, project_id)
-
-    return success_response(
-        data=AutonomyLevelResponse(
-            id=level.id,
-            tenant_id=level.tenant_id,
-            project_id=level.project_id,
-            current_level=level.current_level,
-            level_name=LEVEL_DESCRIPTIONS.get(level.current_level, "Unknown"),
-            safe_count=level.safe_count,
-            moderate_count=level.moderate_count,
-            failure_count=level.failure_count,
-            promotion_eligible=check.eligible,
-            promotion_reason=check.reason,
-            created_at=level.created_at,
-            updated_at=level.updated_at,
-        ).model_dump(mode="json"),
-    )
+    return success_response(data=await _level_payload(service, tenant_id, project_id))
 
 
 @router.post("/{project_id}/set", response_model=None)
@@ -69,11 +77,11 @@ async def set_autonomy_level(project_id: str, request: SetLevelRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    payload = await _level_payload(service, tenant_id, project_id)
+
     return success_response(
-        data={
-            "project_id": project_id,
-            "level": new_level,
-            "level_name": LEVEL_DESCRIPTIONS.get(new_level, "Unknown"),
-        },
+        # "level" is kept alongside the full record for callers written against
+        # the earlier acknowledgement-only response.
+        data={**payload, "level": new_level},
         meta={"message": f"Autonomy level set to L{new_level}"},
     )
