@@ -181,7 +181,7 @@ function ToggleSwitch({
           width: "18px",
           height: "18px",
           borderRadius: "50%",
-          background: "#fff",
+          background: checked ? "var(--accent-fg)" : "var(--text-muted)",
           boxShadow: "var(--shadow-xs)",
           transition: "left var(--dur-fast) var(--ease-out)",
         }}

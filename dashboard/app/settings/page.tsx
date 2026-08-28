@@ -7,25 +7,25 @@ export default function SettingsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-zinc-900">Settings</h2>
-        <p className="text-sm text-zinc-500">System configuration</p>
+        <h2 className="text-lg font-semibold text-ink">Settings</h2>
+        <p className="text-sm text-ink-mid">System configuration</p>
       </div>
-      <div className="bg-white border border-zinc-200 rounded-xl p-6 space-y-5">
+      <div className="bg-surface border border-line rounded-xl p-6 space-y-5">
         <div>
-          <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">API Endpoint</label>
-          <p className="text-sm text-zinc-800 mt-1 font-mono bg-zinc-50 px-3 py-2 rounded-lg border border-zinc-100">
+          <label className="text-xs font-medium text-ink-low uppercase tracking-wider">API Endpoint</label>
+          <p className="text-sm text-ink mt-1 font-mono bg-surface-2 px-3 py-2 rounded-lg border border-line">
             {process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"}
           </p>
         </div>
         <div>
-          <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Tenant ID</label>
-          <p className="text-sm text-zinc-800 mt-1 font-mono bg-zinc-50 px-3 py-2 rounded-lg border border-zinc-100">
+          <label className="text-xs font-medium text-ink-low uppercase tracking-wider">Tenant ID</label>
+          <p className="text-sm text-ink mt-1 font-mono bg-surface-2 px-3 py-2 rounded-lg border border-line">
             {process.env.NEXT_PUBLIC_TENANT_ID || "default"}
           </p>
         </div>
         <div>
-          <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Version</label>
-          <p className="text-sm text-zinc-800 mt-1">Life Graph Dashboard v0.1.0</p>
+          <label className="text-xs font-medium text-ink-low uppercase tracking-wider">Version</label>
+          <p className="text-sm text-ink mt-1">Life Graph Dashboard v0.1.0</p>
         </div>
       </div>
       <PersonaSettings />
@@ -38,17 +38,17 @@ function PersonaSettings() {
   const rows = personas.data ?? [];
 
   return (
-    <div className="bg-white border border-zinc-200 rounded-xl p-6 space-y-4">
+    <div className="bg-surface border border-line rounded-xl p-6 space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-zinc-900">Personas</h3>
-        <p className="text-xs text-zinc-500">Model, temperature &amp; max tokens per persona</p>
+        <h3 className="text-sm font-semibold text-ink">Personas</h3>
+        <p className="text-xs text-ink-mid">Model, temperature &amp; max tokens per persona</p>
       </div>
-      {personas.isLoading && <p className="text-sm text-zinc-500">Loading personas…</p>}
+      {personas.isLoading && <p className="text-sm text-ink-mid">Loading personas…</p>}
       {personas.isError && (
-        <p className="text-sm text-red-600">Can&rsquo;t reach personas — is the backend running?</p>
+        <p className="text-sm text-danger">Can&rsquo;t reach personas — is the backend running?</p>
       )}
       {!personas.isLoading && !personas.isError && rows.length === 0 && (
-        <p className="text-sm text-zinc-500">No personas configured yet.</p>
+        <p className="text-sm text-ink-mid">No personas configured yet.</p>
       )}
       <div className="space-y-3">
         {rows.map((p) => (
@@ -86,20 +86,20 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
 
   return (
     <div
-      className="border border-zinc-100 rounded-lg p-4 space-y-3"
+      className="border border-line rounded-lg p-4 space-y-3"
       style={{ opacity: busy ? 0.7 : 1 }}
     >
       <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold text-zinc-900">{persona.displayName ?? persona.name}</span>
+        <span className="text-sm font-semibold text-ink">{persona.displayName ?? persona.name}</span>
         {persona.isBuiltin && (
-          <span className="text-xs text-zinc-500 border border-zinc-200 rounded-full px-2 py-0.5">
+          <span className="text-xs text-ink-mid border border-line rounded-full px-2 py-0.5">
             Built-in
           </span>
         )}
       </div>
 
       <div>
-        <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Model</label>
+        <label className="text-xs font-medium text-ink-low uppercase tracking-wider">Model</label>
         <div className="mt-1">
           <ModelCombobox value={model} onChange={setModel} disabled={busy} variant="desktop" />
         </div>
@@ -107,7 +107,7 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Temperature</label>
+          <label className="text-xs font-medium text-ink-low uppercase tracking-wider">Temperature</label>
           <input
             type="number"
             min={0}
@@ -116,11 +116,11 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
             value={temperature}
             disabled={busy}
             onChange={(e) => setTemperature(Number(e.target.value))}
-            className="w-full mt-1 text-sm text-zinc-800 bg-zinc-50 px-3 py-2 rounded-lg border border-zinc-100"
+            className="w-full mt-1 text-sm text-ink bg-surface-2 px-3 py-2 rounded-lg border border-line"
           />
         </div>
         <div>
-          <label className="text-xs font-medium text-zinc-400 uppercase tracking-wider">Max tokens</label>
+          <label className="text-xs font-medium text-ink-low uppercase tracking-wider">Max tokens</label>
           <input
             type="number"
             min={1}
@@ -128,12 +128,12 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
             value={maxTokens}
             disabled={busy}
             onChange={(e) => setMaxTokens(Number(e.target.value))}
-            className="w-full mt-1 text-sm text-zinc-800 bg-zinc-50 px-3 py-2 rounded-lg border border-zinc-100"
+            className="w-full mt-1 text-sm text-ink bg-surface-2 px-3 py-2 rounded-lg border border-line"
           />
         </div>
       </div>
 
-      {update.isError && <p className="text-xs text-red-600">Couldn&rsquo;t save — try again</p>}
+      {update.isError && <p className="text-xs text-danger">Couldn&rsquo;t save — try again</p>}
 
       <button
         type="button"
@@ -141,8 +141,8 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
         onClick={save}
         className={
           dirty && !busy
-            ? "w-full py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white cursor-pointer"
-            : "w-full py-2 text-sm font-semibold rounded-lg bg-zinc-100 text-zinc-400 cursor-default"
+            ? "w-full py-2 text-sm font-semibold rounded-lg bg-info text-info-fg cursor-pointer"
+            : "w-full py-2 text-sm font-semibold rounded-lg bg-surface-3 text-ink-low cursor-default"
         }
       >
         Save

@@ -131,7 +131,7 @@ function KillSwitchCard() {
           border: `1px solid ${paused ? "var(--danger, #d33)" : "var(--border-strong)"}`,
           borderRadius: "var(--radius-md)",
           background: paused ? "var(--danger, #d33)" : "var(--surface-2)",
-          color: paused ? "#fff" : "var(--text)",
+          color: paused ? "var(--danger-fg)" : "var(--text)",
           fontSize: "var(--text-sm)",
           fontFamily: "inherit",
           fontWeight: "var(--fw-semibold)",

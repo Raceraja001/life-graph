@@ -8,19 +8,19 @@ export function StatsCard({ label, value, subtitle, icon: Icon, trend }: {
   trend?: { value: number; label: string };
 }) {
   return (
-    <div className="bg-white border border-zinc-200 rounded-xl p-5 hover:shadow-md hover:border-zinc-300 transition-all group">
+    <div className="bg-surface border border-line rounded-xl p-5 hover:shadow-md hover:border-line-strong transition-all group">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium text-zinc-400 uppercase tracking-wider">{label}</span>
-        <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
-          <Icon className="w-4 h-4 text-emerald-600" />
+        <span className="text-xs font-medium text-ink-low uppercase tracking-wider">{label}</span>
+        <div className="w-8 h-8 rounded-lg bg-accent-soft flex items-center justify-center group-hover:bg-accent-soft transition-colors">
+          <Icon className="w-4 h-4 text-accent" />
         </div>
       </div>
-      <div className="text-2xl font-bold text-zinc-900 tracking-tight">{value}</div>
-      {subtitle && <p className="text-xs text-zinc-400 mt-1">{subtitle}</p>}
+      <div className="text-2xl font-bold text-ink tracking-tight">{value}</div>
+      {subtitle && <p className="text-xs text-ink-low mt-1">{subtitle}</p>}
       {trend && (
-        <div className={`flex items-center gap-1 mt-2 text-xs ${trend.value >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+        <div className={`flex items-center gap-1 mt-2 text-xs ${trend.value >= 0 ? "text-accent" : "text-danger"}`}>
           <span>{trend.value >= 0 ? "↑" : "↓"} {Math.abs(trend.value)}%</span>
-          <span className="text-zinc-400">{trend.label}</span>
+          <span className="text-ink-low">{trend.label}</span>
         </div>
       )}
     </div>

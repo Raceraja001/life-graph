@@ -151,7 +151,7 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
           borderRadius: "var(--radius-md)",
           border: "none",
           background: dirty && !busy ? "var(--accent, #2563eb)" : "var(--border)",
-          color: dirty && !busy ? "#fff" : "var(--text-subtle)",
+          color: dirty && !busy ? "var(--accent-fg)" : "var(--text-subtle)",
           fontSize: "var(--text-xs)",
           fontWeight: "var(--fw-semibold)",
           cursor: dirty && !busy ? "pointer" : "default",

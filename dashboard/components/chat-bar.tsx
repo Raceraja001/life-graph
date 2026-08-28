@@ -98,32 +98,32 @@ export function ChatBar() {
   };
 
   return (
-    <div className="border-t border-zinc-200 bg-white">
+    <div className="border-t border-line bg-surface">
       {expanded && messages.length > 0 && (
-        <div className="max-h-72 overflow-y-auto px-6 py-3 space-y-3 border-b border-zinc-100">
+        <div className="max-h-72 overflow-y-auto px-6 py-3 space-y-3 border-b border-line">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="text-xs text-zinc-400 font-medium">Conversation</span>
+              <Sparkles className="w-3.5 h-3.5 text-accent" />
+              <span className="text-xs text-ink-low font-medium">Conversation</span>
             </div>
-            <button onClick={() => setExpanded(false)} className="text-zinc-400 hover:text-zinc-600 p-0.5 rounded hover:bg-zinc-100">
+            <button onClick={() => setExpanded(false)} className="text-ink-low hover:text-ink-mid p-0.5 rounded hover:bg-surface-3">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
           {messages.map((m, i) => (
             <div key={i} className={`flex gap-2.5 ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               {m.role !== "user" && (
-                <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
-                  <MessageSquare className="w-3 h-3 text-emerald-600" />
+                <div className="w-6 h-6 rounded-full bg-accent-soft flex items-center justify-center shrink-0 mt-0.5">
+                  <MessageSquare className="w-3 h-3 text-accent" />
                 </div>
               )}
               <div className="flex flex-col gap-1.5 max-w-[70%]">
                 <div className={`rounded-xl px-3.5 py-2 text-sm leading-relaxed ${
                   m.role === "user"
-                    ? "bg-emerald-600 text-white"
+                    ? "bg-accent text-accent-fg"
                     : m.role === "system"
-                    ? "bg-red-50 text-red-700 border border-red-100"
-                    : "bg-zinc-100 text-zinc-700"
+                    ? "bg-danger-soft text-danger border border-danger/30"
+                    : "bg-surface-3 text-ink"
                 }`}>
                   {m.role === "assistant"
                     ? splitCitations(m.content).map((p, pi) =>
@@ -140,8 +140,8 @@ export function ChatBar() {
                             title={m.citations?.[p.n - 1]?.content?.slice(0, 160)}
                             className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 mx-0.5 rounded-full border text-[10px] font-semibold align-super transition-colors ${
                               openCitation?.msgIndex === i && openCitation.n === p.n
-                                ? "bg-emerald-600 text-white border-emerald-600"
-                                : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                ? "bg-accent text-accent-fg border-accent"
+                                : "bg-accent-soft text-accent-text border-accent-border hover:bg-accent-soft"
                             }`}
                           >
                             {p.n}
@@ -151,12 +151,12 @@ export function ChatBar() {
                     : m.content}
                 </div>
                 {openCitation?.msgIndex === i && (
-                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-xs text-zinc-600 leading-relaxed">
+                  <div className="rounded-lg border border-accent-border bg-accent-soft/60 px-3 py-2 text-xs text-ink-mid leading-relaxed">
                     <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-[10px] font-medium text-emerald-700 uppercase tracking-wide">
+                      <span className="text-[10px] font-medium text-accent-text uppercase tracking-wide">
                         Memory {openCitation.n}
                       </span>
-                      <button onClick={() => setOpenCitation(null)} className="text-zinc-400 hover:text-zinc-600">
+                      <button onClick={() => setOpenCitation(null)} className="text-ink-low hover:text-ink-mid">
                         <X className="w-3 h-3" />
                       </button>
                     </div>
@@ -170,10 +170,10 @@ export function ChatBar() {
           ))}
           {isLoading && (
             <div className="flex gap-2.5 justify-start">
-              <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 mt-0.5">
-                <MessageSquare className="w-3 h-3 text-emerald-600" />
+              <div className="w-6 h-6 rounded-full bg-accent-soft flex items-center justify-center shrink-0 mt-0.5">
+                <MessageSquare className="w-3 h-3 text-accent" />
               </div>
-              <div className="rounded-xl px-3.5 py-2 text-sm leading-relaxed bg-zinc-100 text-zinc-400 animate-pulse">
+              <div className="rounded-xl px-3.5 py-2 text-sm leading-relaxed bg-surface-3 text-ink-low animate-pulse">
                 Thinking…
               </div>
             </div>
@@ -192,16 +192,16 @@ export function ChatBar() {
             onFocus={() => messages.length > 0 && setExpanded(true)}
             placeholder="Ask about your memories..."
             disabled={isLoading}
-            className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all disabled:opacity-50"
+            className="w-full bg-surface-2 border border-line rounded-xl px-4 py-2.5 text-sm text-ink placeholder-ink-low focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft transition-all disabled:opacity-50"
           />
           {!input && (
-            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-white border border-zinc-200 text-[10px] text-zinc-400 font-mono">⌘K</kbd>
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-surface border border-line text-[10px] text-ink-low font-mono">⌘K</kbd>
           )}
         </div>
         <button
           onClick={handleSubmit}
           disabled={!input.trim() || isLoading}
-          className="p-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:shadow"
+          className="p-2.5 rounded-xl bg-accent text-accent-fg hover:bg-accent-hover shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:shadow"
         >
           {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>

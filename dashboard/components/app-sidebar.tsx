@@ -37,34 +37,34 @@ export function AppSidebar({ wsStatus = "disconnected" }: { wsStatus?: string })
       {/* Mobile hamburger */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed top-3.5 left-4 z-50 p-2 rounded-lg bg-white border border-zinc-200 shadow-sm lg:hidden"
+        className="fixed top-3.5 left-4 z-50 p-2 rounded-lg bg-surface border border-line shadow-sm lg:hidden"
       >
-        <Menu className="w-4 h-4 text-zinc-600" />
+        <Menu className="w-4 h-4 text-ink-mid" />
       </button>
 
       {/* Backdrop (mobile) */}
       {open && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden" onClick={() => setOpen(false)} />
+        <div className="fixed inset-0 bg-scrim backdrop-blur-sm z-40 lg:hidden" onClick={() => setOpen(false)} />
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed lg:relative inset-y-0 left-0 z-50 w-56 h-screen bg-white border-r border-zinc-200 flex flex-col py-4 shrink-0 transition-transform duration-200 ${
+      <aside className={`fixed lg:relative inset-y-0 left-0 z-50 w-56 h-screen bg-surface border-r border-line flex flex-col py-4 shrink-0 transition-transform duration-200 ${
         open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       }`}>
         <div className="px-5 mb-8 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center relative">
-              <Brain className="w-4.5 h-4.5 text-emerald-600" />
-              <div className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
-                wsStatus === "connected" ? "bg-emerald-400" :
-                wsStatus === "connecting" ? "bg-amber-400 animate-pulse" :
-                "bg-zinc-300"
+            <div className="w-8 h-8 rounded-lg bg-accent-soft flex items-center justify-center relative">
+              <Brain className="w-4.5 h-4.5 text-accent" />
+              <div className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-surface ${
+                wsStatus === "connected" ? "bg-accent" :
+                wsStatus === "connecting" ? "bg-warning animate-pulse" :
+                "bg-ink-low"
               }`} title={`WebSocket: ${wsStatus}`} />
             </div>
-            <span className="text-sm font-semibold text-zinc-900 tracking-tight">Life Graph</span>
+            <span className="text-sm font-semibold text-ink tracking-tight">Life Graph</span>
           </Link>
-          <button onClick={() => setOpen(false)} className="p-1 rounded-md hover:bg-zinc-100 lg:hidden">
-            <X className="w-4 h-4 text-zinc-400" />
+          <button onClick={() => setOpen(false)} className="p-1 rounded-md hover:bg-surface-3 lg:hidden">
+            <X className="w-4 h-4 text-ink-low" />
           </button>
         </div>
         <nav className="flex-1 px-3 space-y-0.5">
@@ -76,8 +76,8 @@ export function AppSidebar({ wsStatus = "disconnected" }: { wsStatus?: string })
                 href={href}
                 className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors ${
                   active
-                    ? "bg-emerald-50 text-emerald-700 font-medium"
-                    : "text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50"
+                    ? "bg-accent-soft text-accent-text font-medium"
+                    : "text-ink-mid hover:text-ink hover:bg-surface-2"
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
@@ -86,7 +86,7 @@ export function AppSidebar({ wsStatus = "disconnected" }: { wsStatus?: string })
             );
           })}
         </nav>
-        <div className="px-3 pt-2 border-t border-zinc-100 mt-2">
+        <div className="px-3 pt-2 border-t border-line mt-2">
           {BOTTOM.map(({ label, href, icon: Icon }) => {
             const active = pathname === href;
             return (
@@ -94,7 +94,7 @@ export function AppSidebar({ wsStatus = "disconnected" }: { wsStatus?: string })
                 key={href}
                 href={href}
                 className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors ${
-                  active ? "bg-emerald-50 text-emerald-700" : "text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50"
+                  active ? "bg-accent-soft text-accent-text" : "text-ink-mid hover:text-ink hover:bg-surface-2"
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />

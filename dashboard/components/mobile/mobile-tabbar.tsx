@@ -43,7 +43,8 @@ export function MobileTabBar() {
             : href === "/m/memories" && (pendingMemories.data ?? 0) > 0
               ? pendingMemories.data
               : 0;
-        const badgeColor = href === "/m/memories" ? "var(--warning, #b45309)" : "var(--danger)";
+        const badgeColor = href === "/m/memories" ? "var(--warning)" : "var(--danger)";
+        const badgeInk = href === "/m/memories" ? "var(--warning-fg)" : "var(--danger-fg)";
         return (
           <Link
             key={href}
@@ -74,7 +75,7 @@ export function MobileTabBar() {
                     height: "15px",
                     borderRadius: "var(--radius-pill)",
                     background: badgeColor,
-                    color: "#fff",
+                    color: badgeInk,
                     fontSize: "9px",
                     fontWeight: 800,
                     display: "flex",

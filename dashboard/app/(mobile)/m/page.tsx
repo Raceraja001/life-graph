@@ -232,7 +232,7 @@ export default function MobileHome() {
               height: "34px",
               borderRadius: "var(--radius-md)",
               background: "var(--warning)",
-              color: "#fff",
+              color: "var(--warning-fg)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

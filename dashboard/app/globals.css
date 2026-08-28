@@ -1,14 +1,71 @@
 @import "tailwindcss";
 @import "./tokens.css";
+/* orbit-tokens.css must come last: it redefines the semantic roles tokens.css
+ * declares (--bg / --surface / --text / --accent / radius / motion) and wins on
+ * source order at equal specificity. Structure — the axis model, the type scale,
+ * the numbered --space-N ramp — still comes from tokens.css. */
+@import "./orbit-tokens.css";
 
-/* Map uzhavu type roles onto the next/font variables set in layout.tsx.
- * Custom-property indirection resolves at use-time, so tokens.css (which reads
- * --font-display / --font-sans / --font-mono) picks these up regardless of order. */
+/* Tailwind v4 theme bridge.
+ *
+ * `inline` is load-bearing: without it Tailwind resolves --color-surface once, on
+ * :root, and every utility freezes at whatever the light theme computed. `inline`
+ * makes .bg-surface emit `background-color: var(--surface)` literally, so the value
+ * is resolved on the element and follows [data-theme] wherever that lands.
+ *
+ * This is what lets components drop bg-white / text-zinc-500 for bg-surface /
+ * text-ink-mid without giving up Tailwind's variant syntax (hover:, focus:, /40). */
+@theme inline {
+  --color-canvas: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  --color-ink: var(--text);
+  --color-ink-mid: var(--text-muted);
+  --color-ink-low: var(--text-subtle);
+  --color-ink-inverse: var(--text-inverse);
+
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-fg: var(--accent-soft-fg);
+  --color-accent-border: var(--accent-border);
+  --color-accent-text: var(--accent-text);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --color-money-in: var(--money-in);
+  --color-money-out: var(--money-out);
+  --color-attention: var(--attention);
+
+  --color-scrim: var(--overlay);
+}
+
+/* Map Orbit's type roles onto the next/font variables set in layout.tsx.
+ * Custom-property indirection resolves at use-time, so the token files (which read
+ * --font-display / --font-sans / --font-mono) pick these up regardless of order. */
 :root {
-  --font-display: var(--font-sora), system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-sans: var(--font-jakarta), system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Bricolage Grotesque — OrbitType.display / .title */
+  --font-display: var(--font-bricolage), system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Instrument Sans, with Anek Tamil behind it. This pairing IS OrbitType.bodyBilingual:
+   * Latin renders in Instrument, Tamil falls through to Anek in the same line without a
+   * per-string language check. */
+  --font-sans: var(--font-instrument), var(--font-anek), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, monospace;
-  --font-tamil: var(--font-jakarta), system-ui, sans-serif; /* Tamil face not loaded yet */
+  /* Orbit has no mono role; JetBrains is kept for code, IDs and raw JSON. */
+  --font-tamil: var(--font-anek), var(--font-instrument), system-ui, sans-serif;
 
   /* Retained from the original theme in case anything still references them. */
   --background: var(--surface);
@@ -25,12 +82,70 @@ body {
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "cv05" 1, "ss01" 1;
+  font-optical-sizing: auto;
 }
 
 h1, h2, h3, h4, h5 {
   font-family: var(--heading-font);
+  font-weight: var(--heading-weight);
   letter-spacing: var(--tracking-snug);
+}
+
+/* Orbit type roles, as utilities. These carry the family/weight/tracking/feature
+ * contract from lib/theme/orbit_type.dart; sizes stay overridable (Tailwind's
+ * text-* still wins on order) because OrbitType treats size as the screen's call
+ * and everything else as the system's. Tracking is in `em`, which reproduces
+ * Dart's proportional `letterSpacing: size * -0.025` at any size. */
+.type-display {
+  font-family: var(--display-font);
+  font-weight: var(--display-weight);
+  font-size: var(--size-display);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
+}
+.type-title {
+  font-family: var(--heading-font);
+  font-weight: var(--heading-weight);
+  font-size: var(--size-title);
+  letter-spacing: var(--tracking-snug);
+  line-height: 1.25;
+}
+.type-body {
+  font-family: var(--body-font);
+  font-weight: var(--body-weight);
+  font-size: var(--size-body);
+  line-height: 1.45;
+}
+.type-meta {
+  font-family: var(--body-font);
+  font-weight: var(--body-weight);
+  font-size: var(--size-meta);
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+.type-eyebrow {
+  font-family: var(--label-font);
+  font-weight: var(--eyebrow-weight);
+  font-size: var(--eyebrow-size);
+  letter-spacing: var(--eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+/* Tabular figures so counts and amounts don't jitter as they update — the one
+ * place OrbitType pins a font-feature rather than leaving it to the screen. */
+.type-numeric,
+.type-numeric-display {
+  font-family: var(--body-font);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.type-numeric { font-weight: 600; font-size: var(--size-numeric); }
+.type-numeric-display {
+  font-family: var(--display-font);
+  font-weight: var(--display-weight);
+  font-size: var(--size-display);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.1;
 }
 
 code, pre, kbd, samp { font-family: var(--mono-font); }
@@ -48,9 +163,13 @@ code, pre, kbd, samp { font-family: var(--mono-font); }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--radius-pill); }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
 
-/* Smooth hover transitions */
-a, button, input {
-  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+/* Smooth hover transitions, on Orbit's settle curve rather than plain ease. */
+a, button, input, select, textarea {
+  transition:
+    color var(--dur-fast) var(--ease-settle),
+    background-color var(--dur-fast) var(--ease-settle),
+    border-color var(--dur-fast) var(--ease-settle),
+    box-shadow var(--dur-fast) var(--ease-settle);
 }
 
 /* Mobile: reduce padding on the desktop shell's main region */

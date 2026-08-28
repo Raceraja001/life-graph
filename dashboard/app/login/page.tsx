@@ -38,36 +38,36 @@ function LoginForm() {
   };
 
   return (
-    <form onSubmit={handleLogin} className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm space-y-4">
+    <form onSubmit={handleLogin} className="bg-surface border border-line rounded-2xl p-6 shadow-sm space-y-4">
       <div>
-        <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tenant ID</label>
+        <label className="text-xs font-medium text-ink-mid uppercase tracking-wider">Tenant ID</label>
         <input
           type="text"
           value={tenantId}
           onChange={e => setTenantId(e.target.value)}
-          className="w-full mt-1.5 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
+          className="w-full mt-1.5 bg-surface-2 border border-line rounded-xl px-4 py-2.5 text-sm text-ink placeholder-ink-low focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft transition-all"
           placeholder="default"
         />
       </div>
       <div>
-        <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">API Key</label>
+        <label className="text-xs font-medium text-ink-mid uppercase tracking-wider">API Key</label>
         <input
           type="password"
           value={apiKey}
           onChange={e => setApiKey(e.target.value)}
-          className="w-full mt-1.5 bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
+          className="w-full mt-1.5 bg-surface-2 border border-line rounded-xl px-4 py-2.5 text-sm text-ink placeholder-ink-low focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft transition-all"
           placeholder="Enter your API key"
         />
       </div>
 
       {error && (
-        <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
+        <p className="text-xs text-danger bg-danger-soft border border-danger/30 rounded-lg px-3 py-2">{error}</p>
       )}
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-emerald-700 shadow-sm hover:shadow transition-all disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-2 bg-accent text-accent-fg rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-accent-hover shadow-sm hover:shadow transition-all disabled:opacity-50"
       >
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>Connect</span><ArrowRight className="w-4 h-4" /></>}
       </button>
@@ -77,27 +77,27 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center mb-4 shadow-sm">
-            <Brain className="w-7 h-7 text-emerald-600" />
+          <div className="w-14 h-14 rounded-2xl bg-accent-soft flex items-center justify-center mb-4 shadow-sm">
+            <Brain className="w-7 h-7 text-accent" />
           </div>
-          <h1 className="text-xl font-bold text-zinc-900 tracking-tight">Life Graph</h1>
-          <p className="text-sm text-zinc-500 mt-1">Personal AI Operating System</p>
+          <h1 className="text-xl font-bold text-ink tracking-tight">Life Graph</h1>
+          <p className="text-sm text-ink-mid mt-1">Personal AI Operating System</p>
         </div>
 
         {/* Form — Suspense required because LoginForm uses useSearchParams */}
         <Suspense fallback={
-          <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm flex items-center justify-center h-48">
-            <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+          <div className="bg-surface border border-line rounded-2xl p-6 shadow-sm flex items-center justify-center h-48">
+            <Loader2 className="w-5 h-5 animate-spin text-accent" />
           </div>
         }>
           <LoginForm />
         </Suspense>
 
-        <p className="text-center text-xs text-zinc-400 mt-6">
+        <p className="text-center text-xs text-ink-low mt-6">
           v0.1.0 · Self-hosted · Your data stays yours
         </p>
       </div>
