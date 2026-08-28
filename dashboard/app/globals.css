@@ -172,9 +172,12 @@ a, button, input, select, textarea {
     box-shadow var(--dur-fast) var(--ease-settle);
 }
 
-/* Mobile: reduce padding on the desktop shell's main region */
+/* Mobile: reduce padding on the desktop shell's main region, and clear the
+   fixed topbar it sits under. Scoped away from the /m shell — this used to be
+   a bare `main`, so the mobile screens inherited a 56px dead band below their
+   own header and a second set of side gutters. */
 @media (max-width: 1023px) {
-  main {
+  main:not([data-scroll-root]) {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
     padding-top: 3.5rem !important;

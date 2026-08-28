@@ -6,31 +6,30 @@
 // at the list level) so busy/error state is naturally scoped per card, with
 // no need to compare a shared mutation's `variables.id` against each row.
 import { useState, type CSSProperties } from "react";
-import { LoadingCard, EmptyCard, ErrorCard, SectionEyebrow } from "@/components/mobile/parts";
+import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
 import { usePersonas, useUpdatePersona, type PersonaVM } from "@/lib/mobile-api";
 import { ModelCombobox } from "@/components/model-combobox";
 
 const cardStyle: CSSProperties = {
   background: "var(--surface)",
   border: "1px solid var(--border)",
-  borderRadius: "var(--radius-lg)",
-  boxShadow: "var(--shadow-xs)",
-  padding: "14px",
+  borderRadius: "var(--radius-card)",
+  padding: "var(--o-lg)",
 };
 
 const inputStyle: CSSProperties = {
   width: "100%",
   padding: "8px 10px",
-  borderRadius: "var(--radius-md)",
+  borderRadius: "var(--radius-field)",
   border: "1px solid var(--border)",
   background: "var(--surface)",
   color: "var(--text)",
-  fontSize: "var(--text-xs)",
+  fontSize: "var(--size-meta)",
 };
 
 const labelStyle: CSSProperties = {
   display: "block",
-  fontSize: "var(--text-xs)",
+  fontSize: "var(--size-meta)",
   color: "var(--text-muted)",
   marginBottom: "4px",
 };
@@ -41,11 +40,12 @@ export default function PersonaSettings() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <SectionEyebrow>Personas</SectionEyebrow>
       {personas.isLoading && <LoadingCard label="Loading personas…" />}
       {personas.isError && <ErrorCard>Can&rsquo;t reach personas — is the backend running?</ErrorCard>}
       {!personas.isLoading && !personas.isError && rows.length === 0 && (
-        <EmptyCard>No personas configured yet.</EmptyCard>
+        <EmptyCard hint="Personas are seeded on first boot — if this stays empty, the backend never finished startup.">
+          No personas configured yet.
+        </EmptyCard>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
         {rows.map((p) => (
@@ -84,13 +84,13 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
   return (
     <section style={{ ...cardStyle, opacity: busy ? 0.7 : 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" }}>
-        <span style={{ fontSize: "var(--ui-text)", fontWeight: "var(--fw-bold)" }}>
+        <span style={{ fontSize: "var(--size-body)", fontWeight: 600 }}>
           {persona.displayName ?? persona.name}
         </span>
         {persona.isBuiltin && (
           <span
             style={{
-              fontSize: "var(--text-2xs)",
+              fontSize: "var(--size-meta)",
               color: "var(--text-subtle)",
               border: "1px solid var(--border)",
               borderRadius: "999px",
@@ -136,7 +136,7 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
       </div>
 
       {update.isError && (
-        <p style={{ fontSize: "var(--text-2xs)", color: "var(--danger, #dc2626)", marginBottom: "8px" }}>
+        <p style={{ fontSize: "var(--size-meta)", color: "var(--danger)", marginBottom: "8px" }}>
           Couldn&rsquo;t save — try again
         </p>
       )}
@@ -148,12 +148,12 @@ function PersonaCard({ persona }: { persona: PersonaVM }) {
         style={{
           width: "100%",
           padding: "8px",
-          borderRadius: "var(--radius-md)",
+          borderRadius: "var(--radius-control)",
           border: "none",
-          background: dirty && !busy ? "var(--accent, #2563eb)" : "var(--border)",
+          background: dirty && !busy ? "var(--accent)" : "var(--border)",
           color: dirty && !busy ? "var(--accent-fg)" : "var(--text-subtle)",
-          fontSize: "var(--text-xs)",
-          fontWeight: "var(--fw-semibold)",
+          fontSize: "var(--size-meta)",
+          fontWeight: 600,
           cursor: dirty && !busy ? "pointer" : "default",
         }}
       >

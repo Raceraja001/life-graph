@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Settings, Wifi, WifiOff, X } from "lucide-react";
@@ -15,6 +15,8 @@ const TITLES: Record<string, string> = {
   "/m/approvals": "Approvals",
   "/m/schedules": "Ambient roles",
   "/m/shadow": "Shadow log",
+  "/m/settings": "Settings",
+  "/m/personas": "Personas",
 };
 
 function titleFor(pathname: string) {
@@ -24,24 +26,88 @@ function titleFor(pathname: string) {
   if (pathname.startsWith("/m/approvals")) return TITLES["/m/approvals"];
   if (pathname.startsWith("/m/schedules")) return TITLES["/m/schedules"];
   if (pathname.startsWith("/m/shadow")) return TITLES["/m/shadow"];
+  if (pathname.startsWith("/m/settings")) return TITLES["/m/settings"];
+  if (pathname.startsWith("/m/personas")) return TITLES["/m/personas"];
   return TITLES["/m"];
+}
+
+/** The event Chromium fires when the app is installable. Not in lib.dom. */
+interface InstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+const DISMISS_KEY = "lg_install_dismissed";
+
+/**
+ * The install prompt, wired to the browser instead of faked.
+ *
+ * It used to render unconditionally on every screen and its "Install" button
+ * only dismissed itself — a permanent ~100px advertisement above the fold for
+ * something it couldn't actually do. Now it waits for `beforeinstallprompt`,
+ * shows only where there's room for it, calls the real prompt, and remembers a
+ * dismissal. Browsers that never fire the event (Safari, or an already-
+ * installed PWA) simply never see it.
+ */
+function useInstallPrompt(enabled: boolean) {
+  const [deferred, setDeferred] = useState<InstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault(); // keep it out of the browser's own mini-infobar so we can place it
+      let dismissed = false;
+      try {
+        dismissed = localStorage.getItem(DISMISS_KEY) === "1";
+      } catch {
+        /* private mode: no memory of a past dismissal, so show it */
+      }
+      if (!dismissed) setDeferred(e as InstallPromptEvent);
+    };
+    const onInstalled = () => setDeferred(null);
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const dismiss = () => {
+    setDeferred(null);
+    try {
+      localStorage.setItem(DISMISS_KEY, "1");
+    } catch {
+      /* private mode — the prompt comes back next session, which is acceptable */
+    }
+  };
+
+  const install = async () => {
+    if (!deferred) return;
+    await deferred.prompt();
+    await deferred.userChoice;
+    setDeferred(null); // the event is single-use either way
+  };
+
+  return { show: enabled && deferred !== null, install, dismiss };
 }
 
 export function MobileShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { online, toggleOnline, queued } = useMobileState();
-  const [installDismissed, setInstallDismissed] = useState(false);
   const ws = useWebSocket(); // opens the live connection + refreshes query cache on events
+
+  // Home is the only screen with room to spare, and the only one a first-run
+  // user reliably lands on.
+  const install = useInstallPrompt(online && pathname === "/m");
 
   const title = titleFor(pathname);
   const statusLine = !online
-    ? `Offline mode · ${queued} queued`
+    ? `Offline · ${queued} queued`
     : ws === "connected"
       ? "All systems green"
       : ws === "connecting"
         ? "Connecting…"
         : "Reconnecting…";
-  const showInstall = online && !installDismissed;
 
   return (
     <div
@@ -59,38 +125,43 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
       }}
     >
       {/* Header */}
-      <header style={{ display: "flex", alignItems: "center", gap: "10px", padding: "14px 18px 10px" }}>
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          padding: "calc(var(--o-lg) + env(safe-area-inset-top)) var(--space-gutter) var(--o-md)",
+        }}
+      >
         <span
           aria-hidden
           style={{
             width: "30px",
             height: "30px",
-            borderRadius: "var(--radius-md)",
+            borderRadius: "var(--radius-sm)",
             background: "var(--accent)",
             color: "var(--accent-fg)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             fontFamily: "var(--font-display)",
-            fontWeight: 800,
+            fontWeight: "var(--display-weight)",
             fontSize: "15px",
+            flexShrink: 0,
           }}
         >
           L
         </span>
         <span style={{ minWidth: 0 }}>
           <span
-            style={{
-              display: "block",
-              fontFamily: "var(--font-display)",
-              fontWeight: 800,
-              fontSize: "var(--text-md)",
-              letterSpacing: "var(--tracking-tight)",
-            }}
+            className="type-title"
+            style={{ display: "block", fontSize: "17px", lineHeight: 1.15 }}
           >
             {title}
           </span>
-          <span style={{ display: "block", fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
+          {/* The status line is an eyebrow, not a log line — it used to render in
+              JetBrains Mono, which made a health indicator look like stack output. */}
+          <span className="type-eyebrow" style={{ display: "block", marginTop: "2px" }}>
             {statusLine}
           </span>
         </span>
@@ -110,6 +181,7 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
             justifyContent: "center",
             border: 0,
             cursor: "pointer",
+            flexShrink: 0,
           }}
         >
           {online ? <Wifi width={15} height={15} /> : <WifiOff width={15} height={15} />}
@@ -139,72 +211,54 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
             display: "flex",
             alignItems: "center",
             gap: "9px",
-            margin: "0 18px 4px",
-            padding: "9px 12px",
-            borderRadius: "var(--radius-md)",
+            margin: "0 var(--space-gutter) var(--space-row)",
+            padding: "var(--o-sm) var(--o-md)",
+            borderRadius: "var(--radius-row)",
             background: "var(--warning-soft)",
             color: "var(--warning)",
           }}
         >
           <WifiOff width={15} height={15} style={{ flexShrink: 0 }} />
-          <span style={{ fontSize: "var(--text-xs)", fontWeight: "var(--fw-semibold)" }}>
+          <span style={{ fontSize: "var(--size-meta)", fontWeight: 600 }}>
             Offline — {queued} captures queued, will sync on reconnect
           </span>
         </div>
       )}
 
       {/* Install banner */}
-      {showInstall && (
+      {install.show && (
         <div
           style={{
             display: "flex",
             alignItems: "center",
             gap: "11px",
-            margin: "0 18px 4px",
-            padding: "11px 13px",
-            borderRadius: "var(--radius-lg)",
+            margin: "0 var(--space-gutter) var(--space-row)",
+            padding: "var(--o-sm) var(--o-md)",
+            borderRadius: "var(--radius-row)",
             background: "var(--accent-soft)",
-            border: "1px solid var(--accent)",
+            border: "1px solid var(--accent-border)",
           }}
         >
-          <span
-            aria-hidden
-            style={{
-              width: "32px",
-              height: "32px",
-              borderRadius: "var(--radius-md)",
-              background: "var(--accent)",
-              color: "var(--accent-fg)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontFamily: "var(--font-display)",
-              fontWeight: 800,
-              flexShrink: 0,
-            }}
-          >
-            L
-          </span>
           <span style={{ minWidth: 0, flex: 1 }}>
-            <span style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: "var(--fw-bold)", color: "var(--accent-soft-fg)" }}>
-              Add Life Graph to your home screen
+            <span style={{ display: "block", fontSize: "var(--size-body)", fontWeight: 600, color: "var(--accent-soft-fg)" }}>
+              Add to your home screen
             </span>
-            <span style={{ display: "block", fontSize: "var(--text-2xs)", color: "var(--text-muted)", marginTop: "1px" }}>
+            <span className="type-meta" style={{ display: "block", marginTop: "1px" }}>
               Capture from anywhere · works offline
             </span>
           </span>
           <button
-            onClick={() => setInstallDismissed(true)}
+            onClick={install.install}
             style={{
-              height: "32px",
-              paddingInline: "13px",
+              height: "30px",
+              paddingInline: "14px",
               border: 0,
-              borderRadius: "var(--radius-md)",
+              borderRadius: "var(--radius-pill)",
               background: "var(--accent)",
               color: "var(--accent-fg)",
               fontFamily: "inherit",
-              fontSize: "var(--text-xs)",
-              fontWeight: "var(--fw-bold)",
+              fontSize: "var(--size-meta)",
+              fontWeight: 600,
               cursor: "pointer",
               flexShrink: 0,
             }}
@@ -212,7 +266,7 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
             Install
           </button>
           <button
-            onClick={() => setInstallDismissed(true)}
+            onClick={install.dismiss}
             aria-label="Dismiss install prompt"
             style={{ border: 0, background: "transparent", color: "var(--text-subtle)", cursor: "pointer", display: "flex", padding: "4px", flexShrink: 0 }}
           >
@@ -227,10 +281,10 @@ export function MobileShell({ children }: { children: React.ReactNode }) {
         style={{
           flex: 1,
           overflowY: "auto",
-          padding: "8px 18px 16px",
+          padding: "var(--space-row) var(--space-gutter) var(--o-xl)",
           display: "flex",
           flexDirection: "column",
-          gap: "12px",
+          gap: "var(--space-block)",
         }}
       >
         {children}

@@ -11,18 +11,17 @@ import { useShadowRuns, useGradeShadowRun, type ShadowRunVM } from "@/lib/mobile
 const cardStyle: CSSProperties = {
   background: "var(--surface)",
   border: "1px solid var(--border)",
-  borderRadius: "var(--radius-lg)",
-  boxShadow: "var(--shadow-xs)",
+  borderRadius: "var(--radius-card)",
   padding: "14px",
 };
 
 const RISK_BADGE: Record<string, { bg: string; fg: string; label: string }> = {
-  safe: { bg: "var(--success-soft, #d1fae5)", fg: "var(--success, #047857)", label: "safe" },
-  low: { bg: "var(--success-soft, #d1fae5)", fg: "var(--success, #047857)", label: "low" },
-  moderate: { bg: "var(--warning-soft, #fef3c7)", fg: "var(--warning, #b45309)", label: "moderate" },
-  medium: { bg: "var(--warning-soft, #fef3c7)", fg: "var(--warning, #b45309)", label: "medium" },
-  dangerous: { bg: "var(--danger-soft, #fee2e2)", fg: "var(--danger, #b91c1c)", label: "dangerous" },
-  high: { bg: "var(--danger-soft, #fee2e2)", fg: "var(--danger, #b91c1c)", label: "high" },
+  safe: { bg: "var(--success-soft)", fg: "var(--success)", label: "safe" },
+  low: { bg: "var(--success-soft)", fg: "var(--success)", label: "low" },
+  moderate: { bg: "var(--warning-soft)", fg: "var(--warning)", label: "moderate" },
+  medium: { bg: "var(--warning-soft)", fg: "var(--warning)", label: "medium" },
+  dangerous: { bg: "var(--danger-soft)", fg: "var(--danger)", label: "dangerous" },
+  high: { bg: "var(--danger-soft)", fg: "var(--danger)", label: "high" },
 };
 
 export function RiskBadge({ risk }: { risk: string | null | undefined }) {
@@ -38,8 +37,8 @@ export function RiskBadge({ risk }: { risk: string | null | undefined }) {
         borderRadius: "var(--radius-pill)",
         background: style.bg,
         color: style.fg,
-        fontSize: "var(--text-2xs)",
-        fontWeight: "var(--fw-bold)",
+        fontSize: "var(--size-eyebrow)",
+        fontWeight: 600,
         textTransform: "uppercase",
         letterSpacing: "var(--tracking-caps)",
         flexShrink: 0,
@@ -58,18 +57,7 @@ export default function ShadowLog() {
 
   return (
     <>
-      <h1
-        style={{
-          fontFamily: "var(--font-display)",
-          fontWeight: 800,
-          fontSize: "var(--text-md)",
-          letterSpacing: "var(--tracking-tight)",
-          margin: "4px 0 0",
-        }}
-      >
-        Shadow log
-      </h1>
-      <p style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", margin: "2px 0 4px", lineHeight: 1.5 }}>
+      <p style={{ fontSize: "var(--size-meta)", color: "var(--text-muted)", margin: "0 0 var(--space-row)", lineHeight: 1.5 }}>
         What autonomous actions WOULD have run. Grade them — enough good grades and the actor
         graduates to acting for real.
       </p>
@@ -78,7 +66,9 @@ export default function ShadowLog() {
       {runs.isLoading && <LoadingCard label="Loading shadow log…" />}
       {runs.isError && <ErrorCard>Can&rsquo;t reach the shadow log — is the backend running?</ErrorCard>}
       {!runs.isLoading && !runs.isError && items.length === 0 && (
-        <EmptyCard>Nothing waiting on a grade — the shadow log is clear.</EmptyCard>
+        <EmptyCard hint="Actions an agent would have taken land here for you to grade before it earns the right to act.">
+          Nothing waiting on a grade.
+        </EmptyCard>
       )}
       {!runs.isLoading &&
         !runs.isError &&
@@ -106,15 +96,15 @@ function ShadowRunCard({
   return (
     <section style={{ ...cardStyle, opacity: busy ? 0.6 : 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: "var(--ui-text)", fontWeight: "var(--fw-bold)", flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: "var(--size-body)", fontWeight: 600, flex: 1, minWidth: 0 }}>
           {run.actionType}
         </span>
         <RiskBadge risk={run.riskLevel} />
       </div>
       <div
         style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: "var(--text-xs)",
+          fontVariantNumeric: "tabular-nums",
+          fontSize: "var(--size-meta)",
           color: "var(--text-muted)",
           marginTop: "6px",
           lineHeight: 1.5,
@@ -123,7 +113,7 @@ function ShadowRunCard({
       >
         {run.command}
       </div>
-      <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", marginTop: "6px" }}>
+      <div style={{ fontSize: "var(--size-meta)", color: "var(--text-subtle)", marginTop: "6px" }}>
         would have {run.wouldHaveRouted.replace(/_/g, " ")} · agent {run.agentId}
         {run.projectId ? ` · ${run.projectId}` : ""}
       </div>
@@ -136,12 +126,12 @@ function ShadowRunCard({
             flex: 1,
             height: "40px",
             border: 0,
-            borderRadius: "var(--radius-md)",
+            borderRadius: "var(--radius-control)",
             background: "var(--accent)",
             color: "var(--accent-fg)",
             fontFamily: "inherit",
-            fontSize: "var(--text-sm)",
-            fontWeight: "var(--fw-bold)",
+            fontSize: "var(--size-body)",
+            fontWeight: 600,
             cursor: busy ? "default" : "pointer",
           }}
         >
@@ -154,12 +144,12 @@ function ShadowRunCard({
             flex: 1,
             height: "40px",
             border: "1px solid var(--border-strong)",
-            borderRadius: "var(--radius-md)",
+            borderRadius: "var(--radius-control)",
             background: "var(--surface)",
             color: "var(--text)",
             fontFamily: "inherit",
-            fontSize: "var(--text-sm)",
-            fontWeight: "var(--fw-semibold)",
+            fontSize: "var(--size-body)",
+            fontWeight: 600,
             cursor: busy ? "default" : "pointer",
           }}
         >

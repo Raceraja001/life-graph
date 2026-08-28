@@ -30,9 +30,10 @@ export function MobileTabBar() {
       style={{
         display: "grid",
         gridTemplateColumns: "repeat(5, 1fr)",
+        gap: "2px",
         borderTop: "1px solid var(--border)",
         background: "var(--surface)",
-        padding: "6px 8px calc(6px + env(safe-area-inset-bottom))",
+        padding: "var(--o-xs) var(--o-sm) calc(var(--o-xs) + env(safe-area-inset-bottom))",
       }}
     >
       {TABS.map(({ href, label, icon: Icon }) => {
@@ -59,8 +60,13 @@ export function MobileTabBar() {
               padding: "7px 4px",
               minHeight: "48px",
               borderRadius: "var(--radius-md)",
-              color: active ? "var(--accent-text)" : "var(--text-subtle)",
+              // Orbit marks the active destination with a filled shape, not just a
+              // hue shift. Colour alone was the only signal here, which is both
+              // easy to miss and invisible to anyone who can't separate the two.
+              background: active ? "var(--accent-soft)" : "transparent",
+              color: active ? "var(--accent-soft-fg)" : "var(--text-subtle)",
               textDecoration: "none",
+              transition: "background var(--dur-fast) var(--ease-settle), color var(--dur-fast) var(--ease-settle)",
             }}
           >
             <span style={{ position: "relative", display: "flex" }}>
@@ -77,7 +83,7 @@ export function MobileTabBar() {
                     background: badgeColor,
                     color: badgeInk,
                     fontSize: "9px",
-                    fontWeight: 800,
+                    fontWeight: 700,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -88,7 +94,15 @@ export function MobileTabBar() {
                 </span>
               ) : null}
             </span>
-            <span style={{ fontSize: "10px", fontWeight: "var(--fw-bold)" }}>{label}</span>
+            <span
+              style={{
+                fontSize: "var(--size-eyebrow)",
+                fontWeight: 600,
+                letterSpacing: "var(--tracking-snug)",
+              }}
+            >
+              {label}
+            </span>
           </Link>
         );
       })}
