@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-08-26 15:19 UTC` from `master` @ `e2eeb50`
+Generated `2026-09-11 10:59 UTC` from `feat/orbit-design-language` @ `b7581bf`
 
 ---
 
@@ -26,7 +26,7 @@ Generated `2026-08-26 15:19 UTC` from `master` @ `e2eeb50`
 | Config settings | **148** (prefix `LIFE_GRAPH_`) |
 | Test functions | **2073** in 214 files |
 | Dashboard pages | **18** |
-| Python | 287 files, 68,507 lines |
+| Python | 287 files, 68,515 lines |
 
 ---
 
