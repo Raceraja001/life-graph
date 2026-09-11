@@ -69,6 +69,105 @@ def pytest_report_header(config) -> str:
     )
 
 
+# ── The test database itself ──────────────────────────────────
+#
+# tests/conftest.py has already pointed settings at "<name>_test". That
+# database still has to exist, be migrated to head, and start empty — the
+# last part being the whole point, since a suite that leaves its rows behind
+# pollutes the next run's assertions just as surely as it polluted the
+# development database before the redirect.
+#
+# Emptying happens at session *start*, not end, so a failed run leaves its
+# rows in place to be inspected.
+
+
+def _maintenance_url() -> str:
+    """The sync URL with the database name replaced by "postgres".
+
+    CREATE DATABASE cannot run from inside the database being created, so
+    the bootstrap connection goes to the always-present maintenance
+    database instead.
+    """
+    from life_graph.config import settings
+
+    head, _, _tail = settings.database_url_sync.rpartition("/")
+    return f"{head}/postgres"
+
+
+def _test_database_name() -> str:
+    from life_graph.config import settings
+
+    return settings.database_url_sync.rpartition("/")[2].partition("?")[0]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _test_database() -> None:
+    """Create, migrate and empty the dedicated test database, once per session.
+
+    Skipped entirely when Postgres is unreachable — the individual tests'
+    ``skip_on_db_error`` reports that far better than a fixture error would.
+    """
+    if not db_reachable():
+        return
+
+    import psycopg2
+
+    name = _test_database_name()
+
+    conn = psycopg2.connect(_maintenance_url())
+    try:
+        conn.autocommit = True  # CREATE DATABASE cannot run inside a transaction
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,))
+            if cur.fetchone() is None:
+                # Identifier, not a value — psycopg2 cannot parameterise it.
+                # `name` is derived from our own settings, never from input.
+                cur.execute(f'CREATE DATABASE "{name}"')
+    finally:
+        conn.close()
+
+    # The migrations create their own extensions (vector, uuid-ossp, age), so
+    # a freshly created empty database needs nothing else. Run in-process:
+    # alembic/env.py reads the same mutated settings object this process has.
+    from pathlib import Path
+
+    from alembic.config import Config
+
+    from alembic import command
+
+    repo_root = Path(__file__).resolve().parents[2]
+    command.upgrade(Config(str(repo_root / "alembic.ini")), "head")
+
+    _empty_test_database()
+
+
+def _empty_test_database() -> None:
+    """Remove every row from the app's tables, keeping the schema.
+
+    Only the public schema is touched. Apache AGE keeps the knowledge graph
+    in its own schema and ag_catalog, and alembic_version must survive or
+    the next run would try to migrate from scratch.
+    """
+    import psycopg2
+
+    from life_graph.config import settings
+
+    conn = psycopg2.connect(settings.database_url_sync)
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT tablename FROM pg_tables "
+                "WHERE schemaname = 'public' AND tablename <> 'alembic_version'"
+            )
+            tables = [r[0] for r in cur.fetchall()]
+            if tables:
+                joined = ", ".join(f'public."{t}"' for t in tables)
+                cur.execute(f"TRUNCATE {joined} RESTART IDENTITY CASCADE")
+    finally:
+        conn.close()
+
+
 def skip_on_db_error(func):
     """Skip *func* only when the database is genuinely unreachable.
 
