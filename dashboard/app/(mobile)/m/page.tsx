@@ -3,24 +3,25 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Inbox } from "lucide-react";
 import { MobileCapture } from "@/components/mobile/mobile-capture";
-import { SectionEyebrow, TaskRow, EmptyCard, ErrorCard, SkeletonList } from "@/components/mobile/parts";
+import { Card, EmptyCard, ErrorCard, Meta, Row, Section, SkeletonList, Stack, TaskRow } from "@/components/mobile/parts";
 import { useApprovals, useMobileMemories, useMobileTasks } from "@/lib/mobile-api";
 import { impLabel } from "@/lib/mobile-mock";
 import { api } from "@/lib/api";
 import { enablePush, disablePush, getPushState, type PushState } from "@/lib/push";
 import { usePullToRefresh } from "@/lib/use-pull-to-refresh";
 
-// Small pill/banner button styling shared by the two non-idle states —
-// mirrors the approvals banner's card look (surface + border + radius-lg).
-const pushCard: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  padding: "11px 14px",
+// A small inline button — the two states of the push control both need one, and
+// neither is important enough to be a filled accent button.
+const quietButton: React.CSSProperties = {
   border: "1px solid var(--border)",
-  borderRadius: "var(--radius-lg)",
-  background: "var(--surface)",
+  borderRadius: "var(--radius-pill)",
+  background: "var(--surface-2)",
+  color: "var(--text-muted)",
   fontFamily: "inherit",
+  fontSize: "var(--size-meta)",
+  fontWeight: 600,
+  padding: "5px 10px",
+  cursor: "pointer",
 };
 
 function PushControl() {
@@ -76,98 +77,71 @@ function PushControl() {
 
   if (state === "denied") {
     return (
-      <div style={{ ...pushCard, color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>
+      <Row style={{ color: "var(--text-muted)", fontSize: "var(--size-meta)" }}>
         <span aria-hidden>🔔</span>
         Blocked — enable notifications in your browser settings
-      </div>
+      </Row>
     );
   }
 
   if (state === "subscribed") {
     return (
-      <div style={pushCard}>
+      <Row>
         <span aria-hidden>🔔</span>
-        <span style={{ fontSize: "var(--ui-text)", fontWeight: "var(--fw-semibold)" }}>Notifications</span>
+        <span style={{ fontSize: "var(--size-body)", fontWeight: 600 }}>Notifications</span>
         <span
           style={{
             display: "inline-flex",
             alignItems: "center",
             height: "20px",
-            paddingInline: "8px",
+            paddingInline: "9px",
             borderRadius: "var(--radius-pill)",
             background: "var(--success-soft)",
             color: "var(--success)",
-            fontSize: "var(--text-2xs)",
-            fontWeight: "var(--fw-bold)",
+            fontSize: "var(--size-eyebrow)",
+            fontWeight: 600,
           }}
         >
           On
         </span>
         <span style={{ marginInlineStart: "auto", display: "flex", gap: "8px", alignItems: "center" }}>
-          {testMsg && <span style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>{testMsg}</span>}
-          <button
-            type="button"
-            onClick={onTest}
-            disabled={busy}
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius-pill)",
-              background: "var(--surface-2)",
-              color: "var(--text-muted)",
-              fontFamily: "inherit",
-              fontSize: "var(--text-2xs)",
-              fontWeight: "var(--fw-semibold)",
-              padding: "5px 10px",
-              cursor: "pointer",
-            }}
-          >
+          {testMsg && <Meta>{testMsg}</Meta>}
+          <button type="button" onClick={onTest} disabled={busy} style={quietButton}>
             Send test
           </button>
           <button
             type="button"
             onClick={onDisable}
             disabled={busy}
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius-pill)",
-              background: "transparent",
-              color: "var(--text-subtle)",
-              fontFamily: "inherit",
-              fontSize: "var(--text-2xs)",
-              fontWeight: "var(--fw-semibold)",
-              padding: "5px 10px",
-              cursor: "pointer",
-            }}
+            style={{ ...quietButton, background: "transparent", color: "var(--text-subtle)" }}
           >
             Turn off
           </button>
         </span>
-      </div>
+      </Row>
     );
   }
 
   return (
     <>
-      <button
-        type="button"
+      <Row
+        as="button"
         onClick={onEnable}
         disabled={busy}
         style={{
-          ...pushCard,
           width: "100%",
           textAlign: "start",
           color: "var(--text)",
-          fontSize: "var(--ui-text)",
-          fontWeight: "var(--fw-semibold)",
+          fontFamily: "inherit",
+          fontSize: "var(--size-body)",
+          fontWeight: 600,
           cursor: "pointer",
         }}
       >
         <span aria-hidden>🔔</span>
         Enable notifications
-      </button>
-      {testMsg && (
-        <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", margin: "4px 0 0" }}>{testMsg}</p>
-      )}
+      </Row>
+      {testMsg && <Meta style={{ marginTop: "2px" }}>{testMsg}</Meta>}
     </>
   );
 }
@@ -197,9 +171,9 @@ export default function MobileHome() {
             alignItems: "center",
             justifyContent: "center",
             color: "var(--text-subtle)",
-            fontSize: "var(--text-2xs)",
+            fontSize: "var(--size-meta)",
             overflow: "hidden",
-            transition: refreshing ? "height 0.15s" : undefined,
+            transition: refreshing ? "height var(--dur-fast) var(--ease-settle)" : undefined,
           }}
         >
           {refreshing ? "Refreshing…" : distance >= 64 ? "Release to refresh" : "Pull to refresh"}
@@ -215,10 +189,10 @@ export default function MobileHome() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "12px",
-            padding: "13px 14px",
+            gap: "var(--o-md)",
+            padding: "var(--o-md) var(--o-lg)",
             border: "1px solid var(--warning)",
-            borderRadius: "var(--radius-lg)",
+            borderRadius: "var(--radius-card)",
             background: "var(--warning-soft)",
             textAlign: "start",
             color: "var(--text)",
@@ -230,9 +204,9 @@ export default function MobileHome() {
             style={{
               width: "34px",
               height: "34px",
-              borderRadius: "var(--radius-md)",
+              borderRadius: "var(--radius-sm)",
               background: "var(--warning)",
-              color: "#fff",
+              color: "var(--warning-fg)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -242,92 +216,73 @@ export default function MobileHome() {
             <Inbox width={16} height={16} />
           </span>
           <span style={{ minWidth: 0, flex: 1 }}>
-            <span style={{ display: "block", fontSize: "var(--ui-text)", fontWeight: "var(--fw-bold)" }}>
+            <span style={{ display: "block", fontSize: "var(--size-body)", fontWeight: 600, letterSpacing: "var(--tracking-snug)" }}>
               {openApprovalsCount} approvals waiting
             </span>
-            <span style={{ display: "block", fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "1px" }}>
-              Merges, contradictions, a prompt promotion
-            </span>
+            <Meta style={{ display: "block", marginTop: "1px" }}>Merges, contradictions, a prompt promotion</Meta>
           </span>
           <ChevronRight width={15} height={15} style={{ color: "var(--text-subtle)", flexShrink: 0 }} />
         </Link>
       )}
 
-      <section>
-        <div style={{ display: "flex", alignItems: "baseline", margin: "4px 0 8px" }}>
-          <SectionEyebrow>Today</SectionEyebrow>
+      <Section
+        title="Today"
+        action={
           <Link
             href="/m/tasks"
             style={{
-              marginInlineStart: "auto",
               color: "var(--accent-text)",
-              fontSize: "var(--text-xs)",
-              fontWeight: "var(--fw-semibold)",
+              fontSize: "var(--size-meta)",
+              fontWeight: 600,
               textDecoration: "none",
             }}
           >
             All tasks →
           </Link>
-        </div>
+        }
+      >
         {tasks.isLoading ? (
           <SkeletonList count={2} />
         ) : tasks.isError ? (
           <ErrorCard>Can’t reach the task board — is the backend running?</ErrorCard>
         ) : todayTasks.length === 0 ? (
-          <EmptyCard>Nothing in flight right now.</EmptyCard>
+          <EmptyCard hint="Anything you start from Tasks or a chat shows up here while it runs.">
+            Nothing in flight right now.
+          </EmptyCard>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <Stack>
             {todayTasks.map((t) => (
               <TaskRow key={t.id} task={t} showStatus />
             ))}
-          </div>
+          </Stack>
         )}
-      </section>
+      </Section>
 
-      <section>
-        <div style={{ margin: "4px 0 8px" }}>
-          <SectionEyebrow>Remembered today</SectionEyebrow>
-        </div>
+      <Section title="Remembered today">
         {memories.isLoading ? (
           <SkeletonList count={3} />
         ) : memories.isError ? (
           <ErrorCard>Can’t reach memories.</ErrorCard>
         ) : recent.length === 0 ? (
-          <EmptyCard>No memories yet — capture a thought above.</EmptyCard>
+          <EmptyCard hint="Type a thought into the box above — a sentence is enough.">
+            Nothing captured today.
+          </EmptyCard>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <Stack>
             {recent.map((m) => (
-              <div
-                key={m.id}
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-lg)",
-                  padding: "12px 14px",
-                }}
-              >
-                <div style={{ fontSize: "var(--ui-text)", lineHeight: 1.5 }}>{m.content}</div>
-                <div style={{ display: "flex", gap: "6px", marginTop: "7px", alignItems: "center" }}>
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
-                    {m.meta}
-                  </span>
-                  <span
-                    style={{
-                      marginInlineStart: "auto",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "var(--text-2xs)",
-                      fontWeight: "var(--fw-bold)",
-                      color: "var(--accent-text)",
-                    }}
-                  >
+              <Card key={m.id} style={{ padding: "var(--o-md) var(--o-lg)" }}>
+                <div style={{ fontSize: "var(--size-body)", lineHeight: 1.5 }}>{m.content}</div>
+                <div style={{ display: "flex", gap: "6px", marginTop: "var(--o-xs)", alignItems: "center" }}>
+                  <Meta>{m.meta}</Meta>
+                  <Meta style={{ marginInlineStart: "auto", color: "var(--accent-text)", fontWeight: 600 }}>
                     {impLabel(m.imp)}
-                  </span>
+                  </Meta>
                 </div>
-              </div>
+              </Card>
             ))}
-          </div>
+          </Stack>
         )}
-      </section>
+      </Section>
     </>
   );
 }

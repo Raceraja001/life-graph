@@ -4,8 +4,8 @@
   "description": "Personal AI Operating System",
   "start_url": "/m",
   "display": "standalone",
-  "background_color": "#f8f7f4",
-  "theme_color": "#0e8a4d",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "portrait",
   "icons": [
     {

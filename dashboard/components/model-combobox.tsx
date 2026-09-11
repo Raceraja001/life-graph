@@ -59,7 +59,7 @@ export function ModelCombobox({ value, onChange, disabled, variant }: ModelCombo
     : undefined;
   const buttonClassName = isMobile
     ? undefined
-    : "w-full mt-1 text-left text-sm text-zinc-800 bg-zinc-50 px-3 py-2 rounded-lg border border-zinc-100";
+    : "w-full mt-1 text-left text-sm text-ink bg-surface-2 px-3 py-2 rounded-lg border border-line";
 
   return (
     <div ref={containerRef} style={{ position: "relative" }}>
@@ -94,7 +94,7 @@ export function ModelCombobox({ value, onChange, disabled, variant }: ModelCombo
           className={
             isMobile
               ? undefined
-              : "absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-lg shadow-lg"
+              : "absolute z-20 top-full left-0 right-0 mt-1 bg-surface border border-line rounded-lg shadow-lg"
           }
         >
           <Command>
@@ -118,13 +118,13 @@ export function ModelCombobox({ value, onChange, disabled, variant }: ModelCombo
               className={
                 isMobile
                   ? undefined
-                  : "w-full px-3 py-2 text-sm border-b border-zinc-100 outline-none"
+                  : "w-full px-3 py-2 text-sm border-b border-line outline-none"
               }
             />
             <Command.List style={{ maxHeight: "220px", overflowY: "auto", padding: "4px" }}>
               <Command.Empty
                 style={isMobile ? { padding: "10px", fontSize: "var(--text-xs)", color: "var(--text-muted)" } : undefined}
-                className={isMobile ? undefined : "px-3 py-4 text-sm text-zinc-400 text-center"}
+                className={isMobile ? undefined : "px-3 py-4 text-sm text-ink-low text-center"}
               >
                 No models found.
               </Command.Empty>
@@ -184,7 +184,7 @@ function ModelItem({
       className={
         isMobile
           ? undefined
-          : "px-3 py-1.5 rounded text-sm text-zinc-700 cursor-pointer data-[selected=true]:bg-emerald-50 data-[selected=true]:text-emerald-700"
+          : "px-3 py-1.5 rounded text-sm text-ink cursor-pointer data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent-text"
       }
     >
       {model.name}

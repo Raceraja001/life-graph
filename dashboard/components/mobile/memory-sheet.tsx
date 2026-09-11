@@ -56,8 +56,8 @@ export function MemorySheet({
           maxWidth: "430px",
           zIndex: 40,
           background: "var(--surface)",
-          borderTopLeftRadius: "var(--radius-xl)",
-          borderTopRightRadius: "var(--radius-xl)",
+          borderTopLeftRadius: "var(--radius-sheet)",
+          borderTopRightRadius: "var(--radius-sheet)",
           boxShadow: "var(--shadow-xl)",
           padding: "8px 20px calc(20px + env(safe-area-inset-bottom))",
           maxHeight: "80%",
@@ -70,9 +70,9 @@ export function MemorySheet({
           {mem.status === "pending" && (
             <span
               style={{
-                background: "var(--warning-soft, #fef3c7)",
-                color: "var(--warning, #b45309)",
-                borderRadius: 999,
+                background: "var(--warning-soft)",
+                color: "var(--warning)",
+                borderRadius: "var(--radius-pill)",
                 padding: "1px 8px",
                 fontSize: 11,
                 fontWeight: 600,
@@ -92,8 +92,8 @@ export function MemorySheet({
                 borderRadius: "var(--radius-pill)",
                 background: "var(--accent-soft)",
                 color: "var(--accent-soft-fg)",
-                fontSize: "var(--text-2xs)",
-                fontWeight: "var(--fw-bold)",
+                fontSize: "var(--size-meta)",
+                fontWeight: 600,
               }}
             >
               {t}
@@ -102,9 +102,9 @@ export function MemorySheet({
           <span
             style={{
               marginInlineStart: "auto",
-              fontFamily: "var(--font-mono)",
-              fontSize: "var(--text-sm)",
-              fontWeight: "var(--fw-bold)",
+              fontVariantNumeric: "tabular-nums",
+              fontSize: "var(--size-body)",
+              fontWeight: 600,
               color: "var(--accent-text)",
             }}
           >
@@ -123,11 +123,11 @@ export function MemorySheet({
                 width: "100%",
                 boxSizing: "border-box",
                 border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)",
+                borderRadius: "var(--radius-control)",
                 background: "var(--surface-2)",
                 color: "var(--text)",
                 fontFamily: "inherit",
-                fontSize: "var(--text-md)",
+                fontSize: "var(--size-title)",
                 lineHeight: 1.55,
                 padding: "10px 12px",
                 resize: "vertical",
@@ -142,11 +142,11 @@ export function MemorySheet({
                 width: "100%",
                 boxSizing: "border-box",
                 border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)",
+                borderRadius: "var(--radius-control)",
                 background: "var(--surface-2)",
                 color: "var(--text)",
                 fontFamily: "inherit",
-                fontSize: "var(--text-sm)",
+                fontSize: "var(--size-body)",
                 padding: "8px 12px",
                 marginBottom: "10px",
               }}
@@ -160,10 +160,10 @@ export function MemorySheet({
                   background: "var(--accent)",
                   color: "var(--accent-fg)",
                   border: "none",
-                  borderRadius: "var(--radius-md)",
+                  borderRadius: "var(--radius-control)",
                   padding: "8px 0",
-                  fontSize: "var(--text-sm)",
-                  fontWeight: "var(--fw-bold)",
+                  fontSize: "var(--size-body)",
+                  fontWeight: 600,
                   cursor: update.isPending ? "default" : "pointer",
                   opacity: update.isPending || !content.trim() ? 0.6 : 1,
                 }}
@@ -178,10 +178,10 @@ export function MemorySheet({
                   background: "var(--surface-2)",
                   color: "var(--text-muted)",
                   border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
+                  borderRadius: "var(--radius-control)",
                   padding: "8px 0",
-                  fontSize: "var(--text-sm)",
-                  fontWeight: "var(--fw-bold)",
+                  fontSize: "var(--size-body)",
+                  fontWeight: 600,
                   cursor: update.isPending ? "default" : "pointer",
                   opacity: update.isPending ? 0.6 : 1,
                 }}
@@ -190,14 +190,14 @@ export function MemorySheet({
               </button>
             </div>
             {update.isError && (
-              <p style={{ margin: "8px 0 0", fontSize: "var(--text-xs)", color: "var(--danger, #d33)" }}>
+              <p style={{ margin: "8px 0 0", fontSize: "var(--size-meta)", color: "var(--danger)" }}>
                 Couldn’t save — try again.
               </p>
             )}
           </div>
         ) : (
           <>
-            <p style={{ margin: "0 0 8px", fontSize: "var(--text-md)", lineHeight: 1.55 }}>{content}</p>
+            <p style={{ margin: "0 0 8px", fontSize: "var(--size-title)", lineHeight: 1.55 }}>{content}</p>
             <button
               onClick={startEdit}
               style={{
@@ -206,8 +206,8 @@ export function MemorySheet({
                 border: "none",
                 padding: 0,
                 marginBottom: "16px",
-                fontSize: "var(--text-sm)",
-                fontWeight: "var(--fw-semibold)",
+                fontSize: "var(--size-body)",
+                fontWeight: 600,
                 color: "var(--accent-text)",
                 cursor: "pointer",
               }}
@@ -227,10 +227,10 @@ export function MemorySheet({
                 background: "var(--success-soft)",
                 color: "var(--success)",
                 border: "none",
-                borderRadius: "var(--radius-md)",
+                borderRadius: "var(--radius-control)",
                 padding: "8px 0",
-                fontSize: "var(--text-sm)",
-                fontWeight: "var(--fw-bold)",
+                fontSize: "var(--size-body)",
+                fontWeight: 600,
                 cursor: resolve.isPending ? "default" : "pointer",
                 opacity: resolve.isPending ? 0.6 : 1,
               }}
@@ -245,10 +245,10 @@ export function MemorySheet({
                 background: "var(--danger-soft)",
                 color: "var(--danger)",
                 border: "none",
-                borderRadius: "var(--radius-md)",
+                borderRadius: "var(--radius-control)",
                 padding: "8px 0",
-                fontSize: "var(--text-sm)",
-                fontWeight: "var(--fw-bold)",
+                fontSize: "var(--size-body)",
+                fontWeight: 600,
                 cursor: resolve.isPending ? "default" : "pointer",
                 opacity: resolve.isPending ? 0.6 : 1,
               }}
@@ -265,8 +265,8 @@ export function MemorySheet({
 
         <div
           style={{
-            fontSize: "var(--text-2xs)",
-            fontWeight: "var(--fw-bold)",
+            fontSize: "var(--size-meta)",
+            fontWeight: 600,
             letterSpacing: "var(--tracking-caps)",
             textTransform: "uppercase",
             color: "var(--text-subtle)",
@@ -279,7 +279,7 @@ export function MemorySheet({
           {prov.map((p) => (
             <div key={p} style={{ display: "flex", gap: "10px", alignItems: "flex-start", padding: "5px 0" }}>
               <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--accent)", marginTop: "5px", flexShrink: 0 }} />
-              <span style={{ flex: 1, fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>{p}</span>
+              <span style={{ flex: 1, fontSize: "var(--size-body)", color: "var(--text-muted)" }}>{p}</span>
             </div>
           ))}
         </div>
@@ -290,9 +290,9 @@ export function MemorySheet({
 
 function SheetTile({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "10px 12px" }}>
-      <div style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", marginBottom: "3px" }}>{label}</div>
-      <div style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", fontWeight: "var(--fw-semibold)", overflowWrap: "anywhere" }}>{value}</div>
+    <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", padding: "10px 12px" }}>
+      <div style={{ fontSize: "var(--size-meta)", color: "var(--text-subtle)", marginBottom: "3px" }}>{label}</div>
+      <div style={{ fontVariantNumeric: "tabular-nums", fontSize: "var(--size-body)", fontWeight: 600, overflowWrap: "anywhere" }}>{value}</div>
     </div>
   );
 }

@@ -79,8 +79,8 @@ function SurfaceTabs({ surface, onChange }: { surface: Surface; onChange: (s: Su
               background: active ? "var(--accent-soft)" : "var(--surface)",
               color: active ? "var(--accent-soft-fg)" : "var(--text-muted)",
               fontFamily: "inherit",
-              fontSize: "var(--text-sm)",
-              fontWeight: "var(--fw-semibold)",
+              fontSize: "var(--size-body)",
+              fontWeight: 600,
               cursor: "pointer",
             }}
           >
@@ -234,8 +234,8 @@ function MemorySurface() {
             background: "var(--accent)",
             color: "var(--accent-fg)",
             fontFamily: "inherit",
-            fontSize: "var(--ui-text)",
-            fontWeight: "var(--fw-bold)",
+            fontSize: "var(--size-body)",
+            fontWeight: 600,
             cursor: creating || !online ? "default" : "pointer",
             opacity: creating || !online ? 0.6 : 1,
           }}
@@ -243,12 +243,12 @@ function MemorySurface() {
           <Plus width={16} height={16} /> {creating ? "Starting…" : "New chat"}
         </button>
         {!online && (
-          <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", textAlign: "center", margin: 0 }}>
+          <p style={{ fontSize: "var(--size-meta)", color: "var(--text-subtle)", textAlign: "center", margin: 0 }}>
             You’re offline — starting a chat needs a connection.
           </p>
         )}
         {createError && (
-          <p style={{ fontSize: "var(--text-2xs)", color: "var(--danger, #d33)", textAlign: "center", margin: 0 }}>
+          <p style={{ fontSize: "var(--size-meta)", color: "var(--danger)", textAlign: "center", margin: 0 }}>
             Couldn’t start a new chat — try again.
           </p>
         )}
@@ -258,7 +258,9 @@ function MemorySurface() {
         ) : conversations.isError ? (
           <ErrorCard>Can’t reach conversations — is the backend running?</ErrorCard>
         ) : rows.length === 0 ? (
-          <EmptyCard>No conversations yet — ask something about your memories.</EmptyCard>
+          <EmptyCard hint="Answers cite the memories they came from, so you can check them.">
+            No conversations yet.
+          </EmptyCard>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {rows.map((c) => (
@@ -273,8 +275,8 @@ function MemorySurface() {
                   textAlign: "start",
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-lg)",
-                  padding: "12px 14px",
+                  borderRadius: "var(--radius-row)",
+                  padding: "var(--o-md) var(--o-lg)",
                   cursor: "pointer",
                   fontFamily: "inherit",
                   color: "var(--text)",
@@ -284,8 +286,8 @@ function MemorySurface() {
                   <span
                     style={{
                       display: "block",
-                      fontSize: "var(--ui-text)",
-                      fontWeight: "var(--fw-semibold)",
+                      fontSize: "var(--size-body)",
+                      fontWeight: 600,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
@@ -296,8 +298,8 @@ function MemorySurface() {
                   <span
                     style={{
                       display: "block",
-                      fontFamily: "var(--font-mono)",
-                      fontSize: "var(--text-2xs)",
+                      fontVariantNumeric: "tabular-nums",
+                      fontSize: "var(--size-meta)",
                       color: "var(--text-subtle)",
                       marginTop: "2px",
                     }}
@@ -341,8 +343,8 @@ function MemorySurface() {
           style={{
             minWidth: 0,
             flex: 1,
-            fontSize: "var(--ui-text)",
-            fontWeight: "var(--fw-bold)",
+            fontSize: "var(--size-body)",
+            fontWeight: 600,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -366,8 +368,8 @@ function MemorySurface() {
             background: "var(--surface-2)",
             color: "var(--text-muted)",
             fontFamily: "inherit",
-            fontSize: "var(--text-xs)",
-            fontWeight: "var(--fw-semibold)",
+            fontSize: "var(--size-meta)",
+            fontWeight: 600,
             cursor: distill.isPending || !online ? "default" : "pointer",
             opacity: distill.isPending || !online ? 0.5 : 1,
           }}
@@ -387,8 +389,8 @@ function MemorySurface() {
             borderRadius: "var(--radius-md)",
             background: "var(--success-soft)",
             color: "var(--success)",
-            fontSize: "var(--text-xs)",
-            fontWeight: "var(--fw-semibold)",
+            fontSize: "var(--size-meta)",
+            fontWeight: 600,
           }}
         >
           {distillMsg}
@@ -401,7 +403,9 @@ function MemorySurface() {
         ) : thread.isError ? (
           <ErrorCard>Can’t load this conversation.</ErrorCard>
         ) : msgs.length === 0 ? (
-          <EmptyCard>Ask a question about your memories to get started.</EmptyCard>
+          <EmptyCard hint="Try “what did I decide about the graph store?” — it searches meaning, not keywords.">
+            Nothing asked yet.
+          </EmptyCard>
         ) : (
           msgs.map((m) => (
             <MessageBubble key={m.id} message={m} onCiteTap={(n) => void openCitation(m, n)} resolvingKey={resolvingKey} />
@@ -432,7 +436,7 @@ function MemorySurface() {
             background: "var(--surface)",
             color: "var(--text)",
             fontFamily: "inherit",
-            fontSize: "var(--ui-text)",
+            fontSize: "var(--size-body)",
             padding: "10px 13px",
             outline: "none",
             lineHeight: 1.4,
@@ -464,7 +468,7 @@ function MemorySurface() {
         </button>
       </div>
       {!online && (
-        <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", textAlign: "center", margin: "6px 0 0" }}>
+        <p style={{ fontSize: "var(--size-meta)", color: "var(--text-subtle)", textAlign: "center", margin: "6px 0 0" }}>
           You’re offline — chat needs a connection.
         </p>
       )}
@@ -496,10 +500,9 @@ function MessageBubble({
           border: isUser ? "none" : "1px solid var(--border)",
           borderRadius: "var(--radius-lg)",
           padding: "10px 13px",
-          fontSize: "var(--ui-text)",
+          fontSize: "var(--size-body)",
           lineHeight: 1.5,
-          boxShadow: isUser ? "none" : "var(--shadow-xs)",
-          whiteSpace: "pre-wrap",
+                    whiteSpace: "pre-wrap",
         }}
       >
         {isUser
@@ -526,7 +529,7 @@ function MessageBubble({
                     background: "var(--accent-soft)",
                     color: "var(--accent-soft-fg)",
                     fontSize: "10px",
-                    fontWeight: "var(--fw-bold)",
+                    fontWeight: 600,
                     verticalAlign: "super",
                     cursor: "pointer",
                     fontFamily: "inherit",
@@ -552,7 +555,7 @@ function ThinkingBubble() {
           borderRadius: "var(--radius-lg)",
           padding: "10px 13px",
           color: "var(--text-subtle)",
-          fontSize: "var(--ui-text)",
+          fontSize: "var(--size-body)",
         }}
       >
         Thinking…

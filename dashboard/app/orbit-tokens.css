@@ -1,0 +1,287 @@
+/* ============================================================================
+ * Orbit design language — ported from the Flutter app at
+ * ~/DevTools/orbit-run/lib/theme/ so Life Graph and Orbit read as one product.
+ *
+ * This layers OVER tokens.css and only redefines SEMANTIC roles, which is why
+ * it changes the whole app without touching component files: tokens.css already
+ * routes every component through --bg / --surface / --text / --accent, and the
+ * dashboard has ~636 var(--…) references that pick these up for free.
+ *
+ * Colour values are transcribed, not reinterpreted. Orbit authors every hue in
+ * OKLCH — lib/theme/oklch.dart exists purely because Flutter cannot evaluate
+ * oklch() at runtime and CSS can, so the literal L/C/H triples move across
+ * unchanged and stay diffable against the Dart source.
+ *
+ *   Dart                                    CSS
+ *   oklch(0.72, 0.15, 300)            →     oklch(0.72 0.15 300)
+ *   Color(0xFFEEF1F6).withValues(.62) →     color-mix(in srgb, #EEF1F6 62%, transparent)
+ *
+ * Dark is the reference theme (OrbitColors' own note); light is a full peer,
+ * not an afterthought.
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------- COLOR --- */
+
+/* Neutral ramp — replaces the warm stone ramp with Orbit's cold blue-grey.
+ * Anchored on the two ink colours OrbitColors names: #EEF1F6 (dark theme ink)
+ * and #16181D (light theme ink), with the three dark surface levels sitting on
+ * the ramp at the exact values Orbit uses. */
+:root {
+  --neutral-0:#ffffff;   --neutral-50:#f8f9fb;  --neutral-100:#f2f4f8;
+  --neutral-200:#e8ebf2; --neutral-300:#d3d8e3; --neutral-400:#a2aab9;
+  --neutral-500:#767e8d; --neutral-600:#555c69; --neutral-700:#3a404b;
+  --neutral-800:#181d26; --neutral-900:#101318; --neutral-950:#000000;
+}
+
+/* Accent axis — a single violet ramp at OKLCH hue 300. The four anchors marked
+ * below are Orbit's literal values; the rest interpolate between them so the
+ * derived roles tokens.css builds from --accent-{50..900} stay coherent. */
+:root, [data-accent="orbit"] {
+  --accent-50:  oklch(0.97 0.02 300);
+  --accent-100: oklch(0.93 0.04 300);   /* = OrbitColors.light.accentContainer */
+  --accent-200: oklch(0.87 0.07 300);
+  --accent-300: oklch(0.80 0.11 300);
+  --accent-400: oklch(0.72 0.15 300);   /* = OrbitColors.dark.accent */
+  --accent-500: oklch(0.64 0.17 300);
+  --accent-600: oklch(0.55 0.16 300);   /* = OrbitColors.light.accent */
+  --accent-700: oklch(0.47 0.15 300);
+  --accent-800: oklch(0.40 0.14 300);   /* = OrbitColors.light.onAccentContainer */
+  --accent-900: oklch(0.32 0.08 300);   /* = OrbitColors.dark.accentContainer */
+}
+
+/* Mode axis — LIGHT. OrbitColors.light, role for role. */
+:root, [data-theme="light"] {
+  --bg:#f2f4f8;                 /* surfaceBase   */
+  --bg-pattern:#e8ebf2;
+  --surface:#ffffff;            /* surfaceRaised  */
+  --surface-2:#f7f8fb;
+  --surface-3:#e8ebf2;          /* surfaceRaised2 */
+  --surface-inset:#e8ebf2;
+
+  /* One ink at four opacities — textHi / textMid / textLow / hairline. */
+  --text:#16181d;
+  --text-muted: color-mix(in srgb, #16181d 62%, transparent);
+  --text-subtle: color-mix(in srgb, #16181d 38%, transparent);
+  --text-inverse:#ffffff;
+  --border: color-mix(in srgb, #16181d 10%, transparent);
+  --border-strong: color-mix(in srgb, #16181d 20%, transparent);
+
+  --accent: var(--accent-600);
+  --accent-hover: var(--accent-700);
+  --accent-active: var(--accent-800);
+  --accent-fg:#ffffff;                  /* accentOn */
+  --accent-soft: var(--accent-100);     /* accentContainer */
+  --accent-soft-hover: var(--accent-200);
+  --accent-soft-fg: var(--accent-800);  /* onAccentContainer */
+  --accent-border: var(--accent-200);
+  --accent-text: var(--accent-700);
+
+  --ring: color-mix(in srgb, var(--accent-600) 55%, transparent);
+  --overlay: color-mix(in srgb, #000000 40%, transparent);   /* scrim */
+  color-scheme: light;
+}
+
+/* Mode axis — DARK (the reference theme). OrbitColors.dark, role for role. */
+[data-theme="dark"] {
+  --bg:#000000;                 /* surfaceBase — true black, not near-black */
+  --bg-pattern:#101318;
+  --surface:#101318;            /* surfaceRaised  · tiles, rows   */
+  --surface-2:#141922;
+  --surface-3:#181d26;          /* surfaceRaised2 · sheets, menus */
+  --surface-inset:#000000;
+
+  --text:#eef1f6;
+  --text-muted: color-mix(in srgb, #eef1f6 62%, transparent);
+  --text-subtle: color-mix(in srgb, #eef1f6 38%, transparent);
+  --text-inverse:#16181d;
+  --border: color-mix(in srgb, #eef1f6 10%, transparent);
+  --border-strong: color-mix(in srgb, #eef1f6 20%, transparent);
+
+  --accent: var(--accent-400);          /* dark takes the lighter step */
+  --accent-hover: var(--accent-300);
+  --accent-active: var(--accent-200);
+  --accent-fg:#0d0512;                  /* accentOn */
+  --accent-soft: var(--accent-900);     /* accentContainer */
+  --accent-soft-hover: oklch(0.38 0.09 300);
+  --accent-soft-fg: oklch(0.85 0.10 300); /* onAccentContainer */
+  --accent-border: color-mix(in srgb, var(--accent-400) 32%, transparent);
+  --accent-text: var(--accent-300);
+
+  --ring: color-mix(in srgb, var(--accent-400) 60%, transparent);
+  --overlay: color-mix(in srgb, #000000 60%, transparent);   /* scrim */
+  color-scheme: dark;
+}
+
+/* Orbit-native aliases. The dashboard's own names above stay authoritative;
+ * these exist so a component ported from Orbit can keep its original token
+ * names and still resolve. */
+:root {
+  --surface-base: var(--bg);
+  --surface-raised: var(--surface);
+  --surface-raised-2: var(--surface-3);
+  --text-hi: var(--text);
+  --text-mid: var(--text-muted);
+  --text-low: var(--text-subtle);
+  --hairline: var(--border);
+  --scrim: var(--overlay);
+}
+
+/* Status colours. Kept independent of the accent axis, and deliberately NOT
+ * reused for Orbit's money roles — OrbitMoney carries an explicit warning that
+ * money.in/out are not aliases of success/error ("a refund is money.in and not
+ * a success; a planned transfer is money.out and not a failure"). Ported here
+ * because the same trap applies to a memory system: a decayed memory is not an
+ * error, and a pending approval is not a warning. */
+:root, [data-theme="light"] {
+  --money-in:  oklch(0.55 0.14 155);
+  --money-out: oklch(0.55 0.16 25);
+  --attention: oklch(0.60 0.15 60);
+}
+[data-theme="dark"] {
+  --money-in:  oklch(0.78 0.14 155);
+  --money-out: oklch(0.65 0.17 25);
+  --attention: oklch(0.72 0.15 60);
+}
+
+/* The four status hues, re-cut per theme. tokens.css pinned one sRGB value each
+ * for both modes, which is why #ed2e44 burns on the new true-black background —
+ * a colour picked to survive a light page is over-bright on a dark one. Same
+ * hues, lightness and chroma matched to the theme, exactly as OrbitColors does
+ * it. The `-soft` and `-fg` derivations in tokens.css follow automatically. */
+:root, [data-theme="light"] {
+  --success: oklch(0.55 0.14 155);
+  --warning: oklch(0.60 0.15 60);
+  --danger:  oklch(0.55 0.16 25);
+  --info:    oklch(0.55 0.15 250);
+  --success-fg:#ffffff; --warning-fg:#ffffff; --danger-fg:#ffffff; --info-fg:#ffffff;
+}
+[data-theme="dark"] {
+  --success: oklch(0.78 0.14 155);
+  --warning: oklch(0.72 0.15 60);
+  --danger:  oklch(0.68 0.17 25);
+  --info:    oklch(0.74 0.13 250);
+  /* Light-on-dark status colours need dark ink on top, not white. */
+  --success-fg:#04140b; --warning-fg:#150e00; --danger-fg:#1a0505; --info-fg:#00101f;
+}
+
+/* ------------------------------------------------------------ TYPOGRAPHY --- */
+/* Orbit's type system is a family/weight/tracking contract, not a fixed ramp —
+ * OrbitType's own comment: "screens are free to dial the exact size the source
+ * specifies … the system is the family/weight/tracking/feature contract".
+ *
+ * Tracking is proportional in Dart (letterSpacing: size * -0.025), which is
+ * precisely what a CSS `em` letter-spacing does, so the ratios move across
+ * unchanged rather than being frozen into per-size pixel values. */
+:root {
+  --display-font: var(--font-display);
+  --display-weight: 600;                /* Orbit uses semibold, not extrabold */
+  --display-tracking:-0.025em;
+  --heading-font: var(--font-display);
+  --heading-weight: 600;
+  --body-font: var(--font-sans);
+  --body-weight: 400;
+  --label-font: var(--font-sans);
+  --label-weight: 500;
+  --mono-font: var(--font-mono);
+
+  --tracking-tight:-0.025em;   /* display */
+  --tracking-snug:-0.02em;     /* title   */
+  --tracking-caps:0.08em;      /* eyebrow */
+
+  /* Orbit's named roles, at their default sizes. */
+  --size-display:31px;
+  --size-title:19px;
+  --size-body:13.5px;
+  --size-meta:11.5px;
+  --size-eyebrow:10.5px;
+  --size-numeric:14.5px;
+
+  --eyebrow-size: var(--size-eyebrow);
+  --eyebrow-weight:500;
+  --eyebrow-tracking: var(--tracking-caps);
+}
+
+/* Tamil gets the same voice rather than a fallback face. Anek Tamil is loaded
+ * as a fallback on the body stack in globals.css, so this only needs to switch
+ * display/heading; the previous build had no Tamil face at all and rendered
+ * தமிழ் in whatever the system offered. */
+:root[lang="ta"], [lang="ta"] {
+  --body-font: var(--font-tamil);
+  --heading-font: var(--font-tamil);
+  --display-font: var(--font-tamil);
+}
+
+/* ----------------------------------------------------- SPACING / RADIUS --- */
+/* OrbitSpace is deliberately not a 4dp grid — "The scale is 9 / 13 / 16 because
+ * rows read tighter than blocks — don't round these to 8s." These are ADDED
+ * alongside the existing --space-N scale rather than replacing it, so no
+ * current layout shifts; new work uses these. */
+:root {
+  --space-row:9px;        /* between list rows        */
+  --space-block:13px;     /* between sections         */
+  --space-gutter:16px;    /* screen edge              */
+
+  --o-xs:6px;  --o-sm:10px; --o-md:12px; --o-lg:14px;
+  --o-xl:20px; --o-xxl:24px; --o-xxxl:32px;
+}
+
+/* OrbitRadius. The named roles below are the ones that carry meaning; the
+ * dashboard's xs/sm/md steps are remapped onto Orbit's equivalents. */
+:root {
+  --radius-xs:6px;
+  --radius-sm:10px;
+  --radius-md:14px;
+  --radius-lg:16px;
+  --radius-xl:20px;
+  --radius-2xl:26px;
+  --radius-pill:999px;
+
+  --radius-row:13px;              /* list row, chip block */
+  --radius-card:16px;             /* cards, panels        */
+  --radius-sheet:26px;            /* bottom sheet corners */
+  --radius-control: var(--radius-pill);   /* buttons, chips, nav pill */
+  --radius-field: var(--radius-md);
+  --radius-chip: var(--radius-pill);
+}
+
+/* ---------------------------------------------------------------- MOTION --- */
+/* OrbitMotion. settleCurve is Curves.easeOutQuint, which the Dart file itself
+ * annotates as cubic-bezier(.22,1,.3,1). Reduced motion collapses to Orbit's
+ * own reduced pair (120ms / easeOut) rather than to zero, so state changes stay
+ * legible instead of teleporting. */
+:root {
+  --ease-settle: cubic-bezier(0.22, 1, 0.30, 1);
+  --ease-reveal: cubic-bezier(0.50, 0.05, 0.20, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.30, 1);
+
+  --dur-settle:220ms;
+  --dur-reveal:280ms;
+  --dur-spring:340ms;
+
+  --dur-fast:130ms;
+  --dur-base: var(--dur-settle);
+  --dur-slow: var(--dur-reveal);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ease-settle: ease-out;
+    --ease-reveal: ease-out;
+    --ease-out: ease-out;
+    --dur-settle:120ms;
+    --dur-reveal:120ms;
+    --dur-spring:120ms;
+    --dur-fast:120ms;
+    --dur-base:120ms;
+    --dur-slow:120ms;
+  }
+}
+
+/* --------------------------------------------------------------- SHADOWS --- */
+/* Orbit separates levels with surface colour, not shadow, so these are much
+ * quieter than the warm stone set they replace — and cold, to match the ramp. */
+:root {
+  --shadow-color:220 20% 12%;
+}
+[data-theme="dark"] {
+  --shadow-color:220 40% 1%;
+}

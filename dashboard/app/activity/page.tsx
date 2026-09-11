@@ -14,39 +14,39 @@ export default function ActivityPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-zinc-900">Activity</h2>
-        <p className="text-sm text-zinc-500">System events and notifications</p>
+        <h2 className="text-lg font-semibold text-ink">Activity</h2>
+        <p className="text-sm text-ink-mid">System events and notifications</p>
       </div>
 
       {events.isError ? (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-600">
+        <div className="bg-danger-soft border border-danger/30 rounded-xl p-5 text-sm text-danger">
           Cannot connect to API — is the backend running?
         </div>
       ) : allItems.length > 0 ? (
-        <div className="bg-white border border-zinc-200 rounded-xl divide-y divide-zinc-100">
+        <div className="bg-surface border border-line rounded-xl divide-y divide-line">
           {allItems.map((item: any, i: number) => (
-            <div key={item.id || i} className="flex items-start gap-4 px-5 py-4 hover:bg-zinc-50/50 transition-colors">
+            <div key={item.id || i} className="flex items-start gap-4 px-5 py-4 hover:bg-surface-2/50 transition-colors">
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                item.kind === "notification" ? "bg-blue-50" : "bg-zinc-100"
+                item.kind === "notification" ? "bg-info-soft" : "bg-surface-3"
               }`}>
-                <Zap className={`w-4 h-4 ${item.kind === "notification" ? "text-blue-500" : "text-zinc-500"}`} />
+                <Zap className={`w-4 h-4 ${item.kind === "notification" ? "text-info" : "text-ink-mid"}`} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-700">{item.title || item.summary || item.message || item.content || item.id}</p>
+                <p className="text-sm text-ink">{item.title || item.summary || item.message || item.content || item.id}</p>
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                    item.kind === "notification" ? "bg-blue-100 text-blue-700" : "bg-zinc-100 text-zinc-500"
+                    item.kind === "notification" ? "bg-info-soft text-info" : "bg-surface-3 text-ink-mid"
                   }`}>
                     {item.kind === "notification" ? "notification" : item.watcher_name || "event"}
                   </span>
-                  <span className="text-xs text-zinc-400">
+                  <span className="text-xs text-ink-low">
                     {new Date(item.ts).toLocaleString()}
                   </span>
                   {item.severity && (
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                      item.severity === "critical" ? "bg-red-50 text-red-600" :
-                      item.severity === "warning" ? "bg-amber-50 text-amber-600" :
-                      "bg-zinc-100 text-zinc-400"
+                      item.severity === "critical" ? "bg-danger-soft text-danger" :
+                      item.severity === "warning" ? "bg-warning-soft text-warning" :
+                      "bg-surface-3 text-ink-low"
                     }`}>{item.severity}</span>
                   )}
                 </div>
@@ -55,11 +55,11 @@ export default function ActivityPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-white border border-zinc-200 rounded-xl p-12 text-center space-y-3">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center mx-auto">
-            <Activity className="w-6 h-6 text-emerald-500" />
+        <div className="bg-surface border border-line rounded-xl p-12 text-center space-y-3">
+          <div className="w-12 h-12 rounded-xl bg-accent-soft flex items-center justify-center mx-auto">
+            <Activity className="w-6 h-6 text-accent" />
           </div>
-          <p className="text-sm text-zinc-500">No activity yet. Events will appear here as the system processes data.</p>
+          <p className="text-sm text-ink-mid">No activity yet. Events will appear here as the system processes data.</p>
         </div>
       )}
     </div>

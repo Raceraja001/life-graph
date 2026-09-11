@@ -1,15 +1,16 @@
 "use client";
 import type { CSSProperties } from "react";
-import { LoadingCard, EmptyCard, ErrorCard } from "@/components/mobile/parts";
+import { Card, EmptyCard, ErrorCard, LoadingCard, Meta, Stack } from "@/components/mobile/parts";
 import { useApprovals, useResolveApproval } from "@/lib/mobile-api";
 import { RiskBadge } from "@/components/shadow-log";
 
 const actionBtn: CSSProperties = {
   flex: 1,
   height: "40px",
-  borderRadius: "var(--radius-md)",
+  borderRadius: "var(--radius-control)",
   fontFamily: "inherit",
-  fontSize: "var(--text-sm)",
+  fontSize: "var(--size-body)",
+  fontWeight: 600,
   cursor: "pointer",
 };
 
@@ -20,52 +21,59 @@ export default function MobileApprovals() {
 
   if (approvals.isLoading) return <LoadingCard label="Loading approvals…" />;
   if (approvals.isError) return <ErrorCard>Can’t reach approvals — is the backend running?</ErrorCard>;
-  if (items.length === 0) return <EmptyCard>Nothing waiting on you. Inbox zero.</EmptyCard>;
+  if (items.length === 0)
+    return (
+      <EmptyCard hint="Anything the system judges risky waits here instead of running on its own.">
+        Nothing waiting on you. Inbox zero.
+      </EmptyCard>
+    );
 
   const pendingId = resolve.isPending ? resolve.variables?.id : undefined;
 
   return (
-    <>
+    <Stack gap="row">
       {items.map((ap) => {
         const busy = pendingId === ap.id;
         return (
-          <section
+          <Card
             key={ap.id}
             style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius-lg)",
-              boxShadow: "var(--shadow-xs)",
-              padding: "14px",
               opacity: busy ? 0.6 : 1,
+              transition: "opacity var(--dur-fast) var(--ease-settle)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "var(--ui-text)", fontWeight: "var(--fw-bold)", flex: 1, minWidth: 0 }}>
+              <span
+                style={{
+                  fontSize: "var(--size-body)",
+                  fontWeight: 600,
+                  letterSpacing: "var(--tracking-snug)",
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
                 {ap.title}
               </span>
               {ap.kind === "autonomous_action" && <RiskBadge risk={ap.riskLevel} />}
             </div>
             {ap.actionKind === "agent_task" ? (
               <>
-                <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.5 }}>
+                <div style={{ fontSize: "var(--size-meta)", color: "var(--text-muted)", marginTop: "5px", lineHeight: 1.5 }}>
                   {ap.instruction || ap.detail || "Agent task (no instruction provided)"}
                 </div>
-                <div style={{ fontSize: "var(--text-xs)", color: "var(--text-subtle)", marginTop: "4px" }}>
-                  runs cody · build_ok, lint_clean
-                </div>
+                <Meta style={{ display: "block", marginTop: "4px" }}>runs cody · build_ok, lint_clean</Meta>
               </>
             ) : (
-              <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.5 }}>
+              <div style={{ fontSize: "var(--size-meta)", color: "var(--text-muted)", marginTop: "5px", lineHeight: 1.5 }}>
                 {ap.detail}
               </div>
             )}
 
-            <div style={{ display: "flex", gap: "8px", marginTop: "11px" }}>
+            <div style={{ display: "flex", gap: "8px", marginTop: "var(--space-block)" }}>
               <button
                 onClick={() => resolve.mutate({ id: ap.id, decision: "approve" })}
                 disabled={busy}
-                style={{ ...actionBtn, border: 0, background: "var(--accent)", color: "var(--accent-fg)", fontWeight: "var(--fw-bold)" }}
+                style={{ ...actionBtn, border: 0, background: "var(--accent)", color: "var(--accent-fg)" }}
               >
                 {busy ? "…" : "Approve"}
               </button>
@@ -77,15 +85,14 @@ export default function MobileApprovals() {
                   border: "1px solid var(--border-strong)",
                   background: "var(--surface)",
                   color: "var(--text)",
-                  fontWeight: "var(--fw-semibold)",
                 }}
               >
                 Reject
               </button>
             </div>
-          </section>
+          </Card>
         );
       })}
-    </>
+    </Stack>
   );
 }

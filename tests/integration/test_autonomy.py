@@ -227,6 +227,22 @@ class TestAutonomyLevels:
             data = body.get("data", body)
             assert data.get("level") == 2
             assert data.get("level_name") == "Notify Before"
+            # The write answers with the same full record the read returns, so a
+            # client does not have to re-fetch to learn the counters. Parsing
+            # this as an autonomy level used to fail on the missing keys.
+            assert data.get("current_level") == 2
+            for field in (
+                "id",
+                "tenant_id",
+                "project_id",
+                "safe_count",
+                "moderate_count",
+                "failure_count",
+                "promotion_eligible",
+                "created_at",
+                "updated_at",
+            ):
+                assert field in data, f"set response is missing {field}"
 
 
 class TestAuditLog:

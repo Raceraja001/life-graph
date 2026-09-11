@@ -23,8 +23,8 @@ const chipBase: CSSProperties = {
   background: "var(--surface-2)",
   color: "var(--text-muted)",
   fontFamily: "inherit",
-  fontSize: "var(--text-xs)",
-  fontWeight: "var(--fw-semibold)",
+  fontSize: "var(--size-meta)",
+  fontWeight: 600,
   cursor: "pointer",
 };
 const chipOn: CSSProperties = {
@@ -150,9 +150,9 @@ export function MobileCapture() {
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
-        borderRadius: "var(--radius-lg)",
+        borderRadius: "var(--radius-card)",
         boxShadow: "var(--shadow-sm)",
-        padding: "14px",
+        padding: "var(--o-lg)",
       }}
     >
       <textarea
@@ -171,7 +171,7 @@ export function MobileCapture() {
           background: "transparent",
           color: "var(--text)",
           fontFamily: "inherit",
-          fontSize: "var(--ui-text)",
+          fontSize: "var(--size-body)",
           lineHeight: 1.55,
           boxSizing: "border-box",
         }}
@@ -194,8 +194,8 @@ export function MobileCapture() {
             background: "var(--accent)",
             color: "var(--accent-fg)",
             fontFamily: "inherit",
-            fontSize: "var(--text-sm)",
-            fontWeight: "var(--fw-bold)",
+            fontSize: "var(--size-body)",
+            fontWeight: 600,
             cursor: text.trim() && !route.isPending ? "pointer" : "not-allowed",
             opacity: text.trim() && !route.isPending ? 1 : 0.5,
           }}
@@ -216,7 +216,7 @@ export function MobileCapture() {
             alignItems: "center",
             gap: "6px",
             ...(recorder.recording
-              ? { background: "var(--danger-soft, #fee)", borderColor: "var(--danger, #d33)", color: "var(--danger, #d33)" }
+              ? { background: "var(--danger-soft)", borderColor: "var(--danger)", color: "var(--danger)" }
               : {}),
             opacity: !online || busy !== null ? 0.5 : 1,
           }}
@@ -246,7 +246,7 @@ export function MobileCapture() {
         </button>
 
         {busy !== null && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "var(--size-meta)", color: "var(--text-muted)" }}>
             <Loader2 width={13} height={13} className="animate-spin" />
             {busy === "voice" ? "Transcribing…" : "Uploading…"}
           </span>
@@ -254,12 +254,12 @@ export function MobileCapture() {
       </div>
 
       {!online && (
-        <p style={{ fontSize: "var(--text-2xs)", color: "var(--text-subtle)", marginTop: "6px" }}>
+        <p style={{ fontSize: "var(--size-meta)", color: "var(--text-subtle)", marginTop: "6px" }}>
           Voice, camera, and attachments need a connection — text capture still queues offline.
         </p>
       )}
       {recorder.error && (
-        <p style={{ fontSize: "var(--text-2xs)", color: "var(--danger, #d33)", marginTop: "6px" }}>{recorder.error}</p>
+        <p style={{ fontSize: "var(--size-meta)", color: "var(--danger)", marginTop: "6px" }}>{recorder.error}</p>
       )}
 
       <input
@@ -317,8 +317,8 @@ function Toast({ bg, fg, children }: { bg: string; fg: string; children: React.R
         borderRadius: "var(--radius-md)",
         background: bg,
         color: fg,
-        fontSize: "var(--text-xs)",
-        fontWeight: "var(--fw-semibold)",
+        fontSize: "var(--size-meta)",
+        fontWeight: 600,
       }}
     >
       {children}

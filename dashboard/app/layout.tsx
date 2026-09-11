@@ -1,13 +1,31 @@
 import type { Metadata, Viewport } from "next";
-import { Sora, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Instrument_Sans, Anek_Tamil, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { RootShell } from "@/components/root-shell";
 
-// uzhavu type roles — display / body / mono. Self-hosted via next/font (no
-// runtime Google Fonts calls); variable fonts, so the full weight range is available.
-const sora = Sora({ variable: "--font-sora", subsets: ["latin"], display: "swap" });
-const jakarta = Plus_Jakarta_Sans({ variable: "--font-jakarta", subsets: ["latin"], display: "swap" });
-const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"], display: "swap" });
+// Orbit type roles — display / body / tamil / mono. Self-hosted via next/font (no
+// runtime Google Fonts calls); all four are variable fonts, so the full weight range
+// is available from a single file and OrbitType's weights (600 display, 500 label,
+// 400 body) need no separate downloads.
+//
+// Bricolage carries the optical-size axis so `font-optical-sizing: auto` can adapt it
+// across the 10.5px eyebrow → 31px display span; without opsz it would be frozen at
+// its 14px default and look thin at display size.
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
+  subsets: ["latin"],
+  axes: ["opsz"],
+  display: "swap",
+});
+const instrument = Instrument_Sans({ variable: "--font-instrument", subsets: ["latin"], display: "swap" });
+// Tamil is a first-class body face, not a fallback — it sits in the --font-sans stack
+// so mixed Tamil/Latin text (OrbitType.bodyBilingual) renders in one voice.
+// preload:false — Anek is a fallback in the --font-sans stack, so on an all-Latin
+// page the browser never pulls it. Preloading it shipped an unused Tamil face on
+// every route (the browser says so out loud in the console).
+const anekTamil = Anek_Tamil({ variable: "--font-anek", subsets: ["latin", "tamil"], display: "swap", preload: false });
+// Same for mono: only code blocks and IDs use it, none of them above the fold.
+const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"], display: "swap", preload: false });
 
 export const metadata: Metadata = {
   title: {
@@ -33,7 +51,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0e8a4d",
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -47,10 +65,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      data-theme="light"
-      data-accent="emerald"
+      data-theme="dark"
+      data-accent="orbit"
       data-density="comfortable"
-      className={`${sora.variable} ${jakarta.variable} ${jetbrainsMono.variable} h-full`}
+      className={`${bricolage.variable} ${instrument.variable} ${anekTamil.variable} ${jetbrainsMono.variable} h-full`}
     >
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />

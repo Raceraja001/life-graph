@@ -49,27 +49,27 @@ export function CommandPalette({ open, onOpenChange, onAction }: {
     <div className="fixed inset-0 z-50">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+        className="absolute inset-0 bg-scrim backdrop-blur-sm"
         onClick={() => onOpenChange(false)}
       />
       {/* Dialog */}
       <div className="absolute top-[20%] left-1/2 -translate-x-1/2 w-full max-w-lg">
         <Command
-          className="bg-white rounded-2xl border border-zinc-200 shadow-2xl shadow-zinc-200/50 overflow-hidden"
+          className="bg-surface rounded-2xl border border-line shadow-2xl shadow-ink/10 overflow-hidden"
           onKeyDown={(e) => { if (e.key === "Escape") onOpenChange(false); }}
         >
-          <div className="flex items-center gap-2 px-4 border-b border-zinc-100">
-            <Search className="w-4 h-4 text-zinc-400 shrink-0" />
+          <div className="flex items-center gap-2 px-4 border-b border-line">
+            <Search className="w-4 h-4 text-ink-low shrink-0" />
             <Command.Input
               placeholder="Type a command or search..."
-              className="w-full py-3.5 text-sm text-zinc-800 placeholder-zinc-400 bg-transparent outline-none"
+              className="w-full py-3.5 text-sm text-ink placeholder-ink-low bg-transparent outline-none"
               autoFocus
             />
-            <kbd className="px-1.5 py-0.5 rounded bg-zinc-100 border border-zinc-200 text-[10px] font-mono text-zinc-400 shrink-0">ESC</kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-surface-3 border border-line text-[10px] font-mono text-ink-low shrink-0">ESC</kbd>
           </div>
 
           <Command.List className="max-h-72 overflow-y-auto p-2">
-            <Command.Empty className="py-8 text-center text-sm text-zinc-400">
+            <Command.Empty className="py-8 text-center text-sm text-ink-low">
               No results found.
             </Command.Empty>
 
@@ -79,16 +79,16 @@ export function CommandPalette({ open, onOpenChange, onAction }: {
                   key={href}
                   value={`${label} ${keywords}`}
                   onSelect={() => { router.push(href); onOpenChange(false); }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-zinc-700 cursor-pointer data-[selected=true]:bg-emerald-50 data-[selected=true]:text-emerald-700 transition-colors"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-ink cursor-pointer data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent-text transition-colors"
                 >
-                  <Icon className="w-4 h-4 text-zinc-400 data-[selected=true]:text-emerald-500" />
+                  <Icon className="w-4 h-4 text-ink-low data-[selected=true]:text-accent" />
                   <span>{label}</span>
-                  <ArrowRight className="w-3 h-3 text-zinc-300 ml-auto" />
+                  <ArrowRight className="w-3 h-3 text-ink-low ml-auto" />
                 </Command.Item>
               ))}
             </Command.Group>
 
-            <Command.Separator className="h-px bg-zinc-100 my-1" />
+            <Command.Separator className="h-px bg-surface-3 my-1" />
 
             <Command.Group heading="Actions" className="mb-1">
               {ACTIONS.map(({ label, action, icon: Icon, keywords }) => (
@@ -96,19 +96,19 @@ export function CommandPalette({ open, onOpenChange, onAction }: {
                   key={action}
                   value={`${label} ${keywords}`}
                   onSelect={() => { onAction?.(action); onOpenChange(false); }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-zinc-700 cursor-pointer data-[selected=true]:bg-emerald-50 data-[selected=true]:text-emerald-700 transition-colors"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-ink cursor-pointer data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent-text transition-colors"
                 >
-                  <Icon className="w-4 h-4 text-zinc-400" />
+                  <Icon className="w-4 h-4 text-ink-low" />
                   <span>{label}</span>
                 </Command.Item>
               ))}
             </Command.Group>
           </Command.List>
 
-          <div className="flex items-center gap-4 px-4 py-2.5 border-t border-zinc-100 text-[10px] text-zinc-400">
-            <span><kbd className="px-1 py-0.5 rounded bg-zinc-100 font-mono">↑↓</kbd> navigate</span>
-            <span><kbd className="px-1 py-0.5 rounded bg-zinc-100 font-mono">↵</kbd> select</span>
-            <span><kbd className="px-1 py-0.5 rounded bg-zinc-100 font-mono">esc</kbd> close</span>
+          <div className="flex items-center gap-4 px-4 py-2.5 border-t border-line text-[10px] text-ink-low">
+            <span><kbd className="px-1 py-0.5 rounded bg-surface-3 font-mono">↑↓</kbd> navigate</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-surface-3 font-mono">↵</kbd> select</span>
+            <span><kbd className="px-1 py-0.5 rounded bg-surface-3 font-mono">esc</kbd> close</span>
           </div>
         </Command>
       </div>

@@ -21,9 +21,8 @@ const ROLE_ORDER = ["scout", "admin", "tutor"];
 const cardStyle: CSSProperties = {
   background: "var(--surface)",
   border: "1px solid var(--border)",
-  borderRadius: "var(--radius-lg)",
-  boxShadow: "var(--shadow-xs)",
-  padding: "14px",
+  borderRadius: "var(--radius-card)",
+  padding: "var(--o-lg)",
 };
 
 export default function AmbientRoles() {
@@ -37,25 +36,16 @@ export default function AmbientRoles() {
 
   return (
     <>
-      <h1
-        style={{
-          fontFamily: "var(--font-display)",
-          fontWeight: 800,
-          fontSize: "var(--text-md)",
-          letterSpacing: "var(--tracking-tight)",
-          margin: "4px 0 0",
-        }}
-      >
-        Ambient roles
-      </h1>
-      <p style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", margin: "2px 0 4px", lineHeight: 1.5 }}>
+      <p style={{ fontSize: "var(--size-meta)", color: "var(--text-muted)", margin: "0 0 var(--space-row)", lineHeight: 1.5 }}>
         Background personas that watch, then report — they never act without you.
       </p>
 
       {schedules.isLoading && <LoadingCard label="Loading ambient roles…" />}
       {schedules.isError && <ErrorCard>Can&rsquo;t reach schedules — is the backend running?</ErrorCard>}
       {!schedules.isLoading && !schedules.isError && jobs.length === 0 && (
-        <EmptyCard>No ambient roles configured yet.</EmptyCard>
+        <EmptyCard hint="Scout, admin and tutor turn on from the backend’s scheduled jobs.">
+          No ambient roles configured yet.
+        </EmptyCard>
       )}
       {!schedules.isLoading &&
         !schedules.isError &&
@@ -78,7 +68,9 @@ export default function AmbientRoles() {
       {findings.isLoading && <LoadingCard label="Loading findings…" />}
       {findings.isError && <ErrorCard>Can&rsquo;t reach findings — is the backend running?</ErrorCard>}
       {!findings.isLoading && !findings.isError && (findings.data ?? []).length === 0 && (
-        <EmptyCard>No findings yet — check back after the next scheduled run.</EmptyCard>
+        <EmptyCard hint="Roles report on their own schedule; nothing here means nothing worth telling you.">
+          No findings yet.
+        </EmptyCard>
       )}
       {!findings.isLoading &&
         !findings.isError &&
@@ -103,12 +95,12 @@ function RoleCard({
     <section style={{ ...cardStyle, opacity: busy ? 0.7 : 1 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
         <span style={{ minWidth: 0, flex: 1 }}>
-          <span style={{ display: "block", fontSize: "var(--ui-text)", fontWeight: "var(--fw-bold)" }}>{label}</span>
+          <span style={{ display: "block", fontSize: "var(--size-body)", fontWeight: 600 }}>{label}</span>
           {job.description && (
             <span
               style={{
                 display: "block",
-                fontSize: "var(--text-xs)",
+                fontSize: "var(--size-meta)",
                 color: "var(--text-muted)",
                 marginTop: "2px",
                 lineHeight: 1.5,
@@ -124,8 +116,8 @@ function RoleCard({
       {job.cronExpression && (
         <div
           style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: "var(--text-2xs)",
+            fontVariantNumeric: "tabular-nums",
+            fontSize: "var(--size-meta)",
             color: "var(--text-subtle)",
             marginTop: "10px",
           }}
@@ -181,8 +173,7 @@ function ToggleSwitch({
           width: "18px",
           height: "18px",
           borderRadius: "50%",
-          background: "#fff",
-          boxShadow: "var(--shadow-xs)",
+          background: checked ? "var(--accent-fg)" : "var(--text-muted)",
           transition: "left var(--dur-fast) var(--ease-out)",
         }}
       />
@@ -214,16 +205,7 @@ function TopicsEditor({
 
   return (
     <div style={{ marginTop: "12px" }}>
-      <div
-        style={{
-          fontSize: "var(--text-2xs)",
-          fontWeight: "var(--fw-bold)",
-          letterSpacing: "var(--tracking-caps)",
-          textTransform: "uppercase",
-          color: "var(--text-subtle)",
-          marginBottom: "6px",
-        }}
-      >
+      <div className="type-eyebrow" style={{ display: "block", marginBottom: "6px" }}>
         Watch-list
       </div>
 
@@ -241,8 +223,8 @@ function TopicsEditor({
                 borderRadius: "var(--radius-pill)",
                 background: "var(--accent-soft)",
                 color: "var(--accent-soft-fg)",
-                fontSize: "var(--text-2xs)",
-                fontWeight: "var(--fw-bold)",
+                fontSize: "var(--size-meta)",
+                fontWeight: 600,
               }}
             >
               {t}
@@ -285,11 +267,11 @@ function TopicsEditor({
             minWidth: 0,
             boxSizing: "border-box",
             border: "1px solid var(--border)",
-            borderRadius: "var(--radius-md)",
+            borderRadius: "var(--radius-field)",
             background: "var(--surface-2)",
             color: "var(--text)",
             fontFamily: "inherit",
-            fontSize: "var(--text-sm)",
+            fontSize: "var(--size-body)",
             padding: "8px 10px",
           }}
         />
@@ -299,12 +281,12 @@ function TopicsEditor({
           disabled={disabled || !draft.trim()}
           style={{
             border: 0,
-            borderRadius: "var(--radius-md)",
+            borderRadius: "var(--radius-control)",
             background: "var(--accent)",
             color: "var(--accent-fg)",
             fontFamily: "inherit",
-            fontSize: "var(--text-xs)",
-            fontWeight: "var(--fw-bold)",
+            fontSize: "var(--size-meta)",
+            fontWeight: 600,
             padding: "0 14px",
             cursor: disabled || !draft.trim() ? "default" : "pointer",
             opacity: disabled || !draft.trim() ? 0.6 : 1,
@@ -337,15 +319,15 @@ function FindingRow({ finding }: { finding: AmbientFindingVM }) {
             flexShrink: 0,
           }}
         />
-        <span style={{ fontSize: "var(--ui-text)", fontWeight: "var(--fw-semibold)", flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: "var(--size-body)", fontWeight: 600, flex: 1, minWidth: 0 }}>
           {finding.title}
         </span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-2xs)", color: "var(--text-subtle)" }}>
+        <span style={{ fontVariantNumeric: "tabular-nums", fontSize: "var(--size-meta)", color: "var(--text-subtle)" }}>
           {ROLE_LABEL[finding.sourceType] ?? finding.sourceType}
         </span>
       </div>
       {finding.body && (
-        <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.5 }}>
+        <div style={{ fontSize: "var(--size-meta)", color: "var(--text-muted)", marginTop: "4px", lineHeight: 1.5 }}>
           {finding.body}
         </div>
       )}
