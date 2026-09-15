@@ -135,10 +135,12 @@ class HybridQueryEngine:
         # Step 4 — Vector search (with or without graph filters)
         memories: list[dict[str, Any]] = []
         try:
-            from life_graph.services.embeddings import EmbeddingService
+            from life_graph.api.dependencies import get_embedding_service
 
-            embedding_service = EmbeddingService()
-            embedding = embedding_service.embed(query)
+            # The shared service carries the configured local client; a bare
+            # EmbeddingService() has none, and its sync embed() returns [] inside
+            # a running event loop — which silently disabled this whole search.
+            embedding = await get_embedding_service().embed_async(query)
 
             if embedding:
                 rows = await self.memory_store.search_similar(
@@ -235,10 +237,10 @@ class HybridQueryEngine:
         # ── Step 1: Vector + BM25 hybrid (from PostgresMemoryStore) ──
         scored_memories: list[dict[str, Any]] = []
         try:
-            from life_graph.services.embeddings import EmbeddingService
+            from life_graph.api.dependencies import get_embedding_service
 
-            embedding_service = EmbeddingService()
-            embedding = embedding_service.embed(query)
+            # See hybrid_search: the shared, client-backed service is required here.
+            embedding = await get_embedding_service().embed_async(query)
 
             if embedding:
                 hybrid_results = await self.memory_store.hybrid_search(

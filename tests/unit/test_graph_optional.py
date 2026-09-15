@@ -295,8 +295,8 @@ def engine(monkeypatch):
     eng._memory_store = memory_store
 
     embedder = MagicMock()
-    embedder.embed.return_value = [0.1] * 8
-    monkeypatch.setattr("life_graph.services.embeddings.EmbeddingService", lambda *a, **k: embedder)
+    embedder.embed_async = AsyncMock(return_value=[0.1] * 8)
+    monkeypatch.setattr("life_graph.api.dependencies.get_embedding_service", lambda: embedder)
     return eng
 
 

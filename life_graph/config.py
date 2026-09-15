@@ -170,6 +170,10 @@ class Settings(BaseSettings):
     lm_synthesis_model: str = "qwen2.5-coder-7b-instruct"
     lm_embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
     use_local_llm: bool = True
+    lm_reasoning_effort: str | None = None
+    """Sent as ``reasoning_effort`` on local chat calls when set. Use "none" for
+    thinking models served by Ollama (Qwen3, gpt-oss): without it they can burn
+    the entire token budget on hidden reasoning and return empty content."""
 
     # ── OpenRouter (cloud inference — fast synthesis) ──
     openrouter_api_key: str = ""  # Set LIFE_GRAPH_OPENROUTER_API_KEY
