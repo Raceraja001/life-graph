@@ -170,6 +170,12 @@ class Settings(BaseSettings):
     lm_synthesis_model: str = "qwen2.5-coder-7b-instruct"
     lm_embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
     use_local_llm: bool = True
+    lm_structured_output: bool = True
+    """Constrain local extraction output to its JSON schema (``json_schema``
+    response format). Supported by LM Studio and Ollama >= 0.5. Without it,
+    small models often echo the schema instead of answering (2/8 usable on
+    qwen3:4b vs 8/8 constrained). A runtime that rejects it gets one retry in
+    the older ``json_object`` mode; set false to skip straight to that."""
     lm_reasoning_effort: str | None = None
     """Sent as ``reasoning_effort`` on local chat calls when set. Use "none" for
     thinking models served by Ollama (Qwen3, gpt-oss): without it they can burn

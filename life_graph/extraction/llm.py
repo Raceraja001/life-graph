@@ -85,6 +85,19 @@ Rules:
 """
 
 
+def _user_message(text: str, *, schema_in_prompt: bool) -> str:
+    """The extraction request. The schema is pasted in only when the runtime is
+    not enforcing it — with constrained decoding it is redundant, and it is
+    exactly what small models copy back instead of answering."""
+    message = f"Extract facts from the following text:\n\n---\n{text}\n---\n\n"
+    if schema_in_prompt:
+        return (
+            message
+            + f"Respond with JSON matching this schema:\n{json.dumps(_EXTRACTION_SCHEMA, indent=2)}"
+        )
+    return message + 'Respond with JSON only: {"facts": [...]}.'
+
+
 class LLMExtractor:
     """Tier 3 extractor using LLM via LiteLLM.
 
@@ -130,31 +143,59 @@ class LLMExtractor:
             return await self._extract_local(text)
         return await self._extract_cloud(text)
 
-    async def _extract_local(self, text: str) -> list[ExtractedFact]:
-        """Extract facts using local LM Studio model."""
+    async def _local_chat(self, text: str, *, structured: bool) -> str:
+        """One local extraction request, constrained (json_schema) or not."""
         from life_graph.config import settings
 
-        messages = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+        response_format: dict[str, Any] = (
             {
-                "role": "user",
-                "content": (
-                    f"Extract facts from the following text:\n\n"
-                    f"---\n{text}\n---\n\n"
-                    f"Respond with JSON matching this schema:\n"
-                    f"{json.dumps(_EXTRACTION_SCHEMA, indent=2)}"
-                ),
-            },
-        ]
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "extracted_facts",
+                    "schema": _EXTRACTION_SCHEMA,
+                    "strict": True,
+                },
+            }
+            if structured
+            else {"type": "json_object"}
+        )
+        return await self._lm_client.chat(
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": _user_message(text, schema_in_prompt=not structured)},
+            ],
+            model=settings.lm_extraction_model,
+            temperature=0.1,
+            max_tokens=self._max_tokens,
+            response_format=response_format,
+        )
 
+    async def _extract_local(self, text: str) -> list[ExtractedFact]:
+        """Extract facts using a local model (LM Studio / Ollama).
+
+        With ``settings.lm_structured_output`` (the default) the schema is sent
+        as a ``json_schema`` response format, so the runtime constrains decoding
+        to it. The previous request — ``json_object`` plus the schema pasted into
+        the prompt — let small models answer with the *schema itself*: measured
+        on qwen3:4b, 2 of 8 extractions were usable, 8 of 8 with constrained
+        decoding. Each failure was silent, because an empty result makes the
+        pipeline fall back to the regex tier. A runtime that rejects
+        ``json_schema`` gets one retry in the old mode.
+        """
+        from life_graph.config import settings
+
+        raw_content = ""
         try:
-            raw_content = await self._lm_client.chat(
-                messages=messages,
-                model=settings.lm_extraction_model,
-                temperature=0.1,
-                max_tokens=self._max_tokens,
-                response_format={"type": "json_object"},
-            )
+            if settings.lm_structured_output:
+                raw_content = await self._local_chat(text, structured=True)
+                if not raw_content:
+                    logger.warning(
+                        "Local runtime returned nothing for a json_schema request; "
+                        "retrying with json_object (set LIFE_GRAPH_LM_STRUCTURED_OUTPUT=false "
+                        "if this runtime does not support structured output)"
+                    )
+            if not raw_content:
+                raw_content = await self._local_chat(text, structured=False)
         except Exception:
             logger.exception("Local LLM extraction failed")
             return []
@@ -170,8 +211,13 @@ class LLMExtractor:
             logger.warning("Local LLM returned invalid JSON: %.200s", raw_content)
             return []
 
-        raw_facts = data.get("facts", [])
+        # No default: a missing key (the schema-echo case) must not read as an
+        # empty-but-valid {"facts": []}, which is a legitimate "nothing to keep".
+        raw_facts = data.get("facts") if isinstance(data, dict) else None
         if not isinstance(raw_facts, list):
+            # Typically the model echoed the schema back instead of answering.
+            # Say so: returning [] here otherwise looks like "nothing to extract".
+            logger.warning("Local LLM output has no 'facts' list: %.200s", raw_content)
             return []
 
         facts: list[ExtractedFact] = []
