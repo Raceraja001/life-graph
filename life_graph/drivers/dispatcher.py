@@ -37,6 +37,7 @@ from life_graph.drivers.workdir import (
     preserve_verified_work,
     remove_worktree,
     resolve_workdir,
+    worktree_intact,
 )
 from life_graph.services.governor import governor
 from life_graph.services.verifiers import VerifierResult, verifier_chain
@@ -315,12 +316,41 @@ class TaskDispatcher:
                     cost_cap_usd,
                 )
 
+            # Step 4b: The driver must not have swapped the worktree's .git
+            # link. Verifier and landing git commands run on the host inside
+            # this directory; a planted .git dir would carry its own config
+            # (filters, fsmonitor) and make them execute agent-chosen programs.
+            if (
+                result.success
+                and worktree is not None
+                and worktree_origin
+                and not worktree_intact(worktree, worktree_origin)
+            ):
+                logger.error("Task %s: worktree .git link was tampered with", task_id)
+                tamper = VerifierResult(
+                    "worktree_intact",
+                    False,
+                    {"error": "worktree .git no longer links to the origin repository"},
+                )
+                await self._create_approval_entry(
+                    tenant_id, task_id, driver.name, [tamper], session
+                )
+                result = DriverResult(
+                    success=False,
+                    output=result.output,
+                    error="Worktree .git was modified by the driver — not verified or landed",
+                    cost_usd=result.cost_usd,
+                    duration_ms=result.duration_ms,
+                    metadata={"needs_human": True, "worktree_tampered": True},
+                )
+
             # Step 5: Run verifier chain
             if verify_chain and result.success:
                 task_context = {
                     "output": result.output,
                     "task_type": task_type,
                     "instruction": instruction,
+                    "sandbox_setup": packet.project_context.get("sandbox_setup"),
                 }
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
 
@@ -452,6 +482,8 @@ class TaskDispatcher:
                 and worktree is not None
                 and worktree_origin
                 and settings.driver_land_verified_work
+                # Re-checked: a bounce re-ran the driver after Step 4b.
+                and worktree_intact(worktree, worktree_origin)
             ):
                 landed_branch = await preserve_verified_work(
                     worktree=worktree,
@@ -822,6 +854,7 @@ class TaskDispatcher:
             "output": bounce_result.output,
             "task_type": packet.task_type,
             "instruction": bounce_instruction,
+            "sandbox_setup": packet.project_context.get("sandbox_setup"),
         }
         v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
 

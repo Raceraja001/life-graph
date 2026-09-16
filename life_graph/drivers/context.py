@@ -155,6 +155,9 @@ class ContextPacketBuilder:
                 "framework": project.framework,
                 "dependency_count": project.dependency_count,
                 "file_count": project.file_count,
+                # Verifier sandbox dependency setup. Read from the registry,
+                # never the worktree, which the agent controls.
+                "sandbox_setup": (project.scan_metadata or {}).get("sandbox_setup"),
             }
         except Exception:
             logger.warning("Failed to load project %s", project_id, exc_info=True)

@@ -322,6 +322,15 @@ class Settings(BaseSettings):
     # Off by default — pure LLM overhead until agents run unattended.
     driver_second_opinion_enabled: bool = False
     driver_second_opinion_model: str | None = None  # cheap model; None = client default
+    # Where verifiers execute agent-written code (tests, linters). "none" runs
+    # them on the host as this process's user; "docker" runs each check in a
+    # locked-down container (life_graph/services/sandbox.py). With "docker",
+    # a missing daemon or image makes checks inconclusive, never passing.
+    verifier_sandbox: str = "none"
+    verifier_sandbox_image: str = "life-graph-verifier:py3.12"
+    verifier_sandbox_cache_dir: str = ""  # cached project venvs; "" = ~/.cache/life-graph/...
+    verifier_sandbox_memory: str = "4g"
+    verifier_sandbox_cpus: str = "4"
 
     # ── Host Tools (run_command / file_read / file_write) ──
     # These tools execute against the host filesystem and shell. Every
