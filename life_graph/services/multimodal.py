@@ -28,10 +28,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from life_graph.core.events import EventBus
     from life_graph.core.memory_manager import MemoryManager
+    from life_graph.extraction.pipeline import ExtractionPipeline
     from life_graph.storage.minio_client import MinIOStorage
 
 from life_graph.core.trust import classify_surface
-from life_graph.extraction.pipeline import ExtractionPipeline
 from life_graph.models.schemas import MemoryCreate
 
 logger = logging.getLogger(__name__)
@@ -217,9 +217,15 @@ class MultiModalService:
         event_bus: EventBus,
         pipeline: ExtractionPipeline | None = None,
     ) -> None:
+        from life_graph.api.dependencies import get_extraction_pipeline
+
         self.minio = minio
         self.event_bus = event_bus
-        self.pipeline = pipeline or ExtractionPipeline()
+        # Shared pipeline by default: a bare ExtractionPipeline() has no local
+        # client and a hardcoded cloud model, so its LLM tier ignores this
+        # deployment's configuration. Imported here, not at module scope, to
+        # keep the dependencies module out of this import cycle.
+        self.pipeline = pipeline or get_extraction_pipeline()
         self._whisper_model: Any = None
 
     @staticmethod

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from life_graph.core.events import EventBus, EventType
+from life_graph.core.events import EventBus, EventType, emit_after_commit
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
 from life_graph.models.db import CaptureEvent, Correction
@@ -104,7 +104,11 @@ class CaptureService:
         await self.session.flush()
 
         if self.event_bus:
-            await self.event_bus.emit(
+            # Deferred to after-commit: this session is the caller's, still in
+            # an open transaction, and the processors query in a session of
+            # their own — so emitting here made the row invisible to them.
+            await emit_after_commit(
+                self.session,
                 EventType.CAPTURE_RECEIVED,
                 {
                     "capture_event_id": str(event.id),
@@ -113,6 +117,7 @@ class CaptureService:
                     "modality": modality,
                     "trust_tier": resolved_tier.value,
                 },
+                bus=self.event_bus,
             )
         return event
 
@@ -159,13 +164,16 @@ class CaptureService:
         await self.session.flush()
 
         if self.event_bus:
-            await self.event_bus.emit(
+            # Same reason as ingest(): subscribers read in their own session.
+            await emit_after_commit(
+                self.session,
                 EventType.CORRECTION_RECORDED,
                 {
                     "correction_id": str(correction.id),
                     "tenant_id": tenant_id,
                     "kind": kind,
                 },
+                bus=self.event_bus,
             )
         return correction
 

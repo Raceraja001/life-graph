@@ -27,6 +27,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+from sqlalchemy import event as sa_event
+
 logger = logging.getLogger(__name__)
 
 
@@ -236,6 +238,47 @@ class EventBus:
     async def _safe_invoke(handler: EventHandler, event: Event) -> None:
         """Invoke a single handler, allowing exceptions to propagate to gather."""
         await handler(event)
+
+
+async def emit_after_commit(
+    session: Any,
+    event_type: EventType,
+    payload: dict[str, Any],
+    source: str = "system",
+    bus: EventBus | None = None,
+) -> None:
+    """Emit *event_type* once *session*'s transaction actually commits.
+
+    Services that take a caller-provided session (the capture spine, the
+    Telegram bridge, the interview engine, tool observation) emit right after
+    ``flush()``, while the caller still owns an open transaction. Handlers open
+    their own session, so the row they were told about is invisible to them:
+    ``CaptureProcessors`` logged "CaptureEvent ... not found" and every ambient
+    capture yielded nothing at all. This defers the emit to SQLAlchemy's
+    ``after_commit`` hook, so a handler only ever hears about a write that
+    landed — and hears nothing when the transaction rolls back.
+
+    The hook is synchronous, so the emit is scheduled back onto the running
+    loop, captured here rather than inside the callback.
+    """
+    loop = asyncio.get_running_loop()
+    target = bus if bus is not None else event_bus
+
+    def _schedule(_session: Any) -> None:
+        def _spawn() -> None:
+            task = loop.create_task(target.emit(event_type, payload, source=source))
+            task.add_done_callback(_log_task_failure)
+
+        loop.call_soon_threadsafe(_spawn)
+
+    sa_event.listen(session.sync_session, "after_commit", _schedule, once=True)
+
+
+def _log_task_failure(task: asyncio.Task[Any]) -> None:
+    """Log a deferred emit that failed; never re-raise into the loop."""
+    with contextlib.suppress(asyncio.CancelledError):
+        if exc := task.exception():
+            logger.error("Deferred event emit failed: %s", exc, exc_info=exc)
 
 
 # ── Built-in debug logging handler ────────────────────────────
