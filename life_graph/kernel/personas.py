@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
+from life_graph.config import settings
 from life_graph.kernel.propose_contract import (
     AGENT_TASK_PROPOSE_CONTRACT,
     COMMAND_PROPOSE_CONTRACT,
@@ -512,7 +513,12 @@ class PersonaService:
                             icon=defn["icon"],
                             description=defn["description"],
                             system_prompt=defn["system_prompt"],
-                            model="gemini/gemini-2.5-flash",
+                            # Never hardcode a model id here: gemini-2.5-flash was
+                            # seeded long after it started 404ing for new API keys,
+                            # so every freshly seeded tenant arrived broken. The
+                            # configured default is what the orchestrator itself
+                            # falls back to (orchestrator.py), so they agree.
+                            model=settings.agent_llm_model,
                             temperature=defn["temperature"],
                             max_tokens=4096,
                             allowed_tools=defn["allowed_tools"],
@@ -673,7 +679,7 @@ class PersonaService:
                 display_name=data.get("display_name"),
                 description=data.get("description"),
                 system_prompt=data["system_prompt"],
-                model=data.get("model", "gemini/gemini-2.5-flash"),
+                model=data.get("model") or settings.agent_llm_model,
                 temperature=data.get("temperature", 0.7),
                 max_tokens=data.get("max_tokens", 4096),
                 allowed_tools=data.get("allowed_tools"),

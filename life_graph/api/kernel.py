@@ -30,6 +30,7 @@ from life_graph.api.dependencies import (
     get_scheduler_service,
 )
 from life_graph.api.responses import paginated_response, success_response
+from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.chat_stream import get_chat_stream_bus, map_bus_event
 from life_graph.services.model_catalog import get_model_catalog
@@ -346,8 +347,9 @@ class PersonaCreate(BaseModel):
     )
     description: str | None = None
     model: str = Field(
-        "gemini/gemini-2.5-flash",
+        default_factory=lambda: settings.agent_llm_model,
         max_length=100,
+        description="LiteLLM model id; defaults to LIFE_GRAPH_AGENT_LLM_MODEL",
     )
     temperature: float = Field(0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(4096, ge=1, le=128000)
