@@ -112,7 +112,9 @@ services:
 
   # ── MinIO (S3-compatible object storage) ─────────────
   minio:
-    image: minio/minio
+    # Docker Hub's minio/minio no longer serves images ("pull access denied");
+    # upstream publishes to quay.io. Pinned so a fresh pull is reproducible.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: life_graph_minio
     command: server /data --console-address ":9001"
     environment:
