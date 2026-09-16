@@ -84,6 +84,8 @@ async def ingest_or_fallback(manager: MemoryManager, text: str, source: str) -> 
             MemoryCreate(content=text, source_type=source),
             embedding=embedding,
             trust_tier=tier,
+            # Extraction yielded nothing; this is the raw capture kept verbatim.
+            extraction_tier="manual",
         )
         memories = [row]
     return memories

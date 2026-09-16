@@ -52,8 +52,10 @@ def _make_manager(monkeypatch, *, candidates, exact_duplicate=None):
 
     stored_calls = []
 
-    async def fake_store(memory_create, embedding=None, trust_tier=None):
-        stored_calls.append(memory_create)
+    async def fake_store(memory_create, **kwargs):
+        # kwargs carries the server-side provenance (trust_tier, extraction_tier,
+        # extraction_confidence, capture_event_id); recorded so tests can assert it.
+        stored_calls.append((memory_create, kwargs))
         return SimpleNamespace(id="new-memory", properties=memory_create.properties)
 
     mgr._store = SimpleNamespace(
@@ -98,9 +100,12 @@ async def test_contradiction_check_only_sees_active_candidates(monkeypatch):
     active = _memory("active-1", status="active", content="I always use MongoDB")
     pending = _memory("pending-1", status="pending", content="I use Redis")
     mgr, candidate_calls, touched, updated_calls, stored_calls, check_calls = _make_manager(
-        monkeypatch, candidates=[(active, 0.8), (pending, 0.78)]  # below dedup_threshold (0.92)
+        monkeypatch,
+        candidates=[(active, 0.8), (pending, 0.78)],  # below dedup_threshold (0.92)
     )
-    fact = ExtractedFact(content="I don't use MongoDB", fact_type="anti_preference", confidence=0.8)
+    fact = ExtractedFact(
+        content="I don't use MongoDB", fact_type="anti_preference", confidence=0.8, tier="regex"
+    )
 
     result = await mgr._process_fact(fact, context=None, source="test", embedding=[0.1, 0.2])
 
@@ -110,3 +115,8 @@ async def test_contradiction_check_only_sees_active_candidates(monkeypatch):
     assert passed_candidates == [active]  # pending filtered out
     assert stored_calls  # new memory was stored
     assert result is not None
+
+    # The fact's provenance reaches the store, not just the JSONB properties.
+    _, store_kwargs = stored_calls[0]
+    assert store_kwargs["extraction_tier"] == "regex"
+    assert store_kwargs["extraction_confidence"] == 0.8

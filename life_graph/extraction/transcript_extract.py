@@ -91,6 +91,9 @@ def _parse_facts(raw: str) -> list[ExtractedFact]:
                 confidence=0.7,
                 entities=[],
                 source_text=content,
+                # Extracted by an LLM, not by the tiered pipeline that would
+                # otherwise stamp this (see ExtractionPipeline._stamp_tier).
+                tier="llm",
             )
         )
     return out

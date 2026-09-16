@@ -19,6 +19,13 @@ class ExtractedFact:
     confidence: float
     entities: list[str] = field(default_factory=list)
     source_text: str = ""
+    tier: str = ""
+    """Which tier produced this fact: regex, spacy, llm or manual.
+
+    Stamped by ``ExtractionPipeline`` — it knows the provenance of each list it
+    merges, so the extractors stay unchanged — and persisted to
+    ``memories.extraction_tier``, a column that existed and was read back by
+    recall but was never written."""
 
 
 # ---------------------------------------------------------------------------
