@@ -1,9 +1,22 @@
 "use client";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { usePersonas, useUpdatePersona, type PersonaVM } from "@/lib/mobile-api";
 import { ModelCombobox } from "@/components/model-combobox";
+import { API_BASE, getTenantId } from "@/lib/api";
 
 export default function SettingsPage() {
+  // The tenant lives in localStorage, which the server cannot read, so it is
+  // read as external state: null on the server (and on the hydrating render),
+  // the real value on the client. This panel previously printed build-time env
+  // defaults instead, reporting a stale endpoint (:8000) and "default" no
+  // matter who was logged in. It only changes at login/logout, both of which
+  // navigate, so there is nothing to subscribe to.
+  const tenantId = useSyncExternalStore(
+    () => () => {},
+    () => getTenantId(),
+    () => null,
+  );
+
   return (
     <div className="space-y-4">
       <div>
@@ -14,13 +27,13 @@ export default function SettingsPage() {
         <div>
           <label className="text-xs font-medium text-ink-low uppercase tracking-wider">API Endpoint</label>
           <p className="text-sm text-ink mt-1 font-mono bg-surface-2 px-3 py-2 rounded-lg border border-line">
-            {process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1"}
+            {API_BASE}
           </p>
         </div>
         <div>
           <label className="text-xs font-medium text-ink-low uppercase tracking-wider">Tenant ID</label>
           <p className="text-sm text-ink mt-1 font-mono bg-surface-2 px-3 py-2 rounded-lg border border-line">
-            {process.env.NEXT_PUBLIC_TENANT_ID || "default"}
+            {tenantId ?? "—"}
           </p>
         </div>
         <div>
