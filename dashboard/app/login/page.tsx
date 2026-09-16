@@ -17,13 +17,31 @@ function LoginForm() {
     setLoading(true);
     setError("");
     try {
-      // Verify credentials by hitting a simple endpoint
+      // Verify the credentials against an endpoint that actually enforces them.
+      // /health is in the API's auth-exempt list (and lives outside /api/v1), so
+      // checking it accepted any key — a wrong one only failed later, page by
+      // page. This route is cheap, tenant-scoped and auth-gated.
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1"}/health`,
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1"}/memories/pending/count`,
         { headers: { "X-Tenant-ID": tenantId, "Authorization": `Bearer ${apiKey}` } }
       );
-      if (!res.ok && res.status === 401) {
+      if (res.status === 401) {
         setError("Invalid API key");
+        setLoading(false);
+        return;
+      }
+      if (res.status === 400) {
+        setError("Tenant ID is required");
+        setLoading(false);
+        return;
+      }
+      if (res.status === 403) {
+        setError("This tenant is deactivated");
+        setLoading(false);
+        return;
+      }
+      if (!res.ok) {
+        setError(`API returned ${res.status} — check the API URL and server logs`);
         setLoading(false);
         return;
       }
