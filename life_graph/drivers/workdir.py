@@ -112,6 +112,14 @@ async def preserve_verified_work(
         try:
             proc = await asyncio.create_subprocess_exec(
                 "git",
+                # The worktree holds driver-written content and shares the
+                # origin's .git, so hooks and fsmonitor here could be agent-
+                # planted — and this runs on the host, outside any driver
+                # scoping. The verifier chain is the gate, not commit hooks.
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.fsmonitor=false",
                 *args,
                 cwd=str(cwd),
                 stdout=asyncio.subprocess.PIPE,
@@ -139,6 +147,7 @@ async def preserve_verified_work(
         "-c",
         "user.name=Life Graph",
         "commit",
+        "--no-verify",
         "-m",
         subject,
         cwd=worktree,

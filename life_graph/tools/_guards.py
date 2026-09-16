@@ -45,7 +45,16 @@ class ToolDeniedError(Exception):
 # Reading these is credential theft; writing them is persistence.
 _SENSITIVE_DIR_NAMES = frozenset({".ssh", ".aws", ".gnupg", ".kube", ".docker", ".config/gcloud"})
 _SENSITIVE_FILE_NAMES = frozenset(
-    {".env", ".netrc", ".htpasswd", ".pgpass", "id_rsa", "id_ed25519", "credentials"}
+    {
+        ".env",
+        ".netrc",
+        ".htpasswd",
+        ".pgpass",
+        "id_rsa",
+        "id_ed25519",
+        "credentials",
+        ".credentials.json",  # Claude Code's OAuth token (~/.claude/)
+    }
 )
 
 # Obvious destructive/privilege-escalating shapes. See layer 3 above: this is
@@ -135,6 +144,22 @@ def resolve_in_roots(path: str, *, tool_name: str) -> Path:
         raise ToolDeniedError(f"Refusing to touch {hit!r} — credential material is off-limits.")
 
     return resolved
+
+
+def check_writable(resolved: Path, *, tool_name: str) -> None:
+    """Refuse writes into a repository's ``.git`` directory.
+
+    ``.git/config`` and ``.git/hooks`` are code-execution surfaces: a
+    ``core.fsmonitor`` or hook written there runs on the next ``git_status``
+    or commit. Allowing ``file_write`` into them would hand a persona that
+    holds only file tools a shell. Reads stay allowed.
+    """
+    if ".git" in resolved.parts:
+        logger.warning("%s denied write inside .git: %s", tool_name, resolved)
+        raise ToolDeniedError(
+            f"{tool_name} may not write inside a .git directory — its config "
+            f"and hooks execute code."
+        )
 
 
 def check_command(command: str) -> None:
