@@ -49,6 +49,30 @@ directory off-site after each nightly run with retention 7 daily / 4 weekly / 6 
 With `MINIO_DATA_DIR` set, restic backs up the raw MinIO directory (which deduplicates
 between runs) and skips the local `minio_*.tar.gz`, which would re-upload in full nightly.
 
+The off-site step is **best-effort**: the local dump has already succeeded, so an
+unreachable repository is recorded in `job_runs` (`offsite: false`, `offsite_error`)
+instead of failing the job. `backup.sh` probes the repository first
+(`RESTIC_PROBE_TIMEOUT`, default 60s), because restic otherwise retries an offline
+backend for about 15 minutes. Check for a run of `offsite: false` in the weekly review.
+
+| Variable | Purpose |
+|---|---|
+| `RESTIC_REPOSITORY_FILE` | Read the repository URL from a file, keeping credentials embedded in a `rest:` URL out of compose files and `docker inspect` |
+| `RESTIC_PASSWORD_FILE` | Same, for the encryption password (restic native) |
+| `RESTIC_FORGET=0` | Skip forget/prune — required for an append-only repository |
+| `RESTIC_PROBE_TIMEOUT` | Seconds to wait for the repository before skipping (default 60) |
+
+**Append-only target (recommended for a second machine you own):** run
+[`rest-server`](https://github.com/restic/rest-server) there with `--append-only`, bound
+to a private address (e.g. its Tailscale IP), with a bcrypt `.htpasswd` entry —
+rest-server 0.14 rejects `$6$` SHA-512 hashes. The backup host can then add snapshots
+but never delete them, so a compromised backup host cannot erase history. Pruning must
+run on the repository host itself (e.g. a weekly `restic forget ... --prune` timer),
+and the backup side sets `RESTIC_FORGET=0`.
+
+**Keep the encryption password somewhere other than the backed-up machine.** If that
+machine is lost, a password stored only on it makes every off-site snapshot unreadable.
+
 > `restic` is not bundled in `Dockerfile.postgres` by default. Either add
 > `apt-get install restic` there, or run restic from the host against the
 > `backup_data` volume mount point.
