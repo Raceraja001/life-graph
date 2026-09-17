@@ -57,6 +57,7 @@ def _confined_project_path(path: str) -> str:
 
 
 def _user_scan_metadata(data: dict[str, Any]) -> dict[str, Any]:
+    """Returns the user-set scan_metadata keys (such as sandbox_setup) present in the registration data."""
     return {k: data[k] for k in _USER_META_KEYS if data.get(k)}
 
 
