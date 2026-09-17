@@ -86,9 +86,13 @@ class _Connection:
             async with AsyncExitStack() as stack:
                 transport = self._config.get("transport", "stdio")
                 if transport == "http":
-                    read, write, _get_session_id = await stack.enter_async_context(
+                    # mcp 1.x yields (read, write, get_session_id); 2.x yields
+                    # (read, write). pyproject allows both, and CI's unpinned
+                    # pip install picks 2.x while uv.lock pins 1.x.
+                    streams = await stack.enter_async_context(
                         streamable_http_client(self._config["url"])
                     )
+                    read, write = streams[0], streams[1]
                 else:
                     params = StdioServerParameters(
                         command=self._config["command"],
@@ -238,7 +242,8 @@ async def _connect_one(exit_stack: AsyncExitStack, server_config: dict) -> int:
         registry.register(
             name=composed_name,
             description=tool.description or "",
-            parameters_schema=tool.inputSchema,
+            # `input_schema` in mcp 2.x; `inputSchema` in 1.x.
+            parameters_schema=getattr(tool, "input_schema", None) or tool.inputSchema,
             handler=_make_bridge_handler(server, tool.name),
             timeout_seconds=BRIDGED_TOOL_TIMEOUT_SECONDS,
         )
@@ -262,7 +267,11 @@ def _make_bridge_handler(server: _BridgedServer, tool_name: str):
             else:
                 parts.append(f"[non-text content: {getattr(block, 'type', 'unknown')}]")
         joined_text = "\n".join(parts)
-        if getattr(result, "isError", False):
+        # `is_error` in mcp 2.x; `isError` (deprecated there) in 1.x.
+        is_error = getattr(result, "is_error", None)
+        if is_error is None:
+            is_error = getattr(result, "isError", False)
+        if is_error:
             # The MCP server reported this call as an error. Raise rather
             # than returning the error text as if it were a successful
             # result — ToolRegistry.execute() already catches handler
