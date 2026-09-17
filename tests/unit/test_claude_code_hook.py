@@ -533,9 +533,11 @@ def test_context_without_git_omits_branch(tmp_path):
 # ── Config + transport plumbing ──────────────────────────────────────────
 
 
-def test_defaults_when_nothing_is_configured(monkeypatch):
+def test_defaults_when_nothing_is_configured(monkeypatch, tmp_path):
     for var in ("LIFE_GRAPH_API_URL", "LIFE_GRAPH_TENANT_ID", "LIFE_GRAPH_API_KEY"):
         monkeypatch.delenv(var, raising=False)
+    # A real ~/.life-graph/claude-code/config.json on the dev box would win.
+    monkeypatch.setenv("LIFE_GRAPH_HOOK_CONFIG", str(tmp_path / "no-config.json"))
     cfg = hook_config.load_config()
     assert cfg.capture_url == "http://localhost:8080/api/v1/capture/"
     assert cfg.tenant_id == "personal"
