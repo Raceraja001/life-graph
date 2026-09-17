@@ -41,6 +41,25 @@ logger = logging.getLogger(__name__)
 _BRANCH_RE = re.compile(r"^lg/task-[0-9a-f-]{1,36}$")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _TIMEOUT = 120
+_TITLE_MAX = 72
+
+
+def _pr_title(instruction: str) -> str:
+    """First line of an instruction, cut at a word boundary rather than mid-word.
+
+    ``instruction`` is usually a full sentence ("Resolve this TODO comment
+    in..."), so a hard ``[:72]`` slice regularly lands inside a word or a
+    filename. Back off to the last space within the limit and mark the cut
+    with an ellipsis; if there is no space to back off to (one long token),
+    fall back to the hard cut so the title is never empty.
+    """
+    if len(instruction) <= _TITLE_MAX:
+        return instruction
+    budget = _TITLE_MAX - 1  # room for the trailing "…"
+    cut = instruction[:budget].rsplit(" ", 1)[0]
+    if not cut:
+        cut = instruction[:budget]
+    return f"{cut}…"
 
 
 class PullRequestError(Exception):
@@ -186,7 +205,7 @@ async def open_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
         return {"pr_url": url, "existing": True}
 
     title = (payload.get("instruction") or f"Life Graph task {payload.get('task_id')}").strip()
-    title = title.splitlines()[0][:72] if title else branch
+    title = _pr_title(title.splitlines()[0]) if title else branch
     code, out, err = await _run(
         [
             gh,

@@ -117,7 +117,42 @@ async def test_existing_pr_is_returned_not_duplicated(setup):
     (setup.tmp / "pr_exists").write_text("")
     out = await open_pull_request(await _payload(setup))
     assert out["existing"] is True
-    assert not any(c[:2] == ["pr", "create"] for c in _gh_calls(setup))
+
+
+@pytest.mark.parametrize(
+    "instruction, expected",
+    [
+        ("Fix the thing", "Fix the thing"),
+        # A hard [:72] slice would land inside "test_dev_suggestions.py",
+        # cutting off mid-word; instead it backs off to the last space.
+        (
+            'Resolve this TODO comment in tests/unit/test_dev_suggestions.py '
+            '(around line 19): "vendored noise here"',
+            'Resolve this TODO comment in tests/unit/test_dev_suggestions.py…',
+        ),
+        # No space to back off to: falls back to the hard cut rather than
+        # returning an empty title.
+        ("x" * 100, "x" * 71 + "…"),
+    ],
+)
+def test_pr_title_truncates_at_a_word_boundary(instruction, expected):
+    assert github_pr._pr_title(instruction) == expected
+    assert len(github_pr._pr_title(instruction)) <= 72
+
+
+async def test_open_pull_request_uses_word_boundary_title(setup):
+    payload = await _payload(
+        setup,
+        instruction=(
+            'Resolve this TODO comment in tests/unit/test_dev_suggestions.py '
+            '(around line 19): "vendored noise here"\nmore detail'
+        ),
+    )
+    await open_pull_request(payload)
+    create = next(c for c in _gh_calls(setup) if c[:2] == ["pr", "create"])
+    title = create[create.index("--title") + 1]
+    assert title == "Resolve this TODO comment in tests/unit/test_dev_suggestions.py…"
+    assert "test_dev_suggestions.py" in title  # not chopped mid-filename
 
 
 async def test_branch_moved_after_verification_is_not_pushed(setup):

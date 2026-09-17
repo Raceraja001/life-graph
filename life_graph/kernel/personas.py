@@ -973,63 +973,6 @@ class PersonaService:
 
     # ── Tool Permission Filtering ────────────────────────
 
-    # Tools restricted to admin/personal tenants only.
-    SYSTEM_TOOLS = {
-        "terminal",
-        "git",
-        "docker",
-        "ssh",
-        "file_write",
-    }
-    # Tools available to all tenants.
-    SAFE_TOOLS = {
-        "memory_search",
-        "knowledge_query",
-        "file_read",
-        "web_search",
-        "calculator",
-    }
-
-    def resolve_tools(
-        self,
-        persona: dict[str, Any],
-        tenant_id: str,
-    ) -> list[str]:
-        """Resolve allowed tools based on persona + tenant.
-
-        For admin/personal tenants, the persona's full
-        allowed_tools list is returned. For customer tenants,
-        system/write tools are filtered out.
-
-        Args:
-            persona: Persona dict with allowed_tools.
-            tenant_id: Tenant ID to check permissions.
-
-        Returns:
-            Filtered list of tool names.
-        """
-        tools = persona.get("allowed_tools") or []
-        if not tools:
-            return []
-
-        # Admin/personal/legacy tenants get full access
-        if self._is_admin_tenant(tenant_id):
-            return list(tools)
-
-        # Customer tenants: strip system tools
-        return [t for t in tools if t not in self.SYSTEM_TOOLS]
-
-    @staticmethod
-    def _is_admin_tenant(tenant_id: str) -> bool:
-        """Check if a tenant has admin-level tool access."""
-        admin_prefixes = (
-            "default",
-            "legacy",
-            "personal",
-            "admin",
-        )
-        return any(tenant_id.startswith(p) for p in admin_prefixes)
-
     @staticmethod
     def _persona_to_dict(
         persona: AgentPersona,
