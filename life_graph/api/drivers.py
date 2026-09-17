@@ -61,6 +61,14 @@ class DispatchRequest(BaseModel):
         None,
         description="Verifier names to run (default: build_ok, lint_clean)",
     )
+    isolate_workdir: bool = Field(
+        True,
+        description=(
+            "Run the driver in a throwaway git worktree off the project. Without "
+            "it the driver edits the live checkout and nothing is landed on a "
+            "branch or offered as a PR."
+        ),
+    )
 
 
 class DispatchResponse(BaseModel):
@@ -216,6 +224,7 @@ async def dispatch_task(body: DispatchRequest):
                 persona_name=body.persona_name,
                 private=body.private,
                 verify_chain=body.verify_chain,
+                isolate_workdir=body.isolate_workdir,
             )
             await session.commit()
 
