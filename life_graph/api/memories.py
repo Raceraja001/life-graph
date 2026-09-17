@@ -34,6 +34,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/memories", tags=["memories"])
 
 
+async def _store_verbatim(
+    body: MemoryCreate,
+    *,
+    manager: MemoryManager,
+    store: PostgresMemoryStore,
+    tier: str,
+) -> Memory:
+    """Store *body* as the caller supplied it, without running extraction.
+
+    Both verbatim paths bypass ``MemoryManager.ingest()``, so they must apply
+    what it would have: the exact-hash dedup check (without it, re-submitting
+    the same note inserted another identical pending row each time) and an
+    embedding (without it the memory is invisible to vector search forever —
+    only the extraction-fallback path computed one; structured input skipped
+    it, so memories saved with tags and importance could only be found by
+    keyword). Returns the existing row when the content is a duplicate.
+    """
+    content_hash = hashlib.sha256(body.content.strip().lower().encode()).hexdigest()
+    existing = await store.find_exact_duplicate(content_hash)
+    if existing is not None:
+        return existing
+
+    embedding = await manager.generate_embedding(body.content)
+    return await store.store(body, embedding=embedding, trust_tier=tier, extraction_tier="manual")
+
+
 @router.post(
     "/",
     status_code=status.HTTP_201_CREATED,
@@ -67,8 +93,7 @@ async def create_memory(
     )
 
     if is_structured:
-        # Stored verbatim as the caller supplied it — no tier extracted it.
-        row = await store.store(body, trust_tier=tier, extraction_tier="manual")
+        row = await _store_verbatim(body, manager=manager, store=store, tier=tier)
         # All three exits below return the same shape. Two of them previously
         # returned a bare list while the third wrapped in success_response(),
         # so the response shape depended on whether extraction happened to
@@ -86,21 +111,7 @@ async def create_memory(
 
     if not memories:
         # Nothing extracted — store as-is so the user's input isn't lost.
-        #
-        # This path bypasses MemoryManager.ingest(), and with it the dedup
-        # pipeline, so it has to run the exact-hash check itself. Without it,
-        # every re-capture of text the extractor cannot parse inserted another
-        # row: the same note submitted N times produced N identical pending
-        # memories, which is precisely what a memory system must not do.
-        content_hash = hashlib.sha256(body.content.strip().lower().encode()).hexdigest()
-        existing = await store.find_exact_duplicate(content_hash)
-        if existing is not None:
-            return success_response(data=[MemoryResponse.model_validate(existing)])
-
-        embedding = await manager.generate_embedding(body.content)
-        row = await store.store(
-            body, embedding=embedding, trust_tier=tier, extraction_tier="manual"
-        )
+        row = await _store_verbatim(body, manager=manager, store=store, tier=tier)
         return success_response(data=[MemoryResponse.model_validate(row)])
 
     return success_response(
