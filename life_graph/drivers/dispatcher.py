@@ -353,6 +353,7 @@ class TaskDispatcher:
                     "sandbox_setup": packet.project_context.get("sandbox_setup"),
                 }
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
+                await self._record_verification(tenant_id, task_id, 1, v_results, session)
 
                 # An inconclusive check means the gate never ran — the tool it
                 # needs is not installed for this project. Re-dispatching the
@@ -881,6 +882,7 @@ class TaskDispatcher:
             "sandbox_setup": packet.project_context.get("sandbox_setup"),
         }
         v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
+        await self._record_verification(tenant_id, task_id, 2, v_results, session)
 
         if verifier_chain.all_passed(v_results):
             await self._emit(
@@ -890,6 +892,40 @@ class TaskDispatcher:
             return bounce_result
 
         return None
+
+    async def _record_verification(
+        self,
+        tenant_id: str,
+        task_id: str,
+        attempt: int,
+        v_results: list[VerifierResult],
+        session: AsyncSession,
+    ) -> None:
+        """Persist one verifier-chain run (attempt 2 is the post-bounce re-check).
+
+        ``verification_runs.task_id`` references ``agent_tasks``, so a run is
+        recorded only for dispatches that have a task row (dashboard dev tasks);
+        the test endpoint's throwaway ids have none. Best-effort, in a
+        savepoint: failing to record must never fail the dispatch.
+        """
+        try:
+            from life_graph.models.db import AgentTask, VerificationRun
+
+            pk = uuid.UUID(str(task_id))
+            if await session.get(AgentTask, pk) is None:
+                return
+            async with session.begin_nested():
+                session.add(
+                    VerificationRun(
+                        tenant_id=tenant_id,
+                        task_id=pk,
+                        attempt=attempt,
+                        passed=verifier_chain.all_passed(v_results),
+                        results=[asdict(r) for r in v_results],
+                    )
+                )
+        except Exception:
+            logger.warning("Could not record verification run for %s", task_id, exc_info=True)
 
     async def _create_dissent_approval_entry(
         self,

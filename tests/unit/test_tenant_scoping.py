@@ -57,6 +57,10 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
         "startup recovery — a restarted API abandons in-process dev tasks of every "
         "tenant; only rows with properties.kind == dev_task are touched"
     ),
+    ("services/dev_outcomes.py", "sync_all"): (
+        "cron discovery of opened agent PRs across tenants; each approval row "
+        "carries its own tenant_id and is processed under it"
+    ),
     ("autonomy/approvals/service.py", "check_expirations"): (
         "system cron with no tenant context; sweeps every tenant in one pass"
     ),
@@ -164,9 +168,7 @@ def test_allowlist_entries_still_exist(tenanted_models):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         names = {
-            n.name
-            for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+            n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
         }
         if fn_name not in names:
             missing.append(f"{module_suffix}::{fn_name} (function gone)")

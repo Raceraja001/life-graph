@@ -216,6 +216,11 @@ def _stage(task: AgentTask, approvals: list[Approval]) -> str:
     """One word for where the task is in the pipeline, for the UI."""
     by_kind = {a.kind: a for a in approvals}
     merge, pr = by_kind.get("driver_merge"), by_kind.get("driver_pr")
+    outcome = (pr.payload or {}).get("outcome") if pr is not None else None
+    if outcome == "merged":
+        return "merged"
+    if outcome == "closed":
+        return "closed"
     if merge is not None:
         return {"approved": "merged", "rejected": "pr_open"}.get(merge.status, "awaiting_merge")
     if pr is not None:

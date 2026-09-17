@@ -15,6 +15,7 @@ const STAGES: Record<string, { label: string; cls: string }> = {
   landed: { label: "Branch landed", cls: "bg-info-soft text-info" },
   needs_review: { label: "Needs review", cls: "bg-warning-soft text-warning" },
   pr_rejected: { label: "PR rejected", cls: "bg-surface-3 text-ink-mid" },
+  closed: { label: "PR closed", cls: "bg-surface-3 text-ink-mid" },
   completed: { label: "Done, no changes", cls: "bg-surface-3 text-ink-mid" },
   failed: { label: "Failed", cls: "bg-danger-soft text-danger" },
 };

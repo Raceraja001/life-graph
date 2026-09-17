@@ -850,3 +850,17 @@ async def tick_scheduled_jobs(ctx: dict) -> dict:
     if due:
         logger.info("tick_scheduled_jobs: %d fired, %d failed", fired, failed)
     return {"due": len(due), "fired": fired, "failed": failed}
+
+
+async def sync_dev_task_prs(ctx: dict) -> dict:
+    """Every 15 min: settle agent PRs merged/closed on GitHub, pull review comments.
+
+    See ``life_graph/services/dev_outcomes.py``. Outcomes recorded from the
+    approvals feed are handled by its event subscriber; this catches what
+    happens on GitHub directly.
+    """
+    from life_graph.services.dev_outcomes import sync_all
+
+    result = await sync_all(async_session)
+    logger.info("Dev PR sync: %s", {k: v for k, v in result.items() if k != "reports"})
+    return result

@@ -336,6 +336,12 @@ async def lifespan(app: FastAPI):
         if interrupted:
             logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
 
+    with startup_step(report, "dev_outcome_recorder"):
+        from life_graph.services.dev_outcomes import dev_outcome_recorder
+
+        # APPROVAL_RESOLVED is emitted by the approvals API in this process.
+        dev_outcome_recorder.subscribe()
+
     if report.failed:
         logger.warning(
             "Startup finished with %d degraded subsystem(s): %s",
