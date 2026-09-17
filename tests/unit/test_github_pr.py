@@ -325,6 +325,7 @@ def merge_env(tmp_path, monkeypatch):
     head = "a" * 40
     base = {
         "state": "OPEN",
+        "title": "Fix it",
         "headRefOid": head,
         "headRefName": "lg/task-936c098e",
         "baseRefName": "feat/x",
@@ -360,6 +361,7 @@ async def test_merge_squashes_with_head_pinned(merge_env):
     assert "--squash" in merge
     # GitHub itself refuses the merge if the head moved between check and merge.
     assert merge[merge.index("--match-head-commit") + 1] == merge_env.head
+    assert merge[merge.index("--subject") + 1] == "Fix it (#27)"
 
 
 @pytest.mark.parametrize(

@@ -489,7 +489,10 @@ class TaskDispatcher:
                     worktree=worktree,
                     repo_path=worktree_origin,
                     task_id=task_id,
-                    summary=result.output,
+                    # The instruction states the intent; the driver's output
+                    # is a narrative ("Changed x: ...") that read badly as a
+                    # commit subject and, via squash-merge, in history.
+                    summary=instruction,
                 )
                 if landed_branch:
                     result.metadata = {**(result.metadata or {}), "landed_branch": landed_branch}

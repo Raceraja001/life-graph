@@ -283,9 +283,7 @@ async def merge_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
 
     gh = settings.driver_gh_bin
     number = match.group(1)
-    fields = (
-        "state,headRefOid,headRefName,baseRefName,mergeable,isDraft,statusCheckRollup,mergeCommit"
-    )
+    fields = "state,headRefOid,headRefName,baseRefName,mergeable,isDraft,statusCheckRollup,mergeCommit,title"
     code, out, err = await _run([gh, "pr", "view", url, "--json", fields], cwd=repo)
     if code != 0:
         raise PullRequestError(f"could not read PR #{number}: {(err or out)[-300:]}")
