@@ -36,6 +36,9 @@ logger = logging.getLogger(__name__)
 #   sandbox_test_timeout  seconds tests_pass may take
 #   required_checks       verifiers every dev task in this project must pass
 #   auto_open_pr          open PRs without approval for drivers proven on this project
+#   nightly_suggestions   queue nightly dev tasks for failing tests / lint / TODOs
+#   nightly_max_tasks     cap on open nightly tasks per project (default 2)
+#   nightly_persona       persona that works them (default code-fixer-local)
 _USER_META_KEYS = frozenset(
     {
         "sandbox_setup",
@@ -43,6 +46,9 @@ _USER_META_KEYS = frozenset(
         "sandbox_test_timeout",
         "required_checks",
         "auto_open_pr",
+        "nightly_suggestions",
+        "nightly_max_tasks",
+        "nightly_persona",
     }
 )
 

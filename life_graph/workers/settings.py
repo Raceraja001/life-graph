@@ -138,6 +138,7 @@ class WorkerSettings:
         "life_graph.workers.tasks.decay_trust_scores",
         "life_graph.workers.tasks.check_approval_timeouts",
         "life_graph.workers.tasks.sync_dev_task_prs",
+        "life_graph.workers.tasks.run_nightly_dev_suggestions",
         "life_graph.workers.tasks.send_approval_escalations",
         "life_graph.workers.tasks.run_daily_brief",
         "life_graph.workers.tasks.failure_pattern_mining",
@@ -222,6 +223,12 @@ class WorkerSettings:
         cron(
             "life_graph.workers.tasks.sync_dev_task_prs",
             minute={0, 15, 30, 45},
+            run_at_startup=False,
+        ),
+        cron(
+            "life_graph.workers.tasks.run_nightly_dev_suggestions",
+            hour=21,
+            minute=0,
             run_at_startup=False,
         ),
         # ── Autonomous AI (Era 8) ────────────────────────

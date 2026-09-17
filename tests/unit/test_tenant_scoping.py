@@ -61,6 +61,14 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
         "cron discovery of opened agent PRs across tenants; each approval row "
         "carries its own tenant_id and is processed under it"
     ),
+    ("services/dev_tasks.py", "claim_next_queued"): (
+        "single queue runner for the process; the claimed row carries its own "
+        "tenant_id and the task runs under that tenant's context"
+    ),
+    ("services/dev_suggestions.py", "run_nightly"): (
+        "cron discovery of opted-in projects across tenants; each project is "
+        "processed under its own tenant context"
+    ),
     ("autonomy/approvals/service.py", "check_expirations"): (
         "system cron with no tenant context; sweeps every tenant in one pass"
     ),

@@ -135,6 +135,7 @@ function TaskCard({ t }: { t: any }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-ink break-words">{t.title}</p>
           <p className="text-xs text-ink-low mt-0.5">
+            {t.origin === "nightly" ? "🌙 nightly · " : ""}
             {t.project_name} · {t.persona} · {ago(t.created_at)}
             {typeof t.cost_usd === "number" && t.cost_usd > 0 ? ` · $${t.cost_usd.toFixed(2)}` : ""}
             {t.duration_ms ? ` · ${Math.round(t.duration_ms / 1000)}s` : ""}

@@ -864,3 +864,14 @@ async def sync_dev_task_prs(ctx: dict) -> dict:
     result = await sync_all(async_session)
     logger.info("Dev PR sync: %s", {k: v for k, v in result.items() if k != "reports"})
     return result
+
+
+async def run_nightly_dev_suggestions(ctx: dict) -> dict:
+    """21:00 UTC (02:30 IST): queue dev tasks for opted-in projects' findings.
+
+    The tasks run in the API process's queue runner, one at a time, so the
+    morning brings PR approvals rather than an overloaded GPU at night.
+    """
+    from life_graph.services.dev_suggestions import run_nightly
+
+    return await run_nightly(async_session)

@@ -22,7 +22,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 
 from life_graph.models.db import AgentTask, Approval
 
@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 KIND = "dev_task"
 AGENT_NAME = "dev_task"
+QUEUE_MODE = "queue"
 
 # Strong references: asyncio keeps only weak ones to running tasks.
 _background: set[asyncio.Task] = set()
@@ -57,8 +58,15 @@ async def create_dev_task(
     project: dict[str, Any],
     persona_name: str,
     task_type: str = "code_change",
+    start: bool = True,
+    properties: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Record a dev task and start it in the background."""
+    """Record a dev task and start it in the background.
+
+    With ``start=False`` the task is left ``queued`` for :func:`run_queue`
+    (``properties.run_mode == "queue"``), which runs queued tasks one at a time
+    — how nightly suggestions avoid starting several local-model runs at once.
+    """
     task_id = uuid.uuid4()
     title = instruction.strip().splitlines()[0][:200] if instruction.strip() else "Dev task"
     async with session_factory() as session:
@@ -74,7 +82,12 @@ async def create_dev_task(
             project_id=uuid.UUID(project["id"]),
             status="queued",
             input={"instruction": instruction, "persona": persona_name, "project": project["name"]},
-            properties={"kind": KIND, "project_name": project["name"]},
+            properties={
+                **(properties or {}),
+                "kind": KIND,
+                "project_name": project["name"],
+                **({} if start else {"run_mode": QUEUE_MODE}),
+            },
             tags=[KIND],
             status_history=[{"status": "queued", "at": datetime.now(UTC).isoformat()}],
         )
@@ -82,6 +95,9 @@ async def create_dev_task(
         await session.commit()
         await session.refresh(task)
         data = serialize(task, [])
+
+    if not start:
+        return data
 
     bg = asyncio.create_task(
         _run(
@@ -107,6 +123,7 @@ async def _run(
     project_id: str,
     persona_name: str,
     task_type: str,
+    interactive: bool = True,
 ) -> None:
     from life_graph.core.events import event_bus
     from life_graph.core.tenant import set_tenant_context
@@ -133,7 +150,10 @@ async def _run(
                 project_id=project_id,
                 session=session,
                 persona_name=persona_name,
-                interactive=True,  # user-started: the governor must not block it
+                # A dashboard task is user-started, so the Governor must not block
+                # it; queued (unattended) work is subject to the budget like any
+                # other autonomous dispatch.
+                interactive=interactive,
                 isolate_workdir=True,
             )
             await session.commit()
@@ -248,6 +268,7 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "project_id": str(task.project_id) if task.project_id else None,
         "project_name": (task.properties or {}).get("project_name"),
         "persona": task.assigned_agent,
+        "origin": (task.properties or {}).get("origin", "dashboard"),
         "status": task.status,
         "stage": _stage(task, approvals),
         "error": task.error,
@@ -268,11 +289,23 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
 
 
 async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) -> int:
-    """Mark dev tasks left queued/running by a previous process as failed."""
+    """Mark dev tasks abandoned by a previous process as failed.
+
+    That is every ``running`` task, and ``queued`` tasks that were meant to
+    start immediately. Tasks queued for :func:`run_queue` are still waiting
+    for their turn and are left alone.
+    """
+    abandoned_queued = and_(
+        AgentTask.status == "queued",
+        or_(
+            AgentTask.properties["run_mode"].astext.is_(None),
+            AgentTask.properties["run_mode"].astext != QUEUE_MODE,
+        ),
+    )
     async with session_factory() as session:
         result = await session.execute(
             update(AgentTask)
-            .where(_kind_filter(), AgentTask.status.in_(["queued", "running"]))
+            .where(_kind_filter(), or_(AgentTask.status == "running", abandoned_queued))
             .values(
                 status="failed",
                 error="Interrupted: the API restarted while this task was running",
@@ -281,3 +314,65 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
         )
         await session.commit()
         return result.rowcount or 0
+
+
+# ── Queue runner ─────────────────────────────────────────────
+
+QUEUE_POLL_SECONDS = 60
+
+
+async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -> AgentTask | None:
+    """Atomically claim the oldest queue-mode task (status -> running)."""
+    async with session_factory() as session:
+        task = (
+            await session.execute(
+                select(AgentTask)
+                .where(
+                    _kind_filter(),
+                    AgentTask.status == "queued",
+                    AgentTask.properties["run_mode"].astext == QUEUE_MODE,
+                )
+                .order_by(AgentTask.created_at)
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            )
+        ).scalar_one_or_none()
+        if task is None:
+            return None
+        task.status = "running"
+        task.started_at = datetime.now(UTC)
+        task.status_history = _history(task, "running", "claimed from queue")
+        await session.commit()
+        await session.refresh(task)
+        return task
+
+
+async def run_queue(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """Run queued dev tasks one at a time, forever (API process lifespan task).
+
+    One at a time on purpose: queued work is unattended (nightly suggestions),
+    usually on the local model, and several concurrent runs would contend for
+    one GPU and trip the per-project WIP limit.
+    """
+    while True:
+        try:
+            task = await claim_next_queued(session_factory)
+            if task is None:
+                await asyncio.sleep(QUEUE_POLL_SECONDS)
+                continue
+            logger.info("Running queued dev task %s (%s)", task.id, task.title)
+            await _run(
+                session_factory,
+                task.tenant_id,
+                str(task.id),
+                task.instructions or "",
+                str(task.project_id),
+                task.assigned_agent or "code-fixer-local",
+                task.task_type or "code_change",
+                interactive=False,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("Dev task queue runner iteration failed", exc_info=True)
+            await asyncio.sleep(QUEUE_POLL_SECONDS)

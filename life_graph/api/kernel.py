@@ -1098,6 +1098,11 @@ class ProjectRegister(BaseModel):
         description="Open PRs without the approval step for drivers with an established"
         " merge record (>= 80%) on this project. Merging always stays an approval.",
     )
+    nightly_suggestions: bool | None = Field(
+        None, description="Queue nightly dev tasks for failing tests, lint and TODOs"
+    )
+    nightly_max_tasks: int | None = Field(None, ge=1, le=10)
+    nightly_persona: str | None = Field(None, max_length=100)
 
     @field_validator("required_checks")
     @classmethod
@@ -1130,6 +1135,9 @@ class ProjectUpdate(BaseModel):
     sandbox_test_timeout: int | None = Field(None, ge=0, le=3600)
     required_checks: list[str] | None = None
     auto_open_pr: bool | None = None
+    nightly_suggestions: bool | None = None
+    nightly_max_tasks: int | None = Field(None, ge=0, le=10)
+    nightly_persona: str | None = Field(None, max_length=100)
 
     @field_validator("required_checks")
     @classmethod

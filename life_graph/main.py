@@ -343,6 +343,16 @@ async def lifespan(app: FastAPI):
         # APPROVAL_RESOLVED is emitted by the approvals API in this process.
         dev_outcome_recorder.subscribe()
 
+    app.state.dev_task_queue = None
+    with startup_step(report, "dev_task_queue"):
+        import asyncio
+
+        from life_graph.services.dev_tasks import run_queue
+
+        # Queued dev tasks (nightly suggestions) run here, where the drivers
+        # are registered, one at a time.
+        app.state.dev_task_queue = asyncio.create_task(run_queue(async_session))
+
     if report.failed:
         logger.warning(
             "Startup finished with %d degraded subsystem(s): %s",
@@ -353,6 +363,11 @@ async def lifespan(app: FastAPI):
         logger.info("Startup complete — all %d optional subsystems wired", len(report.as_dict()))
 
     yield
+
+    # Shutdown — stop the dev task queue runner (an in-flight task is marked
+    # failed by fail_interrupted on the next start).
+    if app.state.dev_task_queue is not None:
+        app.state.dev_task_queue.cancel()
 
     # Shutdown — close MCP bridge connections
     try:
