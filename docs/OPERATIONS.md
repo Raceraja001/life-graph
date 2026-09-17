@@ -16,11 +16,19 @@ The sidecar reuses the postgres image (`Dockerfile.postgres`) so `pg_dump`/`pg_r
 always match the server version (PG16). Dumps land in the `backup_data` volume
 (`/backups` inside the container), retained `BACKUP_RETENTION_DAYS` days (default 30).
 
+When `MINIO_DATA_DIR` points at a mount of the MinIO volume, each run also writes
+`minio_<timestamp>.tar.gz` next to the dump, with the same retention. Mount the volume
+read-only into the sidecar (e.g. `minio_data:/minio-data:ro`). Without it, uploaded
+originals (voice notes, images, documents) have no backup — only the memories
+extracted from them do.
+
 ### What the restore drill verifies
 
 1. Latest dump restores into a scratch database (`life_graph_verify`) on the same server.
 2. Row counts for `memories`, `sessions`, `capture_events`, `decisions`, `predictions`,
    `agent_tasks` — restored `memories` count must be ≥ 90% of live (`MIN_ROW_RATIO`).
+   Each table is looked up in whichever schema holds it (`public` or `life_graph`);
+   the drill log and `job_runs` result name tables schema-qualified.
 3. Embedding sample: restored DB must contain non-null embeddings with the right dimensions.
 4. Warns if the latest dump is older than 48h (nightly backup broken).
 5. Scratch database is dropped afterwards; outcome recorded in `job_runs`.
@@ -38,7 +46,32 @@ RESTIC_PASSWORD=<strong-passphrase>
 
 When set (and `restic` is installed in the image/host), `backup.sh` pushes the dump
 directory off-site after each nightly run with retention 7 daily / 4 weekly / 6 monthly.
-To include MinIO object data, set `MINIO_DATA_DIR` to a mounted copy of the MinIO volume.
+With `MINIO_DATA_DIR` set, restic backs up the raw MinIO directory (which deduplicates
+between runs) and skips the local `minio_*.tar.gz`, which would re-upload in full nightly.
+
+The off-site step is **best-effort**: the local dump has already succeeded, so an
+unreachable repository is recorded in `job_runs` (`offsite: false`, `offsite_error`)
+instead of failing the job. `backup.sh` probes the repository first
+(`RESTIC_PROBE_TIMEOUT`, default 60s), because restic otherwise retries an offline
+backend for about 15 minutes. Check for a run of `offsite: false` in the weekly review.
+
+| Variable | Purpose |
+|---|---|
+| `RESTIC_REPOSITORY_FILE` | Read the repository URL from a file, keeping credentials embedded in a `rest:` URL out of compose files and `docker inspect` |
+| `RESTIC_PASSWORD_FILE` | Same, for the encryption password (restic native) |
+| `RESTIC_FORGET=0` | Skip forget/prune — required for an append-only repository |
+| `RESTIC_PROBE_TIMEOUT` | Seconds to wait for the repository before skipping (default 60) |
+
+**Append-only target (recommended for a second machine you own):** run
+[`rest-server`](https://github.com/restic/rest-server) there with `--append-only`, bound
+to a private address (e.g. its Tailscale IP), with a bcrypt `.htpasswd` entry —
+rest-server 0.14 rejects `$6$` SHA-512 hashes. The backup host can then add snapshots
+but never delete them, so a compromised backup host cannot erase history. Pruning must
+run on the repository host itself (e.g. a weekly `restic forget ... --prune` timer),
+and the backup side sets `RESTIC_FORGET=0`.
+
+**Keep the encryption password somewhere other than the backed-up machine.** If that
+machine is lost, a password stored only on it makes every off-site snapshot unreadable.
 
 > `restic` is not bundled in `Dockerfile.postgres` by default. Either add
 > `apt-get install restic` there, or run restic from the host against the
