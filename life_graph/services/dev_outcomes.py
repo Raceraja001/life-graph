@@ -200,13 +200,17 @@ dev_outcome_recorder = DevOutcomeRecorder()
 
 
 async def _gh(*args: str) -> tuple[int, str]:
-    proc = await asyncio.create_subprocess_exec(
-        settings.driver_gh_bin,
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env={**os.environ, "GH_PROMPT_DISABLED": "1"},
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            settings.driver_gh_bin,
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "GH_PROMPT_DISABLED": "1"},
+        )
+    except FileNotFoundError:
+        # No gh on this host: the cron job reports "not logged in" and skips.
+        return 127, ""
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=60)
     except TimeoutError:

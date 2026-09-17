@@ -279,3 +279,12 @@ async def test_verification_runs_recorded_only_for_task_rows(task_and_pr):
     mine = [r for r in rows if r.task_id == task_and_pr["task_id"]]
     assert len(mine) == 1 and mine[0].passed and mine[0].results[0]["verifier"] == "build_ok_diff"
     assert not any(str(r.task_id) == orphan for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_sync_skips_cleanly_without_gh(monkeypatch):
+    from life_graph.config import settings
+    from life_graph.services.dev_outcomes import sync_all
+
+    monkeypatch.setattr(settings, "driver_gh_bin", "/nonexistent/gh")
+    assert await sync_all(None) == {"skipped": "gh not logged in"}
