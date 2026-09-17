@@ -19,7 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from life_graph.api.dependencies import (
     get_chief_router,
@@ -1084,17 +1084,57 @@ class ProjectRegister(BaseModel):
             "e.g. 'uv sync --frozen --no-install-project --extra dev'"
         ),
     )
+    sandbox_test_command: str | None = Field(
+        None,
+        max_length=1000,
+        description="What tests_pass runs in the sandbox, e.g. 'python -m pytest -q tests/unit'",
+    )
+    sandbox_test_timeout: int | None = Field(None, ge=30, le=3600)
+    required_checks: list[str] | None = Field(
+        None, description="Verifiers every dev task in this project must pass, e.g. ['tests_pass']"
+    )
+    auto_open_pr: bool | None = Field(
+        None,
+        description="Open PRs without the approval step for drivers with an established"
+        " merge record (>= 80%) on this project. Merging always stays an approval.",
+    )
+
+    @field_validator("required_checks")
+    @classmethod
+    def _known_checks(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_checks(v)
+
+
+def _validate_checks(v: list[str] | None) -> list[str] | None:
+    if not v:
+        return v
+    from life_graph.services.verifiers import verifier_chain
+
+    unknown = [c for c in v if c not in verifier_chain.names]
+    if unknown:
+        raise ValueError(f"unknown verifier(s): {', '.join(unknown)}")
+    return list(dict.fromkeys(v))
 
 
 class ProjectUpdate(BaseModel):
     """Request body for updating a project's user-editable settings.
 
-    Omitted fields are left unchanged; ``sandbox_setup: ""`` clears it.
+    Omitted fields are left unchanged; an empty value (``""``, ``[]``, ``0``)
+    clears a verifier setting.
     """
 
     description: str | None = None
     git_url: str | None = None
     sandbox_setup: str | None = Field(None, max_length=2000)
+    sandbox_test_command: str | None = Field(None, max_length=1000)
+    sandbox_test_timeout: int | None = Field(None, ge=0, le=3600)
+    required_checks: list[str] | None = None
+    auto_open_pr: bool | None = None
+
+    @field_validator("required_checks")
+    @classmethod
+    def _known_checks(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_checks(v)
 
 
 class ProjectLearn(BaseModel):

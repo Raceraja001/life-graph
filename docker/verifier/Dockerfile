@@ -11,6 +11,11 @@ FROM ghcr.io/astral-sh/uv:0.12.14 AS uv
 FROM python:3.12-slim
 COPY --from=uv /uv /usr/local/bin/uv
 RUN pip install --no-cache-dir "pytest==9.1.1" "ruff==0.16.1"
+# Test suites commonly create throwaway repositories (git init in tmp dirs).
+# No network in the check phase, so this git cannot fetch or push anything.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
 # Never run as root; the sandbox also passes --user explicitly.
 USER 65534:65534
 WORKDIR /work

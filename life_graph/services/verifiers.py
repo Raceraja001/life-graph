@@ -7,6 +7,7 @@ One-bounce rule: failed → re-dispatch once → second failure → needs_human.
 from __future__ import annotations
 
 import logging
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -114,6 +115,11 @@ class VerifierChain:
         """Checks that could not be performed. Re-dispatching cannot fix these."""
         return [r for r in results if r.inconclusive]
 
+    @property
+    def names(self) -> frozenset[str]:
+        """Registered verifier names."""
+        return frozenset(self._verifiers)
+
     def _register_builtins(self) -> None:
         """Register the built-in verifiers."""
         self.register("tests_pass", _verify_tests_pass)
@@ -187,23 +193,45 @@ def _missing_module(result: subprocess.CompletedProcess, module: str) -> bool:
 _HARDENED_GIT = ["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
 
 
+_DEFAULT_TEST_ARGV = [
+    "python",
+    "-m",
+    "pytest",
+    ".",
+    "-q",
+    "--tb=no",
+    "-x",
+    "-p",
+    "no:cacheprovider",
+]
+_DEFAULT_TEST_TIMEOUT = 300
+
+
 async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
+    # The project registry may narrow what "the tests" are — a suite whose
+    # integration tests need a database cannot pass in a network-less sandbox,
+    # which made tests_pass unusable for such projects. Never read from the
+    # worktree: the agent controls it.
+    command = ctx.get("sandbox_test_command")
+    try:
+        argv = shlex.split(command) if command else _DEFAULT_TEST_ARGV
+    except ValueError as exc:
+        return None, {"note": f"sandbox_test_command does not parse: {exc}"}
+    if not argv:
+        argv = _DEFAULT_TEST_ARGV
+    timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
     try:
         venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
-        result = await sandbox.run(
-            ["python", "-m", "pytest", ".", "-q", "--tb=no", "-x", "-p", "no:cacheprovider"],
-            workdir,
-            venv=venv,
-            timeout=300,
-        )
+        result = await sandbox.run(argv, workdir, venv=venv, timeout=timeout)
     except sandbox.SandboxUnavailableError as exc:
-        return None, {"note": str(exc), "sandbox": "docker"}
+        return None, {"note": str(exc), "sandbox": "docker", "command": argv}
     if _missing_module(result, "pytest"):
         return None, {"note": "pytest is not installed in the project environment"}
     return result.returncode == 0, {
         "stdout": result.stdout[-500:],
         "returncode": result.returncode,
         "sandbox": "docker",
+        "command": argv,
     }
 
 

@@ -31,7 +31,20 @@ logger = logging.getLogger(__name__)
 # ── Registration guards ────────────────────────────────────
 
 # scan_metadata keys the user sets (not the scanner); preserved across scans.
-_USER_META_KEYS = frozenset({"sandbox_setup"})
+#   sandbox_setup         dependency install command for the verifier sandbox
+#   sandbox_test_command  what tests_pass runs, e.g. "python -m pytest -q tests/unit"
+#   sandbox_test_timeout  seconds tests_pass may take
+#   required_checks       verifiers every dev task in this project must pass
+#   auto_open_pr          open PRs without approval for drivers proven on this project
+_USER_META_KEYS = frozenset(
+    {
+        "sandbox_setup",
+        "sandbox_test_command",
+        "sandbox_test_timeout",
+        "required_checks",
+        "auto_open_pr",
+    }
+)
 
 
 def _confined_project_path(path: str) -> str:
@@ -577,10 +590,11 @@ class ProjectRegistry:
         project_id: str,
         data: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """Update user-editable fields: description, git_url, sandbox_setup.
+        """Update user-editable fields: description, git_url, and the verifier
+        settings in :data:`_USER_META_KEYS`.
 
-        ``sandbox_setup`` set to an empty string clears it (back to the
-        sandbox's default dependency install).
+        A verifier setting set to an empty value (``""``, ``[]``, ``0``) clears
+        it, falling back to the sandbox default.
 
         Returns:
             Updated project dict, or None if not found.
@@ -600,12 +614,13 @@ class ProjectRegistry:
             for field in ("description", "git_url"):
                 if field in data:
                     setattr(project, field, data[field])
-            if "sandbox_setup" in data:
+            if any(k in data for k in _USER_META_KEYS):
                 meta = dict(project.scan_metadata or {})
-                if data["sandbox_setup"]:
-                    meta["sandbox_setup"] = data["sandbox_setup"]
-                else:
-                    meta.pop("sandbox_setup", None)
+                for key in _USER_META_KEYS & data.keys():
+                    if data[key]:
+                        meta[key] = data[key]
+                    else:
+                        meta.pop(key, None)
                 project.scan_metadata = meta
             project.updated_at = datetime.now(UTC)
             await session.commit()
