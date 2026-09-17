@@ -53,6 +53,13 @@ MAX_WIP_PER_PROJECT = 2
 MAX_WIP_PER_TENANT = 5
 DEFAULT_COST_CAP_USD = 2.0
 MIN_TRUST_THRESHOLD = 0.6
+# A persona whose driver is "auto" lets the dispatcher choose per project.
+AUTO_DRIVER = "auto"
+# Below this merge rate (once established) a driver is skipped for a project.
+POOR_MERGE_RATE = 0.5
+# At or above this merge rate (once established) a project that opted into
+# auto_open_pr gets its PRs opened without the "Open PR" approval.
+AUTO_PR_MERGE_RATE = 0.8
 # Diff-scoped on purpose: the whole-repo variants lint every file in the
 # project, so on any codebase with pre-existing debt they fail on files the
 # agent never touched. That is not a verdict on the change — it bounced the
@@ -88,6 +95,17 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
             project_id,
         )
         return None
+
+
+def _with_required_checks(chain: list[str], project_context: dict) -> list[str]:
+    """Append the project's required checks (e.g. tests_pass) that *chain* lacks.
+
+    A project can require checks for all of its tasks on top of whatever the
+    caller or persona asked for. Read from the registry via the packet's
+    project context, never from the worktree the agent controls.
+    """
+    required = project_context.get("required_checks") or []
+    return [*chain, *(c for c in dict.fromkeys(required) if c not in chain)]
 
 
 def _resolve_verify_chain(caller_chain: list[str] | None, persona) -> list[str]:
@@ -229,6 +247,7 @@ class TaskDispatcher:
             # column, so it landed on the generic default instead and its
             # tests never ran. An explicit caller argument still wins.
             verify_chain = _resolve_verify_chain(caller_verify_chain, persona)
+            verify_chain = _with_required_checks(verify_chain, packet.project_context)
 
             # Step 2c: opt-in workdir isolation — only when the caller asked
             # for it AND a real project path resolved. A no-op flag on a
@@ -238,7 +257,12 @@ class TaskDispatcher:
 
             # Step 3: Select driver
             driver = await self._select_driver(
-                task_type, persona_name, tenant_id, session, persona=persona
+                task_type,
+                persona_name,
+                tenant_id,
+                session,
+                persona=persona,
+                project_id=project_uuid,
             )
 
             # Step 3b: Governor budget gate — refuse before spending, not after.
@@ -354,6 +378,8 @@ class TaskDispatcher:
                     "task_type": task_type,
                     "instruction": instruction,
                     "sandbox_setup": packet.project_context.get("sandbox_setup"),
+                    "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
+                    "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
                 }
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
                 await self._record_verification(tenant_id, task_id, 1, v_results, session)
@@ -511,6 +537,7 @@ class TaskDispatcher:
                         checks=verify_chain,
                         project_id=project_uuid,
                         session=session,
+                        auto_open_pr=bool(packet.project_context.get("auto_open_pr")),
                     )
 
             # Step 7: Record stats + emit result
@@ -595,12 +622,15 @@ class TaskDispatcher:
         tenant_id: str,
         session: AsyncSession,
         persona=None,
+        project_id: uuid.UUID | None = None,
     ):
         """Select the best driver for a task.
 
         Selection logic:
-        1. Persona pin (if persona specifies a driver)
-        2. Cheapest capable trusted driver (success rate >= 0.6)
+        1. Persona pin (if persona specifies a driver; ``"auto"`` means none)
+        2. Cheapest capable trusted driver (success rate >= 0.6), skipping any
+           driver whose work on *this project* has an established poor record
+           (merged/rejected/closed outcomes — see ``services/dev_outcomes``)
         3. Fallback to 'local'
 
         Args:
@@ -632,7 +662,7 @@ class TaskDispatcher:
                     pinned_driver = getattr(persona, "driver", None) or (
                         (persona.properties or {}).get("driver")
                     )
-                    if pinned_driver:
+                    if pinned_driver and pinned_driver != AUTO_DRIVER:
                         driver = driver_registry.get(pinned_driver)
                         if driver and await driver.available():
                             logger.info("Persona %s pins driver %s", persona_name, pinned_driver)
@@ -653,6 +683,27 @@ class TaskDispatcher:
         if available:
             # Sort by cost (cheapest first)
             available.sort(key=lambda d: d.cost_per_task())
+
+            # What the user did with a driver's work on this project outranks
+            # whether that work passed the checks: a free driver whose PRs keep
+            # getting rejected here is not the cheap option.
+            if project_id is not None:
+                from life_graph.services.dev_outcomes import track_record
+
+                kept = []
+                for d in available:
+                    record = await track_record(session, tenant_id, d.name, project_id)
+                    if record["established"] and record["merge_rate"] < POOR_MERGE_RATE:
+                        logger.info(
+                            "Skipping driver %s for project %s: %d/%d merged",
+                            d.name,
+                            project_id,
+                            record["merged"],
+                            record["total"],
+                        )
+                        continue
+                    kept.append(d)
+                available = kept
 
             # Check trust scores from stats
             for d in available:
@@ -886,6 +937,8 @@ class TaskDispatcher:
             "task_type": packet.task_type,
             "instruction": bounce_instruction,
             "sandbox_setup": packet.project_context.get("sandbox_setup"),
+            "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
+            "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
         }
         v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
         await self._record_verification(tenant_id, task_id, 2, v_results, session)
@@ -982,6 +1035,7 @@ class TaskDispatcher:
         checks: list[str],
         project_id: uuid.UUID | None,
         session: AsyncSession,
+        auto_open_pr: bool = False,
     ) -> None:
         """File a ``driver_pr`` approval for a verified, landed branch.
 
@@ -1010,26 +1064,73 @@ class TaskDispatcher:
                 "cost_usd": result.cost_usd,
                 **landing,
             }
+            appr = Approval(
+                tenant_id=tenant_id,
+                kind="driver_pr",
+                title=f"Open PR: {title_line[:100]}",
+                detail=(
+                    f"Branch {branch} passed "
+                    f"{', '.join(checks) if checks else 'no checks'} on driver "
+                    f"'{driver_name}'. Approve to push it and open a pull request "
+                    f"against {landing.get('base_branch') or '(unknown base)'}."
+                ),
+                source="driver",
+                source_ref=str(task_id),
+                payload=payload,
+            )
             async with session.begin_nested():
-                session.add(
-                    Approval(
-                        tenant_id=tenant_id,
-                        kind="driver_pr",
-                        title=f"Open PR: {title_line[:100]}",
-                        detail=(
-                            f"Branch {branch} passed "
-                            f"{', '.join(checks) if checks else 'no checks'} on driver "
-                            f"'{driver_name}'. Approve to push it and open a pull request "
-                            f"against {landing.get('base_branch') or '(unknown base)'}."
-                        ),
-                        source="driver",
-                        source_ref=str(task_id),
-                        payload=payload,
-                    )
-                )
+                session.add(appr)
             logger.info("Task %s: PR approval filed for %s", task_id, branch)
         except Exception:
             logger.warning("Failed to file PR approval for task %s", task_id, exc_info=True)
+            return
+
+        if auto_open_pr:
+            await self._auto_open_pr(appr, driver_name, project_id, session)
+
+    async def _auto_open_pr(
+        self,
+        appr,
+        driver_name: str,
+        project_id: uuid.UUID | None,
+        session: AsyncSession,
+    ) -> None:
+        """Open the PR without asking when the project opted in and the driver
+        has earned it there (established record, merge rate >= AUTO_PR_MERGE_RATE).
+
+        Only the *opening* is automated: the merge approval is filed as usual,
+        so nothing reaches the base branch without the user. Any failure leaves
+        the ``driver_pr`` approval pending, exactly as if auto-open were off.
+        """
+        from life_graph.services.approvals import ApprovalService
+        from life_graph.services.dev_outcomes import track_record
+        from life_graph.services.github_pr import PullRequestError, open_pull_request
+
+        record = await track_record(session, appr.tenant_id, driver_name, project_id)
+        if not (record["established"] and record["merge_rate"] >= AUTO_PR_MERGE_RATE):
+            logger.info(
+                "Auto-open PR skipped: %s has %d/%d merged on this project",
+                driver_name,
+                record["merged"],
+                record["total"],
+            )
+            return
+        try:
+            outcome = await open_pull_request(appr.payload or {})
+        except PullRequestError as exc:
+            logger.warning("Auto-open PR failed, left for approval: %s", exc)
+            appr.detail = f"{appr.detail} Auto-open failed: {exc}"
+            return
+        appr.status = "approved"
+        appr.resolved_at = datetime.now(UTC)
+        appr.resolved_by = "auto: trusted driver"
+        appr.resolution_note = (
+            f"Opened automatically: {driver_name} has {record['merged']}/{record['total']} "
+            f"merged on this project. PR: {outcome['pr_url']}"
+        )
+        appr.payload = {**(appr.payload or {}), "pr_url": outcome["pr_url"], "auto_opened": True}
+        ApprovalService(session).file_merge_approval(appr)
+        logger.info("Auto-opened PR %s (%s)", outcome["pr_url"], driver_name)
 
     async def _create_approval_entry(
         self,

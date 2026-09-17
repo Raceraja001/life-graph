@@ -372,3 +372,43 @@ async def sync_all(session_factory) -> dict[str, Any]:
                 logger.warning("dev PR sync failed for approval %s", approval_id, exc_info=True)
                 reports.append({"approval": str(approval_id), "error": str(exc)[:200]})
     return {"synced": len(reports), "reports": reports}
+
+
+# ── Track record (read side) ─────────────────────────────────
+
+#: A driver's record on a project counts once it has this many outcomes.
+MIN_OUTCOMES = 3
+
+
+async def track_record(
+    session: AsyncSession, tenant_id: str, driver: str, project_id: str | None
+) -> dict[str, Any]:
+    """Merged vs rejected/closed outcomes for a driver's work on one project.
+
+    Read from the same TrustScore row :func:`record_outcome` writes. Counts,
+    not the Bayesian score: the score moves deliberately slowly (one merge is
+    0.17), which suits decay and dashboards but not "has this driver earned
+    it on this project yet".
+    """
+    from life_graph.autonomy.models import TrustScore
+
+    row = (
+        await session.execute(
+            select(TrustScore).where(
+                TrustScore.tenant_id == tenant_id,
+                TrustScore.agent_id == driver,
+                TrustScore.action_type == ACTION_TYPE,
+                TrustScore.project_id == (str(project_id) if project_id else None),
+            )
+        )
+    ).scalar_one_or_none()
+    merged = row.total_successes if row else 0
+    failed = row.total_failures if row else 0
+    total = merged + failed
+    return {
+        "merged": merged,
+        "failed": failed,
+        "total": total,
+        "merge_rate": merged / total if total else None,
+        "established": total >= MIN_OUTCOMES,
+    }

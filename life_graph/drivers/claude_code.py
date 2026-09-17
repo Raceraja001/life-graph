@@ -249,7 +249,7 @@ class ClaudeCodeDriver:
 
     def capabilities(self) -> list[str]:
         """Task types Claude Code handles well."""
-        return ["code", "test", "review", "refactor", "docs"]
+        return ["code", "code_change", "test", "review", "refactor", "docs"]
 
     def cost_per_task(self) -> float:
         """Estimated frontier-class cost per task (actual cost comes back

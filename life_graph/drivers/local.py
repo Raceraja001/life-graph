@@ -182,7 +182,7 @@ class LocalDriver:
 
     def capabilities(self) -> list[str]:
         """Return task types the local driver can handle."""
-        return ["code", "research", "analysis", "general"]
+        return ["code", "code_change", "research", "analysis", "general"]
 
     def cost_per_task(self) -> float:
         """Local execution is free (uses local LLM or configured model)."""
