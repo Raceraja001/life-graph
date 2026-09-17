@@ -324,8 +324,22 @@ async def merge_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
             f"PR #{number} checks still running: {', '.join(pending)} — approve again when done"
         )
 
+    # Without --subject, a single-commit squash reuses that commit's message,
+    # which for a task branch is not written for history.
+    subject = f"{(pr.get('title') or branch).strip()[:90]} (#{number})"
     code, out, err = await _run(
-        [gh, "pr", "merge", url, "--squash", "--delete-branch", "--match-head-commit", head],
+        [
+            gh,
+            "pr",
+            "merge",
+            url,
+            "--squash",
+            "--delete-branch",
+            "--match-head-commit",
+            head,
+            "--subject",
+            subject,
+        ],
         cwd=repo,
     )
     if code != 0:
