@@ -192,6 +192,10 @@ def _approval(payload):
 class _Session:
     def __init__(self, obj):
         self.obj = obj
+        self.added = []
+
+    def add(self, obj):
+        self.added.append(obj)
 
     async def get(self, model, pk):
         return self.obj
@@ -288,3 +292,163 @@ async def test_landed_task_files_driver_pr_approval_with_pinned_commits(setup):
     # The filed payload is exactly what the approve handler accepts.
     out = await open_pull_request(p)
     assert out["pr_url"].endswith("/pull/7")
+
+
+# ── Merge ────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def merge_env(tmp_path, monkeypatch):
+    """A stub gh whose `pr view` answers from a JSON file the test controls."""
+    from life_graph.config import settings
+
+    repo = tmp_path / "root" / "repo"
+    repo.mkdir(parents=True)
+    state = tmp_path / "pr.json"
+    calls = tmp_path / "calls.jsonl"
+    gh = tmp_path / "gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        f"open({str(calls)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        f"pr = json.load(open({str(state)!r}))\n"
+        "if sys.argv[1:3] == ['pr', 'view']:\n"
+        "    print(json.dumps(pr))\n"
+        "elif sys.argv[1:3] == ['pr', 'merge']:\n"
+        "    pr.update(state='MERGED', mergeCommit={'oid': 'f' * 40})\n"
+        f"    json.dump(pr, open({str(state)!r}, 'w'))\n"
+    )
+    gh.chmod(0o755)
+    monkeypatch.setattr(settings, "driver_gh_bin", str(gh))
+    monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path / "root"))
+
+    head = "a" * 40
+    base = {
+        "state": "OPEN",
+        "headRefOid": head,
+        "headRefName": "lg/task-936c098e",
+        "baseRefName": "feat/x",
+        "mergeable": "MERGEABLE",
+        "isDraft": False,
+        "statusCheckRollup": [],
+        "mergeCommit": None,
+    }
+
+    def set_pr(**overrides):
+        state.write_text(json.dumps({**base, **overrides}))
+
+    def calls_made():
+        return [json.loads(x) for x in calls.read_text().splitlines()] if calls.exists() else []
+
+    set_pr()
+    payload = {
+        "pr_url": "https://github.com/me/repo/pull/27",
+        "head_commit": head,
+        "branch": "lg/task-936c098e",
+        "base_branch": "feat/x",
+        "repo_path": str(repo),
+        "instruction": "Fix it",
+    }
+    return SimpleNamespace(set_pr=set_pr, calls=calls_made, payload=payload, head=head)
+
+
+async def test_merge_squashes_with_head_pinned(merge_env):
+    out = await github_pr.merge_pull_request(merge_env.payload)
+    assert out["merged"] and not out["already"]
+    assert out["merge_commit"] == "f" * 40
+    merge = next(c for c in merge_env.calls() if c[:2] == ["pr", "merge"])
+    assert "--squash" in merge
+    # GitHub itself refuses the merge if the head moved between check and merge.
+    assert merge[merge.index("--match-head-commit") + 1] == merge_env.head
+
+
+@pytest.mark.parametrize(
+    "overrides, match",
+    [
+        ({"headRefOid": "b" * 40}, "not verified"),
+        ({"baseRefName": "master"}, "not the approved"),
+        ({"state": "CLOSED"}, "closed, not open"),
+        ({"mergeable": "CONFLICTING"}, "merge conflicts"),
+        ({"mergeable": "UNKNOWN"}, "still computing"),
+        ({"isDraft": True}, "draft"),
+        (
+            {
+                "statusCheckRollup": [
+                    {"name": "lint", "status": "COMPLETED", "conclusion": "FAILURE"}
+                ]
+            },
+            "failing checks: lint",
+        ),
+        (
+            {"statusCheckRollup": [{"name": "test", "status": "IN_PROGRESS", "conclusion": ""}]},
+            "still running: test",
+        ),
+        ({"statusCheckRollup": [{"context": "ci/legacy", "state": "PENDING"}]}, "still running"),
+    ],
+)
+async def test_merge_refused_and_nothing_merged(merge_env, overrides, match):
+    merge_env.set_pr(**overrides)
+    with pytest.raises(PullRequestError, match=match):
+        await github_pr.merge_pull_request(merge_env.payload)
+    assert not any(c[:2] == ["pr", "merge"] for c in merge_env.calls())
+
+
+async def test_merge_allowed_when_all_checks_green(merge_env):
+    merge_env.set_pr(
+        statusCheckRollup=[
+            {"name": "lint", "status": "COMPLETED", "conclusion": "SUCCESS"},
+            {"name": "sdk", "status": "COMPLETED", "conclusion": "SKIPPED"},
+            {"context": "ci/legacy", "state": "SUCCESS"},
+        ]
+    )
+    out = await github_pr.merge_pull_request(merge_env.payload)
+    assert out["merged"] and out["checks"] == 3
+
+
+async def test_already_merged_is_idempotent(merge_env):
+    merge_env.set_pr(state="MERGED", mergeCommit={"oid": "c" * 40})
+    out = await github_pr.merge_pull_request(merge_env.payload)
+    assert out == {"merged": True, "already": True, "merge_commit": "c" * 40}
+    assert not any(c[:2] == ["pr", "merge"] for c in merge_env.calls())
+
+
+async def test_opening_pr_files_a_separate_merge_approval(monkeypatch):
+    async def ok(payload):
+        return {"pr_url": "https://github.com/me/repo/pull/27", "existing": False}
+
+    monkeypatch.setattr(github_pr, "open_pull_request", ok)
+    appr = _approval({"branch": "lg/task-1", "base_branch": "feat/x", "instruction": "Fix it"})
+    appr.source_ref = "task-1"
+    session = _Session(appr)
+    await approvals_mod.ApprovalService(session).resolve("t", str(appr.id), "approve")
+    (merge,) = session.added
+    assert (merge.kind, merge.source, merge.source_ref, merge.status) == (
+        "driver_merge",
+        "driver_merge",
+        "task-1",
+        "pending",
+    )
+    assert merge.title.startswith("Merge PR #27")
+    assert merge.payload["pr_url"].endswith("/pull/27")
+
+
+async def test_merge_failure_keeps_item_pending(monkeypatch):
+    async def boom(payload):
+        raise PullRequestError("PR #27 checks still running: test")
+
+    monkeypatch.setattr(github_pr, "merge_pull_request", boom)
+    appr = _approval({})
+    appr.kind = "driver_merge"
+    with pytest.raises(approvals_mod.ApprovalActionError, match="still running"):
+        await approvals_mod.ApprovalService(_Session(appr)).resolve("t", str(appr.id), "approve")
+
+
+async def test_rejecting_merge_never_merges(monkeypatch):
+    async def must_not_run(payload):
+        raise AssertionError("reject must not merge")
+
+    monkeypatch.setattr(github_pr, "merge_pull_request", must_not_run)
+    appr = _approval({})
+    appr.kind = "driver_merge"
+    out = await approvals_mod.ApprovalService(_Session(appr)).resolve("t", str(appr.id), "reject")
+    assert out["status"] == "rejected"

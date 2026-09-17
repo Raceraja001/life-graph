@@ -203,6 +203,8 @@ class ApprovalService:
             await self._apply_autonomous_action(tenant_id, appr, approve, resolved_by)
         elif appr.kind == "driver_pr":
             await self._apply_driver_pr(appr, approve)
+        elif appr.kind == "driver_merge":
+            await self._apply_driver_merge(appr, approve)
 
         await self.session.flush()
         return self._serialize(appr)
@@ -227,6 +229,52 @@ class ApprovalService:
         # Reassign: in-place mutation of a JSONB dict is not change-tracked.
         appr.payload = {**(appr.payload or {}), "pr_url": outcome["pr_url"]}
         note = f"PR: {outcome['pr_url']}"
+        appr.resolution_note = f"{appr.resolution_note}\n{note}" if appr.resolution_note else note
+        self.file_merge_approval(appr)
+
+    def file_merge_approval(self, pr_approval: Approval) -> Approval:
+        """Queue the separate decision to merge a PR that was just opened.
+
+        Opening and merging are distinct approvals on purpose: the PR exists so
+        the change can be read on GitHub before anything reaches the base.
+        Keyed ``(source="driver_merge", source_ref=task_id)`` so it is filed
+        once per task.
+        """
+        from life_graph.services.github_pr import merge_approval_fields
+
+        fields = merge_approval_fields(pr_approval.payload or {})
+        merge = Approval(
+            tenant_id=pr_approval.tenant_id,
+            kind="driver_merge",
+            status="pending",
+            source="driver_merge",
+            source_ref=pr_approval.source_ref,
+            **fields,
+        )
+        self.session.add(merge)
+        return merge
+
+    async def _apply_driver_merge(self, appr: Approval, approve: bool) -> None:
+        """Squash-merge the task's PR (approve). Reject: leave the PR open.
+
+        Raises like :meth:`_apply_driver_pr`, keeping the item pending, when the
+        PR moved, conflicts, or its CI has not passed — a retry after CI
+        finishes is the expected path, not an error to swallow.
+        """
+        if not approve:
+            return
+        from life_graph.services.github_pr import PullRequestError, merge_pull_request
+
+        try:
+            outcome = await merge_pull_request(appr.payload or {})
+        except PullRequestError as exc:
+            raise ApprovalActionError(str(exc)) from exc
+        appr.payload = {**(appr.payload or {}), "merge_commit": outcome.get("merge_commit")}
+        note = f"Merged as {str(outcome.get('merge_commit') or '?')[:8]}"
+        if outcome.get("already"):
+            note += " (was already merged)"
+        elif not outcome.get("checks"):
+            note += " — no CI checks ran on this PR; sandbox verification was the gate"
         appr.resolution_note = f"{appr.resolution_note}\n{note}" if appr.resolution_note else note
 
     async def _apply_promotion(

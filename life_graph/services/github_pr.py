@@ -1,4 +1,4 @@
-"""Open a GitHub pull request for a verified, approved driver task.
+"""Open, and later merge, a GitHub pull request for a verified driver task.
 
 A dispatch that passes verification is committed onto a local ``lg/task-*``
 branch (:func:`life_graph.drivers.workdir.preserve_verified_work`). The
@@ -13,6 +13,11 @@ Nothing is pushed without that approval, and what is pushed is pinned:
   remote base branch. Otherwise the PR would silently carry the user's own
   unpushed local commits along with the agent's change.
 
+Once the PR is open a second ``driver_merge`` approval is filed; approving it
+calls :func:`merge_pull_request`, which squash-merges only if the PR head is
+still the verified commit (enforced by GitHub via ``--match-head-commit``), the
+PR is mergeable, and every CI check on it has passed.
+
 Authentication is ``gh``'s: git is handed ``gh auth git-credential`` for this
 push only, so no global git credential config is needed.
 """
@@ -20,6 +25,7 @@ push only, so no global git credential config is needed.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -202,3 +208,139 @@ async def open_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
     url = out.splitlines()[-1].strip() if out else ""
     logger.info("Opened PR for %s: %s", branch, url)
     return {"pr_url": url, "existing": False}
+
+
+# ── Merge ────────────────────────────────────────────────────
+
+_PR_URL_RE = re.compile(r"^https://github\.com/[\w.-]+/[\w.-]+/pull/(\d+)$")
+_CHECK_OK = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"})
+
+
+def merge_approval_fields(pr_payload: dict[str, Any]) -> dict[str, Any]:
+    """Title/detail/payload for the ``driver_merge`` approval that follows a PR."""
+    url = pr_payload.get("pr_url") or ""
+    match = _PR_URL_RE.match(url)
+    number = match.group(1) if match else "?"
+    title_line = (pr_payload.get("instruction") or "").strip().splitlines()
+    return {
+        "title": f"Merge PR #{number}: {(title_line[0] if title_line else '')[:90]}",
+        "detail": (
+            f"{url} — squash-merge {pr_payload.get('branch')} into "
+            f"{pr_payload.get('base_branch')}. Merges only if the PR head is still the "
+            f"verified commit {str(pr_payload.get('head_commit') or '')[:8]}, it is "
+            "mergeable, and every CI check on it has passed."
+        ),
+        "payload": {**pr_payload, "pr_number": number},
+    }
+
+
+def _check_failures(rollup: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    """(pending, failed) check names from gh's statusCheckRollup."""
+    pending: list[str] = []
+    failed: list[str] = []
+    for check in rollup or []:
+        name = check.get("name") or check.get("context") or "check"
+        # CheckRun: status/conclusion. StatusContext: state.
+        if check.get("__typename") == "StatusContext" or "state" in check:
+            state = (check.get("state") or "").upper()
+            if state in ("PENDING", "EXPECTED"):
+                pending.append(name)
+            elif state != "SUCCESS":
+                failed.append(name)
+            continue
+        if (check.get("status") or "").upper() != "COMPLETED":
+            pending.append(name)
+        elif (check.get("conclusion") or "").upper() not in _CHECK_OK:
+            failed.append(name)
+    return pending, failed
+
+
+async def merge_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
+    """Squash-merge the task's PR if it is still exactly what was verified.
+
+    Returns ``{"merged": True, "merge_commit", "checks"}``. An already-merged PR
+    returns the same shape, so a retried approval is harmless.
+
+    Raises:
+        PullRequestError: the PR moved, is not mergeable, has pending or failed
+            checks, or gh refused the merge.
+    """
+    from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+    url = payload.get("pr_url") or ""
+    match = _PR_URL_RE.match(url)
+    head = payload.get("head_commit") or ""
+    branch = payload.get("branch") or ""
+    base_branch = payload.get("base_branch") or ""
+    if not match:
+        raise PullRequestError(f"approval has no valid PR url ({url!r})")
+    if not (_SHA_RE.match(head) and _BRANCH_RE.match(branch) and base_branch):
+        raise PullRequestError("approval is missing the verified commit, branch or base")
+    try:
+        repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="pull request")
+    except ToolDeniedError as exc:
+        raise PullRequestError(str(exc)) from exc
+
+    gh = settings.driver_gh_bin
+    number = match.group(1)
+    fields = (
+        "state,headRefOid,headRefName,baseRefName,mergeable,isDraft,statusCheckRollup,mergeCommit"
+    )
+    code, out, err = await _run([gh, "pr", "view", url, "--json", fields], cwd=repo)
+    if code != 0:
+        raise PullRequestError(f"could not read PR #{number}: {(err or out)[-300:]}")
+    pr = json.loads(out)
+
+    if pr.get("state") == "MERGED":
+        return {
+            "merged": True,
+            "already": True,
+            "merge_commit": (pr.get("mergeCommit") or {}).get("oid"),
+        }
+    if pr.get("state") != "OPEN":
+        raise PullRequestError(f"PR #{number} is {str(pr.get('state')).lower()}, not open")
+    if pr.get("headRefName") != branch or pr.get("baseRefName") != base_branch:
+        raise PullRequestError(
+            f"PR #{number} now points {pr.get('headRefName')} → {pr.get('baseRefName')}, "
+            f"not the approved {branch} → {base_branch}"
+        )
+    if pr.get("headRefOid") != head:
+        raise PullRequestError(
+            f"PR #{number} has commits that were not verified "
+            f"(head {str(pr.get('headRefOid'))[:8]}, verified {head[:8]}); refusing to merge"
+        )
+    if pr.get("isDraft"):
+        raise PullRequestError(f"PR #{number} is a draft")
+    if pr.get("mergeable") == "CONFLICTING":
+        raise PullRequestError(f"PR #{number} has merge conflicts with {base_branch}")
+    if pr.get("mergeable") != "MERGEABLE":
+        raise PullRequestError(
+            f"GitHub is still computing whether PR #{number} can merge; try again shortly"
+        )
+    rollup = pr.get("statusCheckRollup") or []
+    pending, failed = _check_failures(rollup)
+    if failed:
+        raise PullRequestError(f"PR #{number} has failing checks: {', '.join(failed)}")
+    if pending:
+        raise PullRequestError(
+            f"PR #{number} checks still running: {', '.join(pending)} — approve again when done"
+        )
+
+    code, out, err = await _run(
+        [gh, "pr", "merge", url, "--squash", "--delete-branch", "--match-head-commit", head],
+        cwd=repo,
+    )
+    if code != 0:
+        raise PullRequestError(f"gh pr merge failed: {(err or out)[-400:]}")
+
+    code, out, _ = await _run([gh, "pr", "view", url, "--json", "mergeCommit"], cwd=repo)
+    merge_commit = None
+    if code == 0 and out:
+        merge_commit = (json.loads(out).get("mergeCommit") or {}).get("oid")
+    logger.info("Merged PR #%s (%s) as %s", number, branch, merge_commit)
+    return {
+        "merged": True,
+        "already": False,
+        "merge_commit": merge_commit,
+        "checks": len(rollup),
+    }
