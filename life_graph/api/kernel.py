@@ -1103,6 +1103,7 @@ class ProjectRegister(BaseModel):
     )
     nightly_max_tasks: int | None = Field(None, ge=1, le=10)
     nightly_persona: str | None = Field(None, max_length=100)
+    nightly_lint_paths: list[str] | None = None
 
     @field_validator("required_checks")
     @classmethod
@@ -1138,6 +1139,7 @@ class ProjectUpdate(BaseModel):
     nightly_suggestions: bool | None = None
     nightly_max_tasks: int | None = Field(None, ge=0, le=10)
     nightly_persona: str | None = Field(None, max_length=100)
+    nightly_lint_paths: list[str] | None = None
 
     @field_validator("required_checks")
     @classmethod

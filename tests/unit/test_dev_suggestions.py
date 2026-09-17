@@ -126,3 +126,21 @@ async def test_collect_scans_head_not_uncommitted_edits(tmp_path, monkeypatch):
         ["git", "worktree", "list"], cwd=repo, capture_output=True, text=True
     )
     assert len(worktrees.stdout.strip().splitlines()) == 1  # scan worktree cleaned up
+
+
+async def test_lint_scan_is_scoped_and_skips_migrations(tmp_path, monkeypatch):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "verifier_sandbox", "docker")
+    seen = {}
+
+    async def fake_run(argv, workdir, **kw):
+        seen["argv"] = argv
+        return sandbox.SandboxResult(0, "[]", "")
+
+    monkeypatch.setattr(sandbox, "run", fake_run)
+    await ds.lint_findings(tmp_path, ["life_graph", "--fix"])  # option-like path dropped
+    argv = seen["argv"]
+    excluded = argv[argv.index("--extend-exclude") + 1].split(",")
+    assert "alembic" in excluded and "migrations" in excluded
+    assert argv[argv.index("--") + 1 :] == ["life_graph"]

@@ -135,15 +135,34 @@ def todo_findings(root: Path) -> list[Finding]:
     return found
 
 
-async def lint_findings(root: Path) -> list[Finding]:
-    """ruff findings, one per file, run in the verifier sandbox."""
+async def lint_findings(root: Path, paths: list[str] | None = None) -> list[Finding]:
+    """ruff findings, one per file, run in the verifier sandbox.
+
+    *paths* narrows the scan to what the project actually lints (its
+    ``nightly_lint_paths``, e.g. ``["life_graph"]``). Migrations and vendored
+    directories are always excluded: rewriting an applied migration to satisfy
+    a linter is exactly the change nobody wants to find in the morning.
+    """
     from life_graph.services import sandbox
 
     if not sandbox.enabled():
         return []
+    targets = [p for p in (paths or ["."]) if p and not p.startswith("-")]
     try:
         res = await sandbox.run(
-            ["ruff", "check", "--no-cache", "--output-format", "json", "."], root, timeout=180
+            [
+                "ruff",
+                "check",
+                "--no-cache",
+                "--output-format",
+                "json",
+                "--extend-exclude",
+                ",".join(sorted(_SKIP_DIRS)),
+                "--",
+                *targets,
+            ],
+            root,
+            timeout=180,
         )
         issues = json.loads(res.stdout or "[]")
     except (sandbox.SandboxUnavailableError, ValueError) as exc:
@@ -235,7 +254,7 @@ async def collect_findings(repo_path: str, meta: dict[str, Any]) -> list[Finding
     try:
         return [
             *await test_findings(worktree, meta),
-            *await lint_findings(worktree),
+            *await lint_findings(worktree, meta.get("nightly_lint_paths")),
             *await asyncio.to_thread(todo_findings, worktree),
         ]
     finally:

@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 #   nightly_suggestions   queue nightly dev tasks for failing tests / lint / TODOs
 #   nightly_max_tasks     cap on open nightly tasks per project (default 2)
 #   nightly_persona       persona that works them (default code-fixer-local)
+#   nightly_lint_paths    paths the nightly ruff scan covers (default: the whole repo)
 _USER_META_KEYS = frozenset(
     {
         "sandbox_setup",
@@ -49,6 +50,7 @@ _USER_META_KEYS = frozenset(
         "nightly_suggestions",
         "nightly_max_tasks",
         "nightly_persona",
+        "nightly_lint_paths",
     }
 )
 
