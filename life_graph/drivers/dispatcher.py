@@ -221,6 +221,7 @@ class TaskDispatcher:
                 packet.persona_system_prompt = getattr(persona, "system_prompt", None)
                 allowed = getattr(persona, "allowed_tools", None)
                 packet.allowed_tools = list(allowed) if allowed is not None else None
+                packet.persona_model = getattr(persona, "model", None) or None
 
             # A persona declares the checks its own work must clear —
             # dependency-updater asks for tests_pass because its whole job is
@@ -302,7 +303,9 @@ class TaskDispatcher:
                 # prompt gates a whole section on `if packet.project_context:`.
                 packet.project_context["path"] = str(workdir)
                 packet.project_context["isolation"] = False
-            result = await driver.dispatch(packet, workdir, timeout=300)
+            result = await driver.dispatch(
+                packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
+            )
 
             # Book the actual spend into the Governor's ledger.
             await governor.record(tenant_id, BudgetCategory.DRIVER, result.cost_usd)
@@ -857,6 +860,7 @@ class TaskDispatcher:
             # registry (including the host shell).
             persona_system_prompt=packet.persona_system_prompt,
             allowed_tools=packet.allowed_tools,
+            persona_model=packet.persona_model,
         )
 
         await self._emit(
@@ -869,7 +873,9 @@ class TaskDispatcher:
         )
 
         # Re-dispatch
-        bounce_result = await driver.dispatch(bounced_packet, workdir, timeout=300)
+        bounce_result = await driver.dispatch(
+            bounced_packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
+        )
 
         if not bounce_result.success:
             return None

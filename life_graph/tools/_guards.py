@@ -29,10 +29,16 @@ from __future__ import annotations
 import logging
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +102,27 @@ def check_tenant(tool_name: str) -> None:
         )
 
 
+# Per-task confinement. A driver running an agent in one worktree sets this to
+# that worktree for the duration of the run: the tools then reach ONLY it —
+# not the rest of tool_fs_roots, and not the live checkout the worktree was
+# cut from. It also makes a worktree under /tmp reachable at all.
+_task_roots: ContextVar[tuple[Path, ...] | None] = ContextVar("tool_task_roots", default=None)
+
+
+@contextmanager
+def confine_to(*paths: str | Path) -> Iterator[None]:
+    """Confine host file tools to *paths* within this context (async-safe)."""
+    token = _task_roots.set(tuple(Path(p).expanduser().resolve() for p in paths))
+    try:
+        yield
+    finally:
+        _task_roots.reset(token)
+
+
 def _allowed_roots() -> list[Path]:
+    scoped = _task_roots.get()
+    if scoped is not None:
+        return list(scoped)
     roots: list[Path] = []
     for raw in settings.tool_fs_roots_list:
         try:
