@@ -326,6 +326,9 @@ class Settings(BaseSettings):
     # them on the host as this process's user; "docker" runs each check in a
     # locked-down container (life_graph/services/sandbox.py). With "docker",
     # a missing daemon or image makes checks inconclusive, never passing.
+    # GitHub CLI used to push approved task branches and open PRs; it must be
+    # logged in (`gh auth login`) as the user this process runs as.
+    driver_gh_bin: str = "gh"
     verifier_sandbox: str = "none"
     verifier_sandbox_image: str = "life-graph-verifier:py3.12"
     verifier_sandbox_cache_dir: str = ""  # cached project venvs; "" = ~/.cache/life-graph/...

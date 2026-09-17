@@ -493,6 +493,18 @@ class TaskDispatcher:
                 )
                 if landed_branch:
                     result.metadata = {**(result.metadata or {}), "landed_branch": landed_branch}
+                    await self._create_pr_approval(
+                        tenant_id=tenant_id,
+                        task_id=task_id,
+                        driver_name=driver.name,
+                        instruction=instruction,
+                        result=result,
+                        branch=landed_branch,
+                        repo_path=worktree_origin,
+                        checks=verify_chain,
+                        project_id=project_uuid,
+                        session=session,
+                    )
 
             # Step 7: Record stats + emit result
             await self._record_stats(tenant_id, driver.name, task_type, result, session)
@@ -505,6 +517,7 @@ class TaskDispatcher:
                     "success": result.success,
                     "cost_usd": result.cost_usd,
                     "duration_ms": result.duration_ms,
+                    "landed_branch": (result.metadata or {}).get("landed_branch"),
                 },
             )
 
@@ -902,6 +915,68 @@ class TaskDispatcher:
             logger.info("Created second-opinion approval entry for task %s", task_id)
         except Exception:
             logger.warning("Failed to create dissent approval entry", exc_info=True)
+
+    async def _create_pr_approval(
+        self,
+        *,
+        tenant_id: str,
+        task_id: str,
+        driver_name: str,
+        instruction: str,
+        result: DriverResult,
+        branch: str,
+        repo_path: str,
+        checks: list[str],
+        project_id: uuid.UUID | None,
+        session: AsyncSession,
+    ) -> None:
+        """File a ``driver_pr`` approval for a verified, landed branch.
+
+        Approving it pushes the branch and opens a pull request
+        (``services/github_pr.py``). The payload pins the exact verified commit
+        and the commit the work started from, so approval acts on what was
+        checked — not on whatever the branch holds by the time someone taps it.
+        Best-effort, like the other approval producers: a failure here leaves
+        the branch landed and reviewable by hand.
+        """
+        try:
+            from life_graph.models.db import Approval
+            from life_graph.services.github_pr import describe_landing
+
+            landing = await describe_landing(repo_path, branch)
+            title_line = instruction.strip().splitlines()[0] if instruction.strip() else branch
+            payload = {
+                "task_id": task_id,
+                "driver": driver_name,
+                "instruction": instruction[:4000],
+                "summary": (result.output or "")[:4000],
+                "branch": branch,
+                "repo_path": repo_path,
+                "project_id": str(project_id) if project_id else None,
+                "checks": list(checks or []),
+                "cost_usd": result.cost_usd,
+                **landing,
+            }
+            async with session.begin_nested():
+                session.add(
+                    Approval(
+                        tenant_id=tenant_id,
+                        kind="driver_pr",
+                        title=f"Open PR: {title_line[:100]}",
+                        detail=(
+                            f"Branch {branch} passed "
+                            f"{', '.join(checks) if checks else 'no checks'} on driver "
+                            f"'{driver_name}'. Approve to push it and open a pull request "
+                            f"against {landing.get('base_branch') or '(unknown base)'}."
+                        ),
+                        source="driver",
+                        source_ref=str(task_id),
+                        payload=payload,
+                    )
+                )
+            logger.info("Task %s: PR approval filed for %s", task_id, branch)
+        except Exception:
+            logger.warning("Failed to file PR approval for task %s", task_id, exc_info=True)
 
     async def _create_approval_entry(
         self,

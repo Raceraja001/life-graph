@@ -40,6 +40,10 @@ class ApprovalAlreadyResolvedError(Exception):
     """Raised when approve/reject is called on an already-resolved item."""
 
 
+class ApprovalActionError(Exception):
+    """The approve side-effect failed; the item stays pending. Message is user-safe."""
+
+
 class ApprovalService:
     """Business logic for the unified approvals feed."""
 
@@ -197,9 +201,33 @@ class ApprovalService:
             await self._apply_contradiction(tenant_id, appr, approve)
         elif appr.kind == "autonomous_action":
             await self._apply_autonomous_action(tenant_id, appr, approve, resolved_by)
+        elif appr.kind == "driver_pr":
+            await self._apply_driver_pr(appr, approve)
 
         await self.session.flush()
         return self._serialize(appr)
+
+    async def _apply_driver_pr(self, appr: Approval, approve: bool) -> None:
+        """Push a verified task branch and open its PR (approve). Reject: no-op.
+
+        Unlike the sibling handlers, a failure here raises: the approval stays
+        pending (the request's transaction is not committed) so the user can
+        fix the cause — ``gh`` not logged in, base branch not pushed — and
+        approve again. Push and PR creation are both idempotent, so a retry
+        after a partial success finishes the job.
+        """
+        if not approve:
+            return
+        from life_graph.services.github_pr import PullRequestError, open_pull_request
+
+        try:
+            outcome = await open_pull_request(appr.payload or {})
+        except PullRequestError as exc:
+            raise ApprovalActionError(str(exc)) from exc
+        # Reassign: in-place mutation of a JSONB dict is not change-tracked.
+        appr.payload = {**(appr.payload or {}), "pr_url": outcome["pr_url"]}
+        note = f"PR: {outcome['pr_url']}"
+        appr.resolution_note = f"{appr.resolution_note}\n{note}" if appr.resolution_note else note
 
     async def _apply_promotion(
         self, tenant_id: str, appr: Approval, approve: bool, resolved_by: str | None
