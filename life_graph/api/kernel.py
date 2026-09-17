@@ -25,6 +25,7 @@ from life_graph.api.dependencies import (
     get_chief_router,
     get_notification_engine,
     get_persona_service,
+    get_preference_store,
     get_process_manager,
     get_project_registry,
     get_scheduler_service,
@@ -1073,6 +1074,35 @@ class ProjectRegister(BaseModel):
     )
     description: str | None = None
     git_url: str | None = None
+    sandbox_setup: str | None = Field(
+        None,
+        max_length=2000,
+        description=(
+            "Shell command that installs dependencies in the verifier sandbox, "
+            "e.g. 'uv sync --frozen --no-install-project --extra dev'"
+        ),
+    )
+
+
+class ProjectUpdate(BaseModel):
+    """Request body for updating a project's user-editable settings.
+
+    Omitted fields are left unchanged; ``sandbox_setup: ""`` clears it.
+    """
+
+    description: str | None = None
+    git_url: str | None = None
+    sandbox_setup: str | None = Field(None, max_length=2000)
+
+
+class ProjectLearn(BaseModel):
+    """Request body for learning a project's conventions."""
+
+    authors: list[str] | None = Field(
+        None,
+        description="Your git author names/emails; only these commits are mined. "
+        "Omit to mine every commit.",
+    )
 
 
 # ── Project Endpoints ────────────────────────────────────────
@@ -1182,6 +1212,56 @@ async def get_project(
         )
 
     return success_response(data=project)
+
+
+@router.patch(
+    "/projects/{project_id}",
+    summary="Update project settings",
+)
+async def update_project(
+    project_id: uuid.UUID,
+    body: ProjectUpdate,
+    svc: Any = Depends(get_project_registry),
+):
+    """Update description, git_url or the verifier sandbox setup command."""
+    tenant_id = get_current_tenant_id()
+    result = await svc.update_settings(
+        tenant_id, str(project_id), body.model_dump(exclude_unset=True)
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+    return success_response(data=result)
+
+
+@router.post(
+    "/projects/{project_id}/learn",
+    summary="Learn a project's conventions into preferences",
+)
+async def learn_project(
+    project_id: uuid.UUID,
+    body: ProjectLearn | None = None,
+    svc: Any = Depends(get_project_registry),
+    store: Any = Depends(get_preference_store),
+):
+    """Mine git history, config and code for conventions; store as preferences.
+
+    Re-running refreshes: changed findings update in place, vanished ones are
+    archived. Agents dispatched against this project receive them.
+    """
+    from life_graph.services.project_learning import learn_project as learn
+
+    tenant_id = get_current_tenant_id()
+    project = await svc.get_by_id(tenant_id, str(project_id))
+    if not project or not project.get("is_active"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+    result = await learn(store, tenant_id, project, authors=body.authors if body else None)
+    return success_response(data=result)
 
 
 @router.delete(

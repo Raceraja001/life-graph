@@ -28,6 +28,38 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# ── Registration guards ────────────────────────────────────
+
+# scan_metadata keys the user sets (not the scanner); preserved across scans.
+_USER_META_KEYS = frozenset({"sandbox_setup"})
+
+
+def _confined_project_path(path: str) -> str:
+    """Resolve a project path under the host-tool guards.
+
+    A registered path is where drivers write code, run git and dispatch
+    agents, so registering one is a host-tool action: the tenant must be
+    privileged and the path must sit inside ``tool_fs_roots``.
+
+    Raises:
+        ValueError: denied, or not an existing directory.
+    """
+    from life_graph.tools._guards import ToolDeniedError, check_tenant, resolve_in_roots
+
+    try:
+        check_tenant("project registration")
+        resolved = resolve_in_roots(path, tool_name="project registration")
+    except ToolDeniedError as exc:
+        raise ValueError(str(exc)) from exc
+    if not resolved.is_dir():
+        raise ValueError(f"Path does not exist: {path!r}")
+    return str(resolved)
+
+
+def _user_scan_metadata(data: dict[str, Any]) -> dict[str, Any]:
+    return {k: data[k] for k in _USER_META_KEYS if data.get(k)}
+
+
 # ── Language Detection ─────────────────────────────────────
 
 
@@ -330,11 +362,8 @@ class ProjectRegistry:
             ValueError: If name already exists or path invalid.
         """
         name = data["name"]
-        path = data["path"]
-
-        # Validate path exists
-        if not Path(path).is_dir():
-            raise ValueError(f"Path does not exist: {path!r}")
+        path = _confined_project_path(data["path"])
+        user_meta = _user_scan_metadata(data)
 
         async with self._session_factory() as session:
             # Check uniqueness
@@ -369,6 +398,7 @@ class ProjectRegistry:
                 dependency_count=dep_cnt,
                 file_count=file_cnt,
                 recent_commits=commits,
+                scan_metadata=user_meta,
                 last_scanned_at=now,
             )
             session.add(project)
@@ -472,6 +502,9 @@ class ProjectRegistry:
                 return None
 
             path = project.path
+            # Settings the user chose live alongside scan output; a re-scan
+            # must not erase them.
+            kept = {k: v for k, v in (project.scan_metadata or {}).items() if k in _USER_META_KEYS}
 
         # Run scan outside of DB session
         if not Path(path).is_dir():
@@ -500,6 +533,7 @@ class ProjectRegistry:
                     "Jenkinsfile",
                 ]
             ),
+            **kept,
         }
 
         values: dict[str, Any] = {
@@ -535,6 +569,47 @@ class ProjectRegistry:
             tenant_id,
             project_id,
         )
+
+    async def update_settings(
+        self,
+        tenant_id: str,
+        project_id: str,
+        data: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Update user-editable fields: description, git_url, sandbox_setup.
+
+        ``sandbox_setup`` set to an empty string clears it (back to the
+        sandbox's default dependency install).
+
+        Returns:
+            Updated project dict, or None if not found.
+        """
+        async with self._session_factory() as session:
+            project = (
+                await session.execute(
+                    select(Project).where(
+                        Project.id == uuid.UUID(project_id),
+                        Project.tenant_id == tenant_id,
+                        Project.is_active.is_(True),
+                    )
+                )
+            ).scalar_one_or_none()
+            if project is None:
+                return None
+            for field in ("description", "git_url"):
+                if field in data:
+                    setattr(project, field, data[field])
+            if "sandbox_setup" in data:
+                meta = dict(project.scan_metadata or {})
+                if data["sandbox_setup"]:
+                    meta["sandbox_setup"] = data["sandbox_setup"]
+                else:
+                    meta.pop("sandbox_setup", None)
+                project.scan_metadata = meta
+            project.updated_at = datetime.now(UTC)
+            await session.commit()
+            await session.refresh(project)
+            return self._project_to_dict(project)
 
     async def delete(
         self,
