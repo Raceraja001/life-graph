@@ -198,7 +198,7 @@ class TaskDispatcher:
             project_uuid = _coerce_project_uuid(project_id)
 
             # Step 1: Check WIP limits
-            await self._check_wip_limits(tenant_id, project_uuid, session)
+            await self._check_wip_limits(tenant_id, project_uuid, session, exclude_task_id=task_id)
 
             # Step 2: Build context packet
             packet = await self._context_builder.build_packet(
@@ -669,6 +669,7 @@ class TaskDispatcher:
         tenant_id: str,
         project_id: str | uuid.UUID | None,
         session: AsyncSession,
+        exclude_task_id: str | uuid.UUID | None = None,
     ) -> None:
         """Enforce WIP concurrency limits.
 
@@ -683,11 +684,17 @@ class TaskDispatcher:
         try:
             from life_graph.models.db import AgentTask
 
+            # A caller that records its own run as a running AgentTask (the
+            # dashboard dev-task runner) must not count against itself.
+            own = _coerce_project_uuid(exclude_task_id)
+            not_self = [AgentTask.id != own] if own is not None else []
+
             # Tenant-level WIP
             result = await session.execute(
                 select(func.count(AgentTask.id)).where(
                     AgentTask.tenant_id == tenant_id,
                     AgentTask.status == "running",
+                    *not_self,
                 )
             )
             tenant_wip = result.scalar() or 0
@@ -702,6 +709,7 @@ class TaskDispatcher:
                         AgentTask.tenant_id == tenant_id,
                         AgentTask.project_id == project_uuid,
                         AgentTask.status == "running",
+                        *not_self,
                     )
                 )
                 project_wip = result.scalar() or 0

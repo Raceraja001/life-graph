@@ -329,6 +329,13 @@ async def lifespan(app: FastAPI):
         driver_registry.register(ClaudeCodeDriver())
         logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
 
+    with startup_step(report, "dev_tasks_recovery"):
+        from life_graph.services.dev_tasks import fail_interrupted
+
+        interrupted = await fail_interrupted(async_session)
+        if interrupted:
+            logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
+
     if report.failed:
         logger.warning(
             "Startup finished with %d degraded subsystem(s): %s",

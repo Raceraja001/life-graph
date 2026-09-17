@@ -410,6 +410,8 @@ def _persona_to_summary(p: dict) -> dict:
         "is_builtin": p.get("is_builtin", False),
         "is_active": p.get("is_active", True),
         "use_count": p.get("use_count", 0),
+        # Personas with a driver can take dev tasks (dashboard task form).
+        "driver": p.get("driver"),
     }
 
 

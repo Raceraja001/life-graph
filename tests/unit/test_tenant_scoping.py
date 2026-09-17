@@ -53,6 +53,10 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     ("workers/tasks.py", "failure_pattern_mining"): "tenant discovery",
     ("workers/decay.py", "run_all_decay_sweeps"): "tenant discovery",
     ("workers/cleanup.py", "cleanup_memories_all"): "tenant discovery",
+    ("services/dev_tasks.py", "fail_interrupted"): (
+        "startup recovery — a restarted API abandons in-process dev tasks of every "
+        "tenant; only rows with properties.kind == dev_task are touched"
+    ),
     ("autonomy/approvals/service.py", "check_expirations"): (
         "system cron with no tenant context; sweeps every tenant in one pass"
     ),
