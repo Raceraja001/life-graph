@@ -58,6 +58,9 @@ def cfg(tmp_path, monkeypatch):
     monkeypatch.setenv("LIFE_GRAPH_TENANT_ID", "personal")
     monkeypatch.delenv("LIFE_GRAPH_HOOK_DISABLED", raising=False)
     monkeypatch.delenv("LIFE_GRAPH_API_KEY", raising=False)
+    monkeypatch.delenv("LIFE_GRAPH_HOOK_PROJECT_ROOTS", raising=False)
+    # Never read a real ~/.life-graph/claude-code/config.json from the dev box.
+    monkeypatch.setenv("LIFE_GRAPH_HOOK_CONFIG", str(tmp_path / "no-config.json"))
     return hook_config.load_config()
 
 
@@ -262,6 +265,64 @@ def test_handler_exception_exits_zero(cfg, monkeypatch):
     stdout = io.StringIO()
     assert hook.main(stdin=io.StringIO(json.dumps(_base("Stop"))), stdout=stdout) == 0
     assert stdout.getvalue() == ""
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (r"h:\DevTools\Projects\life-graph", "/mnt/h/DevTools/Projects/life-graph"),
+        ("H:/DevTools/Projects", "/mnt/h/DevTools/Projects"),
+        ("C:\\", "/mnt/c"),
+        ("/home/raja/code", "/home/raja/code"),
+    ],
+)
+def test_windows_cwd_maps_to_wsl_mount(raw, expected):
+    assert hook_config.normalize_path(raw) == expected
+
+
+def test_project_scope_accepts_windows_and_wsl_spellings():
+    roots = (r"H:\DevTools\Projects",)
+    assert hook_config.in_project_roots(r"h:\DevTools\Projects\life-graph", roots)
+    assert hook_config.in_project_roots("/mnt/h/DevTools/Projects/learn-ai/x", roots)
+    assert not hook_config.in_project_roots(r"C:\Users\me\Documents", roots)
+    assert not hook_config.in_project_roots("/mnt/h/DevTools/ProjectsOther", roots)
+    assert hook_config.in_project_roots("/anywhere", ())  # no roots: everything
+
+
+def test_out_of_scope_session_does_nothing(cfg, monkeypatch):
+    monkeypatch.setenv("LIFE_GRAPH_HOOK_PROJECT_ROOTS", "/mnt/h/DevTools/Projects")
+    calls = []
+    monkeypatch.setattr(hook, "dispatch", lambda payload, *a, **k: calls.append(payload["cwd"]))
+    event = _base("UserPromptSubmit", prompt="hi", cwd=r"C:\Users\me\Documents")
+    assert hook.main(stdin=io.StringIO(json.dumps(event)), stdout=io.StringIO()) == 0
+    assert calls == []
+    event["cwd"] = r"h:\DevTools\Projects\life-graph"
+    hook.main(stdin=io.StringIO(json.dumps(event)), stdout=io.StringIO())
+    assert calls == ["/mnt/h/DevTools/Projects/life-graph"]  # normalized before handlers
+
+
+def test_config_file_supplies_key_and_env_overrides(tmp_path, monkeypatch):
+    path = tmp_path / "config.json"
+    path.write_text(
+        json.dumps(
+            {
+                "tenant_id": "raja",
+                "api_key": "k-file",
+                "project_roots": ["/mnt/h/DevTools/Projects"],
+            }
+        )
+    )
+    for var in ("LIFE_GRAPH_TENANT_ID", "LIFE_GRAPH_API_KEY", "LIFE_GRAPH_HOOK_PROJECT_ROOTS"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("LIFE_GRAPH_HOOK_CONFIG", str(path))
+    cfg = hook_config.load_config()
+    assert (cfg.tenant_id, cfg.api_key, cfg.project_roots) == (
+        "raja",
+        "k-file",
+        ("/mnt/h/DevTools/Projects",),
+    )
+    monkeypatch.setenv("LIFE_GRAPH_API_KEY", "k-env")
+    assert hook_config.load_config().api_key == "k-env"
 
 
 def test_disabled_flag_short_circuits(cfg, monkeypatch):
