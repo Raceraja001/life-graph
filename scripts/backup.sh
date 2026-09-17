@@ -12,6 +12,7 @@
 #   PGHOST          — Database host           (default: localhost)
 #   BACKUP_DIR      — Backup directory        (default: ./backups)
 #   RETENTION_DAYS  — Days to keep backups    (default: 30)
+#   MINIO_DATA_DIR  — If set, MinIO's data directory is archived next to the dump
 #   RESTIC_REPOSITORY — If set, runs restic backup after pg_dump
 
 set -euo pipefail
@@ -53,8 +54,24 @@ pg_dump -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" \
 DUMP_SIZE=$(stat -c%s "$BACKUP_DIR/life_graph_${TIMESTAMP}.dump" 2>/dev/null || echo 0)
 echo "[$(date)] Backup created: life_graph_${TIMESTAMP}.dump (${DUMP_SIZE} bytes)"
 
+# ── MinIO object data (voice notes, images, documents, archives) ─
+# Previously MinIO data was only ever copied by the optional restic step, so
+# without an off-site repo the original uploads had no backup at all — only
+# the memories derived from them did. Archived next to the dump on every run.
+# The files are read while MinIO runs; an object mid-upload may be caught
+# incomplete, which a personal-scale nightly run can tolerate.
+MINIO_ARCHIVE=""
+MINIO_SIZE=0
+if [ -n "${MINIO_DATA_DIR:-}" ] && [ -d "$MINIO_DATA_DIR" ]; then
+    MINIO_ARCHIVE="minio_${TIMESTAMP}.tar.gz"
+    tar -czf "$BACKUP_DIR/$MINIO_ARCHIVE" -C "$MINIO_DATA_DIR" .
+    MINIO_SIZE=$(stat -c%s "$BACKUP_DIR/$MINIO_ARCHIVE" 2>/dev/null || echo 0)
+    echo "[$(date)] MinIO data archived: $MINIO_ARCHIVE (${MINIO_SIZE} bytes)"
+fi
+
 # ── Clean old backups ─────────────────────────────────────────
-find "$BACKUP_DIR" -name "life_graph_*.dump" -mtime +$RETENTION_DAYS -delete
+find "$BACKUP_DIR" \( -name "life_graph_*.dump" -o -name "minio_*.tar.gz" \) \
+    -mtime +$RETENTION_DAYS -delete
 echo "[$(date)] Cleaned backups older than $RETENTION_DAYS days"
 
 # ── Optional: restic encrypted off-site backup ────────────────
@@ -66,13 +83,15 @@ if command -v restic &> /dev/null && [ -n "${RESTIC_REPOSITORY:-}" ]; then
     if [ -n "${MINIO_DATA_DIR:-}" ] && [ -d "$MINIO_DATA_DIR" ]; then
         RESTIC_PATHS+=("$MINIO_DATA_DIR")
     fi
-    restic backup "${RESTIC_PATHS[@]}" --tag life_graph
+    # The raw MinIO directory deduplicates across runs; the nightly tarball
+    # would re-upload in full every time, so restic skips it.
+    restic backup "${RESTIC_PATHS[@]}" --tag life_graph --exclude 'minio_*.tar.gz'
     restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
     RESTIC_RAN=true
     echo "[$(date)] Restic backup complete"
 fi
 
 record_job_run "success" \
-    "{\"dump\": \"life_graph_${TIMESTAMP}.dump\", \"size_bytes\": $DUMP_SIZE, \"offsite\": $RESTIC_RAN}"
+    "{\"dump\": \"life_graph_${TIMESTAMP}.dump\", \"size_bytes\": $DUMP_SIZE, \"minio_archive\": \"${MINIO_ARCHIVE}\", \"minio_size_bytes\": $MINIO_SIZE, \"offsite\": $RESTIC_RAN}"
 
 echo "[$(date)] Backup complete"

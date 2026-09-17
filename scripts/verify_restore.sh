@@ -96,15 +96,21 @@ RESULT_JSON="{\"dump\": \"$(basename "$DUMP_FILE")\", \"dump_age_hours\": $DUMP_
 FIRST=1
 
 for tbl in $TABLES; do
-    live_exists=$(psql_live "SELECT to_regclass('public.$tbl') IS NOT NULL") || fail "cannot query live database"
-    [ "$live_exists" = "t" ] || continue
-    live_count=$(psql_live "SELECT count(*) FROM $tbl")
-    scratch_count=$(psql_scratch "SELECT count(*) FROM $tbl" 2>/dev/null) \
-        || fail "table $tbl missing from restored backup"
+    # Resolve the schema instead of assuming public: capture_events, decisions
+    # and predictions live in the life_graph schema, so a public-only lookup
+    # skipped them silently and the drill verified half of what it reported.
+    schema=$(psql_live "SELECT table_schema FROM information_schema.tables
+                        WHERE table_name = '$tbl' AND table_schema IN ('public', 'life_graph')
+                        ORDER BY table_schema = 'public' DESC LIMIT 1") || fail "cannot query live database"
+    [ -n "$schema" ] || continue
+    qualified="$schema.$tbl"
+    live_count=$(psql_live "SELECT count(*) FROM $qualified")
+    scratch_count=$(psql_scratch "SELECT count(*) FROM $qualified" 2>/dev/null) \
+        || fail "table $qualified missing from restored backup"
     [ $FIRST -eq 1 ] || RESULT_JSON+=", "
     FIRST=0
-    RESULT_JSON+="\"$tbl\": {\"live\": $live_count, \"restored\": $scratch_count}"
-    log "  $tbl: live=$live_count restored=$scratch_count"
+    RESULT_JSON+="\"$qualified\": {\"live\": $live_count, \"restored\": $scratch_count}"
+    log "  $qualified: live=$live_count restored=$scratch_count"
 
     if [ "$tbl" = "memories" ] && [ "$live_count" -gt 0 ]; then
         ratio_ok=$(psql_live "SELECT $scratch_count >= ceil($live_count * $MIN_ROW_RATIO)")
