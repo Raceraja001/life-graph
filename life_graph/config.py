@@ -334,6 +334,24 @@ class Settings(BaseSettings):
     verifier_sandbox_cache_dir: str = ""  # cached project venvs; "" = ~/.cache/life-graph/...
     verifier_sandbox_memory: str = "4g"
     verifier_sandbox_cpus: str = "4"
+    # Where the claude_code driver itself executes. "none" runs it on the
+    # host as this process's user (scoped only by the CLI's own
+    # --allowedTools/--permission-mode). "docker" runs it in a container
+    # (life_graph/services/sandbox.py:run_driver) with the worktree mounted
+    # read-write, only its own OAuth token available (a throwaway copy, not
+    # the live ~/.claude), and no other host path visible. Unlike the
+    # verifier sandbox this needs network (the CLI calls the Anthropic API),
+    # so isolation is filesystem + capabilities, not network denial. With
+    # "docker", a missing daemon or image fails the dispatch rather than
+    # silently falling back to unsandboxed host execution.
+    driver_claude_sandbox: str = "none"
+    driver_claude_sandbox_image: str = "life-graph-claude-driver:latest"
+    driver_claude_sandbox_memory: str = "4g"
+    driver_claude_sandbox_cpus: str = "4"
+    # The CLI's own OAuth token file, staged into a throwaway copy for each
+    # sandboxed dispatch (life_graph/services/sandbox.py:stage_credentials).
+    # Never mounted live — see driver_claude_sandbox's docstring above.
+    driver_claude_code_creds_path: str = "~/.claude/.credentials.json"
 
     # ── Host Tools (run_command / file_read / file_write) ──
     # These tools execute against the host filesystem and shell. Every

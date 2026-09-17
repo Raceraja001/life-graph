@@ -92,12 +92,16 @@ def enabled() -> bool:
     return settings.verifier_sandbox == "docker"
 
 
+def driver_sandbox_enabled() -> bool:
+    return settings.driver_claude_sandbox == "docker"
+
+
 def _cache_root() -> Path:
     raw = settings.verifier_sandbox_cache_dir or "~/.cache/life-graph/verifier-envs"
     return Path(raw).expanduser()
 
 
-def _limits() -> list[str]:
+def _limits(*, memory: str, cpus: str) -> list[str]:
     return [
         "--cap-drop",
         "ALL",
@@ -106,9 +110,9 @@ def _limits() -> list[str]:
         "--pids-limit",
         "512",
         "--memory",
-        settings.verifier_sandbox_memory,
+        memory,
         "--cpus",
-        settings.verifier_sandbox_cpus,
+        cpus,
         "--user",
         f"{os.getuid()}:{os.getgid()}",
     ]
@@ -205,7 +209,7 @@ async def prepare_env(workdir: Path, setup: str | None = None) -> Path:
             "--rm",
             "--name",
             container,
-            *_limits(),
+            *_limits(memory=settings.verifier_sandbox_memory, cpus=settings.verifier_sandbox_cpus),
             "-e",
             "HOME=/tmp",
             "-e",
@@ -247,6 +251,115 @@ async def prepare_env(workdir: Path, setup: str | None = None) -> Path:
     return ready
 
 
+async def _driver_image_id() -> str:
+    image = settings.driver_claude_sandbox_image
+    res = await _exec(["docker", "image", "inspect", "--format", "{{.Id}}", image], timeout=30)
+    if res.returncode != 0:
+        raise SandboxUnavailableError(
+            f"claude_code sandbox image {image!r} not available — build it with "
+            "docker/claude-driver/build.sh"
+        )
+    return res.stdout.strip()
+
+
+async def run_driver(
+    argv: list[str],
+    workdir: Path,
+    credentials_dir: Path,
+    *,
+    timeout: int = 300,
+) -> SandboxResult:
+    """Run the claude_code driver's CLI invocation inside a container.
+
+    Unlike :func:`run` (the verifier's read-only, network-denied check
+    phase) this is the OPPOSITE on both axes: *workdir* is mounted
+    read-write — the driver's job is to edit it — and the network stays on,
+    since the CLI is an API-backed tool. What's contained instead:
+
+    - filesystem: only *workdir* and *credentials_dir* are visible from the
+      host; root filesystem is read-only with a tmpfs /tmp scratch.
+    - credentials: *credentials_dir* should hold a throwaway copy of just
+      the OAuth token (see :func:`stage_credentials`), never the live
+      ``~/.claude`` — that directory also carries session history and other
+      projects' context that has no business inside this container.
+      Mounted read-write (not ``:ro``): confirmed by hand that the CLI
+      refreshes its own access token from the refresh token and writes the
+      result back before using it — a read-only mount left it using a
+      stale access token and failing every call with a 401. Since this is
+      always the throwaway copy, not the live file, that write has nothing
+      to corrupt.
+    - capabilities/resources: same caps-dropped, no-new-privileges,
+      pids/memory/cpu limits as the verifier sandbox, and the container
+      runs as the host uid so files it writes land owned correctly for the
+      host-side landing commit that follows.
+
+    Raises:
+        SandboxUnavailableError: docker, the image, or the container itself
+            could not run, or the timeout was hit.
+    """
+    await _driver_image_id()
+    container = f"lg-driver-{uuid.uuid4().hex[:12]}"
+    docker_argv = [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        container,
+        "--read-only",
+        "--tmpfs",
+        "/tmp:rw,exec,size=512m",
+        *_limits(
+            memory=settings.driver_claude_sandbox_memory, cpus=settings.driver_claude_sandbox_cpus
+        ),
+        "-e",
+        "HOME=/tmp",
+        "-e",
+        "CLAUDE_CONFIG_DIR=/claude-config",
+        "-v",
+        f"{workdir}:{WORK}",
+        # rw, not :ro: the CLI refreshes its own access token in place from
+        # the refresh token and needs to write the result back — this is
+        # still only the throwaway copy from stage_credentials(), never the
+        # live ~/.claude, so a write here has nothing to corrupt.
+        "-v",
+        f"{credentials_dir}:/claude-config",
+        "-w",
+        WORK,
+        "--entrypoint",
+        argv[0],
+        settings.driver_claude_sandbox_image,
+        *argv[1:],
+    ]
+    res = await _exec(docker_argv, timeout=timeout, container=container)
+    if res.returncode in (125, 126, 127) and not res.stdout:
+        raise SandboxUnavailableError(
+            f"claude_code sandbox could not start: {res.stderr.strip()[-400:]}"
+        )
+    return res
+
+
+async def stage_credentials(source: Path) -> Path:
+    """Copy the CLI's OAuth token into a fresh throwaway directory.
+
+    *source* is the real ``~/.claude/.credentials.json``. The container gets
+    only this copy — never a mount of the live ``~/.claude`` — and the
+    caller MUST remove the returned directory once the dispatch finishes
+    (success or failure): it holds a live, usable credential.
+
+    Raises:
+        SandboxUnavailableError: no credentials file to stage — the driver
+            would otherwise run unauthenticated, which is not a sandboxing
+            concern to swallow silently.
+    """
+    if not source.is_file():
+        raise SandboxUnavailableError(f"no claude CLI credentials at {source}")
+    staged = _cache_root().parent / "driver-creds" / uuid.uuid4().hex
+    staged.mkdir(parents=True)
+    shutil.copy2(source, staged / ".credentials.json")
+    os.chmod(staged / ".credentials.json", 0o600)
+    return staged
+
+
 async def run(
     argv: list[str],
     workdir: Path,
@@ -279,7 +392,7 @@ async def run(
         "--read-only",
         "--tmpfs",
         "/tmp:rw,exec,size=512m",
-        *_limits(),
+        *_limits(memory=settings.verifier_sandbox_memory, cpus=settings.verifier_sandbox_cpus),
         "-e",
         "HOME=/tmp",
         "-e",

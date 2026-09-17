@@ -172,6 +172,77 @@ async def test_missing_image_is_unavailable(docker_mode, tmp_path, monkeypatch):
         await sandbox.prepare_env(tmp_path)
 
 
+# ── Driver sandbox (claude_code) ─────────────────────────────
+#
+# The opposite shape from the check-phase run() above: network stays on,
+# the workdir is read-write, and only a throwaway credentials copy is
+# mounted alongside it — never the live ~/.claude.
+
+
+@pytest.fixture
+def driver_docker_mode(monkeypatch, tmp_path):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "driver_claude_sandbox", "docker")
+    monkeypatch.setattr(settings, "verifier_sandbox_cache_dir", str(tmp_path / "envs"))
+    return settings
+
+
+async def test_run_driver_flags_open_network_and_write_the_workdir(
+    driver_docker_mode, tmp_path, monkeypatch
+):
+    captured = {}
+
+    async def fake_exec(argv, timeout, container=None):
+        captured["argv"] = argv
+        return sandbox.SandboxResult(0, "", "")
+
+    monkeypatch.setattr(sandbox, "_exec", fake_exec)
+    workdir = tmp_path / "work"
+    creds = tmp_path / "creds"
+    await sandbox.run_driver(["claude", "-p", "hi"], workdir, creds)
+    argv = captured["argv"]
+    joined = " ".join(argv)
+    assert "--network" not in argv  # unlike run(): network stays on
+    assert "--read-only" in argv  # root fs still locked
+    assert argv[argv.index("--cap-drop") + 1] == "ALL"
+    assert f"{workdir}:/work" in joined and f"{workdir}:/work:ro" not in joined  # rw
+    # rw, not :ro: the CLI refreshes its access token in place (confirmed by
+    # hand — a :ro mount left it authenticating with a stale token).
+    assert f"{creds}:/claude-config" in joined and f"{creds}:/claude-config:ro" not in joined
+    assert argv[argv.index("--entrypoint") + 1] == "claude"
+
+
+async def test_run_driver_missing_image_is_unavailable(driver_docker_mode, tmp_path, monkeypatch):
+    async def fake_exec(argv, timeout, container=None):
+        return sandbox.SandboxResult(1, "", "No such image")
+
+    monkeypatch.setattr(sandbox, "_exec", fake_exec)
+    with pytest.raises(sandbox.SandboxUnavailableError, match="build.sh"):
+        await sandbox.run_driver(["claude"], tmp_path / "w", tmp_path / "c")
+
+
+async def test_stage_credentials_copies_not_links_and_is_private(tmp_path, monkeypatch):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "verifier_sandbox_cache_dir", str(tmp_path / "envs"))
+    source = tmp_path / ".credentials.json"
+    source.write_text('{"token": "abc"}')
+    staged = await sandbox.stage_credentials(source)
+    try:
+        copy = staged / ".credentials.json"
+        assert copy.read_text() == '{"token": "abc"}'
+        assert not copy.is_symlink()
+        assert staged != source.parent
+    finally:
+        shutil.rmtree(staged, ignore_errors=True)
+
+
+async def test_stage_credentials_missing_file_is_unavailable(tmp_path):
+    with pytest.raises(sandbox.SandboxUnavailableError, match="no claude CLI credentials"):
+        await sandbox.stage_credentials(tmp_path / "nope" / ".credentials.json")
+
+
 # ── Worktree tamper check ────────────────────────────────────
 
 
