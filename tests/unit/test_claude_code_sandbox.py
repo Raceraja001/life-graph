@@ -154,7 +154,16 @@ async def test_sandbox_timeout_reports_as_timeout_not_a_generic_error(tmp_path, 
 
 async def test_host_dispatch_is_unaffected_when_sandbox_is_off(tmp_path, monkeypatch):
     """Default posture (driver_claude_sandbox="none"): unchanged host
-    subprocess path, sandboxed=False in the result metadata."""
+    subprocess path, sandboxed=False in the result metadata.
+
+    Explicitly set, not relied on as the ambient default: a deployment
+    (this one, via .env) may turn sandboxing on process-wide, and this test
+    must still prove the *off* behavior rather than accidentally testing
+    whatever the environment happens to have configured.
+    """
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "driver_claude_sandbox", "none")
 
     class _FakeProcess:
         returncode = 0

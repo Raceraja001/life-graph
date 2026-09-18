@@ -260,9 +260,7 @@ class ClaudeCodeDriver:
 
     # ── Internals ─────────────────────────────────────────────
 
-    async def _exec_cli(
-        self, args: list[str], cwd: Path, timeout: int
-    ) -> tuple[int, bytes, bytes]:
+    async def _exec_cli(self, args: list[str], cwd: Path, timeout: int) -> tuple[int, bytes, bytes]:
         """Run the CLI invocation, sandboxed or on the host per settings.
 
         Returns ``(returncode, stdout, stderr)``.
