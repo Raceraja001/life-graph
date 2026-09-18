@@ -165,6 +165,7 @@ class ContextPacketBuilder:
                         "sandbox_test_timeout",
                         "required_checks",
                         "auto_open_pr",
+                        "auto_merge",
                     )
                 },
             }

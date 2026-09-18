@@ -1095,7 +1095,15 @@ class ProjectRegister(BaseModel):
     auto_open_pr: bool | None = Field(
         None,
         description="Open PRs without the approval step for drivers with an established"
-        " merge record (>= 80%) on this project. Merging always stays an approval.",
+        " merge record (>= 80%) on this project. Merging is a separate opt-in — see"
+        " auto_merge — and stays a manual approval unless that is also set.",
+    )
+    auto_merge: bool | None = Field(
+        None,
+        description="Merge those PRs without approval too, same trust bar as"
+        " auto_open_pr. A separate opt-in on purpose: opening a PR is reversible,"
+        " merging to the base branch is the step that actually matters. CI/required"
+        " checks are still always enforced, same as a manual merge.",
     )
     nightly_suggestions: bool | None = Field(
         None, description="Queue nightly dev tasks for failing tests, lint and TODOs"
@@ -1135,6 +1143,7 @@ class ProjectUpdate(BaseModel):
     sandbox_test_timeout: int | None = Field(None, ge=0, le=3600)
     required_checks: list[str] | None = None
     auto_open_pr: bool | None = None
+    auto_merge: bool | None = None
     nightly_suggestions: bool | None = None
     nightly_max_tasks: int | None = Field(None, ge=0, le=10)
     nightly_persona: str | None = Field(None, max_length=100)

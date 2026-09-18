@@ -538,6 +538,7 @@ class TaskDispatcher:
                         project_id=project_uuid,
                         session=session,
                         auto_open_pr=bool(packet.project_context.get("auto_open_pr")),
+                        auto_merge=bool(packet.project_context.get("auto_merge")),
                     )
 
             # Step 7: Record stats + emit result
@@ -1036,6 +1037,7 @@ class TaskDispatcher:
         project_id: uuid.UUID | None,
         session: AsyncSession,
         auto_open_pr: bool = False,
+        auto_merge: bool = False,
     ) -> None:
         """File a ``driver_pr`` approval for a verified, landed branch.
 
@@ -1045,6 +1047,10 @@ class TaskDispatcher:
         checked — not on whatever the branch holds by the time someone taps it.
         Best-effort, like the other approval producers: a failure here leaves
         the branch landed and reviewable by hand.
+
+        ``auto_merge`` is stored in the payload (not acted on here) so the
+        trust check runs at merge-approval time, whichever path files it —
+        a human approving ``driver_pr`` normally, or :meth:`_auto_open_pr`.
         """
         try:
             from life_graph.models.db import Approval
@@ -1062,6 +1068,7 @@ class TaskDispatcher:
                 "project_id": str(project_id) if project_id else None,
                 "checks": list(checks or []),
                 "cost_usd": result.cost_usd,
+                "auto_merge": auto_merge,
                 **landing,
             }
             appr = Approval(
@@ -1098,9 +1105,13 @@ class TaskDispatcher:
         """Open the PR without asking when the project opted in and the driver
         has earned it there (established record, merge rate >= AUTO_PR_MERGE_RATE).
 
-        Only the *opening* is automated: the merge approval is filed as usual,
-        so nothing reaches the base branch without the user. Any failure leaves
-        the ``driver_pr`` approval pending, exactly as if auto-open were off.
+        The merge approval is still filed as usual after opening, so by
+        default nothing reaches the base branch without the user — unless the
+        project *also* opted into ``auto_merge`` (a second, separate flag: see
+        ``ApprovalService._maybe_auto_merge``), in which case that freshly
+        filed approval is itself checked against the same trust bar and may
+        resolve immediately too. Any failure here leaves the ``driver_pr``
+        approval pending, exactly as if auto-open were off.
         """
         from life_graph.services.approvals import ApprovalService
         from life_graph.services.dev_outcomes import track_record
@@ -1129,7 +1140,11 @@ class TaskDispatcher:
             f"merged on this project. PR: {outcome['pr_url']}"
         )
         appr.payload = {**(appr.payload or {}), "pr_url": outcome["pr_url"], "auto_opened": True}
-        ApprovalService(session).file_merge_approval(appr)
+        approvals = ApprovalService(session)
+        merge_appr = approvals.file_merge_approval(appr)
+        await approvals.maybe_auto_merge(
+            merge_appr, driver_name, project_id, bool((appr.payload or {}).get("auto_merge"))
+        )
         logger.info("Auto-opened PR %s (%s)", outcome["pr_url"], driver_name)
 
     async def _create_approval_entry(

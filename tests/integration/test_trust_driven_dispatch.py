@@ -106,23 +106,30 @@ async def test_auto_persona_pin_means_choose(drivers):
 
 @pytest_asyncio.fixture
 async def landing(monkeypatch):
+    from types import SimpleNamespace
+
     from life_graph.services import github_pr
 
     async def fake_describe(repo_path, branch):
         return {"head_commit": "a" * 40, "base_commit": "b" * 40, "base_branch": "master"}
 
     monkeypatch.setattr(github_pr, "describe_landing", fake_describe)
-    opened = []
+    opened, merged = [], []
 
     async def fake_open(payload):
         opened.append(payload["branch"])
         return {"pr_url": "https://github.com/me/r/pull/77", "existing": False}
 
+    async def fake_merge(payload):
+        merged.append(payload.get("pr_url"))
+        return {"merge_commit": "c" * 40}
+
     monkeypatch.setattr(github_pr, "open_pull_request", fake_open)
-    return opened
+    monkeypatch.setattr(github_pr, "merge_pull_request", fake_merge)
+    return SimpleNamespace(opened=opened, merged=merged)
 
 
-async def _land(driver_name, project_id, auto_open_pr):
+async def _land(driver_name, project_id, auto_open_pr, auto_merge=False):
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.models.db import Approval
@@ -143,6 +150,7 @@ async def _land(driver_name, project_id, auto_open_pr):
             project_id=project_id,
             session=s,
             auto_open_pr=auto_open_pr,
+            auto_merge=auto_merge,
         )
         await s.commit()
         rows = (
@@ -162,14 +170,17 @@ async def _land(driver_name, project_id, auto_open_pr):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_proven_driver_gets_pr_opened_but_merge_still_asks(landing):
+    """auto_open_pr alone opens the PR; merging stays a separate opt-in
+    (auto_merge, tested below) and defaults off even for a proven driver."""
     project = uuid.uuid4()
     await _record("trusted", project, merged=4, failed=0)
     approvals = await _land("trusted", project, auto_open_pr=True)
     pr, merge = approvals["driver_pr"], approvals["driver_merge"]
     assert (pr.status, pr.resolved_by) == ("approved", "auto: trusted driver")
     assert pr.payload["pr_url"].endswith("/pull/77") and pr.payload["auto_opened"]
-    assert merge.status == "pending"  # merging is never automated
-    assert len(landing) == 1
+    assert merge.status == "pending"
+    assert len(landing.opened) == 1
+    assert landing.merged == []
 
 
 @pytest.mark.asyncio
@@ -191,4 +202,66 @@ async def test_pr_approval_stays_pending_unless_earned_and_opted_in(
     approvals = await _land(name, project, auto_open_pr=opted_in)
     assert approvals["driver_pr"].status == "pending"
     assert "driver_merge" not in approvals
-    assert landing == []
+    assert landing.opened == []
+
+
+# ── auto_merge: a second, separate opt-in from auto_open_pr ──
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_auto_merge_fires_after_an_auto_opened_pr(landing):
+    """Both flags on, trust earned: the PR opens AND the merge approval it
+    files resolves immediately too — the full unattended path."""
+    project = uuid.uuid4()
+    await _record("trusted", project, merged=4, failed=0)
+    approvals = await _land("trusted", project, auto_open_pr=True, auto_merge=True)
+    pr, merge = approvals["driver_pr"], approvals["driver_merge"]
+    assert (pr.status, pr.payload["auto_opened"]) == ("approved", True)
+    assert (merge.status, merge.resolved_by) == ("approved", "auto: trusted driver")
+    assert merge.payload["merge_commit"] == "c" * 40
+    assert landing.opened == [pr.payload["branch"]]
+    assert landing.merged == ["https://github.com/me/r/pull/77"]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_auto_merge_without_auto_open_pr_still_fires_on_manual_pr_approval(landing):
+    """The other path: a human approves driver_pr normally (auto_open_pr is
+    off), but the project opted into auto_merge — the merge approval that
+    approving driver_pr files should still resolve itself, same trust bar."""
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    project = uuid.uuid4()
+    await _record("trusted", project, merged=4, failed=0)
+    approvals = await _land("trusted", project, auto_open_pr=False, auto_merge=True)
+    pr = approvals["driver_pr"]
+    assert pr.status == "pending"  # opening still asked, as intended
+
+    async with async_session() as s:
+        result = await ApprovalService(s).resolve(TENANT, str(pr.id), "approve")
+        await s.commit()
+    assert result["status"] == "approved"
+    assert landing.opened == [pr.payload["branch"]]
+    assert landing.merged == ["https://github.com/me/r/pull/77"]  # merge fired too
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_auto_merge_opted_in_but_trust_not_yet_earned_leaves_merge_pending(landing):
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    project = uuid.uuid4()
+    name = f"drv-{uuid.uuid4().hex[:6]}"
+    await _record(name, project, merged=1, failed=0)  # not established (< 3)
+    approvals = await _land(name, project, auto_open_pr=False, auto_merge=True)
+    pr = approvals["driver_pr"]
+
+    async with async_session() as s:
+        result = await ApprovalService(s).resolve(TENANT, str(pr.id), "approve")
+        await s.commit()
+    assert result["status"] == "approved"  # the PR-open step itself, not the merge
+    assert landing.opened == [pr.payload["branch"]]
+    assert landing.merged == []  # merge left for a human — record isn't established yet

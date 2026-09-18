@@ -230,7 +230,69 @@ class ApprovalService:
         appr.payload = {**(appr.payload or {}), "pr_url": outcome["pr_url"]}
         note = f"PR: {outcome['pr_url']}"
         appr.resolution_note = f"{appr.resolution_note}\n{note}" if appr.resolution_note else note
-        self.file_merge_approval(appr)
+        payload = appr.payload or {}
+        merge_appr = self.file_merge_approval(appr)
+        await self.maybe_auto_merge(
+            merge_appr,
+            payload.get("driver", ""),
+            payload.get("project_id"),
+            bool(payload.get("auto_merge")),
+        )
+
+    async def maybe_auto_merge(
+        self,
+        merge_appr: Approval,
+        driver_name: str,
+        project_id: str | None,
+        auto_merge: bool,
+    ) -> None:
+        """Auto-resolve a freshly filed ``driver_merge`` approval, if earned.
+
+        A second, separate opt-in from ``auto_open_pr``: opening a PR is
+        reversible, merging to the base branch is the step that actually
+        matters, so a project must choose that explicitly rather than
+        inheriting it from the PR-open setting. Called from both places a
+        ``driver_merge`` approval gets filed: here (a human approved
+        ``driver_pr`` normally) and :meth:`TaskDispatcher._auto_open_pr`
+        (the PR itself was opened automatically too).
+
+        Same trust bar as ``auto_open_pr`` (established record, merge rate
+        >= ``AUTO_PR_MERGE_RATE``) — CI/required-checks are always enforced
+        regardless, by :func:`github_pr.merge_pull_request` itself via
+        ``--match-head-commit``, exactly as a manual merge is. Any failure
+        (untrusted driver, CI not green, merge conflict, ...) leaves the
+        approval pending, exactly as if auto-merge were off.
+        """
+        if not auto_merge:
+            return
+        from life_graph.drivers.dispatcher import AUTO_PR_MERGE_RATE
+        from life_graph.services.dev_outcomes import track_record
+
+        record = await track_record(self.session, merge_appr.tenant_id, driver_name, project_id)
+        if not (record["established"] and record["merge_rate"] >= AUTO_PR_MERGE_RATE):
+            logger.info(
+                "Auto-merge skipped: %s has %d/%d merged on this project",
+                driver_name,
+                record["merged"],
+                record["total"],
+            )
+            return
+        try:
+            await self._apply_driver_merge(merge_appr, True)
+        except ApprovalActionError as exc:
+            logger.warning("Auto-merge failed, left for approval: %s", exc)
+            return
+        merge_appr.status = "approved"
+        merge_appr.resolved_at = datetime.now(UTC)
+        merge_appr.resolved_by = "auto: trusted driver"
+        note = (
+            f"Merged automatically: {driver_name} has {record['merged']}/{record['total']} "
+            f"merged on this project."
+        )
+        merge_appr.resolution_note = (
+            f"{merge_appr.resolution_note}\n{note}" if merge_appr.resolution_note else note
+        )
+        logger.info("Auto-merged PR for driver %s", driver_name)
 
     def file_merge_approval(self, pr_approval: Approval) -> Approval:
         """Queue the separate decision to merge a PR that was just opened.
