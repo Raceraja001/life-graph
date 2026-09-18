@@ -179,6 +179,9 @@ class WorkerSettings:
             hour=3,
             minute=30,
             run_at_startup=False,
+            # A baseline plus N candidates, each an eval over the held-out
+            # cases on the local model — well past the 10-minute default.
+            timeout=2 * 60 * 60,
         ),
         # ── Watcher Framework (Era 6) ────────────────────
         cron(

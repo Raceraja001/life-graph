@@ -26,6 +26,11 @@ class ExtractedFact:
     merges, so the extractors stay unchanged — and persisted to
     ``memories.extraction_tier``, a column that existed and was read back by
     recall but was never written."""
+    trace_id: str = ""
+    """ExtractionTrace this fact came from (LLM tier only), and its position in
+    that call's output. Stored in the memory's properties so its review can be
+    read back as a training label."""
+    trace_index: int = -1
 
 
 # ---------------------------------------------------------------------------

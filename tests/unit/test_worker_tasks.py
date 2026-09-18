@@ -237,7 +237,17 @@ async def test_research_isolates_tenant_failures(fake_session, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_self_heal_no_tenants(fake_session):
+async def test_self_heal_is_off_by_default(fake_session):
+    """The loop auto-deploys prompts, so it runs only when explicitly enabled."""
+    fake_session["rows"] = ["acme"]
+    assert await tasks.run_nightly_self_heal({}) == {"skipped": "self_improving_enabled=false"}
+
+
+@pytest.mark.asyncio
+async def test_self_heal_no_tenants(fake_session, monkeypatch):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "self_improving_enabled", True)
     fake_session["rows"] = []
     assert await tasks.run_nightly_self_heal({}) == {"tenants": 0}
 
