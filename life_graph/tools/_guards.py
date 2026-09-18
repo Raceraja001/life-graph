@@ -29,10 +29,16 @@ from __future__ import annotations
 import logging
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +51,16 @@ class ToolDeniedError(Exception):
 # Reading these is credential theft; writing them is persistence.
 _SENSITIVE_DIR_NAMES = frozenset({".ssh", ".aws", ".gnupg", ".kube", ".docker", ".config/gcloud"})
 _SENSITIVE_FILE_NAMES = frozenset(
-    {".env", ".netrc", ".htpasswd", ".pgpass", "id_rsa", "id_ed25519", "credentials"}
+    {
+        ".env",
+        ".netrc",
+        ".htpasswd",
+        ".pgpass",
+        "id_rsa",
+        "id_ed25519",
+        "credentials",
+        ".credentials.json",  # Claude Code's OAuth token (~/.claude/)
+    }
 )
 
 # Obvious destructive/privilege-escalating shapes. See layer 3 above: this is
@@ -87,7 +102,27 @@ def check_tenant(tool_name: str) -> None:
         )
 
 
+# Per-task confinement. A driver running an agent in one worktree sets this to
+# that worktree for the duration of the run: the tools then reach ONLY it —
+# not the rest of tool_fs_roots, and not the live checkout the worktree was
+# cut from. It also makes a worktree under /tmp reachable at all.
+_task_roots: ContextVar[tuple[Path, ...] | None] = ContextVar("tool_task_roots", default=None)
+
+
+@contextmanager
+def confine_to(*paths: str | Path) -> Iterator[None]:
+    """Confine host file tools to *paths* within this context (async-safe)."""
+    token = _task_roots.set(tuple(Path(p).expanduser().resolve() for p in paths))
+    try:
+        yield
+    finally:
+        _task_roots.reset(token)
+
+
 def _allowed_roots() -> list[Path]:
+    scoped = _task_roots.get()
+    if scoped is not None:
+        return list(scoped)
     roots: list[Path] = []
     for raw in settings.tool_fs_roots_list:
         try:
@@ -135,6 +170,22 @@ def resolve_in_roots(path: str, *, tool_name: str) -> Path:
         raise ToolDeniedError(f"Refusing to touch {hit!r} — credential material is off-limits.")
 
     return resolved
+
+
+def check_writable(resolved: Path, *, tool_name: str) -> None:
+    """Refuse writes into a repository's ``.git`` directory.
+
+    ``.git/config`` and ``.git/hooks`` are code-execution surfaces: a
+    ``core.fsmonitor`` or hook written there runs on the next ``git_status``
+    or commit. Allowing ``file_write`` into them would hand a persona that
+    holds only file tools a shell. Reads stay allowed.
+    """
+    if ".git" in resolved.parts:
+        logger.warning("%s denied write inside .git: %s", tool_name, resolved)
+        raise ToolDeniedError(
+            f"{tool_name} may not write inside a .git directory — its config "
+            f"and hooks execute code."
+        )
 
 
 def check_command(command: str) -> None:

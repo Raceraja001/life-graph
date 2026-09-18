@@ -53,6 +53,22 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     ("workers/tasks.py", "failure_pattern_mining"): "tenant discovery",
     ("workers/decay.py", "run_all_decay_sweeps"): "tenant discovery",
     ("workers/cleanup.py", "cleanup_memories_all"): "tenant discovery",
+    ("services/dev_tasks.py", "fail_interrupted"): (
+        "startup recovery — a restarted API abandons in-process dev tasks of every "
+        "tenant; only rows with properties.kind == dev_task are touched"
+    ),
+    ("services/dev_outcomes.py", "sync_all"): (
+        "cron discovery of opened agent PRs across tenants; each approval row "
+        "carries its own tenant_id and is processed under it"
+    ),
+    ("services/dev_tasks.py", "claim_next_queued"): (
+        "single queue runner for the process; the claimed row carries its own "
+        "tenant_id and the task runs under that tenant's context"
+    ),
+    ("services/dev_suggestions.py", "run_nightly"): (
+        "cron discovery of opted-in projects across tenants; each project is "
+        "processed under its own tenant context"
+    ),
     ("autonomy/approvals/service.py", "check_expirations"): (
         "system cron with no tenant context; sweeps every tenant in one pass"
     ),
@@ -160,9 +176,7 @@ def test_allowlist_entries_still_exist(tenanted_models):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         names = {
-            n.name
-            for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+            n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
         }
         if fn_name not in names:
             missing.append(f"{module_suffix}::{fn_name} (function gone)")

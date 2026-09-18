@@ -129,7 +129,7 @@ class ProcedureCreate(BaseModel):
     """Payload for creating a new procedure."""
 
     trigger: str = Field(..., min_length=1, description="When this procedure should activate")
-    steps: list[str] = Field(..., min_items=1, description="Ordered list of steps")
+    steps: list[str] = Field(..., min_length=1, description="Ordered list of steps")
     description: str | None = Field(None, description="Human-readable summary")
     confidence: float = Field(0.5, ge=0.0, le=1.0)
     tags: list[str] | None = None

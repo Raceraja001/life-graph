@@ -147,3 +147,36 @@ export function useCreateDecision() {
 export function useDecision(_id: string) {
   return useQuery({ queryKey: ["decision-stub"], queryFn: async () => null, enabled: false });
 }
+
+// ── Dev tasks ──────────────────────────────
+// Polls only while something is queued/running or awaiting a decision: those
+// changes happen in the background (agent run) or on another page (approvals),
+// and nothing pushes them over the WebSocket.
+const ACTIVE_STAGES = new Set(["queued", "running", "awaiting_pr", "awaiting_merge"]);
+export function useDevTasks() {
+  return useQuery({
+    queryKey: ["dev-tasks"],
+    queryFn: () => api.devTasks.list(),
+    refetchInterval: (query) =>
+      ((query.state.data as any[]) ?? []).some((t) => ACTIVE_STAGES.has(t.stage)) ? 4000 : false,
+  });
+}
+export function useCreateDevTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: api.devTasks.create,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dev-tasks"] }),
+  });
+}
+export function useProjects() {
+  return useQuery({ queryKey: ["projects"], queryFn: () => api.kernel.projects() });
+}
+export function useDriverPersonas() {
+  return useQuery({
+    queryKey: ["personas", "with-driver"],
+    queryFn: () =>
+      api.kernel.personas
+        .list()
+        .then((r: any) => ((r?.data?.personas ?? []) as any[]).filter((p) => p.driver && p.is_active !== false)),
+  });
+}

@@ -80,6 +80,31 @@ async def resolve_workdir(packet: ContextPacket, fallback: Path) -> tuple[Path, 
     return worktree, worktree
 
 
+def worktree_intact(worktree: Path, origin: str | Path) -> bool:
+    """Whether *worktree*'s ``.git`` is still the link ``git worktree add`` wrote.
+
+    A linked worktree's ``.git`` is a one-line file pointing into
+    ``<origin>/.git/worktrees/``. A driver with write access to the worktree
+    can replace it with a directory of its own — whose config then governs
+    every host-side git command run there afterwards.
+    """
+    git = Path(worktree) / ".git"
+    try:
+        if git.is_symlink() or not git.is_file():
+            return False
+        content = git.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    if not content.startswith("gitdir:") or "\n" in content:
+        return False
+    try:
+        target = Path(content.removeprefix("gitdir:").strip()).resolve()
+        expected = (Path(origin) / ".git" / "worktrees").resolve()
+    except (OSError, RuntimeError):
+        return False
+    return expected in target.parents
+
+
 async def preserve_verified_work(
     worktree: Path,
     repo_path: str | Path,
@@ -112,6 +137,14 @@ async def preserve_verified_work(
         try:
             proc = await asyncio.create_subprocess_exec(
                 "git",
+                # The worktree holds driver-written content and shares the
+                # origin's .git, so hooks and fsmonitor here could be agent-
+                # planted — and this runs on the host, outside any driver
+                # scoping. The verifier chain is the gate, not commit hooks.
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "core.fsmonitor=false",
                 *args,
                 cwd=str(cwd),
                 stdout=asyncio.subprocess.PIPE,
@@ -139,6 +172,7 @@ async def preserve_verified_work(
         "-c",
         "user.name=Life Graph",
         "commit",
+        "--no-verify",
         "-m",
         subject,
         cwd=worktree,

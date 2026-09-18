@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import life_graph.tools.browser  # noqa: F401
 import life_graph.tools.calculator  # noqa: F401
+import life_graph.tools.code  # noqa: F401
 import life_graph.tools.datetime_tool  # noqa: F401
 import life_graph.tools.delegate  # noqa: F401
 import life_graph.tools.filesystem  # noqa: F401
@@ -33,10 +34,7 @@ def test_every_persona_allowed_tool_is_registered_or_deferred():
         allowed = defn.get("allowed_tools")
         if not allowed:
             continue
-        bad = [
-            name for name in allowed
-            if name not in registered and name not in DEFERRED_NAMES
-        ]
+        bad = [name for name in allowed if name not in registered and name not in DEFERRED_NAMES]
         if bad:
             unexplained[defn["name"]] = bad
     assert unexplained == {}, f"Unregistered, unexplained tool names: {unexplained}"

@@ -161,6 +161,7 @@ async def lifespan(app: FastAPI):
     with startup_step(report, "agent_tools"):
         import life_graph.tools.browser  # noqa: F401
         import life_graph.tools.calculator  # noqa: F401
+        import life_graph.tools.code  # noqa: F401
         import life_graph.tools.datetime_tool  # noqa: F401
         import life_graph.tools.delegate  # noqa: F401
         import life_graph.tools.filesystem  # noqa: F401
@@ -329,6 +330,29 @@ async def lifespan(app: FastAPI):
         driver_registry.register(ClaudeCodeDriver())
         logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
 
+    with startup_step(report, "dev_tasks_recovery"):
+        from life_graph.services.dev_tasks import fail_interrupted
+
+        interrupted = await fail_interrupted(async_session)
+        if interrupted:
+            logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
+
+    with startup_step(report, "dev_outcome_recorder"):
+        from life_graph.services.dev_outcomes import dev_outcome_recorder
+
+        # APPROVAL_RESOLVED is emitted by the approvals API in this process.
+        dev_outcome_recorder.subscribe()
+
+    app.state.dev_task_queue = None
+    with startup_step(report, "dev_task_queue"):
+        import asyncio
+
+        from life_graph.services.dev_tasks import run_queue
+
+        # Queued dev tasks (nightly suggestions) run here, where the drivers
+        # are registered, one at a time.
+        app.state.dev_task_queue = asyncio.create_task(run_queue(async_session))
+
     if report.failed:
         logger.warning(
             "Startup finished with %d degraded subsystem(s): %s",
@@ -339,6 +363,11 @@ async def lifespan(app: FastAPI):
         logger.info("Startup complete — all %d optional subsystems wired", len(report.as_dict()))
 
     yield
+
+    # Shutdown — stop the dev task queue runner (an in-flight task is marked
+    # failed by fail_interrupted on the next start).
+    if app.state.dev_task_queue is not None:
+        app.state.dev_task_queue.cancel()
 
     # Shutdown — close MCP bridge connections
     try:

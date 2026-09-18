@@ -17,15 +17,13 @@ import json
 import logging
 import shutil
 import time
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from life_graph.config import settings
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import render_memory_block
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from life_graph.services import sandbox
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +65,10 @@ _TOOL_NAME_TO_CLI: dict[str, tuple[str, ...]] = {
     "file_write": ("Write", "Edit"),
     "web_search": ("WebSearch",),
     "browse_web": ("WebFetch",),
+    "code_read": ("Read", "Glob", "Grep"),
+    "code_search": ("Grep", "Glob"),
+    "code_list": ("Glob",),
+    "code_edit": ("Write", "Edit"),
 }
 
 
@@ -186,27 +188,30 @@ class ClaudeCodeDriver:
                 if denied:
                     args += [_DISALLOWED_TOOLS_FLAG, ",".join(denied)]
 
-            proc = await asyncio.create_subprocess_exec(
-                *args,
-                cwd=str(cwd),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            sandboxed = sandbox.driver_sandbox_enabled()
             try:
-                out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                returncode, out, err = await self._exec_cli(args, cwd, timeout)
             except TimeoutError:
-                proc.kill()
-                await proc.communicate()
                 return DriverResult(
                     success=False,
                     error=f"claude_code timed out after {timeout}s",
                     duration_ms=int((time.monotonic() - start) * 1000),
                     metadata={"exit_status": "timeout"},
                 )
+            except sandbox.SandboxUnavailableError as exc:
+                # Fail closed: sandboxing was asked for and could not run —
+                # this must NOT silently degrade onto unsandboxed host
+                # execution (see driver_claude_sandbox's docstring).
+                return DriverResult(
+                    success=False,
+                    error=f"claude_code sandbox unavailable: {exc}",
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                    metadata={"exit_status": "sandbox_unavailable"},
+                )
 
             duration = int((time.monotonic() - start) * 1000)
             data = self._parse_output(out)
-            success = proc.returncode == 0 and not data.get("is_error", False)
+            success = returncode == 0 and not data.get("is_error", False)
             return DriverResult(
                 success=success,
                 output=str(data.get("result", ""))[:20000],
@@ -216,7 +221,7 @@ class ClaudeCodeDriver:
                 if success
                 else (
                     str(data.get("result") or err.decode(errors="replace"))[:2000]
-                    or f"exit code {proc.returncode}"
+                    or f"exit code {returncode}"
                 ),
                 metadata={
                     "exit_status": "ok" if success else "failed",
@@ -224,6 +229,7 @@ class ClaudeCodeDriver:
                     "num_turns": data.get("num_turns"),
                     "workdir": str(cwd),
                     "isolated": worktree is not None,
+                    "sandboxed": sandboxed,
                 },
             )
         except FileNotFoundError:
@@ -245,7 +251,7 @@ class ClaudeCodeDriver:
 
     def capabilities(self) -> list[str]:
         """Task types Claude Code handles well."""
-        return ["code", "test", "review", "refactor", "docs"]
+        return ["code", "code_change", "test", "review", "refactor", "docs"]
 
     def cost_per_task(self) -> float:
         """Estimated frontier-class cost per task (actual cost comes back
@@ -253,6 +259,46 @@ class ClaudeCodeDriver:
         return DEFAULT_COST_PER_TASK_USD
 
     # ── Internals ─────────────────────────────────────────────
+
+    async def _exec_cli(self, args: list[str], cwd: Path, timeout: int) -> tuple[int, bytes, bytes]:
+        """Run the CLI invocation, sandboxed or on the host per settings.
+
+        Returns ``(returncode, stdout, stderr)``.
+
+        Raises:
+            TimeoutError: the run did not finish within *timeout*, on
+                either path.
+            sandbox.SandboxUnavailableError: sandboxing is configured on
+                but docker, the image, or the container itself is not
+                available. Never falls back to the host path — see
+                driver_claude_sandbox's docstring in config.py.
+        """
+        if not sandbox.driver_sandbox_enabled():
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                cwd=str(cwd),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except TimeoutError:
+                proc.kill()
+                await proc.communicate()
+                raise
+            return proc.returncode, out, err
+
+        creds_source = Path(settings.driver_claude_code_creds_path).expanduser()
+        creds_dir = await sandbox.stage_credentials(creds_source)
+        try:
+            result = await sandbox.run_driver(args, cwd, creds_dir, timeout=timeout)
+        except sandbox.SandboxUnavailableError as exc:
+            if "timed out" in str(exc):
+                raise TimeoutError(str(exc)) from exc
+            raise
+        finally:
+            shutil.rmtree(creds_dir, ignore_errors=True)
+        return result.returncode, result.stdout.encode(), result.stderr.encode()
 
     @staticmethod
     def _format_prompt(packet: ContextPacket) -> str:

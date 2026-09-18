@@ -29,6 +29,20 @@ TENANT_HEADERS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def privileged_test_tenant(monkeypatch):
+    """Registering a path is a host-tool action: the tenant must be privileged
+    and the path inside tool_fs_roots. Allow the test tenant and the cwd."""
+    from life_graph.config import settings
+
+    monkeypatch.setattr(
+        settings,
+        "tool_privileged_tenants",
+        f"{settings.tool_privileged_tenants},{TENANT_HEADERS['X-Tenant-ID']}",
+    )
+    monkeypatch.setattr(settings, "tool_fs_roots", str(Path.cwd()))
+
+
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
     """HTTP client for project API tests."""
@@ -364,3 +378,118 @@ class TestScanProject:
             f"/api/v1/kernel/projects/{fake_id}/scan",
         )
         assert response.status_code in (404, 500)
+
+
+# ── Registration guards and user settings ────────────────────
+
+
+class TestProjectSettings:
+    """sandbox_setup survives re-scans; registration obeys host-tool guards."""
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_sandbox_setup_survives_rescan_and_can_be_cleared(
+        self,
+        client: AsyncClient,
+    ):
+        setup = "uv sync --frozen --no-install-project --extra dev"
+        created = await client.post(
+            "/api/v1/kernel/projects",
+            json={
+                "name": f"test-project-setup-{uuid.uuid4().hex[:8]}",
+                "path": str(Path.cwd()),
+                "sandbox_setup": setup,
+            },
+        )
+        assert created.status_code == 201
+        project_id = created.json()["data"]["id"]
+        assert created.json()["data"]["scan_metadata"]["sandbox_setup"] == setup
+
+        scanned = await client.post(f"/api/v1/kernel/projects/{project_id}/scan")
+        assert scanned.status_code == 200
+        meta = scanned.json()["data"]["scan_metadata"]
+        assert meta["sandbox_setup"] == setup  # a re-scan used to replace scan_metadata
+        assert "has_ci" in meta
+
+        cleared = await client.patch(
+            f"/api/v1/kernel/projects/{project_id}", json={"sandbox_setup": ""}
+        )
+        assert cleared.status_code == 200
+        assert "sandbox_setup" not in cleared.json()["data"]["scan_metadata"]
+        await client.delete(f"/api/v1/kernel/projects/{project_id}")
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_learn_enqueues_a_job_instead_of_running_inline(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        """Mining a real repo's git history takes minutes; the endpoint must
+        not block on it — it validates the project and hands off to ARQ."""
+        created = await client.post(
+            "/api/v1/kernel/projects",
+            json={"name": f"test-project-learn-{uuid.uuid4().hex[:8]}", "path": str(Path.cwd())},
+        )
+        assert created.status_code == 201
+        project_id = created.json()["data"]["id"]
+
+        enqueued = {}
+
+        class _FakePool:
+            async def enqueue_job(self, name, *args):
+                enqueued["name"] = name
+                enqueued["args"] = args
+                return type("J", (), {"job_id": "job-123"})()
+
+            async def close(self):
+                pass
+
+        async def fake_create_pool(_settings):
+            return _FakePool()
+
+        monkeypatch.setattr("arq.create_pool", fake_create_pool)
+
+        response = await client.post(
+            f"/api/v1/kernel/projects/{project_id}/learn", json={"authors": ["me@example.com"]}
+        )
+
+        assert response.status_code == 202
+        assert response.json()["data"] == {"job_id": "job-123", "status": "queued"}
+        assert enqueued["name"] == "life_graph.workers.tasks.learn_project_task"
+        # tenant_id, project_id, authors — positional, matching the worker's signature
+        assert enqueued["args"][1] == project_id
+        assert enqueued["args"][2] == ["me@example.com"]
+
+        await client.delete(f"/api/v1/kernel/projects/{project_id}")
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_learn_missing_project_is_404_without_enqueueing(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        async def must_not_run(_settings):
+            raise AssertionError("must not enqueue for a project that doesn't exist")
+
+        monkeypatch.setattr("arq.create_pool", must_not_run)
+
+        response = await client.post(
+            f"/api/v1/kernel/projects/{uuid.uuid4()}/learn",
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_register_outside_roots_is_refused(
+        self,
+        client: AsyncClient,
+        tmp_path,
+    ):
+        response = await client.post(
+            "/api/v1/kernel/projects",
+            json={"name": f"outside-{uuid.uuid4().hex[:8]}", "path": str(tmp_path)},
+        )
+        assert response.status_code == 400
+        assert "outside the permitted roots" in response.json()["detail"]

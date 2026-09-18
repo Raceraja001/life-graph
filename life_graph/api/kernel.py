@@ -19,7 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from life_graph.api.dependencies import (
     get_chief_router,
@@ -409,6 +409,8 @@ def _persona_to_summary(p: dict) -> dict:
         "is_builtin": p.get("is_builtin", False),
         "is_active": p.get("is_active", True),
         "use_count": p.get("use_count", 0),
+        # Personas with a driver can take dev tasks (dashboard task form).
+        "driver": p.get("driver"),
     }
 
 
@@ -1073,6 +1075,85 @@ class ProjectRegister(BaseModel):
     )
     description: str | None = None
     git_url: str | None = None
+    sandbox_setup: str | None = Field(
+        None,
+        max_length=2000,
+        description=(
+            "Shell command that installs dependencies in the verifier sandbox, "
+            "e.g. 'uv sync --frozen --no-install-project --extra dev'"
+        ),
+    )
+    sandbox_test_command: str | None = Field(
+        None,
+        max_length=1000,
+        description="What tests_pass runs in the sandbox, e.g. 'python -m pytest -q tests/unit'",
+    )
+    sandbox_test_timeout: int | None = Field(None, ge=30, le=3600)
+    required_checks: list[str] | None = Field(
+        None, description="Verifiers every dev task in this project must pass, e.g. ['tests_pass']"
+    )
+    auto_open_pr: bool | None = Field(
+        None,
+        description="Open PRs without the approval step for drivers with an established"
+        " merge record (>= 80%) on this project. Merging always stays an approval.",
+    )
+    nightly_suggestions: bool | None = Field(
+        None, description="Queue nightly dev tasks for failing tests, lint and TODOs"
+    )
+    nightly_max_tasks: int | None = Field(None, ge=1, le=10)
+    nightly_persona: str | None = Field(None, max_length=100)
+    nightly_lint_paths: list[str] | None = None
+
+    @field_validator("required_checks")
+    @classmethod
+    def _known_checks(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_checks(v)
+
+
+def _validate_checks(v: list[str] | None) -> list[str] | None:
+    if not v:
+        return v
+    from life_graph.services.verifiers import verifier_chain
+
+    unknown = [c for c in v if c not in verifier_chain.names]
+    if unknown:
+        raise ValueError(f"unknown verifier(s): {', '.join(unknown)}")
+    return list(dict.fromkeys(v))
+
+
+class ProjectUpdate(BaseModel):
+    """Request body for updating a project's user-editable settings.
+
+    Omitted fields are left unchanged; an empty value (``""``, ``[]``, ``0``)
+    clears a verifier setting.
+    """
+
+    description: str | None = None
+    git_url: str | None = None
+    sandbox_setup: str | None = Field(None, max_length=2000)
+    sandbox_test_command: str | None = Field(None, max_length=1000)
+    sandbox_test_timeout: int | None = Field(None, ge=0, le=3600)
+    required_checks: list[str] | None = None
+    auto_open_pr: bool | None = None
+    nightly_suggestions: bool | None = None
+    nightly_max_tasks: int | None = Field(None, ge=0, le=10)
+    nightly_persona: str | None = Field(None, max_length=100)
+    nightly_lint_paths: list[str] | None = None
+
+    @field_validator("required_checks")
+    @classmethod
+    def _known_checks(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_checks(v)
+
+
+class ProjectLearn(BaseModel):
+    """Request body for learning a project's conventions."""
+
+    authors: list[str] | None = Field(
+        None,
+        description="Your git author names/emails; only these commits are mined. "
+        "Omit to mine every commit.",
+    )
 
 
 # ── Project Endpoints ────────────────────────────────────────
@@ -1182,6 +1263,76 @@ async def get_project(
         )
 
     return success_response(data=project)
+
+
+@router.patch(
+    "/projects/{project_id}",
+    summary="Update project settings",
+)
+async def update_project(
+    project_id: uuid.UUID,
+    body: ProjectUpdate,
+    svc: Any = Depends(get_project_registry),
+):
+    """Update description, git_url or the verifier sandbox setup command."""
+    tenant_id = get_current_tenant_id()
+    result = await svc.update_settings(
+        tenant_id, str(project_id), body.model_dump(exclude_unset=True)
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+    return success_response(data=result)
+
+
+@router.post(
+    "/projects/{project_id}/learn",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Learn a project's conventions into preferences (background job)",
+)
+async def learn_project(
+    project_id: uuid.UUID,
+    body: ProjectLearn | None = None,
+    svc: Any = Depends(get_project_registry),
+):
+    """Mine git history, config and code for conventions; store as preferences.
+
+    Re-running refreshes: changed findings update in place, vanished ones are
+    archived. Agents dispatched against this project receive them.
+
+    Mining a real repo's git history takes minutes (pydriller walks every
+    commit), so this only validates the project and enqueues the work —
+    it does not run inline. Poll ``GET /admin/jobs?tenant_id=...`` for a
+    ``job_name`` of ``"project_learn"`` to see it move
+    queued → running → success/failed, with the same result shape this
+    endpoint used to return inline now in that row's ``result``.
+    """
+    from arq import create_pool
+
+    from life_graph.workers.settings import parse_redis_settings
+
+    tenant_id = get_current_tenant_id()
+    project = await svc.get_by_id(tenant_id, str(project_id))
+    if not project or not project.get("is_active"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    pool = await create_pool(parse_redis_settings())
+    try:
+        job = await pool.enqueue_job(
+            "life_graph.workers.tasks.learn_project_task",
+            tenant_id,
+            str(project_id),
+            body.authors if body else None,
+        )
+    finally:
+        await pool.close()
+
+    return success_response(data={"job_id": job.job_id if job else None, "status": "queued"})
 
 
 @router.delete(

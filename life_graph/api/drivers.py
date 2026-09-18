@@ -61,6 +61,14 @@ class DispatchRequest(BaseModel):
         None,
         description="Verifier names to run (default: build_ok, lint_clean)",
     )
+    isolate_workdir: bool = Field(
+        True,
+        description=(
+            "Run the driver in a throwaway git worktree off the project. Without "
+            "it the driver edits the live checkout and nothing is landed on a "
+            "branch or offered as a PR."
+        ),
+    )
 
 
 class DispatchResponse(BaseModel):
@@ -216,6 +224,7 @@ async def dispatch_task(body: DispatchRequest):
                 persona_name=body.persona_name,
                 private=body.private,
                 verify_chain=body.verify_chain,
+                isolate_workdir=body.isolate_workdir,
             )
             await session.commit()
 
@@ -236,3 +245,70 @@ async def dispatch_task(body: DispatchRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Dispatch failed: {str(e)}",
         ) from e
+
+
+# ── Dev tasks (dashboard: "do X in project Y") ───────────────
+
+
+class DevTaskCreate(BaseModel):
+    """Request body for a background dev task."""
+
+    instruction: str = Field(..., min_length=5, max_length=8000)
+    project_id: str = Field(..., description="Registered project to work in")
+    persona_name: str = Field("code-fixer", description="A persona with a driver set")
+
+
+@router.post(
+    "/tasks",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Start a dev task in the background",
+)
+async def create_dev_task(body: DevTaskCreate):
+    """Validate, record and start a dev task; poll ``GET /tasks/{id}`` for progress.
+
+    Always isolated: the agent works in a worktree, and a verified result is
+    offered back as ``driver_pr`` / ``driver_merge`` approvals.
+    """
+    from life_graph.api.dependencies import get_persona_service, get_project_registry
+    from life_graph.services import dev_tasks
+
+    tenant_id = get_current_tenant_id()
+    project = await get_project_registry().get_by_id(tenant_id, body.project_id)
+    if not project or not project.get("is_active"):
+        raise HTTPException(status_code=404, detail="Project not found")
+    persona = await get_persona_service().get_by_name(tenant_id, body.persona_name)
+    if not persona or not persona.get("is_active", True):
+        raise HTTPException(status_code=404, detail=f"Persona {body.persona_name!r} not found")
+    if not persona.get("driver"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Persona {body.persona_name!r} has no driver and cannot run dev tasks",
+        )
+    task = await dev_tasks.create_dev_task(
+        async_session,
+        tenant_id,
+        instruction=body.instruction,
+        project=project,
+        persona_name=body.persona_name,
+    )
+    return success_response(data=task)
+
+
+@router.get("/tasks", summary="List dev tasks with PR and merge state")
+async def list_dev_tasks(limit: int = Query(50, ge=1, le=200)):
+    from life_graph.services import dev_tasks
+
+    async with async_session() as session:
+        data = await dev_tasks.list_dev_tasks(session, get_current_tenant_id(), limit)
+    return success_response(data=data)
+
+
+@router.get("/tasks/{task_id}", summary="Get one dev task")
+async def get_dev_task(task_id: str):
+    from life_graph.services import dev_tasks
+
+    async with async_session() as session:
+        data = await dev_tasks.get_dev_task(session, get_current_tenant_id(), task_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Dev task not found")
+    return success_response(data=data)

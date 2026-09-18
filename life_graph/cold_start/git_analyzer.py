@@ -53,13 +53,13 @@ class GitAnalyzer:
     def analyze(
         self,
         repo_path: str,
-        author_filter: str | None = None,
+        author_filter: str | list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Analyze a Git repository and return memory dicts.
 
         Args:
             repo_path: Absolute path to the Git repository root.
-            author_filter: Optional author name to filter commits by.
+            author_filter: Author name(s) or email(s); a commit matches any.
 
         Returns:
             List of memory dicts ready for storage.
@@ -85,7 +85,7 @@ class GitAnalyzer:
         self,
         repository_cls: type,
         repo_path: str,
-        author_filter: str | None,
+        author_filter: str | list[str] | None,
     ) -> dict[str, Any] | None:
         """Walk up to 1000 commits and collect statistics."""
         conventional_count = 0
@@ -97,13 +97,21 @@ class GitAnalyzer:
         lines_changed: list[int] = []
         files_per_commit: list[int] = []
         dir_counter: Counter[str] = Counter()
+        # One person commits under several identities; match any of them
+        # against the author's name or email.
+        if isinstance(author_filter, str):
+            author_filter = [author_filter]
+        needles = [a.lower() for a in author_filter or [] if a]
 
-        for commit in repository_cls(repo_path).traverse_commits():
+        # Newest first: when the cap bites, current habits beat the oldest ones.
+        for commit in repository_cls(repo_path, order="reverse").traverse_commits():
             if total_commits >= 1000:
                 break
 
-            # Author filter
-            if author_filter and author_filter.lower() not in (commit.author.name or "").lower():
+            if needles and not any(
+                n in (commit.author.name or "").lower() or n in (commit.author.email or "").lower()
+                for n in needles
+            ):
                 continue
 
             total_commits += 1

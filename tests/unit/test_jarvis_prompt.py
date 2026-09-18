@@ -1,5 +1,6 @@
 import life_graph.tools.browser  # noqa: F401
 import life_graph.tools.calculator  # noqa: F401
+import life_graph.tools.code  # noqa: F401
 import life_graph.tools.datetime_tool  # noqa: F401
 import life_graph.tools.delegate  # noqa: F401
 import life_graph.tools.filesystem  # noqa: F401

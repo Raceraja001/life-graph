@@ -518,6 +518,87 @@ async def test_tick_plain_job_gets_no_overrides(monkeypatch):
     assert captured["tool_override"] is None
 
 
+# ── learn_project_task ───────────────────────────────────────────────
+#
+# POST /kernel/projects/{id}/learn used to run project_learning.learn_project
+# inline and block the request for however long git-history mining takes
+# (minutes, for a real repo). It now just enqueues this job.
+
+
+@pytest.mark.asyncio
+async def test_learn_project_records_success_and_result(fake_session, monkeypatch):
+    project = {"id": "p1", "name": "demo", "path": "/repo", "is_active": True}
+    registry = MagicMock()
+    registry.get_by_id = AsyncMock(return_value=project)
+    monkeypatch.setattr("life_graph.api.dependencies.get_project_registry", lambda: registry)
+    monkeypatch.setattr("life_graph.api.dependencies.get_preference_store", lambda: MagicMock())
+
+    learn_result = {"project_id": "p1", "findings": 3, "created": 2, "updated": 1, "archived": 0}
+    monkeypatch.setattr(
+        "life_graph.services.project_learning.learn_project",
+        AsyncMock(return_value=learn_result),
+    )
+
+    out = await tasks.learn_project_task({}, "acme", "p1", authors=["me"])
+
+    assert out == learn_result
+    # A JobRun opened as "running" and later updated to "success" — two
+    # separate session uses (open, then update), matching consolidation.
+    assert len(fake_session["added"]) == 1
+    job = fake_session["added"][0]
+    assert job.tenant_id == "acme" and job.job_name == "project_learn"
+    assert job.status == "running"
+    update_stmt = fake_session["statements"][-1]
+    assert update_stmt.compile().params["status"] == "success"
+    assert update_stmt.compile().params["result"] == learn_result
+
+
+@pytest.mark.asyncio
+async def test_learn_project_missing_project_is_recorded_as_failed(fake_session, monkeypatch):
+    registry = MagicMock()
+    registry.get_by_id = AsyncMock(return_value=None)
+    monkeypatch.setattr("life_graph.api.dependencies.get_project_registry", lambda: registry)
+
+    with pytest.raises(ValueError, match="not found"):
+        await tasks.learn_project_task({}, "acme", "missing")
+
+    update_stmt = fake_session["statements"][-1]
+    assert update_stmt.compile().params["status"] == "failed"
+    assert "not found" in update_stmt.compile().params["error"]
+
+
+@pytest.mark.asyncio
+async def test_learn_project_inactive_project_is_recorded_as_failed(fake_session, monkeypatch):
+    registry = MagicMock()
+    registry.get_by_id = AsyncMock(return_value={"id": "p1", "is_active": False})
+    monkeypatch.setattr("life_graph.api.dependencies.get_project_registry", lambda: registry)
+
+    with pytest.raises(ValueError):
+        await tasks.learn_project_task({}, "acme", "p1")
+
+    assert fake_session["statements"][-1].compile().params["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_learn_project_analysis_failure_is_recorded_and_reraised(fake_session, monkeypatch):
+    project = {"id": "p1", "name": "demo", "path": "/repo", "is_active": True}
+    registry = MagicMock()
+    registry.get_by_id = AsyncMock(return_value=project)
+    monkeypatch.setattr("life_graph.api.dependencies.get_project_registry", lambda: registry)
+    monkeypatch.setattr("life_graph.api.dependencies.get_preference_store", lambda: MagicMock())
+    monkeypatch.setattr(
+        "life_graph.services.project_learning.learn_project",
+        AsyncMock(side_effect=RuntimeError("git history unreadable")),
+    )
+
+    with pytest.raises(RuntimeError, match="git history unreadable"):
+        await tasks.learn_project_task({}, "acme", "p1")
+
+    update_stmt = fake_session["statements"][-1]
+    assert update_stmt.compile().params["status"] == "failed"
+    assert "git history unreadable" in update_stmt.compile().params["error"]
+
+
 # ── ARQ wiring ────────────────────────────────────────────────────────
 
 

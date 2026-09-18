@@ -191,7 +191,10 @@ export const api = {
     models: {
       list: () => GET<any>("/kernel/models"),  // caller unwraps .data.models
     },
-    projects: () => listRequest<any>("/kernel/projects"),
+    // /kernel/projects returns data = {projects, total}; listRequest's flat-array
+    // unwrap returned [] for it, so read the nested key.
+    projects: () =>
+      GET<any>("/kernel/projects").then((res: any) => res?.data?.projects ?? []),
     // /kernel/notifications returns data = {notifications, total, unread_count} (a dict, like
     // /kernel/schedules), so listRequest's flat-array unwrap can't see it — read the nested key.
     notifications: (params?: { limit?: string }) =>
@@ -242,6 +245,12 @@ export const api = {
   },
 
   // ── Approvals (unified human-in-the-loop feed) ──
+  // ── Dev tasks: "do X in project Y" via an agent driver ──────
+  devTasks: {
+    list: () => listRequest<any>("/kernel/drivers/tasks", { limit: "50" }),
+    create: (body: { instruction: string; project_id: string; persona_name: string }) =>
+      POST<any>("/kernel/drivers/tasks", body).then((res: any) => res?.data),
+  },
   approvals: {
     list: (status: string = "pending") =>
       listRequest<any>("/approvals", { status }),
