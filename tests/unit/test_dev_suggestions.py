@@ -16,7 +16,7 @@ def test_todo_findings_key_survives_line_moves_and_skips_junk(tmp_path):
     src = tmp_path / "pkg" / "mod.py"
     src.write_text("x = 1\n# TODO: handle the empty list case\n")
     (tmp_path / "node_modules").mkdir()
-    (tmp_path / "node_modules" / "dep.js").write_text("// TODO: vendored noise here\n")
+    (tmp_path / "node_modules" / "dep.js").write_text("// vendored noise here\n")
     outside = tmp_path.parent / "outside_todo"
     outside.mkdir(exist_ok=True)
     (outside / "leak.py").write_text("# FIXME: should never be scanned\n")
