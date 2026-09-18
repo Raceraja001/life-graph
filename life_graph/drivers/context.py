@@ -18,7 +18,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from life_graph.core.trust import fence_untrusted, is_excluded_from_agents, is_untrusted
 from life_graph.drivers.base import ContextPacket
@@ -92,7 +92,7 @@ class ContextPacketBuilder:
         # Load all context sections in parallel-safe order
         project_context = await self._load_project(tenant_id, project_id, session)
         procedures = await self._load_procedures(tenant_id, task_type, session)
-        preferences = await self._load_preferences(tenant_id, session)
+        preferences = await self._load_preferences(tenant_id, session, project_id)
         memories = await self._load_memories(tenant_id, instruction, session)
         calibration_profile = await self._load_calibration_profile(tenant_id, session)
 
@@ -155,6 +155,18 @@ class ContextPacketBuilder:
                 "framework": project.framework,
                 "dependency_count": project.dependency_count,
                 "file_count": project.file_count,
+                # Verifier sandbox dependency setup. Read from the registry,
+                # never the worktree, which the agent controls.
+                **{
+                    key: (project.scan_metadata or {}).get(key)
+                    for key in (
+                        "sandbox_setup",
+                        "sandbox_test_command",
+                        "sandbox_test_timeout",
+                        "required_checks",
+                        "auto_open_pr",
+                    )
+                },
             }
         except Exception:
             logger.warning("Failed to load project %s", project_id, exc_info=True)
@@ -202,8 +214,13 @@ class ContextPacketBuilder:
         self,
         tenant_id: str,
         session: AsyncSession,
+        project_id: uuid.UUID | None = None,
     ) -> list[dict]:
         """Load top user preferences by confidence.
+
+        Preferences learned from a project (``properties.project_id``) apply
+        only to dispatches for that project; one repo's conventions are
+        wrong advice in another. Preferences without a project always apply.
 
         Returns:
             List of preference dicts with topic, choice, confidence.
@@ -216,6 +233,10 @@ class ContextPacketBuilder:
                 .where(
                     Preference.tenant_id == tenant_id,
                     Preference.status == "active",
+                    or_(
+                        Preference.properties["project_id"].astext.is_(None),
+                        Preference.properties["project_id"].astext == str(project_id),
+                    ),
                 )
                 .order_by(Preference.confidence.desc())
                 .limit(10)

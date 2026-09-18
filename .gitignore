@@ -28,6 +28,9 @@ dist/
 build/
 *.egg-info/
 
+# Vendored-at-build-time binary for docker/claude-driver (see build.sh)
+docker/claude-driver/claude-bin
+
 # Test / Coverage
 htmlcov/
 .coverage

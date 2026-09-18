@@ -36,7 +36,9 @@ from life_graph.integrations.claude_code.config import (
     SURFACE_CLI,
     SURFACE_TOOL_EXHAUST,
     HookConfig,
+    in_project_roots,
     load_config,
+    normalize_path,
 )
 
 #: Assistant messages shorter than this ("Done.", "Fixed it.") are noise.
@@ -296,6 +298,12 @@ def main(stdin=None, stdout=None) -> int:
 
         cfg = load_config()
         if cfg.disabled:
+            return 0
+        # Windows Claude Code hands a Windows cwd to a hook running in WSL.
+        if isinstance(payload.get("cwd"), str):
+            payload["cwd"] = normalize_path(payload["cwd"])
+        # Out-of-scope sessions: no capture and no recall injected either.
+        if not in_project_roots(payload.get("cwd"), cfg.project_roots):
             return 0
 
         output = dispatch(payload, cfg)

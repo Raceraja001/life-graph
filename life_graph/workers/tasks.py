@@ -850,3 +850,92 @@ async def tick_scheduled_jobs(ctx: dict) -> dict:
     if due:
         logger.info("tick_scheduled_jobs: %d fired, %d failed", fired, failed)
     return {"due": len(due), "fired": fired, "failed": failed}
+
+
+async def sync_dev_task_prs(ctx: dict) -> dict:
+    """Every 15 min: settle agent PRs merged/closed on GitHub, pull review comments.
+
+    See ``life_graph/services/dev_outcomes.py``. Outcomes recorded from the
+    approvals feed are handled by its event subscriber; this catches what
+    happens on GitHub directly.
+    """
+    from life_graph.services.dev_outcomes import sync_all
+
+    result = await sync_all(async_session)
+    logger.info("Dev PR sync: %s", {k: v for k, v in result.items() if k != "reports"})
+    return result
+
+
+async def run_nightly_dev_suggestions(ctx: dict) -> dict:
+    """21:00 UTC (02:30 IST): queue dev tasks for opted-in projects' findings.
+
+    The tasks run in the API process's queue runner, one at a time, so the
+    morning brings PR approvals rather than an overloaded GPU at night.
+    """
+    from life_graph.services.dev_suggestions import run_nightly
+
+    return await run_nightly(async_session)
+
+
+async def learn_project_task(
+    ctx: dict, tenant_id: str, project_id: str, authors: list[str] | None = None
+) -> dict:
+    """Mine a project's git history/config/code and sync findings as preferences.
+
+    ``POST /kernel/projects/{id}/learn`` used to run this inline and block
+    the response for the whole analysis — several minutes for a real repo's
+    git history (life-graph itself: ~3 min). It now enqueues this job and
+    returns immediately; the caller reads the outcome from the ``job_runs``
+    row this creates (``GET /admin/jobs?tenant_id=...``, ``job_name`` ==
+    "project_learn").
+    """
+    from life_graph.api.dependencies import get_preference_store, get_project_registry
+    from life_graph.services.project_learning import learn_project
+
+    set_tenant_context(tenant_id, "system")
+    job_id = uuid.uuid4()
+    async with async_session() as session:
+        session.add(
+            JobRun(
+                id=job_id,
+                tenant_id=tenant_id,
+                job_name="project_learn",
+                status="running",
+                started_at=datetime.now(UTC),
+                result={"project_id": project_id},
+            )
+        )
+        await session.commit()
+
+    try:
+        registry = get_project_registry()
+        project = await registry.get_by_id(tenant_id, project_id)
+        if not project or not project.get("is_active"):
+            raise ValueError(f"project {project_id} not found or inactive")
+
+        result_data = await learn_project(
+            get_preference_store(), tenant_id, project, authors=authors
+        )
+
+        async with async_session() as session:
+            await session.execute(
+                update(JobRun)
+                .where(JobRun.id == job_id)
+                .values(status="success", completed_at=datetime.now(UTC), result=result_data)
+            )
+            await session.commit()
+
+        logger.info("Learned project %s (tenant %s): %s", project_id, tenant_id, result_data)
+        return result_data
+
+    except Exception as e:
+        async with async_session() as session:
+            await session.execute(
+                update(JobRun)
+                .where(JobRun.id == job_id)
+                .values(status="failed", completed_at=datetime.now(UTC), error=str(e))
+            )
+            await session.commit()
+
+        logger.exception("Project learn failed for %s (tenant %s)", project_id, tenant_id)
+        raise

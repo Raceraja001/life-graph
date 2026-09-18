@@ -37,6 +37,7 @@ from life_graph.drivers.workdir import (
     preserve_verified_work,
     remove_worktree,
     resolve_workdir,
+    worktree_intact,
 )
 from life_graph.services.governor import governor
 from life_graph.services.verifiers import VerifierResult, verifier_chain
@@ -52,6 +53,13 @@ MAX_WIP_PER_PROJECT = 2
 MAX_WIP_PER_TENANT = 5
 DEFAULT_COST_CAP_USD = 2.0
 MIN_TRUST_THRESHOLD = 0.6
+# A persona whose driver is "auto" lets the dispatcher choose per project.
+AUTO_DRIVER = "auto"
+# Below this merge rate (once established) a driver is skipped for a project.
+POOR_MERGE_RATE = 0.5
+# At or above this merge rate (once established) a project that opted into
+# auto_open_pr gets its PRs opened without the "Open PR" approval.
+AUTO_PR_MERGE_RATE = 0.8
 # Diff-scoped on purpose: the whole-repo variants lint every file in the
 # project, so on any codebase with pre-existing debt they fail on files the
 # agent never touched. That is not a verdict on the change — it bounced the
@@ -87,6 +95,17 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
             project_id,
         )
         return None
+
+
+def _with_required_checks(chain: list[str], project_context: dict) -> list[str]:
+    """Append the project's required checks (e.g. tests_pass) that *chain* lacks.
+
+    A project can require checks for all of its tasks on top of whatever the
+    caller or persona asked for. Read from the registry via the packet's
+    project context, never from the worktree the agent controls.
+    """
+    required = project_context.get("required_checks") or []
+    return [*chain, *(c for c in dict.fromkeys(required) if c not in chain)]
 
 
 def _resolve_verify_chain(caller_chain: list[str] | None, persona) -> list[str]:
@@ -197,7 +216,7 @@ class TaskDispatcher:
             project_uuid = _coerce_project_uuid(project_id)
 
             # Step 1: Check WIP limits
-            await self._check_wip_limits(tenant_id, project_uuid, session)
+            await self._check_wip_limits(tenant_id, project_uuid, session, exclude_task_id=task_id)
 
             # Step 2: Build context packet
             packet = await self._context_builder.build_packet(
@@ -220,6 +239,7 @@ class TaskDispatcher:
                 packet.persona_system_prompt = getattr(persona, "system_prompt", None)
                 allowed = getattr(persona, "allowed_tools", None)
                 packet.allowed_tools = list(allowed) if allowed is not None else None
+                packet.persona_model = getattr(persona, "model", None) or None
 
             # A persona declares the checks its own work must clear —
             # dependency-updater asks for tests_pass because its whole job is
@@ -227,6 +247,7 @@ class TaskDispatcher:
             # column, so it landed on the generic default instead and its
             # tests never ran. An explicit caller argument still wins.
             verify_chain = _resolve_verify_chain(caller_verify_chain, persona)
+            verify_chain = _with_required_checks(verify_chain, packet.project_context)
 
             # Step 2c: opt-in workdir isolation — only when the caller asked
             # for it AND a real project path resolved. A no-op flag on a
@@ -236,7 +257,12 @@ class TaskDispatcher:
 
             # Step 3: Select driver
             driver = await self._select_driver(
-                task_type, persona_name, tenant_id, session, persona=persona
+                task_type,
+                persona_name,
+                tenant_id,
+                session,
+                persona=persona,
+                project_id=project_uuid,
             )
 
             # Step 3b: Governor budget gate — refuse before spending, not after.
@@ -301,7 +327,9 @@ class TaskDispatcher:
                 # prompt gates a whole section on `if packet.project_context:`.
                 packet.project_context["path"] = str(workdir)
                 packet.project_context["isolation"] = False
-            result = await driver.dispatch(packet, workdir, timeout=300)
+            result = await driver.dispatch(
+                packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
+            )
 
             # Book the actual spend into the Governor's ledger.
             await governor.record(tenant_id, BudgetCategory.DRIVER, result.cost_usd)
@@ -315,14 +343,46 @@ class TaskDispatcher:
                     cost_cap_usd,
                 )
 
+            # Step 4b: The driver must not have swapped the worktree's .git
+            # link. Verifier and landing git commands run on the host inside
+            # this directory; a planted .git dir would carry its own config
+            # (filters, fsmonitor) and make them execute agent-chosen programs.
+            if (
+                result.success
+                and worktree is not None
+                and worktree_origin
+                and not worktree_intact(worktree, worktree_origin)
+            ):
+                logger.error("Task %s: worktree .git link was tampered with", task_id)
+                tamper = VerifierResult(
+                    "worktree_intact",
+                    False,
+                    {"error": "worktree .git no longer links to the origin repository"},
+                )
+                await self._create_approval_entry(
+                    tenant_id, task_id, driver.name, [tamper], session
+                )
+                result = DriverResult(
+                    success=False,
+                    output=result.output,
+                    error="Worktree .git was modified by the driver — not verified or landed",
+                    cost_usd=result.cost_usd,
+                    duration_ms=result.duration_ms,
+                    metadata={"needs_human": True, "worktree_tampered": True},
+                )
+
             # Step 5: Run verifier chain
             if verify_chain and result.success:
                 task_context = {
                     "output": result.output,
                     "task_type": task_type,
                     "instruction": instruction,
+                    "sandbox_setup": packet.project_context.get("sandbox_setup"),
+                    "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
+                    "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
                 }
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
+                await self._record_verification(tenant_id, task_id, 1, v_results, session)
 
                 # An inconclusive check means the gate never ran — the tool it
                 # needs is not installed for this project. Re-dispatching the
@@ -452,15 +512,33 @@ class TaskDispatcher:
                 and worktree is not None
                 and worktree_origin
                 and settings.driver_land_verified_work
+                # Re-checked: a bounce re-ran the driver after Step 4b.
+                and worktree_intact(worktree, worktree_origin)
             ):
                 landed_branch = await preserve_verified_work(
                     worktree=worktree,
                     repo_path=worktree_origin,
                     task_id=task_id,
-                    summary=result.output,
+                    # The instruction states the intent; the driver's output
+                    # is a narrative ("Changed x: ...") that read badly as a
+                    # commit subject and, via squash-merge, in history.
+                    summary=instruction,
                 )
                 if landed_branch:
                     result.metadata = {**(result.metadata or {}), "landed_branch": landed_branch}
+                    await self._create_pr_approval(
+                        tenant_id=tenant_id,
+                        task_id=task_id,
+                        driver_name=driver.name,
+                        instruction=instruction,
+                        result=result,
+                        branch=landed_branch,
+                        repo_path=worktree_origin,
+                        checks=verify_chain,
+                        project_id=project_uuid,
+                        session=session,
+                        auto_open_pr=bool(packet.project_context.get("auto_open_pr")),
+                    )
 
             # Step 7: Record stats + emit result
             await self._record_stats(tenant_id, driver.name, task_type, result, session)
@@ -473,6 +551,7 @@ class TaskDispatcher:
                     "success": result.success,
                     "cost_usd": result.cost_usd,
                     "duration_ms": result.duration_ms,
+                    "landed_branch": (result.metadata or {}).get("landed_branch"),
                 },
             )
 
@@ -543,12 +622,15 @@ class TaskDispatcher:
         tenant_id: str,
         session: AsyncSession,
         persona=None,
+        project_id: uuid.UUID | None = None,
     ):
         """Select the best driver for a task.
 
         Selection logic:
-        1. Persona pin (if persona specifies a driver)
-        2. Cheapest capable trusted driver (success rate >= 0.6)
+        1. Persona pin (if persona specifies a driver; ``"auto"`` means none)
+        2. Cheapest capable trusted driver (success rate >= 0.6), skipping any
+           driver whose work on *this project* has an established poor record
+           (merged/rejected/closed outcomes — see ``services/dev_outcomes``)
         3. Fallback to 'local'
 
         Args:
@@ -580,7 +662,7 @@ class TaskDispatcher:
                     pinned_driver = getattr(persona, "driver", None) or (
                         (persona.properties or {}).get("driver")
                     )
-                    if pinned_driver:
+                    if pinned_driver and pinned_driver != AUTO_DRIVER:
                         driver = driver_registry.get(pinned_driver)
                         if driver and await driver.available():
                             logger.info("Persona %s pins driver %s", persona_name, pinned_driver)
@@ -602,6 +684,27 @@ class TaskDispatcher:
             # Sort by cost (cheapest first)
             available.sort(key=lambda d: d.cost_per_task())
 
+            # What the user did with a driver's work on this project outranks
+            # whether that work passed the checks: a free driver whose PRs keep
+            # getting rejected here is not the cheap option.
+            if project_id is not None:
+                from life_graph.services.dev_outcomes import track_record
+
+                kept = []
+                for d in available:
+                    record = await track_record(session, tenant_id, d.name, project_id)
+                    if record["established"] and record["merge_rate"] < POOR_MERGE_RATE:
+                        logger.info(
+                            "Skipping driver %s for project %s: %d/%d merged",
+                            d.name,
+                            project_id,
+                            record["merged"],
+                            record["total"],
+                        )
+                        continue
+                    kept.append(d)
+                available = kept
+
             # Check trust scores from stats
             for d in available:
                 stats = await self._get_driver_stats(tenant_id, d.name, session)
@@ -621,6 +724,7 @@ class TaskDispatcher:
         tenant_id: str,
         project_id: str | uuid.UUID | None,
         session: AsyncSession,
+        exclude_task_id: str | uuid.UUID | None = None,
     ) -> None:
         """Enforce WIP concurrency limits.
 
@@ -635,11 +739,17 @@ class TaskDispatcher:
         try:
             from life_graph.models.db import AgentTask
 
+            # A caller that records its own run as a running AgentTask (the
+            # dashboard dev-task runner) must not count against itself.
+            own = _coerce_project_uuid(exclude_task_id)
+            not_self = [AgentTask.id != own] if own is not None else []
+
             # Tenant-level WIP
             result = await session.execute(
                 select(func.count(AgentTask.id)).where(
                     AgentTask.tenant_id == tenant_id,
                     AgentTask.status == "running",
+                    *not_self,
                 )
             )
             tenant_wip = result.scalar() or 0
@@ -654,6 +764,7 @@ class TaskDispatcher:
                         AgentTask.tenant_id == tenant_id,
                         AgentTask.project_id == project_uuid,
                         AgentTask.status == "running",
+                        *not_self,
                     )
                 )
                 project_wip = result.scalar() or 0
@@ -800,6 +911,7 @@ class TaskDispatcher:
             # registry (including the host shell).
             persona_system_prompt=packet.persona_system_prompt,
             allowed_tools=packet.allowed_tools,
+            persona_model=packet.persona_model,
         )
 
         await self._emit(
@@ -812,7 +924,9 @@ class TaskDispatcher:
         )
 
         # Re-dispatch
-        bounce_result = await driver.dispatch(bounced_packet, workdir, timeout=300)
+        bounce_result = await driver.dispatch(
+            bounced_packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
+        )
 
         if not bounce_result.success:
             return None
@@ -822,8 +936,12 @@ class TaskDispatcher:
             "output": bounce_result.output,
             "task_type": packet.task_type,
             "instruction": bounce_instruction,
+            "sandbox_setup": packet.project_context.get("sandbox_setup"),
+            "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
+            "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
         }
         v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
+        await self._record_verification(tenant_id, task_id, 2, v_results, session)
 
         if verifier_chain.all_passed(v_results):
             await self._emit(
@@ -833,6 +951,40 @@ class TaskDispatcher:
             return bounce_result
 
         return None
+
+    async def _record_verification(
+        self,
+        tenant_id: str,
+        task_id: str,
+        attempt: int,
+        v_results: list[VerifierResult],
+        session: AsyncSession,
+    ) -> None:
+        """Persist one verifier-chain run (attempt 2 is the post-bounce re-check).
+
+        ``verification_runs.task_id`` references ``agent_tasks``, so a run is
+        recorded only for dispatches that have a task row (dashboard dev tasks);
+        the test endpoint's throwaway ids have none. Best-effort, in a
+        savepoint: failing to record must never fail the dispatch.
+        """
+        try:
+            from life_graph.models.db import AgentTask, VerificationRun
+
+            pk = uuid.UUID(str(task_id))
+            if await session.get(AgentTask, pk) is None:
+                return
+            async with session.begin_nested():
+                session.add(
+                    VerificationRun(
+                        tenant_id=tenant_id,
+                        task_id=pk,
+                        attempt=attempt,
+                        passed=verifier_chain.all_passed(v_results),
+                        results=[asdict(r) for r in v_results],
+                    )
+                )
+        except Exception:
+            logger.warning("Could not record verification run for %s", task_id, exc_info=True)
 
     async def _create_dissent_approval_entry(
         self,
@@ -869,6 +1021,116 @@ class TaskDispatcher:
             logger.info("Created second-opinion approval entry for task %s", task_id)
         except Exception:
             logger.warning("Failed to create dissent approval entry", exc_info=True)
+
+    async def _create_pr_approval(
+        self,
+        *,
+        tenant_id: str,
+        task_id: str,
+        driver_name: str,
+        instruction: str,
+        result: DriverResult,
+        branch: str,
+        repo_path: str,
+        checks: list[str],
+        project_id: uuid.UUID | None,
+        session: AsyncSession,
+        auto_open_pr: bool = False,
+    ) -> None:
+        """File a ``driver_pr`` approval for a verified, landed branch.
+
+        Approving it pushes the branch and opens a pull request
+        (``services/github_pr.py``). The payload pins the exact verified commit
+        and the commit the work started from, so approval acts on what was
+        checked — not on whatever the branch holds by the time someone taps it.
+        Best-effort, like the other approval producers: a failure here leaves
+        the branch landed and reviewable by hand.
+        """
+        try:
+            from life_graph.models.db import Approval
+            from life_graph.services.github_pr import describe_landing
+
+            landing = await describe_landing(repo_path, branch)
+            title_line = instruction.strip().splitlines()[0] if instruction.strip() else branch
+            payload = {
+                "task_id": task_id,
+                "driver": driver_name,
+                "instruction": instruction[:4000],
+                "summary": (result.output or "")[:4000],
+                "branch": branch,
+                "repo_path": repo_path,
+                "project_id": str(project_id) if project_id else None,
+                "checks": list(checks or []),
+                "cost_usd": result.cost_usd,
+                **landing,
+            }
+            appr = Approval(
+                tenant_id=tenant_id,
+                kind="driver_pr",
+                title=f"Open PR: {title_line[:100]}",
+                detail=(
+                    f"Branch {branch} passed "
+                    f"{', '.join(checks) if checks else 'no checks'} on driver "
+                    f"'{driver_name}'. Approve to push it and open a pull request "
+                    f"against {landing.get('base_branch') or '(unknown base)'}."
+                ),
+                source="driver",
+                source_ref=str(task_id),
+                payload=payload,
+            )
+            async with session.begin_nested():
+                session.add(appr)
+            logger.info("Task %s: PR approval filed for %s", task_id, branch)
+        except Exception:
+            logger.warning("Failed to file PR approval for task %s", task_id, exc_info=True)
+            return
+
+        if auto_open_pr:
+            await self._auto_open_pr(appr, driver_name, project_id, session)
+
+    async def _auto_open_pr(
+        self,
+        appr,
+        driver_name: str,
+        project_id: uuid.UUID | None,
+        session: AsyncSession,
+    ) -> None:
+        """Open the PR without asking when the project opted in and the driver
+        has earned it there (established record, merge rate >= AUTO_PR_MERGE_RATE).
+
+        Only the *opening* is automated: the merge approval is filed as usual,
+        so nothing reaches the base branch without the user. Any failure leaves
+        the ``driver_pr`` approval pending, exactly as if auto-open were off.
+        """
+        from life_graph.services.approvals import ApprovalService
+        from life_graph.services.dev_outcomes import track_record
+        from life_graph.services.github_pr import PullRequestError, open_pull_request
+
+        record = await track_record(session, appr.tenant_id, driver_name, project_id)
+        if not (record["established"] and record["merge_rate"] >= AUTO_PR_MERGE_RATE):
+            logger.info(
+                "Auto-open PR skipped: %s has %d/%d merged on this project",
+                driver_name,
+                record["merged"],
+                record["total"],
+            )
+            return
+        try:
+            outcome = await open_pull_request(appr.payload or {})
+        except PullRequestError as exc:
+            logger.warning("Auto-open PR failed, left for approval: %s", exc)
+            appr.detail = f"{appr.detail} Auto-open failed: {exc}"
+            return
+        appr.status = "approved"
+        appr.resolved_at = datetime.now(UTC)
+        appr.resolved_by = "auto: trusted driver"
+        appr.resolution_note = (
+            f"Opened automatically: {driver_name} has {record['merged']}/{record['total']} "
+            f"merged on this project. PR: {outcome['pr_url']}"
+        )
+        appr.payload = {**(appr.payload or {}), "pr_url": outcome["pr_url"], "auto_opened": True}
+        ApprovalService(session).file_merge_approval(appr)
+        logger.info("Auto-opened PR %s (%s)", outcome["pr_url"], driver_name)
 
     async def _create_approval_entry(
         self,

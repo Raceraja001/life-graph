@@ -1,8 +1,20 @@
-"""Git tool — repository operations via git CLI.
+"""Git tool — read-only repository inspection via the git CLI.
 
-Provides the agent with git operations: status, log, diff, branch,
-commit, push, pull, and blame. All operations run via subprocess
-to avoid heavy git library dependencies.
+Provides the agent with git status, log, diff and branch. All operations run
+via subprocess to avoid heavy git library dependencies.
+
+These tools act on the host exactly like ``file_read``, so they sit behind
+the same controls in :mod:`life_graph.tools._guards`: the tenant gate, and
+``repo_path`` confined to the allowed roots. Two git-specific holes are
+closed here as well:
+
+* **Option injection.** A model-supplied ``target`` beginning with ``-`` is
+  parsed by git as an option — ``--output=<file>`` turns ``git diff`` into an
+  arbitrary file write. Such targets are rejected, and ``--end-of-options``
+  stops git reading any later argument as a flag.
+* **Repo-config execution.** A repository's own config can make read-only
+  commands run programs (``core.fsmonitor`` on status, external diff and
+  textconv drivers on diff). Those are disabled per invocation.
 """
 
 from __future__ import annotations
@@ -10,17 +22,32 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 
+from life_graph.tools._guards import ToolDeniedError, check_tenant, resolve_in_roots
 from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
 
 COMMAND_TIMEOUT = 15
+MAX_LOG_COUNT = 200
+
+# Neutralise repo-config keys that execute programs during read-only commands.
+_HARDENING = ["-c", "core.fsmonitor=false", "-c", "core.pager=cat"]
+
+
+def _resolve_repo(repo_path: str, tool_name: str) -> str:
+    """Apply the host-tool guards and return the resolved repository path."""
+    check_tenant(tool_name)
+    resolved = resolve_in_roots(repo_path, tool_name=tool_name)
+    if not resolved.is_dir():
+        raise ToolDeniedError(f"Not a directory: {repo_path}")
+    return str(resolved)
 
 
 async def _run_git(args: list[str], cwd: str) -> dict:
     """Run a git command and return structured result."""
-    cmd = ["git"] + args
+    cmd = ["git", *_HARDENING, *args]
     logger.info("Running: %s (cwd=%s)", " ".join(cmd), cwd)
 
     try:
@@ -29,6 +56,7 @@ async def _run_git(args: list[str], cwd: str) -> dict:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
         stdout, stderr = await asyncio.wait_for(
             process.communicate(),
@@ -43,6 +71,14 @@ async def _run_git(args: list[str], cwd: str) -> dict:
         return {"error": f"Git command timed out after {COMMAND_TIMEOUT}s"}
     except Exception as exc:
         return {"error": f"Git command failed: {exc}"}
+
+
+async def _guarded(tool_name: str, repo_path: str, args: list[str]) -> str:
+    try:
+        cwd = _resolve_repo(repo_path, tool_name)
+    except ToolDeniedError as exc:
+        return json.dumps({"error": str(exc)})
+    return json.dumps(await _run_git(args, cwd))
 
 
 @tool(
@@ -63,8 +99,7 @@ async def _run_git(args: list[str], cwd: str) -> dict:
 )
 async def git_status(repo_path: str) -> str:
     """Get git status of a repository."""
-    result = await _run_git(["status", "--porcelain", "--branch"], repo_path)
-    return json.dumps(result)
+    return await _guarded("git_status", repo_path, ["status", "--porcelain", "--branch"])
 
 
 @tool(
@@ -82,7 +117,7 @@ async def git_status(repo_path: str) -> str:
             },
             "count": {
                 "type": "integer",
-                "description": "Number of recent commits to show. Default 10.",
+                "description": f"Number of recent commits to show. Default 10, max {MAX_LOG_COUNT}.",
             },
         },
         "required": ["repo_path"],
@@ -90,11 +125,13 @@ async def git_status(repo_path: str) -> str:
 )
 async def git_log(repo_path: str, count: int = 10) -> str:
     """Get recent git log."""
-    result = await _run_git(
-        ["log", f"-{count}", "--oneline", "--decorate", "--graph"],
-        repo_path,
+    try:
+        n = max(1, min(int(count), MAX_LOG_COUNT))
+    except (TypeError, ValueError):
+        return json.dumps({"error": f"count must be an integer, got {count!r}"})
+    return await _guarded(
+        "git_log", repo_path, ["log", f"-{n}", "--oneline", "--decorate", "--graph"]
     )
-    return json.dumps(result)
 
 
 @tool(
@@ -121,13 +158,14 @@ async def git_log(repo_path: str, count: int = 10) -> str:
 )
 async def git_diff(repo_path: str, target: str | None = None) -> str:
     """Show git diff."""
-    args = ["diff", "--stat"]
+    args = ["diff", "--stat", "--no-ext-diff", "--no-textconv"]
     if target == "staged":
         args.append("--cached")
     elif target:
-        args.append(target)
-    result = await _run_git(args, repo_path)
-    return json.dumps(result)
+        if target.lstrip().startswith("-"):
+            return json.dumps({"error": "target must be a path or revision, not an option"})
+        args += ["--end-of-options", target]
+    return await _guarded("git_diff", repo_path, args)
 
 
 @tool(
@@ -146,5 +184,4 @@ async def git_diff(repo_path: str, target: str | None = None) -> str:
 )
 async def git_branch(repo_path: str) -> str:
     """List git branches."""
-    result = await _run_git(["branch", "-a", "--sort=-committerdate"], repo_path)
-    return json.dumps(result)
+    return await _guarded("git_branch", repo_path, ["branch", "-a", "--sort=-committerdate"])

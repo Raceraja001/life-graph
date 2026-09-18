@@ -13,7 +13,7 @@ const NAVIGATION = [
   { label: "Decisions", href: "/decisions", icon: Scale, keywords: "choices options" },
   { label: "Calibration", href: "/calibration", icon: BarChart3, keywords: "predictions accuracy brier" },
   { label: "Tasks", href: "/tasks", icon: ClipboardList, keywords: "agents jobs kanban" },
-  { label: "Drivers", href: "/drivers", icon: Bot, keywords: "agents performance cost" },
+  { label: "Dev tasks", href: "/drivers", icon: Bot, keywords: "agents drivers code pr coding task" },
   { label: "Activity", href: "/activity", icon: Activity, keywords: "events feed log" },
   { label: "Settings", href: "/settings", icon: Settings, keywords: "config api" },
 ];

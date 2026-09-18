@@ -115,20 +115,29 @@ def _collect_producers(trees) -> tuple[dict[str, set[str]], set[str]]:
                     local[node.targets[0].id] = _dict_keys(node.value)
 
             for node in ast.walk(fn):
-                if not (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "emit"
-                    and node.args
-                ):
+                if not isinstance(node, ast.Call) or not node.args:
                     continue
-                events = _event_types(node.args[0], _event_aliases(fn))
+                # Two producer shapes: ``bus.emit(EventType.X, {...})`` and
+                # ``emit_after_commit(session, EventType.X, {...})``, which
+                # defers the same emit until the caller's transaction commits.
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "emit":
+                    event_arg, payload_index = node.args[0], 1
+                elif (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id == "emit_after_commit"
+                    and len(node.args) > 1
+                ):
+                    event_arg, payload_index = node.args[1], 2
+                else:
+                    continue
+
+                events = _event_types(event_arg, _event_aliases(fn))
                 if not events:
                     continue
 
                 payload = (
-                    node.args[1]
-                    if len(node.args) > 1
+                    node.args[payload_index]
+                    if len(node.args) > payload_index
                     else next((kw.value for kw in node.keywords if kw.arg == "payload"), None)
                 )
                 for event in events:

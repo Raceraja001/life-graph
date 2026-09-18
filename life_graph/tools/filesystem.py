@@ -19,7 +19,12 @@ from __future__ import annotations
 import json
 import logging
 
-from life_graph.tools._guards import ToolDeniedError, check_tenant, resolve_in_roots
+from life_graph.tools._guards import (
+    ToolDeniedError,
+    check_tenant,
+    check_writable,
+    resolve_in_roots,
+)
 from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
@@ -94,6 +99,7 @@ async def file_write(path: str, content: str) -> str:
     try:
         check_tenant("file_write")
         p = resolve_in_roots(path, tool_name="file_write")
+        check_writable(p, tool_name="file_write")
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         return json.dumps({"bytes_written": len(content.encode("utf-8")), "path": str(p)})

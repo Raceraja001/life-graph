@@ -9,7 +9,7 @@ const TITLES: Record<string, string> = {
   "/decisions": "Decisions",
   "/calibration": "Calibration",
   "/tasks": "Tasks",
-  "/drivers": "Drivers",
+  "/drivers": "Dev tasks",
   "/activity": "Activity",
   "/settings": "Settings",
 };

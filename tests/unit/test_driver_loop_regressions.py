@@ -229,6 +229,28 @@ def test_landing_never_touches_the_default_branch(repo, tmp_path):
     assert _git("show", "master:f.txt", cwd=repo).stdout == "before\n"
 
 
+def test_landing_does_not_run_repo_hooks(repo, tmp_path):
+    """Landing runs on the host; an agent-planted hook must not execute there.
+
+    post-commit is included because ``--no-verify`` alone does not skip it.
+    """
+    marker = tmp_path / "hook_ran"
+    hooks = repo / ".git" / "hooks"
+    hooks.mkdir(parents=True, exist_ok=True)
+    for name in ("pre-commit", "post-commit"):
+        (hooks / name).write_text(f"#!/bin/sh\ntouch {marker}\n")
+        (hooks / name).chmod(0o755)
+
+    wt = tmp_path / "wt"
+    _git("worktree", "add", "--detach", str(wt), cwd=repo)
+    (wt / "f.txt").write_text("after\n")
+    branch = asyncio.run(preserve_verified_work(worktree=wt, repo_path=repo, task_id="h00k"))
+    _git("worktree", "remove", "--force", str(wt), cwd=repo)
+
+    assert branch is not None
+    assert not marker.exists()
+
+
 def test_no_changes_lands_nothing(repo, tmp_path):
     """A driver that changed no files is not a failure, and needs no branch."""
     wt = tmp_path / "wt"

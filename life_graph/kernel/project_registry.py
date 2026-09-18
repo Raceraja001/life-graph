@@ -28,6 +28,60 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# ── Registration guards ────────────────────────────────────
+
+# scan_metadata keys the user sets (not the scanner); preserved across scans.
+#   sandbox_setup         dependency install command for the verifier sandbox
+#   sandbox_test_command  what tests_pass runs, e.g. "python -m pytest -q tests/unit"
+#   sandbox_test_timeout  seconds tests_pass may take
+#   required_checks       verifiers every dev task in this project must pass
+#   auto_open_pr          open PRs without approval for drivers proven on this project
+#   nightly_suggestions   queue nightly dev tasks for failing tests / lint / TODOs
+#   nightly_max_tasks     cap on open nightly tasks per project (default 2)
+#   nightly_persona       persona that works them (default code-fixer-local)
+#   nightly_lint_paths    paths the nightly ruff scan covers (default: the whole repo)
+_USER_META_KEYS = frozenset(
+    {
+        "sandbox_setup",
+        "sandbox_test_command",
+        "sandbox_test_timeout",
+        "required_checks",
+        "auto_open_pr",
+        "nightly_suggestions",
+        "nightly_max_tasks",
+        "nightly_persona",
+        "nightly_lint_paths",
+    }
+)
+
+
+def _confined_project_path(path: str) -> str:
+    """Resolve a project path under the host-tool guards.
+
+    A registered path is where drivers write code, run git and dispatch
+    agents, so registering one is a host-tool action: the tenant must be
+    privileged and the path must sit inside ``tool_fs_roots``.
+
+    Raises:
+        ValueError: denied, or not an existing directory.
+    """
+    from life_graph.tools._guards import ToolDeniedError, check_tenant, resolve_in_roots
+
+    try:
+        check_tenant("project registration")
+        resolved = resolve_in_roots(path, tool_name="project registration")
+    except ToolDeniedError as exc:
+        raise ValueError(str(exc)) from exc
+    if not resolved.is_dir():
+        raise ValueError(f"Path does not exist: {path!r}")
+    return str(resolved)
+
+
+def _user_scan_metadata(data: dict[str, Any]) -> dict[str, Any]:
+    """Returns the user-set scan_metadata keys (such as sandbox_setup) present in the registration data."""
+    return {k: data[k] for k in _USER_META_KEYS if data.get(k)}
+
+
 # ── Language Detection ─────────────────────────────────────
 
 
@@ -330,11 +384,8 @@ class ProjectRegistry:
             ValueError: If name already exists or path invalid.
         """
         name = data["name"]
-        path = data["path"]
-
-        # Validate path exists
-        if not Path(path).is_dir():
-            raise ValueError(f"Path does not exist: {path!r}")
+        path = _confined_project_path(data["path"])
+        user_meta = _user_scan_metadata(data)
 
         async with self._session_factory() as session:
             # Check uniqueness
@@ -369,6 +420,7 @@ class ProjectRegistry:
                 dependency_count=dep_cnt,
                 file_count=file_cnt,
                 recent_commits=commits,
+                scan_metadata=user_meta,
                 last_scanned_at=now,
             )
             session.add(project)
@@ -472,6 +524,9 @@ class ProjectRegistry:
                 return None
 
             path = project.path
+            # Settings the user chose live alongside scan output; a re-scan
+            # must not erase them.
+            kept = {k: v for k, v in (project.scan_metadata or {}).items() if k in _USER_META_KEYS}
 
         # Run scan outside of DB session
         if not Path(path).is_dir():
@@ -500,6 +555,7 @@ class ProjectRegistry:
                     "Jenkinsfile",
                 ]
             ),
+            **kept,
         }
 
         values: dict[str, Any] = {
@@ -535,6 +591,49 @@ class ProjectRegistry:
             tenant_id,
             project_id,
         )
+
+    async def update_settings(
+        self,
+        tenant_id: str,
+        project_id: str,
+        data: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Update user-editable fields: description, git_url, and the verifier
+        settings in :data:`_USER_META_KEYS`.
+
+        A verifier setting set to an empty value (``""``, ``[]``, ``0``) clears
+        it, falling back to the sandbox default.
+
+        Returns:
+            Updated project dict, or None if not found.
+        """
+        async with self._session_factory() as session:
+            project = (
+                await session.execute(
+                    select(Project).where(
+                        Project.id == uuid.UUID(project_id),
+                        Project.tenant_id == tenant_id,
+                        Project.is_active.is_(True),
+                    )
+                )
+            ).scalar_one_or_none()
+            if project is None:
+                return None
+            for field in ("description", "git_url"):
+                if field in data:
+                    setattr(project, field, data[field])
+            if any(k in data for k in _USER_META_KEYS):
+                meta = dict(project.scan_metadata or {})
+                for key in _USER_META_KEYS & data.keys():
+                    if data[key]:
+                        meta[key] = data[key]
+                    else:
+                        meta.pop(key, None)
+                project.scan_metadata = meta
+            project.updated_at = datetime.now(UTC)
+            await session.commit()
+            await session.refresh(project)
+            return self._project_to_dict(project)
 
     async def delete(
         self,

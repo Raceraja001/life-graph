@@ -411,6 +411,12 @@ class MemoryManager:
             memory_create,
             embedding=embedding,
             trust_tier=trust_tier,
+            # Provenance: which tier produced this fact, how sure it was, and
+            # which capture event it came from (the capture spine puts that id
+            # in context/properties).
+            extraction_tier=fact.tier or None,
+            extraction_confidence=fact.confidence,
+            capture_event_id=properties.get("capture_event_id"),
         )
 
         # Step 5b: Execute auto-supersessions, queuing an approval for each so

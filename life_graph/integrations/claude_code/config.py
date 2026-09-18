@@ -11,7 +11,9 @@ posts to a local backend as tenant ``personal``.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -73,6 +75,9 @@ class HookConfig:
     daily_cap: int
     sample_rate: float
     max_content_chars: int
+    #: Only sessions whose cwd is under one of these run the hook at all.
+    #: Empty means every session (the historical behaviour).
+    project_roots: tuple[str, ...] = ()
 
     @property
     def capture_url(self) -> str:
@@ -127,13 +132,75 @@ def _default_state_dir() -> Path:
     return Path.home() / ".life-graph" / "claude-code"
 
 
+def _file_config() -> dict:
+    """Optional JSON config file; environment variables override it.
+
+    The API key has to live somewhere the hook can read it. Putting it in
+    Claude Code's ``settings.json`` ``env`` block would export it into every
+    shell the agent runs, where the agent itself could read it; a 0600 file in
+    the user's home keeps it out of the session environment. Read from
+    ``LIFE_GRAPH_HOOK_CONFIG``, else ``~/.life-graph/claude-code/config.json``.
+    Keys: ``api_url``, ``tenant_id``, ``api_key``, ``project_roots`` (list).
+    """
+    path = Path(
+        os.environ.get("LIFE_GRAPH_HOOK_CONFIG")
+        or Path.home() / ".life-graph" / "claude-code" / "config.json"
+    ).expanduser()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+_WINDOWS_DRIVE_PATH = re.compile(r"^([A-Za-z]):[\\/](.*)$")
+
+
+def normalize_path(path: str) -> str:
+    r"""Map a Windows path to its WSL mount (``H:\x\y`` -> ``/mnt/h/x/y``).
+
+    Windows Claude Code runs the hook through ``wsl.exe`` and hands it its own
+    Windows ``cwd``; the hook, running in Linux, can only read the mount path.
+    Other paths are returned unchanged.
+    """
+    m = _WINDOWS_DRIVE_PATH.match(path or "")
+    if not m or os.name == "nt":
+        return path
+    rest = m.group(2).replace("\\", "/").rstrip("/")
+    return f"/mnt/{m.group(1).lower()}/{rest}" if rest else f"/mnt/{m.group(1).lower()}"
+
+
+def in_project_roots(cwd: str | None, roots: tuple[str, ...]) -> bool:
+    """Whether a session in *cwd* is in scope. No roots configured = all are."""
+    if not roots:
+        return True
+    if not cwd:
+        return False
+    here = normalize_path(cwd).rstrip("/").lower()
+    for root in roots:
+        base = normalize_path(root).rstrip("/").lower()
+        if here == base or here.startswith(base + "/"):
+            return True
+    return False
+
+
 def load_config() -> HookConfig:
-    """Read hook settings from the environment."""
-    api_url = os.environ.get("LIFE_GRAPH_API_URL", DEFAULT_API_URL).rstrip("/")
+    """Read hook settings from the environment, falling back to the config file."""
+    file_cfg = _file_config()
+    api_url = os.environ.get("LIFE_GRAPH_API_URL") or file_cfg.get("api_url") or DEFAULT_API_URL
+    roots_env = os.environ.get("LIFE_GRAPH_HOOK_PROJECT_ROOTS")
+    roots = (
+        [r.strip() for r in roots_env.split(",") if r.strip()]
+        if roots_env is not None
+        else [str(r) for r in file_cfg.get("project_roots") or []]
+    )
     return HookConfig(
-        api_url=api_url,
-        tenant_id=os.environ.get("LIFE_GRAPH_TENANT_ID", DEFAULT_TENANT_ID),
-        api_key=os.environ.get("LIFE_GRAPH_API_KEY") or None,
+        api_url=api_url.rstrip("/"),
+        project_roots=tuple(roots),
+        tenant_id=os.environ.get("LIFE_GRAPH_TENANT_ID")
+        or file_cfg.get("tenant_id")
+        or DEFAULT_TENANT_ID,
+        api_key=os.environ.get("LIFE_GRAPH_API_KEY") or file_cfg.get("api_key") or None,
         state_dir=_default_state_dir(),
         disabled=_env_flag("LIFE_GRAPH_HOOK_DISABLED"),
         debug=_env_flag("LIFE_GRAPH_HOOK_DEBUG"),

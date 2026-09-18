@@ -1,9 +1,18 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+/** The API origin every request in this app goes to. Exported so UI that
+ *  *reports* the endpoint (Settings) cannot drift from the one in use. */
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+
+/** The tenant every request is sent as: the one chosen at login, else the
+ *  build-time default. Exported for the same reason as API_BASE. */
+export function getTenantId(): string {
+  if (typeof window === "undefined") return process.env.NEXT_PUBLIC_TENANT_ID || "default";
+  return localStorage.getItem("lg_tenant_id") || process.env.NEXT_PUBLIC_TENANT_ID || "default";
+}
 
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (typeof window !== "undefined") {
-    const tenantId = localStorage.getItem("lg_tenant_id") || process.env.NEXT_PUBLIC_TENANT_ID || "default";
+    const tenantId = getTenantId();
     const apiKey = localStorage.getItem("lg_api_key") || "";
     headers["X-Tenant-ID"] = tenantId;
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
@@ -38,7 +47,7 @@ async function uploadRequest<T>(path: string, file: Blob, filename: string): Pro
   form.append("file", file, filename);
   const headers: Record<string, string> = {};
   if (typeof window !== "undefined") {
-    const tenantId = localStorage.getItem("lg_tenant_id") || process.env.NEXT_PUBLIC_TENANT_ID || "default";
+    const tenantId = getTenantId();
     const apiKey = localStorage.getItem("lg_api_key") || "";
     headers["X-Tenant-ID"] = tenantId;
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
@@ -182,7 +191,10 @@ export const api = {
     models: {
       list: () => GET<any>("/kernel/models"),  // caller unwraps .data.models
     },
-    projects: () => listRequest<any>("/kernel/projects"),
+    // /kernel/projects returns data = {projects, total}; listRequest's flat-array
+    // unwrap returned [] for it, so read the nested key.
+    projects: () =>
+      GET<any>("/kernel/projects").then((res: any) => res?.data?.projects ?? []),
     // /kernel/notifications returns data = {notifications, total, unread_count} (a dict, like
     // /kernel/schedules), so listRequest's flat-array unwrap can't see it — read the nested key.
     notifications: (params?: { limit?: string }) =>
@@ -233,6 +245,12 @@ export const api = {
   },
 
   // ── Approvals (unified human-in-the-loop feed) ──
+  // ── Dev tasks: "do X in project Y" via an agent driver ──────
+  devTasks: {
+    list: () => listRequest<any>("/kernel/drivers/tasks", { limit: "50" }),
+    create: (body: { instruction: string; project_id: string; persona_name: string }) =>
+      POST<any>("/kernel/drivers/tasks", body).then((res: any) => res?.data),
+  },
   approvals: {
     list: (status: string = "pending") =>
       listRequest<any>("/approvals", { status }),

@@ -108,10 +108,19 @@ class CaptureProcessors:
                 # ── 1. Run extraction pipeline ──────────────────────
                 facts: list[ExtractedFact] = []
                 try:
-                    from life_graph.extraction.pipeline import ExtractionPipeline
+                    from life_graph.api.dependencies import get_extraction_pipeline
 
-                    pipeline = ExtractionPipeline()
-                    extraction = await pipeline.extract(content)
+                    # The shared pipeline, not a fresh ExtractionPipeline(): a
+                    # bare one builds an LLMExtractor with no local client and a
+                    # hardcoded cloud model default, so tier 3 called a provider
+                    # this deployment may not even have keys for.
+                    #
+                    # capture=True because a CaptureEvent *is* a genuine user
+                    # capture (voice, chat, note) — the same flag the /memories
+                    # route passes. Without it the capture spine, the ambient
+                    # path that produces most memories, silently got the weaker
+                    # regex/spaCy result while the API path got LLM-first output.
+                    extraction = await get_extraction_pipeline().extract(content, capture=True)
                     facts = list(extraction.facts)
                     logger.info(
                         "Extraction from capture %s: %d facts (T1=%d T2=%d T3=%d)",

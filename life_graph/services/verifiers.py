@@ -7,10 +7,13 @@ One-bounce rule: failed → re-dispatch once → second failure → needs_human.
 from __future__ import annotations
 
 import logging
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from life_graph.services import sandbox
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -112,6 +115,11 @@ class VerifierChain:
         """Checks that could not be performed. Re-dispatching cannot fix these."""
         return [r for r in results if r.inconclusive]
 
+    @property
+    def names(self) -> frozenset[str]:
+        """Registered verifier names."""
+        return frozenset(self._verifiers)
+
     def _register_builtins(self) -> None:
         """Register the built-in verifiers."""
         self.register("tests_pass", _verify_tests_pass)
@@ -173,8 +181,77 @@ def _missing_module(result: subprocess.CompletedProcess, module: str) -> bool:
     return f"No module named {module}" in blob
 
 
+# ── Sandboxed execution ──────────────────────────────────────
+#
+# With LIFE_GRAPH_VERIFIER_SANDBOX=docker the checks that execute anything run
+# in a container (services/sandbox.py). Inside it the toolchain is the
+# project's cached venv, else the image's own — never a binary from the
+# worktree: a fresh worktree has no .venv, so one found there was planted.
+
+# The git queries below stay on the host (they only list files); a repo's
+# config must not make them execute anything.
+_HARDENED_GIT = ["git", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
+
+
+_DEFAULT_TEST_ARGV = [
+    "python",
+    "-m",
+    "pytest",
+    ".",
+    "-q",
+    "--tb=no",
+    "-x",
+    "-p",
+    "no:cacheprovider",
+]
+_DEFAULT_TEST_TIMEOUT = 300
+
+
+async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
+    # The project registry may narrow what "the tests" are — a suite whose
+    # integration tests need a database cannot pass in a network-less sandbox,
+    # which made tests_pass unusable for such projects. Never read from the
+    # worktree: the agent controls it.
+    command = ctx.get("sandbox_test_command")
+    try:
+        argv = shlex.split(command) if command else _DEFAULT_TEST_ARGV
+    except ValueError as exc:
+        return None, {"note": f"sandbox_test_command does not parse: {exc}"}
+    if not argv:
+        argv = _DEFAULT_TEST_ARGV
+    timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
+    try:
+        venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+        result = await sandbox.run(argv, workdir, venv=venv, timeout=timeout)
+    except sandbox.SandboxUnavailableError as exc:
+        return None, {"note": str(exc), "sandbox": "docker", "command": argv}
+    if _missing_module(result, "pytest"):
+        return None, {"note": "pytest is not installed in the project environment"}
+    return result.returncode == 0, {
+        "stdout": result.stdout[-500:],
+        "returncode": result.returncode,
+        "sandbox": "docker",
+        "command": argv,
+    }
+
+
+async def _sandboxed_ruff(workdir: Path, args: list[str]) -> tuple[bool | None, dict]:
+    try:
+        # --no-cache right after the subcommand: anything after "--" is a path.
+        result = await sandbox.run(["ruff", args[0], "--no-cache", *args[1:]], workdir, timeout=120)
+    except sandbox.SandboxUnavailableError as exc:
+        return None, {"note": str(exc), "sandbox": "docker"}
+    return result.returncode == 0, {
+        "issues": result.stdout[-500:],
+        "returncode": result.returncode,
+        "sandbox": "docker",
+    }
+
+
 async def _verify_tests_pass(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
     """Run the project's test suite. Inconclusive if it has no runner."""
+    if sandbox.enabled():
+        return await _sandboxed_tests(workdir, ctx)
     python = _project_python(workdir)
     if python is None:
         return None, {"note": "no Python interpreter found for this project"}
@@ -207,6 +284,8 @@ async def _verify_tests_pass(workdir: Path, ctx: dict) -> tuple[bool | None, dic
 
 async def _verify_lint_clean(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
     """Run ruff over the project. Inconclusive if ruff is not available."""
+    if sandbox.enabled():
+        return await _sandboxed_ruff(workdir, ["check", ".", "--no-fix"])
     ruff = _project_tool(workdir, "ruff")
     if ruff is None:
         return None, {"note": "ruff not available for this project"}
@@ -258,7 +337,7 @@ def _changed_python_files(workdir: Path) -> list[Path]:
     changed_names: set[str] = set()
     try:
         tracked = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD"],
+            [*_HARDENED_GIT, "diff", "--name-only", "HEAD"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -266,7 +345,7 @@ def _changed_python_files(workdir: Path) -> list[Path]:
         )
         changed_names.update(f.strip() for f in tracked.stdout.strip().split("\n") if f.strip())
         untracked = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
+            [*_HARDENED_GIT, "ls-files", "--others", "--exclude-standard"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -299,6 +378,10 @@ async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None
     if not changed:
         return True, {"note": "No changed .py files"}
 
+    if sandbox.enabled():
+        rel = [str(f.relative_to(workdir)) for f in changed]
+        return await _sandboxed_ruff(workdir, ["check", "--no-fix", "--", *rel])
+
     ruff = _project_tool(workdir, "ruff")
     if ruff is None:
         # A missing linter is not a lint failure — but it is not a pass
@@ -330,7 +413,7 @@ async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dic
         return True, {"note": "No scope constraint"}
     try:
         result = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD"],
+            [*_HARDENED_GIT, "diff", "--name-only", "HEAD"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -355,8 +438,10 @@ async def _verify_citations_present(workdir: Path, ctx: dict) -> tuple[bool, dic
     }
 
 
-async def _verify_style_conforms(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+async def _verify_style_conforms(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
     """Check code style with ruff format --check."""
+    if sandbox.enabled():
+        return await _sandboxed_ruff(workdir, ["format", "--check", "."])
     try:
         result = subprocess.run(
             ["ruff", "format", "--check", str(workdir)],

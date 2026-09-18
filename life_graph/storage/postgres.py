@@ -25,6 +25,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _as_uuid(value: uuid.UUID | str | None) -> uuid.UUID | None:
+    """Coerce a capture-event id to UUID, tolerating a string or garbage.
+
+    Callers pass this straight from a JSONB ``properties`` dict, so a
+    malformed value must not break an otherwise valid ingest.
+    """
+    if value is None or isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        logger.debug("Ignoring unparseable capture_event_id %r", value)
+        return None
+
+
 class PostgresMemoryStore:
     """Async PostgreSQL-backed memory store.
 
@@ -41,6 +56,9 @@ class PostgresMemoryStore:
         embedding: list[float] | None = None,
         trust_tier: str | None = None,
         status: str = "pending",
+        extraction_tier: str | None = None,
+        extraction_confidence: float | None = None,
+        capture_event_id: uuid.UUID | str | None = None,
     ) -> Memory:
         """Persist a new memory from a creation payload.
 
@@ -50,6 +68,13 @@ class PostgresMemoryStore:
 
         ``status`` defaults to ``"pending"`` — every newly stored memory waits
         for user approval before becoming ``"active"``.
+
+        ``extraction_tier`` (regex/spacy/llm/manual), ``extraction_confidence``
+        and ``capture_event_id`` are server-side provenance for the same reason.
+        Their columns have existed since the early migrations and are read back
+        by recall and the capture spine, but nothing ever wrote them: every
+        memory claimed unknown provenance, so "which tier produced this, and
+        from which capture?" was unanswerable.
         """
         from life_graph.config import settings
 
@@ -66,6 +91,9 @@ class PostgresMemoryStore:
             content_hash=content_hash,
             tenant_id=get_current_tenant_id(),
             status=status,
+            extraction_tier=extraction_tier or None,
+            extraction_confidence=extraction_confidence,
+            capture_event_id=_as_uuid(capture_event_id),
         )
         if embedding:
             row.embedding = embedding

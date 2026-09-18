@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-09-11 10:59 UTC` from `feat/orbit-design-language` @ `b7581bf`
+Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-09-11 10:59 UTC` from `feat/orbit-design-language` @ `b7581bf`
 | Built-in personas | **13** |
 | Agent tools | **13** |
 | Scheduled jobs | **15** |
-| Config settings | **148** (prefix `LIFE_GRAPH_`) |
+| Config settings | **149** (prefix `LIFE_GRAPH_`) |
 | Test functions | **2073** in 214 files |
 | Dashboard pages | **18** |
-| Python | 287 files, 68,515 lines |
+| Python | 287 files, 68,527 lines |
 
 ---
 
@@ -740,6 +740,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `mcp-tool-server` | Built | `life_graph/mcp_server.py` |
 | `natural-language-queries` | Built | `life_graph/api/search.py` |
 | `os-kernel` | Built | `life_graph/kernel/process_manager.py` |
+| `personal-model-tuning` | Spec'd, not built | — |
 | `personal-roles` | Built | `life_graph/kernel/ambient.py` |
 | `prompt-registry` | Built | `life_graph/self_improving/prompt_version_service.py` |
 | `pwa-mobile` | Built | `dashboard/app/(mobile)/m/page.tsx` |
@@ -773,7 +774,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 ## Configuration
 
-148 settings, all overridable by environment variable.
+149 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -832,6 +833,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_LM_SYNTHESIS_MODEL` | `'qwen2.5-coder-7b-instruct'` |
 | `LIFE_GRAPH_LM_EMBEDDING_MODEL` | `'text-embedding-nomic-embed-text-v1.5'` |
 | `LIFE_GRAPH_USE_LOCAL_LLM` | `True` |
+| `LIFE_GRAPH_LM_REASONING_EFFORT` | `—` |
 | `LIFE_GRAPH_OPENROUTER_API_KEY` | `''` |
 | `LIFE_GRAPH_OPENROUTER_URL` | `'https://openrouter.ai/api/v1'` |
 | `LIFE_GRAPH_OPENROUTER_MODEL` | `'deepseek/deepseek-chat'` |

@@ -10,7 +10,7 @@ const NAV = [
   { label: "Decisions", href: "/decisions", icon: Scale },
   { label: "Calibration", href: "/calibration", icon: BarChart3 },
   { label: "Tasks", href: "/tasks", icon: ClipboardList },
-  { label: "Drivers", href: "/drivers", icon: Bot },
+  { label: "Dev tasks", href: "/drivers", icon: Bot },
   { label: "Activity", href: "/activity", icon: Activity },
 ];
 

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
+from life_graph.config import settings
 from life_graph.kernel.propose_contract import (
     AGENT_TASK_PROPOSE_CONTRACT,
     COMMAND_PROPOSE_CONTRACT,
@@ -214,6 +215,93 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "verifier_chain": ["tests_pass", "diff_within_scope"],
         "context_profile": {"domains": ["dependencies", "infra"]},
     },
+    {
+        "name": "code-fixer",
+        "display_name": "Code Fixer",
+        "icon": "🔧",
+        "description": (
+            "Makes small, focused code changes in a registered project."
+            " File tools only — no shell — and every change is verified"
+            " and offered as a PR for approval."
+        ),
+        "system_prompt": (
+            "You are Code Fixer. You make the smallest change that fully"
+            " does what the task asks, in the style the project already"
+            " uses (its preferences are in your context). Read the"
+            " surrounding code before editing. Do not refactor, reformat or"
+            " touch files the task does not need. Do not commit — your"
+            " change is verified and committed for you. Finish with a short"
+            " summary of what you changed and why."
+        ),
+        "intent_tags": ["code", "fix", "refactor"],
+        "temperature": 0.2,
+        # No run_command: the claude_code driver maps these to Read/Glob/Grep
+        # and Write/Edit only, so the agent never gets a shell.
+        "allowed_tools": ["file_read", "file_write"],
+        "driver": "claude_code",
+        "task_types": ["code_change"],
+        "verifier_chain": ["build_ok_diff", "lint_clean_diff"],
+        "context_profile": {"domains": ["code"]},
+    },
+    {
+        "name": "code-fixer-local",
+        "display_name": "Code Fixer (local)",
+        "icon": "🏠",
+        "description": (
+            "Code Fixer on a local model: the code never leaves the machine."
+            " Set its model to a local coder (e.g. ollama_chat/qwen3-coder:30b)."
+            " Same verification and PR approval as Code Fixer."
+        ),
+        "system_prompt": (
+            "You are Code Fixer, working on a local model. Make the smallest"
+            " change that fully does what the task asks, in the project's"
+            " existing style. Work in steps: find the relevant code with"
+            " code_search or code_list, read it with code_read (follow"
+            " next_start_line for long files), change it with code_edit"
+            " (copy `old` exactly, without the line-number prefixes), then"
+            " code_read the changed lines to confirm. Never rewrite a whole"
+            " file to change part of it. Do not refactor or touch unrelated"
+            " files. Finish with a short summary of what you changed and why."
+        ),
+        "intent_tags": ["code", "fix", "local"],
+        "temperature": 0.2,
+        # Code tools only: no shell, no whole-file writes. The local driver
+        # confines them to the task's worktree.
+        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit"],
+        "driver": "local",
+        "task_types": ["code_change"],
+        "verifier_chain": ["build_ok_diff", "lint_clean_diff"],
+        "context_profile": {"domains": ["code"]},
+    },
+    {
+        "name": "code-fixer-auto",
+        "display_name": "Code Fixer (auto)",
+        "icon": "⚖️",
+        "description": (
+            "Code Fixer that picks its driver per project from the record of"
+            " merged vs rejected PRs: the free local model unless its work on"
+            " that project keeps getting rejected, then Claude Code."
+        ),
+        "system_prompt": (
+            "You are Code Fixer. Make the smallest change that fully does what"
+            " the task asks, in the project's existing style. Find the relevant"
+            " code with code_search or code_list, read it with code_read"
+            " (follow next_start_line for long files), change it with"
+            " code_edit (copy `old` exactly, without line-number prefixes), then"
+            " re-read the changed lines. Never rewrite a whole file to change"
+            " part of it. Do not refactor or touch unrelated files. Finish with"
+            " a short summary of what you changed and why."
+        ),
+        "intent_tags": ["code", "fix"],
+        "temperature": 0.2,
+        # Code tools only; both drivers understand them (claude_code maps them
+        # to Read/Grep/Glob/Edit, local runs them confined to the worktree).
+        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit"],
+        "driver": "auto",
+        "task_types": ["code_change"],
+        "verifier_chain": ["build_ok_diff", "lint_clean_diff"],
+        "context_profile": {"domains": ["code"]},
+    },
     # ── Personal-life personas (docs/specs/personal-roles.md) ──
     {
         "name": "tutor",
@@ -340,6 +428,10 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "run_command",
             "file_read",
             "file_write",
+            "code_read",
+            "code_search",
+            "code_list",
+            "code_edit",
             "inspect_system",
             "delegate_to_persona",
         ],
@@ -512,7 +604,12 @@ class PersonaService:
                             icon=defn["icon"],
                             description=defn["description"],
                             system_prompt=defn["system_prompt"],
-                            model="gemini/gemini-2.5-flash",
+                            # Never hardcode a model id here: gemini-2.5-flash was
+                            # seeded long after it started 404ing for new API keys,
+                            # so every freshly seeded tenant arrived broken. The
+                            # configured default is what the orchestrator itself
+                            # falls back to (orchestrator.py), so they agree.
+                            model=settings.agent_llm_model,
                             temperature=defn["temperature"],
                             max_tokens=4096,
                             allowed_tools=defn["allowed_tools"],
@@ -673,7 +770,7 @@ class PersonaService:
                 display_name=data.get("display_name"),
                 description=data.get("description"),
                 system_prompt=data["system_prompt"],
-                model=data.get("model", "gemini/gemini-2.5-flash"),
+                model=data.get("model") or settings.agent_llm_model,
                 temperature=data.get("temperature", 0.7),
                 max_tokens=data.get("max_tokens", 4096),
                 allowed_tools=data.get("allowed_tools"),
@@ -875,63 +972,6 @@ class PersonaService:
         }
 
     # ── Tool Permission Filtering ────────────────────────
-
-    # Tools restricted to admin/personal tenants only.
-    SYSTEM_TOOLS = {
-        "terminal",
-        "git",
-        "docker",
-        "ssh",
-        "file_write",
-    }
-    # Tools available to all tenants.
-    SAFE_TOOLS = {
-        "memory_search",
-        "knowledge_query",
-        "file_read",
-        "web_search",
-        "calculator",
-    }
-
-    def resolve_tools(
-        self,
-        persona: dict[str, Any],
-        tenant_id: str,
-    ) -> list[str]:
-        """Resolve allowed tools based on persona + tenant.
-
-        For admin/personal tenants, the persona's full
-        allowed_tools list is returned. For customer tenants,
-        system/write tools are filtered out.
-
-        Args:
-            persona: Persona dict with allowed_tools.
-            tenant_id: Tenant ID to check permissions.
-
-        Returns:
-            Filtered list of tool names.
-        """
-        tools = persona.get("allowed_tools") or []
-        if not tools:
-            return []
-
-        # Admin/personal/legacy tenants get full access
-        if self._is_admin_tenant(tenant_id):
-            return list(tools)
-
-        # Customer tenants: strip system tools
-        return [t for t in tools if t not in self.SYSTEM_TOOLS]
-
-    @staticmethod
-    def _is_admin_tenant(tenant_id: str) -> bool:
-        """Check if a tenant has admin-level tool access."""
-        admin_prefixes = (
-            "default",
-            "legacy",
-            "personal",
-            "admin",
-        )
-        return any(tenant_id.startswith(p) for p in admin_prefixes)
 
     @staticmethod
     def _persona_to_dict(

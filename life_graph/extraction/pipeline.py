@@ -129,6 +129,7 @@ class ExtractionPipeline:
                 )
                 llm_facts = []
             if llm_facts:
+                _stamp_tier(llm_facts, "llm")
                 merged = _deduplicate(llm_facts)
                 merged = _drop_low_confidence(merged, settings.extraction_min_confidence)
                 merged.sort(key=lambda f: f.confidence, reverse=True)
@@ -152,6 +153,8 @@ class ExtractionPipeline:
         logger.debug("Tier 2 extracted %d facts", len(tier2_facts))
 
         # Merge and deduplicate (Tier 1 + 2)
+        _stamp_tier(tier1_facts, "regex")
+        _stamp_tier(tier2_facts, "spacy")
         merged = _deduplicate(tier1_facts + tier2_facts)
 
         # Determine if Tier 3 is needed
@@ -170,6 +173,7 @@ class ExtractionPipeline:
             tier3_facts = await self._llm.extract(text)
             llm_invoked = True
             logger.debug("Tier 3 extracted %d facts", len(tier3_facts))
+            _stamp_tier(tier3_facts, "llm")
             merged = _deduplicate(merged + tier3_facts)
 
         merged = _drop_low_confidence(merged, settings.extraction_min_confidence)
@@ -206,6 +210,17 @@ class ExtractionPipeline:
     def get_llm_cost_summary(self) -> dict[str, Any]:
         """Return detailed LLM cost breakdown."""
         return self._llm.get_cost_summary()
+
+
+def _stamp_tier(facts: list[ExtractedFact], tier: str) -> None:
+    """Record which tier produced each fact, in place.
+
+    Only stamps facts that carry no tier yet, so a fact that survived an
+    earlier merge keeps its original provenance.
+    """
+    for fact in facts:
+        if not fact.tier:
+            fact.tier = tier
 
 
 def _deduplicate(facts: list[ExtractedFact]) -> list[ExtractedFact]:

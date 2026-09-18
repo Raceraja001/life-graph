@@ -67,7 +67,8 @@ async def create_memory(
     )
 
     if is_structured:
-        row = await store.store(body, trust_tier=tier)
+        # Stored verbatim as the caller supplied it — no tier extracted it.
+        row = await store.store(body, trust_tier=tier, extraction_tier="manual")
         # All three exits below return the same shape. Two of them previously
         # returned a bare list while the third wrapped in success_response(),
         # so the response shape depended on whether extraction happened to
@@ -97,7 +98,9 @@ async def create_memory(
             return success_response(data=[MemoryResponse.model_validate(existing)])
 
         embedding = await manager.generate_embedding(body.content)
-        row = await store.store(body, embedding=embedding, trust_tier=tier)
+        row = await store.store(
+            body, embedding=embedding, trust_tier=tier, extraction_tier="manual"
+        )
         return success_response(data=[MemoryResponse.model_validate(row)])
 
     return success_response(

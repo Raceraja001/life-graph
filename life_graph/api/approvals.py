@@ -15,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from life_graph.api.responses import success_response
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.services.approvals import ApprovalAlreadyResolvedError, ApprovalService
+from life_graph.services.approvals import (
+    ApprovalActionError,
+    ApprovalAlreadyResolvedError,
+    ApprovalService,
+)
 from life_graph.storage.database import get_session
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -59,6 +63,10 @@ async def _resolve(
         raise HTTPException(status_code=404, detail="Approval not found") from None
     except ApprovalAlreadyResolvedError as exc:
         raise HTTPException(status_code=409, detail=f"Approval already {exc}") from None
+    except ApprovalActionError as exc:
+        # Not committed: the item stays pending so it can be approved again.
+        await session.rollback()
+        raise HTTPException(status_code=502, detail=str(exc)) from None
 
     await session.commit()  # commit before emitting so subscribers see the change
     await event_bus.emit(

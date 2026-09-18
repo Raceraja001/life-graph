@@ -155,6 +155,12 @@ class LMStudioClient:
         }
         if response_format:
             kwargs["response_format"] = response_format
+        if settings.lm_reasoning_effort:
+            # Thinking models (e.g. Qwen3 on Ollama) otherwise spend the whole
+            # max_tokens budget reasoning and return empty content, which the
+            # extractor silently treats as "no facts". Sent via extra_body so
+            # an SDK-side enum can't reject values like "none".
+            kwargs["extra_body"] = {"reasoning_effort": settings.lm_reasoning_effort}
 
         try:
             response = await client.chat.completions.create(**kwargs)

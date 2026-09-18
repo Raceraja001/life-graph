@@ -88,12 +88,18 @@ def harness(monkeypatch, capture_evt):
     extraction = SimpleNamespace(facts=facts, tier1_count=1, tier2_count=0, tier3_count=0)
 
     class _FakePipeline:
-        async def extract(self, _content):
+        def __init__(self) -> None:
+            self.capture_flags: list[bool] = []
+
+        async def extract(self, _content, *, capture=False):
+            self.capture_flags.append(capture)
             return extraction
 
-    monkeypatch.setattr(
-        "life_graph.extraction.pipeline.ExtractionPipeline", lambda *a, **k: _FakePipeline()
-    )
+    pipeline = _FakePipeline()
+    # The processor takes the shared, client-backed pipeline from the DI module,
+    # not a bare ExtractionPipeline() whose LLM tier ignores this deployment's
+    # configuration — so that is what has to be patched here.
+    monkeypatch.setattr("life_graph.api.dependencies.get_extraction_pipeline", lambda: pipeline)
 
     manager = SimpleNamespace(store_facts=AsyncMock(return_value=[_memory("Uses PostgreSQL")]))
     monkeypatch.setattr("life_graph.api.dependencies.get_memory_manager", lambda: manager)
@@ -122,10 +128,20 @@ def harness(monkeypatch, capture_evt):
         extraction=extraction,
         capture_evt=capture_evt,
         tenant_calls=tenant_calls,
+        pipeline=pipeline,
     )
 
 
 class TestFactsArePersisted:
+    @pytest.mark.asyncio
+    async def test_extraction_runs_in_capture_mode(self, harness):
+        """A CaptureEvent is a genuine user capture, so the LLM-first path
+        applies — the /memories route already passes capture=True, and the
+        ambient path silently took the weaker regex/spaCy result instead."""
+        await harness.run()
+
+        assert harness.pipeline.capture_flags == [True]
+
     @pytest.mark.asyncio
     async def test_extracted_facts_reach_the_memory_manager(self, harness):
         """The whole point: facts are stored, not counted and discarded."""
@@ -246,12 +262,12 @@ class TestFailureIsolation:
         self, harness, monkeypatch
     ):
         class _BoomPipeline:
-            async def extract(self, _content):
+            async def extract(self, _content, *, capture=False):
                 raise RuntimeError("spaCy model missing")
 
         harness.capture_evt.content = "I decided to use PostgreSQL for the graph store."
         monkeypatch.setattr(
-            "life_graph.extraction.pipeline.ExtractionPipeline", lambda *a, **k: _BoomPipeline()
+            "life_graph.api.dependencies.get_extraction_pipeline", lambda: _BoomPipeline()
         )
 
         await harness.run()

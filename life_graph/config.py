@@ -170,6 +170,16 @@ class Settings(BaseSettings):
     lm_synthesis_model: str = "qwen2.5-coder-7b-instruct"
     lm_embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
     use_local_llm: bool = True
+    lm_structured_output: bool = True
+    """Constrain local extraction output to its JSON schema (``json_schema``
+    response format). Supported by LM Studio and Ollama >= 0.5. Without it,
+    small models often echo the schema instead of answering (2/8 usable on
+    qwen3:4b vs 8/8 constrained). A runtime that rejects it gets one retry in
+    the older ``json_object`` mode; set false to skip straight to that."""
+    lm_reasoning_effort: str | None = None
+    """Sent as ``reasoning_effort`` on local chat calls when set. Use "none" for
+    thinking models served by Ollama (Qwen3, gpt-oss): without it they can burn
+    the entire token budget on hidden reasoning and return empty content."""
 
     # ── OpenRouter (cloud inference — fast synthesis) ──
     openrouter_api_key: str = ""  # Set LIFE_GRAPH_OPENROUTER_API_KEY
@@ -312,6 +322,36 @@ class Settings(BaseSettings):
     # Off by default — pure LLM overhead until agents run unattended.
     driver_second_opinion_enabled: bool = False
     driver_second_opinion_model: str | None = None  # cheap model; None = client default
+    # Where verifiers execute agent-written code (tests, linters). "none" runs
+    # them on the host as this process's user; "docker" runs each check in a
+    # locked-down container (life_graph/services/sandbox.py). With "docker",
+    # a missing daemon or image makes checks inconclusive, never passing.
+    # GitHub CLI used to push approved task branches and open PRs; it must be
+    # logged in (`gh auth login`) as the user this process runs as.
+    driver_gh_bin: str = "gh"
+    verifier_sandbox: str = "none"
+    verifier_sandbox_image: str = "life-graph-verifier:py3.12"
+    verifier_sandbox_cache_dir: str = ""  # cached project venvs; "" = ~/.cache/life-graph/...
+    verifier_sandbox_memory: str = "4g"
+    verifier_sandbox_cpus: str = "4"
+    # Where the claude_code driver itself executes. "none" runs it on the
+    # host as this process's user (scoped only by the CLI's own
+    # --allowedTools/--permission-mode). "docker" runs it in a container
+    # (life_graph/services/sandbox.py:run_driver) with the worktree mounted
+    # read-write, only its own OAuth token available (a throwaway copy, not
+    # the live ~/.claude), and no other host path visible. Unlike the
+    # verifier sandbox this needs network (the CLI calls the Anthropic API),
+    # so isolation is filesystem + capabilities, not network denial. With
+    # "docker", a missing daemon or image fails the dispatch rather than
+    # silently falling back to unsandboxed host execution.
+    driver_claude_sandbox: str = "none"
+    driver_claude_sandbox_image: str = "life-graph-claude-driver:latest"
+    driver_claude_sandbox_memory: str = "4g"
+    driver_claude_sandbox_cpus: str = "4"
+    # The CLI's own OAuth token file, staged into a throwaway copy for each
+    # sandboxed dispatch (life_graph/services/sandbox.py:stage_credentials).
+    # Never mounted live — see driver_claude_sandbox's docstring above.
+    driver_claude_code_creds_path: str = "~/.claude/.credentials.json"
 
     # ── Host Tools (run_command / file_read / file_write) ──
     # These tools execute against the host filesystem and shell. Every
