@@ -139,6 +139,7 @@ class WorkerSettings:
         "life_graph.workers.tasks.check_approval_timeouts",
         "life_graph.workers.tasks.sync_dev_task_prs",
         "life_graph.workers.tasks.run_nightly_dev_suggestions",
+        "life_graph.workers.tasks.learn_project_task",
         "life_graph.workers.tasks.send_approval_escalations",
         "life_graph.workers.tasks.run_daily_brief",
         "life_graph.workers.tasks.failure_pattern_mining",

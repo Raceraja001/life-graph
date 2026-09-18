@@ -420,6 +420,68 @@ class TestProjectSettings:
 
     @pytest.mark.asyncio
     @skip_on_db_error
+    async def test_learn_enqueues_a_job_instead_of_running_inline(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        """Mining a real repo's git history takes minutes; the endpoint must
+        not block on it — it validates the project and hands off to ARQ."""
+        created = await client.post(
+            "/api/v1/kernel/projects",
+            json={"name": f"test-project-learn-{uuid.uuid4().hex[:8]}", "path": str(Path.cwd())},
+        )
+        assert created.status_code == 201
+        project_id = created.json()["data"]["id"]
+
+        enqueued = {}
+
+        class _FakePool:
+            async def enqueue_job(self, name, *args):
+                enqueued["name"] = name
+                enqueued["args"] = args
+                return type("J", (), {"job_id": "job-123"})()
+
+            async def close(self):
+                pass
+
+        async def fake_create_pool(_settings):
+            return _FakePool()
+
+        monkeypatch.setattr("arq.create_pool", fake_create_pool)
+
+        response = await client.post(
+            f"/api/v1/kernel/projects/{project_id}/learn", json={"authors": ["me@example.com"]}
+        )
+
+        assert response.status_code == 202
+        assert response.json()["data"] == {"job_id": "job-123", "status": "queued"}
+        assert enqueued["name"] == "life_graph.workers.tasks.learn_project_task"
+        # tenant_id, project_id, authors — positional, matching the worker's signature
+        assert enqueued["args"][1] == project_id
+        assert enqueued["args"][2] == ["me@example.com"]
+
+        await client.delete(f"/api/v1/kernel/projects/{project_id}")
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_learn_missing_project_is_404_without_enqueueing(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        async def must_not_run(_settings):
+            raise AssertionError("must not enqueue for a project that doesn't exist")
+
+        monkeypatch.setattr("arq.create_pool", must_not_run)
+
+        response = await client.post(
+            f"/api/v1/kernel/projects/{uuid.uuid4()}/learn",
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
     async def test_register_outside_roots_is_refused(
         self,
         client: AsyncClient,

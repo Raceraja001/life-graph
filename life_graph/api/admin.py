@@ -857,11 +857,14 @@ class JobRunResponse(BaseModel):
 async def list_job_runs(
     limit: int = 20,
     tenant_id: str | None = None,
+    job_name: str | None = None,
 ):
-    """List recent background job runs, optionally filtered by tenant."""
+    """List recent background job runs, optionally filtered by tenant/name."""
     stmt = select(JobRun).order_by(JobRun.started_at.desc()).limit(limit)
     if tenant_id:
         stmt = stmt.where(JobRun.tenant_id == tenant_id)
+    if job_name:
+        stmt = stmt.where(JobRun.job_name == job_name)
 
     async with async_session() as session:
         result = await session.execute(stmt)

@@ -25,7 +25,6 @@ from life_graph.api.dependencies import (
     get_chief_router,
     get_notification_engine,
     get_persona_service,
-    get_preference_store,
     get_process_manager,
     get_project_registry,
     get_scheduler_service,
@@ -1290,20 +1289,29 @@ async def update_project(
 
 @router.post(
     "/projects/{project_id}/learn",
-    summary="Learn a project's conventions into preferences",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Learn a project's conventions into preferences (background job)",
 )
 async def learn_project(
     project_id: uuid.UUID,
     body: ProjectLearn | None = None,
     svc: Any = Depends(get_project_registry),
-    store: Any = Depends(get_preference_store),
 ):
     """Mine git history, config and code for conventions; store as preferences.
 
     Re-running refreshes: changed findings update in place, vanished ones are
     archived. Agents dispatched against this project receive them.
+
+    Mining a real repo's git history takes minutes (pydriller walks every
+    commit), so this only validates the project and enqueues the work —
+    it does not run inline. Poll ``GET /admin/jobs?tenant_id=...`` for a
+    ``job_name`` of ``"project_learn"`` to see it move
+    queued → running → success/failed, with the same result shape this
+    endpoint used to return inline now in that row's ``result``.
     """
-    from life_graph.services.project_learning import learn_project as learn
+    from arq import create_pool
+
+    from life_graph.workers.settings import parse_redis_settings
 
     tenant_id = get_current_tenant_id()
     project = await svc.get_by_id(tenant_id, str(project_id))
@@ -1312,8 +1320,19 @@ async def learn_project(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project {project_id} not found",
         )
-    result = await learn(store, tenant_id, project, authors=body.authors if body else None)
-    return success_response(data=result)
+
+    pool = await create_pool(parse_redis_settings())
+    try:
+        job = await pool.enqueue_job(
+            "life_graph.workers.tasks.learn_project_task",
+            tenant_id,
+            str(project_id),
+            body.authors if body else None,
+        )
+    finally:
+        await pool.close()
+
+    return success_response(data={"job_id": job.job_id if job else None, "status": "queued"})
 
 
 @router.delete(
