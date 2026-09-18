@@ -87,6 +87,8 @@ def _walk(root: Path):
     description=(
         "Read a source file with line numbers, one page at a time. Returns "
         "`next_start_line` when the file continues — call again with it to read on. "
+        "Pass `end_line` to stop at a specific line instead of paging to the character "
+        "cap (still capped by the same page size if the requested range is large). "
         "Paths may be relative to the project root."
     ),
     parameters_schema={
@@ -100,21 +102,31 @@ def _walk(root: Path):
                 "type": "integer",
                 "description": "1-based line to start at. Default 1.",
             },
+            "end_line": {
+                "type": "integer",
+                "description": "1-based line to stop at, inclusive. Default: page to the "
+                "character cap. Ignored if smaller than start_line.",
+            },
         },
         "required": ["path"],
     },
 )
-async def code_read(path: str, start_line: int = 1) -> str:
+async def code_read(path: str, start_line: int = 1, end_line: int | None = None) -> str:
     try:
         p = _resolve(path, "code_read")
         if not p.is_file():
             return json.dumps({"error": f"Not a file: {path}"})
         lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
         start = max(1, int(start_line))
+        stop = (
+            min(len(lines), int(end_line)) if end_line is not None and end_line >= start else None
+        )
         out: list[str] = []
         used = 0
         n = start
         while n <= len(lines):
+            if stop is not None and n > stop:
+                break
             row = f"{n}: {lines[n - 1]}"
             if used + len(row) + 1 > PAGE_CHARS and out:
                 break
@@ -126,7 +138,7 @@ async def code_read(path: str, start_line: int = 1) -> str:
                 "path": str(p),
                 "total_lines": len(lines),
                 "content": "\n".join(out),
-                "next_start_line": n if n <= len(lines) else None,
+                "next_start_line": n if n <= len(lines) and (stop is None or n <= stop) else None,
             }
         )
     except ToolDeniedError as exc:
