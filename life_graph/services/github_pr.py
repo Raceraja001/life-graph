@@ -309,6 +309,7 @@ async def merge_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
     pr = json.loads(out)
 
     if pr.get("state") == "MERGED":
+        await _sync_base_branch(repo, base_branch)
         return {
             "merged": True,
             "already": True,
@@ -369,9 +370,38 @@ async def merge_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
     if code == 0 and out:
         merge_commit = (json.loads(out).get("mergeCommit") or {}).get("oid")
     logger.info("Merged PR #%s (%s) as %s", number, branch, merge_commit)
+    await _sync_base_branch(repo, base_branch)
     return {
         "merged": True,
         "already": False,
         "merge_commit": merge_commit,
         "checks": len(rollup),
     }
+
+
+async def _sync_base_branch(repo: str | Path, base_branch: str) -> None:
+    """Fast-forward the local base branch to match origin after a merge.
+
+    Every dispatch clones its worktree from this local ref, not from GitHub
+    directly (``resolve_workdir`` branches off local ``base_branch``). Leaving
+    it behind here means every task dispatched after a merge is silently
+    built on a stale base until someone happens to ``git pull`` by hand —
+    missing files a just-merged PR added, and diffs computed against code
+    that no longer matches what is actually on GitHub. Best-effort: a sync
+    failure must not turn a successful merge into a reported failure.
+    """
+    code, current, _ = await _git(repo, "symbolic-ref", "--short", "-q", "HEAD")
+    code2, _, err2 = await _git(
+        repo, "fetch", "--quiet", "origin", f"{base_branch}:refs/remotes/origin/{base_branch}"
+    )
+    if code2 != 0:
+        logger.warning("Could not fetch %s after merge: %s", base_branch, err2[-200:])
+        return
+    if code == 0 and current == base_branch:
+        code3, _, err3 = await _git(repo, "merge", "--ff-only", f"origin/{base_branch}")
+    else:
+        code3, _, err3 = await _git(
+            repo, "update-ref", f"refs/heads/{base_branch}", f"refs/remotes/origin/{base_branch}"
+        )
+    if code3 != 0:
+        logger.warning("Could not fast-forward local %s after merge: %s", base_branch, err3[-200:])

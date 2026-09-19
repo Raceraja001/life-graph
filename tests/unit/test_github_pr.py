@@ -489,3 +489,80 @@ async def test_rejecting_merge_never_merges(monkeypatch):
     appr.kind = "driver_merge"
     out = await approvals_mod.ApprovalService(_Session(appr)).resolve("t", str(appr.id), "reject")
     assert out["status"] == "rejected"
+
+
+@pytest.fixture
+def real_merge_env(tmp_path, monkeypatch):
+    """Like ``setup``, but the stub ``gh pr merge`` actually lands the task
+    branch's commit on origin's master — standing in for GitHub squashing the
+    PR server-side — so a test can check whether the local clone notices.
+    """
+    from life_graph.config import settings
+
+    origin = tmp_path / "origin.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "master", str(origin))
+    repo = tmp_path / "root" / "repo"
+    repo.parent.mkdir()
+    git(tmp_path, "clone", "-q", str(origin), str(repo))
+    git(repo, "checkout", "-q", "-b", "master")
+    (repo / "f.txt").write_text("base\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "base")
+    git(repo, "push", "-q", "origin", "master")
+
+    branch = "lg/task-abcd1234"
+    git(repo, "branch", branch)
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-q", str(wt), branch)
+    (wt / "f.txt").write_text("agent change\n")
+    git(wt, "commit", "-qam", "agent change")
+    head = git(wt, "rev-parse", "HEAD")
+    git(repo, "worktree", "remove", "--force", str(wt))
+
+    calls = tmp_path / "gh_calls.jsonl"
+    gh = tmp_path / "gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, subprocess, sys\n"
+        f"open({str(calls)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:3] == ['pr', 'view']:\n"
+        f"    print(json.dumps({{'state': 'OPEN', 'title': 'Fix it', "
+        f"'headRefOid': {head!r}, 'headRefName': {branch!r}, "
+        f"'baseRefName': 'master', 'mergeable': 'MERGEABLE', 'isDraft': False, "
+        f"'statusCheckRollup': [], 'mergeCommit': None}})); sys.exit(0)\n"
+        "if sys.argv[1:3] == ['pr', 'merge']:\n"
+        # Land the branch on origin's master directly — standing in for what
+        # GitHub does server-side on a real squash merge.
+        f"    subprocess.run(['git', '-C', {str(repo)!r}, 'push', '-q', 'origin', "
+        f"{branch!r} + ':master'], check=True)\n"
+        f"    print(json.dumps({{'mergeCommit': {{'oid': {head!r}}}}})); sys.exit(0)\n"
+    )
+    gh.chmod(0o755)
+    monkeypatch.setattr(settings, "driver_gh_bin", str(gh))
+    monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path / "root"))
+
+    payload = {
+        "pr_url": "https://github.com/me/repo/pull/27",
+        "head_commit": head,
+        "branch": branch,
+        "base_branch": "master",
+        "repo_path": str(repo),
+        "instruction": "Fix it",
+    }
+    return SimpleNamespace(repo=repo, payload=payload, head=head)
+
+
+async def test_merge_fast_forwards_local_base_branch(real_merge_env):
+    """Regression test: a squash merge only happens on GitHub's servers, so
+    without this the local clone every future dispatch worktrees from stays
+    stuck on the pre-merge commit — the next task can't see files the PR
+    just added, and diffs are computed against stale code."""
+    before = git(real_merge_env.repo, "rev-parse", "master")
+
+    out = await github_pr.merge_pull_request(real_merge_env.payload)
+
+    assert out["merged"]
+    after = git(real_merge_env.repo, "rev-parse", "master")
+    assert after != before
+    assert after == real_merge_env.head
+    assert (real_merge_env.repo / "f.txt").read_text() == "agent change\n"
