@@ -16,7 +16,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.models.db import Decision, Prediction
@@ -26,6 +26,9 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+# Outcome of a prediction detected in a capture but not yet confirmed.
+SUGGESTED = "suggested"
 
 # ── Big-decision detection ─────────────────────────────────────────
 # High-importance signals (judgment-engine spec Story 6): money,
@@ -256,11 +259,16 @@ class JudgmentService:
         resolve_by: datetime | None = None,
         resolution_criteria: dict | None = None,
         capture_event_id: uuid.UUID | None = None,
+        suggested: bool = False,
     ) -> Prediction:
         """Create a prediction with confidence normalization.
 
         If confidence < 0.5, the statement is negated and confidence
         becomes 1 - original (e.g., 30% → 70% of "NOT: <statement>").
+
+        ``suggested=True`` stores it with outcome ``suggested``: detected in a
+        capture, not yet confirmed by the user. Suggestions are invisible to
+        calibration, expiry and default listings until ``accept_suggestion``.
 
         Args:
             tenant_id: Tenant scope.
@@ -293,22 +301,97 @@ class JudgmentService:
             resolve_by=resolve_by,
             resolution_criteria=resolution_criteria or {},
             capture_event_id=capture_event_id,
+            outcome=SUGGESTED if suggested else "pending",
         )
         self.session.add(prediction)
         await self.session.flush()
 
+        if not suggested:
+            await self._emit_created(prediction)
+        return prediction
+
+    async def accept_suggestion(
+        self,
+        tenant_id: str,
+        prediction_id: uuid.UUID,
+        *,
+        statement: str | None = None,
+        confidence: float | None = None,
+        resolve_by: datetime | None = None,
+        domain_tags: list[str] | None = None,
+    ) -> Prediction:
+        """Confirm a suggested prediction, optionally correcting it first.
+
+        Raises:
+            ValueError: If not found or not a suggestion.
+        """
+        prediction = await self._get_prediction(tenant_id, prediction_id)
+        if prediction.outcome != SUGGESTED:
+            raise ValueError(f"Prediction is '{prediction.outcome}', not a suggestion")
+        if statement:
+            prediction.statement = statement
+        if confidence is not None:
+            prediction.confidence = max(0.5, min(0.99, confidence))
+        if resolve_by is not None:
+            prediction.resolve_by = resolve_by
+        if domain_tags is not None:
+            prediction.domain_tags = domain_tags
+        prediction.outcome = "pending"
+        await self.session.flush()
+        await self._emit_created(prediction)
+        return prediction
+
+    async def dismiss_suggestion(self, tenant_id: str, prediction_id: uuid.UUID) -> None:
+        """Delete a suggested prediction. Real predictions are never deleted here.
+
+        Raises:
+            ValueError: If not found or not a suggestion.
+        """
+        prediction = await self._get_prediction(tenant_id, prediction_id)
+        if prediction.outcome != SUGGESTED:
+            raise ValueError(f"Prediction is '{prediction.outcome}', not a suggestion")
+        await self.session.delete(prediction)
+        await self.session.flush()
+
+    async def has_open_prediction(self, tenant_id: str, statement: str) -> bool:
+        """Whether a suggested or pending prediction with this statement exists."""
+        result = await self.session.execute(
+            select(Prediction.id)
+            .where(
+                Prediction.tenant_id == tenant_id,
+                Prediction.outcome.in_([SUGGESTED, "pending"]),
+                func.lower(Prediction.statement) == statement.lower(),
+            )
+            .limit(1)
+        )
+        return result.first() is not None
+
+    async def _get_prediction(self, tenant_id: str, prediction_id: uuid.UUID) -> Prediction:
+        result = await self.session.execute(
+            select(Prediction).where(
+                Prediction.tenant_id == tenant_id,
+                Prediction.id == prediction_id,
+            )
+        )
+        prediction = result.scalars().first()
+        if prediction is None:
+            raise ValueError("Prediction not found")
+        return prediction
+
+    async def _emit_created(self, prediction: Prediction) -> None:
         if self.event_bus:
             await self.event_bus.emit(
                 EventType.PREDICTION_CREATED,
                 {
                     "prediction_id": str(prediction.id),
-                    "tenant_id": tenant_id,
-                    "statement": statement,
-                    "confidence": confidence,
-                    "decision_id": str(decision_id) if decision_id else None,
+                    "tenant_id": prediction.tenant_id,
+                    "statement": prediction.statement,
+                    "confidence": prediction.confidence,
+                    "decision_id": (
+                        str(prediction.decision_id) if prediction.decision_id else None
+                    ),
                 },
             )
-        return prediction
 
     async def list_predictions(
         self,
@@ -322,6 +405,7 @@ class JudgmentService:
         Args:
             tenant_id: Tenant scope.
             status: Filter by outcome status (pending, correct, etc.).
+                Suggestions are listed only when asked for by name.
             due_before: Only predictions due before this date.
             limit: Maximum rows to return.
 
@@ -336,6 +420,8 @@ class JudgmentService:
         )
         if status:
             stmt = stmt.where(Prediction.outcome == status)
+        else:
+            stmt = stmt.where(Prediction.outcome != SUGGESTED)
         if due_before:
             stmt = stmt.where(Prediction.resolve_by <= due_before)
         result = await self.session.execute(stmt)

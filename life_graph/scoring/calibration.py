@@ -193,6 +193,36 @@ def detect_bias(predictions: list[dict], domain: str | None = None) -> list[dict
     return findings
 
 
+def bucket_bias(buckets: list[BucketResult], domain: str | None = None) -> list[dict]:
+    """Flag confidence buckets where claimed and actual diverge.
+
+    ``detect_bias`` only looks at the average over every prediction, which
+    hides the common shape of miscalibration: fine at 60%, badly overconfident
+    at 90%. A bucket is flagged when it holds at least MIN_SAMPLES_FOR_BIAS
+    predictions and its hit rate misses its mean confidence by at least
+    BIAS_GAP_THRESHOLD.
+
+    Returns list of {kind, direction, domain, bucket, claimed, actual, n, gap}
+    """
+    findings: list[dict] = []
+    for b in buckets:
+        if b.count < MIN_SAMPLES_FOR_BIAS or abs(b.gap) < BIAS_GAP_THRESHOLD:
+            continue
+        findings.append(
+            {
+                "kind": "bucket",
+                "direction": "underconfident" if b.gap > 0 else "overconfident",
+                "domain": domain or "all",
+                "bucket": b.range_label,
+                "claimed": round(b.avg_confidence, 3),
+                "actual": round(b.hit_rate, 3),
+                "n": b.count,
+                "gap": round(b.gap, 3),
+            }
+        )
+    return findings
+
+
 def full_calibration(
     predictions: list[dict],
     domain: str | None = None,
@@ -206,14 +236,15 @@ def full_calibration(
     resolved = [p for p in predictions if p.get("outcome") in ("correct", "incorrect")]
     ambiguous = [p for p in predictions if p.get("outcome") == "ambiguous"]
     sufficient = len(resolved) >= MIN_RESOLVED_FOR_CALIBRATION
+    buckets = bucket_analysis(resolved) if sufficient else []
 
     return CalibrationResult(
         resolved_count=len(resolved),
         ambiguous_count=len(ambiguous),
         brier_score=brier_score(resolved) if sufficient else None,
-        buckets=bucket_analysis(resolved) if sufficient else [],
+        buckets=buckets,
         estimate_multiplier=estimate_multiplier(resolved),
-        bias_findings=detect_bias(resolved, domain),
+        bias_findings=detect_bias(resolved, domain) + bucket_bias(buckets, domain),
         sufficient_data=sufficient,
     )
 

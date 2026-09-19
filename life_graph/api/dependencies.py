@@ -343,11 +343,11 @@ def get_prompt_version_service():
 
 @lru_cache(maxsize=1)
 def get_optimizer_service():
-    """Return the singleton DSPy optimizer service."""
+    """Return the singleton few-shot prompt optimizer."""
     from life_graph.config import settings
-    from life_graph.self_improving.optimizer_service import DSPyOptimizerService
+    from life_graph.self_improving.optimizer_service import FewShotOptimizerService
 
-    return DSPyOptimizerService(
+    return FewShotOptimizerService(
         session_factory=async_session,
         eval_service=get_eval_service(),
         prompt_version_service=get_prompt_version_service(),

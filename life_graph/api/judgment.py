@@ -9,6 +9,7 @@ Tags: [judgment-engine]
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from uuid import UUID
@@ -19,19 +20,21 @@ from life_graph.api.responses import success_response
 from life_graph.core.events import event_bus
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import (
-    CalibrationResponse,
     ChallengeRequest,
     ChallengeResolveRequest,
     ChallengeResponse,
     DecisionCreate,
     DecisionResponse,
     JudgmentStatsResponse,
+    PredictionAcceptRequest,
     PredictionCreate,
     PredictionResolveRequest,
     PredictionResponse,
 )
 from life_graph.services.judgment import JudgmentService
 from life_graph.storage.database import async_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/judgment", tags=["judgment-engine"])
 
@@ -228,6 +231,53 @@ async def list_predictions(
     )
 
 
+@router.post(
+    "/predictions/{prediction_id}/accept",
+    summary="Accept a suggested prediction",
+)
+async def accept_prediction(
+    prediction_id: UUID,
+    body: PredictionAcceptRequest,
+    svc: JudgmentService = Depends(_get_judgment_service),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Confirm a prediction detected in a capture, optionally correcting it.
+
+    Until accepted, a suggestion is excluded from calibration and expiry.
+    """
+    try:
+        prediction = await svc.accept_suggestion(
+            tenant_id,
+            prediction_id,
+            statement=body.statement,
+            confidence=body.confidence,
+            resolve_by=body.resolve_by,
+            domain_tags=body.domain_tags,
+        )
+    except ValueError as exc:
+        code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    return success_response(data=PredictionResponse.model_validate(prediction))
+
+
+@router.post(
+    "/predictions/{prediction_id}/dismiss",
+    summary="Dismiss a suggested prediction",
+)
+async def dismiss_prediction(
+    prediction_id: UUID,
+    svc: JudgmentService = Depends(_get_judgment_service),
+    tenant_id: str = Depends(get_current_tenant_id),
+):
+    """Delete a suggestion that isn't really a prediction."""
+    try:
+        await svc.dismiss_suggestion(tenant_id, prediction_id)
+    except ValueError as exc:
+        code = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+    return success_response(data={"id": str(prediction_id), "dismissed": True})
+
+
 # ── Prediction Resolution ─────────────────────────────────────
 
 
@@ -244,6 +294,8 @@ async def resolve_prediction(
 
     Sets the prediction as correct, incorrect, or ambiguous.
     Resolutions are immutable — once resolved, cannot be changed.
+    Today's calibration snapshots are refreshed afterwards, so the advisor
+    and agents see the new outcome without waiting for the nightly run.
     """
     from life_graph.services.outcome_resolver import OutcomeResolver
 
@@ -264,7 +316,20 @@ async def resolve_prediction(
                 raise HTTPException(status_code=404, detail=msg) from exc
             raise HTTPException(status_code=400, detail=msg) from exc
 
+    await _refresh_calibration(tenant_id)
     return success_response(data=PredictionResponse.model_validate(prediction))
+
+
+async def _refresh_calibration(tenant_id: str) -> None:
+    """Best-effort snapshot refresh; the resolution itself is already committed."""
+    from life_graph.services.calibration import CalibrationService
+
+    try:
+        async with async_session() as session:
+            await CalibrationService(session, event_bus).recompute(tenant_id)
+            await session.commit()
+    except Exception:
+        logger.warning("Calibration refresh failed for %s", tenant_id, exc_info=True)
 
 
 # ── Calibration Routes ────────────────────────────────────────
@@ -276,34 +341,21 @@ async def resolve_prediction(
 )
 async def get_calibration(
     tenant_id: str = Depends(get_current_tenant_id),
-    domain: str | None = Query(None, description="Filter by domain"),
+    domain: str | None = Query(None, description="Domain tag; omitted means overall"),
     window: int = Query(90, ge=1, le=365, description="Window in days"),
 ):
-    """Get the latest calibration snapshot for the tenant.
+    """Current calibration, computed live from resolved predictions.
 
-    Returns Brier scores, bucket analysis, and bias findings
-    for the specified domain and time window.
+    Below 20 resolved predictions ``status`` is ``insufficient_data`` and the
+    response carries progress (``resolved_count`` of ``required``) instead
+    of a curve. Otherwise it has the Brier score, buckets, bias findings,
+    and a ``trend`` against the preceding window when that had enough data.
     """
-    from sqlalchemy import select
-
-    from life_graph.models.db import CalibrationSnapshot
+    from life_graph.services.calibration import CalibrationService
 
     async with async_session() as session:
-        stmt = (
-            select(CalibrationSnapshot)
-            .where(CalibrationSnapshot.tenant_id == tenant_id)
-            .order_by(CalibrationSnapshot.computed_at.desc())
-            .limit(1)
-        )
-        if domain:
-            stmt = stmt.where(CalibrationSnapshot.domain == domain)
-        result = await session.execute(stmt)
-        snap = result.scalars().first()
-
-    if not snap:
-        return success_response(data=None)
-
-    return success_response(data=CalibrationResponse.model_validate(snap))
+        report = await CalibrationService(session).report(tenant_id, domain, window)
+    return success_response(data=report)
 
 
 @router.get(
@@ -312,35 +364,41 @@ async def get_calibration(
 )
 async def get_calibration_curve(
     tenant_id: str = Depends(get_current_tenant_id),
-    domain: str | None = Query(None, description="Filter by domain"),
+    domain: str | None = Query(None, description="Domain tag; omitted means overall"),
+    window: int = Query(90, ge=1, le=365, description="Window in days"),
 ):
-    """Get bucket data for plotting a calibration curve.
+    """Bucket data for plotting claimed vs actual, with the identity line.
 
-    Returns the buckets array from the latest calibration snapshot,
-    suitable for rendering a calibration chart.
+    ``buckets`` is empty until there is enough data for a curve.
     """
-    from sqlalchemy import select
-
-    from life_graph.models.db import CalibrationSnapshot
+    from life_graph.services.calibration import CalibrationService
 
     async with async_session() as session:
-        stmt = (
-            select(CalibrationSnapshot)
-            .where(CalibrationSnapshot.tenant_id == tenant_id)
-            .order_by(CalibrationSnapshot.computed_at.desc())
-            .limit(1)
-        )
-        if domain:
-            stmt = stmt.where(CalibrationSnapshot.domain == domain)
-        result = await session.execute(stmt)
-        snap = result.scalars().first()
-
+        report = await CalibrationService(session).report(tenant_id, domain, window)
     return success_response(
         data={
-            "buckets": snap.buckets if snap else [],
-            "domain": domain,
+            "domain": report["domain"],
+            "buckets": report["buckets"],
+            "identity": [[0.5, 0.5], [1.0, 1.0]],
         }
     )
+
+
+@router.post(
+    "/calibration/recompute",
+    summary="Recompute calibration snapshots now",
+)
+async def recompute_calibration(
+    tenant_id: str = Depends(get_current_tenant_id),
+    window: int = Query(90, ge=1, le=365, description="Window in days"),
+):
+    """Write today's snapshots (overall + per domain) without waiting for the night."""
+    from life_graph.services.calibration import CalibrationService
+
+    async with async_session() as session:
+        summary = await CalibrationService(session, event_bus).recompute(tenant_id, window)
+        await session.commit()
+    return success_response(data=summary)
 
 
 # ── Stats Route ───────────────────────────────────────────────
@@ -361,11 +419,9 @@ async def get_stats(
     from sqlalchemy import func
     from sqlalchemy import select as sa_select
 
-    from life_graph.models.db import (
-        CalibrationSnapshot,
-        Decision,
-        Prediction,
-    )
+    from life_graph.models.db import Decision, Prediction
+    from life_graph.services.calibration import RESOLVED_OUTCOMES, latest_snapshot
+    from life_graph.services.judgment import SUGGESTED
 
     async with async_session() as session:
         # Total decisions
@@ -385,35 +441,42 @@ async def get_stats(
         )
         pending_predictions = pending.scalar() or 0
 
-        # Resolved predictions
+        # Resolved predictions. "!= pending" also counted unconfirmed
+        # suggestions as resolved.
         resolved = await session.execute(
             sa_select(func.count())
             .select_from(Prediction)
             .where(
                 Prediction.tenant_id == tenant_id,
-                Prediction.outcome != "pending",
+                Prediction.outcome.in_(RESOLVED_OUTCOMES),
             )
         )
         resolved_predictions = resolved.scalar() or 0
 
-        # Average Brier score from latest snapshots
-        brier = await session.execute(
-            sa_select(func.avg(CalibrationSnapshot.brier_score)).where(
-                CalibrationSnapshot.tenant_id == tenant_id,
-                CalibrationSnapshot.brier_score.isnot(None),
+        suggested = await session.execute(
+            sa_select(func.count())
+            .select_from(Prediction)
+            .where(
+                Prediction.tenant_id == tenant_id,
+                Prediction.outcome == SUGGESTED,
             )
         )
-        avg_brier = brier.scalar()
+        suggested_predictions = suggested.scalar() or 0
 
-    sufficient = resolved_predictions >= 10
+        # The current overall Brier score. This used to average every snapshot
+        # ever written, across domains and days, which is not a score of
+        # anything.
+        snap = await latest_snapshot(session, tenant_id)
+        brier = snap.brier_score if snap else None
 
     return success_response(
         data=JudgmentStatsResponse(
             total_decisions=total_decisions,
             pending_predictions=pending_predictions,
             resolved_predictions=resolved_predictions,
-            avg_brier=(round(avg_brier, 4) if avg_brier is not None else None),
-            sufficient_data=sufficient,
+            suggested_predictions=suggested_predictions,
+            avg_brier=(round(brier, 4) if brier is not None else None),
+            sufficient_data=snap is not None,
         )
     )
 

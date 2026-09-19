@@ -69,9 +69,13 @@ fail() {
 if [ $# -ge 1 ]; then
     DUMP_FILE=$1
 else
-    DUMP_FILE=$(ls -t "$BACKUP_DIR"/life_graph_*.dump 2>/dev/null | head -1 || true)
+    # Newest non-empty dump: a failed pg_dump used to leave a 0-byte file that
+    # sorted first and made the drill test an empty file.
+    DUMP_FILE=$(find "$BACKUP_DIR" -maxdepth 1 -name 'life_graph_*.dump' -size +0 \
+        -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2- || true)
 fi
 [ -n "${DUMP_FILE:-}" ] && [ -f "$DUMP_FILE" ] || fail "no backup dump found in $BACKUP_DIR"
+[ -s "$DUMP_FILE" ] || fail "backup dump is empty: $DUMP_FILE"
 
 DUMP_AGE_HOURS=$(( ( $(date +%s) - $(date -r "$DUMP_FILE" +%s) ) / 3600 ))
 log "Verifying dump: $DUMP_FILE (age: ${DUMP_AGE_HOURS}h)"

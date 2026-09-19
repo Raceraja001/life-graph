@@ -242,6 +242,13 @@ async def run_nightly_self_heal(ctx: dict) -> dict:
     Runs at 03:30 UTC daily. Queries distinct tenant_ids from
     eval suites and runs the self-healing pipeline for each.
     """
+    from life_graph.config import settings
+
+    if not settings.self_improving_enabled:
+        # Traces still accumulate (self_improving_trace_enabled); only the
+        # evaluate-and-optimize pass is off.
+        return {"skipped": "self_improving_enabled=false"}
+
     logger.info("Starting nightly self-heal for all tenants")
 
     from life_graph.api.dependencies import (
@@ -249,16 +256,17 @@ async def run_nightly_self_heal(ctx: dict) -> dict:
         get_optimizer_service,
         get_prompt_version_service,
     )
-    from life_graph.self_improving.models import EvalSuite
+    from life_graph.self_improving.models import ExtractionTrace
     from life_graph.self_improving.nightly_cron import nightly_self_heal
 
-    # Find all tenants with eval suites
+    # Tenants with extraction traces — the job builds their suites itself, so
+    # selecting tenants that already *have* suites would never start it.
     async with async_session() as session:
-        result = await session.execute(select(EvalSuite.tenant_id).distinct())
+        result = await session.execute(select(ExtractionTrace.tenant_id).distinct())
         tenant_ids = [row[0] for row in result.fetchall()]
 
     if not tenant_ids:
-        logger.info("No tenants with eval suites found, skipping self-heal")
+        logger.info("No tenants with extraction traces yet, skipping self-heal")
         return {"tenants": 0}
 
     logger.info("Running self-heal for %d tenants: %s", len(tenant_ids), tenant_ids)
@@ -761,6 +769,43 @@ async def run_daily_brief(ctx: dict) -> dict:
 
     logger.info("Daily brief run: %d/%d tenants briefed", composed, len(tenant_ids))
     return {"tenants": len(tenant_ids), "composed": composed, "results": results}
+
+
+# ── Judgment Engine: Nightly Recalibration ───────────────────────────────
+
+
+async def run_nightly_calibration(ctx: dict) -> dict:
+    """Nightly cron: write calibration snapshots for every tenant with outcomes.
+
+    Pure math over resolved predictions, no LLM. A tenant below 20 resolved
+    predictions gets no snapshot (the API reports progress instead). Nothing
+    ran this before, so ``calibration_snapshots`` stayed empty and the
+    advisor's "your calibration" section always said there was no data.
+    """
+    from life_graph.core.events import event_bus
+    from life_graph.models.db import Prediction
+    from life_graph.services.calibration import RESOLVED_OUTCOMES, CalibrationService
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Prediction.tenant_id).where(Prediction.outcome.in_(RESOLVED_OUTCOMES)).distinct()
+        )
+        tenant_ids = [row[0] for row in result.fetchall()]
+
+    results: dict[str, dict] = {}
+    for tid in tenant_ids:
+        try:
+            set_tenant_context(tid, "system")
+            async with async_session() as session:
+                results[tid] = await CalibrationService(session, event_bus).recompute(tid)
+                await session.commit()
+        except Exception:
+            logger.exception("Calibration failed for tenant %s", tid)
+            results[tid] = {"status": "error"}
+
+    written = sum(len(r.get("written", [])) for r in results.values())
+    logger.info("Nightly calibration: %d tenants, %d snapshots", len(tenant_ids), written)
+    return {"tenants": len(tenant_ids), "snapshots": written, "results": results}
 
 
 # ── Judgment Engine: Monthly Failure-Pattern Mining (Phase H) ────────────

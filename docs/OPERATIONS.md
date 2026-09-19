@@ -11,6 +11,18 @@ The `backup` sidecar service in `docker-compose.production.yml` runs:
 |-----|----------|--------|-------------|
 | Nightly backup | 02:00 UTC daily | `scripts/backup.sh` | `job_runs` row, `job_name='backup'` |
 | Restore drill | Sunday 06:00 UTC | `scripts/verify_restore.sh` | `job_runs` row, `job_name='restore_drill'` |
+| Backup retry | every 15 min after a failure (`BACKUP_RETRY_MINUTES`) | `scripts/backup.sh` | `job_name='backup'` |
+| Off-site catch-up | hourly while `.offsite_pending` exists (`OFFSITE_RETRY_MINUTES`) | `scripts/backup.sh --offsite-only` | `job_name='backup_offsite'` |
+
+Every run first waits for the database (`pg_isready`, up to `DB_WAIT_SECONDS`, default 600).
+Docker's restart policy starts the sidecar at boot independently of compose's
+`depends_on`, so without this wait the backup at container start ran before Postgres
+was up — or before the compose network resolved its hostname — and was lost. A backup
+at container start that falls inside `BACKUP_HOUR` counts as that day's backup.
+
+Dumps and MinIO archives are written as `*.partial` and renamed only on success, so a
+failed run leaves no empty file behind; the restore drill also verifies the newest
+*non-empty* dump.
 
 The sidecar reuses the postgres image (`Dockerfile.postgres`) so `pg_dump`/`pg_restore`
 always match the server version (PG16). Dumps land in the `backup_data` volume

@@ -1,6 +1,8 @@
 # Personal Model Tuning — Local Models That Learn From Your Corrections
 
-> **Status: Spec'd, not built.** Drafted 2026-09-15. Nothing described here exists in the code yet; Phase 0 is the first build step.
+> **Status: Spec'd, not built** (LoRA phases). Drafted 2026-09-15.
+>
+> **Update 2026-09-18:** Phases 0–2 were delivered by the repair of the Era 5 self-improvement loop (see `era5-self-improving.md`), reusing its tables instead of adding new ones: extraction traces and review-derived labels (`extraction_traces`, `self_improving/suite_builder.py`), a held-out eval with `fact_set_f1`, and few-shot candidates with a deploy gate (`self_improving/optimizer_service.py`). Differences from this design: labels are read from memory status at suite-build time rather than written to `corrections`; the split is 80/20, not 90/10; deploys are automatic behind the gate (the user's choice), with a notification and a one-call undo. Phases 3–4 (local LoRA training and its weekly cycle) remain unbuilt and would build on that data.
 
 > **Purpose**: Make Life Graph's local models measurably better at *this user's* recurring jobs — starting with capture extraction — by turning the approve / reject / edit decisions the user already makes into training data, then improving the local model (few-shot first, LoRA fine-tuning second) inside a loop that only promotes a new model when it beats the current one on held-out examples **and** the user approves it.
 >

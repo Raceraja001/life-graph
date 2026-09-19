@@ -314,26 +314,20 @@ class ContextPacketBuilder:
         """Load the latest calibration snapshot for bias awareness.
 
         Returns:
-            Dict with brier_score, bias_findings, estimate_multiplier.
+            Dict with brier_score and bias_findings. The estimate multiplier
+            is left out: it is meant for time estimates (actual/predicted
+            duration), which are not recorded, so the value computed from
+            yes/no outcomes would mislead an agent planning work.
         """
         try:
-            from life_graph.models.db import CalibrationSnapshot
+            from life_graph.services.calibration import latest_snapshot
 
-            result = await session.execute(
-                select(CalibrationSnapshot)
-                .where(
-                    CalibrationSnapshot.tenant_id == tenant_id,
-                )
-                .order_by(CalibrationSnapshot.computed_at.desc())
-                .limit(1)
-            )
-            snapshot = result.scalar_one_or_none()
+            snapshot = await latest_snapshot(session, tenant_id)
             if not snapshot:
                 return {}
 
             return {
                 "brier_score": snapshot.brier_score,
-                "estimate_multiplier": snapshot.estimate_multiplier,
                 "bias_findings": snapshot.bias_findings,
             }
         except Exception:

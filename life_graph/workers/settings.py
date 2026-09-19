@@ -143,6 +143,7 @@ class WorkerSettings:
         "life_graph.workers.tasks.send_approval_escalations",
         "life_graph.workers.tasks.run_daily_brief",
         "life_graph.workers.tasks.failure_pattern_mining",
+        "life_graph.workers.tasks.run_nightly_calibration",
         "life_graph.workers.ingest_capture.ingest_capture_text",
         "life_graph.workers.distill.distill_conversation",
         "life_graph.workers.distill.distill_idle_conversations",
@@ -182,6 +183,9 @@ class WorkerSettings:
             hour=3,
             minute=30,
             run_at_startup=False,
+            # A baseline plus N candidates, each an eval over the held-out
+            # cases on the local model — well past the 10-minute default.
+            timeout=2 * 60 * 60,
         ),
         # ── Watcher Framework (Era 6) ────────────────────
         cron(
@@ -306,6 +310,13 @@ class WorkerSettings:
             "life_graph.workers.tasks.run_daily_brief",
             hour=settings.brief_hour_utc,
             minute=0,
+            run_at_startup=False,
+        ),
+        # ── Judgment Engine: nightly recalibration ──
+        cron(
+            "life_graph.workers.tasks.run_nightly_calibration",
+            hour=4,
+            minute=15,
             run_at_startup=False,
         ),
         # ── Judgment Engine: Monthly Failure-Pattern Mining (Phase H) ──

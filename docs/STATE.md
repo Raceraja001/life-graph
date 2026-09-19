@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
+Generated `2026-09-19 05:55 UTC` from `unknown` @ `unknown`
 
 ---
 
@@ -16,23 +16,57 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 
 | | |
 |---|---|
-| HTTP operations | **247** across 210 paths, 37 tags |
-| Database tables | **66** |
-| Migrations | **37** (head: `037_telegram_bridge`) |
+| HTTP operations | **258** across 219 paths, 37 tags |
+| Database tables | **67** |
+| Migrations | **38** (head: `038_extraction_traces`) |
 | Event types | **77** |
-| Built-in personas | **13** |
+| Built-in personas | **16** |
 | Agent tools | **13** |
-| Scheduled jobs | **15** |
-| Config settings | **149** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2073** in 214 files |
+| Scheduled jobs | **18** |
+| Config settings | **168** (prefix `LIFE_GRAPH_`) |
+| Test functions | **2283** in 238 files |
 | Dashboard pages | **18** |
-| Python | 287 files, 68,527 lines |
+| Python | 301 files, 74,085 lines |
 
 ---
 
 ## HTTP API
 
-247 operations, grouped by OpenAPI tag.
+258 operations, grouped by OpenAPI tag.
+
+### `kernel` — 29
+
+| Method | Path | Summary |
+|---|---|---|
+| POST | `/api/v1/kernel/chat/stream` | Stream a persona chat response (SSE) |
+| POST | `/api/v1/kernel/classify` | Classify intent without routing |
+| GET | `/api/v1/kernel/models` | List available LLM models for the persona picker |
+| GET | `/api/v1/kernel/notifications` | List notifications |
+| POST | `/api/v1/kernel/notifications/read-all` | Mark all notifications as read |
+| PATCH | `/api/v1/kernel/notifications/{notification_id}/read` | Mark notification as read |
+| GET | `/api/v1/kernel/personas` | List all personas for the current tenant |
+| POST | `/api/v1/kernel/personas` | Create a new agent persona |
+| DELETE | `/api/v1/kernel/personas/{persona_id}` | Deactivate (soft-delete) a persona |
+| GET | `/api/v1/kernel/personas/{persona_id}` | Get full persona details |
+| PATCH | `/api/v1/kernel/personas/{persona_id}` | Update a persona |
+| GET | `/api/v1/kernel/projects` | List registered projects |
+| POST | `/api/v1/kernel/projects` | Register a project codebase |
+| DELETE | `/api/v1/kernel/projects/{project_id}` | Remove a project |
+| GET | `/api/v1/kernel/projects/{project_id}` | Get project details |
+| PATCH | `/api/v1/kernel/projects/{project_id}` | Update project settings |
+| POST | `/api/v1/kernel/projects/{project_id}/learn` | Learn a project's conventions into preferences (background job) |
+| POST | `/api/v1/kernel/projects/{project_id}/scan` | Re-scan a project |
+| POST | `/api/v1/kernel/route` | Route a message to the best agent |
+| GET | `/api/v1/kernel/schedules` | List scheduled jobs |
+| POST | `/api/v1/kernel/schedules` | Create a scheduled job |
+| DELETE | `/api/v1/kernel/schedules/{schedule_id}` | Delete (deactivate) a scheduled job |
+| GET | `/api/v1/kernel/schedules/{schedule_id}` | Get schedule details |
+| PATCH | `/api/v1/kernel/schedules/{schedule_id}` | Update a scheduled job |
+| GET | `/api/v1/kernel/sessions` | List routing sessions |
+| GET | `/api/v1/kernel/tasks` | List agent tasks with optional filters |
+| POST | `/api/v1/kernel/tasks` | Create and queue a new agent task |
+| GET | `/api/v1/kernel/tasks/{task_id}` | Get full task details |
+| POST | `/api/v1/kernel/tasks/{task_id}/cancel` | Cancel a running task |
 
 ### `autonomy` — 28
 
@@ -67,37 +101,33 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 | GET | `/api/v1/autonomy/trust/scores` | List Scores |
 | GET | `/api/v1/autonomy/trust/scores/{score_id}` | Get Score |
 
-### `kernel` — 27
+### `self-improving` — 23
 
 | Method | Path | Summary |
 |---|---|---|
-| POST | `/api/v1/kernel/chat/stream` | Stream a persona chat response (SSE) |
-| POST | `/api/v1/kernel/classify` | Classify intent without routing |
-| GET | `/api/v1/kernel/models` | List available LLM models for the persona picker |
-| GET | `/api/v1/kernel/notifications` | List notifications |
-| POST | `/api/v1/kernel/notifications/read-all` | Mark all notifications as read |
-| PATCH | `/api/v1/kernel/notifications/{notification_id}/read` | Mark notification as read |
-| GET | `/api/v1/kernel/personas` | List all personas for the current tenant |
-| POST | `/api/v1/kernel/personas` | Create a new agent persona |
-| DELETE | `/api/v1/kernel/personas/{persona_id}` | Deactivate (soft-delete) a persona |
-| GET | `/api/v1/kernel/personas/{persona_id}` | Get full persona details |
-| PATCH | `/api/v1/kernel/personas/{persona_id}` | Update a persona |
-| GET | `/api/v1/kernel/projects` | List registered projects |
-| POST | `/api/v1/kernel/projects` | Register a project codebase |
-| DELETE | `/api/v1/kernel/projects/{project_id}` | Remove a project |
-| GET | `/api/v1/kernel/projects/{project_id}` | Get project details |
-| POST | `/api/v1/kernel/projects/{project_id}/scan` | Re-scan a project |
-| POST | `/api/v1/kernel/route` | Route a message to the best agent |
-| GET | `/api/v1/kernel/schedules` | List scheduled jobs |
-| POST | `/api/v1/kernel/schedules` | Create a scheduled job |
-| DELETE | `/api/v1/kernel/schedules/{schedule_id}` | Delete (deactivate) a scheduled job |
-| GET | `/api/v1/kernel/schedules/{schedule_id}` | Get schedule details |
-| PATCH | `/api/v1/kernel/schedules/{schedule_id}` | Update a scheduled job |
-| GET | `/api/v1/kernel/sessions` | List routing sessions |
-| GET | `/api/v1/kernel/tasks` | List agent tasks with optional filters |
-| POST | `/api/v1/kernel/tasks` | Create and queue a new agent task |
-| GET | `/api/v1/kernel/tasks/{task_id}` | Get full task details |
-| POST | `/api/v1/kernel/tasks/{task_id}/cancel` | Cancel a running task |
+| GET | `/api/v1/self-improving/dashboard/accuracy-trends` | Accuracy trends over time |
+| GET | `/api/v1/self-improving/dashboard/auto-fixes` | Recent auto-fixes |
+| GET | `/api/v1/self-improving/dashboard/cost-trends` | Eval cost trends |
+| GET | `/api/v1/self-improving/dashboard/overview` | Dashboard overview |
+| GET | `/api/v1/self-improving/dashboard/pending-reviews` | Pending optimization reviews |
+| GET | `/api/v1/self-improving/dashboard/per-task-accuracy` | Per-task accuracy with status |
+| GET | `/api/v1/self-improving/eval-runs/{run_id}` | Get eval run with results |
+| GET | `/api/v1/self-improving/eval-runs/{run_id}/failures` | Failure analysis for eval run |
+| GET | `/api/v1/self-improving/eval-suites` | List eval suites |
+| POST | `/api/v1/self-improving/eval-suites` | Create an eval suite |
+| POST | `/api/v1/self-improving/eval-suites/{suite_id}/cases` | Add eval case to suite |
+| POST | `/api/v1/self-improving/eval-suites/{suite_id}/cases/bulk` | Bulk import eval cases |
+| POST | `/api/v1/self-improving/eval-suites/{suite_id}/run` | Trigger eval run |
+| POST | `/api/v1/self-improving/extraction/sync` | Rebuild the extraction eval suite from reviews now |
+| GET | `/api/v1/self-improving/optimization-runs/{run_id}` | Get optimization run details |
+| POST | `/api/v1/self-improving/optimization-runs/{run_id}/review` | Approve or reject an optimization |
+| POST | `/api/v1/self-improving/optimize/{suite_id}` | Manually trigger optimization |
+| GET | `/api/v1/self-improving/prompt-versions` | List prompt versions |
+| POST | `/api/v1/self-improving/prompt-versions` | Create prompt version |
+| POST | `/api/v1/self-improving/prompt-versions/deactivate` | Return a task to its built-in prompt |
+| POST | `/api/v1/self-improving/prompt-versions/{version_id}/activate` | Activate a prompt version |
+| POST | `/api/v1/self-improving/prompt-versions/{version_id}/rollback` | Rollback to a previous prompt version |
+| GET | `/api/v1/self-improving/status` | How much the loop has to learn from |
 
 ### `admin` — 20
 
@@ -124,30 +154,24 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 | DELETE | `/api/v1/admin/webhooks/{webhook_id}` | Delete a webhook |
 | POST | `/api/v1/admin/webhooks/{webhook_id}/test` | Test a webhook |
 
-### `self-improving` — 20
+### `judgment-engine` — 14
 
 | Method | Path | Summary |
 |---|---|---|
-| GET | `/api/v1/self-improving/dashboard/accuracy-trends` | Accuracy trends over time |
-| GET | `/api/v1/self-improving/dashboard/auto-fixes` | Recent auto-fixes |
-| GET | `/api/v1/self-improving/dashboard/cost-trends` | Eval cost trends |
-| GET | `/api/v1/self-improving/dashboard/overview` | Dashboard overview |
-| GET | `/api/v1/self-improving/dashboard/pending-reviews` | Pending optimization reviews |
-| GET | `/api/v1/self-improving/dashboard/per-task-accuracy` | Per-task accuracy with status |
-| GET | `/api/v1/self-improving/eval-runs/{run_id}` | Get eval run with results |
-| GET | `/api/v1/self-improving/eval-runs/{run_id}/failures` | Failure analysis for eval run |
-| GET | `/api/v1/self-improving/eval-suites` | List eval suites |
-| POST | `/api/v1/self-improving/eval-suites` | Create an eval suite |
-| POST | `/api/v1/self-improving/eval-suites/{suite_id}/cases` | Add eval case to suite |
-| POST | `/api/v1/self-improving/eval-suites/{suite_id}/cases/bulk` | Bulk import eval cases |
-| POST | `/api/v1/self-improving/eval-suites/{suite_id}/run` | Trigger eval run |
-| GET | `/api/v1/self-improving/optimization-runs/{run_id}` | Get optimization run details |
-| POST | `/api/v1/self-improving/optimization-runs/{run_id}/review` | Approve or reject an optimization |
-| POST | `/api/v1/self-improving/optimize/{suite_id}` | Manually trigger optimization |
-| GET | `/api/v1/self-improving/prompt-versions` | List prompt versions |
-| POST | `/api/v1/self-improving/prompt-versions` | Create prompt version |
-| POST | `/api/v1/self-improving/prompt-versions/{version_id}/activate` | Activate a prompt version |
-| POST | `/api/v1/self-improving/prompt-versions/{version_id}/rollback` | Rollback to a previous prompt version |
+| GET | `/api/v1/judgment/calibration` | Get calibration data |
+| GET | `/api/v1/judgment/calibration/curve` | Get calibration curve data |
+| POST | `/api/v1/judgment/calibration/recompute` | Recompute calibration snapshots now |
+| POST | `/api/v1/judgment/challenge` | Create adversarial challenge |
+| POST | `/api/v1/judgment/challenge/{challenge_id}/resolve` | Resolve a challenge |
+| GET | `/api/v1/judgment/decisions` | List decisions |
+| POST | `/api/v1/judgment/decisions` | Create a decision |
+| GET | `/api/v1/judgment/decisions/{decision_id}` | Get decision with predictions |
+| GET | `/api/v1/judgment/predictions` | List predictions |
+| POST | `/api/v1/judgment/predictions` | Create a prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/accept` | Accept a suggested prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/dismiss` | Dismiss a suggested prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/resolve` | Resolve a prediction |
+| GET | `/api/v1/judgment/stats` | Judgment dashboard stats |
 
 ### `watchers` — 14
 
@@ -186,22 +210,6 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
 
-### `judgment-engine` — 11
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/judgment/calibration` | Get calibration data |
-| GET | `/api/v1/judgment/calibration/curve` | Get calibration curve data |
-| POST | `/api/v1/judgment/challenge` | Create adversarial challenge |
-| POST | `/api/v1/judgment/challenge/{challenge_id}/resolve` | Resolve a challenge |
-| GET | `/api/v1/judgment/decisions` | List decisions |
-| POST | `/api/v1/judgment/decisions` | Create a decision |
-| GET | `/api/v1/judgment/decisions/{decision_id}` | Get decision with predictions |
-| GET | `/api/v1/judgment/predictions` | List predictions |
-| POST | `/api/v1/judgment/predictions` | Create a prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/resolve` | Resolve a prediction |
-| GET | `/api/v1/judgment/stats` | Judgment dashboard stats |
-
 ### `procedures` — 7
 
 | Method | Path | Summary |
@@ -224,6 +232,17 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 | GET | `/api/v1/conversations/{conversation_id}` | Get Conversation |
 | POST | `/api/v1/conversations/{conversation_id}/distill` | Distill Conversation Endpoint |
 | POST | `/api/v1/conversations/{conversation_id}/messages` | Post Message |
+
+### `drivers` — 6
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/drivers` | List registered drivers |
+| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
+| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
+| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
+| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
 
 ### `preferences` — 6
 
@@ -395,14 +414,6 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 | POST | `/api/v1/approvals/{approval_id}/approve` | Approve an item (runs its side-effect) |
 | POST | `/api/v1/approvals/{approval_id}/reject` | Reject an item |
 
-### `drivers` — 3
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/kernel/drivers` | List registered drivers |
-| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
-| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
-
 ### `interview` — 3
 
 | Method | Path | Summary |
@@ -470,7 +481,7 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 
 ## Database tables
 
-66 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+67 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -495,6 +506,7 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 | `eval_suites` | 14 | ✓ | `015_self_improving` |
 | `evidence` | 16 | ✓ | `014_personal_ai` |
 | `external_sessions` | 11 | ✓ | `030_external_sessions` |
+| `extraction_traces` | 10 | ✓ | `038_extraction_traces` |
 | `intentions` | 16 | ✓ | `001_initial_schema` |
 | `job_runs` | 10 | ✓ | `003_multi_tenancy` |
 | `knowledge_gaps` | 9 | ✓ | `001_initial_schema` |
@@ -625,7 +637,7 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 
 ## Built-in personas
 
-13 personas seeded at startup.
+16 personas seeded at startup.
 
 | Persona | Driver | Task types | Verifiers | Tools |
 |---|---|---|---|---:|
@@ -637,11 +649,14 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 | **scribe** — Writes and maintains documentation, READMEs, and guides. | `—` | — | — | 3 |
 | **uzhavu-ops** — Operates the Uzhavu platform — deploy checks, incident diagnosis, and fixes. | `claude_code` | `deploy_check`, `incident_fix` | `build_ok_diff`, `tests_pass` | 6 |
 | **dependency-updater** — Turns dependency-watcher findings into safe upgrade PRs, running project tests before landing. | `claude_code` | `dependency_update` | `tests_pass`, `diff_within_scope` | 7 |
+| **code-fixer** — Makes small, focused code changes in a registered project. File tools only — no shell — and every change is verified and offered as a PR for approval. | `claude_code` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 2 |
+| **code-fixer-local** — Code Fixer on a local model: the code never leaves the machine. Set its model to a local coder (e.g. ollama_chat/qwen3-coder:30b). Same verification and PR approval as Code Fixer. | `local` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 4 |
+| **code-fixer-auto** — Code Fixer that picks its driver per project from the record of merged vs rejected PRs: the free local model unless its work on that project keeps getting rejected, then Claude Code. | `auto` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 4 |
 | **tutor** — Tracks what you're learning, guides you, and checks understanding. | `—` | — | — | 2 |
 | **scout** — Ambiently researches topics useful to the user and surfaces findings. | `—` | — | — | 3 |
 | **admin** — Surfaces work/life admin items (bills, follow-ups, meeting prep) for review. | `—` | — | — | 2 |
 | **swe-lead** — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — Explicitly-invoked orchestrator for requests that span multiple roles. | `—` | — | — | 14 |
+| **jarvis** — Explicitly-invoked orchestrator for requests that span multiple roles. | `—` | — | — | 18 |
 
 ---
 
@@ -669,7 +684,7 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 
 ## Scheduled jobs
 
-15 ARQ cron jobs (times are UTC).
+18 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -684,9 +699,12 @@ Generated `2026-09-15 09:49 UTC` from `master` @ `8b7e0a8`
 | `run_all_research` | Sun 02:00 | `life_graph.workers.tasks.run_all_research` |
 | `run_daily_brief` | daily at settings.brief_hour_utc:00 | `life_graph.workers.tasks.run_daily_brief` |
 | `run_daily_digest` | 08:00 | `life_graph.workers.tasks.run_daily_digest` |
+| `run_nightly_calibration` | 04:15 | `life_graph.workers.tasks.run_nightly_calibration` |
+| `run_nightly_dev_suggestions` | 21:00 | `life_graph.workers.tasks.run_nightly_dev_suggestions` |
 | `run_nightly_self_heal` | 03:30 | `life_graph.workers.tasks.run_nightly_self_heal` |
 | `run_watchers` | hourly at :00 | `life_graph.workers.tasks.run_watchers` |
 | `send_approval_escalations` | every 30 min | `life_graph.workers.tasks.send_approval_escalations` |
+| `sync_dev_task_prs` | every 15 min | `life_graph.workers.tasks.sync_dev_task_prs` |
 | `tick_scheduled_jobs` | every minute | `life_graph.workers.tasks.tick_scheduled_jobs` |
 
 ---
@@ -729,7 +747,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `capture-spine` | Built | `life_graph/services/capture.py` |
 | `dashboard-pwa` | Built | `dashboard/app/(mobile)/m/page.tsx` |
 | `era4-personal-ai` | Built | `life_graph/api/advisor.py` |
-| `era5-self-improving` | Built | `life_graph/self_improving/optimizer_service.py` |
+| `era5-self-improving` | Built | `life_graph/self_improving/prompt_resolver.py` |
 | `era6-ambient-ai` | Built | `life_graph/watchers/framework.py` |
 | `era7-agent-networks` | Built | `life_graph/api/agent_workflows.py` |
 | `era8-autonomous-ai` | Built | `life_graph/autonomy/router.py` |
@@ -753,9 +771,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-37 revisions, head `037_telegram_bridge`.
+38 revisions, head `038_extraction_traces`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces`
 
 ---
 
@@ -765,16 +783,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 161 | 1529 |
-| `tests/integration/` | 52 | 532 |
+| `tests/unit/` | 181 | 1720 |
+| `tests/integration/` | 56 | 551 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **214** | **2073** |
+| **total** | **238** | **2283** |
 
 ---
 
 ## Configuration
 
-149 settings, all overridable by environment variable.
+168 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -833,6 +851,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_LM_SYNTHESIS_MODEL` | `'qwen2.5-coder-7b-instruct'` |
 | `LIFE_GRAPH_LM_EMBEDDING_MODEL` | `'text-embedding-nomic-embed-text-v1.5'` |
 | `LIFE_GRAPH_USE_LOCAL_LLM` | `True` |
+| `LIFE_GRAPH_LM_STRUCTURED_OUTPUT` | `True` |
 | `LIFE_GRAPH_LM_REASONING_EFFORT` | `—` |
 | `LIFE_GRAPH_OPENROUTER_API_KEY` | `''` |
 | `LIFE_GRAPH_OPENROUTER_URL` | `'https://openrouter.ai/api/v1'` |
@@ -885,12 +904,19 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_LANGFUSE_SECRET_KEY` | `''` |
 | `LIFE_GRAPH_LANGFUSE_HOST` | `'http://localhost:3001'` |
 | `LIFE_GRAPH_METRICS_ENABLED` | `True` |
-| `LIFE_GRAPH_OPTIMIZATION_MODEL` | `'openrouter/google/gemini-3.6-flash'` |
+| `LIFE_GRAPH_SELF_IMPROVING_ENABLED` | `False` |
+| `LIFE_GRAPH_SELF_IMPROVING_TRACE_ENABLED` | `True` |
+| `LIFE_GRAPH_SELF_IMPROVING_PROMPTS_ENABLED` | `True` |
 | `LIFE_GRAPH_EVAL_MAX_PARALLEL` | `5` |
 | `LIFE_GRAPH_EVAL_ACCURACY_THRESHOLD_PCT` | `90.0` |
-| `LIFE_GRAPH_OPTIMIZATION_MIN_IMPROVEMENT_PCT` | `1.0` |
+| `LIFE_GRAPH_OPTIMIZATION_MIN_IMPROVEMENT_PCT` | `2.0` |
 | `LIFE_GRAPH_OPTIMIZATION_MAX_REGRESSION_PCT` | `2.0` |
-| `LIFE_GRAPH_OPTIMIZATION_MAX_FEW_SHOT` | `8` |
+| `LIFE_GRAPH_OPTIMIZATION_MAX_FEW_SHOT` | `3` |
+| `LIFE_GRAPH_OPTIMIZATION_CANDIDATES` | `3` |
+| `LIFE_GRAPH_OPTIMIZATION_MIN_HOLDOUT` | `20` |
+| `LIFE_GRAPH_EVAL_FACT_MATCH_THRESHOLD` | `0.8` |
+| `LIFE_GRAPH_EVAL_FACT_PASS_F1` | `0.8` |
+| `LIFE_GRAPH_EVAL_MAX_HOLDOUT_CASES` | `60` |
 | `LIFE_GRAPH_UZHAVU_SYNC_URL` | `'http://localhost:8001/api/v1/sync/preferences'` |
 | `LIFE_GRAPH_INTERNAL_API_KEY` | `''` |
 | `LIFE_GRAPH_WATCHER_SMTP_HOST` | `''` |
@@ -913,6 +939,17 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_BIN` | `'claude'` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_MODEL` | `—` |
+| `LIFE_GRAPH_DRIVER_GH_BIN` | `'gh'` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX` | `'none'` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX_IMAGE` | `'life-graph-verifier:py3.12'` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX_CACHE_DIR` | `''` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX_MEMORY` | `'4g'` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX_CPUS` | `'4'` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX` | `'none'` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_IMAGE` | `'life-graph-claude-driver:latest'` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_MEMORY` | `'4g'` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_CPUS` | `'4'` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_CODE_CREDS_PATH` | `'~/.claude/.credentials.json'` |
 | `LIFE_GRAPH_TOOL_SHELL_ENABLED` | `True` |
 | `LIFE_GRAPH_TOOL_PRIVILEGED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_TOOL_FS_ROOTS` | `''` |

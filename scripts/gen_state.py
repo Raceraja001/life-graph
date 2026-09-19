@@ -408,7 +408,10 @@ def collect_specs() -> dict[str, Any]:
     probes: dict[str, tuple[str, str]] = {
         "os-kernel": ("life_graph/kernel/process_manager.py", "Built"),
         "era4-personal-ai": ("life_graph/api/advisor.py", "Built"),
-        "era5-self-improving": ("life_graph/self_improving/optimizer_service.py", "Built"),
+        # Finish line: an optimized prompt reaching production. The optimizer
+        # file existed for months while nothing read prompt_versions and the
+        # nightly job crashed on its first query — and this probe said "Built".
+        "era5-self-improving": ("life_graph/self_improving/prompt_resolver.py", "Built"),
         "era6-ambient-ai": ("life_graph/watchers/framework.py", "Built"),
         "era7-agent-networks": ("life_graph/api/agent_workflows.py", "Built"),
         "era8-autonomous-ai": ("life_graph/autonomy/router.py", "Built"),

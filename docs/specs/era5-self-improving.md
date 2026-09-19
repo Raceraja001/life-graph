@@ -1,6 +1,16 @@
 # Era 5 — Self-Improving Agent System
 
-> **Status: Built.** Implemented in `life_graph/self_improving/optimizer_service.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+> **Status: Built** — repaired 2026-09-18, for one task (`capture_extraction`). This document records the design as it was originally specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
+>
+> **What actually shipped, and how it differs from this design.** Before the repair the loop had never completed a run: the nightly job crashed on its first query, the optimizer depended on DSPy (never installed) through OpenRouter, evals always ran with empty output, and no production code read `prompt_versions` — so a "deployed" prompt changed nothing. The repaired loop:
+>
+> - **Learns from reviews, not hand-written cases.** Every local extraction is recorded (`extraction_traces`, migration 038); the memories it produces link back to it; how the user resolves them is the label (approved = expected, edited text = the target, rejected = not expected). `self_improving/suite_builder.py` turns fully reviewed traces into a held-out suite (20%, stable split) and a training pool (80%).
+> - **Scores extractions as fact sets** (`fact_set_f1`, embedding-matched precision/recall), locally — no LLM judge.
+> - **Optimizes by few-shot, locally**: candidates are the active prompt plus examples from the training pool, evaluated on the same held-out cases through the same runner production uses (`self_improving/task_runner.py`). No DSPy, no cloud.
+> - **Auto-deploys only through a strict gate** (enough held-out cases, a clear accuracy gain, no F1 drop, no more errors), then notifies the user with the undo command. `self_improving/prompt_resolver.py` is what makes a deploy reach production extraction; `LIFE_GRAPH_SELF_IMPROVING_PROMPTS_ENABLED=false` is the kill switch.
+> - **Is off by default** (`LIFE_GRAPH_SELF_IMPROVING_ENABLED`); traces accumulate regardless, so it has data when enabled.
+>
+> Not built from this design: optimization of other prompts (scoring, contradiction, consolidation), cross-task regression checks (one task only), the LLM judge, and human review before deploy (the user chose auto-deploy).
 
 > **Purpose**: An agent system that automatically detects its weaknesses, optimizes its own prompts, and deploys improvements — without human intervention. The complete feedback loop: eval → detect weakness → optimize → test → deploy.
 >

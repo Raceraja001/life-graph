@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select, update
 
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.self_improving import prompt_resolver
 from life_graph.self_improving.models import PromptVersion
 from life_graph.self_improving.schemas import (
     PromptVersionCreate,
@@ -155,6 +156,9 @@ class PromptVersionService:
 
             # session.begin() auto-commits on exit
             await session.refresh(version)
+            # Production reads the active version through a short cache; drop
+            # it so a deploy or rollback applies on the next call, not in 60s.
+            prompt_resolver.invalidate(tenant_id, version.task_type)
             return PromptVersionResponse.model_validate(version)
 
     async def rollback(
@@ -165,6 +169,26 @@ class PromptVersionService:
     ) -> PromptVersionResponse:
         """Deactivate the current active version and reactivate a previous one."""
         return await self.activate(tenant_id, version_id, reason=reason)
+
+    async def deactivate_active(self, tenant_id: str, task_type: str) -> int:
+        """Return a task to its built-in prompt by deactivating any active version.
+
+        The undo for an auto-deploy made on top of the built-in prompt, which
+        has no version of its own to roll back to. Returns rows changed.
+        """
+        async with self._sf() as session:
+            result = await session.execute(
+                update(PromptVersion)
+                .where(
+                    PromptVersion.tenant_id == tenant_id,
+                    PromptVersion.task_type == task_type,
+                    PromptVersion.is_active.is_(True),
+                )
+                .values(is_active=False, deactivated_at=datetime.now(UTC))
+            )
+            await session.commit()
+        prompt_resolver.invalidate(tenant_id, task_type)
+        return result.rowcount or 0
 
     async def get_version(
         self,

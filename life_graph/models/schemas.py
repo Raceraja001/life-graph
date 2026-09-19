@@ -991,11 +991,24 @@ class PredictionCreate(BaseModel):
 
     decision_id: uuid.UUID | None = None
     statement: str = Field(..., min_length=1)
-    confidence: float = Field(..., ge=0.5, le=0.99, description="Confidence [0.5, 0.99]")
+    # Below 0.5 is accepted and normalized by the service ("30% X" becomes
+    # "70% NOT: X"); rejecting it here made that normalization unreachable.
+    confidence: float = Field(
+        ..., ge=0.01, le=0.99, description="Confidence [0.01, 0.99]; < 0.5 is negated"
+    )
     domain_tags: list[str] = Field(default_factory=list)
     resolve_by: datetime | None = None
     resolution_criteria: dict[str, Any] = Field(default_factory=dict)
     capture_event_id: uuid.UUID | None = None
+
+
+class PredictionAcceptRequest(BaseModel):
+    """Confirm a suggested prediction, optionally correcting it."""
+
+    statement: str | None = Field(None, min_length=1)
+    confidence: float | None = Field(None, ge=0.5, le=0.99)
+    resolve_by: datetime | None = None
+    domain_tags: list[str] | None = None
 
 
 class PredictionResponse(BaseModel):
@@ -1062,7 +1075,7 @@ class PredictionResolveRequest(BaseModel):
     """Payload for resolving a prediction outcome."""
 
     outcome: str = Field(..., description="Resolution outcome: correct|incorrect|ambiguous")
-    source: str = Field(..., description="Resolution source identifier")
+    source: str = Field("manual", description="Resolution source identifier")
     evidence: dict[str, Any] = Field(default_factory=dict, description="Supporting evidence")
 
 
@@ -1084,6 +1097,7 @@ class JudgmentStatsResponse(BaseModel):
     total_decisions: int = 0
     pending_predictions: int = 0
     resolved_predictions: int = 0
+    suggested_predictions: int = 0
     avg_brier: float | None = None
     sufficient_data: bool = False
 

@@ -184,7 +184,8 @@ class EvalCase(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "scoring_type IN ('exact_match','contains','regex','semantic_similarity','llm_judge')",
+            "scoring_type IN ('exact_match','contains','regex','semantic_similarity','llm_judge',"
+            "'fact_set_f1')",
             name="ck_eval_cases_scoring_type",
         ),
         Index(
@@ -657,3 +658,33 @@ class NightlyRunLog(Base):
 
     def __repr__(self) -> str:
         return f"<NightlyRunLog(id={self.id!s:.8}, status={self.status})>"
+
+
+class ExtractionTrace(Base):
+    """One local LLM extraction call: what went in, what came out (migration 038).
+
+    Memories created from it carry ``properties.extraction_trace_id`` and
+    ``extraction_fact_index``; their approve/reject/edit state is the label the
+    self-improvement loop learns from. ``input_text`` is the full capture.
+    """
+
+    __tablename__ = "extraction_traces"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_type: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="capture_extraction"
+    )
+    prompt_version_id: Mapped[str] = mapped_column(Text, nullable=False, server_default="default")
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    input_text: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_output: Mapped[str | None] = mapped_column(Text, nullable=True)
+    facts: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (
+        Index("ix_extraction_traces_tenant_task_created", "tenant_id", "task_type", "created_at"),
+    )

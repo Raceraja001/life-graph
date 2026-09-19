@@ -73,6 +73,70 @@ async function listRequest<T>(path: string, params?: Record<string, string>): Pr
   return [];
 }
 
+// ── Judgment engine payloads (mirror life_graph/models/schemas.py) ──
+export type PredictionOutcome = "correct" | "incorrect" | "ambiguous";
+
+export interface Prediction {
+  id: string;
+  statement: string;
+  confidence: number;
+  domain_tags: string[];
+  resolve_by: string | null;
+  resolution_criteria: { type?: string; quote?: string };
+  outcome: "suggested" | "pending" | PredictionOutcome | "expired";
+  resolved_at: string | null;
+  resolution_source: string | null;
+  capture_event_id: string | null;
+  created_at: string;
+}
+
+export interface NewPrediction {
+  statement: string;
+  confidence: number;
+  resolve_by?: string | null;
+  domain_tags?: string[];
+}
+
+export interface CalibrationBucket {
+  range_label: string;
+  range_low: number;
+  range_high: number;
+  count: number;
+  avg_confidence: number;
+  hit_rate: number;
+  gap: number;
+}
+
+export interface BiasFinding {
+  kind?: "bucket";
+  direction: "overconfident" | "underconfident";
+  domain: string;
+  bucket?: string;
+  claimed?: number;
+  actual?: number;
+  n?: number;
+  count?: number;
+  avg_confidence?: number;
+  hit_rate?: number;
+  gap: number;
+}
+
+export interface CalibrationReport {
+  status: "ok" | "insufficient_data";
+  domain: string;
+  window_days: number;
+  resolved_count: number;
+  ambiguous_count: number;
+  pending_count: number;
+  required: number;
+  unresolved_rate: number | null;
+  brier_score: number | null;
+  buckets: CalibrationBucket[];
+  estimate_multiplier: number | null;
+  bias_findings: BiasFinding[];
+  trend: { previous_brier: number; delta_pct: number | null } | null;
+}
+
 const GET = <T>(path: string, params?: Record<string, string>) => request<T>("GET", path, undefined, params);
 const POST = <T>(path: string, body?: unknown) => request<T>("POST", path, body);
 
@@ -107,6 +171,23 @@ export const api = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload shape matches the rest of this file's untyped API surface.
       request<any>("PATCH", `/memories/${id}`, body),
     pendingCount: () => GET<{ data?: { count?: number } }>(`/memories/pending/count`),
+  },
+
+  // ── Judgment: predictions + calibration ──────
+  judgment: {
+    predictions: (params?: { status?: string; limit?: string }) =>
+      listRequest<Prediction>("/judgment/predictions", params),
+    createPrediction: (body: NewPrediction) =>
+      POST<{ data: Prediction }>("/judgment/predictions", body),
+    resolve: (id: string, outcome: PredictionOutcome) =>
+      POST<{ data: Prediction }>(`/judgment/predictions/${id}/resolve`, { outcome, source: "manual" }),
+    accept: (id: string, body: Partial<NewPrediction> = {}) =>
+      POST<{ data: Prediction }>(`/judgment/predictions/${id}/accept`, body),
+    dismiss: (id: string) => POST<unknown>(`/judgment/predictions/${id}/dismiss`, {}),
+    calibration: (domain?: string) =>
+      GET<{ data: CalibrationReport }>("/judgment/calibration", domain ? { domain } : undefined).then(
+        (r) => r.data
+      ),
   },
 
   // ── Preferences (proxy for "decisions" until judgment engine exists) ──

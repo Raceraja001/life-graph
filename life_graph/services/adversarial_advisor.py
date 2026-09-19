@@ -25,7 +25,6 @@ from sqlalchemy import func, select
 
 from life_graph.core.events import EventBus, EventType
 from life_graph.models.db import (
-    CalibrationSnapshot,
     Challenge,
     Decision,
     Evidence,
@@ -377,19 +376,17 @@ class AdversarialAdvisor:
         Returns:
             Section dict with title, content, and cited_ids.
         """
-        stmt = (
-            select(CalibrationSnapshot)
-            .where(CalibrationSnapshot.tenant_id == tenant_id)
-            .order_by(CalibrationSnapshot.computed_at.desc())
-            .limit(1)
-        )
-        if domain:
-            stmt = stmt.where(CalibrationSnapshot.domain == domain)
+        from life_graph.services.calibration import describe_finding, latest_snapshot
 
-        result = await self.session.execute(stmt)
-        snap = result.scalars().first()
+        # Falls back to the overall snapshot when this domain has too few
+        # resolved predictions of its own; the header says which one it is.
+        snap = await latest_snapshot(self.session, tenant_id, domain)
 
         if snap:
+            # No "estimate multiplier" line: the spec defines it over actual vs
+            # predicted *durations*, which are not recorded yet. Computed from
+            # yes/no outcomes it came out as e.g. 0.20, which reads as "things
+            # take a fifth of your estimate".
             lines = [
                 f"Calibration snapshot "
                 f"(domain: {snap.domain or 'all'}, "
@@ -399,12 +396,10 @@ class AdversarialAdvisor:
                 else "  • Brier score: N/A",
                 f"  • Resolved count: {snap.resolved_count}",
             ]
-            if snap.estimate_multiplier is not None:
-                lines.append(f"  • Estimate multiplier: {snap.estimate_multiplier:.2f}")
             if snap.bias_findings:
                 lines.append("  • Bias findings:")
                 for finding in snap.bias_findings[:3]:
-                    lines.append(f"    – {finding}")
+                    lines.append(f"    – {describe_finding(finding)}")
             content = "\n".join(lines)
             cited_ids = [str(snap.id)]
         else:

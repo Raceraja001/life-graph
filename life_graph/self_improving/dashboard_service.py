@@ -224,9 +224,13 @@ class DashboardService:
 
         fixes = []
         for opt_run, task_type, suite_name in rows:
+            # The run records both accuracies; there is no `result` column.
             improvement = 0.0
-            if opt_run.result and isinstance(opt_run.result, dict):
-                improvement = opt_run.result.get("improvement_pct", 0.0)
+            if (
+                opt_run.candidate_accuracy_pct is not None
+                and opt_run.previous_accuracy_pct is not None
+            ):
+                improvement = float(opt_run.candidate_accuracy_pct - opt_run.previous_accuracy_pct)
 
             fixes.append(
                 {
@@ -292,17 +296,21 @@ class DashboardService:
 
         reviews = []
         for opt_run, task_type, suite_name in rows:
-            details = opt_run.result or {}
+            details = opt_run.regression_details or {}
             reviews.append(
                 {
                     "id": str(opt_run.id),
                     "task_type": task_type,
                     "suite_name": suite_name,
-                    "baseline_accuracy": details.get("baseline_accuracy"),
-                    "candidate_accuracy": details.get("candidate_accuracy"),
-                    "regression_found": details.get("regression_found", False),
+                    "baseline_accuracy": _float_or_none(opt_run.previous_accuracy_pct),
+                    "candidate_accuracy": _float_or_none(opt_run.candidate_accuracy_pct),
+                    "regression_found": details.get("gate") not in (None, ["passed"]),
                     "started_at": opt_run.started_at.isoformat() if opt_run.started_at else None,
                 }
             )
 
         return reviews
+
+
+def _float_or_none(value) -> float | None:
+    return float(value) if value is not None else None
