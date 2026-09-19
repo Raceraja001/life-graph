@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 # Item kinds the core knows how to store, filter and render.
 KIND_EVENT = "event"
 KIND_EMAIL = "email"
+KIND_CONTACT = "contact"
+KIND_CODE = "code"  # pull requests and issues on a code host
+KIND_TASK = "task"  # the user's own to-do items
 
 # Directions. Events: the user's own vs an invitation from someone else.
 # Mail: received vs sent by the user. Trust tiers are derived from these.
@@ -33,6 +36,8 @@ DIR_SENT = "sent"
 AUTH_APP_PASSWORD = "app_password"
 AUTH_OAUTH = "oauth"
 AUTH_NONE = "none"  # e.g. a calendar feed URL is itself the secret
+AUTH_FILE = "file"  # data arrives by import (a vCard file), not by sync
+AUTH_TOKEN = "token"  # a read-only access token (a GitHub fine-grained token)
 
 
 @dataclass(frozen=True)
@@ -72,6 +77,9 @@ class Item:
     all_day: bool = False
     location: str | None = None
     attendees: list[str] = field(default_factory=list)
+    # Addresses of the people the item involves, never the user's own: a
+    # contact's addresses, an event's attendees, a mail's sender and recipients.
+    emails: list[str] = field(default_factory=list)
     detail: str | None = None
     flags: dict[str, Any] = field(default_factory=dict)
     # Text handed to the local summariser (mail); never stored, never rendered.
@@ -101,7 +109,14 @@ class ReauthRequiredError(ConnectorError):
 
 @runtime_checkable
 class Connector(Protocol):
-    """What a plugin's ``CONNECTOR`` object provides."""
+    """What a plugin's ``CONNECTOR`` object provides.
+
+    Optional extras the runtime looks for with ``getattr``: ``account_fields``,
+    ``validate_settings(auth_method, raw)``, ``default_interval_min``,
+    ``cloud_field_options``, ``import_file(account, text) -> SyncResult`` and
+    ``async verify_credential(auth_method, settings, secret) -> dict`` (checked
+    when a credential is added; returns settings to store, e.g. the login).
+    """
 
     name: str
     display_name: str

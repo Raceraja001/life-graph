@@ -117,6 +117,10 @@ def to_item(
         when = fallback_date or datetime.now(UTC)
     automated = is_automated(headers, addr)
     sent = sent or addr in my_addresses
+    copied = [a.lower() for _, a in getaddresses([headers.get("cc", "")]) if a]
+    # Everyone on the message except the user: how meeting prep finds the
+    # history with a person by exact address.
+    people = [a for a in dict.fromkeys([addr, *recipients, *copied]) if a and a not in my_addresses]
     return Item(
         kind=KIND_EMAIL,
         external_id=external_id,
@@ -127,6 +131,7 @@ def to_item(
         sender_name=name or None,
         sender_addr=addr or None,
         to_me=(not sent) and any(r in my_addresses for r in recipients),
+        emails=people[:50],
         flags={"automated": automated, **(extra_flags or {})},
         summary_source=text,
     )

@@ -30,8 +30,12 @@ from sqlalchemy import delete, select
 from life_graph.config import settings
 from life_graph.connectors import secrets, store
 from life_graph.connectors.base import (
+    AUTH_FILE,
     AUTH_OAUTH,
+    KIND_CODE,
+    KIND_CONTACT,
     KIND_EMAIL,
+    KIND_TASK,
     Account,
     Connector,
     ConnectorError,
@@ -144,6 +148,7 @@ class ConnectorRuntime:
                 "item_kinds": sorted(c.item_kinds),
                 "auth_methods": list(c.auth_methods),
                 "fields": list(getattr(c, "account_fields", ())),
+                "cloud_field_options": list(getattr(c, "cloud_field_options", ())),
             }
             for c in self.connectors.values()
         ]
@@ -183,6 +188,10 @@ class ConnectorRuntime:
         clean_settings = (
             validate(auth_method, account_settings or {}) if validate else (account_settings or {})
         )
+        clean_settings = {
+            **clean_settings,
+            **await self._verify(impl, auth_method, clean_settings, secret),
+        }
         row = ConnectorAccount(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
@@ -193,9 +202,12 @@ class ConnectorRuntime:
             settings=clean_settings,
             exposure=exposure,
             enabled=True,
-            sync_interval_min=settings.connector_sync_minutes,
+            sync_interval_min=getattr(
+                impl, "default_interval_min", settings.connector_sync_minutes
+            ),
             status="never_synced",
-            next_sync_at=datetime.now(UTC),
+            # An imported source has nothing to fetch on a schedule.
+            next_sync_at=None if auth_method == AUTH_FILE else datetime.now(UTC),
         )
         async with async_session() as session:
             existing = await session.execute(
@@ -212,6 +224,19 @@ class ConnectorRuntime:
         if secret:
             secrets.write_secret(tenant_id, str(row.id), {"method": auth_method, **secret})
         return account_public(row)
+
+    @staticmethod
+    async def _verify(
+        impl: Connector, auth_method: str, account_settings: dict[str, Any], secret: dict | None
+    ) -> dict[str, Any]:
+        """Let the plugin check a new credential before it is stored (e.g. read-only)."""
+        verify = getattr(impl, "verify_credential", None)
+        if verify is None or not secret:
+            return {}
+        try:
+            return dict(await verify(auth_method, account_settings, secret) or {})
+        except ConnectorError as exc:
+            raise AccountError(str(exc)) from exc
 
     async def _get(self, session, tenant_id: str, account_id: str) -> ConnectorAccount:
         try:
@@ -240,7 +265,7 @@ class ConnectorRuntime:
                 row.display_name = changes["display_name"].strip()[:128]
             if changes.get("enabled") is not None:
                 row.enabled = bool(changes["enabled"])
-                if row.enabled:
+                if row.enabled and row.auth_method != AUTH_FILE:
                     row.next_sync_at = datetime.now(UTC)
             if changes.get("sync_interval_min"):
                 row.sync_interval_min = max(5, min(int(changes["sync_interval_min"]), 1440))
@@ -268,6 +293,9 @@ class ConnectorRuntime:
             impl = self.connectors.get(row.connector)
             if impl is None or auth_method not in impl.auth_methods:
                 raise AccountError(f"{row.connector} does not support {auth_method!r}")
+            learned = await self._verify(impl, auth_method, dict(row.settings or {}), secret)
+            if learned:
+                row.settings = {**(row.settings or {}), **learned}
             secrets.write_secret(tenant_id, str(row.id), {"method": auth_method, **secret})
             if auth_method != row.auth_method:
                 # Sources key items differently (IMAP Message-ID vs Gmail id):
@@ -307,6 +335,8 @@ class ConnectorRuntime:
     # ── Sync ──────────────────────────────────────────────────
 
     async def _secret_for(self, row: ConnectorAccount) -> dict[str, Any]:
+        if row.auth_method == AUTH_FILE:
+            return {}  # imported data: there is no credential
         secret = secrets.read_secret(row.tenant_id, str(row.id))
         if row.auth_method == AUTH_OAUTH:
             from life_graph.connectors import google_oauth
@@ -394,6 +424,39 @@ class ConnectorRuntime:
         )
         return outcome
 
+    async def import_file(self, tenant_id: str, account_id: str, text: str) -> SyncOutcome:
+        """Replace an import-based account's items with the contents of a file."""
+        async with async_session() as session:
+            row = await self._get(session, tenant_id, account_id)
+        impl = self.connectors.get(row.connector)
+        importer = getattr(impl, "import_file", None)
+        if row.auth_method != AUTH_FILE or importer is None:
+            raise AccountError("this account does not take file imports")
+        try:
+            result = importer(account_view(row), text)
+        except ConnectorError as exc:
+            raise AccountError(str(exc)) from exc
+        now = datetime.now(UTC)
+        async with async_session() as session:
+            row = await self._get(session, tenant_id, account_id)
+            new_ids = await store.upsert_items(session, row, result.items)
+            deleted = 0
+            for kind in impl.item_kinds:
+                keep = {i.external_id for i in result.items if i.kind == kind}
+                deleted += await store.delete_missing(session, row, kind, keep)
+            row.status = "ok"
+            row.last_error = None
+            row.consecutive_failures = 0
+            row.last_sync_at = now
+            await session.commit()
+        outcome = SyncOutcome(
+            status="ok", fetched=len(result.items), new=len(new_ids), deleted=deleted
+        )
+        logger.info(
+            "Connector %s/%s imported: %s", row.connector, row.account_key, outcome.as_dict()
+        )
+        return outcome
+
     async def _record_failure(
         self, tenant_id: str, account_id: str, error: str, *, reauth: bool, interval: int
     ) -> SyncOutcome:
@@ -442,25 +505,120 @@ class ConnectorRuntime:
                     automated=bool((item.flags or {}).get("automated")),
                     sent=item.direction == "sent",
                     sent_at=item.occurred_at,
+                    sender_addr=item.sender_addr,
                 )
-                item.summary = result.summary
-                item.category = result.category
-                flags = {
-                    **(item.flags or {}),
-                    "asks_me": result.asks_me,
-                    "suspicious": result.suspicious,
-                }
-                if result.commitment:
-                    flags["commitment"] = result.commitment
-                    if result.commitment_due:
-                        flags["commitment_due"] = result.commitment_due.isoformat()
-                item.flags = flags
-                item.summary_state = "done" if result.ok else "failed"
-                item.embedding = None  # re-embed with the summary included
+                await self._apply_summary(session, item, result)
                 # Per message: each summary costs seconds of local-model time,
                 # so a restart mid-batch keeps what was already done.
                 await session.commit()
                 done += 1
+        return done
+
+    @staticmethod
+    async def _apply_summary(session, item: ConnectorItem, result) -> None:
+        """Store one local-model summary on its email row (and settle any bill it pays)."""
+        from life_graph.connectors import bills
+
+        item.summary = result.summary
+        item.category = result.category
+        old = dict(item.flags or {})
+        flags = {**old, "asks_me": result.asks_me, "suspicious": result.suspicious}
+        if result.commitment:
+            flags["commitment"] = result.commitment
+            if result.commitment_due:
+                flags["commitment_due"] = result.commitment_due.isoformat()
+        bill = bills.merge_state(result.bill, old.get("bill"))
+        if bill and bill["kind"] == "bill" and bill["state"] == "open":
+            paid = await bills.paid_since(session, item.tenant_id, bill["payee"], item.occurred_at)
+            if paid:
+                bill = {**bill, "state": "paid", "paid_at": paid.isoformat()}
+        if bill:
+            flags["bill"] = bill
+        else:
+            flags.pop("bill", None)
+        item.flags = flags
+        item.summary_state = "done" if result.ok else "failed"
+        item.embedding = None  # re-embed with the summary included
+        if bill and bill["kind"] == "payment_done":
+            closed = await bills.close_paid(
+                session, item.tenant_id, bill["payee"], item.occurred_at
+            )
+            if closed:
+                logger.info("Bill %s marked paid by confirmation %s", closed, item.id)
+
+    async def rescan_bills(self, tenant_id: str, days: int = 60, limit: int = 300) -> int:
+        """Re-read recent transactional and sensitive mail for bills (one-time backfill).
+
+        Mail summarised before bills were extracted has no ``flags.bill``. Each
+        body is fetched again (read-only) and re-summarised on the local model.
+        """
+        from life_graph.connectors.summarize import summarize_email
+
+        since = datetime.now(UTC) - timedelta(days=days)
+        async with async_session() as session:
+            accounts = list(
+                (
+                    await session.execute(
+                        select(ConnectorAccount).where(
+                            ConnectorAccount.tenant_id == tenant_id,
+                            ConnectorAccount.enabled.is_(True),
+                            ConnectorAccount.connector == "email",
+                        )
+                    )
+                ).scalars()
+            )
+        done = 0
+        for account in accounts:
+            impl = self.connectors.get(account.connector)
+            if impl is None:
+                continue
+            try:
+                secret = await self._secret_for(account)
+            except Exception:
+                logger.warning("Bill re-scan: no credential for %s", account.id, exc_info=True)
+                continue
+            async with async_session() as session:
+                items = list(
+                    (
+                        await session.execute(
+                            select(ConnectorItem)
+                            .where(
+                                ConnectorItem.tenant_id == tenant_id,
+                                ConnectorItem.account_id == account.id,
+                                ConnectorItem.kind == KIND_EMAIL,
+                                ConnectorItem.direction == "inbound",
+                                ConnectorItem.category.in_(["transactional", "sensitive"]),
+                                ConnectorItem.occurred_at >= since,
+                            )
+                            # Oldest first, so a confirmation finds the bill it pays.
+                            .order_by(ConnectorItem.occurred_at)
+                            .limit(limit)
+                        )
+                    ).scalars()
+                )
+                for item in items:
+                    try:
+                        text = await impl.fetch_body(
+                            account_view(account), secret, item.external_id
+                        )
+                    except Exception:
+                        logger.debug("Bill re-scan: body fetch failed", exc_info=True)
+                        continue
+                    result = await summarize_email(
+                        subject=item.title,
+                        sender=item.sender_name or item.sender_addr,
+                        text=text or "",
+                        automated=bool((item.flags or {}).get("automated")),
+                        sent=False,
+                        sent_at=item.occurred_at,
+                        sender_addr=item.sender_addr,
+                    )
+                    if not result.ok:
+                        continue
+                    await self._apply_summary(session, item, result)
+                    await session.commit()
+                    done += 1
+        logger.info("Bill re-scan for %s: %d messages re-read", tenant_id, done)
         return done
 
     async def _embed_missing(self, account: ConnectorAccount, limit: int = 200) -> None:
@@ -476,6 +634,8 @@ class ConnectorRuntime:
                             ConnectorItem.account_id == account.id,
                             ConnectorItem.embedding.is_(None),
                             ConnectorItem.summary_state != "pending",
+                            # Contacts, code items and tasks are found by name, not meaning.
+                            ConnectorItem.kind.not_in([KIND_CONTACT, KIND_CODE, KIND_TASK]),
                         )
                         .limit(limit)
                     )

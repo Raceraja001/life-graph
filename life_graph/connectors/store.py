@@ -7,11 +7,13 @@ another query. Nothing here decides visibility.
 
 from __future__ import annotations
 
+import calendar
+import re
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, delete, exists, func, or_, select
+from sqlalchemy import and_, case, delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 
@@ -21,8 +23,11 @@ from life_graph.connectors.base import (
     DIR_INVITE,
     DIR_OWN,
     DIR_SENT,
+    KIND_CODE,
+    KIND_CONTACT,
     KIND_EMAIL,
     KIND_EVENT,
+    KIND_TASK,
     Item,
 )
 from life_graph.connectors.models import ConnectorAccount, ConnectorItem
@@ -50,6 +55,7 @@ _UPDATABLE = (
     "ends_at",
     "location",
     "attendees",
+    "emails",
     "local_detail",
     "trust_tier",
     "occurred_at",
@@ -77,6 +83,7 @@ def _row_for(account: ConnectorAccount, item: Item, now: datetime) -> dict[str, 
         "ends_at": item.ends_at,
         "location": item.location,
         "attendees": item.attendees,
+        "emails": sorted({e.strip().lower() for e in item.emails if e and "@" in e}),
         "local_detail": item.detail,
         "flags": flags,
         "trust_tier": _TRUST.get(item.direction, "external"),
@@ -95,7 +102,8 @@ async def upsert_items(
     An existing row keeps its summary, category and embedding: those are
     derived by the local model once and do not change when the source re-sends
     the same message. Flags are merged, so ``asks_me`` set by the summariser
-    survives a later sync that only knows ``automated``.
+    survives a later sync that only knows ``automated`` (contacts' and code
+    items' flags are replaced instead).
     """
     if not items:
         return []
@@ -108,7 +116,13 @@ async def upsert_items(
         stmt = insert(ConnectorItem).values(chunk)
         excluded = stmt.excluded
         update = {col: getattr(excluded, col) for col in _UPDATABLE}
-        update["flags"] = ConnectorItem.flags.op("||")(excluded.flags)
+        # A contact's or code item's flags are its data (org, birthday; CI state,
+        # review decision): the source's current set replaces them, so a value
+        # cleared at the source is cleared here too.
+        update["flags"] = case(
+            (ConnectorItem.kind.in_([KIND_CONTACT, KIND_CODE, KIND_TASK]), excluded.flags),
+            else_=ConnectorItem.flags.op("||")(excluded.flags),
+        )
         stmt = stmt.on_conflict_do_update(
             constraint="uq_connector_item_external", set_=update
         ).returning(ConnectorItem.id, ConnectorItem.fetched_at, ConnectorItem.summary_state)
@@ -154,6 +168,8 @@ def _as_dict(item: ConnectorItem, account: ConnectorAccount) -> dict[str, Any]:
         "account_id": str(item.account_id),
         "account_name": account.display_name,
         "account_exposure": account.exposure,
+        "account_cloud_fields": (account.settings or {}).get("cloud_fields"),
+        "account_share_private": bool((account.settings or {}).get("share_private_titles")),
         "connector": account.connector,
         "kind": item.kind,
         "external_id": item.external_id,
@@ -167,6 +183,7 @@ def _as_dict(item: ConnectorItem, account: ConnectorAccount) -> dict[str, Any]:
         "ends_at": item.ends_at,
         "location": item.location,
         "attendees": item.attendees or [],
+        "emails": list(item.emails or []),
         "summary": item.summary,
         "category": item.category,
         "summary_state": item.summary_state,
@@ -275,6 +292,98 @@ async def open_promises(
         .order_by(due.asc().nulls_last(), ConnectorItem.occurred_at.desc())
         .limit(limit)
     )
+    rows = [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
+    if rows:
+        # A promise the user already put on their to-do list is not nagged twice.
+        titles = (
+            await session.execute(
+                select(ConnectorItem.title).where(
+                    ConnectorItem.tenant_id == tenant_id,
+                    ConnectorItem.kind == KIND_TASK,
+                    ConnectorItem.flags["status"].astext != "completed",
+                )
+            )
+        ).scalars()
+        keys = [_words(t) for t in titles]
+        for row in rows:
+            mine = _words(row["flags"].get("commitment"))
+            if any(_same_task(mine, k) for k in keys):
+                row["flags"] = {**row["flags"], "in_tasks": True}
+    return rows
+
+
+# Words that say what to do rather than what it is about.
+_TASK_STOP = frozenset(
+    [
+        "the",
+        "a",
+        "an",
+        "to",
+        "for",
+        "and",
+        "of",
+        "on",
+        "in",
+        "with",
+        "by",
+        "about",
+        "my",
+        "your",
+        "our",
+        "me",
+        "you",
+        "it",
+        "this",
+        "that",
+        "from",
+        "at",
+        "send",
+        "call",
+        "pay",
+        "email",
+        "mail",
+        "reply",
+        "share",
+        "update",
+        "check",
+        "review",
+        "get",
+        "make",
+        "do",
+        "finish",
+        "follow",
+        "up",
+        "back",
+        "will",
+        "i",
+        "ill",
+        "i'll",
+    ]
+)
+
+
+def _words(text: str | None) -> frozenset[str]:
+    return frozenset(
+        w for w in re.findall(r"[a-z0-9][a-z0-9'.-]*", (text or "").lower()) if w not in _TASK_STOP
+    )
+
+
+def _same_task(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Two short phrases name the same task: two shared words, or one when either has one."""
+    shared = len(a & b)
+    return shared >= 2 or (shared == 1 and min(len(a), len(b)) == 1)
+
+
+async def task_items(
+    session: AsyncSession, tenant_id: str, limit: int = 300
+) -> list[dict[str, Any]]:
+    """Open tasks and those completed in the last week, soonest due first."""
+    stmt = (
+        _base(tenant_id)
+        .where(ConnectorItem.kind == KIND_TASK)
+        .order_by(ConnectorItem.starts_at.asc().nulls_last(), ConnectorItem.occurred_at.desc())
+        .limit(limit)
+    )
     return [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
 
 
@@ -342,6 +451,134 @@ async def search_email(
     return list(found.values())[:limit]
 
 
+async def code_items(
+    session: AsyncSession, tenant_id: str, limit: int = 150
+) -> list[dict[str, Any]]:
+    """Open pull requests and issues waiting on the user, most recently updated first."""
+    stmt = (
+        _base(tenant_id)
+        .where(ConnectorItem.kind == KIND_CODE)
+        .order_by(ConnectorItem.occurred_at.desc())
+        .limit(limit)
+    )
+    return [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
+
+
+def _clean_addrs(addrs: list[str] | set[str]) -> list[str]:
+    return sorted({a.strip().lower() for a in addrs if a and "@" in a})
+
+
+async def people_by_address(
+    session: AsyncSession, tenant_id: str, addrs: list[str] | set[str]
+) -> dict[str, dict[str, Any]]:
+    """The contact for each address, preferring a saved contact over an auto-saved one."""
+    wanted = _clean_addrs(addrs)
+    if not wanted:
+        return {}
+    stmt = (
+        _base(tenant_id)
+        .where(ConnectorItem.kind == KIND_CONTACT, ConnectorItem.emails.overlap(wanted))
+        .order_by((ConnectorItem.direction == DIR_OWN).desc(), ConnectorItem.title)
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for item, account in (await session.execute(stmt)).all():
+        row = _as_dict(item, account)
+        for addr in item.emails or []:
+            if addr in wanted:
+                out.setdefault(addr, row)
+    return out
+
+
+async def search_contacts(
+    session: AsyncSession, tenant_id: str, query: str, limit: int = 10
+) -> list[dict[str, Any]]:
+    """Contacts whose name, address or organisation contains every word of ``query``."""
+    terms = [t.lower() for t in query.split() if len(t) > 1][:5]
+    if not terms:
+        return []
+    haystack = func.lower(
+        func.concat_ws(
+            " ",
+            ConnectorItem.title,
+            func.array_to_string(ConnectorItem.emails, " "),
+            ConnectorItem.flags["org"].astext,
+        )
+    )
+    stmt = (
+        _base(tenant_id)
+        .where(ConnectorItem.kind == KIND_CONTACT, *[haystack.like(f"%{t}%") for t in terms])
+        .order_by((ConnectorItem.direction == DIR_OWN).desc(), ConnectorItem.title)
+        .limit(limit)
+    )
+    return [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
+
+
+def _month_days(first: date, days: int) -> dict[str, date]:
+    """``MM-DD`` → the date it falls on, for ``days`` days from ``first``.
+
+    A 29 February birthday is marked on 28 February in years without one.
+    """
+    out: dict[str, date] = {}
+    for n in range(days):
+        d = first + timedelta(days=n)
+        out[f"{d:%m-%d}"] = d
+        if d.month == 2 and d.day == 28 and not calendar.isleap(d.year):
+            out["02-29"] = d
+    return out
+
+
+async def birthdays_between(
+    session: AsyncSession, tenant_id: str, first: date, days: int
+) -> list[dict[str, Any]]:
+    """Contacts whose birthday falls in ``days`` days from ``first``, soonest first."""
+    when = _month_days(first, days)
+    stmt = _base(tenant_id).where(
+        ConnectorItem.kind == KIND_CONTACT,
+        ConnectorItem.flags["birthday"].astext.in_(list(when)),
+    )
+    out = []
+    for item, account in (await session.execute(stmt)).all():
+        row = _as_dict(item, account)
+        row["birthday_on"] = when[row["flags"]["birthday"]]
+        out.append(row)
+    return sorted(out, key=lambda r: (r["birthday_on"], r["title"] or ""))
+
+
+async def mail_with(
+    session: AsyncSession,
+    tenant_id: str,
+    addrs: list[str] | set[str],
+    *,
+    since: datetime,
+    limit: int = 5,
+) -> tuple[list[dict[str, Any]], int, datetime | None]:
+    """Recent mail to or from any of ``addrs``: (newest rows, total count, latest date)."""
+    wanted = _clean_addrs(addrs)
+    if not wanted:
+        return [], 0, None
+    cond = (
+        ConnectorItem.tenant_id == tenant_id,
+        ConnectorItem.kind == KIND_EMAIL,
+        ConnectorItem.occurred_at >= since,
+        ConnectorItem.emails.overlap(wanted),
+    )
+    count, latest = (
+        await session.execute(
+            select(func.count(), func.max(ConnectorItem.occurred_at))
+            .join(ConnectorAccount, ConnectorAccount.id == ConnectorItem.account_id)
+            .where(*cond, ConnectorAccount.enabled.is_(True))
+        )
+    ).one()
+    if not limit:
+        return [], int(count or 0), latest
+    rows = (
+        await session.execute(
+            _base(tenant_id).where(*cond).order_by(ConnectorItem.occurred_at.desc()).limit(limit)
+        )
+    ).all()
+    return [_as_dict(i, a) for i, a in rows], int(count or 0), latest
+
+
 async def get_item(
     session: AsyncSession, tenant_id: str, item_id: str
 ) -> tuple[ConnectorItem, ConnectorAccount] | None:
@@ -383,6 +620,8 @@ async def purge_expired(session: AsyncSession, now: datetime | None = None) -> i
     past_cut = now - timedelta(days=settings.connector_event_past_days)
     future_cut = now + timedelta(days=settings.connector_event_future_days)
     disabled = select(ConnectorAccount.id).where(ConnectorAccount.enabled.is_(False))
+    # Completed tasks are kept a week ("done this week"); RFC 3339 strings sort as times.
+    task_cut = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
     result = await session.execute(
         delete(ConnectorItem).where(
             or_(
@@ -393,6 +632,10 @@ async def purge_expired(session: AsyncSession, now: datetime | None = None) -> i
                         func.coalesce(ConnectorItem.ends_at, ConnectorItem.starts_at) < past_cut,
                         ConnectorItem.starts_at > future_cut,
                     ),
+                ),
+                and_(
+                    ConnectorItem.kind == KIND_TASK,
+                    ConnectorItem.flags["completed_at"].astext < task_cut,
                 ),
                 ConnectorItem.account_id.in_(disabled),
             )

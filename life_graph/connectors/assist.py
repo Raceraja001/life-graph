@@ -2,7 +2,8 @@
 
 - ``prepare_meetings`` — about 30 minutes before a timed event, a dashboard
   notification with what Life Graph already knows about the attendees and the
-  topic: matching memories and recent mail from the attendees. No LLM call; the
+  topic: who each attendee is (contacts, mail history by exact address),
+  matching memories and recent mail with them. No LLM call; the
   note stays on the dashboard (kernel notifications are not pushed off the
   machine), so it uses the LOCAL view.
 - ``prediction_hints`` — mail and events that may bear on a prediction whose
@@ -22,8 +23,8 @@ from sqlalchemy import select
 
 from life_graph.connectors import store
 from life_graph.connectors.base import KIND_EVENT
-from life_graph.connectors.exposure import view_items
-from life_graph.connectors.locality import CLOUD
+from life_graph.connectors.exposure import person_line, person_name, view_items
+from life_graph.connectors.locality import CLOUD, LOCAL
 from life_graph.connectors.models import ConnectorAccount, ConnectorItem
 from life_graph.connectors.tools import user_tz
 from life_graph.storage.database import async_session
@@ -33,6 +34,8 @@ logger = logging.getLogger(__name__)
 PREP_LEAD = (timedelta(minutes=20), timedelta(minutes=40))
 MAX_MEMORIES = 3
 MAX_MAILS = 3
+MAX_PEOPLE = 5
+HISTORY_DAYS = 90
 
 
 async def _embed(text: str) -> list[float] | None:
@@ -70,6 +73,38 @@ def _names(attendees: list[str]) -> list[str]:
     return [a for a in attendees if a and len(a) > 1][:5]
 
 
+async def _who_lines(
+    tenant_id: str, addrs: list[str], now: datetime
+) -> tuple[list[str], list[str]]:
+    """One line per attendee: who they are and how much mail there is with them.
+
+    "Arun Kumar — Acme, CFO · 14 emails in 90 days, last Tue 16 Sep". Rendered
+    for LOCAL: prep notes stay on the dashboard. Also returns the contact
+    names found, for the memory search.
+    """
+    since = now - timedelta(days=HISTORY_DAYS)
+    lines: list[str] = []
+    names: list[str] = []
+    async with async_session() as session:
+        people = await store.people_by_address(session, tenant_id, addrs)
+        for addr in addrs:
+            contact = people.get(addr)
+            if contact and contact.get("title"):
+                names.append(contact["title"])
+            label = person_line(contact, LOCAL) or addr
+            _, count, latest = await store.mail_with(
+                session, tenant_id, [addr], since=since, limit=0
+            )
+            if count:
+                last = latest.astimezone(user_tz()).strftime("%a %d %b") if latest else "?"
+                plural = "s" if count != 1 else ""
+                history = f"{count} email{plural} in {HISTORY_DAYS} days, last {last}"
+            else:
+                history = "no history"
+            lines.append(f"- {label} · {history}")
+    return lines, names
+
+
 async def prepare_meetings(now: datetime | None = None) -> int:
     """Create prep notes for timed events starting 20–40 minutes from now."""
     from life_graph.api.dependencies import get_notification_engine
@@ -95,38 +130,62 @@ async def prepare_meetings(now: datetime | None = None) -> int:
         if flags.get("all_day") or flags.get("prepped"):
             continue
         people = _names(item.attendees or [])
+        addrs = list(item.emails or [])[:MAX_PEOPLE]
         lines: list[str] = []
         if item.location:
             lines.append(f"Where: {item.location}")
-        if people:
+        who, known = await _who_lines(item.tenant_id, addrs, now) if addrs else ([], [])
+        if who:
+            lines.append("Who:")
+            lines.extend(who)
+        elif people:
             lines.append("With: " + ", ".join(people))
-        memories = await _related_memories(item.tenant_id, " ".join([item.title or "", *people]))
+        topic = " ".join([item.title or "", *dict.fromkeys([*known, *people])])
+        memories = await _related_memories(item.tenant_id, topic)
         if memories:
             lines.append("What you know:")
             lines.extend(f"- {m[:200]}" for m in memories)
         mails: list[dict[str, Any]] = []
         async with async_session() as session:
-            for person in people[:3]:
-                first = re.split(r"[\s@]", person)[0]
-                if len(first) < 3:
-                    continue
-                mails.extend(
-                    await store.search_email(
-                        session,
-                        item.tenant_id,
-                        "",
-                        sender=first,
-                        since=now - timedelta(days=30),
-                        limit=MAX_MAILS,
-                    )
+            if addrs:
+                mails, _, _ = await store.mail_with(
+                    session, item.tenant_id, addrs, since=now - timedelta(days=30), limit=MAX_MAILS
                 )
+            else:
+                # Events synced before attendee addresses were kept: guess by first name.
+                for person in people[:3]:
+                    first = re.split(r"[\s@]", person)[0]
+                    if len(first) < 3:
+                        continue
+                    mails.extend(
+                        await store.search_email(
+                            session,
+                            item.tenant_id,
+                            "",
+                            sender=first,
+                            since=now - timedelta(days=30),
+                            limit=MAX_MAILS,
+                        )
+                    )
         if mails:
             lines.append("Recent mail:")
+            async with async_session() as session:
+                senders = await store.people_by_address(
+                    session,
+                    item.tenant_id,
+                    {m["sender_addr"] for m in mails if m.get("sender_addr")},
+                )
             for m in sorted(mails, key=lambda r: r["occurred_at"], reverse=True)[:MAX_MAILS]:
                 gist = f" — {m['summary']}" if m.get("summary") else ""
-                lines.append(
-                    f"- {m.get('sender_name') or m.get('sender_addr')}: {m['title']}{gist}"
-                )
+                if m.get("direction") == "sent":
+                    sender = "You"
+                else:
+                    sender = (
+                        m.get("sender_name")
+                        or person_name(senders.get(m.get("sender_addr") or ""), LOCAL)
+                        or m.get("sender_addr")
+                    )
+                lines.append(f"- {sender}: {m['title']}{gist}")
         if len(lines) <= 1 and not memories and not mails:
             lines.append("Nothing on record about this meeting or its attendees.")
         start = item.starts_at.astimezone(user_tz()).strftime("%H:%M")

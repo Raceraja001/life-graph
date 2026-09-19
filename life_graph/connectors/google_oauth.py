@@ -10,7 +10,8 @@ Flow (a "Desktop app" OAuth client, whose redirect may be any localhost port):
    access tokens. A refused refresh raises ``ReauthRequiredError`` so the account
    shows **Reconnect** instead of failing silently.
 
-Scopes are read-only (``gmail.readonly``, ``calendar.readonly``): with OAuth,
+Scopes are read-only (``gmail.readonly``, ``calendar.readonly``,
+``contacts.readonly``, ``contacts.other.readonly``): with OAuth,
 Google itself enforces that Life Graph can only read. Pending sign-ins live in
 process memory (single API process); a restart mid-sign-in just means
 clicking "Sign in" again.
@@ -42,6 +43,12 @@ CALLBACK_PATH = "/api/v1/connectors/oauth/callback"
 SCOPES = {
     "email": ["https://www.googleapis.com/auth/gmail.readonly"],
     "calendar": ["https://www.googleapis.com/auth/calendar.readonly"],
+    # Saved contacts, and the "Other contacts" Google keeps from mail.
+    "contacts": [
+        "https://www.googleapis.com/auth/contacts.readonly",
+        "https://www.googleapis.com/auth/contacts.other.readonly",
+    ],
+    "tasks": ["https://www.googleapis.com/auth/tasks.readonly"],
 }
 _PENDING_TTL = 600
 
@@ -64,8 +71,10 @@ def redirect_uri() -> str:
 
 
 def scopes_for(connector: str) -> list[str]:
-    impl_kind = "calendar" if "calendar" in connector else "email"
-    return SCOPES[impl_kind]
+    try:
+        return SCOPES[connector]
+    except KeyError:
+        raise ConnectorError(f"{connector} has no Google sign-in") from None
 
 
 def start(tenant_id: str, account_id: str, connector: str, login_hint: str | None) -> str:

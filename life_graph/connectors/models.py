@@ -1,4 +1,4 @@
-"""Connector accounts and the item index (migration 039)."""
+"""Connector accounts and the item index (migrations 039, 040)."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from life_graph.config import settings
@@ -68,7 +68,7 @@ class ConnectorAccount(Base):
 
 
 class ConnectorItem(Base):
-    """One indexed event or message. Bodies are never stored.
+    """One indexed event, message or contact. Bodies are never stored.
 
     ``local_detail`` (an event's description, notes, meeting links) is shown to
     local models only. ``summary``/``category`` for mail are written by the
@@ -96,6 +96,8 @@ class ConnectorItem(Base):
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     location: Mapped[str | None] = mapped_column(Text)
     attendees: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # People the item involves (lower-cased addresses, never the user's own).
+    emails: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     summary: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str | None] = mapped_column(String(16))
     summary_state: Mapped[str] = mapped_column(String(16), nullable=False, default="none")
@@ -113,4 +115,5 @@ class ConnectorItem(Base):
         Index("ix_connector_items_tenant_kind_occurred", "tenant_id", "kind", "occurred_at"),
         Index("ix_connector_items_tenant_kind_starts", "tenant_id", "kind", "starts_at"),
         Index("ix_connector_items_thread", "account_id", "thread_key"),
+        Index("ix_connector_items_emails", "emails", postgresql_using="gin"),
     )

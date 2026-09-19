@@ -1,7 +1,19 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Lock, Mail, Plus, RefreshCw, Trash2 } from "lucide-react";
+import {
+  CalendarDays,
+  Eye,
+  GitPullRequest,
+  ListTodo,
+  Lock,
+  Mail,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Upload,
+  Users,
+} from "lucide-react";
 import {
   api,
   type ConnectorAccount,
@@ -14,7 +26,28 @@ const METHOD_LABEL: Record<ConnectorAuth, string> = {
   none: "Calendar link (secret iCal address)",
   app_password: "App password",
   oauth: "Sign in with Google (read-only)",
+  file: "Import a vCard file (.vcf)",
+  token: "Access token (read-only, fine-grained)",
 };
+
+// The credential field each secret-based method stores.
+const SECRET_KEY: Partial<Record<ConnectorAuth, string>> = { none: "url", app_password: "password", token: "token" };
+
+type CloudFieldOption = { name: string; label: string; default: boolean };
+
+const ICONS: Record<string, typeof Mail> = {
+  email: Mail,
+  calendar: CalendarDays,
+  contacts: Users,
+  github: GitPullRequest,
+  tasks: ListTodo,
+};
+
+/** Read a picked file as text in the browser; the server never sees the file itself. */
+function readText(file: File): Promise<string> {
+  if (file.size > 5_000_000) return Promise.reject(new Error("That file is over 5 MB."));
+  return file.text();
+}
 
 const STATUS: Record<ConnectorAccount["status"], { label: string; cls: string }> = {
   ok: { label: "Synced", cls: "bg-success-soft text-success" },
@@ -58,9 +91,10 @@ export function ConnectorSettings() {
     <div className="bg-surface border border-line rounded-xl p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-ink">Calendar &amp; email</h3>
+          <h3 className="text-sm font-semibold text-ink">Connected accounts</h3>
           <p className="text-xs text-ink-mid mt-0.5">
-            Read-only. Mail bodies never leave this machine; cloud chat sees only what each account allows.
+            Calendar, email, contacts, tasks and GitHub, read-only. Mail bodies never leave this machine; cloud chat sees
+            only what each account allows.
           </p>
         </div>
         {!adding && (
@@ -88,24 +122,53 @@ export function ConnectorSettings() {
         {(state.data?.accounts ?? []).length === 0 && !state.isLoading ? (
           <p className="px-4 py-4 text-sm text-ink-low">No accounts yet.</p>
         ) : (
-          state.data?.accounts.map((a) => <AccountRow key={a.id} account={a} onChange={refresh} />)
+          state.data?.accounts.map((a) => (
+            <AccountRow
+              key={a.id}
+              account={a}
+              options={state.data?.connectors.find((c) => c.name === a.connector)?.cloud_field_options ?? []}
+              onChange={refresh}
+            />
+          ))
         )}
       </div>
     </div>
   );
 }
 
-function AccountRow({ account: a, onChange }: { account: ConnectorAccount; onChange: () => void }) {
+function AccountRow({
+  account: a,
+  options,
+  onChange,
+}: {
+  account: ConnectorAccount;
+  options: CloudFieldOption[];
+  onChange: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [editingFields, setEditingFields] = useState(false);
   const status = STATUS[a.status];
-  const Icon = a.connector === "email" ? Mail : CalendarDays;
-  const counts = Object.entries(a.items).map(([k, n]) => `${n} ${k}${n === 1 ? "" : "s"}`).join(", ");
+  const Icon = ICONS[a.connector] ?? CalendarDays;
+  const isFile = a.auth_method === "file";
+  const counts = Object.entries(a.items)
+    .map(([k, n]) => (k === "code" ? `${n} ${n === 1 ? "PR/issue" : "PRs/issues"}` : `${n} ${k}${n === 1 ? "" : "s"}`))
+    .join(", ");
+  const shared = (a.settings.cloud_fields as string[] | undefined) ?? options.filter((o) => o.default).map((o) => o.name);
+
+  const importFile = (file: File | undefined) =>
+    file &&
+    run(async () => {
+      const result = await api.connectors.importFile(a.id, await readText(file));
+      setNotice(`Imported ${result.fetched} contacts (${result.new} new, ${result.deleted} removed).`);
+    });
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       await fn();
       onChange();
@@ -137,10 +200,32 @@ function AccountRow({ account: a, onChange }: { account: ConnectorAccount; onCha
         )}
       </div>
       <p className="text-xs text-ink-mid">
-        {METHOD_LABEL[a.auth_method]} · synced {ago(a.last_sync_at)}{counts && ` · ${counts}`}
+        {METHOD_LABEL[a.auth_method]} · {isFile ? "imported" : "synced"} {ago(a.last_sync_at)}
+        {counts && ` · ${counts}`}
       </p>
+      {options.length > 0 && a.exposure !== "local_only" && (
+        <p className="text-xs text-ink-low">
+          Cloud chat sees: {options.filter((o) => shared.includes(o.name)).map((o) => o.label.toLowerCase()).join(", ") || "nothing"}
+        </p>
+      )}
       {a.last_error && <p className="text-xs text-danger">{a.last_error}</p>}
       {error && <p className="text-xs text-danger">{error}</p>}
+      {notice && <p className="text-xs text-success">{notice}</p>}
+
+      {editingFields && (
+        <CloudFields
+          options={options}
+          value={shared}
+          busy={busy}
+          onCancel={() => setEditingFields(false)}
+          onSave={(fields) =>
+            run(async () => {
+              await api.connectors.update(a.id, { settings: { ...a.settings, cloud_fields: fields } });
+              setEditingFields(false);
+            })
+          }
+        />
+      )}
 
       {newSecret !== null && (
         <div className="flex flex-wrap items-center gap-2">
@@ -149,14 +234,16 @@ function AccountRow({ account: a, onChange }: { account: ConnectorAccount; onCha
             autoComplete="off"
             value={newSecret}
             onChange={(e) => setNewSecret(e.target.value)}
-            placeholder={a.auth_method === "none" ? "New calendar link" : "New app password"}
+            placeholder={
+              a.auth_method === "none" ? "New calendar link" : a.auth_method === "token" ? "New access token" : "New app password"
+            }
             className="bg-surface border border-line rounded-lg px-3 py-1.5 text-sm text-ink flex-1 min-w-[12rem]"
           />
           <button
             disabled={!newSecret || busy}
             onClick={() =>
               run(async () => {
-                const key = a.auth_method === "none" ? "url" : "password";
+                const key = SECRET_KEY[a.auth_method] ?? "password";
                 await api.connectors.setCredential(a.id, a.auth_method, { [key]: newSecret || "" });
                 setNewSecret(null);
                 await api.connectors.sync(a.id);
@@ -173,12 +260,68 @@ function AccountRow({ account: a, onChange }: { account: ConnectorAccount; onCha
       )}
 
       <div className="flex flex-wrap gap-1.5">
-        <SmallButton disabled={busy || !a.enabled} onClick={() => run(() => api.connectors.sync(a.id))}>
-          <RefreshCw className="w-3 h-3" /> Sync now
-        </SmallButton>
-        <SmallButton disabled={busy} onClick={reconnect}>
-          {a.status === "reauth_needed" ? "Reconnect" : "Change credential"}
-        </SmallButton>
+        {isFile ? (
+          <label
+            className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border border-line text-ink-mid ${busy ? "opacity-50" : "hover:bg-surface-3 cursor-pointer"}`}
+          >
+            <Upload className="w-3 h-3" /> Import vCard
+            <input
+              type="file"
+              accept=".vcf,text/vcard,text/x-vcard"
+              className="sr-only"
+              disabled={busy}
+              onChange={(e) => {
+                importFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        ) : (
+          <>
+            <SmallButton disabled={busy || !a.enabled} onClick={() => run(() => api.connectors.sync(a.id))}>
+              <RefreshCw className="w-3 h-3" /> Sync now
+            </SmallButton>
+            <SmallButton disabled={busy} onClick={reconnect}>
+              {a.status === "reauth_needed" ? "Reconnect" : "Change credential"}
+            </SmallButton>
+          </>
+        )}
+        {options.length > 0 && a.exposure !== "local_only" && (
+          <SmallButton disabled={busy} onClick={() => setEditingFields(true)}>
+            <Eye className="w-3 h-3" /> Cloud visibility
+          </SmallButton>
+        )}
+        {a.connector === "email" && (
+          <SmallButton
+            disabled={busy || !a.enabled}
+            onClick={() =>
+              run(async () => {
+                const r = await api.connectors.rescanBills();
+                setNotice(
+                  r.status === "started"
+                    ? "Looking for bills in the last 60 days of mail. This runs on the local model and can take a while."
+                    : "A search for bills is already running."
+                );
+              })
+            }
+          >
+            Find bills in past mail
+          </SmallButton>
+        )}
+        {a.connector === "github" && a.exposure !== "local_only" && (
+          <SmallButton
+            disabled={busy}
+            onClick={() =>
+              run(() =>
+                api.connectors.update(a.id, {
+                  settings: { ...a.settings, share_private_titles: !a.settings.share_private_titles },
+                })
+              )
+            }
+          >
+            {a.settings.share_private_titles ? "Private repos: counts only" : "Share private repo titles"}
+          </SmallButton>
+        )}
         <SmallButton
           disabled={busy}
           onClick={() =>
@@ -187,7 +330,7 @@ function AccountRow({ account: a, onChange }: { account: ConnectorAccount; onCha
             )
           }
         >
-          {a.exposure === "local_only" ? "Allow cloud summaries" : "Make local only"}
+          {a.exposure === "local_only" ? (options.length ? "Allow cloud access" : "Allow cloud summaries") : "Make local only"}
         </SmallButton>
         <SmallButton disabled={busy} onClick={() => run(() => api.connectors.update(a.id, { enabled: !a.enabled }))}>
           {a.enabled ? "Disable" : "Enable"}
@@ -196,7 +339,7 @@ function AccountRow({ account: a, onChange }: { account: ConnectorAccount; onCha
           disabled={busy}
           danger
           onClick={() => {
-            if (confirm(`Remove ${a.display_name}? Its indexed items are deleted; your mailbox is not touched.`)) {
+            if (confirm(`Remove ${a.display_name}? Its indexed items are deleted; the source account is not touched.`)) {
               run(() => api.connectors.remove(a.id));
             }
           }}
@@ -230,6 +373,68 @@ function SmallButton({
   );
 }
 
+/** Which contact fields cloud chat may see, for one account. */
+function CloudFields({
+  options,
+  value,
+  busy,
+  onSave,
+  onCancel,
+  inline,
+}: {
+  options: CloudFieldOption[];
+  value: string[];
+  busy?: boolean;
+  onSave: (fields: string[]) => void;
+  onCancel?: () => void;
+  inline?: boolean;
+}) {
+  const [chosen, setChosen] = useState<string[]>(value);
+  const toggle = (name: string, on: boolean) => {
+    const next = on ? [...chosen, name] : chosen.filter((n) => n !== name);
+    setChosen(next);
+    if (inline) onSave(next);
+  };
+  return (
+    <div className="border border-line rounded-lg p-3 space-y-2 bg-surface-2">
+      <p className="text-xs text-ink-mid">
+        What cloud chat (jarvis, Telegram, push) may see of these contacts. Everything stays available to local
+        models. Birth year and relations never leave this machine.
+      </p>
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {options.map((o) => (
+          <label key={o.name} className="flex items-center gap-2 text-xs text-ink">
+            <input
+              type="checkbox"
+              checked={chosen.includes(o.name)}
+              onChange={(e) => toggle(o.name, e.target.checked)}
+            />
+            {o.label}
+            {!o.default && <span className="text-ink-low">(off by default)</span>}
+          </label>
+        ))}
+      </div>
+      {!chosen.includes("name") && (
+        <p className="text-xs text-ink-low">Without names, cloud chat only sees how many contacts there are.</p>
+      )}
+      {!inline && (
+        <div className="flex gap-2">
+          <button
+            disabled={busy}
+            onClick={() => onSave(chosen)}
+            className="text-xs px-3 py-1.5 rounded-lg bg-accent text-accent-fg disabled:opacity-50"
+          >
+            Save
+          </button>
+          <button onClick={onCancel} className="text-xs px-2 py-1.5 text-ink-mid">
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const field =
   "bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink placeholder-ink-low focus:outline-none focus:border-accent w-full";
 
@@ -246,8 +451,14 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
   const [reason, setReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [cloudFields, setCloudFields] = useState<string[] | null>(null);
+  const [sharePrivate, setSharePrivate] = useState(false);
   const info = state.connectors.find((c) => c.name === connector);
   const methods = info?.auth_methods ?? [];
+  const options = info?.cloud_field_options ?? [];
+  const fields = cloudFields ?? options.filter((o) => o.default).map((o) => o.name);
+  const isContacts = connector === "contacts";
 
   // Keep the chosen method valid for the chosen connector.
   useEffect(() => {
@@ -278,11 +489,16 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
       if (method === "oauth" && !state.google_client_configured) {
         await api.connectors.setGoogleClient(JSON.parse(clientJson));
       }
-      const settings: Record<string, unknown> = { username };
+      const settings: Record<string, unknown> = username ? { username } : {};
+      if (options.length) settings.cloud_fields = fields;
+      if (connector === "github") {
+        settings.share_private_titles = sharePrivate;
+        if (host) settings.api_url = host;
+      }
       if (connector === "email" && method === "app_password" && host) settings.host = host;
       if (connector === "calendar") settings.my_addresses = username;
-      const secretBody: Record<string, string> | undefined =
-        method === "app_password" ? { password: secret } : method === "none" ? { url: secret } : undefined;
+      const secretKey = SECRET_KEY[method];
+      const secretBody: Record<string, string> | undefined = secretKey ? { [secretKey]: secret.trim() } : undefined;
       const account = await api.connectors.create({
         connector,
         display_name: displayName || username || info?.display_name || connector,
@@ -295,6 +511,11 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
         window.location.href = await api.connectors.oauthStart(account.id);
         return;
       }
+      if (method === "file") {
+        if (file) await api.connectors.importFile(account.id, await readText(file));
+        onDone();
+        return;
+      }
       await api.connectors.sync(account.id);
       onDone();
     } catch (e) {
@@ -304,11 +525,13 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
     }
   };
 
-  const needsSecret = method !== "oauth";
+  const needsSecret = SECRET_KEY[method] !== undefined;
   const needsClient = method === "oauth" && !state.google_client_configured;
+  const needsUsername = connector === "email";
   const ready =
-    (connector === "calendar" && method === "none" ? true : username.includes("@")) &&
+    (!needsUsername || username.includes("@")) &&
     (!needsSecret || secret) &&
+    (method !== "file" || file !== null) &&
     (!needsClient || clientJson.trim().startsWith("{"));
 
   return (
@@ -326,20 +549,24 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
           Name
           <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Personal, Work" className={field} />
         </label>
-        <label className="space-y-1 text-xs text-ink-mid">
-          Email address
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            onBlur={suggest}
-            placeholder="you@example.com"
-            className={field}
-          />
-        </label>
-        <label className="flex items-center gap-2 text-xs text-ink-mid pt-5">
-          <input type="checkbox" checked={admin} onChange={(e) => { setAdmin(e.target.checked); }} onBlur={suggest} />
-          I administer this Google Workspace
-        </label>
+        {method !== "file" && method !== "token" && (
+          <>
+            <label className="space-y-1 text-xs text-ink-mid">
+              {isContacts ? "Google account (optional)" : "Email address"}
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onBlur={suggest}
+                placeholder="you@example.com"
+                className={field}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink-mid pt-5">
+              <input type="checkbox" checked={admin} onChange={(e) => { setAdmin(e.target.checked); }} onBlur={suggest} />
+              I administer this Google Workspace
+            </label>
+          </>
+        )}
       </div>
 
       {reason && <p className="text-xs text-ink bg-accent-soft rounded-lg px-3 py-2">Suggested: {reason}</p>}
@@ -356,12 +583,46 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
         <label className="space-y-1 text-xs text-ink-mid">
           What cloud chat may see
           <select value={exposure} onChange={(e) => setExposure(e.target.value as ConnectorExposure)} className={field}>
-            <option value="standard">Summaries (never bodies)</option>
+            <option value="standard">
+              {isContacts
+                ? "The fields chosen below"
+                : connector === "github"
+                  ? "Titles (private repos as counts)"
+                  : "Summaries (never bodies)"}
+            </option>
             <option value="local_only">Counts only (local only)</option>
           </select>
         </label>
       </div>
 
+      {method === "token" && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1 text-xs text-ink-mid">
+            Access token
+            <input
+              type="password"
+              autoComplete="off"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="github_pat_…"
+              className={field}
+            />
+          </label>
+          <label className="space-y-1 text-xs text-ink-mid">
+            GitHub Enterprise API URL (blank = github.com)
+            <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="https://github.example.com/api/v3" className={field} />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-ink sm:col-span-2">
+            <input type="checkbox" checked={sharePrivate} onChange={(e) => setSharePrivate(e.target.checked)} />
+            Let cloud chat see private repo names and titles (otherwise they are counts)
+          </label>
+          <p className="text-xs text-ink-low sm:col-span-2">
+            github.com → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: All
+            repositories. Permissions, all <strong>read-only</strong>: Pull requests, Issues, Commit statuses,
+            Checks. One token per GitHub account or organisation. A token that can write is refused.
+          </p>
+        </div>
+      )}
       {method === "app_password" && connector === "email" && (
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1 text-xs text-ink-mid">
@@ -387,6 +648,24 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
           </span>
         </label>
       )}
+      {method === "file" && (
+        <label className="block space-y-1 text-xs text-ink-mid">
+          Contacts file (.vcf)
+          <input
+            type="file"
+            accept=".vcf,text/vcard,text/x-vcard"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className={field}
+          />
+          <span className="block text-ink-low">
+            contacts.google.com → Export → vCard. Import a newer export any time; it replaces this account&apos;s
+            contacts. The file itself is not kept.
+          </span>
+        </label>
+      )}
+      {options.length > 0 && exposure === "standard" && (
+        <CloudFields options={options} value={fields} onSave={setCloudFields} inline />
+      )}
       {needsClient && (
         <label className="block space-y-1 text-xs text-ink-mid">
           Google OAuth client (one-time setup)
@@ -398,8 +677,10 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
             className={`${field} font-mono text-xs`}
           />
           <span className="block text-ink-low">
-            Google Cloud Console → APIs &amp; Services: enable the Gmail API and Google Calendar API, create an
-            OAuth client of type &quot;Desktop app&quot;, download its JSON. Redirect used: {state.oauth_redirect_uri}
+            Google Cloud Console → APIs &amp; Services: enable the Gmail, Google Calendar, People (contacts) and
+            Tasks APIs you need, create an OAuth client of type &quot;Desktop app&quot;, download its JSON, and set
+            the consent screen to &quot;In production&quot; (in Testing, Google ends the sign-in after 7 days).
+            Redirect used: {state.oauth_redirect_uri}
           </span>
         </label>
       )}
