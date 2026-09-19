@@ -196,7 +196,10 @@ than trusting any prose, including this paragraph.
 - [x] **Calendar and email reading** — built as connector plugins (`plugins/calendar`,
       `plugins/mail`, runtime `life_graph/connectors/`, spec `docs/specs/connectors.md`):
       read-only, several accounts, app password or Google OAuth, brief sections, agent
-      tools, meeting prep. Mail bodies never reach a cloud model.
+      tools, meeting prep. Mail bodies never reach a cloud model. Contacts too
+      (`plugins/contacts`, Google or a vCard export, per-account cloud visibility,
+      spec `docs/specs/connector-contacts.md`): names on addresses, birthdays, "who"
+      lines in meeting prep.
 - [ ] **Messaging channels** — WhatsApp/Telegram as an interaction surface. Specs exist,
       no code.
 - [ ] **Text-to-speech coverage and quality** — replies are spoken only for voice-originated

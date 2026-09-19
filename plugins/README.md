@@ -94,12 +94,17 @@ pm.load_all()  # discovers and loads all plugins
 - **Lazy imports**: Import heavy dependencies inside your handler, not at module level.
 - **Logging**: Use `logging.getLogger(__name__)` for diagnostics.
 
-## Connector plugins (calendar, email, …)
+## Connector plugins (calendar, email, contacts, …)
 
 A plugin that brings in data from an outside source exports `CONNECTOR` instead
 of (or as well as) `register`. The connector runtime (`life_graph/connectors/`)
-discovers it in both the API and the worker. See `plugins/calendar/` and
-`plugins/mail/`, and the design in `docs/specs/connectors.md`.
+discovers it in both the API and the worker. See `plugins/calendar/`,
+`plugins/mail/` and `plugins/contacts/`, and the designs in
+`docs/specs/connectors.md` and `docs/specs/connector-contacts.md`.
+
+A source that is imported rather than fetched (a vCard export) uses auth method
+`file` and provides `import_file(account, text) -> SyncResult`; the runtime
+treats each import as the complete set for that account.
 
 A connector implements the `Connector` protocol (`life_graph/connectors/base.py`):
 `name`, `display_name`, `item_kinds`, `auth_methods`, `async sync(account,

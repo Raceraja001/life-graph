@@ -2,8 +2,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Mail } from "lucide-react";
-import { api, type TodayEvent, type WaitingMail } from "@/lib/api";
+import { Cake, CalendarDays, Mail } from "lucide-react";
+import { api, type BirthdayContact, type TodayEvent, type WaitingMail } from "@/lib/api";
 
 /** HH:MM in the user's configured zone (the same day the brief uses), not the browser's. */
 function hm(iso: string | null, timeZone?: string): string {
@@ -35,7 +35,7 @@ function overlaps(events: TodayEvent[]): Set<string> {
   return clash;
 }
 
-/** Today's events and mail waiting on the user, from connected accounts. */
+/** Today's events, birthdays and mail waiting on the user, from connected accounts. */
 export function TodayCard() {
   const today = useQuery({ queryKey: ["connectors-today"], queryFn: api.connectors.today, refetchInterval: 60000 });
   const data = today.data;
@@ -53,6 +53,7 @@ export function TodayCard() {
   const clash = overlaps(events);
   const waiting = data.waiting.items;
   const promises = data.promises?.items ?? [];
+  const birthdays = data.birthdays?.items ?? [];
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <section className="bg-surface border border-line rounded-xl p-5 space-y-3">
@@ -82,6 +83,19 @@ export function TodayCard() {
           <p className="text-xs text-ink-mid">
             Tomorrow starts early: {hm(data.tomorrow_early.items[0].starts_at, tz)} {data.tomorrow_early.items[0].title}
           </p>
+        )}
+        {birthdays.length > 0 && (
+          <div className="pt-3 border-t border-line space-y-1.5">
+            <h4 className="text-xs font-semibold text-ink-mid uppercase tracking-wider flex items-center gap-1.5">
+              <Cake className="w-3.5 h-3.5" /> Birthdays
+            </h4>
+            {birthdays.map((c) => (
+              <p key={c.id} className="text-sm text-ink">
+                {c.name}
+                <span className="text-ink-low"> · {birthdayLabel(c, tz)}</span>
+              </p>
+            ))}
+          </div>
         )}
       </section>
       <section className="bg-surface border border-line rounded-xl p-5 space-y-3">
@@ -116,6 +130,26 @@ export function TodayCard() {
       </section>
     </div>
   );
+}
+
+/** "today", "tomorrow" or "Sat 21 Sep", counted in the user's zone. */
+function birthdayLabel(c: BirthdayContact, timeZone?: string): string {
+  let today: string;
+  try {
+    today = new Date().toLocaleDateString("en-CA", { timeZone });
+  } catch {
+    today = new Date().toLocaleDateString("en-CA");
+  }
+  const tomorrow = new Date(`${today}T12:00:00Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  if (c.on === today) return "today";
+  if (c.on === tomorrow.toISOString().slice(0, 10)) return "tomorrow";
+  return new Date(`${c.on}T12:00:00Z`).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
 }
 
 function dueLabel(due: string | null | undefined): string {

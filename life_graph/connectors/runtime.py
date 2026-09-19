@@ -30,7 +30,9 @@ from sqlalchemy import delete, select
 from life_graph.config import settings
 from life_graph.connectors import secrets, store
 from life_graph.connectors.base import (
+    AUTH_FILE,
     AUTH_OAUTH,
+    KIND_CONTACT,
     KIND_EMAIL,
     Account,
     Connector,
@@ -144,6 +146,7 @@ class ConnectorRuntime:
                 "item_kinds": sorted(c.item_kinds),
                 "auth_methods": list(c.auth_methods),
                 "fields": list(getattr(c, "account_fields", ())),
+                "cloud_field_options": list(getattr(c, "cloud_field_options", ())),
             }
             for c in self.connectors.values()
         ]
@@ -193,9 +196,12 @@ class ConnectorRuntime:
             settings=clean_settings,
             exposure=exposure,
             enabled=True,
-            sync_interval_min=settings.connector_sync_minutes,
+            sync_interval_min=getattr(
+                impl, "default_interval_min", settings.connector_sync_minutes
+            ),
             status="never_synced",
-            next_sync_at=datetime.now(UTC),
+            # An imported source has nothing to fetch on a schedule.
+            next_sync_at=None if auth_method == AUTH_FILE else datetime.now(UTC),
         )
         async with async_session() as session:
             existing = await session.execute(
@@ -240,7 +246,7 @@ class ConnectorRuntime:
                 row.display_name = changes["display_name"].strip()[:128]
             if changes.get("enabled") is not None:
                 row.enabled = bool(changes["enabled"])
-                if row.enabled:
+                if row.enabled and row.auth_method != AUTH_FILE:
                     row.next_sync_at = datetime.now(UTC)
             if changes.get("sync_interval_min"):
                 row.sync_interval_min = max(5, min(int(changes["sync_interval_min"]), 1440))
@@ -307,6 +313,8 @@ class ConnectorRuntime:
     # ── Sync ──────────────────────────────────────────────────
 
     async def _secret_for(self, row: ConnectorAccount) -> dict[str, Any]:
+        if row.auth_method == AUTH_FILE:
+            return {}  # imported data: there is no credential
         secret = secrets.read_secret(row.tenant_id, str(row.id))
         if row.auth_method == AUTH_OAUTH:
             from life_graph.connectors import google_oauth
@@ -394,6 +402,39 @@ class ConnectorRuntime:
         )
         return outcome
 
+    async def import_file(self, tenant_id: str, account_id: str, text: str) -> SyncOutcome:
+        """Replace an import-based account's items with the contents of a file."""
+        async with async_session() as session:
+            row = await self._get(session, tenant_id, account_id)
+        impl = self.connectors.get(row.connector)
+        importer = getattr(impl, "import_file", None)
+        if row.auth_method != AUTH_FILE or importer is None:
+            raise AccountError("this account does not take file imports")
+        try:
+            result = importer(account_view(row), text)
+        except ConnectorError as exc:
+            raise AccountError(str(exc)) from exc
+        now = datetime.now(UTC)
+        async with async_session() as session:
+            row = await self._get(session, tenant_id, account_id)
+            new_ids = await store.upsert_items(session, row, result.items)
+            deleted = 0
+            for kind in impl.item_kinds:
+                keep = {i.external_id for i in result.items if i.kind == kind}
+                deleted += await store.delete_missing(session, row, kind, keep)
+            row.status = "ok"
+            row.last_error = None
+            row.consecutive_failures = 0
+            row.last_sync_at = now
+            await session.commit()
+        outcome = SyncOutcome(
+            status="ok", fetched=len(result.items), new=len(new_ids), deleted=deleted
+        )
+        logger.info(
+            "Connector %s/%s imported: %s", row.connector, row.account_key, outcome.as_dict()
+        )
+        return outcome
+
     async def _record_failure(
         self, tenant_id: str, account_id: str, error: str, *, reauth: bool, interval: int
     ) -> SyncOutcome:
@@ -476,6 +517,8 @@ class ConnectorRuntime:
                             ConnectorItem.account_id == account.id,
                             ConnectorItem.embedding.is_(None),
                             ConnectorItem.summary_state != "pending",
+                            # Contacts are found by name and address, not meaning.
+                            ConnectorItem.kind != KIND_CONTACT,
                         )
                         .limit(limit)
                     )

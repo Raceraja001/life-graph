@@ -262,6 +262,12 @@ def google_event_item(cal: str, ev: dict[str, Any], my: set[str]) -> Item | None
         attendees=[
             a.get("displayName") or a.get("email", "") for a in attendees if not a.get("self")
         ][:MAX_ATTENDEES],
+        emails=[
+            e
+            for e in [a.get("email", "").lower() for a in attendees if not a.get("self")]
+            + ([] if organizer.get("self") else [organizer.get("email", "").lower()])
+            if e and e not in my
+        ][:MAX_ATTENDEES],
         detail="\n".join(p for p in detail_parts if p)[:MAX_DETAIL] or None,
         flags={
             "calendar": cal,
@@ -330,6 +336,11 @@ def parse_ics(content: bytes, my_addresses: set[str]) -> list[Item]:
                 all_day=all_day,
                 location=str(ev.get("LOCATION")) if ev.get("LOCATION") else None,
                 attendees=attendees,
+                emails=[
+                    e
+                    for e in [_addr(a) for a in attendees_raw] + [organizer]
+                    if "@" in e and e not in my_addresses
+                ][:MAX_ATTENDEES],
                 detail=detail[:MAX_DETAIL] or None,
             )
         )

@@ -137,8 +137,8 @@ export interface CalibrationReport {
   trend: { previous_brier: number; delta_pct: number | null } | null;
 }
 
-// ── Connectors (calendar, email) — mirror life_graph/api/connectors.py ──
-export type ConnectorAuth = "none" | "app_password" | "oauth";
+// ── Connectors (calendar, email, contacts) — mirror life_graph/api/connectors.py ──
+export type ConnectorAuth = "none" | "app_password" | "oauth" | "file";
 export type ConnectorExposure = "standard" | "local_only";
 
 export interface ConnectorField {
@@ -155,6 +155,7 @@ export interface ConnectorInfo {
   item_kinds: string[];
   auth_methods: ConnectorAuth[];
   fields: ConnectorField[];
+  cloud_field_options?: { name: string; label: string; default: boolean }[];
 }
 
 export interface ConnectorAccount {
@@ -221,6 +222,16 @@ export interface TodayView {
   tomorrow_early: { items: TodayEvent[]; withheld: Record<string, number> };
   waiting: { items: WaitingMail[]; withheld: Record<string, number> };
   promises?: { items: WaitingMail[]; withheld: Record<string, number> };
+  birthdays?: { items: BirthdayContact[]; withheld: Record<string, number> };
+}
+
+export interface BirthdayContact {
+  id: string;
+  account: string;
+  name: string;
+  birthday?: string;
+  on: string;
+  org?: string;
 }
 
 const GET = <T>(path: string, params?: Record<string, string>) => request<T>("GET", path, undefined, params);
@@ -269,12 +280,19 @@ export const api = {
       ).then((r) => r.data),
     create: (body: NewConnectorAccount) =>
       POST<{ data: ConnectorAccount }>("/connectors/accounts", body).then((r) => r.data),
-    update: (id: string, body: Partial<Pick<ConnectorAccount, "display_name" | "enabled" | "exposure">>) =>
+    update: (
+      id: string,
+      body: Partial<Pick<ConnectorAccount, "display_name" | "enabled" | "exposure" | "settings">>,
+    ) =>
       request<{ data: ConnectorAccount }>("PATCH", `/connectors/accounts/${id}`, body).then((r) => r.data),
     setCredential: (id: string, auth_method: ConnectorAuth, secret: Record<string, string>) =>
       request<{ data: ConnectorAccount }>("PUT", `/connectors/accounts/${id}/credential`, { auth_method, secret }),
     remove: (id: string) => request<unknown>("DELETE", `/connectors/accounts/${id}`),
     sync: (id: string) => POST<unknown>(`/connectors/accounts/${id}/sync`, {}),
+    importFile: (id: string, vcard: string) =>
+      POST<{ data: { fetched: number; new: number; deleted: number } }>(`/connectors/accounts/${id}/import`, {
+        vcard,
+      }).then((r) => r.data),
     oauthStart: (id: string) =>
       POST<{ data: { url: string } }>(`/connectors/accounts/${id}/oauth/start`, {}).then((r) => r.data.url),
     setGoogleClient: (client: Record<string, unknown>) =>

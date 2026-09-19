@@ -58,6 +58,14 @@ class CredentialUpdate(BaseModel):
     secret: dict[str, str]
 
 
+MAX_IMPORT_CHARS = 5_000_000
+
+
+class FileImport(BaseModel):
+    # The file's text, read in the browser (a .vcf export).
+    vcard: str = Field(..., min_length=1, max_length=MAX_IMPORT_CHARS)
+
+
 class GoogleClient(BaseModel):
     # The JSON downloaded from Google Cloud for a "Desktop app" OAuth client.
     client: dict[str, Any]
@@ -187,6 +195,18 @@ async def sync_now(account_id: str, tenant_id: str = Depends(get_current_tenant_
     return success_response(data={"id": account_id, "status": "started"})
 
 
+@router.post("/accounts/{account_id}/import", summary="Replace an account's items from a file")
+async def import_file(
+    account_id: str, body: FileImport, tenant_id: str = Depends(get_current_tenant_id)
+):
+    """A vCard export for a contacts account. The file itself is not kept."""
+    try:
+        outcome = await get_runtime().import_file(tenant_id, account_id, body.vcard)
+    except (AccountError, ValueError) as exc:
+        raise _bad(exc) from exc
+    return success_response(data={"id": account_id, **outcome.as_dict()})
+
+
 @router.put("/google-client", summary="Store the Google OAuth client (Desktop app JSON)")
 async def put_google_client(body: GoogleClient, tenant_id: str = Depends(get_current_tenant_id)):
     try:
@@ -210,6 +230,8 @@ async def oauth_start(account_id: str, tenant_id: str = Depends(get_current_tena
         )
     except secrets.SecretError as exc:
         raise HTTPException(400, f"Google OAuth client not configured: {exc}") from exc
+    except ConnectorError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return success_response(data={"url": url, "redirect_uri": google_oauth.redirect_uri()})
 
 
