@@ -107,17 +107,24 @@ docker compose -f docker-compose.production.yml exec postgres \
   WHERE job_name IN ('backup','restore_drill') ORDER BY started_at DESC LIMIT 14;"
 ```
 
-## Calendar & Email Connectors
+## Calendar, Email & Contacts Connectors
 
-Read-only; set up in the dashboard under **Settings → Calendar & email**
-(spec: `docs/specs/connectors.md`). Each account picks its method; the form
-suggests one.
+Read-only; set up in the dashboard under **Settings → Calendar, email & contacts**
+(specs: `docs/specs/connectors.md`, `docs/specs/connector-contacts.md`). Each
+account picks its method; the form suggests one.
 
 | Method | Setup | Notes |
 |---|---|---|
 | App password (mail) | Google Account → Security → 2-Step Verification → App passwords | Missing page = the Workspace admin disabled it |
 | Calendar link | Google Calendar → Settings → the calendar → *Secret address in iCal format* | The link is a credential; Google refreshes it with a lag |
-| Google sign-in (OAuth) | Once: Google Cloud project, enable Gmail + Calendar APIs, OAuth client type **Desktop app**, paste its JSON in the form | Read-only scopes; sign in from the machine running the API (loopback redirect) |
+| Google sign-in (OAuth) | Once: Google Cloud project, enable Gmail, Calendar and **People** APIs, OAuth client type **Desktop app**, paste its JSON in the form | Read-only scopes; sign in from the machine running the API (loopback redirect). Contacts without the People API enabled fail with a message saying so |
+| vCard file (contacts) | contacts.google.com → Export → vCard, then **Import vCard** on the account | No credential. Import a newer export to update; each import replaces that account's contacts |
+
+- Contacts: saved contacts and Google's "Other contacts" (addresses kept from
+  mail), synced every 6 h. **Cloud visibility** on each contacts account picks
+  which fields cloud chat may see (default: names, company and title, email
+  addresses, birthdays; phones, postal addresses and notes are off). Contacts are
+  not time-limited: they mirror the source.
 
 - Credentials: `~/.config/life-graph/connectors/<tenant>/<account-id>.json` (0600).
   They are **not** in the database backups — keep your passwords in a password

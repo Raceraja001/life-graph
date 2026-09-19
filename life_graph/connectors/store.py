@@ -7,11 +7,12 @@ another query. Nothing here decides visibility.
 
 from __future__ import annotations
 
+import calendar
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, delete, exists, func, or_, select
+from sqlalchemy import and_, case, delete, exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 
@@ -21,6 +22,7 @@ from life_graph.connectors.base import (
     DIR_INVITE,
     DIR_OWN,
     DIR_SENT,
+    KIND_CONTACT,
     KIND_EMAIL,
     KIND_EVENT,
     Item,
@@ -50,6 +52,7 @@ _UPDATABLE = (
     "ends_at",
     "location",
     "attendees",
+    "emails",
     "local_detail",
     "trust_tier",
     "occurred_at",
@@ -77,6 +80,7 @@ def _row_for(account: ConnectorAccount, item: Item, now: datetime) -> dict[str, 
         "ends_at": item.ends_at,
         "location": item.location,
         "attendees": item.attendees,
+        "emails": sorted({e.strip().lower() for e in item.emails if e and "@" in e}),
         "local_detail": item.detail,
         "flags": flags,
         "trust_tier": _TRUST.get(item.direction, "external"),
@@ -95,7 +99,8 @@ async def upsert_items(
     An existing row keeps its summary, category and embedding: those are
     derived by the local model once and do not change when the source re-sends
     the same message. Flags are merged, so ``asks_me`` set by the summariser
-    survives a later sync that only knows ``automated``.
+    survives a later sync that only knows ``automated`` (a contact's flags are
+    replaced instead).
     """
     if not items:
         return []
@@ -108,7 +113,12 @@ async def upsert_items(
         stmt = insert(ConnectorItem).values(chunk)
         excluded = stmt.excluded
         update = {col: getattr(excluded, col) for col in _UPDATABLE}
-        update["flags"] = ConnectorItem.flags.op("||")(excluded.flags)
+        # A contact's flags are its data (org, birthday): the source's current
+        # set replaces them, so a removed birthday is removed here too.
+        update["flags"] = case(
+            (ConnectorItem.kind == KIND_CONTACT, excluded.flags),
+            else_=ConnectorItem.flags.op("||")(excluded.flags),
+        )
         stmt = stmt.on_conflict_do_update(
             constraint="uq_connector_item_external", set_=update
         ).returning(ConnectorItem.id, ConnectorItem.fetched_at, ConnectorItem.summary_state)
@@ -154,6 +164,7 @@ def _as_dict(item: ConnectorItem, account: ConnectorAccount) -> dict[str, Any]:
         "account_id": str(item.account_id),
         "account_name": account.display_name,
         "account_exposure": account.exposure,
+        "account_cloud_fields": (account.settings or {}).get("cloud_fields"),
         "connector": account.connector,
         "kind": item.kind,
         "external_id": item.external_id,
@@ -167,6 +178,7 @@ def _as_dict(item: ConnectorItem, account: ConnectorAccount) -> dict[str, Any]:
         "ends_at": item.ends_at,
         "location": item.location,
         "attendees": item.attendees or [],
+        "emails": list(item.emails or []),
         "summary": item.summary,
         "category": item.category,
         "summary_state": item.summary_state,
@@ -340,6 +352,121 @@ async def search_email(
         for item, account in (await session.execute(recent)).all():
             found.setdefault(str(item.id), _as_dict(item, account))
     return list(found.values())[:limit]
+
+
+def _clean_addrs(addrs: list[str] | set[str]) -> list[str]:
+    return sorted({a.strip().lower() for a in addrs if a and "@" in a})
+
+
+async def people_by_address(
+    session: AsyncSession, tenant_id: str, addrs: list[str] | set[str]
+) -> dict[str, dict[str, Any]]:
+    """The contact for each address, preferring a saved contact over an auto-saved one."""
+    wanted = _clean_addrs(addrs)
+    if not wanted:
+        return {}
+    stmt = (
+        _base(tenant_id)
+        .where(ConnectorItem.kind == KIND_CONTACT, ConnectorItem.emails.overlap(wanted))
+        .order_by((ConnectorItem.direction == DIR_OWN).desc(), ConnectorItem.title)
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for item, account in (await session.execute(stmt)).all():
+        row = _as_dict(item, account)
+        for addr in item.emails or []:
+            if addr in wanted:
+                out.setdefault(addr, row)
+    return out
+
+
+async def search_contacts(
+    session: AsyncSession, tenant_id: str, query: str, limit: int = 10
+) -> list[dict[str, Any]]:
+    """Contacts whose name, address or organisation contains every word of ``query``."""
+    terms = [t.lower() for t in query.split() if len(t) > 1][:5]
+    if not terms:
+        return []
+    haystack = func.lower(
+        func.concat_ws(
+            " ",
+            ConnectorItem.title,
+            func.array_to_string(ConnectorItem.emails, " "),
+            ConnectorItem.flags["org"].astext,
+        )
+    )
+    stmt = (
+        _base(tenant_id)
+        .where(ConnectorItem.kind == KIND_CONTACT, *[haystack.like(f"%{t}%") for t in terms])
+        .order_by((ConnectorItem.direction == DIR_OWN).desc(), ConnectorItem.title)
+        .limit(limit)
+    )
+    return [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
+
+
+def _month_days(first: date, days: int) -> dict[str, date]:
+    """``MM-DD`` → the date it falls on, for ``days`` days from ``first``.
+
+    A 29 February birthday is marked on 28 February in years without one.
+    """
+    out: dict[str, date] = {}
+    for n in range(days):
+        d = first + timedelta(days=n)
+        out[f"{d:%m-%d}"] = d
+        if d.month == 2 and d.day == 28 and not calendar.isleap(d.year):
+            out["02-29"] = d
+    return out
+
+
+async def birthdays_between(
+    session: AsyncSession, tenant_id: str, first: date, days: int
+) -> list[dict[str, Any]]:
+    """Contacts whose birthday falls in ``days`` days from ``first``, soonest first."""
+    when = _month_days(first, days)
+    stmt = _base(tenant_id).where(
+        ConnectorItem.kind == KIND_CONTACT,
+        ConnectorItem.flags["birthday"].astext.in_(list(when)),
+    )
+    out = []
+    for item, account in (await session.execute(stmt)).all():
+        row = _as_dict(item, account)
+        row["birthday_on"] = when[row["flags"]["birthday"]]
+        out.append(row)
+    return sorted(out, key=lambda r: (r["birthday_on"], r["title"] or ""))
+
+
+async def mail_with(
+    session: AsyncSession,
+    tenant_id: str,
+    addrs: list[str] | set[str],
+    *,
+    since: datetime,
+    limit: int = 5,
+) -> tuple[list[dict[str, Any]], int, datetime | None]:
+    """Recent mail to or from any of ``addrs``: (newest rows, total count, latest date)."""
+    wanted = _clean_addrs(addrs)
+    if not wanted:
+        return [], 0, None
+    cond = (
+        ConnectorItem.tenant_id == tenant_id,
+        ConnectorItem.kind == KIND_EMAIL,
+        ConnectorItem.occurred_at >= since,
+        ConnectorItem.emails.overlap(wanted),
+    )
+    count, latest = (
+        await session.execute(
+            select(func.count(), func.max(ConnectorItem.occurred_at))
+            .join(ConnectorAccount, ConnectorAccount.id == ConnectorItem.account_id)
+            .where(*cond, ConnectorAccount.enabled.is_(True))
+        )
+    ).one()
+    if not limit:
+        return [], int(count or 0), latest
+    rows = (
+        await session.execute(
+            _base(tenant_id).where(*cond).order_by(ConnectorItem.occurred_at.desc()).limit(limit)
+        )
+    ).all()
+    return [_as_dict(i, a) for i, a in rows], int(count or 0), latest
 
 
 async def get_item(

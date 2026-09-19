@@ -1,4 +1,4 @@
-"""Daily-brief sections from connectors: **Today**, **Waiting on you**, **You promised**.
+"""Daily-brief sections from connectors: **Today**, **Waiting on you**, **You promised**, **Birthdays**.
 
 Rendered twice. The brief's stored ``body`` is what Telegram and Web Push send
 off the machine, so it gets the CLOUD view (redacted, ``local_only`` accounts as
@@ -19,10 +19,12 @@ from life_graph.storage.database import async_session
 
 MAX_WAITING = 5
 EARLY_TOMORROW_HOUR = 10
+BIRTHDAY_DAYS = 4  # today and the next three days
 
 
-async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, list[dict[str, Any]]]:
-    """Raw rows: today's events, tomorrow's early start, mail waiting on the user."""
+async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, Any]:
+    """Raw rows: today's events, tomorrow's early start, mail waiting on the user,
+    promises, upcoming birthdays, and the contacts behind the addresses in them."""
     now = now or datetime.now(UTC)
     today = now.astimezone(user_tz()).date()
     start, end = day_bounds(today)
@@ -32,6 +34,10 @@ async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, list
         tomorrow = await store.events_between(session, tenant_id, t_start, t_end, limit=5)
         waiting = await store.waiting_on_me(session, tenant_id, now)
         promises = await store.open_promises(session, tenant_id, now)
+        birthdays = await store.birthdays_between(session, tenant_id, today, BIRTHDAY_DAYS)
+        addrs = {m["sender_addr"] for m in waiting if m.get("sender_addr")}
+        addrs.update(a for e in events for a in e["emails"])
+        people = await store.people_by_address(session, tenant_id, addrs)
     early = [
         e
         for e in tomorrow
@@ -39,7 +45,14 @@ async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, list
         and not (e.get("flags") or {}).get("all_day")
         and e["starts_at"].astimezone(user_tz()).hour < EARLY_TOMORROW_HOUR
     ][:1]
-    return {"today": events, "tomorrow_early": early, "waiting": waiting, "promises": promises}
+    return {
+        "today": events,
+        "tomorrow_early": early,
+        "waiting": waiting,
+        "promises": promises,
+        "birthdays": birthdays,
+        "people": people,
+    }
 
 
 def _hm(iso: str | None) -> str:
@@ -72,12 +85,39 @@ def _age(iso: str | None, now: datetime) -> str:
     return f"{int(hours // 24)}d" if hours >= 24 else f"{int(hours)}h"
 
 
-def render(raw: dict[str, list[dict[str, Any]]], audience: str, now: datetime) -> dict[str, Any]:
+def _birthday_lines(shown: dict[str, Any], now: datetime) -> list[str]:
+    today = now.astimezone(user_tz()).date()
+    lines = []
+    for c in shown["items"]:
+        d = date.fromisoformat(c["on"])
+        if d == today:
+            when = "today"
+        elif d == today + timedelta(days=1):
+            when = "tomorrow"
+        else:
+            when = f"{d:%a %d %b}"
+        lines.append(f"- {c['name']} — {when}")
+    for account, n in shown["withheld"].items():
+        lines.append(f"- +{n} in {account} (details on the dashboard)")
+    return lines
+
+
+def render(raw: dict[str, Any], audience: str, now: datetime) -> dict[str, Any]:
     """Views + markdown text for one audience."""
-    today = view_items(raw["today"], audience)
-    early = view_items(raw["tomorrow_early"], audience)
-    waiting = view_items(raw["waiting"], audience)
-    promises = view_items(raw.get("promises", []), audience)
+    people = raw.get("people") or {}
+    today = view_items(raw["today"], audience, people)
+    early = view_items(raw["tomorrow_early"], audience, people)
+    waiting = view_items(raw["waiting"], audience, people)
+    promises = view_items(raw.get("promises", []), audience, people)
+    birthday_rows = raw.get("birthdays", [])
+    # Birthdays need the birthday field as well as the name.
+    birthdays = view_items(birthday_rows, audience)
+    for c in list(birthdays["items"]):
+        if not c.get("birthday"):
+            birthdays["items"].remove(c)
+            birthdays["withheld"][c["account"]] = birthdays["withheld"].get(c["account"], 0) + 1
+    for c in birthdays["items"]:
+        c["on"] = next(r["birthday_on"] for r in birthday_rows if r["id"] == c["id"]).isoformat()
     lines: list[str] = []
     day_label = now.astimezone(user_tz()).strftime("%a %d %b")
 
@@ -123,12 +163,18 @@ def render(raw: dict[str, list[dict[str, Any]]], audience: str, now: datetime) -
             lines.append(f"- +{n} in {account} (details on the dashboard)")
         lines.append("")
 
+    if birthdays["items"] or birthdays["withheld"]:
+        lines.append("## Birthdays")
+        lines.extend(_birthday_lines(birthdays, now))
+        lines.append("")
+
     return {
         "text": "\n".join(lines).strip(),
         "today": today,
         "tomorrow_early": early,
         "waiting": waiting,
         "promises": promises,
+        "birthdays": birthdays,
     }
 
 
