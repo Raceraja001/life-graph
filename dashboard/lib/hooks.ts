@@ -1,6 +1,6 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "./api";
+import { api, type NewPrediction, type PredictionOutcome } from "./api";
 
 // No polling — WebSocket handles real-time updates via cache invalidation
 
@@ -118,19 +118,58 @@ export function useProcedures() {
   return useQuery({ queryKey: ["procedures"], queryFn: () => api.procedures.list() });
 }
 
+// ── Judgment: predictions + calibration ──────────
+export function usePredictions(status: "suggested" | "pending" | "resolved") {
+  return useQuery({
+    queryKey: ["predictions", status],
+    queryFn: async () => {
+      if (status !== "resolved") return api.judgment.predictions({ status, limit: "200" });
+      // "Resolved" spans three outcomes; the API filters one at a time.
+      const lists = await Promise.all(
+        (["correct", "incorrect", "ambiguous"] as const).map((s) =>
+          api.judgment.predictions({ status: s, limit: "30" })
+        )
+      );
+      return lists
+        .flat()
+        .sort((a, b) => (b.resolved_at ?? "").localeCompare(a.resolved_at ?? ""))
+        .slice(0, 30);
+    },
+  });
+}
+export function useCalibration(domain?: string) {
+  return useQuery({ queryKey: ["calibration", domain], queryFn: () => api.judgment.calibration(domain) });
+}
+
+/** Any prediction change can move every list and the curve, so refresh all of them. */
+function usePredictionMutation<A>(fn: (args: A) => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["predictions"] });
+      qc.invalidateQueries({ queryKey: ["calibration"] });
+    },
+  });
+}
+export function useCreatePrediction() {
+  return usePredictionMutation((body: NewPrediction) => api.judgment.createPrediction(body));
+}
+export function useResolvePrediction() {
+  return usePredictionMutation(({ id, outcome }: { id: string; outcome: PredictionOutcome }) =>
+    api.judgment.resolve(id, outcome)
+  );
+}
+export function useAcceptPrediction() {
+  return usePredictionMutation(({ id, body }: { id: string; body?: Partial<NewPrediction> }) =>
+    api.judgment.accept(id, body)
+  );
+}
+export function useDismissPrediction() {
+  return usePredictionMutation((id: string) => api.judgment.dismiss(id));
+}
+
 // ── Stubs for unbuilt features ──────────────────
-export function usePredictions(_params?: any) {
-  return useQuery({ queryKey: ["predictions-stub"], queryFn: async () => [], enabled: false });
-}
-export function useCalibration() {
-  return useQuery({ queryKey: ["calibration-stub"], queryFn: async () => ({}), enabled: false });
-}
-export function useCalibrationCurve(_domain?: string) {
-  return useQuery({ queryKey: ["calibration-curve-stub"], queryFn: async () => ({}), enabled: false });
-}
-export function useJudgmentStats() {
-  return useQuery({ queryKey: ["judgment-stats-stub"], queryFn: async () => ({}), enabled: false });
-}
 export function useCaptures(_params?: any) {
   return useWatcherEvents(_params);
 }

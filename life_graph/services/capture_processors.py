@@ -10,12 +10,15 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from life_graph.extraction.rules import ExtractedFact
     from life_graph.models.db import CaptureEvent
 
@@ -55,6 +58,7 @@ class CaptureProcessors:
     Processors:
       1. Text extraction via ExtractionPipeline (Tier 1-3)
       2. Decision candidate detection (regex → DECISION_CANDIDATE)
+      2b. Explicit confidence claims → suggested predictions
       3. Procedure candidate detection (regex → PROCEDURE_CANDIDATE)
     """
 
@@ -159,6 +163,11 @@ class CaptureProcessors:
                     )
                     logger.info("Decision candidate detected: %s", decision_text[:80])
 
+                # ── 2b. Prediction suggestions ──────────────────────
+                yield_count += await self._suggest_predictions(
+                    session, content, capture_evt, tenant_id
+                )
+
                 # ── 3. Procedure candidate detection ────────────────
                 procedures = self._detect_procedures(content)
                 for proc_text in procedures:
@@ -251,6 +260,59 @@ class CaptureProcessors:
         except Exception:
             logger.warning(
                 "Memory persistence failed for capture %s", capture_evt.id, exc_info=True
+            )
+            return 0
+
+    async def _suggest_predictions(
+        self,
+        session: AsyncSession,
+        content: str,
+        capture_evt: CaptureEvent,
+        tenant_id: str | None,
+    ) -> int:
+        """Store explicit confidence claims as suggested predictions.
+
+        Only the user's own words count: a claim quoted from an external
+        surface ("70% chance of rain") is not the user's prediction. Each
+        suggestion waits on the Calibration page for accept/dismiss; nothing
+        reaches calibration without that. Returns how many were stored.
+        """
+        if not tenant_id:
+            return 0
+        try:
+            from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
+            from life_graph.services.judgment import JudgmentService
+            from life_graph.services.prediction_detection import detect_predictions
+
+            surface = getattr(capture_evt, "surface", None)
+            tier = coerce_tier(
+                getattr(capture_evt, "trust_tier", None),
+                default=classify_surface(surface),
+            )
+            if tier not in (TrustTier.SELF, TrustTier.VERIFIED):
+                return 0
+
+            now = getattr(capture_evt, "created_at", None) or datetime.now(UTC)
+            svc = JudgmentService(session, self._bus)
+            stored = 0
+            for found in detect_predictions(content, now):
+                if await svc.has_open_prediction(tenant_id, found.statement):
+                    continue
+                await svc.create_prediction(
+                    tenant_id=tenant_id,
+                    statement=found.statement,
+                    confidence=found.confidence,
+                    resolve_by=found.resolve_by,
+                    resolution_criteria={"type": "manual", "quote": found.quote},
+                    capture_event_id=capture_evt.id,
+                    suggested=True,
+                )
+                stored += 1
+                logger.info("Prediction suggested: %s", found.statement[:80])
+            return stored
+        except Exception:
+            logger.warning(
+                "Prediction detection failed for capture %s", capture_evt.id, exc_info=True
             )
             return 0
 
