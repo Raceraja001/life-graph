@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
+Generated `2026-09-19 10:12 UTC` from `unknown` @ `unknown`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
 
 | | |
 |---|---|
-| HTTP operations | **255** across 216 paths, 37 tags |
-| Database tables | **67** |
-| Migrations | **38** (head: `038_extraction_traces`) |
+| HTTP operations | **270** across 230 paths, 38 tags |
+| Database tables | **69** |
+| Migrations | **39** (head: `039_connectors`) |
 | Event types | **77** |
 | Built-in personas | **16** |
 | Agent tools | **13** |
-| Scheduled jobs | **17** |
-| Config settings | **168** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2243** in 235 files |
+| Scheduled jobs | **20** |
+| Config settings | **179** (prefix `LIFE_GRAPH_`) |
+| Test functions | **2306** in 239 files |
 | Dashboard pages | **18** |
-| Python | 299 files, 73,209 lines |
+| Python | 316 files, 77,162 lines |
 
 ---
 
 ## HTTP API
 
-255 operations, grouped by OpenAPI tag.
+270 operations, grouped by OpenAPI tag.
 
 ### `kernel` — 29
 
@@ -154,6 +154,25 @@ Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
 | DELETE | `/api/v1/admin/webhooks/{webhook_id}` | Delete a webhook |
 | POST | `/api/v1/admin/webhooks/{webhook_id}/test` | Test a webhook |
 
+### `judgment-engine` — 14
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/judgment/calibration` | Get calibration data |
+| GET | `/api/v1/judgment/calibration/curve` | Get calibration curve data |
+| POST | `/api/v1/judgment/calibration/recompute` | Recompute calibration snapshots now |
+| POST | `/api/v1/judgment/challenge` | Create adversarial challenge |
+| POST | `/api/v1/judgment/challenge/{challenge_id}/resolve` | Resolve a challenge |
+| GET | `/api/v1/judgment/decisions` | List decisions |
+| POST | `/api/v1/judgment/decisions` | Create a decision |
+| GET | `/api/v1/judgment/decisions/{decision_id}` | Get decision with predictions |
+| GET | `/api/v1/judgment/predictions` | List predictions |
+| POST | `/api/v1/judgment/predictions` | Create a prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/accept` | Accept a suggested prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/dismiss` | Dismiss a suggested prediction |
+| POST | `/api/v1/judgment/predictions/{prediction_id}/resolve` | Resolve a prediction |
+| GET | `/api/v1/judgment/stats` | Judgment dashboard stats |
+
 ### `watchers` — 14
 
 | Method | Path | Summary |
@@ -191,21 +210,22 @@ Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
 
-### `judgment-engine` — 11
+### `connectors` — 12
 
 | Method | Path | Summary |
 |---|---|---|
-| GET | `/api/v1/judgment/calibration` | Get calibration data |
-| GET | `/api/v1/judgment/calibration/curve` | Get calibration curve data |
-| POST | `/api/v1/judgment/challenge` | Create adversarial challenge |
-| POST | `/api/v1/judgment/challenge/{challenge_id}/resolve` | Resolve a challenge |
-| GET | `/api/v1/judgment/decisions` | List decisions |
-| POST | `/api/v1/judgment/decisions` | Create a decision |
-| GET | `/api/v1/judgment/decisions/{decision_id}` | Get decision with predictions |
-| GET | `/api/v1/judgment/predictions` | List predictions |
-| POST | `/api/v1/judgment/predictions` | Create a prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/resolve` | Resolve a prediction |
-| GET | `/api/v1/judgment/stats` | Judgment dashboard stats |
+| GET | `/api/v1/connectors` | Connector catalogue and accounts |
+| POST | `/api/v1/connectors/accounts` | Add an account |
+| DELETE | `/api/v1/connectors/accounts/{account_id}` | Remove an account and its indexed items |
+| PATCH | `/api/v1/connectors/accounts/{account_id}` | Change an account |
+| PUT | `/api/v1/connectors/accounts/{account_id}/credential` | Replace an account's credential |
+| POST | `/api/v1/connectors/accounts/{account_id}/oauth/start` | Begin Google sign-in |
+| POST | `/api/v1/connectors/accounts/{account_id}/sync` | Sync now (background) |
+| PUT | `/api/v1/connectors/google-client` | Store the Google OAuth client (Desktop app JSON) |
+| POST | `/api/v1/connectors/items/{item_id}/dismiss-promise` | Hide a detected promise |
+| POST | `/api/v1/connectors/items/{item_id}/remind` | Turn a promise from sent mail into a reminder |
+| GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
+| GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
 
 ### `procedures` — 7
 
@@ -478,7 +498,7 @@ Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
 
 ## Database tables
 
-67 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+69 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -494,6 +514,8 @@ Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
 | `auto_actions` | 31 | ✓ | `018_autonomous_ai` |
 | `autonomy_levels` | 28 | ✓ | `018_autonomous_ai` |
 | `budget_spend` | 6 | ✓ | `023_budget_spend` |
+| `connector_accounts` | 18 | ✓ | `039_connectors` |
+| `connector_items` | 24 | ✓ | `039_connectors` |
 | `conversation_messages` | 8 | ✓ | `027_conversations` |
 | `conversations` | 6 | ✓ | `027_conversations` |
 | `cross_system_syncs` | 20 | ✓ | `017_agent_networks` |
@@ -651,9 +673,9 @@ Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
 | **code-fixer-auto** — Code Fixer that picks its driver per project from the record of merged vs rejected PRs: the free local model unless its work on that project keeps getting rejected, then Claude Code. | `auto` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 4 |
 | **tutor** — Tracks what you're learning, guides you, and checks understanding. | `—` | — | — | 2 |
 | **scout** — Ambiently researches topics useful to the user and surfaces findings. | `—` | — | — | 3 |
-| **admin** — Surfaces work/life admin items (bills, follow-ups, meeting prep) for review. | `—` | — | — | 2 |
+| **admin** — Surfaces work/life admin items (bills, follow-ups, meeting prep) for review. | `—` | — | — | 7 |
 | **swe-lead** — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — Explicitly-invoked orchestrator for requests that span multiple roles. | `—` | — | — | 18 |
+| **jarvis** — Explicitly-invoked orchestrator for requests that span multiple roles. | `—` | — | — | 23 |
 
 ---
 
@@ -681,7 +703,7 @@ Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
 
 ## Scheduled jobs
 
-17 ARQ cron jobs (times are UTC).
+20 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -689,6 +711,7 @@ Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
 | `decay_trust_scores` | 05:00 | `life_graph.workers.tasks.decay_trust_scores` |
 | `distill_idle_conversations` | every 15 min | `life_graph.workers.distill.distill_idle_conversations` |
 | `failure_pattern_mining` | 02:30 | `life_graph.workers.tasks.failure_pattern_mining` |
+| `purge_connector_items` | 04:40 | `life_graph.workers.tasks.purge_connector_items` |
 | `purge_telegram_pairing_codes` | 04:30 | `life_graph.workers.telegram.purge_telegram_pairing_codes` |
 | `run_all_consolidations` | 03:00 | `life_graph.workers.tasks.run_all_consolidations` |
 | `run_all_decay_sweeps` | 04:00 | `life_graph.workers.decay.run_all_decay_sweeps` |
@@ -696,10 +719,12 @@ Generated `2026-09-18 15:20 UTC` from `unknown` @ `unknown`
 | `run_all_research` | Sun 02:00 | `life_graph.workers.tasks.run_all_research` |
 | `run_daily_brief` | daily at settings.brief_hour_utc:00 | `life_graph.workers.tasks.run_daily_brief` |
 | `run_daily_digest` | 08:00 | `life_graph.workers.tasks.run_daily_digest` |
+| `run_nightly_calibration` | 04:15 | `life_graph.workers.tasks.run_nightly_calibration` |
 | `run_nightly_dev_suggestions` | 21:00 | `life_graph.workers.tasks.run_nightly_dev_suggestions` |
 | `run_nightly_self_heal` | 03:30 | `life_graph.workers.tasks.run_nightly_self_heal` |
 | `run_watchers` | hourly at :00 | `life_graph.workers.tasks.run_watchers` |
 | `send_approval_escalations` | every 30 min | `life_graph.workers.tasks.send_approval_escalations` |
+| `sync_connectors` | every 5 min | `life_graph.workers.tasks.sync_connectors` |
 | `sync_dev_task_prs` | every 15 min | `life_graph.workers.tasks.sync_dev_task_prs` |
 | `tick_scheduled_jobs` | every minute | `life_graph.workers.tasks.tick_scheduled_jobs` |
 
@@ -741,6 +766,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `agent-drivers` | Built | `life_graph/drivers/dispatcher.py` |
 | `approvals-feed` | Built | `life_graph/api/approvals.py` |
 | `capture-spine` | Built | `life_graph/services/capture.py` |
+| `connectors` | Unclassified | — |
 | `dashboard-pwa` | Built | `dashboard/app/(mobile)/m/page.tsx` |
 | `era4-personal-ai` | Built | `life_graph/api/advisor.py` |
 | `era5-self-improving` | Built | `life_graph/self_improving/prompt_resolver.py` |
@@ -767,9 +793,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-38 revisions, head `038_extraction_traces`.
+39 revisions, head `039_connectors`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors`
 
 ---
 
@@ -779,16 +805,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 178 | 1683 |
+| `tests/unit/` | 182 | 1746 |
 | `tests/integration/` | 56 | 548 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **235** | **2243** |
+| **total** | **239** | **2306** |
 
 ---
 
 ## Configuration
 
-168 settings, all overridable by environment variable.
+179 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -894,8 +920,19 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_KERNEL_ENABLE_SCHEDULER` | `True` |
 | `LIFE_GRAPH_KERNEL_MAX_CONSECUTIVE_FAILURES` | `3` |
 | `LIFE_GRAPH_TAVILY_API_KEY` | `''` |
-| `LIFE_GRAPH_GOOGLE_CREDENTIALS_JSON` | `''` |
-| `LIFE_GRAPH_GOOGLE_DELEGATED_USER` | `''` |
+| `LIFE_GRAPH_CONNECTORS_ENABLED` | `True` |
+| `LIFE_GRAPH_USER_TIMEZONE` | `'UTC'` |
+| `LIFE_GRAPH_CONNECTOR_SECRETS_DIR` | `'~/.config/life-graph/connectors'` |
+| `LIFE_GRAPH_CONNECTOR_LOCAL_MODEL_PREFIXES` | `''` |
+| `LIFE_GRAPH_CONNECTOR_SYNC_MINUTES` | `15` |
+| `LIFE_GRAPH_CONNECTOR_EMAIL_RETENTION_DAYS` | `90` |
+| `LIFE_GRAPH_CONNECTOR_EVENT_PAST_DAYS` | `90` |
+| `LIFE_GRAPH_CONNECTOR_EVENT_FUTURE_DAYS` | `365` |
+| `LIFE_GRAPH_CONNECTOR_NEEDS_REPLY_MIN_HOURS` | `24` |
+| `LIFE_GRAPH_CONNECTOR_NEEDS_REPLY_MAX_DAYS` | `14` |
+| `LIFE_GRAPH_CONNECTOR_SUMMARIES_PER_SYNC` | `40` |
+| `LIFE_GRAPH_CONNECTOR_OAUTH_REDIRECT_BASE` | `'http://localhost:8080'` |
+| `LIFE_GRAPH_CONNECTOR_OAUTH_RETURN_URL` | `'http://localhost:3001/settings'` |
 | `LIFE_GRAPH_LANGFUSE_PUBLIC_KEY` | `''` |
 | `LIFE_GRAPH_LANGFUSE_SECRET_KEY` | `''` |
 | `LIFE_GRAPH_LANGFUSE_HOST` | `'http://localhost:3001'` |

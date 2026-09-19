@@ -193,8 +193,10 @@ What is genuinely unfinished, in priority order. Everything else that used to be
 pending has shipped — check [docs/STATE.md](docs/STATE.md) for what actually exists rather
 than trusting any prose, including this paragraph.
 
-- [ ] **Calendar and email reading** — the single biggest gap for life-admin usefulness.
-      Google credential stubs exist in `config.py`; no tool implementations do.
+- [x] **Calendar and email reading** — built as connector plugins (`plugins/calendar`,
+      `plugins/mail`, runtime `life_graph/connectors/`, spec `docs/specs/connectors.md`):
+      read-only, several accounts, app password or Google OAuth, brief sections, agent
+      tools, meeting prep. Mail bodies never reach a cloud model.
 - [ ] **Messaging channels** — WhatsApp/Telegram as an interaction surface. Specs exist,
       no code.
 - [ ] **Text-to-speech coverage and quality** — replies are spoken only for voice-originated

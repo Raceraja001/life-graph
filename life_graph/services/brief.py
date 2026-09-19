@@ -73,9 +73,15 @@ class BriefComposer:
         capture_summary = await self._capture_summary(tenant_id, since)
         watcher_summary = await self._watcher_summary(tenant_id, since)
         big_decisions = await self._big_decisions(tenant_id, since)
+        connector_sections = await self._connector_sections(tenant_id, now)
 
         if not (
-            held or question_data or capture_summary["total"] or watcher_summary or big_decisions
+            held
+            or question_data
+            or capture_summary["total"]
+            or watcher_summary
+            or big_decisions
+            or connector_sections
         ):
             logger.info("No brief content for tenant %s — staying silent", tenant_id)
             return None
@@ -83,6 +89,11 @@ class BriefComposer:
         body = self._format_body(
             held, question_data, capture_summary, watcher_summary, big_decisions
         )
+        if connector_sections and connector_sections["external"]["text"]:
+            # The stored body is what Telegram and Web Push send off the
+            # machine, so it carries the cloud rendering; the dashboard reads
+            # the full local rendering from the metadata below.
+            body = f"{connector_sections['external']['text']}\n\n{body}".strip()
         title = f"Daily Brief — {now.date().isoformat()}"
 
         async with self._session_factory() as session:
@@ -100,6 +111,7 @@ class BriefComposer:
                     "capture_summary": capture_summary,
                     "watcher_summary": watcher_summary,
                     "big_decisions": big_decisions,
+                    "connectors": connector_sections["local"] if connector_sections else None,
                 },
                 source_type="brief",
             )
@@ -273,6 +285,18 @@ class BriefComposer:
                 .group_by(WatchEvent.watcher_name)
             )
             return {name or "unknown": count for name, count in result.all()}
+
+    async def _connector_sections(self, tenant_id: str, now: datetime) -> dict[str, Any] | None:
+        """Calendar/mail sections; a connector problem never blocks the brief."""
+        if not settings.connectors_enabled:
+            return None
+        try:
+            from life_graph.connectors.brief import brief_sections
+
+            return await brief_sections(tenant_id, now)
+        except Exception:
+            logger.warning("Connector brief sections failed for %s", tenant_id, exc_info=True)
+            return None
 
     # ── Formatting ────────────────────────────────────────────
 

@@ -13,6 +13,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from life_graph.config import Settings
+from life_graph.connectors.locality import audience_for_model
 from life_graph.services.claude_cli_reply import run_claude_cli
 from life_graph.services.resilient_llm import ResilientLLMExhaustedError
 from life_graph.tools.registry import registry
@@ -311,7 +312,12 @@ class AgentOrchestrator:
                         )
                     else:
                         try:
-                            result = await registry.execute(tool_name, tool_args)
+                            # Tools that hold personal data (connectors) read
+                            # this to decide what the model may see: local
+                            # only if this model and every fallback it could
+                            # fail over to mid-run are on this machine.
+                            with audience_for_model(self.model):
+                                result = await registry.execute(tool_name, tool_args)
                         except KeyError:
                             result = json.dumps(
                                 {

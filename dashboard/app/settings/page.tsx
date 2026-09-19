@@ -2,6 +2,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { usePersonas, useUpdatePersona, type PersonaVM } from "@/lib/mobile-api";
 import { ModelCombobox } from "@/components/model-combobox";
+import { ConnectorSettings } from "@/components/connector-settings";
 import { API_BASE, getTenantId } from "@/lib/api";
 
 export default function SettingsPage() {
@@ -41,6 +42,7 @@ export default function SettingsPage() {
           <p className="text-sm text-ink mt-1">Life Graph Dashboard v0.1.0</p>
         </div>
       </div>
+      <ConnectorSettings />
       <PersonaSettings />
     </div>
   );

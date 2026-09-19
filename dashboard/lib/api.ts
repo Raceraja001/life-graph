@@ -137,6 +137,92 @@ export interface CalibrationReport {
   trend: { previous_brier: number; delta_pct: number | null } | null;
 }
 
+// ── Connectors (calendar, email) — mirror life_graph/api/connectors.py ──
+export type ConnectorAuth = "none" | "app_password" | "oauth";
+export type ConnectorExposure = "standard" | "local_only";
+
+export interface ConnectorField {
+  name: string;
+  label: string;
+  methods: ConnectorAuth[];
+  list?: boolean;
+  required?: boolean;
+}
+
+export interface ConnectorInfo {
+  name: string;
+  display_name: string;
+  item_kinds: string[];
+  auth_methods: ConnectorAuth[];
+  fields: ConnectorField[];
+}
+
+export interface ConnectorAccount {
+  id: string;
+  connector: string;
+  display_name: string;
+  auth_method: ConnectorAuth;
+  settings: Record<string, unknown>;
+  exposure: ConnectorExposure;
+  enabled: boolean;
+  status: "never_synced" | "ok" | "error" | "reauth_needed";
+  last_sync_at: string | null;
+  next_sync_at: string | null;
+  last_error: string | null;
+  has_credential: boolean;
+  items: Record<string, number>;
+}
+
+export interface ConnectorsState {
+  enabled: boolean;
+  connectors: ConnectorInfo[];
+  accounts: ConnectorAccount[];
+  google_client_configured: boolean;
+  oauth_redirect_uri: string;
+  timezone: string;
+}
+
+export interface NewConnectorAccount {
+  connector: string;
+  display_name: string;
+  auth_method: ConnectorAuth;
+  settings: Record<string, unknown>;
+  exposure: ConnectorExposure;
+  secret?: Record<string, string>;
+}
+
+export interface TodayEvent {
+  id: string;
+  account: string;
+  title: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  all_day: boolean;
+  location: string | null;
+  description?: string | null;
+}
+
+export interface WaitingMail {
+  id: string;
+  account: string;
+  sender_name: string | null;
+  sender_addr: string | null;
+  subject: string;
+  summary: string | null;
+  date: string | null;
+  commitment?: string;
+  commitment_due?: string | null;
+}
+
+export interface TodayView {
+  timezone?: string;
+  text: string;
+  today: { items: TodayEvent[]; withheld: Record<string, number> };
+  tomorrow_early: { items: TodayEvent[]; withheld: Record<string, number> };
+  waiting: { items: WaitingMail[]; withheld: Record<string, number> };
+  promises?: { items: WaitingMail[]; withheld: Record<string, number> };
+}
+
 const GET = <T>(path: string, params?: Record<string, string>) => request<T>("GET", path, undefined, params);
 const POST = <T>(path: string, body?: unknown) => request<T>("POST", path, body);
 
@@ -171,6 +257,31 @@ export const api = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload shape matches the rest of this file's untyped API surface.
       request<any>("PATCH", `/memories/${id}`, body),
     pendingCount: () => GET<{ data?: { count?: number } }>(`/memories/pending/count`),
+  },
+
+  // ── Connectors: calendar + email accounts ──────
+  connectors: {
+    state: () => GET<{ data: ConnectorsState }>("/connectors").then((r) => r.data),
+    recommend: (username: string, workspaceAdmin: boolean) =>
+      GET<{ data: { auth_method: ConnectorAuth; reason: string; exposure?: ConnectorExposure } }>(
+        "/connectors/recommend",
+        { username, workspace_admin: String(workspaceAdmin) }
+      ).then((r) => r.data),
+    create: (body: NewConnectorAccount) =>
+      POST<{ data: ConnectorAccount }>("/connectors/accounts", body).then((r) => r.data),
+    update: (id: string, body: Partial<Pick<ConnectorAccount, "display_name" | "enabled" | "exposure">>) =>
+      request<{ data: ConnectorAccount }>("PATCH", `/connectors/accounts/${id}`, body).then((r) => r.data),
+    setCredential: (id: string, auth_method: ConnectorAuth, secret: Record<string, string>) =>
+      request<{ data: ConnectorAccount }>("PUT", `/connectors/accounts/${id}/credential`, { auth_method, secret }),
+    remove: (id: string) => request<unknown>("DELETE", `/connectors/accounts/${id}`),
+    sync: (id: string) => POST<unknown>(`/connectors/accounts/${id}/sync`, {}),
+    oauthStart: (id: string) =>
+      POST<{ data: { url: string } }>(`/connectors/accounts/${id}/oauth/start`, {}).then((r) => r.data.url),
+    setGoogleClient: (client: Record<string, unknown>) =>
+      request<unknown>("PUT", "/connectors/google-client", { client }),
+    today: () => GET<{ data: TodayView | null }>("/connectors/today").then((r) => r.data),
+    remind: (itemId: string) => POST<unknown>(`/connectors/items/${itemId}/remind`, {}),
+    dismissPromise: (itemId: string) => POST<unknown>(`/connectors/items/${itemId}/dismiss-promise`, {}),
   },
 
   // ── Judgment: predictions + calibration ──────

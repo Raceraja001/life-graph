@@ -93,3 +93,17 @@ pm.load_all()  # discovers and loads all plugins
 - **Async handlers**: Event handlers must be `async def`.
 - **Lazy imports**: Import heavy dependencies inside your handler, not at module level.
 - **Logging**: Use `logging.getLogger(__name__)` for diagnostics.
+
+## Connector plugins (calendar, email, …)
+
+A plugin that brings in data from an outside source exports `CONNECTOR` instead
+of (or as well as) `register`. The connector runtime (`life_graph/connectors/`)
+discovers it in both the API and the worker. See `plugins/calendar/` and
+`plugins/mail/`, and the design in `docs/specs/connectors.md`.
+
+A connector implements the `Connector` protocol (`life_graph/connectors/base.py`):
+`name`, `display_name`, `item_kinds`, `auth_methods`, `async sync(account,
+secret, cursor) -> SyncResult` and `async fetch_body(...)`. It returns plain
+`Item` objects and nothing else: it never touches the database, the tool
+registry or a model. The core stores items, holds credentials, schedules syncs,
+and decides what a cloud model may see, so a plugin cannot leak data by mistake.

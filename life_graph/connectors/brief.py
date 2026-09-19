@@ -1,0 +1,156 @@
+"""Daily-brief sections from connectors: **Today**, **Waiting on you**, **You promised**.
+
+Rendered twice. The brief's stored ``body`` is what Telegram and Web Push send
+off the machine, so it gets the CLOUD view (redacted, ``local_only`` accounts as
+counts). The LOCAL view goes into the brief's metadata for the dashboard.
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
+
+from life_graph.connectors import store
+from life_graph.connectors.exposure import view_items
+from life_graph.connectors.locality import CLOUD, LOCAL
+from life_graph.connectors.tools import day_bounds, user_tz
+from life_graph.storage.database import async_session
+
+MAX_WAITING = 5
+EARLY_TOMORROW_HOUR = 10
+
+
+async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Raw rows: today's events, tomorrow's early start, mail waiting on the user."""
+    now = now or datetime.now(UTC)
+    today = now.astimezone(user_tz()).date()
+    start, end = day_bounds(today)
+    t_start, t_end = day_bounds(today + timedelta(days=1))
+    async with async_session() as session:
+        events = await store.events_between(session, tenant_id, start, end)
+        tomorrow = await store.events_between(session, tenant_id, t_start, t_end, limit=5)
+        waiting = await store.waiting_on_me(session, tenant_id, now)
+        promises = await store.open_promises(session, tenant_id, now)
+    early = [
+        e
+        for e in tomorrow
+        if e["starts_at"]
+        and not (e.get("flags") or {}).get("all_day")
+        and e["starts_at"].astimezone(user_tz()).hour < EARLY_TOMORROW_HOUR
+    ][:1]
+    return {"today": events, "tomorrow_early": early, "waiting": waiting, "promises": promises}
+
+
+def _hm(iso: str | None) -> str:
+    if not iso:
+        return ""
+    return datetime.fromisoformat(iso).astimezone(user_tz()).strftime("%H:%M")
+
+
+def _conflicts(events: list[dict[str, Any]]) -> set[str]:
+    timed = [e for e in events if not e["all_day"] and e["starts_at"] and e["ends_at"]]
+    clash: set[str] = set()
+    for i, a in enumerate(timed):
+        for b in timed[i + 1 :]:
+            if a["starts_at"] < b["ends_at"] and b["starts_at"] < a["ends_at"]:
+                clash.update((a["id"], b["id"]))
+    return clash
+
+
+def _event_line(e: dict[str, Any], clash: set[str]) -> str:
+    when = "all day" if e["all_day"] else f"{_hm(e['starts_at'])}–{_hm(e['ends_at'])}"
+    where = f" @ {e['location']}" if e.get("location") else ""
+    flag = "  ⚠ overlaps" if e["id"] in clash else ""
+    return f"- {when} {e['title']}{where} ({e['account']}){flag}"
+
+
+def _age(iso: str | None, now: datetime) -> str:
+    if not iso:
+        return ""
+    hours = (now - datetime.fromisoformat(iso)).total_seconds() / 3600
+    return f"{int(hours // 24)}d" if hours >= 24 else f"{int(hours)}h"
+
+
+def render(raw: dict[str, list[dict[str, Any]]], audience: str, now: datetime) -> dict[str, Any]:
+    """Views + markdown text for one audience."""
+    today = view_items(raw["today"], audience)
+    early = view_items(raw["tomorrow_early"], audience)
+    waiting = view_items(raw["waiting"], audience)
+    promises = view_items(raw.get("promises", []), audience)
+    lines: list[str] = []
+    day_label = now.astimezone(user_tz()).strftime("%a %d %b")
+
+    if today["items"] or today["withheld"]:
+        lines.append(f"## Today ({day_label})")
+        clash = _conflicts(today["items"])
+        lines.extend(_event_line(e, clash) for e in today["items"])
+        for account, n in today["withheld"].items():
+            lines.append(
+                f"- +{n} event{'s' if n > 1 else ''} in {account} (details on the dashboard)"
+            )
+        if early["items"]:
+            e = early["items"][0]
+            lines.append(f"- Tomorrow starts early: {_hm(e['starts_at'])} {e['title']}")
+        lines.append("")
+
+    shown = waiting["items"][:MAX_WAITING]
+    total = len(waiting["items"]) + sum(waiting["withheld"].values())
+    if total:
+        lines.append(f"## Waiting on you ({total})")
+        for m in shown:
+            who = m.get("sender_name") or m.get("sender_addr") or "someone"
+            gist = f" — {m['summary']}" if m.get("summary") else ""
+            lines.append(f"- {_age(m['date'], now)} · {who}: {m['subject']}{gist}")
+        if len(waiting["items"]) > MAX_WAITING:
+            lines.append(f"- …and {len(waiting['items']) - MAX_WAITING} more")
+        for account, n in waiting["withheld"].items():
+            lines.append(f"- +{n} in {account} (details on the dashboard)")
+        lines.append("")
+
+    open_count = len(promises["items"]) + sum(promises["withheld"].values())
+    if open_count:
+        lines.append(f"## You promised ({open_count})")
+        for p in promises["items"][:MAX_WAITING]:
+            # A promise in a sensitive thread shows only as such off the machine.
+            due = _due_label(p.get("commitment_due"), now)
+            if p.get("commitment"):
+                topic = re.sub(r"(?i)^(?:(?:re|fwd?|aw)\s*:\s*)+", "", p.get("subject") or "")
+                lines.append(f"- {p['commitment']}{due} (re: {topic})")
+            else:
+                lines.append(f"- A promise in a sensitive email{due}")
+        for account, n in promises["withheld"].items():
+            lines.append(f"- +{n} in {account} (details on the dashboard)")
+        lines.append("")
+
+    return {
+        "text": "\n".join(lines).strip(),
+        "today": today,
+        "tomorrow_early": early,
+        "waiting": waiting,
+        "promises": promises,
+    }
+
+
+def _due_label(due: str | None, now: datetime) -> str:
+    if not due:
+        return ""
+    try:
+        d = date.fromisoformat(due)
+    except ValueError:
+        return ""
+    today = now.astimezone(user_tz()).date()
+    if d < today:
+        return " — overdue"
+    if d == today:
+        return " — due today"
+    return f" — due {d:%a %d %b}"
+
+
+async def brief_sections(tenant_id: str, now: datetime | None = None) -> dict[str, Any] | None:
+    """Both renderings, or None when there is nothing to say."""
+    now = now or datetime.now(UTC)
+    raw = await collect(tenant_id, now)
+    if not any(raw.values()):
+        return None
+    return {"external": render(raw, CLOUD, now), "local": render(raw, LOCAL, now)}

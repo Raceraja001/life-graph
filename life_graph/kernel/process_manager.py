@@ -543,6 +543,17 @@ class ProcessManager:
             {"role": "user", "content": input_data.get("message", str(input_data))},
         ]
         system_prompt = persona.get("system_prompt")
+        if orchestrator.model == "claude-cli":
+            # No tools on this path, so schedule/mail questions get connector
+            # data inline — rendered for a cloud audience (connectors/exposure).
+            try:
+                from life_graph.connectors.chat_context import context_for
+
+                extra = await context_for(tenant_id, messages[0]["content"], orchestrator.model)
+                if extra:
+                    system_prompt = f"{system_prompt or ''}\n\n{extra}".strip()
+            except Exception:
+                logger.warning("Connector chat context failed", exc_info=True)
 
         allow = tool_override if tool_override is not None else persona.get("allowed_tools")
         if allow is not None:
