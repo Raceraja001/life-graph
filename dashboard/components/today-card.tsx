@@ -2,12 +2,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cake, CalendarDays, GitPullRequest, Mail, Receipt } from "lucide-react";
+import { Cake, CalendarDays, GitPullRequest, ListTodo, Mail, Receipt } from "lucide-react";
 import {
   api,
   type BillItem,
   type BirthdayContact,
   type CodeItem,
+  type TaskItem,
   type TodayEvent,
   type WaitingMail,
 } from "@/lib/api";
@@ -105,6 +106,7 @@ export function TodayCard() {
             ))}
           </div>
         )}
+        {(data.tasks?.items.length ?? 0) > 0 && <TasksBlock tasks={data.tasks!.items} timeZone={tz} />}
       </section>
       <section className="bg-surface border border-line rounded-xl p-5 space-y-3">
         <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
@@ -313,6 +315,61 @@ function BillRow({ b, timeZone }: { b: BillItem; timeZone?: string }) {
   );
 }
 
+/** Open tasks grouped like the brief: overdue, today, this week; then counts. */
+function TasksBlock({ tasks, timeZone }: { tasks: TaskItem[]; timeZone?: string }) {
+  let today: string;
+  try {
+    today = new Date().toLocaleDateString("en-CA", { timeZone });
+  } catch {
+    today = new Date().toLocaleDateString("en-CA");
+  }
+  const weekEnd = new Date(`${today}T12:00:00Z`);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+  const end = weekEnd.toISOString().slice(0, 10);
+  const open = tasks.filter((t) => !t.parent && !t.done);
+  const dated = open.filter((t) => t.due).sort((a, b) => (a.due! < b.due! ? -1 : 1));
+  const groups: [string, TaskItem[]][] = [
+    ["Overdue", dated.filter((t) => t.due! < today)],
+    ["Today", dated.filter((t) => t.due === today)],
+    ["This week", dated.filter((t) => t.due! > today && t.due! <= end)],
+  ];
+  const undated = open.filter((t) => !t.due).length;
+  const done = tasks.filter((t) => t.done).length;
+  const day = (iso: string) =>
+    new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  return (
+    <div className="pt-3 border-t border-line space-y-1.5">
+      <h4 className="text-xs font-semibold text-ink-mid uppercase tracking-wider flex items-center gap-1.5">
+        <ListTodo className="w-3.5 h-3.5" /> Tasks
+      </h4>
+      {groups.map(([label, items]) =>
+        items.slice(0, 5).map((t) => (
+          <p key={t.id} className="text-sm text-ink">
+            {t.url ? (
+              <a href={t.url} target="_blank" rel="noreferrer" className="hover:underline">
+                {t.title}
+              </a>
+            ) : (
+              t.title
+            )}
+            <span className={label === "Overdue" ? "text-danger" : "text-ink-low"}>
+              {" "}
+              · {label === "Today" ? "today" : `${label === "Overdue" ? "overdue, " : ""}${day(t.due!)}`}
+            </span>
+          </p>
+        ))
+      )}
+      {(undated > 0 || done > 0) && (
+        <p className="text-xs text-ink-low">
+          {undated > 0 && `${undated} with no date`}
+          {undated > 0 && done > 0 && " · "}
+          {done > 0 && `${done} done this week`}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PromiseRow({ p }: { p: WaitingMail }) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -329,15 +386,21 @@ function PromiseRow({ p }: { p: WaitingMail }) {
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <p className="flex-1 min-w-[12rem] text-ink">
         {p.commitment}
-        <span className="text-ink-low">{dueLabel(p.commitment_due)} · re: {p.subject}</span>
+        <span className="text-ink-low">
+          {dueLabel(p.commitment_due)} · re: {p.subject.replace(/^(?:(?:re|fwd?|aw)\s*:\s*)+/i, "")}
+        </span>
       </p>
-      <button
-        disabled={busy}
-        onClick={() => act(() => api.connectors.remind(p.id))}
-        className="text-xs px-2.5 py-1 rounded-md bg-accent text-accent-fg disabled:opacity-50"
-      >
-        Remind me
-      </button>
+      {p.in_tasks ? (
+        <span className="text-xs px-2 py-1 rounded-md bg-success-soft text-success">in Tasks</span>
+      ) : (
+        <button
+          disabled={busy}
+          onClick={() => act(() => api.connectors.remind(p.id))}
+          className="text-xs px-2.5 py-1 rounded-md bg-accent text-accent-fg disabled:opacity-50"
+        >
+          Remind me
+        </button>
+      )}
       <button
         disabled={busy}
         onClick={() => act(() => api.connectors.dismissPromise(p.id))}

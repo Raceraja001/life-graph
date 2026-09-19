@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-09-19 16:18 UTC` from `unknown` @ `unknown`
+Generated `2026-09-19 17:05 UTC` from `unknown` @ `unknown`
 
 ---
 
@@ -18,15 +18,15 @@ Generated `2026-09-19 16:18 UTC` from `unknown` @ `unknown`
 |---|---|
 | HTTP operations | **273** across 233 paths, 38 tags |
 | Database tables | **69** |
-| Migrations | **41** (head: `041_connector_code`) |
+| Migrations | **42** (head: `042_connector_tasks`) |
 | Event types | **77** |
 | Built-in personas | **16** |
 | Agent tools | **13** |
 | Scheduled jobs | **20** |
 | Config settings | **180** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2347** in 242 files |
+| Test functions | **2354** in 243 files |
 | Dashboard pages | **18** |
-| Python | 317 files, 78,673 lines |
+| Python | 317 files, 78,875 lines |
 
 ---
 
@@ -676,9 +676,9 @@ Generated `2026-09-19 16:18 UTC` from `unknown` @ `unknown`
 | **code-fixer-auto** — Code Fixer that picks its driver per project from the record of merged vs rejected PRs: the free local model unless its work on that project keeps getting rejected, then Claude Code. | `auto` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 4 |
 | **tutor** — Tracks what you're learning, guides you, and checks understanding. | `—` | — | — | 2 |
 | **scout** — Ambiently researches topics useful to the user and surfaces findings. | `—` | — | — | 3 |
-| **admin** — Surfaces work/life admin items (bills, follow-ups, meeting prep) for review. | `—` | — | — | 10 |
+| **admin** — Surfaces work/life admin items (bills, follow-ups, meeting prep) for review. | `—` | — | — | 11 |
 | **swe-lead** — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — Explicitly-invoked orchestrator for requests that span multiple roles. | `—` | — | — | 26 |
+| **jarvis** — Explicitly-invoked orchestrator for requests that span multiple roles. | `—` | — | — | 27 |
 
 ---
 
@@ -772,6 +772,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `capture-spine` | Built | `life_graph/services/capture.py` |
 | `connector-contacts` | Unclassified | — |
 | `connector-github` | Unclassified | — |
+| `connector-tasks` | Unclassified | — |
 | `connectors` | Unclassified | — |
 | `dashboard-pwa` | Built | `dashboard/app/(mobile)/m/page.tsx` |
 | `era4-personal-ai` | Built | `life_graph/api/advisor.py` |
@@ -799,9 +800,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-41 revisions, head `041_connector_code`.
+42 revisions, head `042_connector_tasks`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks`
 
 ---
 
@@ -811,10 +812,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 185 | 1787 |
+| `tests/unit/` | 186 | 1794 |
 | `tests/integration/` | 56 | 548 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **242** | **2347** |
+| **total** | **243** | **2354** |
 
 ---
 

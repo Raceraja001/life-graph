@@ -48,6 +48,7 @@ SCOPES = {
         "https://www.googleapis.com/auth/contacts.readonly",
         "https://www.googleapis.com/auth/contacts.other.readonly",
     ],
+    "tasks": ["https://www.googleapis.com/auth/tasks.readonly"],
 }
 _PENDING_TTL = 600
 

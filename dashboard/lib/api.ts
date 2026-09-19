@@ -213,6 +213,7 @@ export interface WaitingMail {
   date: string | null;
   commitment?: string;
   commitment_due?: string | null;
+  in_tasks?: boolean;
 }
 
 export interface TodayView {
@@ -225,6 +226,20 @@ export interface TodayView {
   birthdays?: { items: BirthdayContact[]; withheld: Record<string, number> };
   code?: { items: CodeItem[]; withheld: Record<string, number> };
   bills?: { items: BillItem[]; withheld: Record<string, number> };
+  tasks?: { items: TaskItem[]; withheld: Record<string, number> };
+}
+
+export interface TaskItem {
+  id: string;
+  account: string;
+  title: string;
+  due?: string;
+  list?: string;
+  done?: boolean;
+  completed_at?: string;
+  parent?: string;
+  url?: string;
+  external_id?: string;
 }
 
 export interface BillItem {

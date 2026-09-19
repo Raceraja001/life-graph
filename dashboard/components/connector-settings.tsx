@@ -1,7 +1,19 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Eye, GitPullRequest, Lock, Mail, Plus, RefreshCw, Trash2, Upload, Users } from "lucide-react";
+import {
+  CalendarDays,
+  Eye,
+  GitPullRequest,
+  ListTodo,
+  Lock,
+  Mail,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Upload,
+  Users,
+} from "lucide-react";
 import {
   api,
   type ConnectorAccount,
@@ -28,6 +40,7 @@ const ICONS: Record<string, typeof Mail> = {
   calendar: CalendarDays,
   contacts: Users,
   github: GitPullRequest,
+  tasks: ListTodo,
 };
 
 /** Read a picked file as text in the browser; the server never sees the file itself. */
@@ -80,7 +93,7 @@ export function ConnectorSettings() {
         <div>
           <h3 className="text-sm font-semibold text-ink">Connected accounts</h3>
           <p className="text-xs text-ink-mid mt-0.5">
-            Calendar, email, contacts and GitHub, read-only. Mail bodies never leave this machine; cloud chat sees
+            Calendar, email, contacts, tasks and GitHub, read-only. Mail bodies never leave this machine; cloud chat sees
             only what each account allows.
           </p>
         </div>
@@ -664,9 +677,10 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
             className={`${field} font-mono text-xs`}
           />
           <span className="block text-ink-low">
-            Google Cloud Console → APIs &amp; Services: enable the Gmail API, Google Calendar API and People API
-            (contacts), create an
-            OAuth client of type &quot;Desktop app&quot;, download its JSON. Redirect used: {state.oauth_redirect_uri}
+            Google Cloud Console → APIs &amp; Services: enable the Gmail, Google Calendar, People (contacts) and
+            Tasks APIs you need, create an OAuth client of type &quot;Desktop app&quot;, download its JSON, and set
+            the consent screen to &quot;In production&quot; (in Testing, Google ends the sign-in after 7 days).
+            Redirect used: {state.oauth_redirect_uri}
           </span>
         </label>
       )}

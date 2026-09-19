@@ -22,6 +22,8 @@ code item URL, private repo                 yes    never
 bill from mail: payee, kind, due, autopay     yes    yes (redacted), or a count
                                                    when connector_bills_cloud=counts
 bill amount                                 yes    never
+task title, due date, list, status          yes    yes (title redacted)
+task notes                                  yes    never
 =========================================  =====  ==========================
 
 (*) fetched live on request, never stored.
@@ -41,7 +43,7 @@ import json
 import re
 from typing import Any
 
-from life_graph.connectors.base import KIND_CODE, KIND_CONTACT, KIND_EMAIL, KIND_EVENT
+from life_graph.connectors.base import KIND_CODE, KIND_CONTACT, KIND_EMAIL, KIND_EVENT, KIND_TASK
 from life_graph.connectors.locality import CLOUD, LOCAL
 
 EXPOSURE_STANDARD = "standard"
@@ -157,6 +159,8 @@ def _email_view(
         # The user's own promise, from mail they sent.
         view["commitment"] = flags["commitment"] if local else redact(flags["commitment"])
         view["commitment_due"] = flags.get("commitment_due")
+        if flags.get("in_tasks"):
+            view["in_tasks"] = True
     return view
 
 
@@ -309,7 +313,31 @@ def view_items(
                 hold(item, f"{item['account_name']} ({PRIVATE_REPOS})")
             else:
                 shown.append(view)
+        elif item["kind"] == KIND_TASK:
+            shown.append(_task_view(item, audience))
     return {"items": shown, "withheld": withheld}
+
+
+def _task_view(item: dict[str, Any], audience: str) -> dict[str, Any]:
+    """One of the user's tasks. Notes stay local; the title is redacted off the machine."""
+    local = audience == LOCAL
+    flags = item.get("flags") or {}
+    view: dict[str, Any] = {
+        "id": item["id"],
+        "kind": KIND_TASK,
+        "account": item["account_name"],
+        "title": item.get("title") if local else redact(item.get("title")),
+        "due": flags.get("due"),
+        "list": flags.get("list"),
+        "done": flags.get("status") == "completed",
+        "completed_at": flags.get("completed_at"),
+        "parent": flags.get("parent"),
+    }
+    if local:
+        view["notes"] = item.get("local_detail")
+        view["url"] = flags.get("url")
+        view["external_id"] = item.get("external_id")
+    return {k: v for k, v in view.items() if v not in (None, "")}
 
 
 def view_bills(rows: list[dict[str, Any]], audience: str) -> dict[str, Any]:
