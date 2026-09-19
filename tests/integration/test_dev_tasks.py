@@ -170,6 +170,63 @@ async def test_validation(client, project):
     assert "no driver" in no_driver.json()["detail"]
 
 
+# ── driver_stats: merge rate/timing per (persona, project) ──────
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_stats_group_by_persona_and_project(client, project, fake_dispatch):
+    """Answers "is this actually working" — one row per persona+project, not
+    a task-by-task list someone has to read and tally by hand."""
+    from life_graph.models.db import Approval
+    from life_graph.storage.database import async_session
+
+    merged = (await _start(client, project, "Fix the bug")).json()["data"]
+    landed = (await _start(client, project, "Add a feature")).json()["data"]
+    await _drain()
+
+    async with async_session() as s:
+        s.add(
+            Approval(
+                tenant_id=TENANT,
+                kind="driver_merge",
+                title="Merge PR",
+                status="approved",
+                source="driver_merge",
+                source_ref=merged["id"],
+                payload={},
+            )
+        )
+        await s.commit()
+
+    stats = (await client.get("/api/v1/kernel/drivers/tasks/stats")).json()["data"]
+    row = next(r for r in stats if r["project_id"] == project["id"])
+    assert row["persona"] == "code-fixer"
+    assert row["total"] == 2
+    assert row["merged"] == 1
+    assert row["in_flight"] == 0
+    assert row["merge_rate"] == pytest.approx(0.5)
+    assert row["avg_duration_ms"] == 1200  # fake_dispatch's fixed duration
+    assert row["avg_cost_usd"] == pytest.approx(0.05)
+    assert landed["id"]  # the second task exists; just not merged
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_stats_excludes_in_flight_tasks_from_merge_rate(client, project, fake_dispatch):
+    """A task still queued/running hasn't succeeded OR failed yet — counting
+    it against the merge rate would understate a driver that just has one
+    slow task in flight, not a bad record."""
+    await _start(client, project, "Still going")  # never drained: stays "queued"
+
+    stats = (await client.get("/api/v1/kernel/drivers/tasks/stats")).json()["data"]
+    row = next(r for r in stats if r["project_id"] == project["id"])
+    assert row["total"] == 1
+    assert row["in_flight"] == 1
+    assert row["merge_rate"] is None  # nothing settled yet — not 0%, not 100%
+    await _drain()  # let the background task finish before the fixture tears down
+
+
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_restart_marks_abandoned_tasks_failed(project):

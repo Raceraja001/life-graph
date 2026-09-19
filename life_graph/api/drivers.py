@@ -303,6 +303,26 @@ async def list_dev_tasks(limit: int = Query(50, ge=1, le=200)):
     return success_response(data=data)
 
 
+@router.get(
+    "/tasks/stats",
+    summary="Merge rate and timing per persona/project, from dev task history",
+)
+async def get_dev_task_stats():
+    """Complements GET /stats (driver-level, tenant-wide, from DriverStat
+    day buckets): this breaks the same kind of question down by project too,
+    so "local: 62% success" doesn't quietly blend a struggling project in
+    with a thriving one. Answers "is this actually working" without reading
+    every task by hand: merge rate, in-flight/needs-review counts, and
+    average duration/cost, per (persona, project) pair. Same trust bar the
+    dispatcher itself uses lives in TrustScore/track_record; this is a
+    *readable summary* of dev_task outcomes, not another trust source."""
+    from life_graph.services import dev_tasks
+
+    async with async_session() as session:
+        data = await dev_tasks.dev_task_stats(session, get_current_tenant_id())
+    return success_response(data=data)
+
+
 @router.get("/tasks/{task_id}", summary="Get one dev task")
 async def get_dev_task(task_id: str):
     from life_graph.services import dev_tasks

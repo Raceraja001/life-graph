@@ -197,6 +197,44 @@ async def list_dev_tasks(session: AsyncSession, tenant_id: str, limit: int = 50)
     return [serialize(r, approvals.get(str(r.id), [])) for r in rows]
 
 
+async def dev_task_stats(session: AsyncSession, tenant_id: str, limit: int = 2000) -> list[dict]:
+    """Per (persona, project) merge rate and timing, aggregated from the same
+    dev_task rows and the same :func:`_stage` logic the dashboard renders —
+    so this always agrees with what ``/drivers`` shows, not a separate,
+    driftable approximation of it. Answers "is this actually working" at a
+    glance instead of scrolling task-by-task or reading logs.
+    """
+    tasks = await list_dev_tasks(session, tenant_id, limit=limit)
+    groups: dict[tuple[str, str | None], list[dict]] = {}
+    for t in tasks:
+        groups.setdefault((t["persona"] or "?", t["project_id"]), []).append(t)
+
+    out = []
+    for (persona, project_id), rows in groups.items():
+        in_flight = sum(1 for r in rows if r["stage"] in ("queued", "running"))
+        merged = sum(1 for r in rows if r["stage"] == "merged")
+        needs_review = sum(1 for r in rows if r["stage"] == "needs_review")
+        settled = len(rows) - in_flight
+        durations = [r["duration_ms"] for r in rows if r["duration_ms"] is not None]
+        costs = [r["cost_usd"] for r in rows if r["cost_usd"] is not None]
+        out.append(
+            {
+                "persona": persona,
+                "project_id": project_id,
+                "project_name": rows[0]["project_name"],
+                "total": len(rows),
+                "merged": merged,
+                "needs_review": needs_review,
+                "in_flight": in_flight,
+                "merge_rate": round(merged / settled, 3) if settled else None,
+                "avg_duration_ms": round(sum(durations) / len(durations)) if durations else None,
+                "avg_cost_usd": round(sum(costs) / len(costs), 4) if costs else None,
+            }
+        )
+    out.sort(key=lambda r: -r["total"])
+    return out
+
+
 async def get_dev_task(session: AsyncSession, tenant_id: str, task_id: str) -> dict | None:
     try:
         pk = uuid.UUID(task_id)
