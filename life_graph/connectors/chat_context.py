@@ -49,6 +49,14 @@ _CODE = re.compile(
     r"failing builds?|issues? assigned|assigned issues?|merge)\b"
 )
 MAX_CODE = 15
+_BILL = re.compile(
+    r"(?i)\b(bills?|due|pay|payments?|renewals?|renew|expir(?:e|es|y|ing)|subscriptions?|emi|"
+    r"statement)\b"
+)
+
+
+def wants_bills(message: str) -> bool:
+    return bool(_BILL.search(message or ""))
 
 
 def wants_code(message: str) -> bool:
@@ -176,7 +184,8 @@ async def context_for(tenant_id: str, message: str, model: str | None) -> str | 
     cal, mail = wants_context(message)
     people_q = wants_contacts(message)
     code_q = wants_code(message)
-    if not (cal or mail or people_q or code_q):
+    bills_q = wants_bills(message)
+    if not (cal or mail or people_q or code_q or bills_q):
         return None
     with audience_for_model(model):
         audience = current_audience()
@@ -227,6 +236,18 @@ async def context_for(tenant_id: str, message: str, model: str | None) -> str | 
             parts["code_waiting_on_you"] = code
             for k, v in held.items():
                 withheld[k] = withheld.get(k, 0) + v
+        if bills_q:
+            from life_graph.connectors.bills import bills_due
+            from life_graph.connectors.exposure import view_bills
+
+            due = view_bills(
+                await bills_due(session, tenant_id, now.astimezone(user_tz()).date()), audience
+            )
+            parts["bills_due"] = [
+                {k: v for k, v in b.items() if k not in ("id",)} for b in due["items"]
+            ]
+            for k, v in due["withheld"].items():
+                withheld[k] = withheld.get(k, 0) + v
     if withheld:
         parts["not_shown"] = {k: f"{v} item(s) kept on-device" for k, v in withheld.items()}
     if not any(
@@ -238,6 +259,7 @@ async def context_for(tenant_id: str, message: str, model: str | None) -> str | 
             "contacts_matching_question",
             "upcoming_birthdays",
             "code_waiting_on_you",
+            "bills_due",
             "not_shown",
         )
     ):

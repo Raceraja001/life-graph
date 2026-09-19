@@ -2,8 +2,15 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cake, CalendarDays, GitPullRequest, Mail } from "lucide-react";
-import { api, type BirthdayContact, type CodeItem, type TodayEvent, type WaitingMail } from "@/lib/api";
+import { Cake, CalendarDays, GitPullRequest, Mail, Receipt } from "lucide-react";
+import {
+  api,
+  type BillItem,
+  type BirthdayContact,
+  type CodeItem,
+  type TodayEvent,
+  type WaitingMail,
+} from "@/lib/api";
 
 /** HH:MM in the user's configured zone (the same day the brief uses), not the browser's. */
 function hm(iso: string | null, timeZone?: string): string {
@@ -128,6 +135,16 @@ export function TodayCard() {
             ))}
           </div>
         )}
+        {(data.bills?.items.length ?? 0) > 0 && (
+          <div className="pt-3 border-t border-line space-y-2">
+            <h4 className="text-xs font-semibold text-ink-mid uppercase tracking-wider flex items-center gap-1.5">
+              <Receipt className="w-3.5 h-3.5" /> Bills &amp; renewals
+            </h4>
+            {data.bills!.items.map((b) => (
+              <BillRow key={b.id} b={b} timeZone={tz} />
+            ))}
+          </div>
+        )}
         {(code.items.length > 0 || Object.keys(code.withheld).length > 0) && <CodeBlock code={code} />}
       </section>
     </div>
@@ -222,6 +239,78 @@ function dueLabel(due: string | null | undefined): string {
   if (due < today) return " · overdue";
   if (due === today) return " · due today";
   return ` · due ${new Date(`${due}T12:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}`;
+}
+
+const MONEY: Record<string, string> = { INR: "₹", USD: "$", EUR: "€", GBP: "£" };
+
+/** One bill from mail: payee, due date, amount, and what to do about it. */
+function BillRow({ b, timeZone }: { b: BillItem; timeZone?: string }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const act = async (action: "paid" | "dismiss" | "remind") => {
+    setBusy(true);
+    try {
+      await api.connectors.billAction(b.id, action);
+      await qc.invalidateQueries({ queryKey: ["connectors-today"] });
+    } finally {
+      setBusy(false);
+    }
+  };
+  let today: string;
+  try {
+    today = new Date().toLocaleDateString("en-CA", { timeZone });
+  } catch {
+    today = new Date().toLocaleDateString("en-CA");
+  }
+  const day = new Date(`${b.due}T12:00:00Z`).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+  const overdue = b.kind === "bill" && b.due < today;
+  const when = b.kind === "renewal" ? `renews ${day}` : b.due === today ? "due today" : `due ${day}`;
+  const amount =
+    b.amount != null
+      ? `${MONEY[b.currency ?? ""] ?? `${b.currency ?? ""} `}${b.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
+      : "";
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <p className="flex-1 min-w-[12rem] text-ink">
+        {b.payee}
+        {amount && <span className="text-ink"> · {amount}</span>}
+        <span className={overdue ? "text-danger" : "text-ink-low"}>
+          {" "}
+          · {overdue ? `overdue (${when})` : when}
+          {b.autopay ? " · autopay" : ""}
+          {b.state === "reminded" ? " · reminder set" : ""}
+        </span>
+      </p>
+      {b.state !== "reminded" && (
+        <button
+          disabled={busy}
+          onClick={() => act("remind")}
+          className="text-xs px-2.5 py-1 rounded-md bg-accent text-accent-fg disabled:opacity-50"
+        >
+          Remind me
+        </button>
+      )}
+      <button
+        disabled={busy}
+        onClick={() => act("paid")}
+        className="text-xs px-2 py-1 rounded-md border border-line text-ink-mid hover:bg-surface-3 disabled:opacity-50"
+      >
+        Paid
+      </button>
+      <button
+        disabled={busy}
+        onClick={() => act("dismiss")}
+        className="text-xs px-2 py-1 rounded-md text-ink-mid hover:bg-surface-3 disabled:opacity-50"
+      >
+        Dismiss
+      </button>
+    </div>
+  );
 }
 
 function PromiseRow({ p }: { p: WaitingMail }) {

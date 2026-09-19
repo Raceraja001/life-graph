@@ -19,6 +19,9 @@ code item (PR, issue), public repo          yes    yes (title redacted)
 code item, private repo                     yes    count, unless the account
                                                    shares private titles
 code item URL, private repo                 yes    never
+bill from mail: payee, kind, due, autopay     yes    yes (redacted), or a count
+                                                   when connector_bills_cloud=counts
+bill amount                                 yes    never
 =========================================  =====  ==========================
 
 (*) fetched live on request, never stored.
@@ -306,6 +309,44 @@ def view_items(
                 hold(item, f"{item['account_name']} ({PRIVATE_REPOS})")
             else:
                 shown.append(view)
+    return {"items": shown, "withheld": withheld}
+
+
+def view_bills(rows: list[dict[str, Any]], audience: str) -> dict[str, Any]:
+    """Bills found in mail (``bills.bills_due`` rows) for ``audience``.
+
+    Off the machine: payee, kind, due date and autopay only — never the amount —
+    or only counts when ``connector_bills_cloud`` is ``counts``. ``local_only``
+    mail accounts are counts either way.
+    """
+    from life_graph.config import settings
+
+    local = audience == LOCAL
+    shown: list[dict[str, Any]] = []
+    withheld: dict[str, int] = {}
+    for row in rows:
+        bill = row.get("bill") or (row.get("flags") or {}).get("bill") or {}
+        if not local and (
+            row.get("account_exposure") == EXPOSURE_LOCAL_ONLY
+            or settings.connector_bills_cloud == "counts"
+        ):
+            withheld[row["account_name"]] = withheld.get(row["account_name"], 0) + 1
+            continue
+        view: dict[str, Any] = {
+            "id": row["id"],
+            "account": row["account_name"],
+            "kind": bill.get("kind"),
+            "payee": bill.get("payee") if local else redact(bill.get("payee")),
+            "due": bill.get("due"),
+            "autopay": bool(bill.get("autopay")),
+            "state": bill.get("state"),
+        }
+        if local:
+            view["amount"] = bill.get("amount")
+            view["currency"] = bill.get("currency")
+            view["subject"] = row.get("title")
+            view["email_count"] = row.get("email_count", 1)
+        shown.append({k: v for k, v in view.items() if v is not None})
     return {"items": shown, "withheld": withheld}
 
 

@@ -504,25 +504,120 @@ class ConnectorRuntime:
                     automated=bool((item.flags or {}).get("automated")),
                     sent=item.direction == "sent",
                     sent_at=item.occurred_at,
+                    sender_addr=item.sender_addr,
                 )
-                item.summary = result.summary
-                item.category = result.category
-                flags = {
-                    **(item.flags or {}),
-                    "asks_me": result.asks_me,
-                    "suspicious": result.suspicious,
-                }
-                if result.commitment:
-                    flags["commitment"] = result.commitment
-                    if result.commitment_due:
-                        flags["commitment_due"] = result.commitment_due.isoformat()
-                item.flags = flags
-                item.summary_state = "done" if result.ok else "failed"
-                item.embedding = None  # re-embed with the summary included
+                await self._apply_summary(session, item, result)
                 # Per message: each summary costs seconds of local-model time,
                 # so a restart mid-batch keeps what was already done.
                 await session.commit()
                 done += 1
+        return done
+
+    @staticmethod
+    async def _apply_summary(session, item: ConnectorItem, result) -> None:
+        """Store one local-model summary on its email row (and settle any bill it pays)."""
+        from life_graph.connectors import bills
+
+        item.summary = result.summary
+        item.category = result.category
+        old = dict(item.flags or {})
+        flags = {**old, "asks_me": result.asks_me, "suspicious": result.suspicious}
+        if result.commitment:
+            flags["commitment"] = result.commitment
+            if result.commitment_due:
+                flags["commitment_due"] = result.commitment_due.isoformat()
+        bill = bills.merge_state(result.bill, old.get("bill"))
+        if bill and bill["kind"] == "bill" and bill["state"] == "open":
+            paid = await bills.paid_since(session, item.tenant_id, bill["payee"], item.occurred_at)
+            if paid:
+                bill = {**bill, "state": "paid", "paid_at": paid.isoformat()}
+        if bill:
+            flags["bill"] = bill
+        else:
+            flags.pop("bill", None)
+        item.flags = flags
+        item.summary_state = "done" if result.ok else "failed"
+        item.embedding = None  # re-embed with the summary included
+        if bill and bill["kind"] == "payment_done":
+            closed = await bills.close_paid(
+                session, item.tenant_id, bill["payee"], item.occurred_at
+            )
+            if closed:
+                logger.info("Bill %s marked paid by confirmation %s", closed, item.id)
+
+    async def rescan_bills(self, tenant_id: str, days: int = 60, limit: int = 300) -> int:
+        """Re-read recent transactional and sensitive mail for bills (one-time backfill).
+
+        Mail summarised before bills were extracted has no ``flags.bill``. Each
+        body is fetched again (read-only) and re-summarised on the local model.
+        """
+        from life_graph.connectors.summarize import summarize_email
+
+        since = datetime.now(UTC) - timedelta(days=days)
+        async with async_session() as session:
+            accounts = list(
+                (
+                    await session.execute(
+                        select(ConnectorAccount).where(
+                            ConnectorAccount.tenant_id == tenant_id,
+                            ConnectorAccount.enabled.is_(True),
+                            ConnectorAccount.connector == "email",
+                        )
+                    )
+                ).scalars()
+            )
+        done = 0
+        for account in accounts:
+            impl = self.connectors.get(account.connector)
+            if impl is None:
+                continue
+            try:
+                secret = await self._secret_for(account)
+            except Exception:
+                logger.warning("Bill re-scan: no credential for %s", account.id, exc_info=True)
+                continue
+            async with async_session() as session:
+                items = list(
+                    (
+                        await session.execute(
+                            select(ConnectorItem)
+                            .where(
+                                ConnectorItem.tenant_id == tenant_id,
+                                ConnectorItem.account_id == account.id,
+                                ConnectorItem.kind == KIND_EMAIL,
+                                ConnectorItem.direction == "inbound",
+                                ConnectorItem.category.in_(["transactional", "sensitive"]),
+                                ConnectorItem.occurred_at >= since,
+                            )
+                            # Oldest first, so a confirmation finds the bill it pays.
+                            .order_by(ConnectorItem.occurred_at)
+                            .limit(limit)
+                        )
+                    ).scalars()
+                )
+                for item in items:
+                    try:
+                        text = await impl.fetch_body(
+                            account_view(account), secret, item.external_id
+                        )
+                    except Exception:
+                        logger.debug("Bill re-scan: body fetch failed", exc_info=True)
+                        continue
+                    result = await summarize_email(
+                        subject=item.title,
+                        sender=item.sender_name or item.sender_addr,
+                        text=text or "",
+                        automated=bool((item.flags or {}).get("automated")),
+                        sent=False,
+                        sent_at=item.occurred_at,
+                        sender_addr=item.sender_addr,
+                    )
+                    if not result.ok:
+                        continue
+                    await self._apply_summary(session, item, result)
+                    await session.commit()
+                    done += 1
+        logger.info("Bill re-scan for %s: %d messages re-read", tenant_id, done)
         return done
 
     async def _embed_missing(self, account: ConnectorAccount, limit: int = 200) -> None:

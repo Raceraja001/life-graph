@@ -31,6 +31,7 @@ TOOL_NAMES = (
     "email_read",
     "contact_lookup",
     "code_inbox",
+    "bills_due",
 )
 MAX_BODY_CHARS = 3500
 
@@ -206,6 +207,24 @@ async def code_inbox() -> str:
     return _out(view)
 
 
+async def bills_due() -> str:
+    """Bills and renewals from mail: overdue, due this week, renewing in two weeks."""
+    from life_graph.connectors.bills import bills_due as due_rows
+    from life_graph.connectors.exposure import view_bills
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    async with async_session() as session:
+        rows = await due_rows(session, tenant, datetime.now(user_tz()).date())
+    audience = current_audience()
+    payload: dict[str, Any] = {"today": datetime.now(user_tz()).date().isoformat()}
+    payload.update(view_bills(rows, audience))
+    if audience != LOCAL:
+        payload["note"] = "Amounts are kept on the user's device."
+    return _out(payload)
+
+
 _SCHEMAS: dict[str, tuple[str, dict[str, Any], Any]] = {
     "calendar_events": (
         "List the user's calendar events for a day or range (read-only). Times are UTC ISO;"
@@ -270,6 +289,12 @@ _SCHEMAS: dict[str, tuple[str, dict[str, Any], Any]] = {
         " assigned to them.",
         {"type": "object", "properties": {}},
         code_inbox,
+    ),
+    "bills_due": (
+        "Bills and renewals found in the user's email (read-only): overdue, due within a"
+        " week, renewing within two weeks, with payee, due date and autopay.",
+        {"type": "object", "properties": {}},
+        bills_due,
     ),
 }
 

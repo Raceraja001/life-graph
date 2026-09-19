@@ -224,6 +224,21 @@ export interface TodayView {
   promises?: { items: WaitingMail[]; withheld: Record<string, number> };
   birthdays?: { items: BirthdayContact[]; withheld: Record<string, number> };
   code?: { items: CodeItem[]; withheld: Record<string, number> };
+  bills?: { items: BillItem[]; withheld: Record<string, number> };
+}
+
+export interface BillItem {
+  id: string;
+  account: string;
+  kind: "bill" | "renewal";
+  payee: string;
+  due: string;
+  autopay: boolean;
+  state: string;
+  amount?: number;
+  currency?: string;
+  subject?: string;
+  email_count?: number;
 }
 
 export interface CodeItem {
@@ -319,6 +334,9 @@ export const api = {
     today: () => GET<{ data: TodayView | null }>("/connectors/today").then((r) => r.data),
     remind: (itemId: string) => POST<unknown>(`/connectors/items/${itemId}/remind`, {}),
     dismissPromise: (itemId: string) => POST<unknown>(`/connectors/items/${itemId}/dismiss-promise`, {}),
+    billAction: (itemId: string, action: "paid" | "dismiss" | "remind") =>
+      POST<unknown>(`/connectors/items/${itemId}/bill`, { action }),
+    rescanBills: () => POST<{ data: { status: string } }>("/connectors/bills/rescan", {}).then((r) => r.data),
   },
 
   // ── Judgment: predictions + calibration ──────

@@ -316,6 +316,93 @@ async def remind_promise(item_id: str, tenant_id: str = Depends(get_current_tena
     )
 
 
+class BillAction(BaseModel):
+    action: str = Field(..., pattern="^(paid|dismiss|remind)$")
+
+
+_bill_rescans: set[str] = set()
+
+
+@router.post("/items/{item_id}/bill", summary="Mark a bill from mail paid, dismiss it, or remind")
+async def bill_action(
+    item_id: str, body: BillAction, tenant_id: str = Depends(get_current_tenant_id)
+):
+    """``remind`` creates a reminder at 09:00 the day before the due date (or
+    tomorrow when that has passed), written with this tenant, as for promises."""
+    import uuid
+    from datetime import date, datetime, time, timedelta
+    from zoneinfo import ZoneInfo
+
+    from life_graph.connectors import store
+    from life_graph.connectors.bills import format_amount
+    from life_graph.models.db import Intention
+    from life_graph.storage.database import async_session
+
+    async with async_session() as session:
+        got = await store.get_item(session, tenant_id, item_id)
+        bill = ((got[0].flags or {}).get("bill") if got else None) or {}
+        if not got or bill.get("kind") not in ("bill", "renewal"):
+            raise HTTPException(404, "no bill on this item")
+        item = got[0]
+        state = {"paid": "paid", "dismiss": "dismissed", "remind": "reminded"}[body.action]
+        data: dict[str, Any] = {"id": item_id, "state": state}
+        if body.action == "remind":
+            try:
+                tz = ZoneInfo(settings.user_timezone)
+            except Exception:
+                tz = ZoneInfo("UTC")
+            today = datetime.now(tz).date()
+            due = date.fromisoformat(bill["due"]) if bill.get("due") else None
+            day = (
+                max(due - timedelta(days=1), today + timedelta(days=1))
+                if due
+                else today + timedelta(days=1)
+            )
+            trigger = datetime.combine(day, time(9, 0), tzinfo=tz)
+            amount = format_amount(bill.get("amount"), bill.get("currency"))
+            verb = "Renew" if bill["kind"] == "renewal" else "Pay"
+            when = f" (due {due:%a %d %b})" if due else ""
+            intention = Intention(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                content=f"{verb} {bill['payee']}{' ' + amount if amount else ''}{when}",
+                trigger_type="time",
+                trigger_condition=f"bill email from {item.occurred_at:%d %b}",
+                trigger_time=trigger,
+                context_match={"connector_item_id": item_id},
+                priority="normal",
+                status="pending",
+            )
+            session.add(intention)
+            data.update(intention_id=str(intention.id), trigger_time=trigger.isoformat())
+        item.flags = {**(item.flags or {}), "bill": {**bill, "state": state}}
+        await session.commit()
+    return success_response(data=data)
+
+
+@router.post("/bills/rescan", status_code=202, summary="Look for bills in recent mail (background)")
+async def rescan_bills(tenant_id: str = Depends(get_current_tenant_id)):
+    """One-time backfill: re-read 60 days of transactional and sensitive mail on the
+    local model. Runs in the background; a second request while one runs is a no-op."""
+    if tenant_id in _bill_rescans:
+        return success_response(data={"status": "already running"})
+    runtime = get_runtime()
+    _bill_rescans.add(tenant_id)
+
+    async def _run() -> None:
+        try:
+            await runtime.rescan_bills(tenant_id)
+        except Exception:
+            logger.exception("Bill re-scan failed")
+        finally:
+            _bill_rescans.discard(tenant_id)
+
+    task = asyncio.create_task(_run())
+    _running.add(task)
+    task.add_done_callback(_running.discard)
+    return success_response(data={"status": "started"})
+
+
 @router.post("/items/{item_id}/dismiss-promise", summary="Hide a detected promise")
 async def dismiss_promise(item_id: str, tenant_id: str = Depends(get_current_tenant_id)):
     from life_graph.connectors import store
