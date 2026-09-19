@@ -24,6 +24,7 @@ KIND_EVENT = "event"
 KIND_EMAIL = "email"
 KIND_CONTACT = "contact"
 KIND_CODE = "code"  # pull requests and issues on a code host
+KIND_TASK = "task"  # the user's own to-do items
 
 # Directions. Events: the user's own vs an invitation from someone else.
 # Mail: received vs sent by the user. Trust tiers are derived from these.

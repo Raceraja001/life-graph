@@ -370,6 +370,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "contact_lookup",
             "code_inbox",
             "bills_due",
+            "tasks_due",
         ],
     },
     {
@@ -455,6 +456,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "contact_lookup",
             "code_inbox",
             "bills_due",
+            "tasks_due",
             "delegate_to_persona",
         ],
     },

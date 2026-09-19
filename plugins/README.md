@@ -94,14 +94,14 @@ pm.load_all()  # discovers and loads all plugins
 - **Lazy imports**: Import heavy dependencies inside your handler, not at module level.
 - **Logging**: Use `logging.getLogger(__name__)` for diagnostics.
 
-## Connector plugins (calendar, email, contacts, GitHub, …)
+## Connector plugins (calendar, email, contacts, tasks, GitHub, …)
 
 A plugin that brings in data from an outside source exports `CONNECTOR` instead
 of (or as well as) `register`. The connector runtime (`life_graph/connectors/`)
 discovers it in both the API and the worker. See `plugins/calendar/`,
-`plugins/mail/`, `plugins/contacts/` and `plugins/github/`, and the designs in
-`docs/specs/connectors.md`, `docs/specs/connector-contacts.md` and
-`docs/specs/connector-github.md`. A plugin can also check a credential when it
+`plugins/mail/`, `plugins/contacts/`, `plugins/tasks/` and `plugins/github/`, and the
+designs in `docs/specs/connectors.md`, `docs/specs/connector-contacts.md`,
+`docs/specs/connector-tasks.md` and `docs/specs/connector-github.md`. A plugin can also check a credential when it
 is added (`verify_credential`), e.g. to refuse a token that can write.
 
 A source that is imported rather than fetched (a vCard export) uses auth method

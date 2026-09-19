@@ -1,4 +1,4 @@
-"""Daily-brief sections from connectors: **Today**, **Waiting on you**, **You promised**, **Bills & renewals**,
+"""Daily-brief sections from connectors: **Today**, **Waiting on you**, **You promised**, **Tasks**, **Bills & renewals**,
 **Birthdays**, **Code**.
 
 Rendered twice. The brief's stored ``body`` is what Telegram and Web Push send
@@ -39,6 +39,7 @@ async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, Any]
         birthdays = await store.birthdays_between(session, tenant_id, today, BIRTHDAY_DAYS)
         code = await store.code_items(session, tenant_id)
         bills = await bills_due(session, tenant_id, today)
+        tasks = await store.task_items(session, tenant_id)
         addrs = {m["sender_addr"] for m in waiting if m.get("sender_addr")}
         addrs.update(a for e in events for a in e["emails"])
         people = await store.people_by_address(session, tenant_id, addrs)
@@ -57,6 +58,7 @@ async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, Any]
         "birthdays": birthdays,
         "code": code,
         "bills": bills,
+        "tasks": tasks,
         "people": people,
     }
 
@@ -220,11 +222,19 @@ def render(raw: dict[str, Any], audience: str, now: datetime) -> dict[str, Any]:
             due = _due_label(p.get("commitment_due"), now)
             if p.get("commitment"):
                 topic = re.sub(r"(?i)^(?:(?:re|fwd?|aw)\s*:\s*)+", "", p.get("subject") or "")
-                lines.append(f"- {p['commitment']}{due} (re: {topic})")
+                listed = " — in Tasks" if p.get("in_tasks") else ""
+                lines.append(f"- {p['commitment']}{due} (re: {topic}){listed}")
             else:
                 lines.append(f"- A promise in a sensitive email{due}")
         for account, n in promises["withheld"].items():
             lines.append(f"- +{n} in {account} (details on the dashboard)")
+        lines.append("")
+
+    tasks = view_items(raw.get("tasks", []), audience)
+    task_lines = _task_lines(tasks, now)
+    if task_lines:
+        lines.append("## Tasks")
+        lines.extend(task_lines)
         lines.append("")
 
     bills = view_bills(raw.get("bills", []), audience)
@@ -255,7 +265,53 @@ def render(raw: dict[str, Any], audience: str, now: datetime) -> dict[str, Any]:
         "birthdays": birthdays,
         "code": code,
         "bills": bills,
+        "tasks": tasks,
     }
+
+
+MAX_TASKS = 3
+TASK_WEEK_DAYS = 7
+
+
+def _task_group(items: list[dict[str, Any]], label: str, fmt: str | None) -> str | None:
+    if not items:
+        return None
+    shown = "; ".join(
+        f"{t['title']} ({date.fromisoformat(t['due']):{fmt}})" if fmt else t["title"]
+        for t in items[:MAX_TASKS]
+    )
+    more = f"; +{len(items) - MAX_TASKS} more" if len(items) > MAX_TASKS else ""
+    count = f" ({len(items)})" if len(items) > 1 else ""
+    return f"- {label}{count}: {shown}{more}"
+
+
+def _task_lines(tasks: dict[str, Any], now: datetime) -> list[str]:
+    """Overdue, today and this week (top-level tasks), then counts of the rest."""
+    today = now.astimezone(user_tz()).date()
+    top = [t for t in tasks["items"] if not t.get("parent") and not t.get("done")]
+    dated = sorted((t for t in top if t.get("due")), key=lambda t: t["due"])
+    overdue = [t for t in dated if date.fromisoformat(t["due"]) < today]
+    due_today = [t for t in dated if date.fromisoformat(t["due"]) == today]
+    week_end = today + timedelta(days=TASK_WEEK_DAYS)
+    week = [t for t in dated if today < date.fromisoformat(t["due"]) <= week_end]
+    lines = [
+        line
+        for line in (
+            _task_group(overdue, "Overdue", "%a %d %b"),
+            _task_group(due_today, "Today", None),
+            _task_group(week, "This week", "%a"),
+        )
+        if line
+    ]
+    undated = sum(1 for t in top if not t.get("due"))
+    if undated and lines:
+        lines.append(f"- +{undated} with no date")
+    done = sum(1 for t in tasks["items"] if t.get("done"))
+    if done and lines:
+        lines.append(f"- Done this week: {done}")
+    for account, n in tasks["withheld"].items():
+        lines.append(f"- +{n} in {account} (details on the dashboard)")
+    return lines
 
 
 def _bill_lines(bills: dict[str, Any], now: datetime, audience: str) -> list[str]:

@@ -59,6 +59,14 @@ def wants_bills(message: str) -> bool:
     return bool(_BILL.search(message or ""))
 
 
+_TASK = re.compile(r"(?i)\b(tasks?|to-?dos?|todo list|my list|checklist)\b")
+MAX_TASKS = 15
+
+
+def wants_tasks(message: str) -> bool:
+    return bool(_TASK.search(message or ""))
+
+
 def wants_code(message: str) -> bool:
     return bool(_CODE.search(message or ""))
 
@@ -185,7 +193,8 @@ async def context_for(tenant_id: str, message: str, model: str | None) -> str | 
     people_q = wants_contacts(message)
     code_q = wants_code(message)
     bills_q = wants_bills(message)
-    if not (cal or mail or people_q or code_q or bills_q):
+    tasks_q = wants_tasks(message)
+    if not (cal or mail or people_q or code_q or bills_q or tasks_q):
         return None
     with audience_for_model(model):
         audience = current_audience()
@@ -248,6 +257,15 @@ async def context_for(tenant_id: str, message: str, model: str | None) -> str | 
             ]
             for k, v in due["withheld"].items():
                 withheld[k] = withheld.get(k, 0) + v
+        if tasks_q:
+            view = view_items(await store.task_items(session, tenant_id), audience)
+            keep = ("title", "due", "list", "done", "parent")
+            parts["tasks"] = [
+                {k: v for k, v in t.items() if k in keep and v not in (None, "", False)}
+                for t in view["items"][:MAX_TASKS]
+            ]
+            for k, v in view["withheld"].items():
+                withheld[k] = withheld.get(k, 0) + v
     if withheld:
         parts["not_shown"] = {k: f"{v} item(s) kept on-device" for k, v in withheld.items()}
     if not any(
@@ -260,6 +278,7 @@ async def context_for(tenant_id: str, message: str, model: str | None) -> str | 
             "upcoming_birthdays",
             "code_waiting_on_you",
             "bills_due",
+            "tasks",
             "not_shown",
         )
     ):

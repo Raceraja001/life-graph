@@ -35,6 +35,7 @@ from life_graph.connectors.base import (
     KIND_CODE,
     KIND_CONTACT,
     KIND_EMAIL,
+    KIND_TASK,
     Account,
     Connector,
     ConnectorError,
@@ -633,8 +634,8 @@ class ConnectorRuntime:
                             ConnectorItem.account_id == account.id,
                             ConnectorItem.embedding.is_(None),
                             ConnectorItem.summary_state != "pending",
-                            # Contacts and code items are found by name, not meaning.
-                            ConnectorItem.kind.not_in([KIND_CONTACT, KIND_CODE]),
+                            # Contacts, code items and tasks are found by name, not meaning.
+                            ConnectorItem.kind.not_in([KIND_CONTACT, KIND_CODE, KIND_TASK]),
                         )
                         .limit(limit)
                     )

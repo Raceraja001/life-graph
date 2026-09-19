@@ -32,6 +32,7 @@ TOOL_NAMES = (
     "contact_lookup",
     "code_inbox",
     "bills_due",
+    "tasks_due",
 )
 MAX_BODY_CHARS = 3500
 
@@ -207,6 +208,18 @@ async def code_inbox() -> str:
     return _out(view)
 
 
+async def tasks_due() -> str:
+    """The user's tasks: open (with due dates) and done in the last week."""
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    async with async_session() as session:
+        rows = await store.task_items(session, tenant)
+    payload: dict[str, Any] = {"today": datetime.now(user_tz()).date().isoformat()}
+    payload.update(view_items(rows, current_audience()))
+    return _out(payload)
+
+
 async def bills_due() -> str:
     """Bills and renewals from mail: overdue, due this week, renewing in two weeks."""
     from life_graph.connectors.bills import bills_due as due_rows
@@ -295,6 +308,12 @@ _SCHEMAS: dict[str, tuple[str, dict[str, Any], Any]] = {
         " week, renewing within two weeks, with payee, due date and autopay.",
         {"type": "object", "properties": {}},
         bills_due,
+    ),
+    "tasks_due": (
+        "The user's to-do list from Google Tasks (read-only): open tasks with due dates and"
+        " lists, and tasks completed in the last week.",
+        {"type": "object", "properties": {}},
+        tasks_due,
     ),
 }
 

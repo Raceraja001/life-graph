@@ -204,6 +204,8 @@ than trusting any prose, including this paragraph.
       state, assigned issues in the brief; private repos are counts for cloud chat.
       Bills & renewals from mail too (spec `docs/specs/bills-from-mail.md`): due dates
       and amounts parsed by code, confirmations close bills, amounts never leave.
+      Google Tasks too (`plugins/tasks`, read-only, spec `docs/specs/connector-tasks.md`):
+      overdue / today / this week in the brief; promises already on the list say so.
 - [ ] **Messaging channels** — WhatsApp/Telegram as an interaction surface. Specs exist,
       no code.
 - [ ] **Text-to-speech coverage and quality** — replies are spoken only for voice-originated

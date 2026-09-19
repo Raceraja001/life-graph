@@ -8,6 +8,7 @@ another query. Nothing here decides visibility.
 from __future__ import annotations
 
 import calendar
+import re
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -26,6 +27,7 @@ from life_graph.connectors.base import (
     KIND_CONTACT,
     KIND_EMAIL,
     KIND_EVENT,
+    KIND_TASK,
     Item,
 )
 from life_graph.connectors.models import ConnectorAccount, ConnectorItem
@@ -118,7 +120,7 @@ async def upsert_items(
         # review decision): the source's current set replaces them, so a value
         # cleared at the source is cleared here too.
         update["flags"] = case(
-            (ConnectorItem.kind.in_([KIND_CONTACT, KIND_CODE]), excluded.flags),
+            (ConnectorItem.kind.in_([KIND_CONTACT, KIND_CODE, KIND_TASK]), excluded.flags),
             else_=ConnectorItem.flags.op("||")(excluded.flags),
         )
         stmt = stmt.on_conflict_do_update(
@@ -288,6 +290,98 @@ async def open_promises(
             ),
         )
         .order_by(due.asc().nulls_last(), ConnectorItem.occurred_at.desc())
+        .limit(limit)
+    )
+    rows = [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
+    if rows:
+        # A promise the user already put on their to-do list is not nagged twice.
+        titles = (
+            await session.execute(
+                select(ConnectorItem.title).where(
+                    ConnectorItem.tenant_id == tenant_id,
+                    ConnectorItem.kind == KIND_TASK,
+                    ConnectorItem.flags["status"].astext != "completed",
+                )
+            )
+        ).scalars()
+        keys = [_words(t) for t in titles]
+        for row in rows:
+            mine = _words(row["flags"].get("commitment"))
+            if any(_same_task(mine, k) for k in keys):
+                row["flags"] = {**row["flags"], "in_tasks": True}
+    return rows
+
+
+# Words that say what to do rather than what it is about.
+_TASK_STOP = frozenset(
+    [
+        "the",
+        "a",
+        "an",
+        "to",
+        "for",
+        "and",
+        "of",
+        "on",
+        "in",
+        "with",
+        "by",
+        "about",
+        "my",
+        "your",
+        "our",
+        "me",
+        "you",
+        "it",
+        "this",
+        "that",
+        "from",
+        "at",
+        "send",
+        "call",
+        "pay",
+        "email",
+        "mail",
+        "reply",
+        "share",
+        "update",
+        "check",
+        "review",
+        "get",
+        "make",
+        "do",
+        "finish",
+        "follow",
+        "up",
+        "back",
+        "will",
+        "i",
+        "ill",
+        "i'll",
+    ]
+)
+
+
+def _words(text: str | None) -> frozenset[str]:
+    return frozenset(
+        w for w in re.findall(r"[a-z0-9][a-z0-9'.-]*", (text or "").lower()) if w not in _TASK_STOP
+    )
+
+
+def _same_task(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Two short phrases name the same task: two shared words, or one when either has one."""
+    shared = len(a & b)
+    return shared >= 2 or (shared == 1 and min(len(a), len(b)) == 1)
+
+
+async def task_items(
+    session: AsyncSession, tenant_id: str, limit: int = 300
+) -> list[dict[str, Any]]:
+    """Open tasks and those completed in the last week, soonest due first."""
+    stmt = (
+        _base(tenant_id)
+        .where(ConnectorItem.kind == KIND_TASK)
+        .order_by(ConnectorItem.starts_at.asc().nulls_last(), ConnectorItem.occurred_at.desc())
         .limit(limit)
     )
     return [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
@@ -526,6 +620,8 @@ async def purge_expired(session: AsyncSession, now: datetime | None = None) -> i
     past_cut = now - timedelta(days=settings.connector_event_past_days)
     future_cut = now + timedelta(days=settings.connector_event_future_days)
     disabled = select(ConnectorAccount.id).where(ConnectorAccount.enabled.is_(False))
+    # Completed tasks are kept a week ("done this week"); RFC 3339 strings sort as times.
+    task_cut = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
     result = await session.execute(
         delete(ConnectorItem).where(
             or_(
@@ -536,6 +632,10 @@ async def purge_expired(session: AsyncSession, now: datetime | None = None) -> i
                         func.coalesce(ConnectorItem.ends_at, ConnectorItem.starts_at) < past_cut,
                         ConnectorItem.starts_at > future_cut,
                     ),
+                ),
+                and_(
+                    ConnectorItem.kind == KIND_TASK,
+                    ConnectorItem.flags["completed_at"].astext < task_cut,
                 ),
                 ConnectorItem.account_id.in_(disabled),
             )
