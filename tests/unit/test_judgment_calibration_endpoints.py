@@ -1,92 +1,90 @@
-"""Regression tests for the calibration endpoints.
+"""Calibration endpoints: they now compute live instead of reading a snapshot.
 
-Both `GET /judgment/calibration` and `/judgment/calibration/curve` called
-`select(...)` without importing it — this file uses function-level imports,
-and these two functions imported `CalibrationSnapshot` but not `select`,
-while their sibling `get_judgment_stats` imported both. Every call raised
-`NameError: name 'select' is not defined`.
-
-It survived because nothing ever executed them: no test covered these
-routes, and the dashboard's Calibration page is a "Coming Soon" placeholder
-that never calls the API.
-
-These tests stub the session so they assert the endpoint *executes* rather
-than asserting a status code that a dead database would also produce. An
-`assert status in (200, 500)` here would have passed against the bug.
+History: both routes once died on a missing ``select`` import, and survived
+because nothing called them (the dashboard page was a placeholder). They
+then read "the latest snapshot" — which no job ever wrote, so they always
+returned null. They now delegate to ``CalibrationService.report``, and these
+tests pin that wiring: tenant and scope are passed through, and the curve
+endpoint serves the same buckets the report computed.
 """
 
 from __future__ import annotations
 
 import contextlib
-from unittest.mock import MagicMock
 
 import pytest
 
 import life_graph.api.judgment as judgment
+from life_graph.services.calibration import CalibrationService
 
 
-class _FakeResult:
-    def __init__(self, row):
-        self._row = row
+class _Session:
+    def __init__(self):
+        self.commits = 0
 
-    def scalars(self):
-        scalars = MagicMock()
-        scalars.first.return_value = self._row
-        return scalars
-
-
-class _FakeSession:
-    def __init__(self, row=None):
-        self.row = row
-        self.executed = []
-
-    async def execute(self, stmt):
-        self.executed.append(stmt)
-        return _FakeResult(self.row)
+    async def commit(self):
+        self.commits += 1
 
 
 @pytest.fixture
-def stub_session(monkeypatch):
-    """Replace async_session with one that records the statements built."""
-    session = _FakeSession()
+def stub(monkeypatch):
+    session = _Session()
+    calls = {"report": [], "recompute": []}
 
     @contextlib.asynccontextmanager
     async def _factory():
         yield session
 
+    async def report(self, tenant_id, domain=None, window_days=90):
+        calls["report"].append((tenant_id, domain, window_days))
+        return {
+            "status": "ok",
+            "domain": domain or "overall",
+            "buckets": [{"range_label": "0.90-0.99", "count": 20}],
+        }
+
+    async def recompute(self, tenant_id, window_days=90):
+        calls["recompute"].append((tenant_id, window_days))
+        return {"resolved": 20, "written": ["overall"], "findings": 0}
+
     monkeypatch.setattr(judgment, "async_session", _factory)
-    return session
+    monkeypatch.setattr(CalibrationService, "report", report)
+    monkeypatch.setattr(CalibrationService, "recompute", recompute)
+    calls["session"] = session
+    return calls
 
 
-async def test_get_calibration_builds_a_query(stub_session):
-    """Must reach the DB with a real statement — not die on NameError."""
+async def test_get_calibration_reports_for_tenant_and_scope(stub):
+    resp = await judgment.get_calibration(tenant_id="tenant-abc", domain="infra", window=30)
+    assert stub["report"] == [("tenant-abc", "infra", 30)]
+    assert resp["data"]["status"] == "ok"
+
+
+async def test_get_calibration_without_domain_means_overall(stub):
     resp = await judgment.get_calibration(tenant_id="t1", domain=None, window=90)
-    assert len(stub_session.executed) == 1, "endpoint never issued a query"
-    assert resp["data"] is None  # no snapshot stored
+    assert stub["report"] == [("t1", None, 90)]
+    assert resp["data"]["domain"] == "overall"
 
 
-async def test_get_calibration_curve_builds_a_query(stub_session):
-    resp = await judgment.get_calibration_curve(tenant_id="t1", domain=None)
-    assert len(stub_session.executed) == 1, "endpoint never issued a query"
-    # Unlike /calibration, the curve endpoint returns an empty-bucket payload
-    # rather than None when no snapshot exists, so a chart can render blank.
-    assert resp["data"] == {"buckets": [], "domain": None}
+async def test_curve_serves_report_buckets_with_identity_line(stub):
+    resp = await judgment.get_calibration_curve(tenant_id="t1", domain=None, window=90)
+    assert resp["data"] == {
+        "domain": "overall",
+        "buckets": [{"range_label": "0.90-0.99", "count": 20}],
+        "identity": [[0.5, 0.5], [1.0, 1.0]],
+    }
 
 
-async def test_calibration_filters_by_tenant(stub_session):
-    """Tenant isolation is the codebase's core invariant — assert the
-    statement actually carries the tenant, not just that it ran."""
-    await judgment.get_calibration(tenant_id="tenant-abc", domain=None, window=90)
-    assert "tenant-abc" in str(stub_session.executed[0].compile().params.values()) or (
-        "tenant_id" in str(stub_session.executed[0])
-    )
+async def test_recompute_endpoint_commits_snapshots(stub):
+    resp = await judgment.recompute_calibration(tenant_id="t1", window=90)
+    assert stub["recompute"] == [("t1", 90)]
+    assert stub["session"].commits == 1
+    assert resp["data"]["written"] == ["overall"]
 
 
-async def test_calibration_applies_domain_filter(stub_session):
-    """The domain filter adds a WHERE clause rather than being ignored."""
-    await judgment.get_calibration(tenant_id="t1", domain="career", window=90)
-    with_domain = str(stub_session.executed[0])
-    stub_session.executed.clear()
-    await judgment.get_calibration(tenant_id="t1", domain=None, window=90)
-    without_domain = str(stub_session.executed[0])
-    assert with_domain != without_domain, "domain filter had no effect on the query"
+async def test_refresh_after_resolve_never_raises(monkeypatch, stub):
+    async def broken(self, tenant_id, window_days=90):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(CalibrationService, "recompute", broken)
+    await judgment._refresh_calibration("t1")  # logged, not raised

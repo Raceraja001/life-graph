@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
@@ -30,6 +30,9 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+# Matches interview.QUESTION_TTL_DAYS (not imported: interview imports this module).
+QUESTION_TTL_DAYS = 7
 
 # Valid outcome values for resolution
 _VALID_OUTCOMES = frozenset({"correct", "incorrect", "ambiguous"})
@@ -93,6 +96,8 @@ class OutcomeResolver:
         if not prediction:
             raise ValueError("Prediction not found")
 
+        if prediction.outcome == "suggested":
+            raise ValueError("Prediction is still a suggestion; accept it before resolving it.")
         if prediction.outcome != "pending":
             raise ValueError(
                 f"Prediction already resolved as '{prediction.outcome}'. "
@@ -133,7 +138,12 @@ class OutcomeResolver:
 
         Queries for predictions that are still pending but past their
         deadline, and creates interview questions to ask the user for
-        resolution.
+        resolution. Each prediction is asked about once: this runs daily,
+        and without the check every unanswered prediction gained another
+        identical question each morning. An unanswered question expires
+        after QUESTION_TTL_DAYS and resolves the prediction ``ambiguous``
+        (``InterviewService.expire_sweep``); a skipped one leaves it pending,
+        still resolvable from the Calibration page.
 
         Args:
             tenant_id: Tenant scope.
@@ -150,6 +160,15 @@ class OutcomeResolver:
             )
         )
         expired = list(result.scalars().all())
+        if expired:
+            asked = await self.session.execute(
+                select(InterviewQuestion.origin_ref).where(
+                    InterviewQuestion.tenant_id == tenant_id,
+                    InterviewQuestion.origin == "outcome_resolution",
+                )
+            )
+            already_asked = {(ref or {}).get("prediction_id") for (ref,) in asked.all()}
+            expired = [p for p in expired if str(p.id) not in already_asked]
 
         questions: list[InterviewQuestion] = []
         for prediction in expired:
@@ -194,6 +213,9 @@ class OutcomeResolver:
                 "confidence": prediction.confidence,
             },
             priority=0.7,
+            # Without an expiry the question stayed open forever and the
+            # spec's "unanswered for 7 days → ambiguous" never happened.
+            expires_at=datetime.now(UTC) + timedelta(days=QUESTION_TTL_DAYS),
         )
         self.session.add(question)
         await self.session.flush()
