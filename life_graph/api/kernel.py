@@ -1457,3 +1457,55 @@ async def mark_all_read(
             "message": f"{count} notifications marked as read",
         },
     )
+
+
+class ExternalAlert(BaseModel):
+    """An alert from a tool this tenant runs outside life-graph (e.g. pulse)."""
+
+    title: str = Field(..., max_length=500)
+    details: str | None = None
+    severity: str = Field("important", description="critical | important | info")
+    source: str | None = Field(None, max_length=100, description="Sending system, e.g. 'pulse'")
+
+
+@router.post(
+    "/alerts/external",
+    summary="Receive an alert from an external system and deliver it",
+)
+async def receive_external_alert(
+    alert: ExternalAlert,
+    svc: Any = Depends(get_notification_engine),
+):
+    """Record the alert and push it to Telegram immediately.
+
+    For tools life-graph doesn't run itself — pulse's service/quota monitor
+    posts here with the same API key as every other kernel call, instead of
+    an arbitrary webhook URL, so a down service or an exhausted Claude quota
+    reaches the same paired chat as everything else life-graph tells the
+    tenant, rather than living in a separate inbox nobody watches.
+    """
+    from life_graph.watchers.channels.telegram_channel import TelegramChannel
+
+    tenant_id = get_current_tenant_id()
+    priority = alert.severity.lower()
+    if priority not in ("critical", "important", "info"):
+        priority = "important"
+    title = f"[{alert.source}] {alert.title}" if alert.source else alert.title
+
+    notif = await svc.create(
+        tenant_id,
+        title=title,
+        body=alert.details,
+        priority=priority,
+        channel="webhook",
+        source_type="external_alert",
+    )
+    await TelegramChannel().send(
+        config={},
+        tenant_id=tenant_id,
+        severity=priority,
+        title=title,
+        details=alert.details,
+        watcher_name=alert.source,
+    )
+    return success_response(data=notif)
