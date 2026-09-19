@@ -176,11 +176,25 @@ class EvalService:
     ) -> EvalRunResponse:
         """Execute all active cases in a suite, score each, compute summary.
 
-        Uses asyncio.Semaphore(5) for bounded parallelism.
-        The llm_fn callback is expected to accept (prompt_text, input_text)
-        and return (output, latency_ms, tokens, cost).
+        Uses a semaphore (``settings.eval_max_parallel``) for bounded
+        parallelism. ``llm_fn(prompt_version_id, input_text)`` must return
+        ``(output, latency_ms, tokens, cost)``. When omitted, the suite's task
+        runner is used (self_improving/task_runner.py); only a task with no
+        runner falls back to a dry run with empty output — previously every
+        run was a dry run, because no caller ever passed one.
         """
+        from life_graph.config import settings
+        from life_graph.self_improving.task_runner import llm_fn_for
+
         run_start = time.time()
+
+        if llm_fn is None:
+            async with self._sf() as session:
+                suite = await session.get(EvalSuite, suite_id)
+            if suite is not None:
+                llm_fn = llm_fn_for(suite.task_type)
+            if llm_fn is None:
+                logger.warning("No task runner for suite %s — dry run with empty output", suite_id)
 
         async with self._sf() as session:
             # Fetch active cases
@@ -208,7 +222,7 @@ class EvalService:
             run_id = run.id
 
         # Execute cases with bounded parallelism
-        sem = asyncio.Semaphore(5)
+        sem = asyncio.Semaphore(max(1, settings.eval_max_parallel))
         eval_results: list[dict[str, Any]] = []
 
         async def _eval_case(case: EvalCase) -> dict[str, Any]:
@@ -228,7 +242,7 @@ class EvalService:
                         tokens = 0
                         cost = Decimal("0")
 
-                    passed, score_val, reason = self._scorer.score(
+                    passed, score_val, reason = await self._scorer.score_async(
                         case.scoring_type,
                         case.expected_output,
                         actual,

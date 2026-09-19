@@ -385,6 +385,11 @@ class MemoryManager:
         properties["extraction_confidence"] = fact.confidence
         if fact.entities:
             properties["entities"] = fact.entities
+        if fact.trace_id:
+            # How the user resolves this memory is the self-improvement label
+            # for that extraction call (self_improving/suite_builder.py).
+            properties["extraction_trace_id"] = fact.trace_id
+            properties["extraction_fact_index"] = fact.trace_index
 
         # Add contradiction info if any
         if contradictions:

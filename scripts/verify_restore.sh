@@ -69,9 +69,13 @@ fail() {
 if [ $# -ge 1 ]; then
     DUMP_FILE=$1
 else
-    DUMP_FILE=$(ls -t "$BACKUP_DIR"/life_graph_*.dump 2>/dev/null | head -1 || true)
+    # Newest non-empty dump: a failed pg_dump used to leave a 0-byte file that
+    # sorted first and made the drill test an empty file.
+    DUMP_FILE=$(find "$BACKUP_DIR" -maxdepth 1 -name 'life_graph_*.dump' -size +0 \
+        -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2- || true)
 fi
 [ -n "${DUMP_FILE:-}" ] && [ -f "$DUMP_FILE" ] || fail "no backup dump found in $BACKUP_DIR"
+[ -s "$DUMP_FILE" ] || fail "backup dump is empty: $DUMP_FILE"
 
 DUMP_AGE_HOURS=$(( ( $(date +%s) - $(date -r "$DUMP_FILE" +%s) ) / 3600 ))
 log "Verifying dump: $DUMP_FILE (age: ${DUMP_AGE_HOURS}h)"
@@ -96,15 +100,21 @@ RESULT_JSON="{\"dump\": \"$(basename "$DUMP_FILE")\", \"dump_age_hours\": $DUMP_
 FIRST=1
 
 for tbl in $TABLES; do
-    live_exists=$(psql_live "SELECT to_regclass('public.$tbl') IS NOT NULL") || fail "cannot query live database"
-    [ "$live_exists" = "t" ] || continue
-    live_count=$(psql_live "SELECT count(*) FROM $tbl")
-    scratch_count=$(psql_scratch "SELECT count(*) FROM $tbl" 2>/dev/null) \
-        || fail "table $tbl missing from restored backup"
+    # Resolve the schema instead of assuming public: capture_events, decisions
+    # and predictions live in the life_graph schema, so a public-only lookup
+    # skipped them silently and the drill verified half of what it reported.
+    schema=$(psql_live "SELECT table_schema FROM information_schema.tables
+                        WHERE table_name = '$tbl' AND table_schema IN ('public', 'life_graph')
+                        ORDER BY table_schema = 'public' DESC LIMIT 1") || fail "cannot query live database"
+    [ -n "$schema" ] || continue
+    qualified="$schema.$tbl"
+    live_count=$(psql_live "SELECT count(*) FROM $qualified")
+    scratch_count=$(psql_scratch "SELECT count(*) FROM $qualified" 2>/dev/null) \
+        || fail "table $qualified missing from restored backup"
     [ $FIRST -eq 1 ] || RESULT_JSON+=", "
     FIRST=0
-    RESULT_JSON+="\"$tbl\": {\"live\": $live_count, \"restored\": $scratch_count}"
-    log "  $tbl: live=$live_count restored=$scratch_count"
+    RESULT_JSON+="\"$qualified\": {\"live\": $live_count, \"restored\": $scratch_count}"
+    log "  $qualified: live=$live_count restored=$scratch_count"
 
     if [ "$tbl" = "memories" ] && [ "$live_count" -gt 0 ]; then
         ratio_ok=$(psql_live "SELECT $scratch_count >= ceil($live_count * $MIN_ROW_RATIO)")

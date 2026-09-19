@@ -284,12 +284,42 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
 
     # ── Self-Improving Agent ─────────────────────────
-    optimization_model: str = "openrouter/google/gemini-3.6-flash"
+    # The loop learns capture extraction from the user's own review of the
+    # memories it produces: approved facts (edited text where edited) are the
+    # target, rejected ones are not. Candidates are few-shot variants of the
+    # active prompt, run on the local extraction model — no cloud, no DSPy.
+    self_improving_enabled: bool = False
+    """Master switch for the nightly evaluate-and-optimize job."""
+    self_improving_trace_enabled: bool = True
+    """Record each local extraction (input, output, facts) as the loop's data.
+    Cheap and independent of the switch above: data accumulates while the loop
+    is off, so it has something to learn from when it is turned on."""
+    self_improving_prompts_enabled: bool = True
+    """Kill switch: false makes extraction ignore prompt_versions and use the
+    built-in prompt, whatever is active."""
     eval_max_parallel: int = 5
     eval_accuracy_threshold_pct: float = 90.0
-    optimization_min_improvement_pct: float = 1.0
+    optimization_min_improvement_pct: float = 2.0
+    """Percentage points a candidate must beat the active prompt by, on the
+    same held-out cases, before it is deployed."""
     optimization_max_regression_pct: float = 2.0
-    optimization_max_few_shot: int = 8
+    optimization_max_few_shot: int = 3
+    """Examples per few-shot candidate. Each one costs prompt tokens on every
+    extraction, so small is deliberate."""
+    optimization_candidates: int = 3
+    """Candidate prompts tried per optimization run."""
+    optimization_min_holdout: int = 20
+    """Minimum held-out cases before a candidate may be deployed: a gate on a
+    handful of cases would deploy noise."""
+    eval_fact_match_threshold: float = 0.8
+    """Cosine similarity at which a predicted fact counts as matching an
+    expected one (fact_set_f1 scoring)."""
+    eval_fact_pass_f1: float = 0.8
+    """Per-case F1 at or above which an extraction case counts as passed."""
+    eval_max_holdout_cases: int = 60
+    """Most recent held-out cases kept active in the suite. Each optimization
+    evaluates them once per candidate on the local model, so the cost has to
+    stay bounded as reviews accumulate; older cases are deactivated, not lost."""
 
     # ── Agent Networks (Era 7) ────────────────────────────
     uzhavu_sync_url: str = "http://localhost:8001/api/v1/sync/preferences"

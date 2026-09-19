@@ -11,6 +11,8 @@ import logging
 from typing import Any
 
 from life_graph.extraction.rules import ExtractedFact
+from life_graph.self_improving.prompt_resolver import ResolvedPrompt, resolve_prompt
+from life_graph.self_improving.traces import current_tenant_or_none, record_trace
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,60 @@ def _user_message(text: str, *, schema_in_prompt: bool) -> str:
     return message + 'Respond with JSON only: {"facts": [...]}.'
 
 
+TASK_TYPE = "capture_extraction"
+"""The self-improvement task this extractor's prompt is optimized under."""
+
+
+def default_prompt() -> str:
+    """The built-in extraction prompt (used when no prompt version is active)."""
+    return _SYSTEM_PROMPT
+
+
+def build_extraction_messages(
+    prompt_text: str,
+    few_shot: list[dict[str, Any]],
+    text: str,
+    *,
+    structured: bool,
+) -> list[dict[str, str]]:
+    """The exact messages an extraction sends.
+
+    Shared by production and by the self-improvement evals, so an eval measures
+    what production would actually do with a candidate prompt. Few-shot
+    examples (``{"input": str, "output": {"facts": [...]}}``) become prior
+    user/assistant turns between the system prompt and the real request.
+    """
+    messages = [{"role": "system", "content": prompt_text}]
+    for example in few_shot:
+        messages.append(
+            {
+                "role": "user",
+                "content": _user_message(example["input"], schema_in_prompt=not structured),
+            }
+        )
+        messages.append(
+            {"role": "assistant", "content": json.dumps(example["output"], ensure_ascii=False)}
+        )
+    messages.append(
+        {"role": "user", "content": _user_message(text, schema_in_prompt=not structured)}
+    )
+    return messages
+
+
+def response_format_for(structured: bool) -> dict[str, Any]:
+    """``json_schema`` (constrained decoding) or plain ``json_object``."""
+    if structured:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "extracted_facts",
+                "schema": _EXTRACTION_SCHEMA,
+                "strict": True,
+            },
+        }
+    return {"type": "json_object"}
+
+
 class LLMExtractor:
     """Tier 3 extractor using LLM via LiteLLM.
 
@@ -143,31 +199,20 @@ class LLMExtractor:
             return await self._extract_local(text)
         return await self._extract_cloud(text)
 
-    async def _local_chat(self, text: str, *, structured: bool) -> str:
+    async def _local_chat(
+        self, text: str, *, structured: bool, prompt: ResolvedPrompt | None = None
+    ) -> str:
         """One local extraction request, constrained (json_schema) or not."""
         from life_graph.config import settings
 
-        response_format: dict[str, Any] = (
-            {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "extracted_facts",
-                    "schema": _EXTRACTION_SCHEMA,
-                    "strict": True,
-                },
-            }
-            if structured
-            else {"type": "json_object"}
-        )
+        prompt_text = prompt.prompt_text if prompt else _SYSTEM_PROMPT
+        few_shot = prompt.few_shot if prompt else []
         return await self._lm_client.chat(
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": _user_message(text, schema_in_prompt=not structured)},
-            ],
+            messages=build_extraction_messages(prompt_text, few_shot, text, structured=structured),
             model=settings.lm_extraction_model,
             temperature=0.1,
             max_tokens=self._max_tokens,
-            response_format=response_format,
+            response_format=response_format_for(structured),
         )
 
     async def _extract_local(self, text: str) -> list[ExtractedFact]:
@@ -182,12 +227,20 @@ class LLMExtractor:
         pipeline fall back to the regex tier. A runtime that rejects
         ``json_schema`` gets one retry in the old mode.
         """
+        import time
+
         from life_graph.config import settings
 
+        # The active prompt version for this tenant, if the self-improvement
+        # loop has deployed one; otherwise the built-in prompt.
+        tenant_id = current_tenant_or_none()
+        prompt = await resolve_prompt(tenant_id, TASK_TYPE, _SYSTEM_PROMPT)
+
         raw_content = ""
+        started = time.monotonic()
         try:
             if settings.lm_structured_output:
-                raw_content = await self._local_chat(text, structured=True)
+                raw_content = await self._local_chat(text, structured=True, prompt=prompt)
                 if not raw_content:
                     logger.warning(
                         "Local runtime returned nothing for a json_schema request; "
@@ -195,10 +248,11 @@ class LLMExtractor:
                         "if this runtime does not support structured output)"
                     )
             if not raw_content:
-                raw_content = await self._local_chat(text, structured=False)
+                raw_content = await self._local_chat(text, structured=False, prompt=prompt)
         except Exception:
             logger.exception("Local LLM extraction failed")
             return []
+        latency_ms = int((time.monotonic() - started) * 1000)
 
         self.call_count += 1
 
@@ -244,6 +298,27 @@ class LLMExtractor:
                     source_text=text[:500],
                 )
             )
+
+        # Keep the call as training data, and tag each fact with it so the
+        # memory it becomes can be traced back (its review is the label).
+        if tenant_id:
+            trace_id = await record_trace(
+                tenant_id=tenant_id,
+                task_type=TASK_TYPE,
+                prompt_version_id=prompt.version_id,
+                model=settings.lm_extraction_model,
+                input_text=text,
+                raw_output=raw_content,
+                facts=[
+                    {"content": f.content, "fact_type": f.fact_type, "confidence": f.confidence}
+                    for f in facts
+                ],
+                latency_ms=latency_ms,
+            )
+            if trace_id is not None:
+                for index, fact in enumerate(facts):
+                    fact.trace_id = str(trace_id)
+                    fact.trace_index = index
 
         return facts
 

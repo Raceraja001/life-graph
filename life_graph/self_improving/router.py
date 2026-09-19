@@ -172,19 +172,33 @@ async def trigger_eval_run(
     suite_id: uuid.UUID,
     body: RunEvalSuiteRequest | None = None,
     eval_service=Depends(get_eval_service),
+    prompt_service=Depends(get_prompt_version_service),
 ):
-    """Trigger an evaluation run for a suite.
+    """Run a suite's cases through its task and score them.
 
-    If prompt_version_id is not provided, uses the active prompt
-    for the suite's task_type.
+    Uses the given prompt version, else the active one for the suite's task,
+    else the task's built-in prompt. Runs synchronously — on a local model a
+    run takes roughly (cases x seconds per extraction).
     """
+    from life_graph.self_improving.models import EvalSuite
+    from life_graph.storage.database import async_session
+
     body = body or RunEvalSuiteRequest()
     tenant_id = get_current_tenant_id()
-    run = await eval_service.run_suite(
-        tenant_id=tenant_id,
-        suite_id=suite_id,
-        prompt_version_id=body.prompt_version_id,
-    )
+    async with async_session() as session:
+        suite = await session.get(EvalSuite, suite_id)
+    if suite is None or suite.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Suite not found")
+
+    if body.prompt_version_id is not None:
+        version_id = str(body.prompt_version_id)
+    else:
+        active = await prompt_service.get_active(tenant_id, suite.task_type)
+        version_id = str(active.id) if active else "default"
+    try:
+        run = await eval_service.run_eval(tenant_id, suite_id, version_id, trigger="manual")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return success_response(data=_serialize(run))
 
 
@@ -330,25 +344,93 @@ async def rollback_prompt_version(
 )
 async def trigger_optimization(
     suite_id: uuid.UUID,
-    eval_service=Depends(get_eval_service),
     optimizer=Depends(get_optimizer_service),
 ):
-    """Manually trigger DSPy optimization for a suite.
+    """Run one optimization for a suite now (same as the nightly pass).
 
-    First runs an eval, then if accuracy is below threshold,
-    triggers the full optimization pipeline.
+    Evaluates the active prompt, tries few-shot candidates built from reviewed
+    captures, and deploys the best only if it clears the gate. Synchronous;
+    expect minutes on a local model.
     """
     tenant_id = get_current_tenant_id()
+    result = await optimizer.optimize(tenant_id, suite_id)
+    if result.get("status") == "error" and result.get("optimization_run_id") is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(result["details"]))
+    return success_response(data=_serialize(result))
 
-    # Run eval first to get a baseline
-    run = await eval_service.run_suite(tenant_id=tenant_id, suite_id=suite_id)
 
-    result = await optimizer.optimize(
-        tenant_id=tenant_id,
-        suite_id=suite_id,
-        trigger_eval_run_id=run.id,
+@router.post(
+    "/prompt-versions/deactivate",
+    summary="Return a task to its built-in prompt",
+)
+async def deactivate_prompt_versions(
+    task_type: str = Query(..., description="Task type, e.g. capture_extraction"),
+    prompt_service=Depends(get_prompt_version_service),
+):
+    """Undo for an auto-deploy made on top of the built-in prompt: deactivate
+    whatever version is active, so the task uses its built-in prompt again."""
+    tenant_id = get_current_tenant_id()
+    changed = await prompt_service.deactivate_active(tenant_id, task_type)
+    return success_response(data={"task_type": task_type, "deactivated": changed})
+
+
+@router.get(
+    "/status",
+    summary="How much the loop has to learn from",
+)
+async def self_improving_status(
+    prompt_service=Depends(get_prompt_version_service),
+):
+    """Data readiness and the active prompt, for the extraction task.
+
+    Counts are live: traces recorded, traces usable as labels (every fact
+    reviewed), the held-out/training split, and what the nightly pass needs.
+    """
+    from sqlalchemy import func, select
+
+    from life_graph.config import settings
+    from life_graph.self_improving.models import ExtractionTrace
+    from life_graph.self_improving.suite_builder import TASK_TYPE, labelled_traces
+    from life_graph.storage.database import async_session
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        traces = await session.scalar(
+            select(func.count())
+            .select_from(ExtractionTrace)
+            .where(ExtractionTrace.tenant_id == tenant_id, ExtractionTrace.task_type == TASK_TYPE)
+        )
+    usable = await labelled_traces(tenant_id)
+    holdout = sum(1 for t in usable if t.split == "holdout")
+    active = await prompt_service.get_active(tenant_id, TASK_TYPE)
+    return success_response(
+        data={
+            "task_type": TASK_TYPE,
+            "enabled": settings.self_improving_enabled,
+            "traces_recorded": traces or 0,
+            "traces_labelled": len(usable),
+            "holdout": holdout,
+            "train": len(usable) - holdout,
+            "holdout_needed": settings.optimization_min_holdout,
+            "ready": holdout >= settings.optimization_min_holdout,
+            "active_prompt_version": str(active.id) if active else "default",
+        }
     )
-    return success_response(data=result)
+
+
+@router.post(
+    "/extraction/sync",
+    summary="Rebuild the extraction eval suite from reviews now",
+)
+async def sync_extraction_suite():
+    """Build or refresh the extraction suite from reviewed captures (the nightly
+    pass does this first anyway)."""
+    from life_graph.self_improving.suite_builder import sync_suite
+
+    tenant_id = get_current_tenant_id()
+    result = await sync_suite(tenant_id)
+    result["train_pool"] = len(result["train_pool"])
+    return success_response(data=_serialize(result))
 
 
 @router.get(
@@ -405,16 +487,22 @@ async def review_optimization(
             )
 
         if body.decision == "approve":
-            # Deploy the candidate prompt
-            result = opt_run.result or {}
-            candidate_id = result.get("candidate_version_id")
-            if candidate_id:
-                await prompt_service.activate_version(tenant_id, uuid.UUID(candidate_id))
+            # Deploy the candidate prompt. (It previously read `result` and
+            # wrote `reviewer_notes` — neither is a column — and called a
+            # method that does not exist, so approving always failed.)
+            if opt_run.candidate_version_id:
+                await prompt_service.activate(
+                    tenant_id,
+                    uuid.UUID(opt_run.candidate_version_id),
+                    reason=f"Approved from optimization run {run_id}",
+                )
             opt_run.status = "deployed"
         else:
             opt_run.status = "rejected"
 
-        opt_run.reviewer_notes = body.reviewer_notes
+        opt_run.review_decision = body.decision
+        opt_run.review_reason = body.reviewer_notes
+        opt_run.reviewed_by = "user"
         opt_run.reviewed_at = datetime.now(UTC)
         await session.commit()
 

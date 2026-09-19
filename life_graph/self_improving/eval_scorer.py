@@ -19,13 +19,40 @@ class ScoringType(StrEnum):
     REGEX = "regex"
     SEMANTIC_SIMILARITY = "semantic_similarity"
     LLM_JUDGE = "llm_judge"
+    FACT_SET_F1 = "fact_set_f1"
 
 
 class EvalScorer:
     """Stateless scorer for eval cases."""
 
-    def __init__(self) -> None:
+    def __init__(self, embed: Any = None) -> None:
         self._embedding_model = None
+        # Async batch embedder for fact_set_f1; defaults to the app's own
+        # embedding service. Injectable for tests.
+        self._embed = embed
+
+    async def score_async(
+        self,
+        scoring_type: str,
+        expected: str,
+        actual: str,
+        config: dict[str, Any] | None = None,
+    ) -> tuple[bool, float, str | None]:
+        """Like :meth:`score`, but able to run async scorers (fact_set_f1)."""
+        if scoring_type != ScoringType.FACT_SET_F1:
+            return self.score(scoring_type, expected, actual, config)
+
+        from life_graph.config import settings
+        from life_graph.self_improving.fact_scoring import score_extraction
+
+        config = config or {}
+        return await score_extraction(
+            expected,
+            actual,
+            self._embed or _default_embed,
+            float(config.get("match_threshold", settings.eval_fact_match_threshold)),
+            float(config.get("pass_f1", settings.eval_fact_pass_f1)),
+        )
 
     def _get_embedding_model(self):
         """Lazily load the sentence transformer model."""
@@ -68,6 +95,8 @@ class EvalScorer:
         elif st == ScoringType.LLM_JUDGE:
             # LLM judge requires async LLM call — return placeholder
             return False, 0.0, "LLM judge not yet implemented"
+        elif st == ScoringType.FACT_SET_F1:
+            return False, 0.0, "fact_set_f1 is async — use score_async"
         else:
             return False, 0.0, f"Unsupported scoring type: {scoring_type}"
 
@@ -158,3 +187,10 @@ class EvalScorer:
                 else f"Semantic similarity {similarity:.4f} below threshold {threshold}"
             ),
         )
+
+
+async def _default_embed(texts: list[str]) -> list[list[float]]:
+    """Embed with the app's configured backend (the one memories use)."""
+    from life_graph.api.dependencies import get_embedding_service
+
+    return await get_embedding_service().embed_batch_async(texts)
