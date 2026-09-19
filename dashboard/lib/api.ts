@@ -9,6 +9,24 @@ export function getTenantId(): string {
   return localStorage.getItem("lg_tenant_id") || process.env.NEXT_PUBLIC_TENANT_ID || "default";
 }
 
+// FastAPI's default HTTPException body is `{"detail": "..."}`; the app's own
+// global handler wraps other errors as `{"error": {"message": "..."}}`.
+// Neither is meant for a human to read raw — a driver_merge conflict, for
+// example, comes back as literal `API 502: {"detail":"...GitHub says..."}`
+// with no code reading it, so a failed approve silently looks identical to
+// a successful one. Extract the real message; fall back to the raw body
+// when it isn't JSON at all (an upstream proxy error page, say).
+function extractErrorDetail(text: string): string {
+  try {
+    const parsed = JSON.parse(text);
+    const detail = parsed?.detail ?? parsed?.error?.message;
+    if (typeof detail === "string" && detail) return detail;
+  } catch {
+    // not JSON — fall through to the raw text
+  }
+  return text;
+}
+
 function getHeaders(): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (typeof window !== "undefined") {
@@ -34,7 +52,7 @@ async function request<T>(method: string, path: string, body?: unknown, params?:
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "Unknown error");
-    throw new Error(`API ${res.status}: ${text}`);
+    throw new Error(`API ${res.status}: ${extractErrorDetail(text)}`);
   }
   return res.json();
 }
@@ -59,7 +77,7 @@ async function uploadRequest<T>(path: string, file: Blob, filename: string): Pro
   }
   if (!res.ok) {
     const text = await res.text().catch(() => "Unknown error");
-    throw new Error(`API ${res.status}: ${text}`);
+    throw new Error(`API ${res.status}: ${extractErrorDetail(text)}`);
   }
   return res.json();
 }

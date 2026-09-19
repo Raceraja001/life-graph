@@ -1,5 +1,5 @@
 "use client";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { Card, EmptyCard, ErrorCard, LoadingCard, Meta, Stack } from "@/components/mobile/parts";
 import { useApprovals, useResolveApproval } from "@/lib/mobile-api";
 import { RiskBadge } from "@/components/shadow-log";
@@ -18,6 +18,13 @@ export default function MobileApprovals() {
   const approvals = useApprovals();
   const resolve = useResolveApproval();
   const items = approvals.data ?? [];
+  // Keyed by approval id: the side-effect (open a PR, run a merge) can fail
+  // for a reason worth reading — CI not green yet, the PR moved, a merge
+  // conflict — and that message already comes back from the API. It used
+  // to just vanish: the button went idle again with nothing to show for it,
+  // so clicking Approve again looked identical to the first click failing
+  // silently, again.
+  const [failed, setFailed] = useState<Record<string, string>>({});
 
   if (approvals.isLoading) return <LoadingCard label="Loading approvals…" />;
   if (approvals.isError) return <ErrorCard>Can’t reach approvals — is the backend running?</ErrorCard>;
@@ -29,6 +36,23 @@ export default function MobileApprovals() {
     );
 
   const pendingId = resolve.isPending ? resolve.variables?.id : undefined;
+
+  function act(id: string, decision: "approve" | "reject") {
+    setFailed((f) => {
+      if (!(id in f)) return f;
+      const { [id]: _drop, ...rest } = f;
+      return rest;
+    });
+    resolve.mutate(
+      { id, decision },
+      {
+        onError: (err) => {
+          const message = err instanceof Error ? err.message : "Failed — try again.";
+          setFailed((f) => ({ ...f, [id]: message }));
+        },
+      },
+    );
+  }
 
   return (
     <Stack gap="row">
@@ -69,16 +93,33 @@ export default function MobileApprovals() {
               </div>
             )}
 
+            {failed[ap.id] && (
+              <div
+                role="alert"
+                style={{
+                  marginTop: "var(--space-block)",
+                  padding: "8px 10px",
+                  borderRadius: "var(--radius-control)",
+                  background: "var(--danger-soft)",
+                  color: "var(--danger)",
+                  fontSize: "var(--size-meta)",
+                  lineHeight: 1.5,
+                }}
+              >
+                {failed[ap.id]}
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: "8px", marginTop: "var(--space-block)" }}>
               <button
-                onClick={() => resolve.mutate({ id: ap.id, decision: "approve" })}
+                onClick={() => act(ap.id, "approve")}
                 disabled={busy}
                 style={{ ...actionBtn, border: 0, background: "var(--accent)", color: "var(--accent-fg)" }}
               >
-                {busy ? "…" : "Approve"}
+                {busy ? "…" : failed[ap.id] ? "Retry" : "Approve"}
               </button>
               <button
-                onClick={() => resolve.mutate({ id: ap.id, decision: "reject" })}
+                onClick={() => act(ap.id, "reject")}
                 disabled={busy}
                 style={{
                   ...actionBtn,
