@@ -32,6 +32,7 @@ from life_graph.connectors import secrets, store
 from life_graph.connectors.base import (
     AUTH_FILE,
     AUTH_OAUTH,
+    KIND_CODE,
     KIND_CONTACT,
     KIND_EMAIL,
     Account,
@@ -186,6 +187,10 @@ class ConnectorRuntime:
         clean_settings = (
             validate(auth_method, account_settings or {}) if validate else (account_settings or {})
         )
+        clean_settings = {
+            **clean_settings,
+            **await self._verify(impl, auth_method, clean_settings, secret),
+        }
         row = ConnectorAccount(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
@@ -218,6 +223,19 @@ class ConnectorRuntime:
         if secret:
             secrets.write_secret(tenant_id, str(row.id), {"method": auth_method, **secret})
         return account_public(row)
+
+    @staticmethod
+    async def _verify(
+        impl: Connector, auth_method: str, account_settings: dict[str, Any], secret: dict | None
+    ) -> dict[str, Any]:
+        """Let the plugin check a new credential before it is stored (e.g. read-only)."""
+        verify = getattr(impl, "verify_credential", None)
+        if verify is None or not secret:
+            return {}
+        try:
+            return dict(await verify(auth_method, account_settings, secret) or {})
+        except ConnectorError as exc:
+            raise AccountError(str(exc)) from exc
 
     async def _get(self, session, tenant_id: str, account_id: str) -> ConnectorAccount:
         try:
@@ -274,6 +292,9 @@ class ConnectorRuntime:
             impl = self.connectors.get(row.connector)
             if impl is None or auth_method not in impl.auth_methods:
                 raise AccountError(f"{row.connector} does not support {auth_method!r}")
+            learned = await self._verify(impl, auth_method, dict(row.settings or {}), secret)
+            if learned:
+                row.settings = {**(row.settings or {}), **learned}
             secrets.write_secret(tenant_id, str(row.id), {"method": auth_method, **secret})
             if auth_method != row.auth_method:
                 # Sources key items differently (IMAP Message-ID vs Gmail id):
@@ -517,8 +538,8 @@ class ConnectorRuntime:
                             ConnectorItem.account_id == account.id,
                             ConnectorItem.embedding.is_(None),
                             ConnectorItem.summary_state != "pending",
-                            # Contacts are found by name and address, not meaning.
-                            ConnectorItem.kind != KIND_CONTACT,
+                            # Contacts and code items are found by name, not meaning.
+                            ConnectorItem.kind.not_in([KIND_CONTACT, KIND_CODE]),
                         )
                         .limit(limit)
                     )

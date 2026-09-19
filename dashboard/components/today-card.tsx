@@ -2,8 +2,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cake, CalendarDays, Mail } from "lucide-react";
-import { api, type BirthdayContact, type TodayEvent, type WaitingMail } from "@/lib/api";
+import { Cake, CalendarDays, GitPullRequest, Mail } from "lucide-react";
+import { api, type BirthdayContact, type CodeItem, type TodayEvent, type WaitingMail } from "@/lib/api";
 
 /** HH:MM in the user's configured zone (the same day the brief uses), not the browser's. */
 function hm(iso: string | null, timeZone?: string): string {
@@ -54,6 +54,7 @@ export function TodayCard() {
   const waiting = data.waiting.items;
   const promises = data.promises?.items ?? [];
   const birthdays = data.birthdays?.items ?? [];
+  const code = data.code ?? { items: [], withheld: {} };
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <section className="bg-surface border border-line rounded-xl p-5 space-y-3">
@@ -127,7 +128,70 @@ export function TodayCard() {
             ))}
           </div>
         )}
+        {(code.items.length > 0 || Object.keys(code.withheld).length > 0) && <CodeBlock code={code} />}
       </section>
+    </div>
+  );
+}
+
+/** Same order and wording as the brief: most urgent first. */
+function prState(c: CodeItem): [number, string] {
+  if (c.review === "CHANGES_REQUESTED") return [0, "changes requested"];
+  if (c.ci === "FAILURE" || c.ci === "ERROR") return [1, "CI failing"];
+  if (c.mergeable === "CONFLICTING") return [2, "merge conflict"];
+  if (c.review === "APPROVED" && (!c.ci || c.ci === "SUCCESS")) return [3, "approved, ready to merge"];
+  return [9, "waiting on reviewers"];
+}
+
+function CodeRow({ c, note }: { c: CodeItem; note?: string }) {
+  const ref = `${c.repo.split("/").pop()}#${c.number}`;
+  const label = (
+    <>
+      <span className="text-ink-mid tabular-nums mr-1.5">{ref}</span>
+      {c.title}
+    </>
+  );
+  return (
+    <p className="text-sm text-ink">
+      {c.url ? (
+        <a href={c.url} target="_blank" rel="noreferrer" className="hover:underline">
+          {label}
+        </a>
+      ) : (
+        label
+      )}
+      {c.dev_agent && <span className="text-ink-low"> · dev agent</span>}
+      {note && <span className={`text-xs ${note === "CI failing" || note === "changes requested" ? "text-danger" : "text-ink-low"}`}> · {note}</span>}
+    </p>
+  );
+}
+
+/** Pull requests and issues waiting on the user, from connected GitHub accounts. */
+function CodeBlock({ code }: { code: { items: CodeItem[]; withheld: Record<string, number> } }) {
+  const reviews = code.items.filter((c) => c.sub === "pr_review" && !c.draft);
+  const mine = code.items
+    .filter((c) => c.sub === "pr_mine" && !c.draft)
+    .sort((a, b) => prState(a)[0] - prState(b)[0]);
+  const issues = code.items.filter((c) => c.sub === "issue");
+  return (
+    <div className="pt-3 border-t border-line space-y-2">
+      <h4 className="text-xs font-semibold text-ink-mid uppercase tracking-wider flex items-center gap-1.5">
+        <GitPullRequest className="w-3.5 h-3.5" /> Code
+      </h4>
+      {reviews.slice(0, 5).map((c) => (
+        <CodeRow key={c.id} c={c} note={`review requested${c.author ? ` by ${c.author}` : ""}`} />
+      ))}
+      {mine.slice(0, 5).map((c) => (
+        <CodeRow key={c.id} c={c} note={prState(c)[1]} />
+      ))}
+      {issues.slice(0, 5).map((c) => (
+        <CodeRow key={c.id} c={c} note="assigned" />
+      ))}
+      {Object.entries(code.withheld).map(([account, n]) => (
+        <p key={account} className="text-xs text-ink-low">
+          +{n} in {account}
+        </p>
+      ))}
     </div>
   );
 }

@@ -107,10 +107,11 @@ docker compose -f docker-compose.production.yml exec postgres \
   WHERE job_name IN ('backup','restore_drill') ORDER BY started_at DESC LIMIT 14;"
 ```
 
-## Calendar, Email & Contacts Connectors
+## Connectors: Calendar, Email, Contacts, GitHub
 
-Read-only; set up in the dashboard under **Settings → Calendar, email & contacts**
-(specs: `docs/specs/connectors.md`, `docs/specs/connector-contacts.md`). Each
+Read-only; set up in the dashboard under **Settings → Connected accounts**
+(specs: `docs/specs/connectors.md`, `docs/specs/connector-contacts.md`,
+`docs/specs/connector-github.md`). Each
 account picks its method; the form suggests one.
 
 | Method | Setup | Notes |
@@ -119,12 +120,16 @@ account picks its method; the form suggests one.
 | Calendar link | Google Calendar → Settings → the calendar → *Secret address in iCal format* | The link is a credential; Google refreshes it with a lag |
 | Google sign-in (OAuth) | Once: Google Cloud project, enable Gmail, Calendar and **People** APIs, OAuth client type **Desktop app**, paste its JSON in the form | Read-only scopes; sign in from the machine running the API (loopback redirect). Contacts without the People API enabled fail with a message saying so |
 | vCard file (contacts) | contacts.google.com → Export → vCard, then **Import vCard** on the account | No credential. Import a newer export to update; each import replaces that account's contacts |
+| Access token (GitHub) | github.com → Settings → Developer settings → **Fine-grained tokens**: all repositories; read-only Pull requests, Issues, Commit statuses, Checks | One per GitHub account or organisation. A classic token that can write is refused. Expiry → **Reconnect needed** |
 
 - Contacts: saved contacts and Google's "Other contacts" (addresses kept from
   mail), synced every 6 h. **Cloud visibility** on each contacts account picks
   which fields cloud chat may see (default: names, company and title, email
   addresses, birthdays; phones, postal addresses and notes are off). Contacts are
   not time-limited: they mirror the source.
+- GitHub: review requests, your open PRs (CI, review decision, conflicts) and
+  assigned issues, every 15 min; titles and status only. Private repos are counts
+  for cloud chat unless the account shares private titles.
 
 - Credentials: `~/.config/life-graph/connectors/<tenant>/<account-id>.json` (0600).
   They are **not** in the database backups — keep your passwords in a password

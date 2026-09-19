@@ -22,6 +22,7 @@ from life_graph.connectors.base import (
     DIR_INVITE,
     DIR_OWN,
     DIR_SENT,
+    KIND_CODE,
     KIND_CONTACT,
     KIND_EMAIL,
     KIND_EVENT,
@@ -99,8 +100,8 @@ async def upsert_items(
     An existing row keeps its summary, category and embedding: those are
     derived by the local model once and do not change when the source re-sends
     the same message. Flags are merged, so ``asks_me`` set by the summariser
-    survives a later sync that only knows ``automated`` (a contact's flags are
-    replaced instead).
+    survives a later sync that only knows ``automated`` (contacts' and code
+    items' flags are replaced instead).
     """
     if not items:
         return []
@@ -113,10 +114,11 @@ async def upsert_items(
         stmt = insert(ConnectorItem).values(chunk)
         excluded = stmt.excluded
         update = {col: getattr(excluded, col) for col in _UPDATABLE}
-        # A contact's flags are its data (org, birthday): the source's current
-        # set replaces them, so a removed birthday is removed here too.
+        # A contact's or code item's flags are its data (org, birthday; CI state,
+        # review decision): the source's current set replaces them, so a value
+        # cleared at the source is cleared here too.
         update["flags"] = case(
-            (ConnectorItem.kind == KIND_CONTACT, excluded.flags),
+            (ConnectorItem.kind.in_([KIND_CONTACT, KIND_CODE]), excluded.flags),
             else_=ConnectorItem.flags.op("||")(excluded.flags),
         )
         stmt = stmt.on_conflict_do_update(
@@ -165,6 +167,7 @@ def _as_dict(item: ConnectorItem, account: ConnectorAccount) -> dict[str, Any]:
         "account_name": account.display_name,
         "account_exposure": account.exposure,
         "account_cloud_fields": (account.settings or {}).get("cloud_fields"),
+        "account_share_private": bool((account.settings or {}).get("share_private_titles")),
         "connector": account.connector,
         "kind": item.kind,
         "external_id": item.external_id,
@@ -352,6 +355,19 @@ async def search_email(
         for item, account in (await session.execute(recent)).all():
             found.setdefault(str(item.id), _as_dict(item, account))
     return list(found.values())[:limit]
+
+
+async def code_items(
+    session: AsyncSession, tenant_id: str, limit: int = 150
+) -> list[dict[str, Any]]:
+    """Open pull requests and issues waiting on the user, most recently updated first."""
+    stmt = (
+        _base(tenant_id)
+        .where(ConnectorItem.kind == KIND_CODE)
+        .order_by(ConnectorItem.occurred_at.desc())
+        .limit(limit)
+    )
+    return [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
 
 
 def _clean_addrs(addrs: list[str] | set[str]) -> list[str]:

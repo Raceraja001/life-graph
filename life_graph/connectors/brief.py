@@ -1,4 +1,4 @@
-"""Daily-brief sections from connectors: **Today**, **Waiting on you**, **You promised**, **Birthdays**.
+"""Daily-brief sections from connectors: **Today**, **Waiting on you**, **You promised**, **Birthdays**, **Code**.
 
 Rendered twice. The brief's stored ``body`` is what Telegram and Web Push send
 off the machine, so it gets the CLOUD view (redacted, ``local_only`` accounts as
@@ -35,6 +35,7 @@ async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, Any]
         waiting = await store.waiting_on_me(session, tenant_id, now)
         promises = await store.open_promises(session, tenant_id, now)
         birthdays = await store.birthdays_between(session, tenant_id, today, BIRTHDAY_DAYS)
+        code = await store.code_items(session, tenant_id)
         addrs = {m["sender_addr"] for m in waiting if m.get("sender_addr")}
         addrs.update(a for e in events for a in e["emails"])
         people = await store.people_by_address(session, tenant_id, addrs)
@@ -51,6 +52,7 @@ async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, Any]
         "waiting": waiting,
         "promises": promises,
         "birthdays": birthdays,
+        "code": code,
         "people": people,
     }
 
@@ -98,6 +100,64 @@ def _birthday_lines(shown: dict[str, Any], now: datetime) -> list[str]:
             when = f"{d:%a %d %b}"
         lines.append(f"- {c['name']} — {when}")
     for account, n in shown["withheld"].items():
+        lines.append(f"- +{n} in {account} (details on the dashboard)")
+    return lines
+
+
+MAX_CODE = 3
+
+
+def _ref(c: dict[str, Any]) -> str:
+    agent = " (dev agent)" if c.get("dev_agent") else ""
+    return f"{(c.get('repo') or '').split('/')[-1]}#{c.get('number')}{agent}"
+
+
+def pr_state(c: dict[str, Any]) -> tuple[int, str]:
+    """(urgency rank, label) for one of the user's own pull requests; lower is more urgent."""
+    if c.get("review") == "CHANGES_REQUESTED":
+        return 0, "changes requested"
+    if c.get("ci") in ("FAILURE", "ERROR"):
+        return 1, "CI failing"
+    if c.get("mergeable") == "CONFLICTING":
+        return 2, "merge conflict"
+    if c.get("review") == "APPROVED" and c.get("ci") in (None, "SUCCESS"):
+        return 3, "approved, ready to merge"
+    return 9, "waiting on reviewers"
+
+
+def _code_lines(code: dict[str, Any], now: datetime) -> list[str]:
+    items = code["items"]
+    reviews = sorted(
+        (c for c in items if c.get("sub") == "pr_review" and not c.get("draft")),
+        key=lambda c: c.get("created") or "",
+    )
+    mine = sorted(
+        (c for c in items if c.get("sub") == "pr_mine" and not c.get("draft")),
+        key=lambda c: pr_state(c)[0],
+    )
+    issues = [c for c in items if c.get("sub") == "issue"]
+    lines: list[str] = []
+    if reviews:
+        shown = "; ".join(
+            f"{_ref(c)} {c['title']} ({c.get('author') or '?'}, {_age(c.get('created'), now)})"
+            for c in reviews[:MAX_CODE]
+        )
+        more = f"; +{len(reviews) - MAX_CODE} more" if len(reviews) > MAX_CODE else ""
+        lines.append(f"- Review requested ({len(reviews)}): {shown}{more}")
+    acting = [c for c in mine if pr_state(c)[0] < 9]
+    waiting = len(mine) - len(acting)
+    if acting or waiting:
+        parts = [f"{_ref(c)} — {pr_state(c)[1]}" for c in acting[:MAX_CODE]]
+        if len(acting) > MAX_CODE:
+            parts.append(f"+{len(acting) - MAX_CODE} more")
+        if waiting:
+            parts.append(f"{waiting} waiting on reviewers")
+        lines.append("- Your PRs: " + " · ".join(parts))
+    if issues:
+        shown = "; ".join(f"{_ref(c)} {c['title']}" for c in issues[:MAX_CODE])
+        more = f"; +{len(issues) - MAX_CODE} more" if len(issues) > MAX_CODE else ""
+        lines.append(f"- Assigned issues ({len(issues)}): {shown}{more}")
+    for account, n in code["withheld"].items():
         lines.append(f"- +{n} in {account} (details on the dashboard)")
     return lines
 
@@ -168,6 +228,13 @@ def render(raw: dict[str, Any], audience: str, now: datetime) -> dict[str, Any]:
         lines.extend(_birthday_lines(birthdays, now))
         lines.append("")
 
+    code = view_items(raw.get("code", []), audience)
+    code_lines = _code_lines(code, now)
+    if code_lines:
+        lines.append("## Code")
+        lines.extend(code_lines)
+        lines.append("")
+
     return {
         "text": "\n".join(lines).strip(),
         "today": today,
@@ -175,6 +242,7 @@ def render(raw: dict[str, Any], audience: str, now: datetime) -> dict[str, Any]:
         "waiting": waiting,
         "promises": promises,
         "birthdays": birthdays,
+        "code": code,
     }
 
 

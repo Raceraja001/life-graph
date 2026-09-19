@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Eye, Lock, Mail, Plus, RefreshCw, Trash2, Upload, Users } from "lucide-react";
+import { CalendarDays, Eye, GitPullRequest, Lock, Mail, Plus, RefreshCw, Trash2, Upload, Users } from "lucide-react";
 import {
   api,
   type ConnectorAccount,
@@ -15,11 +15,20 @@ const METHOD_LABEL: Record<ConnectorAuth, string> = {
   app_password: "App password",
   oauth: "Sign in with Google (read-only)",
   file: "Import a vCard file (.vcf)",
+  token: "Access token (read-only, fine-grained)",
 };
+
+// The credential field each secret-based method stores.
+const SECRET_KEY: Partial<Record<ConnectorAuth, string>> = { none: "url", app_password: "password", token: "token" };
 
 type CloudFieldOption = { name: string; label: string; default: boolean };
 
-const ICONS: Record<string, typeof Mail> = { email: Mail, calendar: CalendarDays, contacts: Users };
+const ICONS: Record<string, typeof Mail> = {
+  email: Mail,
+  calendar: CalendarDays,
+  contacts: Users,
+  github: GitPullRequest,
+};
 
 /** Read a picked file as text in the browser; the server never sees the file itself. */
 function readText(file: File): Promise<string> {
@@ -69,9 +78,10 @@ export function ConnectorSettings() {
     <div className="bg-surface border border-line rounded-xl p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-ink">Calendar, email &amp; contacts</h3>
+          <h3 className="text-sm font-semibold text-ink">Connected accounts</h3>
           <p className="text-xs text-ink-mid mt-0.5">
-            Read-only. Mail bodies never leave this machine; cloud chat sees only what each account allows.
+            Calendar, email, contacts and GitHub, read-only. Mail bodies never leave this machine; cloud chat sees
+            only what each account allows.
           </p>
         </div>
         {!adding && (
@@ -130,7 +140,9 @@ function AccountRow({
   const status = STATUS[a.status];
   const Icon = ICONS[a.connector] ?? CalendarDays;
   const isFile = a.auth_method === "file";
-  const counts = Object.entries(a.items).map(([k, n]) => `${n} ${k}${n === 1 ? "" : "s"}`).join(", ");
+  const counts = Object.entries(a.items)
+    .map(([k, n]) => (k === "code" ? `${n} ${n === 1 ? "PR/issue" : "PRs/issues"}` : `${n} ${k}${n === 1 ? "" : "s"}`))
+    .join(", ");
   const shared = (a.settings.cloud_fields as string[] | undefined) ?? options.filter((o) => o.default).map((o) => o.name);
 
   const importFile = (file: File | undefined) =>
@@ -209,14 +221,16 @@ function AccountRow({
             autoComplete="off"
             value={newSecret}
             onChange={(e) => setNewSecret(e.target.value)}
-            placeholder={a.auth_method === "none" ? "New calendar link" : "New app password"}
+            placeholder={
+              a.auth_method === "none" ? "New calendar link" : a.auth_method === "token" ? "New access token" : "New app password"
+            }
             className="bg-surface border border-line rounded-lg px-3 py-1.5 text-sm text-ink flex-1 min-w-[12rem]"
           />
           <button
             disabled={!newSecret || busy}
             onClick={() =>
               run(async () => {
-                const key = a.auth_method === "none" ? "url" : "password";
+                const key = SECRET_KEY[a.auth_method] ?? "password";
                 await api.connectors.setCredential(a.id, a.auth_method, { [key]: newSecret || "" });
                 setNewSecret(null);
                 await api.connectors.sync(a.id);
@@ -262,6 +276,20 @@ function AccountRow({
         {options.length > 0 && a.exposure !== "local_only" && (
           <SmallButton disabled={busy} onClick={() => setEditingFields(true)}>
             <Eye className="w-3 h-3" /> Cloud visibility
+          </SmallButton>
+        )}
+        {a.connector === "github" && a.exposure !== "local_only" && (
+          <SmallButton
+            disabled={busy}
+            onClick={() =>
+              run(() =>
+                api.connectors.update(a.id, {
+                  settings: { ...a.settings, share_private_titles: !a.settings.share_private_titles },
+                })
+              )
+            }
+          >
+            {a.settings.share_private_titles ? "Private repos: counts only" : "Share private repo titles"}
           </SmallButton>
         )}
         <SmallButton
@@ -395,6 +423,7 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [cloudFields, setCloudFields] = useState<string[] | null>(null);
+  const [sharePrivate, setSharePrivate] = useState(false);
   const info = state.connectors.find((c) => c.name === connector);
   const methods = info?.auth_methods ?? [];
   const options = info?.cloud_field_options ?? [];
@@ -432,10 +461,14 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
       }
       const settings: Record<string, unknown> = username ? { username } : {};
       if (options.length) settings.cloud_fields = fields;
+      if (connector === "github") {
+        settings.share_private_titles = sharePrivate;
+        if (host) settings.api_url = host;
+      }
       if (connector === "email" && method === "app_password" && host) settings.host = host;
       if (connector === "calendar") settings.my_addresses = username;
-      const secretBody: Record<string, string> | undefined =
-        method === "app_password" ? { password: secret } : method === "none" ? { url: secret } : undefined;
+      const secretKey = SECRET_KEY[method];
+      const secretBody: Record<string, string> | undefined = secretKey ? { [secretKey]: secret.trim() } : undefined;
       const account = await api.connectors.create({
         connector,
         display_name: displayName || username || info?.display_name || connector,
@@ -462,7 +495,7 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
     }
   };
 
-  const needsSecret = method === "app_password" || method === "none";
+  const needsSecret = SECRET_KEY[method] !== undefined;
   const needsClient = method === "oauth" && !state.google_client_configured;
   const needsUsername = connector === "email";
   const ready =
@@ -486,7 +519,7 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
           Name
           <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Personal, Work" className={field} />
         </label>
-        {method !== "file" && (
+        {method !== "file" && method !== "token" && (
           <>
             <label className="space-y-1 text-xs text-ink-mid">
               {isContacts ? "Google account (optional)" : "Email address"}
@@ -520,12 +553,46 @@ function AddAccount({ state, onDone }: { state: ConnectorsState; onDone: () => v
         <label className="space-y-1 text-xs text-ink-mid">
           What cloud chat may see
           <select value={exposure} onChange={(e) => setExposure(e.target.value as ConnectorExposure)} className={field}>
-            <option value="standard">{isContacts ? "The fields chosen below" : "Summaries (never bodies)"}</option>
+            <option value="standard">
+              {isContacts
+                ? "The fields chosen below"
+                : connector === "github"
+                  ? "Titles (private repos as counts)"
+                  : "Summaries (never bodies)"}
+            </option>
             <option value="local_only">Counts only (local only)</option>
           </select>
         </label>
       </div>
 
+      {method === "token" && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1 text-xs text-ink-mid">
+            Access token
+            <input
+              type="password"
+              autoComplete="off"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder="github_pat_…"
+              className={field}
+            />
+          </label>
+          <label className="space-y-1 text-xs text-ink-mid">
+            GitHub Enterprise API URL (blank = github.com)
+            <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="https://github.example.com/api/v3" className={field} />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-ink sm:col-span-2">
+            <input type="checkbox" checked={sharePrivate} onChange={(e) => setSharePrivate(e.target.checked)} />
+            Let cloud chat see private repo names and titles (otherwise they are counts)
+          </label>
+          <p className="text-xs text-ink-low sm:col-span-2">
+            github.com → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: All
+            repositories. Permissions, all <strong>read-only</strong>: Pull requests, Issues, Commit statuses,
+            Checks. One token per GitHub account or organisation. A token that can write is refused.
+          </p>
+        </div>
+      )}
       {method === "app_password" && connector === "email" && (
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1 text-xs text-ink-mid">

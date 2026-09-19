@@ -368,6 +368,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "email_search",
             "email_read",
             "contact_lookup",
+            "code_inbox",
         ],
     },
     {
@@ -451,6 +452,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "email_search",
             "email_read",
             "contact_lookup",
+            "code_inbox",
             "delegate_to_persona",
         ],
     },
