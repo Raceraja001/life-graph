@@ -199,7 +199,9 @@ than trusting any prose, including this paragraph.
       tools, meeting prep. Mail bodies never reach a cloud model. Contacts too
       (`plugins/contacts`, Google or a vCard export, per-account cloud visibility,
       spec `docs/specs/connector-contacts.md`): names on addresses, birthdays, "who"
-      lines in meeting prep.
+      lines in meeting prep. GitHub too (`plugins/github`, read-only fine-grained token,
+      spec `docs/specs/connector-github.md`): review requests, your PRs' CI and review
+      state, assigned issues in the brief; private repos are counts for cloud chat.
 - [ ] **Messaging channels** — WhatsApp/Telegram as an interaction surface. Specs exist,
       no code.
 - [ ] **Text-to-speech coverage and quality** — replies are spoken only for voice-originated

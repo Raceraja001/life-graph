@@ -137,8 +137,8 @@ export interface CalibrationReport {
   trend: { previous_brier: number; delta_pct: number | null } | null;
 }
 
-// ── Connectors (calendar, email, contacts) — mirror life_graph/api/connectors.py ──
-export type ConnectorAuth = "none" | "app_password" | "oauth" | "file";
+// ── Connectors (calendar, email, contacts, GitHub) — mirror life_graph/api/connectors.py ──
+export type ConnectorAuth = "none" | "app_password" | "oauth" | "file" | "token";
 export type ConnectorExposure = "standard" | "local_only";
 
 export interface ConnectorField {
@@ -223,6 +223,25 @@ export interface TodayView {
   waiting: { items: WaitingMail[]; withheld: Record<string, number> };
   promises?: { items: WaitingMail[]; withheld: Record<string, number> };
   birthdays?: { items: BirthdayContact[]; withheld: Record<string, number> };
+  code?: { items: CodeItem[]; withheld: Record<string, number> };
+}
+
+export interface CodeItem {
+  id: string;
+  account: string;
+  sub: "pr_review" | "pr_mine" | "issue";
+  repo: string;
+  number: number;
+  title: string;
+  author?: string;
+  created?: string;
+  draft?: boolean;
+  ci?: string;
+  review?: string;
+  mergeable?: string;
+  dev_agent?: boolean;
+  private?: boolean;
+  url?: string;
 }
 
 export interface BirthdayContact {

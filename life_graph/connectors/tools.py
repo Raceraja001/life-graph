@@ -30,6 +30,7 @@ TOOL_NAMES = (
     "email_search",
     "email_read",
     "contact_lookup",
+    "code_inbox",
 )
 MAX_BODY_CHARS = 3500
 
@@ -189,6 +190,22 @@ async def contact_lookup(query: str) -> str:
     return _out(payload)
 
 
+async def code_inbox() -> str:
+    """Pull requests and issues waiting on the user (review requests, own PRs, assigned)."""
+    from life_graph.connectors.brief import pr_state
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    async with async_session() as session:
+        rows = await store.code_items(session, tenant)
+    view = view_items(rows, current_audience())
+    for c in view["items"]:
+        if c.get("sub") == "pr_mine":
+            c["state"] = pr_state(c)[1]
+    return _out(view)
+
+
 _SCHEMAS: dict[str, tuple[str, dict[str, Any], Any]] = {
     "calendar_events": (
         "List the user's calendar events for a day or range (read-only). Times are UTC ISO;"
@@ -246,6 +263,13 @@ _SCHEMAS: dict[str, tuple[str, dict[str, Any], Any]] = {
             "required": ["query"],
         },
         contact_lookup,
+    ),
+    "code_inbox": (
+        "What is waiting on the user on GitHub (read-only): pull requests where their review"
+        " is requested, their own open pull requests with CI and review state, and issues"
+        " assigned to them.",
+        {"type": "object", "properties": {}},
+        code_inbox,
     ),
 }
 

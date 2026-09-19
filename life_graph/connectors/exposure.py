@@ -15,6 +15,10 @@ mail body, attachments                      yes*   never
 contact name, org, emails, birthday         yes    per account (default yes)
 contact phones, postal addresses, notes     yes    per account (default no)
 contact birth year, relations               yes    never
+code item (PR, issue), public repo          yes    yes (title redacted)
+code item, private repo                     yes    count, unless the account
+                                                   shares private titles
+code item URL, private repo                 yes    never
 =========================================  =====  ==========================
 
 (*) fetched live on request, never stored.
@@ -34,7 +38,7 @@ import json
 import re
 from typing import Any
 
-from life_graph.connectors.base import KIND_CONTACT, KIND_EMAIL, KIND_EVENT
+from life_graph.connectors.base import KIND_CODE, KIND_CONTACT, KIND_EMAIL, KIND_EVENT
 from life_graph.connectors.locality import CLOUD, LOCAL
 
 EXPOSURE_STANDARD = "standard"
@@ -227,6 +231,40 @@ def person_line(contact: dict[str, Any] | None, audience: str) -> str | None:
     return name
 
 
+PRIVATE_REPOS = "private repos"
+
+
+def _code_view(item: dict[str, Any], audience: str) -> dict[str, Any] | None:
+    """A pull request or issue. None when a cloud audience may not see it."""
+    local = audience == LOCAL
+    flags = item.get("flags") or {}
+    private = bool(flags.get("private"))
+    if not local and private and not item.get("account_share_private"):
+        return None
+    view: dict[str, Any] = {
+        "id": item["id"],
+        "kind": KIND_CODE,
+        "account": item["account_name"],
+        "sub": flags.get("sub"),  # pr_review | pr_mine | issue
+        "repo": flags.get("repo"),
+        "number": flags.get("number"),
+        "title": item.get("title") if local else redact(item.get("title")),
+        "author": flags.get("author"),
+        "created": flags.get("created"),
+        "updated": _iso(item.get("occurred_at")),
+        "draft": flags.get("draft"),
+        "ci": flags.get("ci"),
+        "review": flags.get("review"),
+        "mergeable": flags.get("mergeable"),
+        "labels": flags.get("labels"),
+        "dev_agent": flags.get("dev_agent"),
+        "private": private,
+    }
+    if local or not private:
+        view["url"] = flags.get("url")
+    return {k: v for k, v in view.items() if v not in (None, [], "")}
+
+
 def view_items(
     items: list[dict[str, Any]],
     audience: str,
@@ -244,8 +282,9 @@ def view_items(
     shown: list[dict[str, Any]] = []
     withheld: dict[str, int] = {}
 
-    def hold(item: dict[str, Any]) -> None:
-        withheld[item["account_name"]] = withheld.get(item["account_name"], 0) + 1
+    def hold(item: dict[str, Any], label: str | None = None) -> None:
+        key = label or item["account_name"]
+        withheld[key] = withheld.get(key, 0) + 1
 
     for item in items:
         if audience != LOCAL and item.get("account_exposure") == EXPOSURE_LOCAL_ONLY:
@@ -259,6 +298,12 @@ def view_items(
             view = _contact_view(item, audience)
             if view is None:
                 hold(item)
+            else:
+                shown.append(view)
+        elif item["kind"] == KIND_CODE:
+            view = _code_view(item, audience)
+            if view is None:
+                hold(item, f"{item['account_name']} ({PRIVATE_REPOS})")
             else:
                 shown.append(view)
     return {"items": shown, "withheld": withheld}
