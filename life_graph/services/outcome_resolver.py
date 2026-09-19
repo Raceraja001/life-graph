@@ -186,6 +186,26 @@ class OutcomeResolver:
 
     # ── Internal ──────────────────────────────────────────────
 
+    @staticmethod
+    async def _connector_hints(tenant_id: str, prediction: Prediction) -> list[str]:
+        """Mail/events that may bear on the prediction — shown, never acted on.
+
+        Cloud-rendered (the question can reach the brief and Telegram), and a
+        connector problem never blocks the question.
+        """
+        from life_graph.config import settings
+
+        if not settings.connectors_enabled:
+            return []
+        try:
+            from life_graph.connectors.assist import prediction_hints
+
+            since = prediction.created_at or (datetime.now(UTC) - timedelta(days=30))
+            return await prediction_hints(tenant_id, prediction.statement, since)
+        except Exception:
+            logger.debug("Connector hints failed for %s", prediction.id, exc_info=True)
+            return []
+
     async def _escalate_to_interview(
         self, tenant_id: str, prediction: Prediction
     ) -> InterviewQuestion:
@@ -198,19 +218,24 @@ class OutcomeResolver:
         Returns:
             The created ``InterviewQuestion``.
         """
+        hints = await self._connector_hints(tenant_id, prediction)
+        text = (
+            f"Prediction expired: '{prediction.statement}' "
+            f"(confidence: {prediction.confidence:.0%}). "
+            f"Did this come true?"
+        )
+        if hints:
+            text += " Possibly related: " + "; ".join(hints) + "."
         question = InterviewQuestion(
             id=uuid.uuid4(),
             tenant_id=tenant_id,
-            question=(
-                f"Prediction expired: '{prediction.statement}' "
-                f"(confidence: {prediction.confidence:.0%}). "
-                f"Did this come true?"
-            ),
+            question=text,
             origin="outcome_resolution",
             origin_ref={
                 "prediction_id": str(prediction.id),
                 "statement": prediction.statement,
                 "confidence": prediction.confidence,
+                **({"evidence_hints": hints} if hints else {}),
             },
             priority=0.7,
             # Without an expiry the question stayed open forever and the

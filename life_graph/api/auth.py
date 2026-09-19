@@ -28,7 +28,9 @@ AUTH_EXEMPT_PREFIXES = (
     "/brain",
     "/ws",
 )
-AUTH_EXEMPT_EXACT = frozenset({"/", "/openapi.json"})
+# The Google OAuth callback: the browser arrives from Google without an API
+# key; the one-time state it carries is the credential (api/connectors.py).
+AUTH_EXEMPT_EXACT = frozenset({"/", "/openapi.json", "/api/v1/connectors/oauth/callback"})
 
 
 def is_exempt_path(path: str) -> bool:

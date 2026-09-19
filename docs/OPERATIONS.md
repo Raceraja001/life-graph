@@ -107,6 +107,29 @@ docker compose -f docker-compose.production.yml exec postgres \
   WHERE job_name IN ('backup','restore_drill') ORDER BY started_at DESC LIMIT 14;"
 ```
 
+## Calendar & Email Connectors
+
+Read-only; set up in the dashboard under **Settings → Calendar & email**
+(spec: `docs/specs/connectors.md`). Each account picks its method; the form
+suggests one.
+
+| Method | Setup | Notes |
+|---|---|---|
+| App password (mail) | Google Account → Security → 2-Step Verification → App passwords | Missing page = the Workspace admin disabled it |
+| Calendar link | Google Calendar → Settings → the calendar → *Secret address in iCal format* | The link is a credential; Google refreshes it with a lag |
+| Google sign-in (OAuth) | Once: Google Cloud project, enable Gmail + Calendar APIs, OAuth client type **Desktop app**, paste its JSON in the form | Read-only scopes; sign in from the machine running the API (loopback redirect) |
+
+- Credentials: `~/.config/life-graph/connectors/<tenant>/<account-id>.json` (0600).
+  They are **not** in the database backups — keep your passwords in a password
+  manager; reconnecting is two minutes.
+- Sync: every 15 min per account (worker job `sync_connectors`, runs every 5 min);
+  failures back off up to 6 h; a refused credential sets **Reconnect needed** and
+  stops retrying. Retention: mail 90 days, events −90/+365 days (nightly purge).
+- What the cloud sees: see the exposure table in the spec. Mark employer or other
+  sensitive accounts **Local only** (Settings) — cloud chat and Telegram/push then
+  get counts only.
+- Checks: `GET /api/v1/connectors` (status, last error, item counts per account).
+
 ## Disaster Recovery
 
 ```bash

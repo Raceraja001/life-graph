@@ -118,6 +118,22 @@ class LMStudioClient:
 
         return await self._local_chat(messages, model, temperature, max_tokens, response_format)
 
+    async def chat_local_only(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.1,
+        max_tokens: int = 1024,
+        response_format: dict | None = None,
+    ) -> str:
+        """Chat on the local runtime only — never routed to a cloud chain.
+
+        ``chat()`` sends to OpenRouter when hybrid mode is on. Callers holding
+        personal data that must not leave the machine (mail bodies) use this.
+        Returns "" on failure, like ``chat()``.
+        """
+        return await self._local_chat(messages, model, temperature, max_tokens, response_format)
+
     async def _cloud_chat(
         self,
         messages: list[dict[str, str]],

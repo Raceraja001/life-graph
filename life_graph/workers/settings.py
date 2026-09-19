@@ -144,6 +144,8 @@ class WorkerSettings:
         "life_graph.workers.tasks.run_daily_brief",
         "life_graph.workers.tasks.failure_pattern_mining",
         "life_graph.workers.tasks.run_nightly_calibration",
+        "life_graph.workers.tasks.sync_connectors",
+        "life_graph.workers.tasks.purge_connector_items",
         "life_graph.workers.ingest_capture.ingest_capture_text",
         "life_graph.workers.distill.distill_conversation",
         "life_graph.workers.distill.distill_idle_conversations",
@@ -317,6 +319,18 @@ class WorkerSettings:
             "life_graph.workers.tasks.run_nightly_calibration",
             hour=4,
             minute=15,
+            run_at_startup=False,
+        ),
+        # ── Connectors: sync due accounts every 5 min; nightly retention ──
+        cron(
+            "life_graph.workers.tasks.sync_connectors",
+            minute=set(range(0, 60, 5)),
+            run_at_startup=False,
+        ),
+        cron(
+            "life_graph.workers.tasks.purge_connector_items",
+            hour=4,
+            minute=40,
             run_at_startup=False,
         ),
         # ── Judgment Engine: Monthly Failure-Pattern Mining (Phase H) ──
