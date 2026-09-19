@@ -294,6 +294,9 @@ class Settings(BaseSettings):
     connector_needs_reply_max_days: int = 14
     # Messages summarised per sync by the local model (the rest wait a round).
     connector_summaries_per_sync: int = 40
+    # Bills found in mail, off the machine: "details" (payee, type, due date —
+    # never the amount) or "counts" ("2 bills due this week").
+    connector_bills_cloud: str = "details"
     # Where Google sends the browser back after sign-in: this API's own
     # address as the signing-in browser reaches it (a Desktop OAuth client
     # accepts any localhost port).

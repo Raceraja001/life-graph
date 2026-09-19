@@ -130,6 +130,11 @@ account picks its method; the form suggests one.
 - GitHub: review requests, your open PRs (CI, review decision, conflicts) and
   assigned issues, every 15 min; titles and status only. Private repos are counts
   for cloud chat unless the account shares private titles.
+- Bills & renewals: read from mail by the local summariser (card statements,
+  utilities, broadband, insurance, domains). Brief section and Today card; a
+  payment-confirmation email closes its bill. Amounts never leave the machine;
+  `LIFE_GRAPH_CONNECTOR_BILLS_CLOUD=counts` reduces the rest to counts. Older mail:
+  Settings → the mail account → **Find bills in past mail** (60 days, local model).
 
 - Credentials: `~/.config/life-graph/connectors/<tenant>/<account-id>.json` (0600).
   They are **not** in the database backups — keep your passwords in a password

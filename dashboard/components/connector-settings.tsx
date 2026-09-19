@@ -278,6 +278,23 @@ function AccountRow({
             <Eye className="w-3 h-3" /> Cloud visibility
           </SmallButton>
         )}
+        {a.connector === "email" && (
+          <SmallButton
+            disabled={busy || !a.enabled}
+            onClick={() =>
+              run(async () => {
+                const r = await api.connectors.rescanBills();
+                setNotice(
+                  r.status === "started"
+                    ? "Looking for bills in the last 60 days of mail. This runs on the local model and can take a while."
+                    : "A search for bills is already running."
+                );
+              })
+            }
+          >
+            Find bills in past mail
+          </SmallButton>
+        )}
         {a.connector === "github" && a.exposure !== "local_only" && (
           <SmallButton
             disabled={busy}

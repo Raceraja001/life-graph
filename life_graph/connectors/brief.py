@@ -1,4 +1,5 @@
-"""Daily-brief sections from connectors: **Today**, **Waiting on you**, **You promised**, **Birthdays**, **Code**.
+"""Daily-brief sections from connectors: **Today**, **Waiting on you**, **You promised**, **Bills & renewals**,
+**Birthdays**, **Code**.
 
 Rendered twice. The brief's stored ``body`` is what Telegram and Web Push send
 off the machine, so it gets the CLOUD view (redacted, ``local_only`` accounts as
@@ -12,7 +13,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from life_graph.connectors import store
-from life_graph.connectors.exposure import view_items
+from life_graph.connectors.bills import bills_due
+from life_graph.connectors.exposure import view_bills, view_items
 from life_graph.connectors.locality import CLOUD, LOCAL
 from life_graph.connectors.tools import day_bounds, user_tz
 from life_graph.storage.database import async_session
@@ -36,6 +38,7 @@ async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, Any]
         promises = await store.open_promises(session, tenant_id, now)
         birthdays = await store.birthdays_between(session, tenant_id, today, BIRTHDAY_DAYS)
         code = await store.code_items(session, tenant_id)
+        bills = await bills_due(session, tenant_id, today)
         addrs = {m["sender_addr"] for m in waiting if m.get("sender_addr")}
         addrs.update(a for e in events for a in e["emails"])
         people = await store.people_by_address(session, tenant_id, addrs)
@@ -53,6 +56,7 @@ async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, Any]
         "promises": promises,
         "birthdays": birthdays,
         "code": code,
+        "bills": bills,
         "people": people,
     }
 
@@ -223,6 +227,13 @@ def render(raw: dict[str, Any], audience: str, now: datetime) -> dict[str, Any]:
             lines.append(f"- +{n} in {account} (details on the dashboard)")
         lines.append("")
 
+    bills = view_bills(raw.get("bills", []), audience)
+    bill_lines = _bill_lines(bills, now, audience)
+    if bill_lines:
+        lines.append("## Bills & renewals")
+        lines.extend(bill_lines)
+        lines.append("")
+
     if birthdays["items"] or birthdays["withheld"]:
         lines.append("## Birthdays")
         lines.extend(_birthday_lines(birthdays, now))
@@ -243,7 +254,32 @@ def render(raw: dict[str, Any], audience: str, now: datetime) -> dict[str, Any]:
         "promises": promises,
         "birthdays": birthdays,
         "code": code,
+        "bills": bills,
     }
+
+
+def _bill_lines(bills: dict[str, Any], now: datetime, audience: str) -> list[str]:
+    """One line per bill, soonest first; amounts only in the local rendering."""
+    from life_graph.connectors.bills import format_amount
+
+    today = now.astimezone(user_tz()).date()
+    lines = []
+    for b in bills["items"]:
+        d = date.fromisoformat(b["due"])
+        day = f"{d:%a %d %b}"
+        amount = format_amount(b.get("amount"), b.get("currency")) if audience == LOCAL else ""
+        amount = f" — {amount}" if amount else ""
+        auto = " (autopay)" if b.get("autopay") else ""
+        if b["kind"] == "renewal":
+            lines.append(f"- {b['payee']} — renews {day}{amount}{auto}")
+        elif d < today:
+            lines.append(f"- Overdue: {b['payee']} (due {day}){amount}")
+        else:
+            when = "today" if d == today else day
+            lines.append(f"- {b['payee']} — due {when}{amount}{auto}")
+    for account, n in bills["withheld"].items():
+        lines.append(f"- +{n} in {account} (details on the dashboard)")
+    return lines
 
 
 def _due_label(due: str | None, now: datetime) -> str:
