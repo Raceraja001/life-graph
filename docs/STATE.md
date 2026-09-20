@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-09-19 17:05 UTC` from `unknown` @ `unknown`
+Generated `2026-09-20 03:21 UTC` from `feat/dev-agent-safety` @ `576fde3`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-09-19 17:05 UTC` from `unknown` @ `unknown`
 
 | | |
 |---|---|
-| HTTP operations | **273** across 233 paths, 38 tags |
+| HTTP operations | **275** across 235 paths, 38 tags |
 | Database tables | **69** |
 | Migrations | **42** (head: `042_connector_tasks`) |
 | Event types | **77** |
@@ -24,20 +24,21 @@ Generated `2026-09-19 17:05 UTC` from `unknown` @ `unknown`
 | Agent tools | **13** |
 | Scheduled jobs | **20** |
 | Config settings | **180** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2354** in 243 files |
+| Test functions | **2365** in 243 files |
 | Dashboard pages | **18** |
-| Python | 317 files, 78,875 lines |
+| Python | 317 files, 79,161 lines |
 
 ---
 
 ## HTTP API
 
-273 operations, grouped by OpenAPI tag.
+275 operations, grouped by OpenAPI tag.
 
-### `kernel` — 29
+### `kernel` — 30
 
 | Method | Path | Summary |
 |---|---|---|
+| POST | `/api/v1/kernel/alerts/external` | Receive an alert from an external system and deliver it |
 | POST | `/api/v1/kernel/chat/stream` | Stream a persona chat response (SSE) |
 | POST | `/api/v1/kernel/classify` | Classify intent without routing |
 | GET | `/api/v1/kernel/models` | List available LLM models for the persona picker |
@@ -230,6 +231,18 @@ Generated `2026-09-19 17:05 UTC` from `unknown` @ `unknown`
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
 
+### `drivers` — 7
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/drivers` | List registered drivers |
+| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
+| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
+| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
+| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
+| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
+
 ### `procedures` — 7
 
 | Method | Path | Summary |
@@ -252,17 +265,6 @@ Generated `2026-09-19 17:05 UTC` from `unknown` @ `unknown`
 | GET | `/api/v1/conversations/{conversation_id}` | Get Conversation |
 | POST | `/api/v1/conversations/{conversation_id}/distill` | Distill Conversation Endpoint |
 | POST | `/api/v1/conversations/{conversation_id}/messages` | Post Message |
-
-### `drivers` — 6
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/kernel/drivers` | List registered drivers |
-| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
-| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
-| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
-| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
 
 ### `preferences` — 6
 
@@ -812,10 +814,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 186 | 1794 |
-| `tests/integration/` | 56 | 548 |
+| `tests/unit/` | 186 | 1798 |
+| `tests/integration/` | 56 | 555 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **243** | **2354** |
+| **total** | **243** | **2365** |
 
 ---
 
