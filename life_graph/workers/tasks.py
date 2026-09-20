@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 
 from life_graph.api.dependencies import get_scheduler_service
+from life_graph.connectors.locality import CLOUD, audience
 from life_graph.core.tenant import set_tenant_context
 from life_graph.kernel.ambient import (
     AMBIENT_ACTION,
@@ -885,9 +886,17 @@ async def tick_scheduled_jobs(ctx: dict) -> dict:
                     job["agent_name"], job.get("input") or {}, job["tenant_id"]
                 )
                 tool_override = AMBIENT_ACTION_READONLY_TOOLS
-            await scheduler.fire_job(
-                job["tenant_id"], job["id"], input_override=override, tool_override=tool_override
-            )
+            # Scheduled runs report through notifications that can leave the
+            # machine (Telegram, Web Push), so connector data they read is
+            # rendered for a cloud audience whatever model runs them. The
+            # tasks fire_job spawns inherit this context.
+            with audience(CLOUD):
+                await scheduler.fire_job(
+                    job["tenant_id"],
+                    job["id"],
+                    input_override=override,
+                    tool_override=tool_override,
+                )
             fired += 1
         except Exception:
             logger.exception("tick_scheduled_jobs: fire failed for job %s", job.get("id"))
@@ -984,3 +993,35 @@ async def learn_project_task(
 
         logger.exception("Project learn failed for %s (tenant %s)", project_id, tenant_id)
         raise
+
+
+# ── Connectors: calendar / email sync (docs/specs/connectors.md) ─────────
+
+
+async def sync_connectors(ctx: dict) -> dict:
+    """Every 5 min: sync each enabled connector account whose interval has elapsed.
+
+    Accounts marked ``reauth_needed`` are skipped until the user reconnects;
+    failures back off per account (``connectors/runtime.py``).
+    """
+    from life_graph.config import settings
+
+    if not settings.connectors_enabled:
+        return {"status": "disabled"}
+    from life_graph.connectors.assist import prepare_meetings
+    from life_graph.connectors.runtime import get_runtime
+
+    results = await get_runtime().sync_due()
+    try:
+        prepped = await prepare_meetings()
+    except Exception:
+        logger.exception("Meeting prep failed")
+        prepped = 0
+    return {"synced": len(results), "prepped": prepped, "results": results}
+
+
+async def purge_connector_items(ctx: dict) -> dict:
+    """Nightly: connector retention (old mail, past/far-future events, disabled accounts)."""
+    from life_graph.connectors.runtime import get_runtime
+
+    return {"purged": await get_runtime().purge()}

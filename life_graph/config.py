@@ -271,9 +271,38 @@ class Settings(BaseSettings):
     # ── Tavily (web search tool) ──────────────────────
     tavily_api_key: str = ""  # Set LIFE_GRAPH_TAVILY_API_KEY
 
-    # ── Google API (Gmail / Calendar tools) ───────────
-    google_credentials_json: str = ""  # Set LIFE_GRAPH_GOOGLE_CREDENTIALS_JSON
-    google_delegated_user: str = ""  # Set LIFE_GRAPH_GOOGLE_DELEGATED_USER
+    # ── Connectors (calendar, email, … — docs/specs/connectors.md) ───────────
+    # Replaces the unused google_credentials_json / google_delegated_user stubs:
+    # accounts are added through /connectors, credentials live in files below.
+    connectors_enabled: bool = True
+    # The user's timezone (IANA name): "today" in the brief and the calendar
+    # tools means this zone's day, not UTC's.
+    user_timezone: str = "UTC"
+    # Per-account credential files (mode 600), outside the repo and the DB.
+    connector_secrets_dir: str = "~/.config/life-graph/connectors"
+    # Extra LiteLLM model prefixes that run on this machine (comma-separated);
+    # ollama/, ollama_chat/ and lm_studio/ are built in. Anything else is
+    # treated as cloud when deciding what connector data a model may see.
+    connector_local_model_prefixes: str = ""
+    connector_sync_minutes: int = 15
+    connector_email_retention_days: int = 90
+    connector_event_past_days: int = 90
+    connector_event_future_days: int = 365
+    # "Waiting on you": unanswered direct mail older than this…
+    connector_needs_reply_min_hours: int = 24
+    # …and younger than this (older threads are treated as dropped, not urgent).
+    connector_needs_reply_max_days: int = 14
+    # Messages summarised per sync by the local model (the rest wait a round).
+    connector_summaries_per_sync: int = 40
+    # Bills found in mail, off the machine: "details" (payee, type, due date —
+    # never the amount) or "counts" ("2 bills due this week").
+    connector_bills_cloud: str = "details"
+    # Where Google sends the browser back after sign-in: this API's own
+    # address as the signing-in browser reaches it (a Desktop OAuth client
+    # accepts any localhost port).
+    connector_oauth_redirect_base: str = "http://localhost:8080"
+    # Where the callback sends the browser afterwards (the dashboard).
+    connector_oauth_return_url: str = "http://localhost:3001/settings"
 
     # ── Langfuse (LLM tracing — auto-enabled by LiteLLM)
     langfuse_public_key: str = ""  # Set LIFE_GRAPH_LANGFUSE_PUBLIC_KEY

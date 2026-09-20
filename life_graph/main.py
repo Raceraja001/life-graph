@@ -200,6 +200,15 @@ async def lifespan(app: FastAPI):
         list(plugin_manager.loaded.keys()),
     )
 
+    # Startup — connectors (calendar, email): discover plugins, register tools
+    if settings.connectors_enabled:
+        with startup_step(report, "connectors"):
+            from life_graph.connectors.runtime import get_runtime
+            from life_graph.connectors.tools import register_tools
+
+            get_runtime()
+            register_tools()
+
     # Startup — wire WebSocket event broadcasting
     event_bus.subscribe_all(ws_event_handler)
     logger.info("WebSocket event handler registered")
@@ -553,6 +562,10 @@ v1_router.include_router(brief_api.router)
 from life_graph.api import judgment as judgment_api
 
 v1_router.include_router(judgment_api.router)
+
+from life_graph.api import connectors as connectors_api
+
+v1_router.include_router(connectors_api.router)
 
 from life_graph.api import drivers as drivers_api
 

@@ -1,6 +1,7 @@
 "use client";
 import { Brain, Bell, ClipboardList, BookOpen } from "lucide-react";
 import { StatsCard } from "@/components/stats-card";
+import { TodayCard } from "@/components/today-card";
 import { useMemories, useTasks, usePreferences, useWatcherEvents } from "@/lib/hooks";
 
 export default function OverviewPage() {
@@ -15,6 +16,8 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6">
+      <TodayCard />
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatsCard label="Memories" value={memCount} subtitle="Total stored" icon={Brain} />
         <StatsCard label="Tasks" value={taskCount} subtitle="Kernel tasks" icon={ClipboardList} />

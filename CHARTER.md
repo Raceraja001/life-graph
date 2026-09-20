@@ -193,8 +193,19 @@ What is genuinely unfinished, in priority order. Everything else that used to be
 pending has shipped — check [docs/STATE.md](docs/STATE.md) for what actually exists rather
 than trusting any prose, including this paragraph.
 
-- [ ] **Calendar and email reading** — the single biggest gap for life-admin usefulness.
-      Google credential stubs exist in `config.py`; no tool implementations do.
+- [x] **Calendar and email reading** — built as connector plugins (`plugins/calendar`,
+      `plugins/mail`, runtime `life_graph/connectors/`, spec `docs/specs/connectors.md`):
+      read-only, several accounts, app password or Google OAuth, brief sections, agent
+      tools, meeting prep. Mail bodies never reach a cloud model. Contacts too
+      (`plugins/contacts`, Google or a vCard export, per-account cloud visibility,
+      spec `docs/specs/connector-contacts.md`): names on addresses, birthdays, "who"
+      lines in meeting prep. GitHub too (`plugins/github`, read-only fine-grained token,
+      spec `docs/specs/connector-github.md`): review requests, your PRs' CI and review
+      state, assigned issues in the brief; private repos are counts for cloud chat.
+      Bills & renewals from mail too (spec `docs/specs/bills-from-mail.md`): due dates
+      and amounts parsed by code, confirmations close bills, amounts never leave.
+      Google Tasks too (`plugins/tasks`, read-only, spec `docs/specs/connector-tasks.md`):
+      overdue / today / this week in the brief; promises already on the list say so.
 - [ ] **Messaging channels** — WhatsApp/Telegram as an interaction surface. Specs exist,
       no code.
 - [ ] **Text-to-speech coverage and quality** — replies are spoken only for voice-originated

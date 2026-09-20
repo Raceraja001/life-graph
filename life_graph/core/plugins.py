@@ -103,6 +103,13 @@ class PluginManager:
 
         register_fn = getattr(module, "register", None)
         if not callable(register_fn):
+            if getattr(module, "CONNECTOR", None) is not None:
+                # A connector-only plugin (calendar, email): the connector
+                # runtime loads it (life_graph/connectors/runtime.py); it has
+                # no event handlers to register here.
+                self.loaded[name] = {"status": "connector", "config": config, "module": module_path}
+                logger.info("Loaded connector plugin: %s", name)
+                return
             raise RuntimeError(f"Plugin '{name}' has no callable 'register' in __init__.py")
 
         try:
