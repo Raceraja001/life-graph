@@ -29,13 +29,29 @@ dim()  { printf '  %s%s%s\n' "$C_DIM" "$*" "$C_RESET"; }
 warn() { printf '  %s%s%s\n' "$C_RED" "$*" "$C_RESET"; }
 
 # The venv python, falling back to whatever python3 is on PATH. Callers that
-# shell out to `ruff` etc. need .venv/bin on PATH too, so export it.
-if [ -x "$ROOT/.venv/bin/python" ]; then
-    PY="$ROOT/.venv/bin/python"
-    export PATH="$ROOT/.venv/bin:$PATH"
-else
-    PY="$(command -v python3 || true)"
-fi
+# shell out to `ruff` etc. need the venv's bin on PATH too, so export it.
+#
+# Checked in order: $LIFE_GRAPH_VENV (explicit override), an in-repo .venv,
+# then the venv this machine's setup actually uses — kept outside the repo
+# tree so a WSL-side venv survives the Windows-side git checkout being wiped
+# and recreated. A plain `python3` fallback silently runs without the
+# project's dependencies installed (e.g. no uvicorn) rather than failing
+# loudly here, which cost real debugging time before this got a second entry.
+_venv_candidates=(
+    "${LIFE_GRAPH_VENV:-}"
+    "$ROOT/.venv"
+    "$HOME/.venvs/life-graph"
+)
+PY=""
+for _venv in "${_venv_candidates[@]}"; do
+    if [ -n "$_venv" ] && [ -x "$_venv/bin/python" ]; then
+        PY="$_venv/bin/python"
+        export PATH="$_venv/bin:$PATH"
+        break
+    fi
+done
+[ -n "$PY" ] || PY="$(command -v python3 || true)"
+unset _venv _venv_candidates
 
 # Ask the app where its Postgres and Redis actually are. Falls back to the
 # defaults only when the config cannot be loaded at all.

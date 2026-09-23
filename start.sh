@@ -91,7 +91,12 @@ if [ $BACKEND -eq 1 ] || [ $BOTH -eq 1 ] || [ $ALL -eq 1 ]; then
     fi
 
     step "[backend] Starting uvicorn on :$API_PORT..."
-    (cd "$ROOT" && nohup "$PY" -m uvicorn life_graph.main:app \
+    # WATCHFILES_FORCE_POLLING: this repo lives on a Windows drive mounted
+    # into WSL2 (DrvFs), which does not deliver inotify events — --reload's
+    # file watcher silently never fires there, so an edit can sit "applied"
+    # while the running process still serves the old code. Polling is the
+    # only watch mode DrvFs actually supports.
+    (cd "$ROOT" && nohup env WATCHFILES_FORCE_POLLING=true "$PY" -m uvicorn life_graph.main:app \
         --host 0.0.0.0 --port "$API_PORT" --reload --reload-dir life_graph \
         >"$LOG_DIR/uvicorn.log" 2>&1 & echo $! >"$RUN_DIR/api.pid")
     dim "pid $(cat "$RUN_DIR/api.pid" 2>/dev/null)  log: logs/uvicorn.log"
