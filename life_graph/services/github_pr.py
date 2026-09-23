@@ -542,3 +542,27 @@ async def revert_merge_commit(payload: dict[str, Any]) -> dict[str, Any]:
     pr_url = out.splitlines()[-1].strip() if out else ""
     logger.warning("Opened revert PR for %s (broke CI on %s): %s", sha[:8], base_branch, pr_url)
     return {"pr_url": pr_url, "branch": branch, "existing": False}
+
+
+async def pr_state(payload: dict[str, Any]) -> str:
+    """'OPEN', 'MERGED', or 'CLOSED' for the PR at ``payload['pr_url']``.
+
+    Used to tell whether a revert has actually been acted on yet — opening
+    a revert PR is not itself a verdict that the break was real, a human
+    merging it is.
+    """
+    from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+    url = payload.get("pr_url") or ""
+    if not _PR_URL_RE.match(url):
+        raise PullRequestError(f"not a valid PR url: {url!r}")
+    try:
+        repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="pull request")
+    except ToolDeniedError as exc:
+        raise PullRequestError(str(exc)) from exc
+
+    gh = settings.driver_gh_bin
+    code, out, err = await _run([gh, "pr", "view", url, "--json", "state"], cwd=repo)
+    if code != 0:
+        raise PullRequestError(f"could not read PR state for {url}: {(err or out)[-300:]}")
+    return (json.loads(out) or {}).get("state", "")

@@ -407,6 +407,32 @@ async def sync_all(session_factory) -> dict[str, Any]:
                 logger.warning("post-merge CI check failed for approval %s", approval_id, exc_info=True)
                 reports.append({"approval": str(approval_id), "error": str(exc)[:200]})
 
+    async with session_factory() as session:
+        revert_rows = (
+            (
+                await session.execute(
+                    select(Approval.id).where(
+                        Approval.kind == "driver_merge",
+                        Approval.payload["post_merge_ci"].astext == "failure",
+                        Approval.payload["revert_pr_url"].astext.isnot(None),
+                        Approval.payload["rollforward_dispatched"].astext.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    for approval_id in revert_rows:
+        async with session_factory() as session:
+            appr = await session.get(Approval, approval_id)
+            try:
+                reports.append(await check_rollforward(session, appr))
+                await session.commit()
+            except Exception as exc:
+                await session.rollback()
+                logger.warning("rollforward check failed for approval %s", approval_id, exc_info=True)
+                reports.append({"approval": str(approval_id), "error": str(exc)[:200]})
+
     return {"synced": len(reports), "reports": reports}
 
 
@@ -465,6 +491,81 @@ async def check_post_merge_ci(session: AsyncSession, merge_approval: Approval) -
         source_id=str(merge_approval.id),
     )
     return {"status": "failure", "revert_pr": revert["pr_url"]}
+
+
+async def check_rollforward(session: AsyncSession, merge_approval: Approval) -> dict[str, Any]:
+    """Once a revert PR is actually merged, re-dispatch the original
+    instruction as a fresh task.
+
+    Deliberately waits for the revert to be *merged*, not just opened —
+    opening it is not itself a verdict that the break was real, a human
+    merging it is. The retry goes through the exact same trust-gated
+    dispatch pipeline as anything else (its own verification, its own
+    driver_pr/driver_merge approvals), never skipping review because the
+    first attempt already got one; it only carries forward a note that the
+    previous attempt broke CI, so the agent knows to look harder rather
+    than reproduce the same fix. Idempotent via ``rollforward_dispatched``
+    on the payload, so a merge is only ever retried once automatically.
+    """
+    from life_graph.kernel.project_registry import ProjectRegistry
+    from life_graph.models.db import AgentTask
+    from life_graph.services import github_pr
+    from life_graph.services.dev_tasks import create_dev_task
+    from life_graph.storage.database import async_session
+
+    payload = merge_approval.payload or {}
+    if (
+        payload.get("post_merge_ci") != "failure"
+        or not payload.get("revert_pr_url")
+        or payload.get("rollforward_dispatched")
+    ):
+        return {"skipped": "not applicable"}
+
+    try:
+        state = await github_pr.pr_state({**payload, "pr_url": payload["revert_pr_url"]})
+    except github_pr.PullRequestError as exc:
+        return {"skipped": f"could not read revert PR state: {exc}"}
+    if state != "MERGED":
+        return {"revert_state": state}
+
+    instruction = payload.get("instruction")
+    project_id = payload.get("project_id")
+    task_id = payload.get("task_id")
+    if not (instruction and project_id and task_id):
+        merge_approval.payload = {**payload, "rollforward_dispatched": "skipped_missing_context"}
+        return {"skipped": "no instruction/project/task recorded to retry from"}
+
+    original_task = await session.get(AgentTask, uuid.UUID(str(task_id)))
+    persona_name = original_task.assigned_agent if original_task else None
+    if not persona_name:
+        merge_approval.payload = {**payload, "rollforward_dispatched": "skipped_no_persona"}
+        return {"skipped": "original task's persona is unknown, refusing to guess one"}
+
+    registry = ProjectRegistry(session_factory=async_session)
+    project = await registry.get_by_id(merge_approval.tenant_id, project_id)
+    if not project or not project.get("is_active"):
+        merge_approval.payload = {**payload, "rollforward_dispatched": "skipped_project_inactive"}
+        return {"skipped": "project no longer registered/active"}
+
+    retry_instruction = (
+        f"{instruction}\n\n"
+        "Note: an earlier attempt at this broke CI on the base branch after "
+        "merging, and was reverted after review. Investigate why before "
+        "retrying the same approach — check the revert PR for what changed."
+    )
+    result = await create_dev_task(
+        async_session,
+        merge_approval.tenant_id,
+        instruction=retry_instruction,
+        project=project,
+        persona_name=persona_name,
+        properties={"rollforward_of": str(merge_approval.id)},
+    )
+    merge_approval.payload = {**payload, "rollforward_dispatched": result.get("id")}
+    logger.warning(
+        "Rolling forward %s after its revert merged: new task %s", task_id, result.get("id")
+    )
+    return {"rollforward_task_id": result.get("id")}
 
 
 # ── Track record (read side) ─────────────────────────────────

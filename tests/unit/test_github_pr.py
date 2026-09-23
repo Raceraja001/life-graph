@@ -711,3 +711,45 @@ async def test_commit_ci_status_failure_on_any_failed_check(revert_env):
         ]
     )
     assert await github_pr.commit_ci_status(revert_env.payload) == "failure"
+
+
+# ── pr_state ──────────────────────────────────────────────────
+
+
+@pytest.fixture
+def pr_state_env(tmp_path, monkeypatch):
+    from life_graph.config import settings
+
+    repo = tmp_path / "root" / "repo"
+    repo.mkdir(parents=True)
+    state_file = tmp_path / "state.json"
+    gh = tmp_path / "gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        f"print(open({str(state_file)!r}).read())\n"
+    )
+    gh.chmod(0o755)
+    monkeypatch.setattr(settings, "driver_gh_bin", str(gh))
+    monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path / "root"))
+
+    def set_state(state):
+        state_file.write_text(json.dumps({"state": state}))
+
+    set_state("OPEN")
+    payload = {"pr_url": "https://github.com/me/repo/pull/42", "repo_path": str(repo)}
+    return SimpleNamespace(set_state=set_state, payload=payload)
+
+
+async def test_pr_state_reports_open(pr_state_env):
+    assert await github_pr.pr_state(pr_state_env.payload) == "OPEN"
+
+
+async def test_pr_state_reports_merged(pr_state_env):
+    pr_state_env.set_state("MERGED")
+    assert await github_pr.pr_state(pr_state_env.payload) == "MERGED"
+
+
+async def test_pr_state_rejects_a_bad_url(pr_state_env):
+    with pytest.raises(PullRequestError, match="not a valid PR url"):
+        await github_pr.pr_state({**pr_state_env.payload, "pr_url": "not-a-url"})

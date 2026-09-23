@@ -462,3 +462,171 @@ async def test_sync_all_gives_up_on_a_merge_stuck_pending_a_day(merged_task, fak
     async with async_session() as s:
         merge = await s.get(Approval, merged_task)
         assert merge.payload["post_merge_ci"] == "timeout"
+
+
+# ── Rollforward after a revert ───────────────────────────────
+
+
+@pytest_asyncio.fixture
+async def revertable_task():
+    """An AgentTask (so the retry can find the original persona) plus a
+    driver_merge approval already marked as a post-merge CI failure with a
+    revert PR opened — the state check_rollforward starts from."""
+    from life_graph.models.db import AgentTask, Approval
+    from life_graph.storage.database import async_session
+
+    task_id = uuid.uuid4()
+    project_id = str(uuid.uuid4())
+    async with async_session() as s:
+        s.add(
+            AgentTask(
+                id=task_id,
+                tenant_id=TENANT,
+                agent_name="dev_task",
+                assigned_agent="code-fixer-local",
+                status="completed",
+                properties={"kind": "dev_task"},
+            )
+        )
+        merge = Approval(
+            tenant_id=TENANT,
+            kind="driver_merge",
+            title="Merge PR #9",
+            status="approved",
+            source="driver_merge",
+            source_ref=str(task_id),
+            payload={
+                "task_id": str(task_id),
+                "project_id": project_id,
+                "repo_path": "/mnt/h/DevTools/Projects/demo",
+                "base_branch": "main",
+                "merge_commit": "a" * 40,
+                "instruction": "Add a helper",
+                "post_merge_ci": "failure",
+                "revert_pr_url": "https://github.com/me/demo/pull/99",
+            },
+        )
+        s.add(merge)
+        await s.commit()
+        return {"task_id": task_id, "project_id": project_id, "merge_id": merge.id}
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_rollforward_waits_for_the_revert_to_actually_merge(revertable_task, monkeypatch):
+    from life_graph.models.db import Approval
+    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.storage.database import async_session
+
+    async def fake_state(payload):
+        return "OPEN"
+
+    monkeypatch.setattr(github_pr, "pr_state", fake_state)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, revertable_task["merge_id"])
+        report = await dev_outcomes.check_rollforward(s, merge)
+        await s.commit()
+    assert report == {"revert_state": "OPEN"}
+
+    async with async_session() as s:
+        merge = await s.get(Approval, revertable_task["merge_id"])
+        assert "rollforward_dispatched" not in merge.payload
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_rollforward_dispatches_a_retry_once_the_revert_merges(revertable_task, monkeypatch):
+    from life_graph.kernel.project_registry import ProjectRegistry
+    from life_graph.models.db import Approval
+    from life_graph.services import dev_outcomes, dev_tasks, github_pr
+    from life_graph.storage.database import async_session
+
+    async def fake_state(payload):
+        return "MERGED"
+
+    async def fake_get_by_id(self, tenant_id, project_id):
+        return {"id": project_id, "name": "demo", "is_active": True}
+
+    captured = {}
+
+    async def fake_create_dev_task(session_factory, tenant_id, *, instruction, project, persona_name, **kw):
+        captured.update(
+            tenant_id=tenant_id, instruction=instruction, project=project, persona_name=persona_name
+        )
+        return {"id": "new-task-id"}
+
+    monkeypatch.setattr(github_pr, "pr_state", fake_state)
+    monkeypatch.setattr(ProjectRegistry, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(dev_tasks, "create_dev_task", fake_create_dev_task)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, revertable_task["merge_id"])
+        report = await dev_outcomes.check_rollforward(s, merge)
+        await s.commit()
+
+    assert report == {"rollforward_task_id": "new-task-id"}
+    assert captured["persona_name"] == "code-fixer-local"
+    assert captured["tenant_id"] == TENANT
+    assert "Add a helper" in captured["instruction"]
+    assert "broke CI" in captured["instruction"]
+    assert captured["project"]["id"] == revertable_task["project_id"]
+
+    async with async_session() as s:
+        merge = await s.get(Approval, revertable_task["merge_id"])
+        assert merge.payload["rollforward_dispatched"] == "new-task-id"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_rollforward_is_a_noop_once_already_dispatched(revertable_task, monkeypatch):
+    from life_graph.models.db import Approval
+    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.storage.database import async_session
+
+    def must_not_run(payload):
+        raise AssertionError("an already-rolled-forward merge must not be checked again")
+
+    monkeypatch.setattr(github_pr, "pr_state", must_not_run)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, revertable_task["merge_id"])
+        merge.payload = {**merge.payload, "rollforward_dispatched": "some-task-id"}
+        await s.commit()
+
+    async with async_session() as s:
+        merge = await s.get(Approval, revertable_task["merge_id"])
+        report = await dev_outcomes.check_rollforward(s, merge)
+    assert report == {"skipped": "not applicable"}
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_rollforward_skips_when_the_project_is_no_longer_active(revertable_task, monkeypatch):
+    from life_graph.kernel.project_registry import ProjectRegistry
+    from life_graph.models.db import Approval
+    from life_graph.services import dev_outcomes, dev_tasks, github_pr
+    from life_graph.storage.database import async_session
+
+    async def fake_state(payload):
+        return "MERGED"
+
+    async def fake_get_by_id(self, tenant_id, project_id):
+        return {"id": project_id, "name": "demo", "is_active": False}
+
+    def must_not_run(*a, **kw):
+        raise AssertionError("must not dispatch a retry against an inactive project")
+
+    monkeypatch.setattr(github_pr, "pr_state", fake_state)
+    monkeypatch.setattr(ProjectRegistry, "get_by_id", fake_get_by_id)
+    monkeypatch.setattr(dev_tasks, "create_dev_task", must_not_run)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, revertable_task["merge_id"])
+        report = await dev_outcomes.check_rollforward(s, merge)
+        await s.commit()
+    assert report == {"skipped": "project no longer registered/active"}
+
+    async with async_session() as s:
+        merge = await s.get(Approval, revertable_task["merge_id"])
+        assert merge.payload["rollforward_dispatched"] == "skipped_project_inactive"
