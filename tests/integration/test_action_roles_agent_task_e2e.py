@@ -364,7 +364,7 @@ async def test_approve_dispatches_agent_task_and_ends_success(monkeypatch):
     # The dispatcher applies persona.verifier_chain when there is one, and
     # this same diff-scoped pair as DEFAULT_VERIFY_CHAIN when there is not.
     assert kwargs["verify_chain"] is None
-    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff"]
+    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff", "no_secrets_in_diff"]
     assert kwargs["interactive"] is False
     assert kwargs["cost_cap_usd"] == DEFAULT_AGENT_TASK_COST_CAP
 

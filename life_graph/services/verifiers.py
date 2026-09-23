@@ -1,12 +1,13 @@
 """Verifier Chain — quality gates for agent task results.
 
-9 built-in verifiers. Each returns (passed: bool, evidence: dict).
+10 built-in verifiers. Each returns (passed: bool, evidence: dict).
 One-bounce rule: failed → re-dispatch once → second failure → needs_human.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import shlex
 import shutil
 import subprocess
@@ -127,6 +128,7 @@ class VerifierChain:
         self.register("build_ok", _verify_build_ok)
         self.register("build_ok_diff", _verify_build_ok_diff)
         self.register("lint_clean_diff", _verify_lint_clean_diff)
+        self.register("no_secrets_in_diff", _verify_no_secrets_in_diff)
         self.register("diff_within_scope", _verify_diff_within_scope)
         self.register("citations_present", _verify_citations_present)
         self.register("style_conforms", _verify_style_conforms)
@@ -319,11 +321,11 @@ async def _verify_build_ok(workdir: Path, ctx: dict) -> tuple[bool, dict]:
     return passed, {"errors": errors[:10]}
 
 
-def _changed_python_files(workdir: Path) -> list[Path]:
+def _changed_files(workdir: Path) -> list[Path]:
     """Files changed since HEAD (tracked modifications) UNION untracked new
-    files (``git ls-files --others``), filtered to ``*.py``, resolved under
-    ``workdir``. Empty list (never raises) on any git failure — e.g. the
-    scratch-temp-dir fallback, which is never a git repo at all.
+    files (``git ls-files --others``), resolved under ``workdir``. Empty
+    list (never raises) on any git failure — e.g. the scratch-temp-dir
+    fallback, which is never a git repo at all.
 
     Both tracked modifications AND new untracked files must be included —
     a change that only ADDS a file (no modification to any existing tracked
@@ -354,7 +356,12 @@ def _changed_python_files(workdir: Path) -> list[Path]:
         changed_names.update(f.strip() for f in untracked.stdout.strip().split("\n") if f.strip())
     except Exception:
         return []
-    return [workdir / f for f in changed_names if f.endswith(".py") and (workdir / f).is_file()]
+    return [workdir / f for f in changed_names if (workdir / f).is_file()]
+
+
+def _changed_python_files(workdir: Path) -> list[Path]:
+    """:func:`_changed_files`, filtered to ``*.py``."""
+    return [f for f in _changed_files(workdir) if f.suffix == ".py"]
 
 
 async def _verify_build_ok_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
@@ -370,6 +377,69 @@ async def _verify_build_ok_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
             errors.append(str(e))
     passed = len(errors) == 0
     return passed, {"errors": errors[:10], "checked": len(changed)}
+
+
+_MAX_SCANNED_FILE_BYTES = 2_000_000
+
+# High-confidence secret patterns only — no generic "long base64 string" or
+# entropy heuristics, which false-positive constantly on hashes, minified
+# assets and test fixtures. Each pattern here is a real credential format
+# that has no other legitimate reason to appear in a diff. Named so the
+# evidence can say *what* matched without ever echoing the matched text.
+_SECRET_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("aws_access_key_id", r"AKIA[0-9A-Z]{16}"),
+    ("private_key_block", r"-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
+    ("github_pat_classic", r"ghp_[A-Za-z0-9]{36}"),
+    ("github_pat_fine_grained", r"github_pat_[A-Za-z0-9_]{22,}"),
+    ("slack_token", r"xox[baprs]-[A-Za-z0-9-]{10,}"),
+    ("stripe_live_key", r"sk_live_[A-Za-z0-9]{24,}"),
+    ("anthropic_api_key", r"sk-ant-[A-Za-z0-9\-_]{20,}"),
+    ("openai_api_key", r"sk-proj-[A-Za-z0-9\-_]{20,}"),
+    ("google_api_key", r"AIza[0-9A-Za-z\-_]{35}"),
+    ("npm_token", r"npm_[A-Za-z0-9]{36}"),
+)
+_SECRET_RE = [(name, re.compile(pat)) for name, pat in _SECRET_PATTERNS]
+
+# AWS's own documented placeholder, used in nearly every S3/IAM tutorial and
+# copied into countless test fixtures. It matches aws_access_key_id but is
+# not a credential — the one deliberate exception to "no allowlisting"
+# elsewhere in this file, because the false-positive rate without it would
+# train people to approve past this check rather than read it.
+_AWS_EXAMPLE_KEY = "AKIAIOSFODNN7EXAMPLE"
+
+
+async def _verify_no_secrets_in_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+    """Refuse to land a change whose diff contains something that looks
+    like a real credential.
+
+    Pure regex over each changed file's current content — no subprocess, no
+    sandbox, so it runs identically whether sandboxing is on or not and adds
+    no meaningful latency. High-confidence patterns only (see
+    :data:`_SECRET_PATTERNS`); this catches an agent that echoed a live key
+    into a config file or committed a staged credentials file, not every
+    possible secret shape.
+
+    Evidence never includes the matched text itself, only the file, line
+    number, and which pattern matched — a false positive is diagnosable
+    without the report becoming a second place the secret now lives.
+    """
+    findings: list[dict] = []
+    changed = _changed_files(workdir)
+    for path in changed:
+        try:
+            if path.stat().st_size > _MAX_SCANNED_FILE_BYTES:
+                continue
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue  # binary or unreadable — nothing here to regex over
+        rel = str(path.relative_to(workdir))
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if _AWS_EXAMPLE_KEY in line:
+                continue
+            for name, pattern in _SECRET_RE:
+                if pattern.search(line):
+                    findings.append({"file": rel, "line": lineno, "pattern": name})
+    return not findings, {"findings": findings[:20], "checked": len(changed)}
 
 
 async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:

@@ -72,8 +72,13 @@ def test_required_checks_are_appended_once_in_order():
         ["build_ok_diff", "lint_clean_diff"],
         {"required_checks": ["tests_pass", "lint_clean_diff", "tests_pass"]},
     )
-    assert chain == ["build_ok_diff", "lint_clean_diff", "tests_pass"]
-    assert _with_required_checks(["build_ok_diff"], {}) == ["build_ok_diff"]
+    assert chain == ["build_ok_diff", "lint_clean_diff", "tests_pass", "no_secrets_in_diff"]
+
+
+def test_no_secrets_in_diff_is_always_appended_even_with_no_required_checks():
+    """Not project-configurable — every dispatch gets it, opt-out is not offered."""
+    assert _with_required_checks(["build_ok_diff"], {}) == ["build_ok_diff", "no_secrets_in_diff"]
+    assert _with_required_checks(["no_secrets_in_diff"], {}) == ["no_secrets_in_diff"]
 
 
 def test_api_rejects_unknown_required_checks():

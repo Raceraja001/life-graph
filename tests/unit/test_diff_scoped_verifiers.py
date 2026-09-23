@@ -107,6 +107,91 @@ async def test_diff_scoped_verifiers_tolerate_a_non_git_directory(tmp_path):
     assert all(r.passed for r in results)
 
 
+# ── no_secrets_in_diff ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_flags_a_private_key_in_a_new_file(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "creds.pem").write_text(
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK...\n-----END RSA PRIVATE KEY-----\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "creds.pem"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is False
+    findings = results[0].evidence["findings"]
+    assert findings and findings[0]["pattern"] == "private_key_block"
+    assert findings[0]["file"] == "creds.pem"
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_finding_never_echoes_the_secret_itself(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "config.py").write_text(
+        'AWS_KEY = "AKIAABCDEFGHIJKLMNOP"\n', encoding="utf-8"
+    )
+    subprocess.run(["git", "add", "config.py"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is False
+    blob = str(results[0].evidence)
+    assert "AKIAABCDEFGHIJKLMNOP" not in blob
+    assert "aws_access_key_id" in blob
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_ignores_pre_existing_secret_outside_the_diff(tmp_path):
+    _init_repo(tmp_path)
+    leaky = tmp_path / "old_creds.py"
+    leaky.write_text('KEY = "AKIAABCDEFGHIJKLMNOP"\n', encoding="utf-8")
+    subprocess.run(["git", "add", "old_creds.py"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-m", "pre-existing"],
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
+    )
+    (tmp_path / "new.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "new.py"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_allows_the_aws_documented_example_key(tmp_path):
+    _init_repo(tmp_path)
+    # AWS's own placeholder from their docs — appears in countless tutorials
+    # and test fixtures; must not be treated as a real leaked credential.
+    (tmp_path / "readme_snippet.py").write_text(
+        'EXAMPLE = "AKIAIOSFODNN7EXAMPLE"\n', encoding="utf-8"
+    )
+    subprocess.run(
+        ["git", "add", "readme_snippet.py"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_passes_a_clean_diff(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "new.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+    subprocess.run(["git", "add", "new.py"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+    assert results[0].evidence["findings"] == []
+
+
 # ── Untracked (never `git add`-ed) new files ─────────────────
 #
 # Nothing in the agent-tool pipeline stages files: there is no git-add tool

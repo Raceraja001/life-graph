@@ -66,7 +66,13 @@ AUTO_PR_MERGE_RATE = 0.8
 # task once (a wasted frontier call) and then escalated to needs_human, every
 # time, forever. A verifier chain judges the diff; a persona may ask for
 # something stricter via its own verifier_chain.
-DEFAULT_VERIFY_CHAIN = ["build_ok_diff", "lint_clean_diff"]
+#
+# no_secrets_in_diff is in the default chain, not opt-in like most other
+# checks: it is pure regex over changed files (no subprocess, no sandbox,
+# no meaningful latency) and only high-confidence credential shapes, so the
+# false-positive cost of running it everywhere is close to zero while the
+# cost of a project forgetting to opt in is a leaked key.
+DEFAULT_VERIFY_CHAIN = ["build_ok_diff", "lint_clean_diff", "no_secrets_in_diff"]
 
 
 class DispatchError(Exception):
@@ -97,14 +103,23 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
         return None
 
 
+# Appended unconditionally in _with_required_checks, after persona/caller
+# resolution — a persona picking its own verifier_chain (personas.py has
+# several) opts out of the default chain, but must not thereby opt out of
+# leak detection. Unlike required_checks this is not project-configurable:
+# there is no legitimate reason for any project to dispatch without it.
+_ALWAYS_ON_CHECKS = ("no_secrets_in_diff",)
+
+
 def _with_required_checks(chain: list[str], project_context: dict) -> list[str]:
-    """Append the project's required checks (e.g. tests_pass) that *chain* lacks.
+    """Append the project's required checks (e.g. tests_pass), plus the
+    always-on checks, that *chain* lacks.
 
     A project can require checks for all of its tasks on top of whatever the
     caller or persona asked for. Read from the registry via the packet's
     project context, never from the worktree the agent controls.
     """
-    required = project_context.get("required_checks") or []
+    required = [*(project_context.get("required_checks") or []), *_ALWAYS_ON_CHECKS]
     return [*chain, *(c for c in dict.fromkeys(required) if c not in chain)]
 
 
