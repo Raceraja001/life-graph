@@ -566,3 +566,148 @@ async def test_merge_fast_forwards_local_base_branch(real_merge_env):
     assert after != before
     assert after == real_merge_env.head
     assert (real_merge_env.repo / "f.txt").read_text() == "agent change\n"
+
+
+# ── Post-merge CI safety net ─────────────────────────────────
+
+
+@pytest.fixture
+def revert_env(tmp_path, monkeypatch):
+    """A real origin+clone with a "bad" commit already on master to revert,
+    plus a stub gh answering pr view / pr create / api check-runs."""
+    from life_graph.config import settings
+
+    origin = tmp_path / "origin.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "master", str(origin))
+    repo = tmp_path / "root" / "repo"
+    repo.parent.mkdir()
+    git(tmp_path, "clone", "-q", str(origin), str(repo))
+    git(repo, "checkout", "-q", "-b", "master")
+    (repo / "f.txt").write_text("base\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "base")
+    git(repo, "push", "-q", "origin", "master")
+
+    # The commit that later broke CI on master.
+    (repo / "f.txt").write_text("broken\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the bad change")
+    git(repo, "push", "-q", "origin", "master")
+    bad_sha = git(repo, "rev-parse", "HEAD")
+
+    calls = tmp_path / "gh_calls.jsonl"
+    check_runs_state = tmp_path / "check_runs.json"
+    check_runs_state.write_text(json.dumps({"check_runs": []}))
+    pr_view_exists = tmp_path / "pr_view_exists"
+    gh = tmp_path / "gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        f"open({str(calls)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:3] == ['pr', 'view']:\n"
+        f"    if os.path.exists({str(pr_view_exists)!r}):\n"
+        "        print('https://github.com/me/repo/pull/99'); sys.exit(0)\n"
+        "    sys.exit(1)\n"
+        "if sys.argv[1:3] == ['pr', 'create']:\n"
+        "    print('https://github.com/me/repo/pull/99'); sys.exit(0)\n"
+        "if sys.argv[1] == 'api':\n"
+        f"    print(open({str(check_runs_state)!r}).read()); sys.exit(0)\n"
+    )
+    gh.chmod(0o755)
+    monkeypatch.setattr(settings, "driver_gh_bin", str(gh))
+    monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path / "root"))
+
+    def calls_made():
+        return [json.loads(x) for x in calls.read_text().splitlines()] if calls.exists() else []
+
+    payload = {
+        "merge_commit": bad_sha,
+        "base_branch": "master",
+        "repo_path": str(repo),
+        "title": "the bad change",
+    }
+    return SimpleNamespace(
+        repo=repo,
+        payload=payload,
+        bad_sha=bad_sha,
+        set_check_runs=lambda runs: check_runs_state.write_text(json.dumps({"check_runs": runs})),
+        mark_pr_exists=lambda: pr_view_exists.write_text(""),
+        calls=calls_made,
+    )
+
+
+async def test_revert_merge_commit_reverts_and_opens_pr(revert_env):
+    out = await github_pr.revert_merge_commit(revert_env.payload)
+
+    assert out["pr_url"] == "https://github.com/me/repo/pull/99"
+    assert out["branch"] == f"lg/revert-{revert_env.bad_sha[:8]}"
+    assert out["existing"] is False
+
+    git(revert_env.repo, "fetch", "-q", "origin", out["branch"])
+    reverted_content = git(revert_env.repo, "show", f"origin/{out['branch']}:f.txt")
+    assert reverted_content == "base"
+
+    create = next(c for c in revert_env.calls() if c[:2] == ["pr", "create"])
+    assert "--base" in create and create[create.index("--base") + 1] == "master"
+    assert create[create.index("--title") + 1].startswith("Revert:")
+
+
+async def test_revert_merge_commit_idempotent_when_pr_already_exists(revert_env):
+    revert_env.mark_pr_exists()
+
+    out = await github_pr.revert_merge_commit(revert_env.payload)
+
+    assert out == {
+        "pr_url": "https://github.com/me/repo/pull/99",
+        "branch": f"lg/revert-{revert_env.bad_sha[:8]}",
+        "existing": True,
+    }
+    assert not any(c[:2] == ["pr", "create"] for c in revert_env.calls())
+
+
+async def test_revert_merge_commit_conflict_raises(revert_env):
+    # A later commit that also touches f.txt so the revert of the earlier
+    # "bad" commit no longer applies cleanly.
+    (revert_env.repo / "f.txt").write_text("changed again\n")
+    git(revert_env.repo, "add", "-A")
+    git(revert_env.repo, "commit", "-qm", "unrelated later change")
+    git(revert_env.repo, "push", "-q", "origin", "master")
+
+    with pytest.raises(PullRequestError, match="conflicted"):
+        await github_pr.revert_merge_commit(revert_env.payload)
+
+
+async def test_revert_merge_commit_rejects_missing_fields(revert_env):
+    with pytest.raises(PullRequestError, match="commit sha and a base branch"):
+        await github_pr.revert_merge_commit({**revert_env.payload, "merge_commit": "short"})
+    with pytest.raises(PullRequestError, match="commit sha and a base branch"):
+        await github_pr.revert_merge_commit({**revert_env.payload, "base_branch": ""})
+
+
+async def test_commit_ci_status_pending_when_no_checks(revert_env):
+    assert await github_pr.commit_ci_status(revert_env.payload) == "pending"
+
+
+async def test_commit_ci_status_pending_while_running(revert_env):
+    revert_env.set_check_runs([{"status": "in_progress", "conclusion": None}])
+    assert await github_pr.commit_ci_status(revert_env.payload) == "pending"
+
+
+async def test_commit_ci_status_success_when_all_ok(revert_env):
+    revert_env.set_check_runs(
+        [
+            {"status": "completed", "conclusion": "success"},
+            {"status": "completed", "conclusion": "skipped"},
+        ]
+    )
+    assert await github_pr.commit_ci_status(revert_env.payload) == "success"
+
+
+async def test_commit_ci_status_failure_on_any_failed_check(revert_env):
+    revert_env.set_check_runs(
+        [
+            {"status": "completed", "conclusion": "success"},
+            {"status": "completed", "conclusion": "failure"},
+        ]
+    )
+    assert await github_pr.commit_ci_status(revert_env.payload) == "failure"

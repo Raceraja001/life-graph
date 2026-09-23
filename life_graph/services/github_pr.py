@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _BRANCH_RE = re.compile(r"^lg/task-[0-9a-f-]{1,36}$")
+_REVERT_BRANCH_RE = re.compile(r"^lg/revert-[0-9a-f]{7,40}$")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _TIMEOUT = 120
 _TITLE_MAX = 72
@@ -405,3 +406,139 @@ async def _sync_base_branch(repo: str | Path, base_branch: str) -> None:
         )
     if code3 != 0:
         logger.warning("Could not fast-forward local %s after merge: %s", base_branch, err3[-200:])
+
+
+# ── Post-merge CI safety net ────────────────────────────────────
+
+_COMMIT_STATUS_OK = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED", "EXPECTED"})
+
+
+async def commit_ci_status(payload: dict[str, Any]) -> str:
+    """Combined CI state for a commit already on the base branch: one of
+    'success', 'failure', or 'pending' (includes "no checks configured" —
+    treated the same as pending so a caller never acts on silence).
+
+    ``merge_pull_request`` already refuses to merge a PR with failing or
+    pending checks, so this is for the rarer case where the *base branch's*
+    result differs from what the PR itself was tested with — a flaky test,
+    or a squash landing differently than the branch that was checked.
+    """
+    from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+    sha = payload.get("merge_commit") or ""
+    if not _SHA_RE.match(sha):
+        raise PullRequestError(f"not a full commit sha: {sha!r}")
+    try:
+        repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="pull request")
+    except ToolDeniedError as exc:
+        raise PullRequestError(str(exc)) from exc
+
+    gh = settings.driver_gh_bin
+    code, out, err = await _run(
+        [gh, "api", f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs"],
+        cwd=repo,
+    )
+    if code != 0:
+        raise PullRequestError(f"could not read check runs for {sha[:8]}: {(err or out)[-300:]}")
+    runs = (json.loads(out) or {}).get("check_runs") or []
+    if not runs:
+        return "pending"
+    for run in runs:
+        if run.get("status") != "completed":
+            return "pending"
+        if (run.get("conclusion") or "").upper() not in _COMMIT_STATUS_OK:
+            return "failure"
+    return "success"
+
+
+async def revert_merge_commit(payload: dict[str, Any]) -> dict[str, Any]:
+    """Open a PR that reverts a commit already on the base branch.
+
+    Used when :func:`commit_ci_status` comes back 'failure' for a commit
+    that already merged. Reverts in a throwaway worktree so the shared
+    checkout (and anything else using it concurrently) is never touched.
+
+    Returns ``{"pr_url", "branch", "existing"}``. Idempotent: a second call
+    for the same commit finds the existing revert PR rather than erroring or
+    reverting twice. Raises PullRequestError on any git/gh failure,
+    including a real revert conflict — that needs a human, not a retry.
+    """
+    from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+    sha = payload.get("merge_commit") or ""
+    base_branch = payload.get("base_branch") or ""
+    if not (_SHA_RE.match(sha) and base_branch):
+        raise PullRequestError("revert needs a full merge commit sha and a base branch")
+    try:
+        repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="pull request")
+    except ToolDeniedError as exc:
+        raise PullRequestError(str(exc)) from exc
+
+    branch = f"lg/revert-{sha[:8]}"
+    gh = settings.driver_gh_bin
+
+    code, url, _ = await _run([gh, "pr", "view", branch, "--json", "url", "-q", ".url"], cwd=repo)
+    if code == 0 and url:
+        return {"pr_url": url, "branch": branch, "existing": True}
+
+    code, _, err = await _git(
+        repo, "fetch", "--quiet", "origin", f"{base_branch}:refs/remotes/origin/{base_branch}"
+    )
+    if code != 0:
+        raise PullRequestError(f"could not fetch {base_branch!r}: {err[-200:]}")
+
+    import tempfile
+    from pathlib import Path
+
+    worktree = Path(tempfile.mkdtemp(prefix="lg-revert-"))
+    try:
+        code, _, err = await _git(
+            repo, "worktree", "add", "--detach", str(worktree), f"origin/{base_branch}"
+        )
+        if code != 0:
+            raise PullRequestError(f"could not create revert worktree: {err[-300:]}")
+
+        code, _, err = await _run(
+            [
+                "git",
+                "-C",
+                str(worktree),
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "user.email=life-graph@localhost",
+                "-c",
+                "user.name=Life Graph",
+                "revert",
+                "--no-edit",
+                sha,
+            ]
+        )
+        if code != 0:
+            await _run(["git", "-C", str(worktree), "revert", "--abort"])
+            raise PullRequestError(
+                f"git revert {sha[:8]} conflicted — needs a human to resolve: {err[-400:]}"
+            )
+
+        code, _, err = await _git(worktree, "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
+        if code != 0:
+            raise PullRequestError(f"git push of revert branch failed: {err[-300:]}")
+    finally:
+        await _run(["git", "-C", str(repo), "worktree", "remove", "--force", str(worktree)])
+
+    title = f"Revert: {(payload.get('title') or sha[:8]).strip()}"[:_TITLE_MAX]
+    body = (
+        f"Reverts {sha} — its checks went red on `{base_branch}` after merging "
+        "(the original PR's own checks had passed).\n\n"
+        "Opened automatically by Life Graph's post-merge CI check. Investigate "
+        "and re-apply the change once the underlying issue is understood."
+    )
+    code, out, err = await _run(
+        [gh, "pr", "create", "--head", branch, "--base", base_branch, "--title", title, "--body", body],
+        cwd=repo,
+    )
+    if code != 0:
+        raise PullRequestError(f"gh pr create failed for revert: {(err or out)[-400:]}")
+    pr_url = out.splitlines()[-1].strip() if out else ""
+    logger.warning("Opened revert PR for %s (broke CI on %s): %s", sha[:8], base_branch, pr_url)
+    return {"pr_url": pr_url, "branch": branch, "existing": False}

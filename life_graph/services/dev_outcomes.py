@@ -371,7 +371,100 @@ async def sync_all(session_factory) -> dict[str, Any]:
                 await session.rollback()
                 logger.warning("dev PR sync failed for approval %s", approval_id, exc_info=True)
                 reports.append({"approval": str(approval_id), "error": str(exc)[:200]})
+
+    async with session_factory() as session:
+        merge_rows = (
+            (
+                await session.execute(
+                    select(Approval.id).where(
+                        Approval.kind == "driver_merge",
+                        Approval.status == "approved",
+                        Approval.payload["merge_commit"].astext.isnot(None),
+                        Approval.payload["post_merge_ci"].astext.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    for approval_id in merge_rows:
+        async with session_factory() as session:
+            appr = await session.get(Approval, approval_id)
+            # Checks normally resolve within minutes; if a merge is still
+            # unresolved a day later, something is wrong with the checks
+            # themselves (deleted workflow, no CI configured) rather than
+            # with the commit -- stop polling it rather than doing so
+            # forever every 15 minutes.
+            if appr.resolved_at and (datetime.now(UTC) - appr.resolved_at).days >= 1:
+                appr.payload = {**(appr.payload or {}), "post_merge_ci": "timeout"}
+                await session.commit()
+                continue
+            try:
+                reports.append(await check_post_merge_ci(session, appr))
+                await session.commit()
+            except Exception as exc:
+                await session.rollback()
+                logger.warning("post-merge CI check failed for approval %s", approval_id, exc_info=True)
+                reports.append({"approval": str(approval_id), "error": str(exc)[:200]})
+
     return {"synced": len(reports), "reports": reports}
+
+
+async def check_post_merge_ci(session: AsyncSession, merge_approval: Approval) -> dict[str, Any]:
+    """Once per merged task: does its commit break CI on the base branch?
+
+    ``merge_pull_request`` already refuses to merge a PR with failing or
+    pending checks on the PR itself, so this catches the rarer case where
+    the *base branch's* result differs afterward — a flaky test, or a
+    squash landing differently than what the branch was checked against.
+
+    On failure, opens a revert PR and files a critical notification — never
+    merges it. Opening is reversible and needs no opt-in, the same as every
+    other PR this pipeline opens; merging is a separate, human decision.
+    Idempotent via a ``post_merge_ci`` key stashed on the payload once
+    resolved, so a merge is checked (and, if broken, reverted) exactly once.
+    """
+    from life_graph.kernel.notification_engine import NotificationEngine
+    from life_graph.services import github_pr
+    from life_graph.storage.database import async_session
+
+    payload = merge_approval.payload or {}
+    if payload.get("post_merge_ci") or not payload.get("merge_commit"):
+        return {"skipped": "already checked or no merge commit"}
+
+    try:
+        status = await github_pr.commit_ci_status(payload)
+    except github_pr.PullRequestError as exc:
+        return {"skipped": f"could not read CI status: {exc}"}
+
+    if status == "pending":
+        return {"status": "pending"}
+
+    merge_approval.payload = {**payload, "post_merge_ci": status}
+    if status == "success":
+        return {"status": "success"}
+
+    try:
+        revert = await github_pr.revert_merge_commit(payload)
+    except github_pr.PullRequestError as exc:
+        logger.error("Post-merge CI broke on a commit and the revert also failed: %s", exc)
+        merge_approval.payload = {**merge_approval.payload, "revert_error": str(exc)[:300]}
+        return {"status": "failure", "revert_error": str(exc)}
+
+    merge_approval.payload = {**merge_approval.payload, "revert_pr_url": revert["pr_url"]}
+
+    notif = NotificationEngine(session_factory=async_session)
+    sha = str(payload["merge_commit"])[:8]
+    await notif.create(
+        merge_approval.tenant_id,
+        title=f"CI broke on {payload.get('base_branch')} after a merge — opened a revert PR",
+        body=f"{revert['pr_url']} reverts {sha}. Review and merge it to unbreak the branch.",
+        priority="critical",
+        channel="webhook",
+        source_type="post_merge_ci_failure",
+        source_id=str(merge_approval.id),
+    )
+    return {"status": "failure", "revert_pr": revert["pr_url"]}
 
 
 # ── Track record (read side) ─────────────────────────────────

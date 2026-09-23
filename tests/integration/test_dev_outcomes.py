@@ -288,3 +288,177 @@ async def test_sync_skips_cleanly_without_gh(monkeypatch):
 
     monkeypatch.setattr(settings, "driver_gh_bin", "/nonexistent/gh")
     assert await sync_all(None) == {"skipped": "gh not logged in"}
+
+
+# ── Post-merge CI safety net ─────────────────────────────────
+
+
+@pytest_asyncio.fixture
+async def merged_task():
+    """An approved driver_merge with a merge_commit, as a real merge leaves it."""
+    from life_graph.models.db import Approval
+    from life_graph.storage.database import async_session
+
+    task_id = uuid.uuid4()
+    async with async_session() as s:
+        merge = Approval(
+            tenant_id=TENANT,
+            kind="driver_merge",
+            title="Merge PR #9",
+            status="approved",
+            source="driver_merge",
+            source_ref=str(task_id),
+            payload={
+                "task_id": str(task_id),
+                "project_id": str(uuid.uuid4()),
+                "repo_path": "/mnt/h/DevTools/Projects/demo",
+                "base_branch": "main",
+                "merge_commit": "a" * 40,
+                "title": "Add a helper",
+            },
+        )
+        s.add(merge)
+        await s.commit()
+        return merge.id
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_post_merge_ci_success_marks_checked_without_reverting(merged_task, monkeypatch):
+    from life_graph.models.db import Approval
+    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.storage.database import async_session
+
+    async def fake_status(payload):
+        return "success"
+
+    def must_not_revert(payload):
+        raise AssertionError("must not revert a commit whose CI passed")
+
+    monkeypatch.setattr(github_pr, "commit_ci_status", fake_status)
+    monkeypatch.setattr(github_pr, "revert_merge_commit", must_not_revert)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        report = await dev_outcomes.check_post_merge_ci(s, merge)
+        await s.commit()
+    assert report == {"status": "success"}
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        assert merge.payload["post_merge_ci"] == "success"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_post_merge_ci_pending_leaves_unchecked_for_next_sync(merged_task, monkeypatch):
+    from life_graph.models.db import Approval
+    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.storage.database import async_session
+
+    async def fake_status(payload):
+        return "pending"
+
+    monkeypatch.setattr(github_pr, "commit_ci_status", fake_status)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        report = await dev_outcomes.check_post_merge_ci(s, merge)
+        await s.commit()
+    assert report == {"status": "pending"}
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        assert "post_merge_ci" not in merge.payload
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_post_merge_ci_failure_opens_revert_and_notifies(merged_task, monkeypatch):
+    from life_graph.models.db import Approval, Notification
+    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.storage.database import async_session
+
+    async def fake_status(payload):
+        return "failure"
+
+    async def fake_revert(payload):
+        assert payload["merge_commit"] == "a" * 40
+        return {"pr_url": "https://github.com/me/demo/pull/99", "branch": "lg/revert-aaaaaaa"}
+
+    monkeypatch.setattr(github_pr, "commit_ci_status", fake_status)
+    monkeypatch.setattr(github_pr, "revert_merge_commit", fake_revert)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        report = await dev_outcomes.check_post_merge_ci(s, merge)
+        await s.commit()
+    assert report == {"status": "failure", "revert_pr": "https://github.com/me/demo/pull/99"}
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        assert merge.payload["post_merge_ci"] == "failure"
+        assert merge.payload["revert_pr_url"] == "https://github.com/me/demo/pull/99"
+
+        notif = (
+            await s.execute(
+                select(Notification).where(
+                    Notification.tenant_id == TENANT,
+                    Notification.source_type == "post_merge_ci_failure",
+                )
+            )
+        ).scalar_one()
+        assert notif.priority == "critical"
+        assert "revert PR" in notif.title
+        assert notif.body is not None and "pull/99" in notif.body
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_post_merge_ci_already_checked_is_a_noop(merged_task, monkeypatch):
+    from life_graph.models.db import Approval
+    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.storage.database import async_session
+
+    def must_not_run(payload):
+        raise AssertionError("an already-checked merge must not be checked again")
+
+    monkeypatch.setattr(github_pr, "commit_ci_status", must_not_run)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        merge.payload = {**merge.payload, "post_merge_ci": "success"}
+        await s.commit()
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        report = await dev_outcomes.check_post_merge_ci(s, merge)
+    assert report == {"skipped": "already checked or no merge commit"}
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_sync_all_gives_up_on_a_merge_stuck_pending_a_day(merged_task, fake_gh, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from life_graph.models.db import Approval
+    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.storage.database import async_session
+
+    fake_gh(state="OPEN")  # no driver_pr rows reference this PR; first loop is a no-op
+
+    def must_not_run(payload):
+        raise AssertionError("a day-old unresolved check must not be polled again")
+
+    monkeypatch.setattr(github_pr, "commit_ci_status", must_not_run)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        merge.resolved_at = datetime.now(UTC) - timedelta(days=2)
+        await s.commit()
+
+    await dev_outcomes.sync_all(async_session)
+
+    async with async_session() as s:
+        merge = await s.get(Approval, merged_task)
+        assert merge.payload["post_merge_ci"] == "timeout"
