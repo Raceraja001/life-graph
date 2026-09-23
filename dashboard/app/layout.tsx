@@ -77,7 +77,23 @@ export default function RootLayout({
         <RootShell>{children}</RootShell>
         <script
           dangerouslySetInnerHTML={{
-            __html: `
+            __html:
+              process.env.NODE_ENV !== "production"
+                ? `
+              // Development: no service worker. It caches /_next/static cache-first, but
+              // dev chunk names are reused between builds, so a stale chunk survives a
+              // rebuild and breaks the app (e.g. api.connectors undefined on Overview).
+              // Also clear anything an earlier session or a production build left behind.
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations()
+                  .then((rs) => rs.forEach((r) => r.unregister()))
+                  .catch(() => {});
+              }
+              if (typeof caches !== 'undefined') {
+                caches.keys().then((ks) => ks.forEach((k) => caches.delete(k))).catch(() => {});
+              }
+            `
+                : `
               if ('serviceWorker' in navigator) {
                 let refreshing = false;
                 navigator.serviceWorker.addEventListener('controllerchange', () => {
