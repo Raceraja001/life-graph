@@ -144,6 +144,13 @@ class Settings(BaseSettings):
     extraction_llm_min_words: int = 20  # legacy 3-tier LLM gate (non-capture callers)
     extraction_llm_confidence_threshold: float = 0.5  # legacy 3-tier LLM gate
 
+    # Surfaces whose captures are an activity trail, not content: the event row
+    # is kept, but extraction, memory storage and the decision/procedure regexes
+    # are skipped. Without this, every tool call became several LLM-written
+    # "facts" about shell commands, which drowned real memories in the review
+    # queue and in recall. Comma-separated; empty string extracts everything.
+    capture_no_extract_surfaces: str = "tool_exhaust"
+
     # ── Cold Start ─────────────────────────────────────
     cold_start_min_memories: int = 50
 
@@ -487,6 +494,11 @@ class Settings(BaseSettings):
         """Roots the file_* tools may touch. Defaults to the home directory."""
         roots = [r.strip() for r in self.tool_fs_roots.split(",") if r.strip()]
         return roots or [os.path.expanduser("~")]
+
+    @property
+    def capture_no_extract_surfaces_list(self) -> list[str]:
+        """Surfaces that are logged as capture events but never extracted."""
+        return [s.strip() for s in self.capture_no_extract_surfaces.split(",") if s.strip()]
 
     @property
     def llm_fallback_chain_list(self) -> list[str]:

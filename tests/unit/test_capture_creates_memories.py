@@ -291,3 +291,78 @@ class TestFailureIsolation:
         )
 
         harness.manager.store_facts.assert_not_awaited()
+
+
+class TestActivityTrailSurfaces:
+    """Some surfaces are a trail of what happened, not something to remember.
+
+    Every tool call arrives as a capture on ``tool_exhaust``. Extracting it
+    produced several LLM-written "facts" per shell command — 4,752 of 4,988
+    memories on the author's own instance, all pending, which is what recall
+    then fed back into the next session. The event row still lands (that is
+    the trail); nothing downstream of it runs.
+    """
+
+    @pytest.mark.asyncio
+    async def test_tool_exhaust_is_not_extracted(self, harness):
+        harness.capture_evt.surface = "tool_exhaust"
+
+        await harness.run()
+
+        assert harness.pipeline.capture_flags == []
+        harness.manager.store_facts.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_the_capture_event_is_still_marked_processed(self, harness):
+        """The trail is the point — the row must not be left stuck at 'received'."""
+        harness.capture_evt.surface = "tool_exhaust"
+
+        await harness.run()
+
+        assert harness.capture_evt.status == "processed"
+        assert harness.capture_evt.yield_count == 0
+        assert harness.session.committed
+
+    @pytest.mark.asyncio
+    async def test_decision_and_procedure_detection_are_skipped_too(self, harness):
+        """Tool output trips the regexes as readily as prose does."""
+        emit = AsyncMock()
+        harness_bus = CaptureProcessors(bus=SimpleNamespace(emit=emit))
+        harness.capture_evt.surface = "tool_exhaust"
+        harness.capture_evt.content = "tool:Bash status:ok 12ms args:let's use the plan is to ship"
+
+        await harness_bus._on_capture_received(
+            Event(
+                type=EventType.CAPTURE_RECEIVED,
+                payload={
+                    "capture_event_id": str(harness.capture_evt.id),
+                    "tenant_id": "acme",
+                    "modality": "text",
+                },
+                source="test",
+            )
+        )
+
+        emit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_other_surfaces_are_unaffected(self, harness):
+        """The setting names one surface; everything else extracts as before."""
+        harness.capture_evt.surface = "cli"
+
+        await harness.run()
+
+        harness.manager.store_facts.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_the_list_is_configurable(self, harness, monkeypatch):
+        """So the trail can be re-enabled, or another surface silenced, from .env."""
+        monkeypatch.setattr(
+            "life_graph.services.capture_processors.settings",
+            SimpleNamespace(capture_no_extract_surfaces_list=[]),
+        )
+        harness.capture_evt.surface = "tool_exhaust"
+
+        await harness.run()
+
+        harness.manager.store_facts.assert_awaited_once()
