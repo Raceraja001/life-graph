@@ -97,6 +97,7 @@ async def test_task_runs_in_background_and_reports_branch(client, project, fake_
     assert got["stage"] == "landed"
     assert got["branch"] == f"lg/task-{created['id'][:8]}"
     assert got["cost_usd"] == 0.05
+    assert got["verification"] == []
 
     listed = (await client.get("/api/v1/kernel/drivers/tasks")).json()["data"]
     assert listed[0]["id"] == created["id"]
@@ -277,3 +278,77 @@ async def test_wip_limit_does_not_count_the_task_itself(project):
         for r in rows:
             await s.delete(r)
         await s.commit()
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_verification_surfaces_the_failing_checks_evidence(project):
+    """The detail behind a generic "Verification failed" error -- which
+    verifier failed and why -- should be readable from the task itself,
+    not require a hand-run query against VerificationRun."""
+    from life_graph.drivers.dispatcher import TaskDispatcher
+    from life_graph.models.db import AgentTask
+    from life_graph.services import dev_tasks
+    from life_graph.services.verifiers import VerifierResult
+    from life_graph.storage.database import async_session
+
+    task_id = uuid.uuid4()
+    async with async_session() as s:
+        s.add(
+            AgentTask(
+                id=task_id,
+                tenant_id=TENANT,
+                agent_name=dev_tasks.AGENT_NAME,
+                title="Fix the flaky test",
+                instructions="Fix it",
+                status="completed",
+                properties={"kind": dev_tasks.KIND, "project_name": project["name"]},
+            )
+        )
+        await s.commit()
+
+        dispatcher = TaskDispatcher(session_factory=async_session)
+        attempt1 = [VerifierResult("build_ok_diff", True, {"checked": 2})]
+        attempt2 = [
+            VerifierResult("build_ok_diff", True, {"checked": 2}),
+            VerifierResult("tests_pass", False, {"stdout": "1 failed, 2 passed", "returncode": 1}),
+        ]
+        await dispatcher._record_verification(TENANT, str(task_id), 1, attempt1, s)
+        await dispatcher._record_verification(TENANT, str(task_id), 2, attempt2, s)
+        await s.commit()
+
+        data = await dev_tasks.get_dev_task(s, TENANT, str(task_id))
+
+    assert [r["attempt"] for r in data["verification"]] == [1, 2]
+    assert data["verification"][0]["passed"] is True
+    second = data["verification"][1]
+    assert second["passed"] is False
+    failing = next(r for r in second["results"] if not r["passed"])
+    assert failing["verifier"] == "tests_pass"
+    assert "1 failed" in failing["evidence"]["stdout"]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_verification_is_empty_for_a_task_with_no_runs(project):
+    from life_graph.models.db import AgentTask
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    task_id = uuid.uuid4()
+    async with async_session() as s:
+        s.add(
+            AgentTask(
+                id=task_id,
+                tenant_id=TENANT,
+                agent_name=dev_tasks.AGENT_NAME,
+                title="No verification yet",
+                instructions="...",
+                status="queued",
+                properties={"kind": dev_tasks.KIND, "project_name": project["name"]},
+            )
+        )
+        await s.commit()
+        data = await dev_tasks.get_dev_task(s, TENANT, str(task_id))
+
+    assert data["verification"] == []

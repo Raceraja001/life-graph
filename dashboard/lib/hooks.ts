@@ -200,6 +200,15 @@ export function useDevTasks() {
       ((query.state.data as any[]) ?? []).some((t) => ACTIVE_STAGES.has(t.stage)) ? 4000 : false,
   });
 }
+// Fetched on demand (expanding a failed/needs_review task's verification
+// detail), not polled — the list view already refetches the summary.
+export function useDevTaskDetail(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["dev-tasks", id],
+    queryFn: () => api.devTasks.get(id),
+    enabled,
+  });
+}
 export function useCreateDevTask() {
   const qc = useQueryClient();
   return useMutation({

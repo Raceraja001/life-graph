@@ -2,7 +2,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Bot, ExternalLink, GitBranch, GitMerge, GitPullRequest, Loader2, Send } from "lucide-react";
-import { useCreateDevTask, useDevTasks, useDriverPersonas, useProjects } from "@/lib/hooks";
+import {
+  useCreateDevTask,
+  useDevTaskDetail,
+  useDevTasks,
+  useDriverPersonas,
+  useProjects,
+} from "@/lib/hooks";
 
 // stage (from the API) → label + badge colours. Order follows the pipeline.
 const STAGES: Record<string, { label: string; cls: string }> = {
@@ -126,6 +132,48 @@ function NewTaskForm() {
   );
 }
 
+// Which verifier failed and why — the detail behind a generic "Verification
+// failed" error. Fetched only once expanded: the list view already has
+// everything else it needs from the summary endpoint.
+function VerificationDetail({ taskId }: { taskId: string }) {
+  const [open, setOpen] = useState(false);
+  const detail = useDevTaskDetail(taskId, open);
+  const runs: any[] = detail.data?.verification ?? [];
+
+  return (
+    <details className="text-xs" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary className="cursor-pointer text-ink-mid">Verification detail</summary>
+      {detail.isLoading && <p className="mt-1 text-ink-low">Loading…</p>}
+      {detail.isError && <p className="mt-1 text-danger">Couldn&rsquo;t load verification detail.</p>}
+      {!detail.isLoading && !detail.isError && runs.length === 0 && (
+        <p className="mt-1 text-ink-low">No verifier runs recorded for this task.</p>
+      )}
+      {runs.map((run) => (
+        <div key={run.attempt} className="mt-2 space-y-1">
+          <p className="text-ink-mid font-medium">
+            Attempt {run.attempt} — {run.passed ? "passed" : "failed"}
+          </p>
+          {(run.results ?? []).map((r: any) => (
+            <div
+              key={r.verifier}
+              className={`pl-2 border-l-2 ${r.passed ? "border-success/40" : "border-danger/40"}`}
+            >
+              <p className={r.passed ? "text-success" : "text-danger"}>
+                {r.verifier} — {r.inconclusive ? "could not run" : r.passed ? "passed" : "failed"}
+              </p>
+              {!r.passed && r.evidence && (
+                <pre className="mt-0.5 whitespace-pre-wrap break-words text-ink-low bg-surface-2 rounded px-2 py-1">
+                  {JSON.stringify(r.evidence, null, 2).slice(0, 2000)}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </details>
+  );
+}
+
 function TaskCard({ t }: { t: any }) {
   const stage = STAGES[t.stage] ?? { label: t.stage, cls: "bg-surface-3 text-ink-mid" };
   const pending = (t.approvals ?? []).find((a: any) => a.status === "pending");
@@ -181,6 +229,8 @@ function TaskCard({ t }: { t: any }) {
       )}
 
       {t.error && t.status === "failed" && <p className="text-xs text-danger break-words">{t.error}</p>}
+
+      {t.error && <VerificationDetail taskId={t.id} />}
 
       {t.output && (
         <details className="text-xs">

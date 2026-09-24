@@ -530,6 +530,7 @@ export const api = {
     list: () => listRequest<any>("/kernel/drivers/tasks", { limit: "50" }),
     create: (body: { instruction: string; project_id: string; persona_name: string }) =>
       POST<any>("/kernel/drivers/tasks", body).then((res: any) => res?.data),
+    get: (id: string) => GET<any>(`/kernel/drivers/tasks/${id}`).then((res: any) => res?.data),
   },
   approvals: {
     list: (status: string = "pending") =>

@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, or_, select, update
 
-from life_graph.models.db import AgentTask, Approval
+from life_graph.models.db import AgentTask, Approval, VerificationRun
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -244,7 +244,34 @@ async def get_dev_task(session: AsyncSession, tenant_id: str, task_id: str) -> d
     if task is None or task.tenant_id != tenant_id or (task.properties or {}).get("kind") != KIND:
         return None
     approvals = await _approvals_by_task(session, tenant_id, [task_id])
-    return serialize(task, approvals.get(task_id, []))
+    data = serialize(task, approvals.get(task_id, []))
+    data["verification"] = await _verification_summary(session, tenant_id, pk)
+    return data
+
+
+async def _verification_summary(
+    session: AsyncSession, tenant_id: str, task_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    """Every verifier-chain run for this task, oldest attempt first.
+
+    This is the detail behind a generic "Verification failed" error — which
+    verifier failed and its evidence (stdout tail, returncode, ...) — kept
+    out of list_dev_tasks/serialize() because it's one extra query per task
+    and only ever useful once you're already looking at a single stalled or
+    needs_human task, not scanning a list of them.
+    """
+    rows = (
+        (
+            await session.execute(
+                select(VerificationRun)
+                .where(VerificationRun.tenant_id == tenant_id, VerificationRun.task_id == task_id)
+                .order_by(VerificationRun.attempt)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [{"attempt": r.attempt, "passed": r.passed, "results": r.results} for r in rows]
 
 
 async def _approvals_by_task(
