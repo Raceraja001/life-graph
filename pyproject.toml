@@ -102,6 +102,15 @@ dependencies = [
 
     # Web Push Notifications
     "pywebpush>=2.0",
+
+    # Transitive via pywebpush/py-vapid, google-auth and others, but pinned
+    # here directly: 49.0.0 carries PYSEC-2026-3552 / CVE-2026-69247, a
+    # timing side channel in PKCS#7/S-MIME decryption (pkcs7_decrypt_der/
+    # _pem/_smime). Nothing in life_graph calls those specifically, but the
+    # fix is a drop-in version bump with no known breaking API change, so
+    # there is no reason to stay on the vulnerable version once caught by
+    # no_vulnerable_deps_in_diff.
+    "cryptography>=50.0",
 ]
 
 [project.optional-dependencies]
