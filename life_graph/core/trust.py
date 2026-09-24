@@ -59,6 +59,11 @@ _SURFACE_TIER: dict[str, TrustTier] = {
     "chat": TrustTier.SELF,
     # System-generated, deterministic observations of our own work.
     "tool_exhaust": TrustTier.VERIFIED,
+    # An agent's closing message: its own conclusion about work it just did.
+    # Separate from "tool_exhaust" because that surface is a raw activity
+    # trail which is deliberately not extracted, and a conclusion is the
+    # one thing on that path worth remembering.
+    "assistant_message": TrustTier.VERIFIED,
     # Produced by our own agents and pipelines, not by a third party. Trusted
     # more than an unknown surface, less than something the user wrote.
     "agent_task": TrustTier.VERIFIED,

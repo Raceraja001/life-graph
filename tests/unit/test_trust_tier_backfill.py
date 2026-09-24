@@ -54,6 +54,11 @@ _ADDED_AFTER_036 = {
     # Telegram bridge, migration 037. No rows can predate it: the tables that
     # produce this surface are created by that same migration.
     "telegram",
+    # Agent closing messages, split off "tool_exhaust" once that surface
+    # stopped being extracted. Rows *do* predate it, so they got a backfill of
+    # their own — migration 043 relabels the capture events, and both surfaces
+    # are VERIFIED, so no row's tier changes and 036's work still holds.
+    "assistant_message",
 }
 
 
