@@ -138,6 +138,7 @@ dev = [
     "ruff==0.16.1",  # pinned: an unpinned linter breaks CI with no code change
     "httpx>=0.27",
     "testcontainers[postgres]>=4.7",
+    "pip-audit>=2.7",  # powers the no_vulnerable_deps_in_diff verifier
 ]
 # Everything a full self-hosted deployment uses, so `pip install life-graph[all]`
 # reproduces the old all-in-one install in one line.
