@@ -1,11 +1,12 @@
 """Verifier Chain — quality gates for agent task results.
 
-10 built-in verifiers. Each returns (passed: bool, evidence: dict).
+11 built-in verifiers. Each returns (passed: bool, evidence: dict).
 One-bounce rule: failed → re-dispatch once → second failure → needs_human.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shlex
@@ -129,6 +130,7 @@ class VerifierChain:
         self.register("build_ok_diff", _verify_build_ok_diff)
         self.register("lint_clean_diff", _verify_lint_clean_diff)
         self.register("no_secrets_in_diff", _verify_no_secrets_in_diff)
+        self.register("no_vulnerable_deps_in_diff", _verify_no_vulnerable_deps_in_diff)
         self.register("diff_within_scope", _verify_diff_within_scope)
         self.register("citations_present", _verify_citations_present)
         self.register("style_conforms", _verify_style_conforms)
@@ -440,6 +442,96 @@ async def _verify_no_secrets_in_diff(workdir: Path, ctx: dict) -> tuple[bool, di
                 if pattern.search(line):
                     findings.append({"file": rel, "line": lineno, "pattern": name})
     return not findings, {"findings": findings[:20], "checked": len(changed)}
+
+
+_DEPENDENCY_MANIFESTS = frozenset(
+    {
+        "requirements.txt",
+        "requirements-dev.txt",
+        "requirements-test.txt",
+        "pyproject.toml",
+        "uv.lock",
+        "poetry.lock",
+        "Pipfile",
+        "Pipfile.lock",
+        "setup.py",
+        "setup.cfg",
+    }
+)
+
+
+async def _verify_no_vulnerable_deps_in_diff(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
+    """Refuse to land a change that adds a dependency with a known CVE.
+
+    Skipped entirely (a real pass, not inconclusive) unless the diff touches
+    a dependency manifest — most tasks never do, and an audit costs a real
+    network round-trip that isn't worth paying otherwise.
+
+    Runs on the host, never inside the check-phase sandbox: unlike every
+    other verifier here, this one genuinely needs outbound network access
+    (querying the OSV/PyPI vulnerability database), which the sandbox denies
+    by design (``services/sandbox.py``'s ``--network none`` check phase).
+    That's safe specifically for this check: pip-audit only reads installed
+    package name/version metadata and queries a vulnerability database, it
+    never executes anything from the diff itself — unlike tests_pass or
+    lint_clean_diff, which run the agent's actual code and must stay
+    contained. Still uses the sandbox's own cached, dependency-resolved venv
+    (``prepare_env``, built during the network-on setup phase) rather than
+    assuming a stray ``workdir/.venv`` exists, which it usually won't for an
+    ephemeral worktree.
+    """
+    changed_names = {f.name for f in _changed_files(workdir)}
+    touched = sorted(_DEPENDENCY_MANIFESTS & changed_names)
+    if not touched:
+        return True, {"note": "no dependency manifest changed", "touched": []}
+
+    pip_audit: str | None = None
+    if sandbox.enabled():
+        try:
+            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            candidate = venv / "bin" / "pip-audit"
+            pip_audit = str(candidate) if candidate.is_file() else None
+        except sandbox.SandboxUnavailableError:
+            pip_audit = None
+    if pip_audit is None:
+        pip_audit = _project_tool(workdir, "pip-audit")
+
+    if pip_audit is None:
+        logger.warning("no_vulnerable_deps_in_diff: pip-audit not available — check not performed")
+        return None, {"note": "pip-audit not available for this project", "touched": touched}
+
+    try:
+        result = subprocess.run(
+            [pip_audit, "--format", "json", "--progress-spinner", "off"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except FileNotFoundError:
+        return None, {
+            "note": f"pip-audit at {pip_audit!r} disappeared before it could run",
+            "touched": touched,
+        }
+    except subprocess.TimeoutExpired:
+        return None, {"note": "pip-audit timed out (needs network, not sandboxed)", "touched": touched}
+
+    if result.returncode not in (0, 1):
+        # 0: no vulnerabilities. 1: vulnerabilities found. Anything else is
+        # pip-audit itself failing (bad env, no network, ...) — not a
+        # verdict on the dependencies.
+        return None, {"note": f"pip-audit could not run: {result.stderr[-300:]}", "touched": touched}
+
+    try:
+        report = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return None, {"note": "pip-audit produced unparseable output", "touched": touched}
+
+    vulns = [
+        {"package": dep.get("name"), "version": dep.get("version"), "id": v.get("id")}
+        for dep in report.get("dependencies") or []
+        for v in dep.get("vulns") or []
+    ]
+    return not vulns, {"touched": touched, "vulnerabilities": vulns[:20]}
 
 
 async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:

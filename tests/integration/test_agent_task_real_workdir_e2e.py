@@ -175,7 +175,12 @@ async def test_registered_project_resolves_real_uuid_and_requests_isolation(auto
     # The dispatcher applies persona.verifier_chain when there is one, and
     # this same diff-scoped pair as DEFAULT_VERIFY_CHAIN when there is not.
     assert kwargs["verify_chain"] is None
-    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff", "no_secrets_in_diff"]
+    assert DEFAULT_VERIFY_CHAIN == [
+        "build_ok_diff",
+        "lint_clean_diff",
+        "no_secrets_in_diff",
+        "no_vulnerable_deps_in_diff",
+    ]
     assert kwargs["tenant_id"] == TENANT
     assert kwargs["persona_name"] == "cody"
     assert kwargs["interactive"] is False
@@ -212,7 +217,12 @@ async def test_no_registered_project_falls_back_to_none_and_still_succeeds(auton
     # The dispatcher applies persona.verifier_chain when there is one, and
     # this same diff-scoped pair as DEFAULT_VERIFY_CHAIN when there is not.
     assert kwargs["verify_chain"] is None
-    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff", "no_secrets_in_diff"]
+    assert DEFAULT_VERIFY_CHAIN == [
+        "build_ok_diff",
+        "lint_clean_diff",
+        "no_secrets_in_diff",
+        "no_vulnerable_deps_in_diff",
+    ]
 
     assert status == "success"
     assert exit_code == 0

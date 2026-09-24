@@ -67,12 +67,17 @@ AUTO_PR_MERGE_RATE = 0.8
 # time, forever. A verifier chain judges the diff; a persona may ask for
 # something stricter via its own verifier_chain.
 #
-# no_secrets_in_diff is in the default chain, not opt-in like most other
-# checks: it is pure regex over changed files (no subprocess, no sandbox,
-# no meaningful latency) and only high-confidence credential shapes, so the
-# false-positive cost of running it everywhere is close to zero while the
-# cost of a project forgetting to opt in is a leaked key.
-DEFAULT_VERIFY_CHAIN = ["build_ok_diff", "lint_clean_diff", "no_secrets_in_diff"]
+# no_secrets_in_diff and no_vulnerable_deps_in_diff are in the default
+# chain, not opt-in like most other checks — see _ALWAYS_ON_CHECKS below,
+# which is what actually guarantees they run even for a persona that picks
+# its own chain; listed here too so the default chain reads as complete on
+# its own.
+DEFAULT_VERIFY_CHAIN = [
+    "build_ok_diff",
+    "lint_clean_diff",
+    "no_secrets_in_diff",
+    "no_vulnerable_deps_in_diff",
+]
 
 
 class DispatchError(Exception):
@@ -106,9 +111,13 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
 # Appended unconditionally in _with_required_checks, after persona/caller
 # resolution — a persona picking its own verifier_chain (personas.py has
 # several) opts out of the default chain, but must not thereby opt out of
-# leak detection. Unlike required_checks this is not project-configurable:
-# there is no legitimate reason for any project to dispatch without it.
-_ALWAYS_ON_CHECKS = ("no_secrets_in_diff",)
+# these. Unlike required_checks these are not project-configurable: there
+# is no legitimate reason for any project to dispatch without them.
+#
+# no_vulnerable_deps_in_diff self-gates (a real pass, not a no-op) unless
+# the diff touches a dependency manifest, so it costs nothing on the
+# overwhelming majority of dispatches that never touch one.
+_ALWAYS_ON_CHECKS = ("no_secrets_in_diff", "no_vulnerable_deps_in_diff")
 
 
 def _with_required_checks(chain: list[str], project_context: dict) -> list[str]:

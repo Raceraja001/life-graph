@@ -284,3 +284,132 @@ async def test_lint_clean_diff_still_fails_on_real_lint_errors(tmp_path):
     results = await verifier_chain.run_chain(["lint_clean_diff"], tmp_path, {})
 
     assert results[0].passed is False
+
+
+# ── no_vulnerable_deps_in_diff ────────────────────────────────
+
+
+def _fake_pip_audit(tmp_path, report: dict, returncode: int = 0):
+    """A stub pip-audit binary that prints a fixed JSON report."""
+    import json
+
+    script = tmp_path / "fake-pip-audit"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        f"print({json.dumps(json.dumps(report))})\n"
+        f"sys.exit({returncode})\n"
+    )
+    script.chmod(0o755)
+    return str(script)
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_skips_when_no_manifest_touched(tmp_path, monkeypatch):
+    """No dependency manifest in the diff -> a real pass, no tool ever invoked."""
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "new.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "new.py"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    def must_not_run(workdir, tool):
+        raise AssertionError("must not look for pip-audit when no manifest changed")
+
+    monkeypatch.setattr(verifiers_mod, "_project_tool", must_not_run)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+    assert results[0].inconclusive is False
+    assert results[0].evidence["touched"] == []
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_inconclusive_without_pip_audit(tmp_path, monkeypatch):
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+    monkeypatch.setattr(verifiers_mod, "_project_tool", lambda workdir, tool: None)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].inconclusive is True
+    assert results[0].passed is False, "inconclusive must never read as a pass"
+    assert results[0].evidence["touched"] == ["requirements.txt"]
+    assert "pip-audit not available" in results[0].evidence["note"]
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_passes_when_pip_audit_finds_nothing(tmp_path, monkeypatch):
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    clean = _fake_pip_audit(tmp_path, {"dependencies": [{"name": "requests", "vulns": []}]})
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+    monkeypatch.setattr(verifiers_mod, "_project_tool", lambda workdir, tool: clean)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+    assert results[0].evidence["vulnerabilities"] == []
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_fails_when_pip_audit_finds_a_vuln(tmp_path, monkeypatch):
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    report = {
+        "dependencies": [
+            {"name": "requests", "version": "2.0.0", "vulns": [{"id": "PYSEC-2018-28"}]}
+        ]
+    }
+    vulnerable = _fake_pip_audit(tmp_path, report, returncode=1)
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+    monkeypatch.setattr(verifiers_mod, "_project_tool", lambda workdir, tool: vulnerable)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].passed is False
+    assert results[0].inconclusive is False
+    (vuln,) = results[0].evidence["vulnerabilities"]
+    assert vuln == {"package": "requests", "version": "2.0.0", "id": "PYSEC-2018-28"}
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_inconclusive_when_pip_audit_itself_fails(tmp_path, monkeypatch):
+    """A network failure or bad env (exit code neither 0 nor 1) is not a
+    verdict on the dependencies — must not be reported as a vulnerability."""
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    broken = _fake_pip_audit(tmp_path, {}, returncode=2)
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+    monkeypatch.setattr(verifiers_mod, "_project_tool", lambda workdir, tool: broken)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].inconclusive is True
+    assert results[0].passed is False

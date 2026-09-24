@@ -208,7 +208,12 @@ async def test_run_action_agent_task_dispatches(agent_task_service_with_dispatch
     # dispatcher applies persona.verifier_chain when there is one and the
     # diff-scoped DEFAULT_VERIFY_CHAIN — this same pair — when there is not.
     assert kwargs["verify_chain"] is None
-    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff", "no_secrets_in_diff"]
+    assert DEFAULT_VERIFY_CHAIN == [
+        "build_ok_diff",
+        "lint_clean_diff",
+        "no_secrets_in_diff",
+        "no_vulnerable_deps_in_diff",
+    ]
     assert kwargs["cost_cap_usd"] == DEFAULT_AGENT_TASK_COST_CAP
     assert kwargs["isolate_workdir"] is True
 

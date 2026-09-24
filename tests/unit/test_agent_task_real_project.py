@@ -128,6 +128,11 @@ async def test_run_action_agent_task_passes_real_project_and_isolation_to_dispat
     # dispatcher applies persona.verifier_chain when there is one and the
     # diff-scoped DEFAULT_VERIFY_CHAIN — this same pair — when there is not.
     assert kwargs["verify_chain"] is None
-    assert DEFAULT_VERIFY_CHAIN == ["build_ok_diff", "lint_clean_diff", "no_secrets_in_diff"]
+    assert DEFAULT_VERIFY_CHAIN == [
+        "build_ok_diff",
+        "lint_clean_diff",
+        "no_secrets_in_diff",
+        "no_vulnerable_deps_in_diff",
+    ]
     # the AutoAction's OWN project_id column is untouched
     assert box["action"].project_id == "ambient"
