@@ -33,6 +33,7 @@ import sys
 from typing import Any
 
 from life_graph.integrations.claude_code.config import (
+    SURFACE_ASSISTANT_MESSAGE,
     SURFACE_CLI,
     SURFACE_TOOL_EXHAUST,
     HookConfig,
@@ -43,6 +44,27 @@ from life_graph.integrations.claude_code.config import (
 
 #: Assistant messages shorter than this ("Done.", "Fixed it.") are noise.
 MIN_ASSISTANT_MESSAGE_CHARS = 40
+
+#: Envelopes Claude Code injects into the prompt stream that are not the
+#: developer typing. A task notification arrives as a user turn, so without
+#: this the spine learned facts like "The task with ID 'blwug1frp' has been
+#: completed" — and one of those per background task.
+MACHINE_PROMPT_TAGS = (
+    "<task-notification>",
+    "<local-command-stdout>",
+    "<command-name>",
+    "<command-message>",
+)
+
+
+def is_machine_prompt(prompt: str) -> bool:
+    """True when a UserPromptSubmit turn was injected, not typed.
+
+    Matched at the start of the prompt only: the developer quoting one of
+    these tags mid-sentence is still the developer speaking.
+    """
+    return prompt.lstrip().startswith(MACHINE_PROMPT_TAGS)
+
 
 #: Upper bound on the SessionEnd spool flush, so quitting never hangs.
 FLUSH_BUDGET_SECONDS = 3.0
@@ -144,7 +166,7 @@ def handle_user_prompt_submit(
     rewriting the developer's prompt is not this integration's business.
     """
     prompt = (payload.get("prompt") or "").strip()
-    if not prompt:
+    if not prompt or is_machine_prompt(prompt):
         return None
     _capture(payload, cfg, surface=SURFACE_CLI, content=prompt, client=client)
     return None
@@ -226,10 +248,15 @@ def handle_post_tool_use(
 
 
 def handle_stop(payload: dict[str, Any], cfg: HookConfig, *, client=None) -> dict[str, Any] | None:
-    """Capture the assistant's closing message — surface ``tool_exhaust``.
+    """Capture the assistant's closing message — surface ``assistant_message``.
 
     High-signal by definition (it is a conclusion, not routine noise), so it
     bypasses the low-signal sampler. A trivially short message is dropped.
+
+    Its own surface rather than ``tool_exhaust``: that one is a raw activity
+    trail which the capture spine deliberately does not extract, and a
+    conclusion is the one thing arriving from this integration that is worth
+    remembering. Both are VERIFIED, so nothing about fencing changes.
     """
     message = (payload.get("last_assistant_message") or "").strip()
     if len(message) < MIN_ASSISTANT_MESSAGE_CHARS:
@@ -240,7 +267,7 @@ def handle_stop(payload: dict[str, Any], cfg: HookConfig, *, client=None) -> dic
     _capture(
         payload,
         cfg,
-        surface=SURFACE_TOOL_EXHAUST,
+        surface=SURFACE_ASSISTANT_MESSAGE,
         content=message,
         properties=props,
         client=client,

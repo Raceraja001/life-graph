@@ -69,13 +69,31 @@ rather than `~/.life-graph/`.
 
 | Hook event | Surface | Trust tier | Content |
 |---|---|---|---|
-| `UserPromptSubmit` | `cli` | **SELF** | The prompt you typed |
+| `UserPromptSubmit` | `cli` | **SELF** | The prompt you typed — injected turns are dropped |
 | `PostToolUse` | `tool_exhaust` | **VERIFIED** | `tool:<name> status:ok <ms>ms args:<summary>` |
 | `PostToolUseFailure` | `tool_exhaust` | **VERIFIED** | same, `status:error`, plus the error |
-| `Stop` | `tool_exhaust` | **VERIFIED** | The assistant's closing message |
-| `SubagentStop` | `tool_exhaust` | **VERIFIED** | The subagent's closing message |
+| `Stop` | `assistant_message` | **VERIFIED** | The assistant's closing message |
+| `SubagentStop` | `assistant_message` | **VERIFIED** | The subagent's closing message |
 | `SessionStart` | — | — | *reads* — injects recall, captures nothing |
 | `SessionEnd` | — | — | flushes the offline spool |
+
+### Trail versus content
+
+`tool_exhaust` is an activity trail, and `capture_no_extract_surfaces` (default
+`tool_exhaust`) keeps the capture spine from extracting it. Without that, every tool call
+became several LLM-written "facts" about shell commands — 4,831 of 5,067 memories on one
+instance, all pending, all of it flowing back in through `SessionStart` recall.
+
+Two consequences shape the table above:
+
+* `Stop` moved off `tool_exhaust` onto its own `assistant_message` surface. A closing
+  message is a conclusion, the one thing on this path worth remembering, and leaving it on
+  a non-extracted surface would have discarded it silently.
+* `UserPromptSubmit` drops turns Claude Code *injects* rather than ones you type —
+  `<task-notification>`, `<local-command-stdout>`, `<command-name>`, `<command-message>`.
+  Each background task otherwise taught the spine that "The task with ID 'blwug1frp' has
+  been completed". Matched at the start of the prompt only, so quoting a tag mid-sentence
+  still counts as you speaking.
 
 `modality` is always `text`. `capture_processors` early-returns on every other modality, so
 a `structured` event would be stored but never processed into memory.
@@ -87,7 +105,7 @@ not in `_SURFACE_TIER` resolves to `EXTERNAL` and gets prompt-fenced as untruste
 plausible-looking `claude_code` surface would therefore have quietly demoted everything this
 integration captures. We reuse the existing rows instead, which already carry the right
 semantics — `cli` for the developer typing, `tool_exhaust` for deterministic observation of
-our own work. `tests/unit/test_claude_code_hook.py` asserts both tiers against
+our own work, `assistant_message` for an agent's own conclusions. `tests/unit/test_claude_code_hook.py` asserts both tiers against
 `classify_surface` directly; that is the regression that matters.
 
 ### Session-start recall
