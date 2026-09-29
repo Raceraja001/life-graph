@@ -3,6 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Bot, ExternalLink, GitBranch, GitMerge, GitPullRequest, Loader2, Send } from "lucide-react";
 import {
+  useAutoMergeStatus,
   useCreateDevTask,
   useDevTaskDetail,
   useDevTasks,
@@ -132,6 +133,64 @@ function NewTaskForm() {
   );
 }
 
+// Same numbers the dispatcher itself reads before deciding whether to skip
+// a PR-open/merge approval — so "why isn't this auto-merging" is a glance
+// at this card, not a hand-run curl against /tasks/stats plus mentally
+// comparing it to 80%.
+function AutoMergeStatus() {
+  const status = useAutoMergeStatus();
+  const rows: any[] = status.data ?? [];
+
+  if (status.isLoading || status.isError || rows.length === 0) return null;
+
+  return (
+    <div className="bg-surface border border-line rounded-xl p-4 space-y-3">
+      <p className="text-sm font-medium text-ink">Auto-merge trust status</p>
+      <div className="space-y-2">
+        {rows.map((r) => {
+          const pct = r.merge_rate == null ? null : Math.round(r.merge_rate * 100);
+          const thresholdPct = Math.round(r.threshold * 100);
+          const opted = r.auto_open_pr || r.auto_merge;
+          return (
+            <div key={`${r.persona}-${r.project_id}`} className="text-xs space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink-mid">
+                  {r.project_name} <span className="text-ink-low">· {r.persona}</span>
+                </span>
+                <span
+                  className={
+                    !opted
+                      ? "text-ink-low"
+                      : r.earning_auto_merge
+                        ? "text-success font-medium"
+                        : "text-warning font-medium"
+                  }
+                >
+                  {!opted
+                    ? "not opted in"
+                    : !r.established
+                      ? `${r.total}/3 outcomes needed`
+                      : r.earning_auto_merge
+                        ? "auto-merge earned"
+                        : `${pct}% — needs ${thresholdPct}%`}
+                </span>
+              </div>
+              {opted && r.established && (
+                <div className="h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${r.earning_auto_merge ? "bg-success" : "bg-warning"}`}
+                    style={{ width: `${Math.min(100, pct ?? 0)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Which verifier failed and why — the detail behind a generic "Verification
 // failed" error. Fetched only once expanded: the list view already has
 // everything else it needs from the summary endpoint.
@@ -253,6 +312,8 @@ export default function DevTasksPage() {
       </div>
 
       <NewTaskForm />
+
+      <AutoMergeStatus />
 
       {tasks.isError ? (
         <p className="text-sm text-danger">Couldn&rsquo;t load tasks.</p>

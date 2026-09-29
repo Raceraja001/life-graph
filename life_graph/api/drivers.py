@@ -323,6 +323,23 @@ async def get_dev_task_stats():
     return success_response(data=data)
 
 
+@router.get(
+    "/tasks/auto-merge-status",
+    summary="Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project",
+)
+async def get_auto_merge_status():
+    """Same numbers dispatcher.py's maybe_auto_merge reads before deciding
+    whether to skip an approval — merge_rate, established, the threshold,
+    and whether the project opted in — so "why isn't this auto-merging" is
+    answered by one glance instead of a hand-run curl against /tasks/stats
+    plus mentally comparing it to 80%."""
+    from life_graph.services import dev_tasks
+
+    async with async_session() as session:
+        data = await dev_tasks.auto_merge_status(session, get_current_tenant_id())
+    return success_response(data=data)
+
+
 @router.get("/tasks/{task_id}", summary="Get one dev task")
 async def get_dev_task(task_id: str):
     from life_graph.services import dev_tasks

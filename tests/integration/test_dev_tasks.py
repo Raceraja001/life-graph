@@ -230,6 +230,175 @@ async def test_stats_excludes_in_flight_tasks_from_merge_rate(client, project, f
 
 @pytest.mark.asyncio
 @skip_on_db_error
+async def test_auto_merge_status_reports_the_exact_gate_numbers(project):
+    """Same numbers dispatcher.maybe_auto_merge reads before skipping an
+    approval -- this must agree with them, not approximate them."""
+    from life_graph.autonomy.models import TrustScore
+    from life_graph.kernel.project_registry import ProjectRegistry
+    from life_graph.models.db import AgentTask, Approval
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    await ProjectRegistry(session_factory=async_session).update_settings(
+        TENANT, project["id"], {"auto_open_pr": True, "auto_merge": True}
+    )
+
+    task_id = uuid.uuid4()
+    async with async_session() as s:
+        s.add(
+            AgentTask(
+                id=task_id,
+                tenant_id=TENANT,
+                agent_name=dev_tasks.AGENT_NAME,
+                title="Fix a thing",
+                instructions="Fix it",
+                status="completed",
+                project_id=uuid.UUID(project["id"]),
+                assigned_agent="code-fixer-local",  # builtin persona, driver="local"
+                properties={"kind": dev_tasks.KIND, "project_name": project["name"]},
+            )
+        )
+        s.add(
+            Approval(
+                tenant_id=TENANT,
+                kind="driver_pr",
+                title="Open PR",
+                status="approved",
+                source="driver",
+                source_ref=str(task_id),
+                payload={"driver": "local", "outcome": "merged"},
+            )
+        )
+        # 4 merged, 1 failed -> 0.8 merge rate, exactly at the 0.8 threshold.
+        s.add(
+            TrustScore(
+                tenant_id=TENANT,
+                agent_id="local",
+                action_type="dev_task",
+                project_id=project["id"],
+                total_successes=4,
+                total_failures=1,
+            )
+        )
+        await s.commit()
+
+        rows = await dev_tasks.auto_merge_status(s, TENANT)
+
+    row = next(r for r in rows if r["project_id"] == project["id"])
+    assert row["persona"] == "code-fixer-local"
+    assert row["driver"] == "local"
+    assert (row["merged"], row["failed"], row["total"]) == (4, 1, 5)
+    assert row["merge_rate"] == pytest.approx(0.8)
+    assert row["established"] is True
+    assert row["threshold"] == pytest.approx(0.8)
+    assert row["auto_open_pr"] is True
+    assert row["auto_merge"] is True
+    assert row["earning_auto_merge"] is True
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_auto_merge_status_not_yet_earning_below_threshold(project):
+    from life_graph.autonomy.models import TrustScore
+    from life_graph.models.db import AgentTask, Approval
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    task_id = uuid.uuid4()
+    async with async_session() as s:
+        s.add(
+            AgentTask(
+                id=task_id,
+                tenant_id=TENANT,
+                agent_name=dev_tasks.AGENT_NAME,
+                title="Fix a thing",
+                instructions="Fix it",
+                status="completed",
+                project_id=uuid.UUID(project["id"]),
+                assigned_agent="code-fixer-local",
+                properties={"kind": dev_tasks.KIND, "project_name": project["name"]},
+            )
+        )
+        s.add(
+            Approval(
+                tenant_id=TENANT,
+                kind="driver_pr",
+                title="Open PR",
+                status="approved",
+                source="driver",
+                source_ref=str(task_id),
+                payload={"driver": "local", "outcome": "merged"},
+            )
+        )
+        # 2 merged, 2 failed -> 0.5, below the 0.8 threshold.
+        s.add(
+            TrustScore(
+                tenant_id=TENANT,
+                agent_id="local",
+                action_type="dev_task",
+                project_id=project["id"],
+                total_successes=2,
+                total_failures=2,
+            )
+        )
+        await s.commit()
+
+        rows = await dev_tasks.auto_merge_status(s, TENANT)
+
+    row = next(r for r in rows if r["project_id"] == project["id"])
+    assert row["merge_rate"] == pytest.approx(0.5)
+    assert row["established"] is True
+    assert row["earning_auto_merge"] is False
+    # This project never opted in via update_settings in this test.
+    assert row["auto_open_pr"] is False
+    assert row["auto_merge"] is False
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_auto_merge_status_skips_personas_with_no_static_driver(project):
+    """code-fixer-auto is pinned to driver "auto" -- its actual driver is
+    chosen per dispatch by the selection cascade, so there is no single
+    track record to summarize honestly here."""
+    from life_graph.models.db import AgentTask, Approval
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    task_id = uuid.uuid4()
+    async with async_session() as s:
+        s.add(
+            AgentTask(
+                id=task_id,
+                tenant_id=TENANT,
+                agent_name=dev_tasks.AGENT_NAME,
+                title="Fix a thing",
+                instructions="Fix it",
+                status="completed",
+                project_id=uuid.UUID(project["id"]),
+                assigned_agent="code-fixer-auto",
+                properties={"kind": dev_tasks.KIND, "project_name": project["name"]},
+            )
+        )
+        s.add(
+            Approval(
+                tenant_id=TENANT,
+                kind="driver_pr",
+                title="Open PR",
+                status="approved",
+                source="driver",
+                source_ref=str(task_id),
+                payload={"driver": "claude_code", "outcome": "merged"},
+            )
+        )
+        await s.commit()
+
+        rows = await dev_tasks.auto_merge_status(s, TENANT)
+
+    assert not any(r["persona"] == "code-fixer-auto" for r in rows)
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
 async def test_restart_marks_abandoned_tasks_failed(project):
     from life_graph.models.db import AgentTask
     from life_graph.services import dev_tasks

@@ -235,6 +235,72 @@ async def dev_task_stats(session: AsyncSession, tenant_id: str, limit: int = 200
     return out
 
 
+async def auto_merge_status(session: AsyncSession, tenant_id: str) -> list[dict[str, Any]]:
+    """For every (persona, project) pair with dev-task history: the exact
+    trust-gate numbers auto_open_pr/auto_merge actually check.
+
+    "Why isn't this auto-merging" used to mean hand-running /tasks/stats
+    against a curl command and holding 80% in your head — this answers it
+    directly: merge_rate, established, the threshold, whether the project
+    opted in, and whether the gate is actually being met right now.
+
+    Keyed on the persona's *driver* (dispatch_task and
+    services.dev_outcomes.track_record both key trust by driver name, e.g.
+    "local" or "claude_code" — not by persona name), resolved from each
+    persona's static config. A persona pinned to "auto" driver selection has
+    no single driver to report a track record for and is skipped — its
+    trust is decided fresh per dispatch by the driver-selection cascade, not
+    something a snapshot like this can summarize honestly.
+    """
+    from life_graph.drivers.dispatcher import AUTO_PR_MERGE_RATE
+    from life_graph.kernel.personas import PersonaService
+    from life_graph.kernel.project_registry import ProjectRegistry
+    from life_graph.services.dev_outcomes import track_record
+    from life_graph.storage.database import async_session
+
+    stats = await dev_task_stats(session, tenant_id)
+    personas, _ = await PersonaService(session_factory=async_session).list_all(
+        tenant_id, include_inactive=True
+    )
+    driver_by_persona = {p["name"]: p["driver"] for p in personas}
+    registry = ProjectRegistry(session_factory=async_session)
+
+    project_cache: dict[str, dict[str, Any] | None] = {}
+    out = []
+    for row in stats:
+        driver = driver_by_persona.get(row["persona"])
+        if not driver or driver == "auto":
+            continue
+        project_id = row["project_id"]
+        if project_id not in project_cache:
+            project_cache[project_id] = (
+                await registry.get_by_id(tenant_id, project_id) if project_id else None
+            )
+        meta = (project_cache[project_id] or {}).get("scan_metadata") or {}
+        record = await track_record(session, tenant_id, driver, project_id)
+        out.append(
+            {
+                "persona": row["persona"],
+                "driver": driver,
+                "project_id": project_id,
+                "project_name": row["project_name"],
+                "merged": record["merged"],
+                "failed": record["failed"],
+                "total": record["total"],
+                "merge_rate": record["merge_rate"],
+                "established": record["established"],
+                "threshold": AUTO_PR_MERGE_RATE,
+                "auto_open_pr": bool(meta.get("auto_open_pr")),
+                "auto_merge": bool(meta.get("auto_merge")),
+                "earning_auto_merge": bool(
+                    record["established"] and (record["merge_rate"] or 0) >= AUTO_PR_MERGE_RATE
+                ),
+            }
+        )
+    out.sort(key=lambda r: -r["total"])
+    return out
+
+
 async def get_dev_task(session: AsyncSession, tenant_id: str, task_id: str) -> dict | None:
     try:
         pk = uuid.UUID(task_id)

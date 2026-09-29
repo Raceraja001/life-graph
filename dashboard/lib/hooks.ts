@@ -200,6 +200,14 @@ export function useDevTasks() {
       ((query.state.data as any[]) ?? []).some((t) => ACTIVE_STAGES.has(t.stage)) ? 4000 : false,
   });
 }
+// Not polled — this changes only as merges settle, which is already slow
+// relative to a page visit.
+export function useAutoMergeStatus() {
+  return useQuery({
+    queryKey: ["dev-tasks", "auto-merge-status"],
+    queryFn: () => api.devTasks.autoMergeStatus(),
+  });
+}
 // Fetched on demand (expanding a failed/needs_review task's verification
 // detail), not polled — the list view already refetches the summary.
 export function useDevTaskDetail(id: string, enabled: boolean) {
