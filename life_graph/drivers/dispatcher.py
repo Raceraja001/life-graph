@@ -571,6 +571,7 @@ class TaskDispatcher:
                         project_id=project_uuid,
                         session=session,
                         verified=not unverifiable,
+                        unverifiable_checks=[r.verifier for r in unverifiable],
                         auto_open_pr=bool(packet.project_context.get("auto_open_pr")),
                         auto_merge=bool(packet.project_context.get("auto_merge")),
                     )
@@ -1071,6 +1072,7 @@ class TaskDispatcher:
         project_id: uuid.UUID | None,
         session: AsyncSession,
         verified: bool = True,
+        unverifiable_checks: list[str] | None = None,
         auto_open_pr: bool = False,
         auto_merge: bool = False,
     ) -> None:
@@ -1122,12 +1124,16 @@ class TaskDispatcher:
                     f"against {landing.get('base_branch') or '(unknown base)'}."
                 )
             else:
+                names = unverifiable_checks or checks
+                rest = [c for c in (checks or []) if c not in (unverifiable_checks or [])]
                 detail = (
-                    f"Branch {branch} was landed by driver '{driver_name}' but "
-                    f"{', '.join(checks) if checks else 'verification'} could not "
-                    f"run for this project — the change is neither known good nor "
-                    f"known bad. Review the diff by hand before approving; this "
-                    f"will not auto-open or auto-merge regardless of trust."
+                    f"Branch {branch} was landed by driver '{driver_name}', but "
+                    f"{', '.join(names) if names else 'verification'} could not run "
+                    f"for this project — the change is neither known good nor known "
+                    f"bad on {'that check' if len(names) == 1 else 'those checks'}."
+                    + (f" ({', '.join(rest)} passed.)" if rest else "")
+                    + " Review the diff by hand before approving; this will not "
+                    "auto-open or auto-merge regardless of trust."
                 )
             appr = Approval(
                 tenant_id=tenant_id,
