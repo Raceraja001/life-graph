@@ -290,10 +290,15 @@ async def test_lint_clean_diff_still_fails_on_real_lint_errors(tmp_path):
 
 
 def _fake_pip_audit(tmp_path, report: dict, returncode: int = 0):
-    """A stub pip-audit binary that prints a fixed JSON report."""
+    """A stub pip-audit binary installed at workdir/.venv/bin/pip-audit —
+    the real, non-mocked lookup path (no_vulnerable_deps_in_diff never
+    trusts an ambient one found only via PATH; see the regression test
+    below for why)."""
     import json
 
-    script = tmp_path / "fake-pip-audit"
+    bindir = tmp_path / ".venv" / "bin"
+    bindir.mkdir(parents=True, exist_ok=True)
+    script = bindir / "pip-audit"
     script.write_text(
         "#!/usr/bin/env python3\n"
         "import sys\n"
@@ -336,7 +341,7 @@ async def test_no_vulnerable_deps_inconclusive_without_pip_audit(tmp_path, monke
     )
 
     monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
-    monkeypatch.setattr(verifiers_mod, "_project_tool", lambda workdir, tool: None)
+    # No .venv/bin/pip-audit anywhere under tmp_path -- nothing to find.
 
     results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
 
@@ -356,9 +361,8 @@ async def test_no_vulnerable_deps_passes_when_pip_audit_finds_nothing(tmp_path, 
         ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
     )
 
-    clean = _fake_pip_audit(tmp_path, {"dependencies": [{"name": "requests", "vulns": []}]})
+    _fake_pip_audit(tmp_path, {"dependencies": [{"name": "requests", "vulns": []}]})
     monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
-    monkeypatch.setattr(verifiers_mod, "_project_tool", lambda workdir, tool: clean)
 
     results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
 
@@ -381,9 +385,8 @@ async def test_no_vulnerable_deps_fails_when_pip_audit_finds_a_vuln(tmp_path, mo
             {"name": "requests", "version": "2.0.0", "vulns": [{"id": "PYSEC-2018-28"}]}
         ]
     }
-    vulnerable = _fake_pip_audit(tmp_path, report, returncode=1)
+    _fake_pip_audit(tmp_path, report, returncode=1)
     monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
-    monkeypatch.setattr(verifiers_mod, "_project_tool", lambda workdir, tool: vulnerable)
 
     results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
 
@@ -405,11 +408,58 @@ async def test_no_vulnerable_deps_inconclusive_when_pip_audit_itself_fails(tmp_p
         ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
     )
 
-    broken = _fake_pip_audit(tmp_path, {}, returncode=2)
+    _fake_pip_audit(tmp_path, {}, returncode=2)
     monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
-    monkeypatch.setattr(verifiers_mod, "_project_tool", lambda workdir, tool: broken)
 
     results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
 
     assert results[0].inconclusive is True
+    assert results[0].passed is False
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_never_trusts_an_ambient_pip_audit(tmp_path, monkeypatch):
+    """Regression test for a real bug: found live when this server's own
+    venv happened to have pip-audit installed and first on PATH.
+    shutil.which("pip-audit") found it, and the verifier ran it with no
+    arguments — which audits whatever Python environment *that* binary is
+    bound to, not the target project's. It reported a clean scan for a
+    project it had never actually looked at, a false pass strictly worse
+    than the inconclusive result it should have given.
+
+    Unlike ruff/pytest (which take an explicit target path, so even an
+    ambient binary still operates on the right directory), pip-audit has
+    no such argument, so an ambient one must never be trusted here at all
+    — only a venv actually inside this project's own workdir counts.
+    """
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    # An "ambient" pip-audit reachable via shutil.which, e.g. on PATH from
+    # some unrelated project's venv -- deliberately NOT inside tmp_path.
+    ambient_dir = tmp_path.parent / "ambient-bin"
+    ambient_dir.mkdir(exist_ok=True)
+    ambient = ambient_dir / "pip-audit"
+    ambient.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        'print(\'{"dependencies": []}\')\n'  # a clean scan, if this ever ran
+        "sys.exit(0)\n"
+    )
+    ambient.chmod(0o755)
+    monkeypatch.setattr(verifiers_mod.shutil, "which", lambda tool: str(ambient))
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].inconclusive is True, (
+        "must never fall back to an ambient pip-audit found only via PATH — "
+        "it audits its own interpreter's environment with no way to target "
+        "this project, so 'found on PATH' is not evidence it checked anything real"
+    )
     assert results[0].passed is False

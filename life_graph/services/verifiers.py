@@ -493,8 +493,27 @@ async def _verify_no_vulnerable_deps_in_diff(workdir: Path, ctx: dict) -> tuple[
             pip_audit = str(candidate) if candidate.is_file() else None
         except sandbox.SandboxUnavailableError:
             pip_audit = None
-    if pip_audit is None:
-        pip_audit = _project_tool(workdir, "pip-audit")
+    else:
+        # Deliberately NOT _project_tool's shutil.which(tool) last resort
+        # here. ruff/pytest take an explicit target path, so even a
+        # "wrong" ambient binary still operates on the right directory;
+        # pip-audit with no arguments audits whatever Python environment
+        # IT is bound to, with no target argument to correct that. Found
+        # live: this API server's own venv happened to have pip-audit
+        # installed and was first on PATH, so the shutil.which fallback
+        # quietly audited life-graph's own dependencies while claiming to
+        # have checked a completely different project's — a false pass
+        # that is worse than the inconclusive result it was standing in
+        # for. Only a venv actually inside this project's own workdir can
+        # be trusted to be *this* project's environment.
+        for venv_dir in _VENV_DIRS:
+            for bindir in _BIN_DIRS:
+                candidate = workdir / venv_dir / bindir / "pip-audit"
+                if candidate.is_file():
+                    pip_audit = str(candidate)
+                    break
+            if pip_audit:
+                break
 
     if pip_audit is None:
         logger.warning("no_vulnerable_deps_in_diff: pip-audit not available — check not performed")
