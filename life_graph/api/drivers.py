@@ -340,6 +340,23 @@ async def get_auto_merge_status():
     return success_response(data=data)
 
 
+@router.get(
+    "/tasks/dependency-audit-readiness",
+    summary="Which registered projects can actually run no_vulnerable_deps_in_diff",
+)
+async def get_dependency_audit_readiness():
+    """The verifier itself already reports 'pip-audit not available' per
+    task, correctly, as inconclusive rather than a silent pass — but that
+    only surfaces after someone dispatches a task that happens to touch a
+    dependency manifest. This checks every active project's own manifest
+    for a declared pip-audit dependency up front, so the gap is visible
+    before it's found the hard way."""
+    from life_graph.services import dev_tasks
+
+    data = await dev_tasks.dependency_audit_readiness(get_current_tenant_id())
+    return success_response(data=data)
+
+
 @router.get("/tasks/{task_id}", summary="Get one dev task")
 async def get_dev_task(task_id: str):
     from life_graph.services import dev_tasks

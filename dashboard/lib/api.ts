@@ -533,6 +533,10 @@ export const api = {
     get: (id: string) => GET<any>(`/kernel/drivers/tasks/${id}`).then((res: any) => res?.data),
     autoMergeStatus: () =>
       GET<any>("/kernel/drivers/tasks/auto-merge-status").then((res: any) => res?.data ?? []),
+    dependencyAuditReadiness: () =>
+      GET<any>("/kernel/drivers/tasks/dependency-audit-readiness").then(
+        (res: any) => res?.data ?? [],
+      ),
   },
   approvals: {
     list: (status: string = "pending") =>

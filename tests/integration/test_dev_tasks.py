@@ -399,6 +399,42 @@ async def test_auto_merge_status_skips_personas_with_no_static_driver(project):
 
 @pytest.mark.asyncio
 @skip_on_db_error
+async def test_dependency_audit_readiness_finds_a_real_declared_dependency(project):
+    """project's path IS this repo's own checkout, whose pyproject.toml/
+    uv.lock genuinely declare pip-audit (it powers this very verifier) --
+    a real file read, not a mock."""
+    from life_graph.services import dev_tasks
+
+    rows = await dev_tasks.dependency_audit_readiness(TENANT)
+
+    row = next(r for r in rows if r["project_id"] == project["id"])
+    assert row["pip_audit_available"] is True
+    assert row["checked_via"] in ("uv.lock", "pyproject.toml")
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_dependency_audit_readiness_false_when_not_declared(tmp_path, monkeypatch):
+    from life_graph.api.dependencies import get_persona_service, get_project_registry
+    from life_graph.config import settings
+    from life_graph.services import dev_tasks
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'demo'\n", encoding="utf-8")
+    monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path))
+    await get_persona_service().seed_builtins(TENANT)
+    proj = await get_project_registry().register(
+        TENANT, {"name": f"bare-{uuid.uuid4().hex[:6]}", "path": str(tmp_path)}
+    )
+
+    rows = await dev_tasks.dependency_audit_readiness(TENANT)
+
+    row = next(r for r in rows if r["project_id"] == proj["id"])
+    assert row["pip_audit_available"] is False
+    assert row["checked_via"] is None
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
 async def test_restart_marks_abandoned_tasks_failed(project):
     from life_graph.models.db import AgentTask
     from life_graph.services import dev_tasks

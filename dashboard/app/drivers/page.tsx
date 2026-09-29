@@ -1,10 +1,11 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Bot, ExternalLink, GitBranch, GitMerge, GitPullRequest, Loader2, Send } from "lucide-react";
+import { Bot, ExternalLink, GitBranch, GitMerge, GitPullRequest, Loader2, Send, ShieldAlert } from "lucide-react";
 import {
   useAutoMergeStatus,
   useCreateDevTask,
+  useDependencyAuditReadiness,
   useDevTaskDetail,
   useDevTasks,
   useDriverPersonas,
@@ -191,6 +192,34 @@ function AutoMergeStatus() {
   );
 }
 
+// no_vulnerable_deps_in_diff reports this correctly per-task already
+// (inconclusive, never a silent pass) — this surfaces the same gap before
+// anyone dispatches a task that happens to touch a manifest and finds out
+// the hard way. Renders nothing when every project is covered.
+function DependencyAuditGaps() {
+  const readiness = useDependencyAuditReadiness();
+  const rows: any[] = readiness.data ?? [];
+  const gaps = rows.filter((r) => !r.pip_audit_available);
+
+  if (readiness.isLoading || readiness.isError || gaps.length === 0) return null;
+
+  return (
+    <div className="bg-warning-soft border border-line rounded-xl p-4 flex items-start gap-2 text-xs">
+      <ShieldAlert className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+      <p className="text-ink-mid">
+        <span className="font-medium text-warning">No dependency-vulnerability scanning yet</span> for{" "}
+        {gaps.map((r, i) => (
+          <span key={r.project_id}>
+            {i > 0 && ", "}
+            {r.project_name}
+          </span>
+        ))}
+        {" — "}add <code className="text-ink">pip-audit</code> as a dev dependency to enable it.
+      </p>
+    </div>
+  );
+}
+
 // Which verifier failed and why — the detail behind a generic "Verification
 // failed" error. Fetched only once expanded: the list view already has
 // everything else it needs from the summary endpoint.
@@ -314,6 +343,7 @@ export default function DevTasksPage() {
       <NewTaskForm />
 
       <AutoMergeStatus />
+      <DependencyAuditGaps />
 
       {tasks.isError ? (
         <p className="text-sm text-danger">Couldn&rsquo;t load tasks.</p>

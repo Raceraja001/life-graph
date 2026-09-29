@@ -208,6 +208,13 @@ export function useAutoMergeStatus() {
     queryFn: () => api.devTasks.autoMergeStatus(),
   });
 }
+// Not polled — a project's manifest doesn't change between page visits.
+export function useDependencyAuditReadiness() {
+  return useQuery({
+    queryKey: ["dev-tasks", "dependency-audit-readiness"],
+    queryFn: () => api.devTasks.dependencyAuditReadiness(),
+  });
+}
 // Fetched on demand (expanding a failed/needs_review task's verification
 // detail), not polled — the list view already refetches the summary.
 export function useDevTaskDetail(id: string, enabled: boolean) {

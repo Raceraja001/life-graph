@@ -301,6 +301,70 @@ async def auto_merge_status(session: AsyncSession, tenant_id: str) -> list[dict[
     return out
 
 
+_AUDIT_MANIFEST_CANDIDATES = ("uv.lock", "pyproject.toml", "requirements-dev.txt", "requirements.txt")
+
+
+def _pip_audit_declared(project_path: str) -> tuple[bool, str | None]:
+    """Whether *project_path* declares pip-audit as a dependency anywhere
+    ``no_vulnerable_deps_in_diff`` would look for it.
+
+    A static file read, not a live check: actually building the project's
+    sandbox venv (services.sandbox.prepare_env) to find out for certain
+    means docker and real time, which is too expensive to spend on every
+    registered project just to answer "is this configured yet". This
+    answers the same question a human skimming the manifest would, which
+    is what a dashboard glance needs.
+    """
+    from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+    try:
+        root = resolve_in_roots(project_path, tool_name="dependency audit readiness")
+    except ToolDeniedError:
+        return False, None
+    for name in _AUDIT_MANIFEST_CANDIDATES:
+        candidate = root / name
+        try:
+            if not candidate.is_file():
+                continue
+            text = candidate.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if "pip-audit" in text or "pip_audit" in text:
+            return True, name
+    return False, None
+
+
+async def dependency_audit_readiness(tenant_id: str) -> list[dict[str, Any]]:
+    """For every active project: can no_vulnerable_deps_in_diff actually run
+    for it, or would a dependency-manifest change there silently escalate to
+    needs_human instead of being checked?
+
+    The verifier itself already reports this correctly per-task (inconclusive,
+    never a silent pass) — this answers it proactively, before anyone
+    dispatches a task that touches a manifest and finds out the hard way.
+    """
+    from life_graph.kernel.project_registry import ProjectRegistry
+    from life_graph.storage.database import async_session
+
+    registry = ProjectRegistry(session_factory=async_session)
+    projects, _ = await registry.list_all(tenant_id)
+
+    out = []
+    for p in projects:
+        full = await registry.get_by_id(tenant_id, p["id"])
+        path = (full or {}).get("path") or ""
+        available, via = _pip_audit_declared(path) if path else (False, None)
+        out.append(
+            {
+                "project_id": p["id"],
+                "project_name": p["name"],
+                "pip_audit_available": available,
+                "checked_via": via,
+            }
+        )
+    return out
+
+
 async def get_dev_task(session: AsyncSession, tenant_id: str, task_id: str) -> dict | None:
     try:
         pk = uuid.UUID(task_id)
