@@ -396,6 +396,7 @@ class TaskDispatcher:
                 )
 
             # Step 5: Run verifier chain
+            unverifiable: list[VerifierResult] = []
             if verify_chain and result.success:
                 task_context = {
                     "output": result.output,
@@ -531,8 +532,16 @@ class TaskDispatcher:
             # onto a branch keeps it reachable after removal, without merging,
             # pushing, or touching the default branch -- a reviewable branch is
             # what the approval step needs to act on.
+            # An inconclusive verifier result is not a pass, but it is also not
+            # evidence of anything wrong -- the change was simply never
+            # checked (e.g. the project doesn't have the tool yet). Discarding
+            # it here means the only way to know the diff was ever correct is
+            # this run's logs; land it like verified work so a human can
+            # still review and merge it by hand, but never auto-open or
+            # auto-merge it -- that trust bar is reserved for work that was
+            # actually checked.
             if (
-                result.success
+                (result.success or unverifiable)
                 and worktree is not None
                 and worktree_origin
                 and settings.driver_land_verified_work
@@ -561,6 +570,7 @@ class TaskDispatcher:
                         checks=verify_chain,
                         project_id=project_uuid,
                         session=session,
+                        verified=not unverifiable,
                         auto_open_pr=bool(packet.project_context.get("auto_open_pr")),
                         auto_merge=bool(packet.project_context.get("auto_merge")),
                     )
@@ -1060,10 +1070,11 @@ class TaskDispatcher:
         checks: list[str],
         project_id: uuid.UUID | None,
         session: AsyncSession,
+        verified: bool = True,
         auto_open_pr: bool = False,
         auto_merge: bool = False,
     ) -> None:
-        """File a ``driver_pr`` approval for a verified, landed branch.
+        """File a ``driver_pr`` approval for a landed branch.
 
         Approving it pushes the branch and opens a pull request
         (``services/github_pr.py``). The payload pins the exact verified commit
@@ -1071,6 +1082,12 @@ class TaskDispatcher:
         checked — not on whatever the branch holds by the time someone taps it.
         Best-effort, like the other approval producers: a failure here leaves
         the branch landed and reviewable by hand.
+
+        ``verified`` is False for a branch landed off an inconclusive verifier
+        chain (the checks never ran, not that they failed) — the title and
+        detail say so plainly, and the caller is expected to have already
+        forced ``auto_open_pr`` off for this case; trust-based auto-approval
+        is reserved for work that was actually checked.
 
         ``auto_merge`` is stored in the payload (not acted on here) so the
         trust check runs at merge-approval time, whichever path files it —
@@ -1093,18 +1110,30 @@ class TaskDispatcher:
                 "checks": list(checks or []),
                 "cost_usd": result.cost_usd,
                 "auto_merge": auto_merge,
+                "verified": verified,
                 **landing,
             }
-            appr = Approval(
-                tenant_id=tenant_id,
-                kind="driver_pr",
-                title=f"Open PR: {title_line[:100]}",
-                detail=(
+            title_prefix = "Open PR" if verified else "Open PR (UNVERIFIED)"
+            if verified:
+                detail = (
                     f"Branch {branch} passed "
                     f"{', '.join(checks) if checks else 'no checks'} on driver "
                     f"'{driver_name}'. Approve to push it and open a pull request "
                     f"against {landing.get('base_branch') or '(unknown base)'}."
-                ),
+                )
+            else:
+                detail = (
+                    f"Branch {branch} was landed by driver '{driver_name}' but "
+                    f"{', '.join(checks) if checks else 'verification'} could not "
+                    f"run for this project — the change is neither known good nor "
+                    f"known bad. Review the diff by hand before approving; this "
+                    f"will not auto-open or auto-merge regardless of trust."
+                )
+            appr = Approval(
+                tenant_id=tenant_id,
+                kind="driver_pr",
+                title=f"{title_prefix}: {title_line[:100]}",
+                detail=detail,
                 source="driver",
                 source_ref=str(task_id),
                 payload=payload,
@@ -1116,7 +1145,7 @@ class TaskDispatcher:
             logger.warning("Failed to file PR approval for task %s", task_id, exc_info=True)
             return
 
-        if auto_open_pr:
+        if auto_open_pr and verified:
             await self._auto_open_pr(appr, driver_name, project_id, session)
 
     async def _auto_open_pr(

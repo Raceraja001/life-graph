@@ -129,7 +129,7 @@ async def landing(monkeypatch):
     return SimpleNamespace(opened=opened, merged=merged)
 
 
-async def _land(driver_name, project_id, auto_open_pr, auto_merge=False):
+async def _land(driver_name, project_id, auto_open_pr, auto_merge=False, verified=True):
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.models.db import Approval
@@ -149,6 +149,7 @@ async def _land(driver_name, project_id, auto_open_pr, auto_merge=False):
             checks=["build_ok_diff"],
             project_id=project_id,
             session=s,
+            verified=verified,
             auto_open_pr=auto_open_pr,
             auto_merge=auto_merge,
         )
@@ -245,6 +246,37 @@ async def test_auto_merge_without_auto_open_pr_still_fires_on_manual_pr_approval
     assert result["status"] == "approved"
     assert landing.opened == [pr.payload["branch"]]
     assert landing.merged == ["https://github.com/me/r/pull/77"]  # merge fired too
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_unverified_landing_never_auto_merges_even_with_earned_trust(landing):
+    """A branch landed off an inconclusive verifier chain (verified=False)
+    must never auto-open or auto-merge, no matter how trusted the driver is
+    on this project — that trust bar is reserved for work actually checked."""
+    project = uuid.uuid4()
+    await _record("trusted", project, merged=4, failed=0)
+    approvals = await _land(
+        "trusted", project, auto_open_pr=True, auto_merge=True, verified=False
+    )
+    pr = approvals["driver_pr"]
+    assert pr.status == "pending"  # not auto-opened despite earned trust
+    assert pr.title.startswith("Open PR (UNVERIFIED)")
+    assert "driver_merge" not in approvals
+    assert landing.opened == []
+    assert landing.merged == []
+
+    # Even a human manually approving the PR step must not cascade into an
+    # unattended merge.
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    async with async_session() as s:
+        result = await ApprovalService(s).resolve(TENANT, str(pr.id), "approve")
+        await s.commit()
+    assert result["status"] == "approved"
+    assert landing.opened == [pr.payload["branch"]]
+    assert landing.merged == []  # merge left pending — never checked, never auto-merged
 
 
 @pytest.mark.asyncio

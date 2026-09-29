@@ -265,6 +265,9 @@ class ApprovalService:
         """
         if not auto_merge:
             return
+        if (merge_appr.payload or {}).get("verified") is False:
+            logger.info("Auto-merge skipped: branch was landed off an unverified diff")
+            return
         from life_graph.drivers.dispatcher import AUTO_PR_MERGE_RATE
         from life_graph.services.dev_outcomes import track_record
 
