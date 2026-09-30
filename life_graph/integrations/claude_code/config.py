@@ -40,6 +40,7 @@ MAX_CONTENT_CHARS = 8000
 #: invent new ones, they would resolve to EXTERNAL and be prompt-fenced.
 SURFACE_CLI = "cli"
 SURFACE_TOOL_EXHAUST = "tool_exhaust"
+SURFACE_ASSISTANT_MESSAGE = "assistant_message"
 
 
 def _env_float(name: str, default: float) -> float:

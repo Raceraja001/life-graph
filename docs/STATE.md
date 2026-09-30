@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-09-20 03:21 UTC` from `feat/dev-agent-safety` @ `576fde3`
+Generated `2026-09-30 12:05 UTC` from `feat/dev-agent-safety` @ `bdd125e`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-09-20 03:21 UTC` from `feat/dev-agent-safety` @ `576fde3`
 
 | | |
 |---|---|
-| HTTP operations | **275** across 235 paths, 38 tags |
+| HTTP operations | **277** across 237 paths, 38 tags |
 | Database tables | **69** |
-| Migrations | **42** (head: `042_connector_tasks`) |
+| Migrations | **43** (head: `043_assistant_message_surface`) |
 | Event types | **77** |
 | Built-in personas | **16** |
 | Agent tools | **13** |
 | Scheduled jobs | **20** |
-| Config settings | **180** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2365** in 243 files |
+| Config settings | **184** (prefix `LIFE_GRAPH_`) |
+| Test functions | **2427** in 246 files |
 | Dashboard pages | **18** |
-| Python | 317 files, 79,161 lines |
+| Python | 317 files, 80,166 lines |
 
 ---
 
 ## HTTP API
 
-275 operations, grouped by OpenAPI tag.
+277 operations, grouped by OpenAPI tag.
 
 ### `kernel` — 30
 
@@ -231,7 +231,7 @@ Generated `2026-09-20 03:21 UTC` from `feat/dev-agent-safety` @ `576fde3`
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
 
-### `drivers` — 7
+### `drivers` — 9
 
 | Method | Path | Summary |
 |---|---|---|
@@ -240,6 +240,8 @@ Generated `2026-09-20 03:21 UTC` from `feat/dev-agent-safety` @ `576fde3`
 | GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
 | GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
 | POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
+| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
+| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
 | GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
 
@@ -802,9 +804,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-42 revisions, head `042_connector_tasks`.
+43 revisions, head `043_assistant_message_surface`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface`
 
 ---
 
@@ -814,16 +816,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 186 | 1798 |
-| `tests/integration/` | 56 | 555 |
+| `tests/unit/` | 189 | 1843 |
+| `tests/integration/` | 56 | 572 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **243** | **2365** |
+| **total** | **246** | **2427** |
 
 ---
 
 ## Configuration
 
-180 settings, all overridable by environment variable.
+184 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -867,6 +869,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_EXTRACTION_MIN_CONFIDENCE` | `0.45` |
 | `LIFE_GRAPH_EXTRACTION_LLM_MIN_WORDS` | `20` |
 | `LIFE_GRAPH_EXTRACTION_LLM_CONFIDENCE_THRESHOLD` | `0.5` |
+| `LIFE_GRAPH_CAPTURE_NO_EXTRACT_SURFACES` | `'tool_exhaust'` |
 | `LIFE_GRAPH_COLD_START_MIN_MEMORIES` | `50` |
 | `LIFE_GRAPH_WHISPER_MODEL` | `'small'` |
 | `LIFE_GRAPH_CF_ACCOUNT_ID` | `''` |
@@ -900,6 +903,9 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_LLM_COOLDOWN_MAX_SECONDS` | `900` |
 | `LIFE_GRAPH_LLM_HEALTH_TTL_SECONDS` | `3600` |
 | `LIFE_GRAPH_LLM_PAID_FALLBACK_MODEL` | `—` |
+| `LIFE_GRAPH_OMNIROUTE_API_KEY` | `''` |
+| `LIFE_GRAPH_OMNIROUTE_URL` | `'http://localhost:20128/v1'` |
+| `LIFE_GRAPH_OMNIROUTE_MODEL` | `'openai/auto'` |
 | `LIFE_GRAPH_RESEARCH_STALE_DAYS` | `30` |
 | `LIFE_GRAPH_RESEARCH_MAX_PER_RUN` | `5` |
 | `LIFE_GRAPH_RESEARCH_MONTHLY_BUDGET_USD` | `0.6` |
