@@ -174,6 +174,56 @@ def _project_python(workdir: Path) -> str | None:
     return shutil.which("python") or shutil.which("python3")
 
 
+async def mechanical_autofix(workdir: Path, ctx: dict) -> dict:
+    """Best-effort ``ruff --fix`` + ``ruff format`` on files changed since HEAD.
+
+    Called by the dispatcher right before the one-bounce rule would spend a
+    real driver call re-dispatching a failure — a lint/format issue a
+    formatter fixes for free shouldn't burn a frontier call. Runs directly
+    against *workdir* rather than through the check-phase sandbox
+    (:func:`sandbox.run`), which mounts it read-only and cannot write a fix
+    back; ruff is a trusted, well-known static tool operating only on the
+    diff, not the agent's own code, so this crosses the same trust boundary
+    the landing commit's git commands already do.
+
+    Best-effort throughout: any failure here (no ruff available, a syntax
+    error ruff can't parse, a timeout, ...) is swallowed and reported in the
+    returned dict rather than raised — this must never be the reason a task
+    fails when it otherwise wouldn't have.
+    """
+    changed = _changed_python_files(workdir)
+    if not changed:
+        return {"ran": False, "note": "no changed .py files"}
+
+    ruff: str | None = None
+    if sandbox.enabled():
+        try:
+            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            candidate = venv / "bin" / "ruff"
+            ruff = str(candidate) if candidate.is_file() else None
+        except sandbox.SandboxUnavailableError:
+            ruff = None
+    else:
+        ruff = _project_tool(workdir, "ruff")
+
+    if ruff is None:
+        return {"ran": False, "note": "ruff not available for this project"}
+
+    rel = [str(f.relative_to(workdir)) for f in changed]
+    try:
+        subprocess.run(
+            [ruff, "check", "--fix", "--fix-only", "--", *rel],
+            capture_output=True, text=True, timeout=60, cwd=str(workdir),
+        )
+        subprocess.run(
+            [ruff, "format", "--", *rel],
+            capture_output=True, text=True, timeout=60, cwd=str(workdir),
+        )
+    except Exception as exc:
+        return {"ran": True, "fixed": False, "error": str(exc)}
+    return {"ran": True, "fixed": True, "candidates": rel, "tool": ruff}
+
+
 def _missing_module(result: subprocess.CompletedProcess, module: str) -> bool:
     """Whether the run failed because *module* is not installed.
 

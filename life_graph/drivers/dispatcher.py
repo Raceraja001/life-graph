@@ -41,7 +41,7 @@ from life_graph.drivers.workdir import (
     worktree_intact,
 )
 from life_graph.services.governor import governor
-from life_graph.services.verifiers import VerifierResult, verifier_chain
+from life_graph.services.verifiers import VerifierResult, mechanical_autofix, verifier_chain
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -444,6 +444,31 @@ class TaskDispatcher:
                     "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
                 }
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
+
+                # Step 5b: a mechanical auto-fix pass -- ruff --fix/--format,
+                # no driver call -- before the one-bounce rule spends a real
+                # (frontier) call re-dispatching a failure a formatter would
+                # have resolved for free. Skipped when there's nothing to
+                # gain: a clean result, or one that's only inconclusive
+                # (ruff can't make a missing tool appear).
+                if not verifier_chain.all_passed(v_results) and not verifier_chain.inconclusive(
+                    v_results
+                ):
+                    autofix = await mechanical_autofix(workdir, task_context)
+                    if autofix.get("fixed") and autofix.get("candidates"):
+                        logger.info(
+                            "Task %s: mechanical auto-fix ran on %s, re-verifying",
+                            task_id,
+                            autofix["candidates"],
+                        )
+                        v_results = await verifier_chain.run_chain(
+                            verify_chain, workdir, task_context
+                        )
+
+                # Recorded once, after any auto-fix retry: the pre-fix
+                # failure was transient and mechanical, not a decision worth
+                # keeping a row for — attempt 2 stays reserved for the
+                # post-BOUNCE (re-dispatched) re-check.
                 await self._record_verification(tenant_id, task_id, 1, v_results, session)
 
                 # An inconclusive check means the gate never ran — the tool it
