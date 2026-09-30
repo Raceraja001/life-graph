@@ -207,6 +207,18 @@ class Settings(BaseSettings):
     llm_health_ttl_seconds: int = 3600
     llm_paid_fallback_model: str | None = None
 
+    # ── OmniRoute (local multi-provider LLM gateway — its own 4-tier
+    # auto-fallback across subscription/API/cheap/free providers behind one
+    # OpenAI-compatible endpoint). Additive to the free chain above, not a
+    # replacement: ResilientLLM already does ordered failover + cooldowns +
+    # health tracking, so this is ONE more entry in that chain rather than a
+    # second competing router. Empty api key = not configured, entry never
+    # added to the chain. Get a key from the OmniRoute dashboard
+    # (http://localhost:20128 by default) under Endpoints.
+    omniroute_api_key: str = ""  # Set LIFE_GRAPH_OMNIROUTE_API_KEY
+    omniroute_url: str = "http://localhost:20128/v1"
+    omniroute_model: str = "openai/auto"
+
     # ── Personal AI: Research ────────────────────────────
     research_stale_days: int = 30
     research_max_per_run: int = 5
