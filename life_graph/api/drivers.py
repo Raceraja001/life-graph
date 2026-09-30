@@ -256,6 +256,16 @@ class DevTaskCreate(BaseModel):
     instruction: str = Field(..., min_length=5, max_length=8000)
     project_id: str = Field(..., description="Registered project to work in")
     persona_name: str = Field("code-fixer", description="A persona with a driver set")
+    spec_first: bool = Field(
+        False,
+        description=(
+            "Ask the driver to write a short requirements/design/tasks spec "
+            "before it touches anything, and surface it on the task. Costs "
+            "nothing extra (same driver call) but adds a few lines to the "
+            "response — worth it for ambiguous or multi-step work, not for "
+            "a one-line fix."
+        ),
+    )
 
 
 @router.post(
@@ -290,6 +300,7 @@ async def create_dev_task(body: DevTaskCreate):
         instruction=body.instruction,
         project=project,
         persona_name=body.persona_name,
+        spec_first=body.spec_first,
     )
     return success_response(data=task)
 

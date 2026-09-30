@@ -17,6 +17,7 @@ One-bounce rule:
 from __future__ import annotations
 
 import logging
+import re
 import tempfile
 import uuid
 from dataclasses import asdict
@@ -78,6 +79,33 @@ DEFAULT_VERIFY_CHAIN = [
     "no_secrets_in_diff",
     "no_vulnerable_deps_in_diff",
 ]
+
+
+# spec_first: ask the driver to write its plan before touching anything,
+# spec-driven-development style (requirements → design → tasks), in the
+# same call rather than a separate pre-pass — no extra driver cost, no new
+# pause-for-approval architecture, most of the benefit (a reviewable plan,
+# a forcing function against misreading the instruction) for one-file's
+# worth of code.
+_SPEC_FIRST_PREFIX = (
+    "Before changing anything, write a short spec as the FIRST part of "
+    "your response, using exactly these headings:\n"
+    "## Spec\n"
+    "**Requirements:** the acceptance criteria this change must satisfy.\n"
+    "**Design:** the approach, in a sentence or two.\n"
+    "**Tasks:** a numbered list of the concrete steps you will take.\n\n"
+    "Then implement it. Keep the spec to a few lines total — it's a plan, "
+    "not documentation.\n\n---\n\n"
+)
+_SPEC_SECTION_RE = re.compile(r"##\s*Spec\b(.*?)(?:\n##\s|\Z)", re.DOTALL | re.IGNORECASE)
+
+
+def _extract_spec(output: str | None) -> str | None:
+    """Pull the ``## Spec`` section out of a driver's narrative output, if any."""
+    if not output:
+        return None
+    match = _SPEC_SECTION_RE.search(output)
+    return match.group(1).strip() or None if match else None
 
 
 class DispatchError(Exception):
@@ -193,6 +221,7 @@ class TaskDispatcher:
         verify_chain: list[str] | None = None,
         interactive: bool = False,
         isolate_workdir: bool = False,
+        spec_first: bool = False,
     ) -> DriverResult:
         """Dispatch a task through the full driver pipeline.
 
@@ -253,6 +282,9 @@ class TaskDispatcher:
             )
             # Override the task_id from the caller
             packet.task_id = uuid.UUID(task_id) if isinstance(task_id, str) else task_id
+
+            if spec_first:
+                packet.instruction = _SPEC_FIRST_PREFIX + packet.instruction
 
             # Step 2b: Resolve the pinned persona ONCE (reused for driver
             # selection below) and scope the packet to it. Without this the
@@ -354,6 +386,11 @@ class TaskDispatcher:
             result = await driver.dispatch(
                 packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
             )
+            # Captured here, before later steps replace `result` with fresh
+            # DriverResult instances (verification failure, dissent, ...)
+            # that don't carry the original metadata forward — merged back
+            # in at Step 7 regardless of how the task ultimately resolved.
+            spec_text = _extract_spec(result.output) if spec_first else None
 
             # Book the actual spend into the Governor's ledger.
             await governor.record(tenant_id, BudgetCategory.DRIVER, result.cost_usd)
@@ -577,6 +614,8 @@ class TaskDispatcher:
                     )
 
             # Step 7: Record stats + emit result
+            if spec_text:
+                result.metadata = {**(result.metadata or {}), "spec": spec_text}
             await self._record_stats(tenant_id, driver.name, task_type, result, session)
 
             await self._emit(

@@ -60,6 +60,7 @@ async def create_dev_task(
     task_type: str = "code_change",
     start: bool = True,
     properties: dict[str, Any] | None = None,
+    spec_first: bool = False,
 ) -> dict[str, Any]:
     """Record a dev task and start it in the background.
 
@@ -108,6 +109,7 @@ async def create_dev_task(
             project["id"],
             persona_name,
             task_type,
+            spec_first=spec_first,
         )
     )
     _background.add(bg)
@@ -124,6 +126,7 @@ async def _run(
     persona_name: str,
     task_type: str,
     interactive: bool = True,
+    spec_first: bool = False,
 ) -> None:
     from life_graph.core.events import event_bus
     from life_graph.core.tenant import set_tenant_context
@@ -155,6 +158,7 @@ async def _run(
                 # other autonomous dispatch.
                 interactive=interactive,
                 isolate_workdir=True,
+                spec_first=spec_first,
             )
             await session.commit()
         status = "completed" if result.success else "failed"
@@ -471,6 +475,7 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "cost_usd": result.get("cost_usd"),
         "duration_ms": result.get("duration_ms"),
         "branch": metadata.get("landed_branch"),
+        "spec": metadata.get("spec"),
         "pr_url": (pr.payload or {}).get("pr_url") if pr else None,
         "merge_commit": (merge.payload or {}).get("merge_commit") if merge else None,
         "approvals": [
