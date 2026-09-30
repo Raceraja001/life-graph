@@ -81,6 +81,14 @@ dependencies = [
     # pyyaml stays: it is a hard dependency of the cold-start config loader.
     "pyyaml>=6.0",
 
+    # Connectors
+    # plugins/calendar/connector.py parses ICS feeds with these. The import is
+    # lazy but unguarded, so a missing package is a 500 on any calendar sync
+    # rather than a degraded mode — and CI has been red since the connector
+    # merge because neither was ever declared. Both are small and pure Python.
+    "icalendar>=6.0",
+    "recurring-ical-events>=3.3",
+
     # Utilities
     "httpx>=0.27",
     "python-multipart>=0.0.9",

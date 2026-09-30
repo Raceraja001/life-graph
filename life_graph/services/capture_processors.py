@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from life_graph.config import settings
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.storage.database import async_session
 
@@ -104,6 +105,20 @@ class CaptureProcessors:
                 capture_evt = result.scalars().first()
                 if not capture_evt:
                     logger.warning("CaptureEvent %s not found", capture_event_id)
+                    return
+
+                surface = capture_evt.surface
+                if surface in settings.capture_no_extract_surfaces_list:
+                    # An activity trail, not content. The event row stays (that
+                    # is the trail), but running extraction over it turned every
+                    # tool call into several LLM-written "facts" about shell
+                    # commands — noise that outnumbered real memories 20:1 and
+                    # was what recall then fed back into the next session.
+                    capture_evt.status = "processed"
+                    await session.commit()
+                    logger.debug(
+                        "Capture %s: surface=%s is not extracted", capture_event_id, surface
+                    )
                     return
 
                 content = capture_evt.content

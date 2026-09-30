@@ -111,6 +111,47 @@ def test_user_prompt_submit_never_rewrites_the_prompt(cfg):
     assert out is None  # no updatedPrompt, no additionalContext
 
 
+class TestMachineInjectedPrompts:
+    """Not every UserPromptSubmit is the developer typing.
+
+    Claude Code injects task notifications and slash-command output into the
+    prompt stream as user turns. Extracting those produced memories like "The
+    task with ID 'blwug1frp' has been completed" — one per background task,
+    and the single largest source of noise left on the `cli` surface once tool
+    exhaust stopped being extracted.
+    """
+
+    @pytest.mark.parametrize(
+        "prompt",
+        [
+            "<task-notification><task-id>boj4ptn5o</task-id></task-notification>",
+            "<local-command-stdout>Compacted</local-command-stdout>",
+            "<command-name>/compact</command-name>",
+            "  <command-message>compact</command-message>",
+        ],
+    )
+    def test_injected_turns_are_not_captured(self, cfg, prompt):
+        client = FakeClient()
+        hook.dispatch(_base("UserPromptSubmit", prompt=prompt), cfg, client=client)
+
+        assert client.calls == []
+
+    def test_a_real_prompt_is_still_captured(self, cfg):
+        client = FakeClient()
+        hook.dispatch(_base("UserPromptSubmit", prompt="group the menus"), cfg, client=client)
+
+        assert len(client.calls) == 1
+        assert client.calls[0]["json"]["content"] == "group the menus"
+
+    def test_the_developer_may_quote_a_tag(self, cfg):
+        """Matched at the start only — mid-sentence it is the developer speaking."""
+        prompt = "why does the hook capture <task-notification> turns?"
+        client = FakeClient()
+        hook.dispatch(_base("UserPromptSubmit", prompt=prompt), cfg, client=client)
+
+        assert len(client.calls) == 1
+
+
 def test_post_tool_use_captures_tool_exhaust(cfg):
     client = FakeClient()
     hook.dispatch(
@@ -160,8 +201,15 @@ def test_stop_captures_last_assistant_message(cfg):
         _base("Stop", stop_hook_active=False, last_assistant_message=message), cfg, client=client
     )
     body = client.calls[0]["json"]
-    assert body["surface"] == "tool_exhaust"
+    # Not "tool_exhaust": that surface is an activity trail the capture spine
+    # does not extract, which would have silently discarded every conclusion.
+    assert body["surface"] == "assistant_message"
     assert body["content"] == message
+
+
+def test_assistant_message_surface_is_verified_tier():
+    """A new surface resolves to EXTERNAL unless the trust map names it."""
+    assert classify_surface(hook_config.SURFACE_ASSISTANT_MESSAGE) is TrustTier.VERIFIED
 
 
 def test_stop_drops_trivial_messages(cfg):
