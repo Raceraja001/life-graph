@@ -128,6 +128,7 @@ class TestMachineInjectedPrompts:
             "<local-command-stdout>Compacted</local-command-stdout>",
             "<command-name>/compact</command-name>",
             "  <command-message>compact</command-message>",
+            '<agent-message from="a39ff9bad1bc5a6b9">[Subagent hand-back] …',
         ],
     )
     def test_injected_turns_are_not_captured(self, cfg, prompt):
@@ -142,6 +143,20 @@ class TestMachineInjectedPrompts:
 
         assert len(client.calls) == 1
         assert client.calls[0]["json"]["content"] == "group the menus"
+
+    def test_a_subagent_handback_is_not_the_developer_speaking(self, cfg):
+        """The costliest case, and a provenance error as much as a noise one.
+
+        A hand-back is a long model-written report arriving as a user turn.
+        Capturing it put model output on the `cli` surface — TrustTier.SELF,
+        which means the developer's own words — and the extractor turned four
+        of them into 70 memories reading "Transitioned to [ +27536 chars".
+        """
+        client = FakeClient()
+        report = '<agent-message from="abc123">\n# Report\n\nFindings about other systems.\n'
+        hook.dispatch(_base("UserPromptSubmit", prompt=report), cfg, client=client)
+
+        assert client.calls == []
 
     def test_the_developer_may_quote_a_tag(self, cfg):
         """Matched at the start only — mid-sentence it is the developer speaking."""

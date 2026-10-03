@@ -1,0 +1,240 @@
+{
+  "summary": {
+    "cases": 23,
+    "recall_cases": 20,
+    "hit_at_10": 16,
+    "hit_rate": 0.8,
+    "mrr": 0.645,
+    "abstain_cases": 3,
+    "abstention_measurable": false
+  },
+  "results": [
+    {
+      "id": "frontend-template",
+      "question": "What are we using to build the new Life Graph frontend?",
+      "returned": 10,
+      "ms": 77,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The Life Graph frontend is now using the Luminaux template."
+    },
+    {
+      "id": "repo-visibility",
+      "question": "Is the life-graph repository staying public?",
+      "returned": 10,
+      "ms": 69,
+      "kind": "recall",
+      "rank": null,
+      "passed": false,
+      "top": "The user is asking about hosting a life-graph system and accessing it "
+    },
+    {
+      "id": "filesystem-choice",
+      "question": "Where should the project files live, NTFS or ext4?",
+      "returned": 10,
+      "ms": 73,
+      "kind": "recall",
+      "rank": null,
+      "passed": false,
+      "top": "The user wants multiple projects to be hosted on the same machine."
+    },
+    {
+      "id": "other-template-repo",
+      "question": "Which other repository of mine already uses that same admin template?",
+      "returned": 10,
+      "ms": 67,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The repo https://github.com/Race-projects/apptx-v2 uses an admin templ"
+    },
+    {
+      "id": "approval-gate-stance",
+      "question": "Do I want the memory approval gate loosened?",
+      "returned": 10,
+      "ms": 33,
+      "kind": "recall",
+      "rank": 2,
+      "passed": true,
+      "top": "The user plans to approve pending memories later."
+    },
+    {
+      "id": "spec-driven-tool",
+      "question": "Which spec-driven development tool did I ask about adopting?",
+      "returned": 10,
+      "ms": 41,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The user is considering adopting the 'spec driven development' approac"
+    },
+    {
+      "id": "domain-focus",
+      "question": "Which domain did I decide uzhavu should focus on?",
+      "returned": 10,
+      "ms": 41,
+      "kind": "recall",
+      "rank": 2,
+      "passed": true,
+      "top": "PR #14 from the uzhavu repository has already been merged and is no lo"
+    },
+    {
+      "id": "competitor-apps",
+      "question": "Which competitor chat apps did I ask to compare us against?",
+      "returned": 10,
+      "ms": 29,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The user wants to compare competitor apps like lobechat to evaluate fe"
+    },
+    {
+      "id": "existing-tools",
+      "question": "Which existing tools did I suggest we might use instead of building our own?",
+      "returned": 10,
+      "ms": 35,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The user is inquiring about the possibility of using open source tools"
+    },
+    {
+      "id": "browser-testing",
+      "question": "How did I ask for the UI to be tested?",
+      "returned": 10,
+      "ms": 31,
+      "kind": "recall",
+      "rank": 5,
+      "passed": true,
+      "top": "The user wants to work on the UI part for life-graph later."
+    },
+    {
+      "id": "dashboard-error",
+      "question": "What runtime error did I report in the dashboard?",
+      "returned": 10,
+      "ms": 49,
+      "kind": "recall",
+      "rank": 2,
+      "passed": true,
+      "top": "dashboard \u2192 working now"
+    },
+    {
+      "id": "uzhavu-local",
+      "question": "Which other project of mine did I ask to run on this machine?",
+      "returned": 10,
+      "ms": 31,
+      "kind": "recall",
+      "rank": null,
+      "passed": false,
+      "top": "The user wants multiple projects to be hosted on the same machine."
+    },
+    {
+      "id": "google-cloud",
+      "question": "What did I ask about Google Cloud?",
+      "returned": 10,
+      "ms": 37,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The user is asking if it is possible to configure a Google Cloud proje"
+    },
+    {
+      "id": "ui-later",
+      "question": "When did I want to work on the UI?",
+      "returned": 10,
+      "ms": 30,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The user wants to work on the UI part for life-graph later."
+    },
+    {
+      "id": "autonomous-developer",
+      "question": "Which autonomous developer product did I want to build towards?",
+      "returned": 10,
+      "ms": 32,
+      "kind": "recall",
+      "rank": null,
+      "passed": false,
+      "top": "The user is considering whether tools like dify.ai, omniroute, and jev"
+    },
+    {
+      "id": "dev-team-pipeline",
+      "question": "What did I want to build around the dev agents?",
+      "returned": 10,
+      "ms": 31,
+      "kind": "recall",
+      "rank": 5,
+      "passed": true,
+      "top": "The user is asking if they should proceed with building the PR-Agent i"
+    },
+    {
+      "id": "branding",
+      "question": "What did I ask to do about the template's branding?",
+      "returned": 10,
+      "ms": 32,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The user is considering removing branding from all locations."
+    },
+    {
+      "id": "lifecycle",
+      "question": "What did I want for the full development life cycle?",
+      "returned": 10,
+      "ms": 30,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The full development life cycle includes requirement gathering, specif"
+    },
+    {
+      "id": "merge-instruction",
+      "question": "Did I ask Claude to merge pull requests itself?",
+      "returned": 10,
+      "ms": 33,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The user has decided to enable auto merge."
+    },
+    {
+      "id": "pr-tooling",
+      "question": "What did I ask about test generation and PR checking?",
+      "returned": 10,
+      "ms": 29,
+      "kind": "recall",
+      "rank": 1,
+      "passed": true,
+      "top": "The user is considering whether to use separate tools or build their o"
+    },
+    {
+      "id": "abstain-restaurant",
+      "question": "What is my favourite restaurant?",
+      "returned": 10,
+      "ms": 33,
+      "kind": "abstain",
+      "passed": null,
+      "top": "The user is asking if menus can be grouped."
+    },
+    {
+      "id": "abstain-birthday",
+      "question": "When is my wife's birthday?",
+      "returned": 10,
+      "ms": 30,
+      "kind": "abstain",
+      "passed": null,
+      "top": "4 \u2192 in calendar"
+    },
+    {
+      "id": "abstain-car",
+      "question": "What car do I drive?",
+      "returned": 10,
+      "ms": 33,
+      "kind": "abstain",
+      "passed": null,
+      "top": "dashboard \u2192 working now"
+    }
+  ]
+}
