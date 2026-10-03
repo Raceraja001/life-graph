@@ -30,6 +30,7 @@ from life_graph.models.schemas import (
     MemoryResponse,
     SearchQuery,
     SearchResult,
+    TrailPassage,
 )
 from life_graph.scoring.ranking import to_index
 from life_graph.services.metamemory import MetamemoryTracker
@@ -142,6 +143,42 @@ def _to_index_items(hits: list[tuple[Any, float]]) -> list[MemoryIndexItem]:
             }
         )
     return [MemoryIndexItem.model_validate(item) for item in to_index(flat)]
+
+
+#: How much of a matching capture to return. Long enough to read the claim in
+#: context, short enough that five of them do not dominate the response.
+_TRAIL_EXCERPT_CHARS = 400
+
+
+async def _search_trail(store, body) -> list[TrailPassage]:
+    """Lexical matches from the raw capture trail.
+
+    Surfaces the capture spine does not extract are excluded, because the ones
+    not worth remembering are not worth searching either — a question about a
+    decision should not come back with the shell command that was running at
+    the time.
+    """
+    from life_graph.config import settings
+
+    events = await store.search_capture_events(
+        body.query,
+        limit=min(body.limit, 5),
+        exclude_surfaces=settings.capture_no_extract_surfaces_list,
+    )
+    return [
+        TrailPassage(
+            capture_event_id=str(event.id),
+            surface=event.surface,
+            created_at=event.created_at,
+            rank=round(rank, 4),
+            excerpt=(
+                event.content
+                if len(event.content) <= _TRAIL_EXCERPT_CHARS
+                else f"{event.content[:_TRAIL_EXCERPT_CHARS]}…"
+            ),
+        )
+        for event, rank in events
+    ]
 
 
 # ── Routes ───────────────────────────────────────────────────
@@ -286,6 +323,8 @@ async def semantic_search(
         embedding=embedding,
     )
 
+    trail = await _search_trail(store, body) if body.include_trail else []
+
     payload = SearchResult(
         memories=memories,
         total_count=result_count,
@@ -293,6 +332,7 @@ async def semantic_search(
         search_mode=search_mode,
         result_mode="index" if body.index_only else "full",
         index=index,
+        trail=trail,
     )
     # tokens_saved is a counterfactual, so measuring it honestly means
     # building the payload that was not sent. The rows are already in memory;

@@ -60,7 +60,13 @@ def _rank_of_hit(memories: list[dict[str, Any]], expect: list[str]) -> int | Non
     return None
 
 
-def run_case(client: httpx.Client, case: dict[str, Any], top_k: int, mode: str) -> dict[str, Any]:
+def run_case(
+    client: httpx.Client,
+    case: dict[str, Any],
+    top_k: int,
+    mode: str,
+    trail: bool = False,
+) -> dict[str, Any]:
     body = {
         "query": case["question"],
         "limit": top_k,
@@ -68,6 +74,7 @@ def run_case(client: httpx.Client, case: dict[str, Any], top_k: int, mode: str) 
         # sees almost nothing and every case fails for the wrong reason.
         "include_pending": True,
         "search_mode": mode,
+        "include_trail": trail,
     }
     response = client.post("/api/v1/search/", json=body)
     response.raise_for_status()
@@ -97,7 +104,26 @@ def run_case(client: httpx.Client, case: dict[str, Any], top_k: int, mode: str) 
     rank = _rank_of_hit(memories, case["expect"])
     result["kind"] = "recall"
     result["rank"] = rank
-    result["passed"] = rank is not None
+
+    # A trail passage counts as an answer. It is the verbatim sentence the
+    # facts were drawn from, which is what the reader wanted in the first
+    # place — and measuring it separately is the only way to tell whether
+    # searching the trail earns its keep.
+    passages = data.get("trail", [])
+    if trail:
+        wanted = [e.lower() for e in case["expect"]]
+        hit = next(
+            (
+                i
+                for i, p in enumerate(passages, start=1)
+                if any(w in p.get("excerpt", "").lower() for w in wanted)
+            ),
+            None,
+        )
+        result["trail_rank"] = hit
+        result["trail_only"] = hit is not None and rank is None
+
+    result["passed"] = rank is not None or bool(result.get("trail_rank"))
     result["top"] = (memories[0].get("content", "")[:70]) if memories else ""
     return result
 
@@ -106,14 +132,21 @@ def summarize(results: list[dict[str, Any]], top_k: int) -> dict[str, Any]:
     recall = [r for r in results if r["kind"] == "recall"]
     abstain = [r for r in results if r["kind"] == "abstain"]
     hits = [r for r in recall if r["passed"]]
+    rescued = [r for r in recall if r.get("trail_only")]
     # Mean reciprocal rank over the recall cases; a miss contributes nothing.
-    mrr = sum(1 / r["rank"] for r in hits) / len(recall) if recall else 0.0
+    # A case answered only by the trail ranks by its passage: the reader got
+    # an answer either way, and scoring it as a miss would hide the thing this
+    # measurement exists to detect.
+    ranks = [r["rank"] or r.get("trail_rank") for r in hits]
+    mrr = sum(1 / rank for rank in ranks if rank) / len(recall) if recall else 0.0
     return {
         "cases": len(results),
         "recall_cases": len(recall),
         f"hit_at_{top_k}": len(hits),
         "hit_rate": round(len(hits) / len(recall), 3) if recall else 0.0,
         "mrr": round(mrr, 3),
+        # Cases the extracted memories missed and the raw trail answered.
+        "rescued_by_trail": len(rescued),
         "abstain_cases": len(abstain),
         # Not a score: see run_case. Recorded so the gap stays visible.
         "abstention_measurable": False,
@@ -127,6 +160,11 @@ def main() -> int:
     parser.add_argument("--json", dest="json_out", help="write results to this file")
     parser.add_argument("--compare", help="an earlier --json file to diff against")
     parser.add_argument("--gold", default=str(GOLD))
+    parser.add_argument(
+        "--trail",
+        action="store_true",
+        help="also search the raw capture trail and count its passages as answers",
+    )
     args = parser.parse_args()
 
     tenant = os.environ.get("LIFE_GRAPH_TENANT_ID")
@@ -142,13 +180,15 @@ def main() -> int:
         timeout=60.0,
     )
 
-    results = [run_case(client, case, args.top_k, args.mode) for case in cases]
+    results = [run_case(client, case, args.top_k, args.mode, args.trail) for case in cases]
 
     print(f"\n{'':2} {'case':24} {'rank':>5}  top result")
     print("-" * 100)
     for r in results:
         mark = {True: "ok", False: "--", None: "? "}[r["passed"]]
         rank = r.get("rank") or ("-" if r["kind"] == "recall" else f"{r['returned']} rows")
+        if r.get("trail_only"):
+            rank = f"trail#{r['trail_rank']}"
         print(f"{mark:2} {r['id']:24} {str(rank):>5}  {r['top']}")
 
     summary = summarize(results, args.top_k)
