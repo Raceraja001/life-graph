@@ -13,7 +13,7 @@ import pytest
 import life_graph.drivers.dispatcher as disp_mod
 from life_graph.core.budget import BudgetDecision
 from life_graph.drivers.base import ContextPacket, DriverResult
-from life_graph.drivers.dispatcher import TaskDispatcher
+from life_graph.drivers.dispatcher import TaskDispatcher, _parse_tasks
 
 
 class _FakeResult:
@@ -133,6 +133,38 @@ _SPEC_OUTPUT = (
     "## Spec\n**Requirements:** must not break callers.\n"
     "**Tasks:** 1. add function 2. add test\n"
 )
+
+
+# ── _parse_tasks: the spec's Tasks list -> child task instructions ──
+
+
+def test_parse_tasks_inline_numbering():
+    spec = "**Requirements:** x.\n**Tasks:** 1. Add the function 2. Add a test 3. Update docs"
+    assert _parse_tasks(spec) == ["Add the function", "Add a test", "Update docs"]
+
+
+def test_parse_tasks_multiline_numbering():
+    spec = "**Tasks:**\n1. Add the function\n2. Add a test\n3. Update docs\n"
+    assert _parse_tasks(spec) == ["Add the function", "Add a test", "Update docs"]
+
+
+def test_parse_tasks_stops_at_a_trailing_heading():
+    spec = "**Tasks:** 1. Add the function 2. Add a test\n**Design notes:** irrelevant here"
+    assert _parse_tasks(spec) == ["Add the function", "Add a test"]
+
+
+def test_parse_tasks_single_item():
+    spec = "**Tasks:** 1. Just this one thing"
+    assert _parse_tasks(spec) == ["Just this one thing"]
+
+
+def test_parse_tasks_no_tasks_section_returns_empty():
+    assert _parse_tasks("**Requirements:** x.\n**Design:** y.") == []
+
+
+def test_parse_tasks_none_or_empty_returns_empty():
+    assert _parse_tasks(None) == []
+    assert _parse_tasks("") == []
 
 
 @pytest.mark.asyncio

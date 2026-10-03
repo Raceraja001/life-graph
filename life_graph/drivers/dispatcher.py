@@ -109,6 +109,30 @@ def _extract_spec(output: str | None) -> str | None:
     return match.group(1).strip() or None if match else None
 
 
+_TASKS_SECTION_RE = re.compile(r"\*\*Tasks:?\*\*\s*(.*)", re.DOTALL | re.IGNORECASE)
+_TASK_ITEM_RE = re.compile(r"(?:^|\s)\d+[.)]\s*(.+?)(?=(?:\s\d+[.)])|\Z)", re.DOTALL)
+_BOLD_HEADING_RE = re.compile(r"\*\*[A-Za-z][\w -]*:?\*\*")
+
+
+def _parse_tasks(spec_text: str | None) -> list[str]:
+    """Pull the numbered task list out of a spec's ``**Tasks:**`` section.
+
+    Tolerates both inline ("1. x 2. y") and multi-line numbering — the
+    model's own formatting varies and neither is wrong. Returns ``[]`` when
+    no numbered list is found, so callers fall back to a single combined
+    dispatch rather than fanning out on a guess.
+    """
+    if not spec_text:
+        return []
+    section = _TASKS_SECTION_RE.search(spec_text)
+    if not section:
+        return []
+    block = section.group(1)
+    # Stop at the next bold heading, if the model added one after Tasks.
+    block = _BOLD_HEADING_RE.split(block)[0]
+    return [m.group(1).strip() for m in _TASK_ITEM_RE.finditer(block) if m.group(1).strip()]
+
+
 class DispatchError(Exception):
     """Raised when a dispatch cannot proceed."""
 

@@ -561,3 +561,113 @@ async def test_rejecting_driver_plan_is_a_plain_noop(monkeypatch):
         await s.commit()
 
     assert result["status"] == "rejected"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_approving_a_multi_task_plan_fans_out_queued_in_order(monkeypatch):
+    """A spec with 2+ parsed tasks becomes that many QUEUED (not started)
+    child tasks, sharing a plan_group_id, numbered in order -- run_queue()
+    (already running as an API lifespan task) is what actually runs them
+    one at a time, so _apply_driver_plan itself only needs to queue them
+    in the right order."""
+    import life_graph.services.dev_tasks as dev_tasks_mod
+    from life_graph.models.db import Approval
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    project = await _make_project()
+    calls = []
+
+    async def _fake_create_dev_task(_session_factory, tenant_id, **kwargs):
+        calls.append(kwargs)
+        return {"id": f"task-{len(calls)}"}
+
+    monkeypatch.setattr(dev_tasks_mod, "create_dev_task", _fake_create_dev_task)
+
+    async with async_session() as s:
+        appr = Approval(
+            tenant_id=TENANT,
+            kind="driver_plan",
+            title="Review plan",
+            source="driver_plan",
+            source_ref=str(uuid.uuid4()),
+            payload={
+                "task_id": str(uuid.uuid4()),
+                "driver": "local",
+                "instruction": "Add a reporting feature",
+                "spec": "**Tasks:** 1. Add the model 2. Add the endpoint 3. Add tests",
+                "project_id": str(project),
+                "persona_name": "code-fixer-local",
+            },
+        )
+        s.add(appr)
+        await s.commit()
+        await s.refresh(appr)
+        appr_id = str(appr.id)
+
+        result = await ApprovalService(s).resolve(TENANT, appr_id, "approve")
+        await s.commit()
+
+    assert len(calls) == 3
+    assert all(c["start"] is False for c in calls)  # queued, not started immediately
+    group_ids = {c["properties"]["plan_group_id"] for c in calls}
+    assert len(group_ids) == 1  # all three share one group
+    assert [c["properties"]["plan_task_index"] for c in calls] == [1, 2, 3]
+    assert all(c["properties"]["plan_task_count"] == 3 for c in calls)
+    assert "Add the model" in calls[0]["instruction"]
+    assert "Add the endpoint" in calls[1]["instruction"]
+    assert "Add tests" in calls[2]["instruction"]
+    # Full spec stays attached to each task as context, not just its own item.
+    assert "Add the endpoint" in calls[0]["instruction"]  # task 1 sees the whole plan too
+
+    assert result["status"] == "approved"
+    assert result["payload"]["dispatched_task_ids"] == ["task-1", "task-2", "task-3"]
+    assert result["payload"]["plan_group_id"] in group_ids
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_single_parsed_task_falls_back_to_one_combined_dispatch(monkeypatch):
+    import life_graph.services.dev_tasks as dev_tasks_mod
+    from life_graph.models.db import Approval
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    project = await _make_project()
+    calls = []
+
+    async def _fake_create_dev_task(_session_factory, tenant_id, **kwargs):
+        calls.append(kwargs)
+        return {"id": "only-task"}
+
+    monkeypatch.setattr(dev_tasks_mod, "create_dev_task", _fake_create_dev_task)
+
+    async with async_session() as s:
+        appr = Approval(
+            tenant_id=TENANT,
+            kind="driver_plan",
+            title="Review plan",
+            source="driver_plan",
+            source_ref=str(uuid.uuid4()),
+            payload={
+                "task_id": str(uuid.uuid4()),
+                "driver": "local",
+                "instruction": "Fix the typo",
+                "spec": "**Tasks:** 1. Fix the typo in README",
+                "project_id": str(project),
+                "persona_name": "code-fixer-local",
+            },
+        )
+        s.add(appr)
+        await s.commit()
+        await s.refresh(appr)
+        appr_id = str(appr.id)
+
+        result = await ApprovalService(s).resolve(TENANT, appr_id, "approve")
+        await s.commit()
+
+    assert len(calls) == 1
+    assert calls[0].get("start", True) is True  # started immediately, not queued
+    assert result["payload"]["dispatched_task_id"] == "only-task"
+    assert "dispatched_task_ids" not in result["payload"]

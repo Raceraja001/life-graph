@@ -448,7 +448,15 @@ class ApprovalService:
         appr.resolution_note = f"Deployed (exit 0): {stdout[-300:] or '(no output)'}"
 
     async def _apply_driver_plan(self, tenant_id: str, appr: Approval, approve: bool) -> None:
-        """Dispatch the plan's instruction + spec as a normal code-writing task.
+        """Dispatch the approved plan as one task, or fan out its Tasks list.
+
+        A spec whose ``**Tasks:**`` section parses into 2+ numbered items
+        becomes that many child dev tasks, QUEUED (not started immediately)
+        so :func:`dev_tasks.run_queue` — already running as an API lifespan
+        task — runs them one at a time, oldest first: task 2 only starts
+        once task 1 has actually finished, since it may depend on task 1's
+        code. A spec with 0 or 1 parsed tasks falls back to today's single
+        combined dispatch rather than fanning out on a guess.
 
         Reject: a plain no-op — the plan is simply abandoned, nothing was
         ever landed to clean up. Raises on a missing/stale project so the
@@ -474,26 +482,63 @@ class ApprovalService:
         if project is None:
             raise ApprovalActionError(f"project {project_id} no longer exists")
 
+        from life_graph.drivers.dispatcher import _parse_tasks
         from life_graph.services import dev_tasks
         from life_graph.storage.database import async_session as session_factory
 
-        combined_instruction = (
-            f"{instruction}\n\n"
-            "--- APPROVED PLAN ---\n"
-            "The following plan was reviewed and approved. Implement it.\n\n"
-            f"{spec}"
-        )
-        task = await dev_tasks.create_dev_task(
-            session_factory,
-            tenant_id,
-            instruction=combined_instruction,
-            project={"id": str(project.id), "name": project.name},
-            persona_name=persona_name,
-            task_type="code_change",
-            properties={"origin": "plan_approval", "plan_task_id": payload.get("task_id")},
-        )
-        appr.payload = {**payload, "dispatched_task_id": task.get("id")}
-        appr.resolution_note = f"Dispatched as task {task.get('id')}"
+        project_dict = {"id": str(project.id), "name": project.name}
+        tasks = _parse_tasks(spec)
+
+        if len(tasks) < 2:
+            combined_instruction = (
+                f"{instruction}\n\n"
+                "--- APPROVED PLAN ---\n"
+                "The following plan was reviewed and approved. Implement it.\n\n"
+                f"{spec}"
+            )
+            task = await dev_tasks.create_dev_task(
+                session_factory,
+                tenant_id,
+                instruction=combined_instruction,
+                project=project_dict,
+                persona_name=persona_name,
+                task_type="code_change",
+                properties={"origin": "plan_approval", "plan_task_id": payload.get("task_id")},
+            )
+            appr.payload = {**payload, "dispatched_task_id": task.get("id")}
+            appr.resolution_note = f"Dispatched as task {task.get('id')}"
+            return
+
+        plan_group_id = str(uuid.uuid4())
+        dispatched_ids = []
+        for i, item in enumerate(tasks, start=1):
+            task_instruction = (
+                f"{instruction}\n\n"
+                "--- APPROVED PLAN (full spec, for context) ---\n"
+                f"{spec}\n\n"
+                f"--- YOUR TASK ({i} of {len(tasks)}) ---\n"
+                f"{item}"
+            )
+            task = await dev_tasks.create_dev_task(
+                session_factory,
+                tenant_id,
+                instruction=task_instruction,
+                project=project_dict,
+                persona_name=persona_name,
+                task_type="code_change",
+                start=False,  # queued -- run_queue() runs the group in order
+                properties={
+                    "origin": "plan_approval",
+                    "plan_task_id": payload.get("task_id"),
+                    "plan_group_id": plan_group_id,
+                    "plan_task_index": i,
+                    "plan_task_count": len(tasks),
+                },
+            )
+            dispatched_ids.append(task.get("id"))
+
+        appr.payload = {**payload, "dispatched_task_ids": dispatched_ids, "plan_group_id": plan_group_id}
+        appr.resolution_note = f"Queued {len(dispatched_ids)} tasks (group {plan_group_id[:8]})"
 
     async def _apply_promotion(
         self, tenant_id: str, appr: Approval, approve: bool, resolved_by: str | None
