@@ -16,7 +16,7 @@ from sqlalchemy.orm import defer
 
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, coerce_tier
-from life_graph.models.db import Memory, MemorySession, Session
+from life_graph.models.db import CaptureEvent, Memory, MemorySession, Session
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -947,6 +947,89 @@ class PostgresMemoryStore:
             )
             result = await session.execute(query)
             return [(row[0], float(row[1])) for row in result.fetchall()]
+
+    async def search_capture_events(
+        self,
+        query_text: str,
+        limit: int = 5,
+        exclude_surfaces: list[str] | None = None,
+    ) -> list[tuple[CaptureEvent, float]]:
+        """Full-text search over the raw capture trail.
+
+        Extraction is lossy, and the evidence says so loudly: across several
+        2026 studies, retrieving verbatim text beat retrieving LLM-extracted
+        facts by 16–22 points, and fine-grained extraction collapsed multi-hop
+        accuracy. We keep every original in ``capture_events``, so when the
+        facts do not answer a question the sentence that produced them often
+        still does.
+
+        Lexical only. The trail has no embedding column, and adding one would
+        mean embedding every shell command the system has ever seen; the thing
+        it is good at — finding the exact words someone used — is what a
+        tsquery does well.
+
+        ``exclude_surfaces`` keeps the mechanical surfaces out. The ones not
+        worth extracting are the ones not worth searching for an answer: a
+        query about a decision should not return the shell command that was
+        running at the time.
+
+        Returns:
+            ``(event, rank)`` pairs, best first.
+        """
+        if not query_text.strip():
+            return []
+
+        from sqlalchemy import text
+
+        # ts_rank over an inline to_tsvector: capture_events has no generated
+        # tsvector column, unlike memories. At this table's size that is a
+        # sequential scan of a few thousand rows and costs single-digit
+        # milliseconds; it would want a generated column and a GIN index
+        # before the trail grows into the millions.
+        raw_sql = text("""
+            SELECT id,
+                   ts_rank(to_tsvector('english', content),
+                           plainto_tsquery('english', :query_text)) AS rank
+            FROM capture_events
+            WHERE tenant_id = :tenant_id
+              AND modality = 'text'
+              AND NOT (surface = ANY(:excluded))
+              AND to_tsvector('english', content)
+                  @@ plainto_tsquery('english', :query_text)
+            ORDER BY rank DESC, created_at DESC
+            LIMIT :result_limit
+        """)
+
+        async with async_session() as session:
+            rows = (
+                await session.execute(
+                    raw_sql,
+                    {
+                        "query_text": query_text,
+                        "tenant_id": get_current_tenant_id(),
+                        "excluded": exclude_surfaces or [],
+                        "result_limit": limit,
+                    },
+                )
+            ).all()
+            if not rows:
+                return []
+
+            ranks = {row.id: float(row.rank) for row in rows}
+            events = (
+                (
+                    await session.execute(
+                        select(CaptureEvent).where(CaptureEvent.id.in_(list(ranks)))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return sorted(
+                ((event, ranks[event.id]) for event in events),
+                key=lambda pair: pair[1],
+                reverse=True,
+            )
 
     async def find_similarity_candidates(
         self,
