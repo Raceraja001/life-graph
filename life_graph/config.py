@@ -7,10 +7,13 @@ Redis, rate limiting, and environment profiles.
 from __future__ import annotations
 
 import json
+import logging
 import os
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -464,10 +467,28 @@ class Settings(BaseSettings):
 
     @property
     def tenant_plans_dict(self) -> dict[str, str]:
-        """Parse JSON tenant plan mapping."""
+        """Parse JSON tenant plan mapping.
+
+        A malformed value silently demoted every tenant to the free plan and
+        its 60 requests a minute. The cause here was a `.env` line written as
+        ``LIFE_GRAPH_TENANT_PLANS={"a":"enterprise"}``: dotenv strips the inner
+        quotes from an unquoted value, so the setting arrived as
+        ``{a:enterprise}``, failed to parse, and the only visible symptom was
+        the dashboard 429-ing itself. Quote the whole value in `.env`. Either
+        way the failure is now logged rather than swallowed.
+        """
+        if not self.tenant_plans:
+            return {}
         try:
-            return json.loads(self.tenant_plans) if self.tenant_plans else {}
+            return json.loads(self.tenant_plans)
         except json.JSONDecodeError:
+            logger.warning(
+                "LIFE_GRAPH_TENANT_PLANS is not valid JSON (%r) — every tenant "
+                "falls back to the %r plan. In .env, quote the whole value: "
+                'LIFE_GRAPH_TENANT_PLANS=\'{"tenant":"enterprise"}\'',
+                self.tenant_plans,
+                self.default_plan,
+            )
             return {}
 
     @property
