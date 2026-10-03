@@ -1,0 +1,112 @@
+# Gold set for retrieval quality, written from this instance's own history.
+#
+# Why a local gold set rather than LoCoMo or LongMemEval: an April 2026 audit
+# found 6.4% of LoCoMo's answer key wrong and its standard judge accepting 62.8%
+# of deliberately wrong answers, and a separate study showed that re-scoring one
+# system's own published answers under four judge prompts moved the result from
+# 35% to 91%. Public numbers in this field measure the harness. These questions
+# are small, boring and verifiable: each answer is something the user actually
+# said, quoted from the capture trail, so "did we find it" has one honest answer.
+#
+# `expect` is a list of substrings, matched case-insensitively against the
+# content and reasoning of whatever retrieval returns. A case passes when any
+# one of them appears — they are alternative spellings of the same answer, not
+# a conjunction.
+#
+# `expect_none` marks an abstention case: the answer is genuinely not in the
+# store, and surfacing something confident is the failure. LoCoMo has no
+# abstention category, which is one of the standing criticisms of it.
+
+cases:
+  - id: frontend-template
+    question: What are we using to build the new Life Graph frontend?
+    expect: ["admin template", "luminaux"]
+
+  - id: repo-visibility
+    question: Is the life-graph repository staying public?
+    expect: ["closed one", "no public", "change repo visibility", "private"]
+
+  - id: filesystem-choice
+    question: Where should the project files live, NTFS or ext4?
+    expect: ["ntfs", "ext4"]
+
+  - id: other-template-repo
+    question: Which other repository of mine already uses that same admin template?
+    expect: ["apptx-v2", "apptx"]
+
+  - id: approval-gate-stance
+    question: Do I want the memory approval gate loosened?
+    expect: ["not loosen", "should not loosen", "cross verify", "gate"]
+
+  - id: spec-driven-tool
+    question: Which spec-driven development tool did I ask about adopting?
+    expect: ["kiro"]
+
+  - id: domain-focus
+    question: Which domain did I decide uzhavu should focus on?
+    expect: ["school management", "school"]
+
+  - id: competitor-apps
+    question: Which competitor chat apps did I ask to compare us against?
+    expect: ["lobechat", "lobe chat", "librechat"]
+
+  - id: existing-tools
+    question: Which existing tools did I suggest we might use instead of building our own?
+    expect: ["dify", "omniroute", "jev", "laya"]
+
+  - id: browser-testing
+    question: How did I ask for the UI to be tested?
+    expect: ["playwright", "browser"]
+
+  - id: dashboard-error
+    question: What runtime error did I report in the dashboard?
+    expect: ["today-card", "reading 'today'", "undefined"]
+
+  - id: uzhavu-local
+    question: Which other project of mine did I ask to run on this machine?
+    expect: ["uzhavu"]
+
+  - id: google-cloud
+    question: What did I ask about Google Cloud?
+    expect: ["google cloud", "json", "configure"]
+
+  - id: ui-later
+    question: When did I want to work on the UI?
+    expect: ["ui part", "later", "frontend"]
+
+  - id: autonomous-developer
+    question: Which autonomous developer product did I want to build towards?
+    expect: ["openhands", "autonomous"]
+
+  - id: dev-team-pipeline
+    question: What did I want to build around the dev agents?
+    expect: ["dev-team", "pipeline", "dev-agent"]
+
+  - id: branding
+    question: What did I ask to do about the template's branding?
+    expect: ["branding", "remove"]
+
+  - id: lifecycle
+    question: What did I want for the full development life cycle?
+    expect: ["requirement gathering", "spec", "tasks list", "life cycle"]
+
+  - id: merge-instruction
+    question: Did I ask Claude to merge pull requests itself?
+    expect: ["merge the commits yourself", "merge", "yourself"]
+
+  - id: pr-tooling
+    question: What did I ask about test generation and PR checking?
+    expect: ["test case generation", "pr diff", "merge and deploy"]
+
+  # ── Abstention: none of these are in the store ──────────────────────────
+  - id: abstain-restaurant
+    question: What is my favourite restaurant?
+    expect_none: true
+
+  - id: abstain-birthday
+    question: When is my wife's birthday?
+    expect_none: true
+
+  - id: abstain-car
+    question: What car do I drive?
+    expect_none: true

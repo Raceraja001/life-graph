@@ -40,6 +40,29 @@ class ContextFingerprint:
             "topics": self.topics,
         }
 
+    def as_text(self) -> str:
+        """The fingerprint as a sentence, for embedding.
+
+        Written as prose rather than as a field dump because it is compared
+        against memory text: "project life-graph, branch fix/recall, working
+        on capture.py" shares a vector neighbourhood with a memory about that
+        work, while "life-graph|fix/recall|capture.py" does not.
+        """
+        parts: list[str] = []
+        if self.project:
+            parts.append(f"project {self.project}")
+        if self.module:
+            parts.append(f"module {self.module}")
+        if self.git_branch:
+            parts.append(f"on branch {self.git_branch}")
+        if self.topics:
+            parts.append("about " + ", ".join(self.topics[:8]))
+        if self.files_open:
+            parts.append("editing " + ", ".join(self.files_open[:8]))
+        if self.tools:
+            parts.append("using " + ", ".join(self.tools[:8]))
+        return ", ".join(parts)
+
     @property
     def is_empty(self) -> bool:
         """Return True if no context fields are populated."""

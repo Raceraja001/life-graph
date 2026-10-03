@@ -49,11 +49,19 @@ MIN_ASSISTANT_MESSAGE_CHARS = 40
 #: developer typing. A task notification arrives as a user turn, so without
 #: this the spine learned facts like "The task with ID 'blwug1frp' has been
 #: completed" — and one of those per background task.
+#:
+#: ``<agent-message`` is the costliest of them: a subagent's hand-back is a
+#: long model-written report delivered as a user turn. Four of them produced
+#: 70 memories on my own instance, of the form "Transitioned to [ +27536
+#: chars" — an extractor failing on text that was never addressed to it. They
+#: are also the wrong provenance: this surface is TrustTier.SELF, meaning the
+#: developer's own words, and a subagent's output is not that.
 MACHINE_PROMPT_TAGS = (
     "<task-notification>",
     "<local-command-stdout>",
     "<command-name>",
     "<command-message>",
+    "<agent-message",
 )
 
 

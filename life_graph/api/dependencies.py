@@ -116,6 +116,7 @@ def get_recall_engine() -> RecallEngine:
         store=get_store(),
         ranker=get_ranker(),
         context_builder=get_context_builder(),
+        embedding_service=get_embedding_service(),
     )
 
 
