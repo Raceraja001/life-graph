@@ -105,6 +105,56 @@ def worktree_intact(worktree: Path, origin: str | Path) -> bool:
     return expected in target.parents
 
 
+async def diff_against_head(workdir: Path) -> str:
+    """Unified diff of every change (tracked, modified, untracked) since HEAD.
+
+    Stages everything first (``git add -A``) so new files show up — a plain
+    ``git diff HEAD`` only covers already-tracked files. This runs BEFORE
+    :func:`preserve_verified_work`, which re-stages (a harmless no-op) and
+    commits; staging here changes nothing about what eventually lands.
+
+    Same hardened git invocation as landing: this also runs on the host,
+    against a worktree the driver controls. Never raises — a diff that
+    could not be computed is reported as empty, not a dispatch failure.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            "add",
+            "-A",
+            cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        if proc.returncode != 0:
+            return ""
+
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            "diff",
+            "--cached",
+            cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, _err = await proc.communicate()
+        if proc.returncode != 0:
+            return ""
+        return out.decode(errors="replace")
+    except Exception as exc:
+        logger.warning("Could not compute diff for review: %s", exc)
+        return ""
+
+
 async def preserve_verified_work(
     worktree: Path,
     repo_path: str | Path,

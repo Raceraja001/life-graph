@@ -35,6 +35,7 @@ from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import ContextPacketBuilder
 from life_graph.drivers.registry import driver_registry
 from life_graph.drivers.workdir import (
+    diff_against_head,
     preserve_verified_work,
     remove_worktree,
     resolve_workdir,
@@ -191,20 +192,20 @@ class TaskDispatcher:
 
     @staticmethod
     def _build_default_reviewer():
-        """Build the second-opinion reviewer from settings (off by default)."""
+        """Build the second-opinion reviewer from settings (off by default).
+
+        Backed by PR-Agent (services/pr_agent_review.py), which reads the
+        actual diff rather than the driver's narrative account of it —
+        same settings surface (driver_second_opinion_enabled/_model) the
+        older thin LLM-skim reviewer used, same gate position.
+        """
         from life_graph.config import settings
-        from life_graph.services.second_opinion import SecondOpinionReviewer
+        from life_graph.services.pr_agent_review import PRAgentReviewer
 
-        enabled = settings.driver_second_opinion_enabled
-        llm = None
-        if enabled:
-            from life_graph.services.llm_client import LMStudioClient
-
-            llm = LMStudioClient()
-        return SecondOpinionReviewer(
-            llm=llm,
-            model=settings.driver_second_opinion_model,
-            enabled=enabled,
+        return PRAgentReviewer(
+            model=settings.driver_second_opinion_model or settings.agent_llm_model,
+            enabled=settings.driver_second_opinion_enabled,
+            bin_path=settings.driver_pr_agent_bin,
         )
 
     async def dispatch_task(
@@ -553,7 +554,11 @@ class TaskDispatcher:
                     )
 
                     # Step 6b: Second-opinion dissenting review before landing.
-                    verdict = await self._reviewer.review(task_type, instruction, result.output)
+                    # Reads the real diff, not the driver's narrative output --
+                    # staging here is harmless, preserve_verified_work below
+                    # re-stages (a no-op) and commits regardless of the verdict.
+                    diff_text = await diff_against_head(workdir)
+                    verdict = await self._reviewer.review(task_type, instruction, diff_text)
                     if verdict.ran and not verdict.approved:
                         await self._emit(
                             EventType.SECOND_OPINION_DISSENT,

@@ -72,6 +72,15 @@ dependencies = [
     # LLM (routing only, minimal usage)
     "litellm>=1.40",
     "google-auth>=2.30",  # Vertex AI credential handling (litellm's vertex_ai/* provider)
+    # Powers the diff-reading second-opinion reviewer (services/pr_agent_review.py)
+    # -- a real driver dispatch, not a dev-only tool, so this is a runtime
+    # dependency like litellm above, not the `dev` extra pip-audit lives in.
+    # Python>=3.12 only (pr-agent's own requirement) -- this project supports
+    # >=3.11, so the marker keeps a 3.11 install resolvable. The reviewer
+    # already fails open (approves, ran=False) when the binary is missing,
+    # so a 3.11 environment simply never runs this check, same as any other
+    # project that lacks it for the tools verifiers.py already covers.
+    "pr-agent>=0.47; python_version >= '3.12'",
 
     # Cold Start
     # pydriller and radon moved to the `cold-start` extra (see below):
