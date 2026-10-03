@@ -32,6 +32,7 @@ def _project_of(capture_evt: Any) -> str | None:
     project = properties.get("project")
     return str(project) if project else None
 
+
 # ── Decision detection patterns ────────────────────────────────────────
 # These fire DECISION_CANDIDATE for the Judgment Engine to consume.
 _DECISION_PATTERNS: list[re.Pattern[str]] = [

@@ -71,6 +71,7 @@ def _cosine(a: list[float], b: list[float]) -> float | None:
         return None
     return dot / (norm_a * norm_b)
 
+
 # Cooldown: minimum seconds before resurfacing the same memory
 _COOLDOWN_SECONDS: int = settings.recall_cooldown_days * 86400
 _MAX_SESSION_SURFACES: int = 10

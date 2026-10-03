@@ -55,8 +55,15 @@ NOISE_PATTERNS = [
     "%wsl.exe%",
     "%exit code%",
     "%scratchpad%",
-    "transitioned to%",  # the signature of an extractor failing on a long report
 ]
+
+# Deliberately NOT matched: "transitioned to%", the signature of the extractor
+# failing on a long report. It looks like pure garbage and mostly is, but the
+# first run of this script deleted "Transitioned to ext4" — a mangled rendering
+# of a real decision, and the only memory answering one of the eval questions.
+# The hit rate dropped from 0.85 to 0.80 and named the case, which is the whole
+# reason for having an eval. A malformed fact is still a fact; let decay deal
+# with it rather than a delete nobody can undo.
 
 #: Facts that were true for an hour. Dropped unless --keep-ephemeral, because
 #: a knowledge base full of "CI checks passed" teaches recall about yesterday.
@@ -140,8 +147,7 @@ def main() -> int:
         # a status change with no side effects beyond it.
         approved = conn.execute(
             text(
-                "UPDATE memories SET status = 'active', updated_at = now() "
-                "WHERE status = 'pending'"
+                "UPDATE memories SET status = 'active', updated_at = now() WHERE status = 'pending'"
             )
         ).rowcount
 
