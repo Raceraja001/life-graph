@@ -385,10 +385,14 @@ class ApprovalService:
             tenant_id=merge_appr.tenant_id,
             kind="driver_deploy",
             title=f"Deploy {project.name} @ {str(payload.get('merge_commit') or '?')[:8]}",
+            # The actual command, not just that one exists -- every approvals
+            # surface (dashboard, mobile) renders `detail` alone, never
+            # `payload`, so a human approving a deploy from there needs to see
+            # exactly what will run, not take it on faith.
             detail=(
-                f"Run the configured deploy command for {project.name} after merge "
-                f"{str(payload.get('merge_commit') or '?')[:8]}. Never auto-approved, "
-                "regardless of driver trust."
+                f"After merge {str(payload.get('merge_commit') or '?')[:8]}, run in "
+                f"{project.name}'s repo:\n\n{command}\n\n"
+                "Never auto-approved, regardless of driver trust."
             ),
             source="driver_deploy",
             source_ref=payload.get("task_id"),

@@ -1222,8 +1222,13 @@ class TaskDispatcher:
                 tenant_id=tenant_id,
                 kind="driver_plan",
                 title=f"Review plan: {title_line[:100]}",
+                # The actual spec, not just a description of the step -- every
+                # approvals surface (dashboard, mobile) renders `detail` alone,
+                # never `payload`, so a human approving from there needs the
+                # plan's actual content here or they are approving blind.
                 detail=(
-                    f"Driver '{driver_name}' produced a plan with no file changes. "
+                    f"Driver '{driver_name}' produced this plan with no file changes:\n\n"
+                    f"{spec_text[:2000]}\n\n"
                     "Approve to dispatch the instruction and this spec together as "
                     "a normal code-writing task; reject to abandon it."
                 ),

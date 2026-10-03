@@ -194,6 +194,10 @@ async def test_clean_plan_files_a_driver_plan_approval(tmp_path, monkeypatch):
     assert len(plans) == 1
     assert plans[0].payload["spec"] == expected_spec
     assert plans[0].payload["project_id"]
+    # The actual spec, not just a description of the step -- `detail` is the
+    # only field every approvals surface (dashboard, mobile) renders, so a
+    # human approving from there needs the plan's content here or nowhere.
+    assert expected_spec in plans[0].detail
 
 
 @pytest.mark.asyncio

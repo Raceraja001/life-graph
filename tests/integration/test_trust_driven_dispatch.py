@@ -352,7 +352,10 @@ async def _approvals_for_task(task_id: str) -> dict:
             .scalars()
             .all()
         )
-    return {a.kind: {"id": a.id, "status": a.status, "payload": a.payload} for a in rows}
+    return {
+        a.kind: {"id": a.id, "status": a.status, "payload": a.payload, "detail": a.detail}
+        for a in rows
+    }
 
 
 @pytest.mark.asyncio
@@ -367,6 +370,10 @@ async def test_deploy_approval_filed_after_merge_when_project_opted_in(landing):
     assert "driver_deploy" in rows
     assert rows["driver_deploy"]["status"] == "pending"  # never auto-approved
     assert rows["driver_deploy"]["payload"]["deploy_command"] == "echo deployed"
+    # The actual command must be visible in `detail` -- the only field every
+    # approvals surface (dashboard, mobile) renders; `payload` alone would
+    # leave a human approving blind.
+    assert "echo deployed" in rows["driver_deploy"]["detail"]
 
 
 @pytest.mark.asyncio
