@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
-from life_graph.models.db import Approval, Memory
+from life_graph.models.db import Approval, Memory, Project
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
 
 if TYPE_CHECKING:
@@ -205,6 +205,8 @@ class ApprovalService:
             await self._apply_driver_pr(appr, approve)
         elif appr.kind == "driver_merge":
             await self._apply_driver_merge(appr, approve)
+        elif appr.kind == "driver_deploy":
+            await self._apply_driver_deploy(appr, approve)
 
         await self.session.flush()
         return self._serialize(appr)
@@ -341,6 +343,107 @@ class ApprovalService:
         elif not outcome.get("checks"):
             note += " — no CI checks ran on this PR; sandbox verification was the gate"
         appr.resolution_note = f"{appr.resolution_note}\n{note}" if appr.resolution_note else note
+        await self._maybe_file_deploy_approval(appr)
+
+    async def _maybe_file_deploy_approval(self, merge_appr: Approval) -> None:
+        """File a ``driver_deploy`` approval when the project opted in.
+
+        Deliberately a THIRD, separate opt-in from ``auto_open_pr``/
+        ``auto_merge``, and unlike those two this one is never trust-gated —
+        there is no ``auto_deploy``. A driver's trust record is calibrated
+        against merge outcomes (did the PR turn out to be good code?), not
+        against production incidents, and a bad deploy is live in a way a
+        bad merge isn't. Approving ``driver_deploy`` always requires an
+        explicit human click, regardless of how proven the driver is.
+        """
+        payload = merge_appr.payload or {}
+        project_id = payload.get("project_id")
+        if not project_id:
+            return
+        try:
+            project = await self.session.get(Project, uuid.UUID(str(project_id)))
+        except (ValueError, TypeError):
+            project = None
+        if project is None:
+            return
+        meta = project.scan_metadata or {}
+        command = meta.get("deploy_command")
+        if not (meta.get("deploy_on_merge") and command):
+            return
+        deploy_payload = {
+            "task_id": payload.get("task_id"),
+            "driver": payload.get("driver"),
+            "project_id": str(project_id),
+            "repo_path": payload.get("repo_path"),
+            "branch": payload.get("base_branch"),
+            "merge_commit": payload.get("merge_commit"),
+            "deploy_command": command,
+        }
+        deploy_appr = Approval(
+            tenant_id=merge_appr.tenant_id,
+            kind="driver_deploy",
+            title=f"Deploy {project.name} @ {str(payload.get('merge_commit') or '?')[:8]}",
+            detail=(
+                f"Run the configured deploy command for {project.name} after merge "
+                f"{str(payload.get('merge_commit') or '?')[:8]}. Never auto-approved, "
+                "regardless of driver trust."
+            ),
+            source="driver_deploy",
+            source_ref=payload.get("task_id"),
+            payload=deploy_payload,
+        )
+        self.session.add(deploy_appr)
+
+    async def _apply_driver_deploy(self, appr: Approval, approve: bool) -> None:
+        """Run the project's own deploy command (approve). Reject: no-op.
+
+        The command is whatever the project operator configured in
+        ``scan_metadata.deploy_command`` — never agent-authored, the same
+        trust level as ``sandbox_setup``/``sandbox_test_command`` (an
+        operator-supplied string, not something the worktree or the diff
+        controls). Raises on failure so the approval stays pending for a
+        retry, exactly like :meth:`_apply_driver_pr`.
+        """
+        if not approve:
+            return
+        import asyncio
+
+        from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+        payload = appr.payload or {}
+        command = payload.get("deploy_command")
+        if not command:
+            raise ApprovalActionError("no deploy_command on this approval")
+        try:
+            repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="deploy")
+        except ToolDeniedError as exc:
+            raise ApprovalActionError(str(exc)) from exc
+
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                cwd=repo,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=600)
+        except TimeoutError as exc:
+            raise ApprovalActionError("deploy command timed out after 600s") from exc
+        except OSError as exc:
+            raise ApprovalActionError(f"deploy command could not run: {exc}") from exc
+
+        stdout = out.decode(errors="replace")[-2000:]
+        stderr = err.decode(errors="replace")[-2000:]
+        if proc.returncode != 0:
+            raise ApprovalActionError(
+                f"deploy command exited {proc.returncode}: {(stderr or stdout)[-500:]}"
+            )
+        appr.payload = {
+            **payload,
+            "deploy_output": stdout,
+            "deployed_at": datetime.now(UTC).isoformat(),
+        }
+        appr.resolution_note = f"Deployed (exit 0): {stdout[-300:] or '(no output)'}"
 
     async def _apply_promotion(
         self, tenant_id: str, appr: Approval, approve: bool, resolved_by: str | None

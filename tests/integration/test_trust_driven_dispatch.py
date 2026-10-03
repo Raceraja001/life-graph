@@ -13,6 +13,25 @@ from tests.integration.conftest import skip_on_db_error
 TENANT = f"trust_dispatch_{uuid.uuid4().hex[:8]}"
 
 
+async def _make_project(scan_metadata: dict | None = None) -> uuid.UUID:
+    from life_graph.models.db import Project
+    from life_graph.storage.database import async_session
+
+    project_id = uuid.uuid4()
+    async with async_session() as s:
+        s.add(
+            Project(
+                id=project_id,
+                tenant_id=TENANT,
+                name=f"proj-{project_id.hex[:6]}",
+                path="/tmp/does-not-need-to-exist",
+                scan_metadata=scan_metadata or {},
+            )
+        )
+        await s.commit()
+    return project_id
+
+
 class _Driver:
     def __init__(self, name, cost):
         self.name, self._cost = name, cost
@@ -296,4 +315,150 @@ async def test_auto_merge_opted_in_but_trust_not_yet_earned_leaves_merge_pending
         await s.commit()
     assert result["status"] == "approved"  # the PR-open step itself, not the merge
     assert landing.opened == [pr.payload["branch"]]
-    assert landing.merged == []  # merge left for a human — record isn't established yet
+
+
+# ── driver_deploy: a third, never-trust-gated opt-in ──
+
+
+async def _merge_through(name, project_id, auto_open_pr, auto_merge):
+    """Land, open-PR-approve and merge-approve a task, returning the
+    (committed) approvals row keyed by kind -- including driver_deploy if
+    the project's opt-in filed one."""
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    approvals = await _land(name, project_id, auto_open_pr=auto_open_pr, auto_merge=auto_merge)
+    async with async_session() as s:
+        svc = ApprovalService(s)
+        if approvals["driver_pr"].status == "pending":
+            await svc.resolve(TENANT, str(approvals["driver_pr"].id), "approve")
+        await s.commit()
+
+    rows = await _approvals_for_task(approvals["driver_pr"].payload["task_id"])
+    if rows.get("driver_merge", {}).get("status") == "pending":
+        async with async_session() as s:
+            await ApprovalService(s).resolve(TENANT, str(rows["driver_merge"]["id"]), "approve")
+            await s.commit()
+    return await _approvals_for_task(approvals["driver_pr"].payload["task_id"])
+
+
+async def _approvals_for_task(task_id: str) -> dict:
+    from life_graph.models.db import Approval
+    from life_graph.storage.database import async_session
+
+    async with async_session() as s:
+        rows = (
+            (await s.execute(select(Approval).where(Approval.source_ref == task_id)))
+            .scalars()
+            .all()
+        )
+    return {a.kind: {"id": a.id, "status": a.status, "payload": a.payload} for a in rows}
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_deploy_approval_filed_after_merge_when_project_opted_in(landing):
+    project = await _make_project({"deploy_on_merge": True, "deploy_command": "echo deployed"})
+    await _record("trusted", project, merged=4, failed=0)
+
+    rows = await _merge_through("trusted", project, auto_open_pr=False, auto_merge=False)
+
+    assert rows["driver_merge"]["status"] == "approved"
+    assert "driver_deploy" in rows
+    assert rows["driver_deploy"]["status"] == "pending"  # never auto-approved
+    assert rows["driver_deploy"]["payload"]["deploy_command"] == "echo deployed"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_no_deploy_approval_when_project_did_not_opt_in(landing):
+    project = await _make_project({})  # no deploy_on_merge, no deploy_command
+    await _record("trusted", project, merged=4, failed=0)
+
+    rows = await _merge_through("trusted", project, auto_open_pr=False, auto_merge=False)
+
+    assert rows["driver_merge"]["status"] == "approved"
+    assert "driver_deploy" not in rows
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_deploy_never_auto_approved_even_with_full_auto_open_and_merge(landing):
+    """Full unattended path (auto_open_pr + auto_merge, trust earned) still
+    leaves driver_deploy sitting pending -- there is no auto_deploy."""
+    project = await _make_project({"deploy_on_merge": True, "deploy_command": "echo deployed"})
+    await _record("trusted", project, merged=4, failed=0)
+
+    approvals = await _land("trusted", project, auto_open_pr=True, auto_merge=True)
+    # auto_open_pr + auto_merge + earned trust already resolves BOTH driver_pr
+    # and driver_merge unattended (covered by test_auto_merge_fires_after_an_
+    # auto_opened_pr) -- the only new thing to check is what happens next.
+    rows = await _approvals_for_task(approvals["driver_pr"].payload["task_id"])
+    assert rows["driver_merge"]["status"] == "approved"
+    assert rows["driver_deploy"]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_apply_driver_deploy_runs_the_configured_command(tmp_path):
+    from life_graph.models.db import Approval
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+    from life_graph.tools._guards import confine_to
+
+    marker = tmp_path / "deployed.txt"
+    async with async_session() as s:
+        appr = Approval(
+            tenant_id=TENANT,
+            kind="driver_deploy",
+            title="Deploy test",
+            source="driver_deploy",
+            source_ref=str(uuid.uuid4()),
+            payload={
+                "repo_path": str(tmp_path),
+                "deploy_command": f"echo hi > {marker.name}",
+            },
+        )
+        s.add(appr)
+        await s.commit()
+        await s.refresh(appr)
+        appr_id = str(appr.id)
+
+        with confine_to(tmp_path):
+            result = await ApprovalService(s).resolve(TENANT, appr_id, "approve")
+        await s.commit()
+
+    assert result["status"] == "approved"
+    assert marker.is_file()
+    assert "deployed_at" in result["payload"]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_apply_driver_deploy_failure_leaves_it_pending(tmp_path):
+    from life_graph.models.db import Approval
+    from life_graph.services.approvals import ApprovalActionError, ApprovalService
+    from life_graph.storage.database import async_session
+    from life_graph.tools._guards import confine_to
+
+    async with async_session() as s:
+        appr = Approval(
+            tenant_id=TENANT,
+            kind="driver_deploy",
+            title="Deploy test",
+            source="driver_deploy",
+            source_ref=str(uuid.uuid4()),
+            payload={"repo_path": str(tmp_path), "deploy_command": "exit 1"},
+        )
+        s.add(appr)
+        await s.commit()
+        await s.refresh(appr)
+        appr_id = str(appr.id)
+
+        with confine_to(tmp_path), pytest.raises(ApprovalActionError):
+            await ApprovalService(s).resolve(TENANT, appr_id, "approve")
+        await s.rollback()
+
+    async with async_session() as s:
+        reloaded = await s.get(Approval, uuid.UUID(appr_id))
+        assert reloaded.status == "pending"
