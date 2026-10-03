@@ -11,7 +11,7 @@ import logging
 import re
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from life_graph.config import settings
 from life_graph.core.events import Event, EventBus, EventType, event_bus
@@ -24,6 +24,13 @@ if TYPE_CHECKING:
     from life_graph.models.db import CaptureEvent
 
 logger = logging.getLogger(__name__)
+
+
+def _project_of(capture_evt: Any) -> str | None:
+    """The project a capture came from, if its producer recorded one."""
+    properties = getattr(capture_evt, "properties", None) or {}
+    project = properties.get("project")
+    return str(project) if project else None
 
 # ── Decision detection patterns ────────────────────────────────────────
 # These fire DECISION_CANDIDATE for the Judgment Engine to consume.
@@ -260,6 +267,13 @@ class CaptureProcessors:
                 context={
                     "capture_event_id": str(capture_evt.id),
                     "surface": surface,
+                    # The ranker scores a candidate's project against the
+                    # session's, but nothing was putting a project on the
+                    # memory — the capture event has carried one all along and
+                    # it stopped here. Without it that part of the context
+                    # signal is dead weight for every capture-derived memory,
+                    # which is most of them.
+                    **({"project": project} if (project := _project_of(capture_evt)) else {}),
                 },
                 source="capture",
                 trust_tier=tier.value,

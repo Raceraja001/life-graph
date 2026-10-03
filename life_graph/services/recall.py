@@ -491,11 +491,16 @@ class RecallEngine:
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         """Query store for active memories matching the context fingerprint."""
+        # Status only. A project filter used to be ANDed in here, which is the
+        # same mistake the candidate pool already made once: a pre-filter
+        # deciding what the ranker exists to decide. The ranker's context
+        # signal already prefers a same-project memory (+0.3 inside the 0.20
+        # context weight), and it degrades gracefully when the project is
+        # unknown, where the filter did not — it eliminated every candidate.
+        # On this instance no memory carried a project property at all, so any
+        # session that reported one (which is every session, since the hook
+        # derives it from cwd) recalled precisely nothing.
         filters: dict[str, Any] = {"status": "active"}
-
-        # Add project filter if available
-        if fingerprint.project:
-            filters["properties"] = {"project": fingerprint.project}
 
         # Ranked in SQL by the signals that do not need the fingerprint, not
         # by created_at. list_memories() orders newest-first, which made the
