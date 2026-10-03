@@ -34,6 +34,7 @@ expand step — ``POST /api/v1/memories/batch`` → :meth:`RecallEngine.record_d
 from __future__ import annotations
 
 import logging
+import math
 import uuid
 from collections import Counter
 from datetime import UTC, datetime
@@ -57,6 +58,18 @@ if TYPE_CHECKING:
     from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
+
+
+def _cosine(a: list[float], b: list[float]) -> float | None:
+    """Cosine similarity, or None when either vector is unusable."""
+    if not a or not b or len(a) != len(b):
+        return None
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if not norm_a or not norm_b:
+        return None
+    return dot / (norm_a * norm_b)
 
 # Cooldown: minimum seconds before resurfacing the same memory
 _COOLDOWN_SECONDS: int = settings.recall_cooldown_days * 86400
@@ -85,10 +98,14 @@ class RecallEngine:
         store: PostgresMemoryStore,
         ranker: RecallRanker,
         context_builder: ContextBuilder,
+        embedding_service: Any = None,
     ) -> None:
         self._store = store
         self._ranker = ranker
         self._context_builder = context_builder
+        # Optional so existing callers and tests keep working: without it the
+        # semantic signal falls back to the constant it used to be.
+        self._embeddings = embedding_service
         self._trigger_matcher = TriggerMatcher(store)
 
         # Anti-annoyance state (per engine instance = per session)
@@ -529,17 +546,56 @@ class RecallEngine:
                 # subsystem's output was discarded at the one place it is
                 # meant to decide anything.
                 "impact_score": mem.impact_score,
-                # The one deliberate constant. Retrieval here is filter-based,
-                # not vector-based, so there is no query embedding to compare
-                # against; scoring this properly means embedding the context
-                # fingerprint on every recall. Until then 0.20 of the weight
-                # is inert, which flattens the spread but does not reorder
-                # anything, since a constant shifts every candidate equally.
+                # Filled in below from the fingerprint embedding when one
+                # could be computed; 0.5 is the neutral fallback this used to
+                # be unconditionally, which left 0.20 of the ranking weight
+                # inert and shifted every candidate equally.
                 "semantic_score": 0.5,
             }
             candidates.append(cand)
 
+        await self._score_semantic(fingerprint, memories, candidates)
         return candidates
+
+    async def _score_semantic(
+        self,
+        fingerprint: ContextFingerprint,
+        memories: list[Any],
+        candidates: list[dict[str, Any]],
+    ) -> None:
+        """Set each candidate's semantic score from the context fingerprint.
+
+        Retrieval on this path is filter-based, so nothing upstream produces a
+        query vector and this signal — 0.20 of the total weight, the joint
+        largest — was a constant for every candidate. One embedding of the
+        fingerprint text is enough to fix it: the candidates already carry
+        their stored vectors, so the comparison is 50 dot products in process,
+        not another database round trip.
+
+        Fails open. A recall that ranks slightly worse is a bad session; a
+        recall that raises because the embedding backend is down is a broken
+        one, and this runs inside a hook with a 10-second budget.
+        """
+        if not self._embeddings or not candidates or fingerprint.is_empty:
+            return
+        try:
+            query = await self._embeddings.embed_async(fingerprint.as_text())
+        except Exception:
+            logger.warning("Fingerprint embedding failed; semantic signal stays neutral")
+            return
+        if not query:
+            return
+
+        for memory, cand in zip(memories, candidates, strict=False):
+            vector = getattr(memory, "embedding", None)
+            if vector is None:
+                continue
+            score = _cosine(query, list(vector))
+            if score is not None:
+                # Cosine runs -1..1 for arbitrary vectors; the ranker's signals
+                # are all 0..1, so a negative similarity has to clamp rather
+                # than subtract from the weighted sum.
+                cand["semantic_score"] = max(0.0, score)
 
     async def _apply_anti_annoyance(
         self,
