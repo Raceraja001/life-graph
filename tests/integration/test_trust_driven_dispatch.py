@@ -462,3 +462,102 @@ async def test_apply_driver_deploy_failure_leaves_it_pending(tmp_path):
     async with async_session() as s:
         reloaded = await s.get(Approval, uuid.UUID(appr_id))
         assert reloaded.status == "pending"
+
+
+# ── driver_plan: approving dispatches instruction + spec as a real task ──
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_approving_driver_plan_dispatches_a_combined_task(monkeypatch):
+    import life_graph.services.dev_tasks as dev_tasks_mod
+    from life_graph.models.db import Approval
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    project = await _make_project()
+    task_id = str(uuid.uuid4())
+
+    calls = []
+
+    async def _fake_create_dev_task(_session_factory, tenant_id, **kwargs):
+        calls.append({"tenant_id": tenant_id, **kwargs})
+        return {"id": "new-task-id"}
+
+    monkeypatch.setattr(dev_tasks_mod, "create_dev_task", _fake_create_dev_task)
+
+    async with async_session() as s:
+        appr = Approval(
+            tenant_id=TENANT,
+            kind="driver_plan",
+            title="Review plan",
+            source="driver_plan",
+            source_ref=task_id,
+            payload={
+                "task_id": task_id,
+                "driver": "local",
+                "instruction": "Add a helper function",
+                "spec": "**Tasks:** 1. add function",
+                "project_id": str(project),
+                "persona_name": "code-fixer-local",
+            },
+        )
+        s.add(appr)
+        await s.commit()
+        await s.refresh(appr)
+        appr_id = str(appr.id)
+
+        result = await ApprovalService(s).resolve(TENANT, appr_id, "approve")
+        await s.commit()
+
+    assert result["status"] == "approved"
+    assert result["payload"]["dispatched_task_id"] == "new-task-id"
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["persona_name"] == "code-fixer-local"
+    assert call["task_type"] == "code_change"
+    assert "Add a helper function" in call["instruction"]
+    assert "**Tasks:** 1. add function" in call["instruction"]
+    assert call["properties"]["plan_task_id"] == task_id
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_rejecting_driver_plan_is_a_plain_noop(monkeypatch):
+    import life_graph.services.dev_tasks as dev_tasks_mod
+    from life_graph.models.db import Approval
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    project = await _make_project()
+
+    async def _should_not_be_called(*_a, **_k):
+        raise AssertionError("create_dev_task must not run on reject")
+
+    monkeypatch.setattr(dev_tasks_mod, "create_dev_task", _should_not_be_called)
+
+    async with async_session() as s:
+        appr = Approval(
+            tenant_id=TENANT,
+            kind="driver_plan",
+            title="Review plan",
+            source="driver_plan",
+            source_ref=str(uuid.uuid4()),
+            payload={
+                "task_id": str(uuid.uuid4()),
+                "driver": "local",
+                "instruction": "Add a helper function",
+                "spec": "**Tasks:** 1. add function",
+                "project_id": str(project),
+                "persona_name": "code-fixer-local",
+            },
+        )
+        s.add(appr)
+        await s.commit()
+        await s.refresh(appr)
+        appr_id = str(appr.id)
+
+        result = await ApprovalService(s).resolve(TENANT, appr_id, "reject")
+        await s.commit()
+
+    assert result["status"] == "rejected"

@@ -61,6 +61,7 @@ async def create_dev_task(
     start: bool = True,
     properties: dict[str, Any] | None = None,
     spec_first: bool = False,
+    verify_chain: list[str] | None = None,
 ) -> dict[str, Any]:
     """Record a dev task and start it in the background.
 
@@ -110,6 +111,7 @@ async def create_dev_task(
             persona_name,
             task_type,
             spec_first=spec_first,
+            verify_chain=verify_chain,
         )
     )
     _background.add(bg)
@@ -127,6 +129,7 @@ async def _run(
     task_type: str,
     interactive: bool = True,
     spec_first: bool = False,
+    verify_chain: list[str] | None = None,
 ) -> None:
     from life_graph.core.events import event_bus
     from life_graph.core.tenant import set_tenant_context
@@ -159,6 +162,7 @@ async def _run(
                 interactive=interactive,
                 isolate_workdir=True,
                 spec_first=spec_first,
+                verify_chain=verify_chain,
             )
             await session.commit()
         status = "completed" if result.success else "failed"

@@ -547,6 +547,37 @@ class TaskDispatcher:
                         await self._create_approval_entry(
                             tenant_id, task_id, driver.name, v_results, session
                         )
+                elif task_type == "plan":
+                    # A plan dispatch passed no_diff_in_plan (genuinely no file
+                    # changes) -- file the spec for human review instead of the
+                    # normal second-opinion-review-then-land path, which has
+                    # nothing to review or land here.
+                    await self._emit(
+                        EventType.VERIFICATION_PASSED,
+                        {"task_id": task_id, "driver": driver.name},
+                    )
+                    plan_spec = _extract_spec(result.output)
+                    if plan_spec:
+                        await self._create_plan_approval(
+                            tenant_id=tenant_id,
+                            task_id=task_id,
+                            driver_name=driver.name,
+                            instruction=instruction,
+                            spec_text=plan_spec,
+                            project_id=project_uuid,
+                            persona_name=persona_name,
+                            session=session,
+                        )
+                        result.metadata = {**(result.metadata or {}), "spec": plan_spec}
+                    else:
+                        result = DriverResult(
+                            success=False,
+                            output=result.output,
+                            error="Plan dispatch produced no '## Spec' section to review",
+                            cost_usd=result.cost_usd,
+                            duration_ms=result.duration_ms,
+                            metadata={"needs_human": True},
+                        )
                 else:
                     await self._emit(
                         EventType.VERIFICATION_PASSED,
@@ -1126,6 +1157,61 @@ class TaskDispatcher:
             logger.info("Created second-opinion approval entry for task %s", task_id)
         except Exception:
             logger.warning("Failed to create dissent approval entry", exc_info=True)
+
+    async def _create_plan_approval(
+        self,
+        *,
+        tenant_id: str,
+        task_id: str,
+        driver_name: str,
+        instruction: str,
+        spec_text: str,
+        project_id: uuid.UUID | None,
+        persona_name: str | None,
+        session: AsyncSession,
+    ) -> None:
+        """File a ``driver_plan`` approval for a spec produced with no code changes.
+
+        Approving it dispatches the ORIGINAL instruction plus this spec as a
+        normal code-writing task — the full existing pipeline (driver,
+        mechanical autofix, verify, second-opinion review, land, PR/merge
+        approvals), unchanged. Rejecting it is a plain no-op: the plan is
+        simply abandoned, nothing was ever landed to clean up.
+
+        Best-effort, like the other approval producers: a failure here is
+        logged and swallowed rather than failing a plan that already
+        verified cleanly (no file changes, a real spec).
+        """
+        try:
+            from life_graph.models.db import Approval
+
+            title_line = instruction.strip().splitlines()[0] if instruction.strip() else "Plan"
+            payload = {
+                "task_id": task_id,
+                "driver": driver_name,
+                "instruction": instruction[:4000],
+                "spec": spec_text[:4000],
+                "project_id": str(project_id) if project_id else None,
+                "persona_name": persona_name,
+            }
+            appr = Approval(
+                tenant_id=tenant_id,
+                kind="driver_plan",
+                title=f"Review plan: {title_line[:100]}",
+                detail=(
+                    f"Driver '{driver_name}' produced a plan with no file changes. "
+                    "Approve to dispatch the instruction and this spec together as "
+                    "a normal code-writing task; reject to abandon it."
+                ),
+                source="driver_plan",
+                source_ref=str(task_id),
+                payload=payload,
+            )
+            async with session.begin_nested():
+                session.add(appr)
+            logger.info("Task %s: plan approval filed", task_id)
+        except Exception:
+            logger.warning("Failed to file plan approval for task %s", task_id, exc_info=True)
 
     async def _create_pr_approval(
         self,

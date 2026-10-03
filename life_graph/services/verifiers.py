@@ -135,6 +135,7 @@ class VerifierChain:
         self.register("citations_present", _verify_citations_present)
         self.register("style_conforms", _verify_style_conforms)
         self.register("claims_evidenced", _verify_claims_evidenced)
+        self.register("no_diff_in_plan", _verify_no_diff_in_plan)
 
 
 # ── 9 Built-in Verifiers ─────────────────────────────────────
@@ -414,6 +415,20 @@ def _changed_files(workdir: Path) -> list[Path]:
 def _changed_python_files(workdir: Path) -> list[Path]:
     """:func:`_changed_files`, filtered to ``*.py``."""
     return [f for f in _changed_files(workdir) if f.suffix == ".py"]
+
+
+async def _verify_no_diff_in_plan(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+    """A plan dispatch must only write a spec — no file changes at all.
+
+    Not inconclusive: a driver that edits files when told only to plan is a
+    real correctness problem (it didn't follow the instruction), so this
+    bounces once with the touched files named, then escalates — the same
+    one-bounce rule as any other failure, not the "tool unavailable" path.
+    """
+    changed = _changed_files(workdir)
+    if changed:
+        return False, {"touched": [str(f.relative_to(workdir)) for f in changed]}
+    return True, {}
 
 
 async def _verify_build_ok_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:

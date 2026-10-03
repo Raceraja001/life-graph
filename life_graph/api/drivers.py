@@ -266,6 +266,17 @@ class DevTaskCreate(BaseModel):
             "a one-line fix."
         ),
     )
+    plan_only: bool = Field(
+        False,
+        description=(
+            "Dispatch a PLAN, not code: the driver may only write a spec "
+            "(## Spec: requirements/design/tasks), enforced by a verifier — "
+            "any file change bounces it, same one-bounce rule as any other "
+            "failure. A successful plan files a driver_plan approval; "
+            "approving it dispatches the instruction + spec together as a "
+            "normal code-writing task. Implies spec_first."
+        ),
+    )
 
 
 @router.post(
@@ -300,7 +311,9 @@ async def create_dev_task(body: DevTaskCreate):
         instruction=body.instruction,
         project=project,
         persona_name=body.persona_name,
-        spec_first=body.spec_first,
+        task_type="plan" if body.plan_only else "code_change",
+        spec_first=body.spec_first or body.plan_only,
+        verify_chain=["no_diff_in_plan"] if body.plan_only else None,
     )
     return success_response(data=task)
 

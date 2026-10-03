@@ -207,6 +207,8 @@ class ApprovalService:
             await self._apply_driver_merge(appr, approve)
         elif appr.kind == "driver_deploy":
             await self._apply_driver_deploy(appr, approve)
+        elif appr.kind == "driver_plan":
+            await self._apply_driver_plan(tenant_id, appr, approve)
 
         await self.session.flush()
         return self._serialize(appr)
@@ -444,6 +446,54 @@ class ApprovalService:
             "deployed_at": datetime.now(UTC).isoformat(),
         }
         appr.resolution_note = f"Deployed (exit 0): {stdout[-300:] or '(no output)'}"
+
+    async def _apply_driver_plan(self, tenant_id: str, appr: Approval, approve: bool) -> None:
+        """Dispatch the plan's instruction + spec as a normal code-writing task.
+
+        Reject: a plain no-op — the plan is simply abandoned, nothing was
+        ever landed to clean up. Raises on a missing/stale project so the
+        approval stays pending for a retry, same shape as the other
+        producers in this module.
+        """
+        if not approve:
+            return
+        payload = appr.payload or {}
+        project_id = payload.get("project_id")
+        instruction = payload.get("instruction") or ""
+        spec = payload.get("spec") or ""
+        persona_name = payload.get("persona_name")
+        if not (project_id and instruction and persona_name):
+            raise ApprovalActionError(
+                "plan approval payload is missing project_id/instruction/persona_name"
+            )
+
+        try:
+            project = await self.session.get(Project, uuid.UUID(str(project_id)))
+        except (ValueError, TypeError):
+            project = None
+        if project is None:
+            raise ApprovalActionError(f"project {project_id} no longer exists")
+
+        from life_graph.services import dev_tasks
+        from life_graph.storage.database import async_session as session_factory
+
+        combined_instruction = (
+            f"{instruction}\n\n"
+            "--- APPROVED PLAN ---\n"
+            "The following plan was reviewed and approved. Implement it.\n\n"
+            f"{spec}"
+        )
+        task = await dev_tasks.create_dev_task(
+            session_factory,
+            tenant_id,
+            instruction=combined_instruction,
+            project={"id": str(project.id), "name": project.name},
+            persona_name=persona_name,
+            task_type="code_change",
+            properties={"origin": "plan_approval", "plan_task_id": payload.get("task_id")},
+        )
+        appr.payload = {**payload, "dispatched_task_id": task.get("id")}
+        appr.resolution_note = f"Dispatched as task {task.get('id')}"
 
     async def _apply_promotion(
         self, tenant_id: str, appr: Approval, approve: bool, resolved_by: str | None
