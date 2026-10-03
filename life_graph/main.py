@@ -313,6 +313,13 @@ async def lifespan(app: FastAPI):
         telegram_delivery_handler.subscribe()
         logger.info("Telegram brief delivery enabled")
 
+    # Startup — wire a filed approval (driver_pr/merge/plan/deploy/...) -> push/Telegram
+    with startup_step(report, "approval_notifications"):
+        from life_graph.services.approval_notifications import approval_notification_handler
+
+        approval_notification_handler.subscribe()
+        logger.info("Approval-filed notifications enabled")
+
     # Startup — wire advisory runs -> notifications/push
     with startup_step(report, "findings_bridge"):
         from life_graph.services.findings_bridge import findings_bridge_handler

@@ -149,13 +149,17 @@ async def landing(monkeypatch):
 
 
 async def _land(driver_name, project_id, auto_open_pr, auto_merge=False, verified=True):
+    from life_graph.core.events import event_bus
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.models.db import Approval
     from life_graph.storage.database import async_session
 
     task_id = str(uuid.uuid4())
-    d = TaskDispatcher(session_factory=async_session)
+    # Wired like production (dev_tasks.py's real TaskDispatcher construction),
+    # not left as the no-op default -- otherwise _emit() silently drops every
+    # APPROVAL_FILED a test might want to observe.
+    d = TaskDispatcher(session_factory=async_session, event_bus=event_bus)
     async with async_session() as s:
         await d._create_pr_approval(
             tenant_id=TENANT,
@@ -678,3 +682,59 @@ async def test_single_parsed_task_falls_back_to_one_combined_dispatch(monkeypatc
     assert calls[0].get("start", True) is True  # started immediately, not queued
     assert result["payload"]["dispatched_task_id"] == "only-task"
     assert "dispatched_task_ids" not in result["payload"]
+
+
+# ── APPROVAL_FILED: every producer actually notifies, auto-resolved ones don't ──
+
+
+@pytest.fixture
+def _captured_approval_events():
+    from life_graph.core.events import Event, EventType, event_bus
+
+    captured: list[Event] = []
+
+    async def _capture(event: Event) -> None:
+        captured.append(event)
+
+    event_bus.subscribe(EventType.APPROVAL_FILED, _capture)
+    try:
+        yield captured
+    finally:
+        event_bus.unsubscribe(EventType.APPROVAL_FILED, _capture)
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_manual_flow_emits_approval_filed_for_every_stage(landing, _captured_approval_events):
+    """driver_pr (via landing), driver_merge (via approving driver_pr), and
+    driver_deploy (via approving driver_merge) each file a pending approval
+    along this fully-manual path -- each one must actually notify."""
+    project = await _make_project({"deploy_on_merge": True, "deploy_command": "echo deployed"})
+    await _record("trusted", project, merged=4, failed=0)
+
+    await _merge_through("trusted", project, auto_open_pr=False, auto_merge=False)
+
+    kinds = [e.payload["kind"] for e in _captured_approval_events]
+    assert kinds == ["driver_pr", "driver_merge", "driver_deploy"]
+    for e in _captured_approval_events:
+        assert e.payload["tenant_id"] == TENANT
+        assert e.payload["title"]
+        assert e.payload["detail"]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_fully_auto_resolved_approvals_never_notify_but_deploy_still_does(
+    landing, _captured_approval_events
+):
+    """Full unattended path (auto_open_pr + auto_merge, trust earned):
+    driver_pr and driver_merge both auto-resolve and must NOT trigger a
+    false "approval needed" alert for something already approved --
+    driver_deploy is never trust-gated, so it must still notify."""
+    project = await _make_project({"deploy_on_merge": True, "deploy_command": "echo deployed"})
+    await _record("trusted", project, merged=4, failed=0)
+
+    await _land("trusted", project, auto_open_pr=True, auto_merge=True)
+
+    kinds = [e.payload["kind"] for e in _captured_approval_events]
+    assert kinds == ["driver_deploy"]

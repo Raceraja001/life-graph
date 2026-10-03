@@ -138,6 +138,7 @@ class EventType(StrEnum):
     SECOND_OPINION_DISSENT = "driver:second_opinion:dissent"
     TASK_BOUNCED = "driver:task:bounced"
     PIPELINE_TASK_ORIGINATED = "driver:pipeline:task_originated"
+    APPROVAL_FILED = "driver:approval:filed"
 
 
 @dataclass

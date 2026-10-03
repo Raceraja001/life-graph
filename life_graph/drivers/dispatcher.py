@@ -1239,6 +1239,10 @@ class TaskDispatcher:
             async with session.begin_nested():
                 session.add(appr)
             logger.info("Task %s: plan approval filed", task_id)
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {"tenant_id": tenant_id, "kind": "driver_plan", "title": appr.title, "detail": appr.detail},
+            )
         except Exception:
             logger.warning("Failed to file plan approval for task %s", task_id, exc_info=True)
 
@@ -1338,6 +1342,15 @@ class TaskDispatcher:
         if auto_open_pr and verified:
             await self._auto_open_pr(appr, driver_name, project_id, session)
 
+        # Only notify if it's actually still waiting on someone -- a driver
+        # proven enough to earn auto_open_pr just resolved this above, and
+        # "approval needed" for something already approved is a false alarm.
+        if appr.status == "pending":
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {"tenant_id": tenant_id, "kind": "driver_pr", "title": appr.title, "detail": appr.detail},
+            )
+
     async def _auto_open_pr(
         self,
         appr,
@@ -1389,6 +1402,16 @@ class TaskDispatcher:
             merge_appr, driver_name, project_id, bool((appr.payload or {}).get("auto_merge"))
         )
         logger.info("Auto-opened PR %s (%s)", outcome["pr_url"], driver_name)
+        if merge_appr.status == "pending":
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": merge_appr.tenant_id,
+                    "kind": "driver_merge",
+                    "title": merge_appr.title,
+                    "detail": merge_appr.detail,
+                },
+            )
 
     async def _create_approval_entry(
         self,

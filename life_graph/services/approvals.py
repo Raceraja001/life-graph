@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
+from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Approval, Memory, Project
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
 
@@ -242,6 +243,20 @@ class ApprovalService:
             payload.get("project_id"),
             bool(payload.get("auto_merge")),
         )
+        # Only notify if it's actually still waiting on someone -- earned
+        # auto_merge just resolved this above, and "approval needed" for
+        # something already approved is a false alarm.
+        if merge_appr.status == "pending":
+            await event_bus.emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": merge_appr.tenant_id,
+                    "kind": "driver_merge",
+                    "title": merge_appr.title,
+                    "detail": merge_appr.detail,
+                },
+                source="approvals",
+            )
 
     async def maybe_auto_merge(
         self,
@@ -399,6 +414,16 @@ class ApprovalService:
             payload=deploy_payload,
         )
         self.session.add(deploy_appr)
+        await event_bus.emit(
+            EventType.APPROVAL_FILED,
+            {
+                "tenant_id": deploy_appr.tenant_id,
+                "kind": "driver_deploy",
+                "title": deploy_appr.title,
+                "detail": deploy_appr.detail,
+            },
+            source="approvals",
+        )
 
     async def _apply_driver_deploy(self, appr: Approval, approve: bool) -> None:
         """Run the project's own deploy command (approve). Reject: no-op.
