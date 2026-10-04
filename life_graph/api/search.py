@@ -109,11 +109,17 @@ class AskResponse(BaseModel):
 
 
 def _to_memory_responses(hits: list[tuple[Any, float]]) -> list[MemoryResponse]:
-    """Full twenty-field objects, the pre-existing response shape."""
+    """Full objects, the pre-existing response shape plus the relevance score.
+
+    The score was computed and then discarded here, which left every caller —
+    the MCP tool, the chat agent, the dashboard — unable to tell a direct hit
+    from the best of a bad lot. Search always returns `limit` rows, so without
+    it nothing downstream can decline to answer.
+    """
     from life_graph.services.recall import _dict_to_memory_response
 
     out: list[MemoryResponse] = []
-    for obj, _score in hits:
+    for obj, score in hits:
         if isinstance(obj, dict):
             # Tri-hybrid dicts are assembled from a graph join and have
             # always been allowed to be individually unconvertible.
@@ -121,10 +127,11 @@ def _to_memory_responses(hits: list[tuple[Any, float]]) -> list[MemoryResponse]:
                 resp = _dict_to_memory_response(obj)
             except Exception:
                 resp = None
-            if resp:
-                out.append(resp)
         else:
-            out.append(MemoryResponse.model_validate(obj))
+            resp = MemoryResponse.model_validate(obj)
+        if resp:
+            resp.score = score
+            out.append(resp)
     return out
 
 
