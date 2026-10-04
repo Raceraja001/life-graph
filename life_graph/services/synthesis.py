@@ -68,7 +68,20 @@ def renumber_citations(answer: str, memory_ids: list[str]) -> tuple[str, list[st
     return renumbered, ordered_ids
 
 
-_SYNTHESIS_SYSTEM_PROMPT = """\
+#: The exact sentence the model is told to use when the memories do not answer
+#: the question, and the one the parser looks for. Prompt and parser share this
+#: constant deliberately: what makes `answered` reliable is that both ends
+#: agree on the wording, and two copies of a string drift apart.
+#:
+#: The judgement has to live here because it cannot live in the ranking.
+#: Retrieval always returns rows, and no scoring signal separates an
+#: answerable question from an unanswerable one — top score, margin, ratio and
+#: spread all overlap on this instance (evals/score-separability.md). Only
+#: something that reads meaning can tell, and the answer then has to survive
+#: back to the caller as more than prose.
+ABSTENTION_SENTENCE = "I don't have enough memories about this."
+
+_SYNTHESIS_SYSTEM_PROMPT = f"""\
 You are a personal memory assistant. The user has a brain (memory system)
 that stores facts, preferences, decisions, and experiences.
 
@@ -76,13 +89,28 @@ Given a question and a set of relevant memories from the brain,
 synthesize a clear, natural answer. Follow these rules:
 
 1. Answer ONLY based on the provided memories. Do not hallucinate.
-2. If memories don't cover the question, say "I don't have enough memories about this."
+2. If the memories do not answer the question, reply with EXACTLY this
+   sentence and nothing else: "{ABSTENTION_SENTENCE}"
+   Search always hands you the closest memories it has, so receiving ten of
+   them is not evidence that any one of them is relevant.
 3. Reference specific memories naturally (e.g., "You mentioned that...", "Based on your experience with...").
 4. Be concise but thorough.
 5. If there are contradictions in memories, point them out.
 6. Use a warm, assistant-like tone — you're helping the user understand their own knowledge.
 7. When a fact comes from a memory, cite it inline as [Memory N] using that memory's number from the context. Only cite memories you actually used; never invent a number.
 """
+
+
+def _is_abstention(answer: str) -> bool:
+    """Whether an answer is the refusal the prompt asks for.
+
+    Deliberately strict. The prompt says to reply with exactly one sentence
+    and nothing else, so anything longer is treated as an answer — a model
+    that hedges in a paragraph and then answers has answered, and reporting
+    that as a refusal would be worse than reporting nothing.
+    """
+    cleaned = answer.strip().strip('"').rstrip(".").casefold()
+    return cleaned == ABSTENTION_SENTENCE.rstrip(".").casefold()
 
 
 class SynthesisService:
@@ -121,6 +149,7 @@ class SynthesisService:
                 "source_count": 0,
                 "model": None,
                 "citations": [],
+                "answered": False,
             }
 
         # Drop memories with no usable id BEFORE numbering — cited_memory_ids
@@ -136,6 +165,7 @@ class SynthesisService:
                 "source_count": 0,
                 "model": None,
                 "citations": [],
+                "answered": False,
             }
 
         # Format memories as context
@@ -196,6 +226,11 @@ class SynthesisService:
             "source_count": len(memories),
             "model": model_used,
             "citations": citations,
+            # Compared on the normalised sentence rather than searched for as a
+            # substring: an answer that *mentions* not having enough memories
+            # while going on to answer anyway is an answer, and a model that
+            # pads the sentence with a closing pleasantry has still declined.
+            "answered": not _is_abstention(answer),
         }
 
     @staticmethod

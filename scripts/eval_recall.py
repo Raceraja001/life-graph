@@ -90,14 +90,20 @@ def run_case(
 
     if case.get("expect_none"):
         # Abstention: the store holds no answer, so the honest response is to
-        # say so. Today it cannot: /search/ returns no relevance score on a
-        # memory, so every query comes back with `limit` rows and the caller
-        # has no way to tell a strong match from the best of a bad lot. These
-        # cases are therefore reported, not scored — they measure a capability
-        # the API does not expose yet. Give memories a score and this becomes
-        # a real assertion: top score below a floor.
+        # say so. Memories now carry a relevance score — and measurement says
+        # it cannot carry this assertion. "What is my favourite restaurant",
+        # which the store knows nothing about, outscores a question it answers
+        # correctly, and the same overlap holds for the margin over second
+        # place and for two relative measures (evals/score-separability.md).
+        #
+        # So these stay reported rather than scored, and the top score is
+        # recorded next to them. Scoring them against a floor would be
+        # inventing a number the data refuses to support.
         result["kind"] = "abstain"
         result["passed"] = None
+        result["top_score"] = (
+            round(max((m.get("score") or 0.0) for m in memories), 4) if memories else 0.0
+        )
         result["top"] = (memories[0].get("content", "")[:70]) if memories else ""
         return result
 
@@ -148,7 +154,7 @@ def summarize(results: list[dict[str, Any]], top_k: int) -> dict[str, Any]:
         # Cases the extracted memories missed and the raw trail answered.
         "rescued_by_trail": len(rescued),
         "abstain_cases": len(abstain),
-        # Not a score: see run_case. Recorded so the gap stays visible.
+        # Not a score: see run_case and evals/score-separability.md.
         "abstention_measurable": False,
     }
 
@@ -189,6 +195,8 @@ def main() -> int:
         rank = r.get("rank") or ("-" if r["kind"] == "recall" else f"{r['returned']} rows")
         if r.get("trail_only"):
             rank = f"trail#{r['trail_rank']}"
+        if r["kind"] == "abstain":
+            rank = f"{r['top_score']:.3f}"
         print(f"{mark:2} {r['id']:24} {str(rank):>5}  {r['top']}")
 
     summary = summarize(results, args.top_k)
