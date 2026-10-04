@@ -197,13 +197,33 @@ class SpacyExtractor:
     def __init__(self, model_name: str = "en_core_web_sm") -> None:
         self._model_name = model_name
         self._nlp: spacy.Language | None = None
+        # Latches once the import has failed, so a missing spaCy costs one
+        # ImportError rather than one per call.
+        self._unavailable: bool = False
 
     # -- lazy loader --------------------------------------------------------
 
-    def _load_model(self) -> spacy.Language:
-        """Load the spaCy model on first use."""
-        if self._nlp is None:
-            import spacy as _spacy
+    def _load_model(self) -> spacy.Language | None:
+        """Load the spaCy model on first use, or None if spaCy is absent.
+
+        Two different absences, and only one of them used to be handled. A
+        missing *model* raises OSError and degrades to a blank pipeline. A
+        missing *spaCy* raises ImportError from the import itself, which
+        propagated — so a deployment without the `local-nlp` extra crashed
+        here instead of skipping this tier, contradicting the claim in
+        pyproject.toml that its absence is "a supported state, not a crash".
+
+        The verifier sandbox is exactly that deployment: it builds from
+        `--extra dev`, so every dev task's test run failed on this until the
+        caller learned to cope with None.
+        """
+        if self._nlp is None and not self._unavailable:
+            try:
+                import spacy as _spacy
+            except ImportError:
+                logger.info("spaCy is not installed — the spaCy extraction tier is skipped")
+                self._unavailable = True
+                return None
 
             try:
                 self._nlp = _spacy.load(self._model_name)
@@ -232,6 +252,11 @@ class SpacyExtractor:
             return []
 
         nlp = self._load_model()
+        if nlp is None:
+            # No spaCy: this tier contributes nothing and the pipeline's other
+            # tiers still run. Returning [] is the same shape as the language
+            # guard above already returns.
+            return []
         doc = nlp(text)
 
         entity_facts = self._extract_entities(doc)
