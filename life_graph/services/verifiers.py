@@ -6,6 +6,7 @@ One-bounce rule: failed → re-dispatch once → second failure → needs_human.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -75,35 +76,48 @@ class VerifierChain:
     async def run_chain(
         self, chain: list[str], workdir: Path, task_context: dict
     ) -> list[VerifierResult]:
-        """Run specified verifiers in order. Returns results for each.
+        """Run specified verifiers concurrently. Returns results in chain order.
+
+        Verifiers are independent, read-only checks against the same
+        workdir — none reads another's output or depends on another having
+        run first — so there is nothing to serialize on. ``asyncio.gather``
+        preserves input order in its result list regardless of completion
+        order, so a caller indexing ``results[i]`` against ``chain[i]``
+        (several do) keeps working unchanged.
+
+        This is a real wall-clock win for sandboxed checks (``services.
+        sandbox``, real async subprocesses — several Docker containers
+        genuinely run at once). A verifier using a blocking ``subprocess.
+        run`` still occupies the event loop for its own duration either
+        way, so on a non-sandboxed host this is no worse than the previous
+        sequential behavior, not a regression.
 
         Args:
-            chain: Ordered list of verifier names to run.
+            chain: Verifier names to run (order preserved in the result).
             workdir: Working directory for file-based checks.
             task_context: Task metadata (output, allowed_files, etc.).
 
         Returns:
-            List of VerifierResult, one per verifier in chain.
+            List of VerifierResult, one per verifier in chain, same order.
         """
-        results = []
-        for name in chain:
+
+        async def _run_one(name: str) -> VerifierResult:
             verifier = self._verifiers.get(name)
             if not verifier:
-                results.append(VerifierResult(name, False, {"error": f"Unknown verifier: {name}"}))
-                continue
+                return VerifierResult(name, False, {"error": f"Unknown verifier: {name}"})
             try:
                 passed, evidence = await verifier(workdir, task_context)
-                if passed is None:
-                    # Sentinel: the verifier could not run its tool. Kept as a
-                    # 2-tuple so third-party verifiers registered against the
-                    # documented (bool, dict) contract keep working unchanged.
-                    results.append(VerifierResult(name, False, evidence, inconclusive=True))
-                else:
-                    results.append(VerifierResult(name, bool(passed), evidence))
             except Exception as e:
                 logger.warning("Verifier %s failed: %s", name, e, exc_info=True)
-                results.append(VerifierResult(name, False, {"error": str(e)}))
-        return results
+                return VerifierResult(name, False, {"error": str(e)})
+            if passed is None:
+                # Sentinel: the verifier could not run its tool. Kept as a
+                # 2-tuple so third-party verifiers registered against the
+                # documented (bool, dict) contract keep working unchanged.
+                return VerifierResult(name, False, evidence, inconclusive=True)
+            return VerifierResult(name, bool(passed), evidence)
+
+        return list(await asyncio.gather(*(_run_one(name) for name in chain)))
 
     def all_passed(self, results: list[VerifierResult]) -> bool:
         """Whether every verifier actually ran AND passed.
