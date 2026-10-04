@@ -271,6 +271,15 @@ class SearchQuery(BaseModel):
         "hybrid",
         description="Search strategy: 'vector' (cosine only), 'hybrid' (vector+BM25), 'tri_hybrid' (vector+BM25+graph)",
     )
+    include_trail: bool = Field(
+        False,
+        description=(
+            "Opt-in: also search the raw capture trail and return matching "
+            "passages in `trail`. Extraction is lossy — the sentence a fact "
+            "came from often answers a question the fact no longer can. Off "
+            "by default so existing callers keep the shape they parse today."
+        ),
+    )
     index_only: bool = Field(
         False,
         description=(
@@ -303,6 +312,18 @@ class MemoryIndexItem(BaseModel):
     status: str = "active"
 
 
+class TrailPassage(BaseModel):
+    """A verbatim passage from the capture trail, matched lexically."""
+
+    capture_event_id: str
+    surface: str
+    created_at: datetime
+    rank: float
+    # Trimmed rather than whole: a capture can be a 60kB report, and the point
+    # is to show the words that matched, not to re-deliver the document.
+    excerpt: str
+
+
 class SearchResult(BaseModel):
     """Results of a memory search, including timing metadata."""
 
@@ -314,6 +335,7 @@ class SearchResult(BaseModel):
     # asked for. "full" = `memories` is populated; "index" = `index` is.
     result_mode: str = "full"
     index: list[MemoryIndexItem] = Field(default_factory=list)
+    trail: list[TrailPassage] = Field(default_factory=list)
 
 
 # ── Proactive Recall ──────────────────────────────────────────────────────────
