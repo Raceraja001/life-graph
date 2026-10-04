@@ -92,6 +92,16 @@ class AskResponse(BaseModel):
 
     answer: str
     source_count: int
+    answered: bool = Field(
+        True,
+        description=(
+            "False when the retrieved memories did not answer the question and "
+            "the model said so. Search always returns rows and no ranking "
+            "signal separates a real hit from the closest of a bad lot (see "
+            "evals/score-separability.md), so this is the only honest "
+            "'I don't know' the API offers — act on it rather than on `score`."
+        ),
+    )
     model: str | None = None
     memories: list[MemoryResponse] = []
     query_time_ms: float = 0.0
@@ -109,11 +119,17 @@ class AskResponse(BaseModel):
 
 
 def _to_memory_responses(hits: list[tuple[Any, float]]) -> list[MemoryResponse]:
-    """Full twenty-field objects, the pre-existing response shape."""
+    """Full objects, the pre-existing response shape plus the relevance score.
+
+    The score was computed and then discarded here, which left every caller —
+    the MCP tool, the chat agent, the dashboard — unable to tell a direct hit
+    from the best of a bad lot. Search always returns `limit` rows, so without
+    it nothing downstream can decline to answer.
+    """
     from life_graph.services.recall import _dict_to_memory_response
 
     out: list[MemoryResponse] = []
-    for obj, _score in hits:
+    for obj, score in hits:
         if isinstance(obj, dict):
             # Tri-hybrid dicts are assembled from a graph join and have
             # always been allowed to be individually unconvertible.
@@ -121,10 +137,11 @@ def _to_memory_responses(hits: list[tuple[Any, float]]) -> list[MemoryResponse]:
                 resp = _dict_to_memory_response(obj)
             except Exception:
                 resp = None
-            if resp:
-                out.append(resp)
         else:
-            out.append(MemoryResponse.model_validate(obj))
+            resp = MemoryResponse.model_validate(obj)
+        if resp:
+            resp.score = score
+            out.append(resp)
     return out
 
 
@@ -467,6 +484,7 @@ async def ask_brain(
     # index_only keeps the citation handles (ids) and drops the rest.
     payload = AskResponse(
         answer=result["answer"],
+        answered=result.get("answered", True),
         source_count=result["source_count"],
         model=result["model"],
         memories=[] if body.index_only else memories,

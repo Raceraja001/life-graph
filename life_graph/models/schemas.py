@@ -66,6 +66,18 @@ class MemoryResponse(BaseModel):
     # ── Impact Scoring (Feature 5) ────────────────────────────
     impact_score: float = 0.5
     needs_verification: bool = False
+    score: float | None = Field(
+        None,
+        description=(
+            "Relevance of this memory to the query that returned it, when it "
+            "came from a search. None on every other path, where there is no "
+            "query to be relevant to. ORDINAL, NOT CALIBRATED: it is the "
+            "hybrid ranker's weighted sum of cosine similarity and ts_rank, so "
+            "it orders results honestly but 0.6 means nothing on its own. "
+            "Compare scores within one response; derive any threshold from "
+            "measurement (see evals/) rather than picking a round number."
+        ),
+    )
 
     def model_post_init(self, __context: Any) -> None:
         """Compute needs_verification if not explicitly set."""
