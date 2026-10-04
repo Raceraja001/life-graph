@@ -92,6 +92,16 @@ class AskResponse(BaseModel):
 
     answer: str
     source_count: int
+    answered: bool = Field(
+        True,
+        description=(
+            "False when the retrieved memories did not answer the question and "
+            "the model said so. Search always returns rows and no ranking "
+            "signal separates a real hit from the closest of a bad lot (see "
+            "evals/score-separability.md), so this is the only honest "
+            "'I don't know' the API offers — act on it rather than on `score`."
+        ),
+    )
     model: str | None = None
     memories: list[MemoryResponse] = []
     query_time_ms: float = 0.0
@@ -474,6 +484,7 @@ async def ask_brain(
     # index_only keeps the citation handles (ids) and drops the rest.
     payload = AskResponse(
         answer=result["answer"],
+        answered=result.get("answered", True),
         source_count=result["source_count"],
         model=result["model"],
         memories=[] if body.index_only else memories,
