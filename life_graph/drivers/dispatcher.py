@@ -16,6 +16,7 @@ One-bounce rule:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import tempfile
@@ -136,6 +137,30 @@ def _parse_tasks(spec_text: str | None) -> list[str]:
     # Stop at the next bold heading, if the model added one after Tasks.
     block = _BOLD_HEADING_RE.split(block)[0]
     return [m.group(1).strip() for m in _TASK_ITEM_RE.finditer(block) if m.group(1).strip()]
+
+
+_CODE_CONTEXT_TIMEOUT_SECONDS = 30
+
+
+async def _code_context(workdir: Path, instruction: str) -> str:
+    """Callers/callees of the symbols *instruction* names. "" on any failure.
+
+    Built from the task's own worktree (fresh, never stale), off the event
+    loop since parsing a few hundred files is CPU and disk work. Best-effort:
+    a context that can't be built must never fail a dispatch.
+    """
+    if not settings.driver_code_context_enabled:
+        return ""
+    try:
+        from life_graph.services.code_graph import build_graph, context_for
+
+        graph = await asyncio.wait_for(
+            asyncio.to_thread(build_graph, workdir), timeout=_CODE_CONTEXT_TIMEOUT_SECONDS
+        )
+        return context_for(graph, instruction)
+    except Exception:
+        logger.warning("Could not build code context for %s", workdir, exc_info=True)
+        return ""
 
 
 class DispatchError(Exception):
@@ -419,6 +444,16 @@ class TaskDispatcher:
                 # prompt gates a whole section on `if packet.project_context:`.
                 packet.project_context["path"] = str(workdir)
                 packet.project_context["isolation"] = False
+                # Step 4a: where the symbols the instruction names are defined
+                # and who calls them, from this worktree's own code.
+                code_context = await _code_context(workdir, instruction)
+                if code_context:
+                    packet.instruction += (
+                        "\n\n--- CODE CONTEXT (where the symbols named above are "
+                        "defined and used in this project) ---\n"
+                        f"{code_context}\n"
+                        "Check these callers before changing a signature or return shape."
+                    )
             result = await driver.dispatch(
                 packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
             )

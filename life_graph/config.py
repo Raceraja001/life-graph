@@ -407,6 +407,9 @@ class Settings(BaseSettings):
     # Draft the PR description from the landed diff (one model call per landed
     # task, best-effort -- falls back to the instruction + agent summary).
     driver_pr_description_enabled: bool = True
+    # Give the driver the definitions/callers/callees of symbols its
+    # instruction names, from a stdlib-ast graph of the worktree (no model).
+    driver_code_context_enabled: bool = True
     driver_pr_description_model: str | None = None  # None = agent_llm_model
     # Where verifiers execute agent-written code (tests, linters). "none" runs
     # them on the host as this process's user; "docker" runs each check in a
