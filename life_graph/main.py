@@ -237,31 +237,41 @@ async def lifespan(app: FastAPI):
             webhook_handler.set_arq_pool(arq_pool)
             logger.info("Webhook ARQ pool connected")
 
-    # Startup — seed kernel personas for default tenant
+    # Every seeded tenant, not just "default". A tenant with no rows in
+    # action_safety_rules is not an unconfigured tenant that falls back to
+    # something sensible — the classifier calls an action it cannot match
+    # dangerous, so such a tenant can do nothing autonomously and the logs
+    # never mention it. LIFE_GRAPH_SEED_TENANTS is the list.
+    seed_tenants = settings.seed_tenants_list
+
+    # Startup — seed kernel personas
     with startup_step(report, "seed_personas"):
         from life_graph.api.dependencies import get_persona_service
 
         persona_svc = get_persona_service()
-        seeded = await persona_svc.seed_builtins("default")
-        if seeded:
-            # Inserted OR reconciled — seed_builtins logs the breakdown.
-            logger.info("Seeded/reconciled %d built-in personas for default tenant", seeded)
+        for tenant in seed_tenants:
+            seeded = await persona_svc.seed_builtins(tenant)
+            if seeded:
+                # Inserted OR reconciled — seed_builtins logs the breakdown.
+                logger.info("Seeded/reconciled %d built-in personas for tenant=%s", seeded, tenant)
 
-    # Startup — seed ambient scheduled jobs for default tenant
+    # Startup — seed ambient scheduled jobs
     with startup_step(report, "seed_ambient_jobs"):
         from life_graph.api.dependencies import get_scheduler_service
         from life_graph.kernel.ambient import seed_ambient_jobs
 
-        seeded_jobs = await seed_ambient_jobs(get_scheduler_service(), "default")
-        if seeded_jobs:
-            logger.info("Seeded %d ambient scheduled jobs for default tenant", seeded_jobs)
+        for tenant in seed_tenants:
+            seeded_jobs = await seed_ambient_jobs(get_scheduler_service(), tenant)
+            if seeded_jobs:
+                logger.info("Seeded %d ambient scheduled jobs for tenant=%s", seeded_jobs, tenant)
 
     # Startup — seed ambient project safety rules + L1 autonomy level (Sub-project B)
     with startup_step(report, "seed_ambient_autonomy"):
         from life_graph.autonomy.safety.ambient_rules import seed_ambient_autonomy
 
-        await seed_ambient_autonomy("default")
-        logger.info("Seeded ambient autonomy safety rules + L1 level for default tenant")
+        for tenant in seed_tenants:
+            await seed_ambient_autonomy(tenant)
+            logger.info("Seeded ambient autonomy safety rules + L1 level for tenant=%s", tenant)
 
     # Startup — wire schedule outcome reconciliation
     with startup_step(report, "scheduler_outcomes"):
