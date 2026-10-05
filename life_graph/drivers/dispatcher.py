@@ -92,9 +92,14 @@ _SPEC_FIRST_PREFIX = (
     "Before changing anything, write a short spec as the FIRST part of "
     "your response, using exactly these headings:\n"
     "## Spec\n"
-    "**Requirements:** the acceptance criteria this change must satisfy.\n"
+    "**Requirements:** the acceptance criteria this change must satisfy, one "
+    "per line, each with an id and the pytest test that will prove it, "
+    "exactly like:\n"
+    "AC-1: <what must be true> — test: tests/unit/test_example.py::test_name\n"
     "**Design:** the approach, in a sentence or two.\n"
-    "**Tasks:** a numbered list of the concrete steps you will take.\n\n"
+    "**Tasks:** a numbered list of the concrete steps you will take. End each "
+    "task with the criteria it satisfies, e.g. \"1. Add the parser (AC-1)\". A "
+    "task that cites a criterion also writes or updates that criterion's test.\n\n"
     "Then implement it. Keep the spec to a few lines total — it's a plan, "
     "not documentation.\n\n---\n\n"
 )
@@ -247,6 +252,7 @@ class TaskDispatcher:
         interactive: bool = False,
         isolate_workdir: bool = False,
         spec_first: bool = False,
+        acceptance_tests: list[str] | None = None,
     ) -> DriverResult:
         """Dispatch a task through the full driver pipeline.
 
@@ -329,6 +335,11 @@ class TaskDispatcher:
             # tests never ran. An explicit caller argument still wins.
             verify_chain = _resolve_verify_chain(caller_verify_chain, persona)
             verify_chain = _with_required_checks(verify_chain, packet.project_context)
+            # A task fanned out from a plan carries the tests bound to the
+            # acceptance criteria it cites -- check those specifically, on
+            # top of whatever chain the persona/project asked for.
+            if acceptance_tests and "acceptance_tests_pass" not in verify_chain:
+                verify_chain = [*verify_chain, "acceptance_tests_pass"]
 
             # Step 2c: opt-in workdir isolation — only when the caller asked
             # for it AND a real project path resolved. A no-op flag on a
@@ -467,6 +478,7 @@ class TaskDispatcher:
                     "sandbox_setup": packet.project_context.get("sandbox_setup"),
                     "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
                     "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
+                    "acceptance_tests": acceptance_tests or [],
                 }
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
 
@@ -549,6 +561,7 @@ class TaskDispatcher:
                         failure_report=v_results,
                         session=session,
                         verify_chain=verify_chain,
+                        acceptance_tests=acceptance_tests,
                     )
 
                     if bounce_result is not None:
@@ -1040,6 +1053,7 @@ class TaskDispatcher:
         failure_report: list[VerifierResult],
         session: AsyncSession,
         verify_chain: list[str],
+        acceptance_tests: list[str] | None = None,
     ) -> DriverResult | None:
         """Re-dispatch once with failure context appended to instruction.
 
@@ -1091,7 +1105,8 @@ class TaskDispatcher:
         if not bounce_result.success:
             return None
 
-        # Re-verify
+        # Re-verify -- against the same acceptance tests as the first attempt,
+        # or a bounce would quietly drop the check it was bounced for.
         task_context = {
             "output": bounce_result.output,
             "task_type": packet.task_type,
@@ -1099,6 +1114,7 @@ class TaskDispatcher:
             "sandbox_setup": packet.project_context.get("sandbox_setup"),
             "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
             "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
+            "acceptance_tests": acceptance_tests or [],
         }
         v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
         await self._record_verification(tenant_id, task_id, 2, v_results, session)
@@ -1217,16 +1233,27 @@ class TaskDispatcher:
         """
         try:
             from life_graph.models.db import Approval
+            from life_graph.services.acceptance import parse_criteria, spec_gaps
 
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else "Plan"
+            gaps = spec_gaps(parse_criteria(spec_text), _parse_tasks(spec_text))
             payload = {
                 "task_id": task_id,
                 "driver": driver_name,
                 "instruction": instruction[:4000],
                 "spec": spec_text[:4000],
+                "spec_gaps": gaps,
                 "project_id": str(project_id) if project_id else None,
                 "persona_name": persona_name,
             }
+            # Gaps are advisory: the reviewer decides whether they matter, but
+            # they must see them -- not find out later that a criterion was
+            # never checked.
+            gap_text = (
+                "Gaps to consider before approving:\n" + "\n".join(f"- {g}" for g in gaps) + "\n\n"
+                if gaps
+                else "Every acceptance criterion has a test and is covered by a task.\n\n"
+            )
             appr = Approval(
                 tenant_id=tenant_id,
                 kind="driver_plan",
@@ -1238,6 +1265,7 @@ class TaskDispatcher:
                 detail=(
                     f"Driver '{driver_name}' produced this plan with no file changes:\n\n"
                     f"{spec_text[:2000]}\n\n"
+                    f"{gap_text}"
                     "Approve to dispatch the instruction and this spec together as "
                     "a normal code-writing task; reject to abandon it."
                 ),

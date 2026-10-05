@@ -738,3 +738,95 @@ async def test_fully_auto_resolved_approvals_never_notify_but_deploy_still_does(
 
     kinds = [e.payload["kind"] for e in _captured_approval_events]
     assert kinds == ["driver_deploy"]
+
+
+# ── Acceptance tests follow each fanned-out task ──
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_fan_out_binds_each_task_to_only_the_tests_it_cites(monkeypatch):
+    import life_graph.services.dev_tasks as dev_tasks_mod
+    from life_graph.models.db import Approval
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    project = await _make_project()
+    calls = []
+
+    async def _fake_create_dev_task(_session_factory, tenant_id, **kwargs):
+        calls.append(kwargs)
+        return {"id": f"task-{len(calls)}"}
+
+    monkeypatch.setattr(dev_tasks_mod, "create_dev_task", _fake_create_dev_task)
+    spec = (
+        "**Requirements:**\n"
+        "AC-1: model saves — test: tests/unit/test_model.py::test_save\n"
+        "AC-2: endpoint returns it — test: tests/unit/test_api.py::test_get\n"
+        "**Tasks:** 1. Add the model (AC-1) 2. Add the endpoint (AC-2) 3. Update docs"
+    )
+    async with async_session() as s:
+        appr = Approval(
+            tenant_id=TENANT,
+            kind="driver_plan",
+            title="Review plan",
+            source="driver_plan",
+            source_ref=str(uuid.uuid4()),
+            payload={
+                "task_id": str(uuid.uuid4()),
+                "instruction": "Add a report",
+                "spec": spec,
+                "project_id": str(project),
+                "persona_name": "code-fixer-local",
+            },
+        )
+        s.add(appr)
+        await s.commit()
+        await s.refresh(appr)
+        await ApprovalService(s).resolve(TENANT, str(appr.id), "approve")
+        await s.commit()
+
+    props = [c["properties"] for c in calls]
+    assert props[0]["acceptance_tests"] == ["tests/unit/test_model.py::test_save"]
+    assert props[1]["acceptance_tests"] == ["tests/unit/test_api.py::test_get"]
+    assert props[2]["acceptance_tests"] == []  # docs task cites nothing
+    assert "ACCEPTANCE CRITERIA" in calls[0]["instruction"]
+    assert "tests/unit/test_model.py::test_save" in calls[0]["instruction"]
+    assert "ACCEPTANCE CRITERIA" not in calls[2]["instruction"]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_queued_task_carries_its_acceptance_tests_into_dispatch(monkeypatch):
+    """run_queue() only has the task row to go on -- the bound tests must
+    come from there, or every fanned-out task silently loses its check."""
+    from life_graph.drivers.base import DriverResult
+    from life_graph.drivers.dispatcher import TaskDispatcher
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    project = await _make_project()
+    captured = {}
+
+    async def _fake_dispatch(self, **kwargs):
+        captured.update(kwargs)
+        return DriverResult(success=True, output="ok")
+
+    monkeypatch.setattr(TaskDispatcher, "dispatch_task", _fake_dispatch)
+    task = await dev_tasks.create_dev_task(
+        async_session,
+        TENANT,
+        instruction="Add the model",
+        project={"id": str(project), "name": "p"},
+        persona_name="code-fixer-local",
+        start=False,
+        properties={"acceptance_tests": ["tests/unit/test_model.py::test_save"]},
+    )
+
+    # Exactly how run_queue() calls it: no acceptance_tests argument.
+    await dev_tasks._run(
+        async_session, TENANT, task["id"], "Add the model", str(project),
+        "code-fixer-local", "code_change", interactive=False,
+    )
+
+    assert captured["acceptance_tests"] == ["tests/unit/test_model.py::test_save"]

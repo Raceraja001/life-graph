@@ -512,11 +512,24 @@ class ApprovalService:
             raise ApprovalActionError(f"project {project_id} no longer exists")
 
         from life_graph.drivers.dispatcher import _parse_tasks
-        from life_graph.services import dev_tasks
+        from life_graph.services import acceptance, dev_tasks
         from life_graph.storage.database import async_session as session_factory
 
         project_dict = {"id": str(project.id), "name": project.name}
         tasks = _parse_tasks(spec)
+        criteria = acceptance.parse_criteria(spec)
+        defined = [c.id for c in criteria]
+
+        def _criteria_block(ac_ids: list[str]) -> str:
+            text = acceptance.describe(criteria, ac_ids)
+            if not text:
+                return ""
+            return (
+                "\n\n--- ACCEPTANCE CRITERIA THIS TASK MUST SATISFY ---\n"
+                f"{text}\n"
+                "Write or update each criterion's test, and make it pass. These "
+                "tests are run to verify this task."
+            )
 
         if len(tasks) < 2:
             combined_instruction = (
@@ -524,6 +537,7 @@ class ApprovalService:
                 "--- APPROVED PLAN ---\n"
                 "The following plan was reviewed and approved. Implement it.\n\n"
                 f"{spec}"
+                f"{_criteria_block(defined)}"
             )
             task = await dev_tasks.create_dev_task(
                 session_factory,
@@ -532,7 +546,12 @@ class ApprovalService:
                 project=project_dict,
                 persona_name=persona_name,
                 task_type="code_change",
-                properties={"origin": "plan_approval", "plan_task_id": payload.get("task_id")},
+                properties={
+                    "origin": "plan_approval",
+                    "plan_task_id": payload.get("task_id"),
+                    "acceptance_criteria": defined,
+                    "acceptance_tests": acceptance.bound_tests(criteria, defined),
+                },
             )
             appr.payload = {**payload, "dispatched_task_id": task.get("id")}
             appr.resolution_note = f"Dispatched as task {task.get('id')}"
@@ -541,12 +560,17 @@ class ApprovalService:
         plan_group_id = str(uuid.uuid4())
         dispatched_ids = []
         for i, item in enumerate(tasks, start=1):
+            # Only the criteria this task cites (and that the spec defines)
+            # are checked on it -- task 1 isn't failed for AC-3's test that
+            # task 3 is meant to write.
+            cites = [ac for ac in acceptance.cited_criteria(item) if ac in defined]
             task_instruction = (
                 f"{instruction}\n\n"
                 "--- APPROVED PLAN (full spec, for context) ---\n"
                 f"{spec}\n\n"
                 f"--- YOUR TASK ({i} of {len(tasks)}) ---\n"
                 f"{item}"
+                f"{_criteria_block(cites)}"
             )
             task = await dev_tasks.create_dev_task(
                 session_factory,
@@ -562,6 +586,8 @@ class ApprovalService:
                     "plan_group_id": plan_group_id,
                     "plan_task_index": i,
                     "plan_task_count": len(tasks),
+                    "acceptance_criteria": cites,
+                    "acceptance_tests": acceptance.bound_tests(criteria, cites),
                 },
             )
             dispatched_ids.append(task.get("id"))

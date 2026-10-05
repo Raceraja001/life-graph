@@ -251,3 +251,87 @@ async def test_no_spec_section_fails_even_with_no_file_changes(tmp_path, monkeyp
     assert result.success is False
     assert "no '## Spec'" in result.error
     assert not [a for a in session.added if getattr(a, "kind", None) == "driver_plan"]
+
+
+# ── Acceptance criteria: gaps on the plan, bound tests on the task ──
+
+
+async def _plan_detail(tmp_path, monkeypatch, spec_output):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    session = _FakeSession()
+    disp = TaskDispatcher(session_factory=lambda: session, event_bus=None)
+    _wire(disp, monkeypatch, _PlanDriver(spec_output), repo)
+    await disp.dispatch_task(
+        tenant_id="t1", task_id=str(uuid.uuid4()), instruction="Add a parser",
+        project_id=str(uuid.uuid4()), isolate_workdir=True, task_type="plan",
+        verify_chain=["no_diff_in_plan"], session=session,
+    )
+    [plan] = [a for a in session.added if getattr(a, "kind", None) == "driver_plan"]
+    return plan
+
+
+@pytest.mark.asyncio
+async def test_plan_without_criteria_says_so_in_the_approval(tmp_path, monkeypatch):
+    plan = await _plan_detail(tmp_path, monkeypatch, _SPEC_OUTPUT)
+    assert "No acceptance criteria" in plan.detail
+    assert plan.payload["spec_gaps"]
+
+
+@pytest.mark.asyncio
+async def test_complete_plan_reports_no_gaps(tmp_path, monkeypatch):
+    spec = (
+        "## Spec\n**Requirements:**\n"
+        "AC-1: empty input rejected — test: tests/unit/test_p.py::test_empty\n"
+        "**Tasks:** 1. Add the parser (AC-1)\n"
+    )
+    plan = await _plan_detail(tmp_path, monkeypatch, spec)
+    assert plan.payload["spec_gaps"] == []
+    assert "Every acceptance criterion has a test" in plan.detail
+
+
+@pytest.mark.asyncio
+async def test_acceptance_tests_join_the_chain_and_survive_a_bounce(monkeypatch):
+    from life_graph.services.verifiers import VerifierResult
+
+    calls = []
+
+    async def _fake_run_chain(chain, workdir, ctx):
+        calls.append((list(chain), dict(ctx)))
+        passed = len(calls) > 1  # first attempt fails -> bounce -> passes
+        return [VerifierResult(name, passed, {}) for name in chain]
+
+    monkeypatch.setattr(disp_mod.verifier_chain, "run_chain", _fake_run_chain)
+    disp = TaskDispatcher(session_factory=lambda: _FakeSession(), event_bus=None)
+    _wire(disp, monkeypatch, _PlanDriver("did it"), "/tmp")
+
+    result = await disp.dispatch_task(
+        tenant_id="t1", task_id=str(uuid.uuid4()), instruction="Add a parser",
+        acceptance_tests=["tests/unit/test_p.py::test_empty"],
+    )
+
+    assert result.success is True
+    assert len(calls) == 2, "first verification plus the post-bounce re-check"
+    for chain, ctx in calls:
+        assert "acceptance_tests_pass" in chain
+        assert ctx["acceptance_tests"] == ["tests/unit/test_p.py::test_empty"]
+
+
+@pytest.mark.asyncio
+async def test_no_acceptance_tests_leaves_the_chain_alone(monkeypatch):
+    from life_graph.services.verifiers import VerifierResult
+
+    calls = []
+
+    async def _fake_run_chain(chain, workdir, ctx):
+        calls.append(list(chain))
+        return [VerifierResult(name, True, {}) for name in chain]
+
+    monkeypatch.setattr(disp_mod.verifier_chain, "run_chain", _fake_run_chain)
+    disp = TaskDispatcher(session_factory=lambda: _FakeSession(), event_bus=None)
+    _wire(disp, monkeypatch, _PlanDriver("did it"), "/tmp")
+
+    await disp.dispatch_task(tenant_id="t1", task_id=str(uuid.uuid4()), instruction="x")
+
+    assert "acceptance_tests_pass" not in calls[0]

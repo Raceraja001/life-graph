@@ -142,6 +142,9 @@ async def _run(
         task.status = "running"
         task.started_at = datetime.now(UTC)
         task.status_history = _history(task, "running")
+        # Read from the row, not passed in: a fanned-out plan task usually
+        # reaches here via run_queue(), which only has the row to go on.
+        acceptance_tests = list((task.properties or {}).get("acceptance_tests") or []) or None
         await session.commit()
 
     status, error, result_data = "failed", None, {}
@@ -163,6 +166,7 @@ async def _run(
                 isolate_workdir=True,
                 spec_first=spec_first,
                 verify_chain=verify_chain,
+                acceptance_tests=acceptance_tests,
             )
             await session.commit()
         status = "completed" if result.success else "failed"

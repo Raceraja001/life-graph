@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from life_graph.services import sandbox
+from life_graph.services.acceptance import is_safe_test_ref
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -150,6 +151,7 @@ class VerifierChain:
         self.register("style_conforms", _verify_style_conforms)
         self.register("claims_evidenced", _verify_claims_evidenced)
         self.register("no_diff_in_plan", _verify_no_diff_in_plan)
+        self.register("acceptance_tests_pass", _verify_acceptance_tests_pass)
 
 
 # ── 9 Built-in Verifiers ─────────────────────────────────────
@@ -348,6 +350,62 @@ async def _verify_tests_pass(workdir: Path, ctx: dict) -> tuple[bool | None, dic
         "stdout": result.stdout[-500:],
         "returncode": result.returncode,
         "python": python,
+    }
+
+
+async def _verify_acceptance_tests_pass(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
+    """Run exactly the tests bound to this task's acceptance criteria.
+
+    The plan's spec binds each AC-n to a pytest path/node id, and the task
+    that cites a criterion is told to write or update that test. A bound test
+    that doesn't exist is a FAILURE, not inconclusive -- the task was supposed
+    to create it. Only a missing runner (no pytest / no interpreter) is
+    inconclusive, same as tests_pass.
+    """
+    refs = list(ctx.get("acceptance_tests") or [])
+    if not refs:
+        return True, {"note": "no acceptance tests bound to this task"}
+    # Re-checked here, not just at plan time: these are agent-authored and
+    # become pytest arguments.
+    unsafe = [r for r in refs if not is_safe_test_ref(r)]
+    if unsafe:
+        return False, {"error": "unsafe test reference(s)", "refs": unsafe}
+    missing = [r for r in refs if not (workdir / r.split("::", 1)[0]).is_file()]
+    if missing:
+        return False, {"missing": missing, "note": "bound test file(s) were never written"}
+
+    args = ["-m", "pytest", "-q", "--tb=short", "-p", "no:cacheprovider", *refs]
+    if sandbox.enabled():
+        try:
+            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
+            result = await sandbox.run(["python", *args], workdir, venv=venv, timeout=timeout)
+        except sandbox.SandboxUnavailableError as exc:
+            return None, {"note": str(exc), "sandbox": "docker"}
+    else:
+        python = _project_python(workdir)
+        if python is None:
+            return None, {"note": "no Python interpreter found for this project"}
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [python, *args],
+                capture_output=True,
+                text=True,
+                timeout=_DEFAULT_TEST_TIMEOUT,
+                cwd=str(workdir),
+            )
+        except FileNotFoundError:
+            return None, {"note": f"interpreter {python!r} disappeared before it could run"}
+
+    if _missing_module(result, "pytest"):
+        return None, {"note": "pytest is not installed in the project environment"}
+    # 0 = passed. 4 (a node id that doesn't exist) and 5 (nothing collected)
+    # both mean a bound test isn't really there -- a failure, not a pass.
+    return result.returncode == 0, {
+        "tests": refs,
+        "returncode": result.returncode,
+        "stdout": result.stdout[-800:],
     }
 
 
