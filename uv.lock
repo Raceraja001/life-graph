@@ -1708,6 +1708,20 @@ wheels = [
 ]
 
 [[package]]
+name = "icalendar"
+version = "7.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "tzdata" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/47/2b/1bbf82d316df18c3331d9a06228819c8a5814ceda545a3e9980e52ffce1b/icalendar-7.3.0.tar.gz", hash = "sha256:7bd001c8e648205e1bde5c6a5b77096598e8d0893dcf57755c6c597635620132", size = 525811, upload-time = "2026-08-19T15:10:21.05Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bb/82/50bff78b0bb0c7d7c0cb39e0ee189b92f611fff6bd7cf57f25e92d5a7551/icalendar-7.3.0-py3-none-any.whl", hash = "sha256:8355acfe17be81b368f0b1e3740817cea9b56ea889931f8f1a87c62f2d28db0b", size = 542540, upload-time = "2026-08-19T15:10:19.525Z" },
+]
+
+[[package]]
 name = "idna"
 version = "3.18"
 source = { registry = "https://pypi.org/simple" }
@@ -1972,7 +1986,7 @@ wheels = [
 
 [[package]]
 name = "life-graph"
-version = "1.0.0"
+version = "1.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -1982,28 +1996,42 @@ dependencies = [
     { name = "fastmcp" },
     { name = "google-auth" },
     { name = "httpx" },
+    { name = "icalendar" },
     { name = "litellm" },
     { name = "mcp" },
     { name = "minio" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "orjson" },
     { name = "pgvector" },
     { name = "prometheus-client" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "pydriller" },
     { name = "python-multipart" },
     { name = "pywebpush" },
     { name = "pyyaml" },
-    { name = "radon" },
+    { name = "recurring-ical-events" },
     { name = "redis", extra = ["hiredis"] },
-    { name = "sentence-transformers" },
-    { name = "spacy" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "faster-whisper" },
+    { name = "pillow" },
+    { name = "pydriller" },
+    { name = "pymupdf" },
+    { name = "pytesseract" },
+    { name = "radon" },
+    { name = "sentence-transformers" },
+    { name = "spacy" },
+]
+cold-start = [
+    { name = "pydriller" },
+    { name = "radon" },
+]
 dev = [
     { name = "httpx" },
     { name = "pytest" },
@@ -2011,6 +2039,10 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "testcontainers" },
+]
+local-nlp = [
+    { name = "sentence-transformers" },
+    { name = "spacy" },
 ]
 multimodal = [
     { name = "faster-whisper" },
@@ -2030,9 +2062,12 @@ requires-dist = [
     { name = "google-auth", specifier = ">=2.30" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "icalendar", specifier = ">=6.0" },
+    { name = "life-graph", extras = ["multimodal", "cold-start", "local-nlp"], marker = "extra == 'all'" },
     { name = "litellm", specifier = ">=1.40" },
     { name = "mcp", specifier = ">=1.29.0" },
     { name = "minio", specifier = ">=7.2" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "orjson", specifier = ">=3.10" },
     { name = "pgvector", specifier = ">=0.3" },
     { name = "pillow", marker = "extra == 'multimodal'", specifier = ">=10.0" },
@@ -2040,7 +2075,7 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.3" },
-    { name = "pydriller", specifier = ">=2.6" },
+    { name = "pydriller", marker = "extra == 'cold-start'", specifier = ">=2.6" },
     { name = "pymupdf", marker = "extra == 'multimodal'", specifier = ">=1.24" },
     { name = "pytesseract", marker = "extra == 'multimodal'", specifier = ">=0.3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2" },
@@ -2049,16 +2084,17 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "pywebpush", specifier = ">=2.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "radon", specifier = ">=6.0" },
+    { name = "radon", marker = "extra == 'cold-start'", specifier = ">=6.0" },
+    { name = "recurring-ical-events", specifier = ">=3.3" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.1" },
-    { name = "sentence-transformers", specifier = ">=3.0" },
-    { name = "spacy", specifier = ">=3.7" },
+    { name = "sentence-transformers", marker = "extra == 'local-nlp'", specifier = ">=3.0" },
+    { name = "spacy", marker = "extra == 'local-nlp'", specifier = ">=3.7" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "testcontainers", extras = ["postgres"], marker = "extra == 'dev'", specifier = ">=4.7" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
-provides-extras = ["multimodal", "dev"]
+provides-extras = ["multimodal", "cold-start", "local-nlp", "dev", "all"]
 
 [[package]]
 name = "litellm"
@@ -3648,6 +3684,18 @@ wheels = [
 ]
 
 [[package]]
+name = "python-dateutil"
+version = "2.9.0.post0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl", hash = "sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427", size = 229892, upload-time = "2024-03-01T18:36:18.57Z" },
+]
+
+[[package]]
 name = "python-dotenv"
 version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3787,6 +3835,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/6d/98e61600febf6bd929cf04154537c39dc577ce414bafbfc24a286c4fa76d/radon-6.0.1.tar.gz", hash = "sha256:d1ac0053943a893878940fedc8b19ace70386fc9c9bf0a09229a44125ebf45b5", size = 1874992, upload-time = "2023-03-26T06:24:38.868Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/93/f7/d00d9b4a0313a6be3a3e0818e6375e15da6d7076f4ae47d1324e7ca986a1/radon-6.0.1-py2.py3-none-any.whl", hash = "sha256:632cc032364a6f8bb1010a2f6a12d0f14bc7e5ede76585ef29dc0cecf4cd8859", size = 52784, upload-time = "2023-03-26T06:24:33.949Z" },
+]
+
+[[package]]
+name = "recurring-ical-events"
+version = "3.8.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "icalendar" },
+    { name = "python-dateutil" },
+    { name = "tzdata" },
+    { name = "x-wr-timezone" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b9/f5/898abd8fbb25766ec6cb17b244730ebf192f47963c71eeacd61aadd903a1/recurring_ical_events-3.8.2.tar.gz", hash = "sha256:e731af31d0b7dec5cd47a1defacd8549e2f36fab1c1995e8b9f042822a0acf8e", size = 604992, upload-time = "2026-04-30T19:21:46.2Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/f7/d3eb4f545baf5d6daaa5881694517626fb7ad04036d94168197a4f021384/recurring_ical_events-3.8.2-py3-none-any.whl", hash = "sha256:9ad605e27b4fbeb70ee1c66205ade32550be15a57cedc579606522f1c67aef6d", size = 241358, upload-time = "2026-04-30T19:21:44.079Z" },
 ]
 
 [[package]]
@@ -4973,6 +5036,15 @@ wheels = [
 ]
 
 [[package]]
+name = "tzdata"
+version = "2026.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/68/f1b440335057bfce71b6e50a9d09445aa2ecbd08359a337976627b8409e7/tzdata-2026.5.tar.gz", hash = "sha256:8cc73c0a0bfca7dbfa59235d60b2eff82231dee33f53d206db1acd9173cfc0a7", size = 200404, upload-time = "2026-10-03T09:23:14.143Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/94/21/1e5995a1c920cce14e4bffae20c665ec10e7ed03ab25e006cd741092b718/tzdata-2026.5-py2.py3-none-any.whl", hash = "sha256:b683bd1b6659ddcd810ff02ad09ba821d4bf1065072805063eb35c49617905ac", size = 347996, upload-time = "2026-10-03T09:23:12.535Z" },
+]
+
+[[package]]
 name = "uncalled-for"
 version = "0.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -5375,6 +5447,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c4/0f/270bafe92fde3b069a39bc01e39ee79340895b335640df861d43d2a51885/wrapt-2.3.0-cp314-cp314t-win_amd64.whl", hash = "sha256:42869085687f0aefd57c0f636c3f9354f8ffb321a8ba9cb52d19beb796e561c5", size = 83104, upload-time = "2026-07-28T06:05:52.405Z" },
     { url = "https://files.pythonhosted.org/packages/55/b3/af176d79a8515a8a720eccdad9a96f6e31a30abf2865430c8c42adf2fd13/wrapt-2.3.0-cp314-cp314t-win_arm64.whl", hash = "sha256:b1e5aa486e269b00ed35e64771c7d0ab8096cfd2643405ca8cd60ebedc099a51", size = 81774, upload-time = "2026-07-28T06:05:53.902Z" },
     { url = "https://files.pythonhosted.org/packages/00/39/3daf9f47be208606586de4568ba6713db53ebc8fd7a575aea1fe57983b69/wrapt-2.3.0-py3-none-any.whl", hash = "sha256:d8c7ed08477429752b8c44991f40ad7838b18332a160698740a6bfbc10d998a2", size = 61866, upload-time = "2026-07-28T06:06:12.9Z" },
+]
+
+[[package]]
+name = "x-wr-timezone"
+version = "2.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "icalendar" },
+    { name = "tzdata" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/79/2b/8ae5f59ab852c8fe32dd37c1aa058eb98aca118fec2d3af5c3cd56fffb7b/x_wr_timezone-2.0.1.tar.gz", hash = "sha256:9166c40e6ffd4c0edebabc354e1a1e2cffc1bb473f88007694793757685cc8c3", size = 18212, upload-time = "2025-02-06T17:10:40.913Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0f/b7/4bac35b4079b76c07d8faddf89467e9891b1610cfe8d03b0ebb5610e4423/x_wr_timezone-2.0.1-py3-none-any.whl", hash = "sha256:e74a53b9f4f7def8138455c240e65e47c224778bce3c024fcd6da2cbe91ca038", size = 11102, upload-time = "2025-02-06T17:10:39.192Z" },
 ]
 
 [[package]]
