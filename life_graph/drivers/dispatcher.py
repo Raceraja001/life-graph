@@ -1179,6 +1179,15 @@ class TaskDispatcher:
             )
             session.add(entry)
             logger.info("Created second-opinion approval entry for task %s", task_id)
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": tenant_id,
+                    "kind": "driver_second_opinion_dissent",
+                    "title": f"Second-opinion dissent on task {task_id}",
+                    "detail": entry.trigger_detail,
+                },
+            )
         except Exception:
             logger.warning("Failed to create dissent approval entry", exc_info=True)
 
@@ -1464,6 +1473,15 @@ class TaskDispatcher:
             )
             session.add(entry)
             logger.info("Created approval entry for task %s — needs human review", task_id)
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": tenant_id,
+                    "kind": action_name,
+                    "title": f"Review needed: task {task_id}",
+                    "detail": detail,
+                },
+            )
         except Exception:
             logger.warning("Failed to create approval entry", exc_info=True)
 
