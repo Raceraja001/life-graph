@@ -528,32 +528,137 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
 # ── Queue runner ─────────────────────────────────────────────
 
 QUEUE_POLL_SECONDS = 60
+_QUEUE_SCAN_LIMIT = 50
+
+# A fanned-out plan task only starts once the task before it is merged.
+# Each task's worktree is cut from the project checkout, so starting task 2
+# while task 1 still sits on an unmerged lg/task-* branch would build it on
+# code that doesn't have task 1's change -- "sequential" in name only.
+_PLAN_PREDECESSOR_DONE = frozenset({"merged", "completed"})
+# Stages a predecessor can't get out of without a person re-dispatching it:
+# the rest of the plan is stopped rather than left waiting forever.
+_PLAN_PREDECESSOR_DEAD = frozenset(
+    {"closed", "pr_rejected", "failed", "cancelled", "needs_review", "landed"}
+)
+
+
+async def _plan_gate(session: AsyncSession, task: AgentTask) -> tuple[str, AgentTask | None, str]:
+    """('ready' | 'wait' | 'blocked', predecessor, predecessor_stage)."""
+    props = task.properties or {}
+    group, index = props.get("plan_group_id"), props.get("plan_task_index")
+    if not group or not isinstance(index, int) or index <= 1:
+        return "ready", None, ""
+    prev = (
+        (
+            await session.execute(
+                select(AgentTask).where(
+                    AgentTask.tenant_id == task.tenant_id,
+                    _kind_filter(),
+                    AgentTask.properties["plan_group_id"].astext == group,
+                    AgentTask.properties["plan_task_index"].astext == str(index - 1),
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if prev is None:
+        # The predecessor row is gone; waiting on it would wedge the plan.
+        return "ready", None, ""
+    approvals = await _approvals_by_task(session, task.tenant_id, [str(prev.id)])
+    stage = _stage(prev, approvals.get(str(prev.id), []))
+    if stage in _PLAN_PREDECESSOR_DONE:
+        return "ready", prev, stage
+    if stage in _PLAN_PREDECESSOR_DEAD:
+        return "blocked", prev, stage
+    return "wait", prev, stage
+
+
+async def _notify_plan_stopped(task: AgentTask, prev: AgentTask, stage: str) -> None:
+    """Tell the person a plan stopped -- once, at the task right after the failure."""
+    from life_graph.core.events import EventType, event_bus
+
+    props = task.properties or {}
+    try:
+        await event_bus.emit(
+            # Reuses the "needs your attention" channel (push + Telegram): a
+            # stopped plan isn't an approval, but it is waiting on a person.
+            EventType.APPROVAL_FILED,
+            {
+                "tenant_id": task.tenant_id,
+                "kind": "plan_stopped",
+                "title": f"Plan stopped at task {props.get('plan_task_index')} of "
+                f"{props.get('plan_task_count')}",
+                "detail": (
+                    f"Task {props.get('plan_task_index', 1) - 1} ({prev.title}) ended as "
+                    f"'{stage}', so the remaining plan tasks were not run. Re-dispatch it, "
+                    "then re-approve the plan to continue."
+                ),
+            },
+            source="dev_tasks",
+        )
+    except Exception:
+        logger.warning("Could not send the plan-stopped notification", exc_info=True)
 
 
 async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -> AgentTask | None:
-    """Atomically claim the oldest queue-mode task (status -> running)."""
+    """Atomically claim the oldest *runnable* queue-mode task (status -> running).
+
+    A plan task whose predecessor isn't merged yet is skipped (it waits);
+    one whose predecessor can no longer merge is marked failed, along with
+    the rest of its plan as the scan reaches them.
+    """
+    stopped: list[tuple[AgentTask, AgentTask, str]] = []
+    claimed: AgentTask | None = None
     async with session_factory() as session:
-        task = (
-            await session.execute(
-                select(AgentTask)
-                .where(
-                    _kind_filter(),
-                    AgentTask.status == "queued",
-                    AgentTask.properties["run_mode"].astext == QUEUE_MODE,
+        candidates = (
+            (
+                await session.execute(
+                    select(AgentTask)
+                    .where(
+                        _kind_filter(),
+                        AgentTask.status == "queued",
+                        AgentTask.properties["run_mode"].astext == QUEUE_MODE,
+                    )
+                    .order_by(AgentTask.created_at)
+                    .limit(_QUEUE_SCAN_LIMIT)
+                    .with_for_update(skip_locked=True)
                 )
-                .order_by(AgentTask.created_at)
-                .limit(1)
-                .with_for_update(skip_locked=True)
             )
-        ).scalar_one_or_none()
-        if task is None:
-            return None
-        task.status = "running"
-        task.started_at = datetime.now(UTC)
-        task.status_history = _history(task, "running", "claimed from queue")
+            .scalars()
+            .all()
+        )
+        for task in candidates:
+            gate, prev, stage = await _plan_gate(session, task)
+            if gate == "wait":
+                continue
+            if gate == "blocked":
+                props = task.properties or {}
+                note = (
+                    f"Not run: task {props.get('plan_task_index', 1) - 1} of this plan "
+                    f"ended as '{stage}' and was never merged."
+                )
+                task.status = "failed"
+                task.error = note
+                task.completed_at = datetime.now(UTC)
+                task.status_history = _history(task, "failed", note)
+                task.properties = {**props, "plan_stopped": True}
+                # Notify once: only where the real failure is, not again for
+                # every later task that was stopped because of it.
+                if not (prev.properties or {}).get("plan_stopped"):
+                    stopped.append((task, prev, stage))
+                continue
+            task.status = "running"
+            task.started_at = datetime.now(UTC)
+            task.status_history = _history(task, "running", "claimed from queue")
+            claimed = task
+            break
         await session.commit()
-        await session.refresh(task)
-        return task
+        if claimed is not None:
+            await session.refresh(claimed)
+    for task, prev, stage in stopped:
+        await _notify_plan_stopped(task, prev, stage)
+    return claimed
 
 
 async def run_queue(session_factory: async_sessionmaker[AsyncSession]) -> None:
