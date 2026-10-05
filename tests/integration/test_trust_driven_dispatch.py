@@ -830,3 +830,44 @@ async def test_queued_task_carries_its_acceptance_tests_into_dispatch(monkeypatc
     )
 
     assert captured["acceptance_tests"] == ["tests/unit/test_model.py::test_save"]
+
+
+# ── Drafted PR description ──
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_pr_approval_carries_a_drafted_description(landing, monkeypatch):
+    from life_graph.config import settings
+    from life_graph.services import github_pr, llm_client
+
+    monkeypatch.setattr(settings, "driver_pr_description_enabled", True)
+
+    async def _diff(repo_path, base, head):
+        return "diff --git a/a.py b/a.py\n+def foo(): ...\n"
+
+    class _LLM:
+        async def chat(self, messages, **kwargs):
+            return "## What changed\n- Added `foo()`\n## Why\nx\n## Review notes\nNone"
+
+    monkeypatch.setattr(github_pr, "landed_diff", _diff)
+    monkeypatch.setattr(llm_client, "get_resilient_llm", lambda: _LLM())
+
+    approvals = await _land("drv-desc", uuid.uuid4(), auto_open_pr=False)
+    pr = approvals["driver_pr"]
+
+    assert pr.payload["pr_description"].startswith("## What changed")
+    assert "Proposed PR description" in pr.detail
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_disabled_description_never_calls_a_model(landing, monkeypatch):
+    from life_graph.services import llm_client
+
+    def _boom():
+        raise AssertionError("must not be called when drafting is disabled")
+
+    monkeypatch.setattr(llm_client, "get_resilient_llm", _boom)
+    approvals = await _land("drv-nodesc", uuid.uuid4(), auto_open_pr=False)
+    assert approvals["driver_pr"].payload["pr_description"] is None

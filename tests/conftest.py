@@ -102,7 +102,19 @@ if TEST_DB_SUFFIX:
     settings.database_url_sync = _with_suffix(settings.database_url_sync, TEST_DB_SUFFIX)
 
 
+import pytest  # noqa: E402
+
 # Load the ORM base module first so that the models.db <-> autonomy.models
 # re-export cycle resolves in the right order regardless of which test module
 # pytest collects first (importing autonomy.models before models.db would fail).
 import life_graph.models.db  # noqa: E402, F401
+
+
+@pytest.fixture(autouse=True)
+def _no_pr_description_model_calls(monkeypatch):
+    """PR-description drafting is on by default and makes a real model call
+    for every landed branch. Any test that lands a branch would otherwise call
+    a live LLM. Tests of the feature turn it back on and inject a fake chat."""
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "driver_pr_description_enabled", False)

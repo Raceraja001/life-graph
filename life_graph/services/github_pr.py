@@ -132,16 +132,45 @@ async def describe_landing(repo_path: str | Path, branch: str) -> dict[str, Any]
     return info
 
 
-def _pr_body(payload: dict[str, Any]) -> str:
+async def landed_diff(repo_path: str | Path, base_commit: str, head_commit: str) -> str:
+    """The landed change as a unified diff; empty on any git failure."""
+    if not (_SHA_RE.match(base_commit or "") and _SHA_RE.match(head_commit or "")):
+        return ""
+    code, out, _ = await _git(repo_path, "diff", "--no-color", base_commit, head_commit)
+    return out if code == 0 else ""
+
+
+def _verification_line(payload: dict[str, Any]) -> str:
     checks = payload.get("checks") or []
+    if payload.get("verified") is False:
+        # An UNVERIFIED landing used to say "Passed: <every check>" here --
+        # in a PR body anyone can read, about checks that never ran.
+        unverified = payload.get("unverifiable_checks") or checks
+        passed = [c for c in checks if c not in unverified]
+        line = (
+            "**Not verified:** "
+            + (", ".join(f"`{c}`" for c in unverified) if unverified else "verification")
+            + " could not run for this project. Reviewed by hand before opening."
+        )
+        if passed:
+            line += " Passed: " + ", ".join(f"`{c}`" for c in passed) + "."
+        return line
+    return ("Passed: " + ", ".join(f"`{c}`" for c in checks)) if checks else "No checks ran."
+
+
+def _pr_body(payload: dict[str, Any]) -> str:
+    description = payload.get("pr_description")
     lines = [
         payload.get("instruction") or "",
         "",
-        "## Agent summary",
-        (payload.get("summary") or "(none)")[:3000],
+        *(
+            [description]
+            if description
+            else ["## Agent summary", (payload.get("summary") or "(none)")[:3000]]
+        ),
         "",
         "## Verification",
-        ("Passed: " + ", ".join(f"`{c}`" for c in checks)) if checks else "No checks ran.",
+        _verification_line(payload),
         "",
         f"Task `{payload.get('task_id')}` · driver `{payload.get('driver')}` · "
         f"opened by Life Graph after human approval.",

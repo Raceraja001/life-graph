@@ -1283,6 +1283,31 @@ class TaskDispatcher:
         except Exception:
             logger.warning("Failed to file plan approval for task %s", task_id, exc_info=True)
 
+    async def _draft_pr_description(
+        self, repo_path: str, landing: dict, instruction: str
+    ) -> str | None:
+        """Draft the PR description from the landed diff. None on any failure."""
+        if not settings.driver_pr_description_enabled:
+            return None
+        base, head = landing.get("base_commit"), landing.get("head_commit")
+        if not (base and head):
+            return None
+        try:
+            from life_graph.services.github_pr import landed_diff
+            from life_graph.services.llm_client import get_resilient_llm
+            from life_graph.services.pr_description import draft_pr_description
+
+            diff_text = await landed_diff(repo_path, base, head)
+            return await draft_pr_description(
+                diff_text,
+                instruction,
+                chat=get_resilient_llm().chat,
+                model=settings.driver_pr_description_model or settings.agent_llm_model,
+            )
+        except Exception:
+            logger.warning("Could not draft a PR description", exc_info=True)
+            return None
+
     async def _create_pr_approval(
         self,
         *,
@@ -1326,6 +1351,7 @@ class TaskDispatcher:
 
             landing = await describe_landing(repo_path, branch)
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else branch
+            pr_description = await self._draft_pr_description(repo_path, landing, instruction)
             payload = {
                 "task_id": task_id,
                 "driver": driver_name,
@@ -1335,9 +1361,11 @@ class TaskDispatcher:
                 "repo_path": repo_path,
                 "project_id": str(project_id) if project_id else None,
                 "checks": list(checks or []),
+                "unverifiable_checks": list(unverifiable_checks or []),
                 "cost_usd": result.cost_usd,
                 "auto_merge": auto_merge,
                 "verified": verified,
+                "pr_description": pr_description,
                 **landing,
             }
             title_prefix = "Open PR" if verified else "Open PR (UNVERIFIED)"
@@ -1360,6 +1388,10 @@ class TaskDispatcher:
                     + " Review the diff by hand before approving; this will not "
                     "auto-open or auto-merge regardless of trust."
                 )
+            if pr_description:
+                # Shown before approving, since `detail` is all an approvals
+                # surface renders: the reviewer sees what the PR will say.
+                detail += f"\n\nProposed PR description:\n\n{pr_description[:1500]}"
             appr = Approval(
                 tenant_id=tenant_id,
                 kind="driver_pr",

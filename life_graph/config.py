@@ -404,6 +404,10 @@ class Settings(BaseSettings):
     driver_second_opinion_enabled: bool = False
     driver_second_opinion_model: str | None = None  # None = agent_llm_model
     driver_pr_agent_bin: str = "pr-agent"  # the PR-Agent CLI backing the reviewer above
+    # Draft the PR description from the landed diff (one model call per landed
+    # task, best-effort -- falls back to the instruction + agent summary).
+    driver_pr_description_enabled: bool = True
+    driver_pr_description_model: str | None = None  # None = agent_llm_model
     # Where verifiers execute agent-written code (tests, linters). "none" runs
     # them on the host as this process's user; "docker" runs each check in a
     # locked-down container (life_graph/services/sandbox.py). With "docker",
