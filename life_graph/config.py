@@ -456,6 +456,19 @@ class Settings(BaseSettings):
     # irreversible. /pending stays available regardless — reading is not deciding.
     telegram_allow_approvals: bool = False
 
+    # ── Startup Seeding ─────────────────────────────────
+    # Which tenants get the built-in personas, ambient jobs and safety rules at
+    # startup. This was the literal "default" in three places, so every other
+    # tenant came up with an empty action_safety_rules table — and the
+    # classifier treats an action it cannot match as dangerous, which left a
+    # real tenant unable to take a single autonomous action with nothing in the
+    # logs to say why.
+    #
+    # Named tenants rather than every tenant seen, because seeding also sets
+    # the ambient project to L1 (safe actions run without asking). Granting
+    # that is a decision, so it is made here, deliberately.
+    seed_tenants: str = "default"
+
     # ── Derived Properties ─────────────────────────────
 
     @property
@@ -520,6 +533,11 @@ class Settings(BaseSettings):
     def capture_no_extract_surfaces_list(self) -> list[str]:
         """Surfaces that are logged as capture events but never extracted."""
         return [s.strip() for s in self.capture_no_extract_surfaces.split(",") if s.strip()]
+
+    @property
+    def seed_tenants_list(self) -> list[str]:
+        """Tenants to seed at startup, in the order given."""
+        return [t.strip() for t in self.seed_tenants.split(",") if t.strip()]
 
     @property
     def llm_fallback_chain_list(self) -> list[str]:
