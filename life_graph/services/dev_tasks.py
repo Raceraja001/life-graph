@@ -484,6 +484,7 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "duration_ms": result.get("duration_ms"),
         "branch": metadata.get("landed_branch"),
         "spec": metadata.get("spec"),
+        "conformance": (task.properties or {}).get("conformance"),
         "pr_url": (pr.payload or {}).get("pr_url") if pr else None,
         "merge_commit": (merge.payload or {}).get("merge_commit") if merge else None,
         "approvals": [

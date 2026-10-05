@@ -183,3 +183,12 @@ async def test_list_approvals_truncates_detail_and_passes_status():
     assert r.calls[-1][2]["params"] == {"status": "pending", "limit": 20}
     assert len(out[0]["detail"]) == mcp_server._APPROVAL_DETAIL_CHARS
     assert "payload" not in out[0]
+
+
+@pytest.mark.asyncio
+async def test_check_spec_conformance_posts_to_the_task():
+    report = {"data": {"conforms": True, "criteria": []}}
+    routes = {("post", "/api/v1/kernel/drivers/tasks/t5/conformance"): report}
+    with _Router(routes):
+        out = await _call("check_spec_conformance", {"task_id": "t5"})
+    assert out["conforms"] is True

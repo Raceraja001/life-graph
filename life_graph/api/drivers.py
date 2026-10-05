@@ -390,3 +390,20 @@ async def get_dev_task(task_id: str):
     if data is None:
         raise HTTPException(status_code=404, detail="Dev task not found")
     return success_response(data=data)
+
+
+@router.post(
+    "/tasks/{task_id}/conformance",
+    summary="Re-check a task's spec against the project's current code",
+)
+async def check_dev_task_conformance(task_id: str):
+    """Run every acceptance criterion's bound test against the project's
+    current HEAD (in a throwaway worktree) and store a per-criterion report
+    on the task. Synchronous: returns once the tests have run."""
+    from life_graph.services.conformance import ConformanceError, check_conformance
+
+    try:
+        report = await check_conformance(async_session, get_current_tenant_id(), task_id)
+    except ConformanceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return success_response(data=report)

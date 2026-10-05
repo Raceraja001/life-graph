@@ -54,7 +54,8 @@ mcp = FastMCP(
         "Brain-inspired memory layer for AI agents. "
         "Store, search, recall, and manage persistent memories across sessions. "
         "Also drives Life Graph's dev-agent: list projects, start a dev task "
-        "(or a plan-only task), check its stage, and list approvals waiting on "
+        "(or a plan-only task), check its stage, re-check a spec's acceptance "
+        "criteria against the current code, and list approvals waiting on "
         "the human. Approving or rejecting is deliberately NOT available here — "
         "that decision belongs to the person, in the dashboard or mobile app."
     ),
@@ -652,6 +653,30 @@ async def list_dev_tasks(limit: int = 20, tenant_id: str | None = None) -> ToolR
         resp.raise_for_status()
         rows = _extract_data(resp.json()) or []
         return _result([{k: r.get(k) for k in _DEV_TASK_LIST_FIELDS} for r in rows])
+
+
+@mcp.tool()
+async def check_spec_conformance(task_id: str, tenant_id: str | None = None) -> ToolResult:
+    """Re-check a task's spec against the project's current code.
+
+    Runs every acceptance criterion's bound test (from the spec's `AC-n: ...
+    — test: ...` lines) against the project's current HEAD, in a throwaway
+    worktree, and returns a per-criterion report: passing / failing /
+    untested (no test bound) / inconclusive (no test runner). Use on the
+    task that produced the spec -- a plan task, or a spec_first task.
+    Waits for the tests to finish, so it can take a few minutes.
+
+    Args:
+        task_id: The dev task whose spec to check
+        tenant_id: Tenant scope
+    """
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=900.0) as client:
+        resp = await client.post(
+            f"/api/v1/kernel/drivers/tasks/{task_id}/conformance",
+            headers=_headers(tenant_id),
+        )
+        resp.raise_for_status()
+        return _result(_extract_data(resp.json()))
 
 
 @mcp.tool()
