@@ -210,7 +210,26 @@ async def test_run_driver_flags_open_network_and_write_the_workdir(
     # rw, not :ro: the CLI refreshes its access token in place (confirmed by
     # hand — a :ro mount left it authenticating with a stale token).
     assert f"{creds}:/claude-config" in joined and f"{creds}:/claude-config:ro" not in joined
-    assert argv[argv.index("--entrypoint") + 1] == "claude"
+    assert argv[argv.index("--entrypoint") + 1] == "/usr/local/bin/claude"
+
+
+async def test_run_driver_uses_the_images_cli_not_the_host_path(
+    driver_docker_mode, tmp_path, monkeypatch
+):
+    captured = {}
+
+    async def fake_exec(argv, timeout, container=None):
+        captured["argv"] = argv
+        return sandbox.SandboxResult(0, "", "")
+
+    monkeypatch.setattr(sandbox, "_exec", fake_exec)
+    await sandbox.run_driver(
+        ["/home/someone/.local/bin/claude", "-p", "hi"], tmp_path / "w", tmp_path / "c"
+    )
+    argv = captured["argv"]
+    assert argv[argv.index("--entrypoint") + 1] == "/usr/local/bin/claude"
+    assert "/home/someone/.local/bin/claude" not in argv
+    assert argv[-2:] == ["-p", "hi"]
 
 
 async def test_run_driver_missing_image_is_unavailable(driver_docker_mode, tmp_path, monkeypatch):

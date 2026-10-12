@@ -46,6 +46,8 @@ logger = logging.getLogger(__name__)
 
 WORK = "/work"
 VENV = "/venv"
+# Where docker/claude-driver/Dockerfile installs the CLI.
+DRIVER_CLI = "/usr/local/bin/claude"
 
 # Files whose content decides what the setup phase installs.
 _MANIFESTS: tuple[str, ...] = (
@@ -325,8 +327,11 @@ async def run_driver(
         f"{credentials_dir}:/claude-config",
         "-w",
         WORK,
+        # The image's own binary, not argv[0]: argv[0] is the host's
+        # configured path (driver_claude_code_bin, e.g. ~/.local/bin/claude),
+        # which does not exist inside the container.
         "--entrypoint",
-        argv[0],
+        DRIVER_CLI,
         settings.driver_claude_sandbox_image,
         *argv[1:],
     ]
