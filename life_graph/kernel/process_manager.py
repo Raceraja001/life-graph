@@ -539,7 +539,14 @@ class ProcessManager:
             max_tokens=persona.get("max_tokens"),
         )
 
+        # Earlier turns of this conversation, oldest first, as the caller
+        # assembled them. Every chat turn used to be a single-message run, so a
+        # persona could not answer "what did I just say?" — the UI showed a
+        # thread the model had never seen. A task with no history (a scheduled
+        # job, a delegated child) still sends exactly one message, as before.
+        history = input_data.get("history") or []
         messages = [
+            *({"role": m["role"], "content": m["content"]} for m in history),
             {"role": "user", "content": input_data.get("message", str(input_data))},
         ]
         system_prompt = persona.get("system_prompt")
