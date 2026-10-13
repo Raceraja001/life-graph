@@ -335,3 +335,51 @@ async def test_no_acceptance_tests_leaves_the_chain_alone(monkeypatch):
     await disp.dispatch_task(tenant_id="t1", task_id=str(uuid.uuid4()), instruction="x")
 
     assert "acceptance_tests_pass" not in calls[0]
+
+
+def test_parse_tasks_ignores_numbers_inside_a_task():
+    # A real claude_code spec: "max 20)" inside task 1 used to start a new task.
+    spec = (
+        "**Tasks:**\n"
+        "1. Add the tool — `limit` (default 5, max 20), the projection (AC-1, AC-2).\n"
+        "2. Register it in main.py (AC-3).\n"
+        "3. Run pytest 2) and ruff 1. on the touched files (AC-1).\n"
+    )
+    assert _parse_tasks(spec) == [
+        "Add the tool — `limit` (default 5, max 20), the projection (AC-1, AC-2).",
+        "Register it in main.py (AC-3).",
+        "Run pytest 2) and ruff 1. on the touched files (AC-1).",
+    ]
+
+
+def test_parse_tasks_does_not_treat_version_numbers_as_markers():
+    spec = "**Tasks:** 1. Target Python 3.12 only 2. Add a test"
+    assert _parse_tasks(spec) == ["Target Python 3.12 only", "Add a test"]
+
+
+@pytest.mark.asyncio
+async def test_a_long_plan_spec_reaches_the_approval_whole(tmp_path, monkeypatch):
+    # Approving fans out from payload["spec"]; a 4000-char cut once dropped
+    # tasks 3-5 of a real 5.5k-char spec and every AC citation with them.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    tasks = "\n".join(f"{i}. Step {i} {'detail ' * 150}(AC-1)" for i in range(1, 6))
+    output = (
+        "## Spec\n"
+        "**Requirements:**\nAC-1: works — test: tests/unit/test_x.py::test_works\n"
+        f"**Design:** d.\n**Tasks:**\n{tasks}\n"
+    )
+    session = _FakeSession()
+    disp = TaskDispatcher(session_factory=lambda: session, event_bus=None)
+    _wire(disp, monkeypatch, _PlanDriver(output), repo)
+
+    await disp.dispatch_task(
+        tenant_id="t1", task_id=str(uuid.uuid4()), instruction="Add a helper function",
+        project_id=str(uuid.uuid4()), isolate_workdir=True, task_type="plan",
+        verify_chain=["no_diff_in_plan"], session=session,
+    )
+
+    plan = next(a for a in session.added if getattr(a, "kind", None) == "driver_plan")
+    assert len(plan.payload["spec"]) > 4000
+    assert len(_parse_tasks(plan.payload["spec"])) == 5

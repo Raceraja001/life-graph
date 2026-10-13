@@ -137,7 +137,11 @@ def _extract_spec(output: str | None) -> str | None:
 
 
 _TASKS_SECTION_RE = re.compile(r"\*\*Tasks:?\*\*\s*(.*)", re.DOTALL | re.IGNORECASE)
-_TASK_ITEM_RE = re.compile(r"(?:^|\s)\d+[.)]\s*(.+?)(?=(?:\s\d+[.)])|\Z)", re.DOTALL)
+# A candidate list marker: "3." or "3)" at the start or after whitespace, then
+# whitespace. Only the next expected number counts (see _parse_tasks), so a
+# "(default 5, max 20)" inside task 1 is text, not task 20.
+_TASK_MARKER_RE = re.compile(r"(?:^|(?<=\s))(\d+)[.)](?=\s)")
+_PLAN_SPEC_MAX_CHARS = 50_000
 _BOLD_HEADING_RE = re.compile(r"\*\*[A-Za-z][\w -]*:?\*\*")
 
 
@@ -157,7 +161,17 @@ def _parse_tasks(spec_text: str | None) -> list[str]:
     block = section.group(1)
     # Stop at the next bold heading, if the model added one after Tasks.
     block = _BOLD_HEADING_RE.split(block)[0]
-    return [m.group(1).strip() for m in _TASK_ITEM_RE.finditer(block) if m.group(1).strip()]
+    starts = []
+    for marker in _TASK_MARKER_RE.finditer(block):
+        if int(marker.group(1)) == len(starts) + 1:
+            starts.append(marker)
+    items = []
+    for i, marker in enumerate(starts):
+        end = starts[i + 1].start() if i + 1 < len(starts) else len(block)
+        text = block[marker.end() : end].strip()
+        if text:
+            items.append(text)
+    return items
 
 
 _CODE_CONTEXT_TIMEOUT_SECONDS = 30
@@ -1305,7 +1319,11 @@ class TaskDispatcher:
                 "task_id": task_id,
                 "driver": driver_name,
                 "instruction": instruction[:4000],
-                "spec": spec_text[:4000],
+                # Not cut to 4000 like the instruction: approving fans out
+                # from THIS copy, so a cut spec silently drops the later tasks
+                # and their AC citations (seen: a 5.5k spec became 2 of 5 tasks,
+                # no tests bound). The cap only guards against a runaway output.
+                "spec": spec_text[:_PLAN_SPEC_MAX_CHARS],
                 "spec_gaps": gaps,
                 "project_id": str(project_id) if project_id else None,
                 "persona_name": persona_name,
