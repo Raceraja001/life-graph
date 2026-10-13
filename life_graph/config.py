@@ -407,6 +407,9 @@ class Settings(BaseSettings):
     # the dev-task runner. Without it, the database advisory lock still keeps
     # it from running alongside the real one (services/dev_tasks.py).
     dev_task_runner_enabled: bool = True
+    # Per-step content cap for recorded agent runs (services/trajectories.py).
+    # One whole-file read can be megabytes; the real length is kept alongside.
+    trajectory_step_max_chars: int = 16_000
     # Dissenting cheap-model review before an auto-verified task lands.
     # Off by default — pure LLM overhead until agents run unattended.
     driver_second_opinion_enabled: bool = False

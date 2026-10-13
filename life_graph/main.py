@@ -380,6 +380,13 @@ async def lifespan(app: FastAPI):
         # APPROVAL_RESOLVED is emitted by the approvals API in this process.
         dev_outcome_recorder.subscribe()
 
+    with startup_step(report, "trajectory_recorder"):
+        from life_graph.services.trajectories import trajectory_recorder
+
+        # driver:steps is emitted by the dispatcher, in whichever process runs
+        # the dev task: that is this one, the runner-lock holder.
+        trajectory_recorder.subscribe()
+
     app.state.dev_task_queue = None
     with startup_step(report, "dev_task_queue"):
         import asyncio

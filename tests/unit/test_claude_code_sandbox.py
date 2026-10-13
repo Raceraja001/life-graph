@@ -189,3 +189,43 @@ def test_dispatch_timeout_comes_from_settings_not_the_300s_fallback(monkeypatch)
     assert ClaudeCodeDriver().dispatch_timeout == 1200
     monkeypatch.setattr(settings, "driver_claude_code_timeout_seconds", 1800)
     assert ClaudeCodeDriver().dispatch_timeout == 1800
+
+
+async def test_dispatch_streams_and_returns_every_step(tmp_path, sandboxed, monkeypatch):
+    import json
+
+    from life_graph.config import settings
+
+    creds = tmp_path / "creds" / ".credentials.json"
+    creds.parent.mkdir()
+    creds.write_text("{}")
+    monkeypatch.setattr(settings, "driver_claude_code_creds_path", str(creds))
+    seen = {}
+    stream = "\n".join(
+        json.dumps(e)
+        for e in [
+            {"type": "system", "subtype": "init", "model": "claude-opus-5"},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "a"}}]}},
+            {"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "hi"}]}},
+            {"type": "result", "is_error": False, "result": "ok", "session_id": "s1",
+             "total_cost_usd": 0.25, "num_turns": 2},
+        ]
+    )
+
+    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout):
+        seen["argv"] = argv
+        return sandbox.SandboxResult(0, stream, "")
+
+    monkeypatch.setattr(sandbox, "run_driver", fake_run_driver)
+
+    result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path / "work")
+
+    fmt = seen["argv"].index("--output-format")
+    assert seen["argv"][fmt + 1] == "stream-json" and "--verbose" in seen["argv"]
+    assert result.success is True and result.output == "ok" and result.cost_usd == 0.25
+    assert result.metadata["model"] == "claude-opus-5"
+    assert [(s["kind"], s["tool"]) for s in result.metadata["steps"]] == [
+        ("tool_call", "Read"), ("tool_result", "Read"),
+    ]

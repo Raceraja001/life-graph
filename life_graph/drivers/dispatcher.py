@@ -24,7 +24,7 @@ import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
@@ -507,6 +507,7 @@ class TaskDispatcher:
             result = await driver.dispatch(
                 packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
             )
+            await self._emit_steps(tenant_id, task_id, driver.name, 1, result)
             # Captured here, before later steps replace `result` with fresh
             # DriverResult instances (verification failure, dissent, ...)
             # that don't carry the original metadata forward — merged back
@@ -1186,6 +1187,7 @@ class TaskDispatcher:
         bounce_result = await driver.dispatch(
             bounced_packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
         )
+        await self._emit_steps(tenant_id, task_id, driver.name, 2, bounce_result)
 
         if not bounce_result.success:
             return None
@@ -1643,6 +1645,29 @@ class TaskDispatcher:
             )
         except Exception:
             logger.warning("Failed to create approval entry", exc_info=True)
+
+    async def _emit_steps(
+        self, tenant_id: str, task_id: Any, driver_name: str, attempt: int, result: DriverResult
+    ) -> None:
+        """Hand one attempt's steps to the trajectory recorder.
+
+        Popped off the result, not copied: the metadata is later merged into
+        the task row, and a run's steps (hundreds, some large) belong in
+        agent_run_steps, not in AgentTask.properties.
+        """
+        steps = (result.metadata or {}).pop("steps", None)
+        if not steps:
+            return
+        await self._emit(
+            EventType.DRIVER_STEPS,
+            {
+                "tenant_id": tenant_id,
+                "task_id": str(task_id),
+                "driver": driver_name,
+                "attempt": attempt,
+                "steps": steps,
+            },
+        )
 
     async def _emit(self, event_type: EventType, payload: dict) -> None:
         """Emit an event if event_bus is available."""

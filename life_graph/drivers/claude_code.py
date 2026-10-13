@@ -1,9 +1,11 @@
 """Claude Code headless driver — wrap, don't rebuild (strategic-decision.md).
 
 Invokes the Claude Code CLI in headless mode (``claude -p "<packet>"
---output-format json``) with ``cwd`` set to the project path — or an
-isolated git worktree when the project context asks for isolation —
-and normalizes the JSON result to a :class:`DriverResult`.
+--output-format stream-json --verbose``) with ``cwd`` set to the project
+path — or an isolated git worktree when the project context asks for
+isolation — and normalizes the final result event to a
+:class:`DriverResult`, with every step of the run in ``metadata["steps"]``
+(see drivers/steps.py).
 
 Graceful degradation: when the ``claude`` binary is not installed on
 this host, :meth:`available` returns False and the dispatcher skips
@@ -22,6 +24,7 @@ from pathlib import Path
 from life_graph.config import settings
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import render_memory_block
+from life_graph.drivers.steps import parse_claude_stream
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.services import sandbox
 
@@ -175,7 +178,9 @@ class ClaudeCodeDriver:
 
         cwd, worktree = await resolve_workdir(packet, workdir)
         try:
-            args = [self._binary, "-p", prompt, "--output-format", "json"]
+            # stream-json (which -p only allows with --verbose) instead of
+            # json: the same final result, plus every step that led to it.
+            args = [self._binary, "-p", prompt, "--output-format", "stream-json", "--verbose"]
             if cli_tools is not None:
                 args += [
                     _ALLOWED_TOOLS_FLAG,
@@ -215,7 +220,7 @@ class ClaudeCodeDriver:
                 )
 
             duration = int((time.monotonic() - start) * 1000)
-            data = self._parse_output(out)
+            data, steps = parse_claude_stream((out or b"").decode(errors="replace"))
             success = returncode == 0 and not data.get("is_error", False)
             return DriverResult(
                 success=success,
@@ -232,6 +237,8 @@ class ClaudeCodeDriver:
                     "exit_status": "ok" if success else "failed",
                     "session_id": data.get("session_id"),
                     "num_turns": data.get("num_turns"),
+                    "model": data.get("model"),
+                    "steps": steps,
                     "workdir": str(cwd),
                     "isolated": worktree is not None,
                     "sandboxed": sandboxed,
@@ -337,15 +344,3 @@ class ClaudeCodeDriver:
             if memory_block:
                 parts.append(memory_block)
         return "\n".join(parts)
-
-    @staticmethod
-    def _parse_output(out: bytes) -> dict:
-        """Parse the CLI's JSON stdout; tolerate plain-text output."""
-        text = (out or b"").decode(errors="replace").strip()
-        if not text:
-            return {}
-        try:
-            data = json.loads(text)
-            return data if isinstance(data, dict) else {"result": data}
-        except json.JSONDecodeError:
-            return {"result": text}

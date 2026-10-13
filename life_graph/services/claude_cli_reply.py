@@ -131,10 +131,9 @@ async def run_claude_cli(prompt: str, timeout: float = 60.0) -> ClaudeCliResult:
 def _parse_output(out: bytes) -> dict:
     """Parse the CLI's JSON stdout; tolerate plain-text output.
 
-    Same tolerance as drivers/claude_code.py's _parse_output — kept as a
-    separate copy here rather than importing that module's private
-    staticmethod, since claude_code.py is driver-specific and this module
-    is intentionally independent of it.
+    The single-object case of drivers/steps.py's parse_claude_stream (this
+    path still runs ``--output-format json``) — kept as a separate copy so
+    this module stays independent of the driver package.
     """
     text = (out or b"").decode(errors="replace").strip()
     if not text:

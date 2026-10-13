@@ -6,6 +6,7 @@ Tags: [drivers]
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -407,3 +408,23 @@ async def check_dev_task_conformance(task_id: str):
     except ConformanceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return success_response(data=report)
+
+
+@router.get(
+    "/tasks/{task_id}/steps",
+    summary="Every recorded step of a dev task's driver runs, in order",
+)
+async def get_dev_task_steps(task_id: str):
+    """What the agent said, each tool call and its result, per attempt
+    (attempt 2 is the bounce). Content is redacted and size-capped; a step
+    cut short carries ``properties.original_chars``. Empty when the task's
+    driver ran before step recording existed."""
+    from life_graph.services.trajectories import list_steps
+
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="task_id must be a UUID") from exc
+    async with async_session() as session:
+        steps = await list_steps(session, get_current_tenant_id(), tid)
+    return success_response(data={"task_id": task_id, "count": len(steps), "steps": steps})

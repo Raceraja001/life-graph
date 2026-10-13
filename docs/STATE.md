@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-13 07:26 UTC` from `feat/dev-agent-safety` @ `d9088ea`
+Generated `2026-10-13 09:54 UTC` from `feat/dev-agent-safety` @ `a88fedf`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-10-13 07:26 UTC` from `feat/dev-agent-safety` @ `d9088ea`
 
 | | |
 |---|---|
-| HTTP operations | **278** across 238 paths, 38 tags |
-| Database tables | **69** |
-| Migrations | **43** (head: `043_assistant_message_surface`) |
-| Event types | **78** |
+| HTTP operations | **279** across 239 paths, 38 tags |
+| Database tables | **70** |
+| Migrations | **44** (head: `044_agent_run_steps`) |
+| Event types | **79** |
 | Built-in personas | **16** |
 | Agent tools | **13** |
 | Scheduled jobs | **20** |
-| Config settings | **190** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2586** in 266 files |
+| Config settings | **191** (prefix `LIFE_GRAPH_`) |
+| Test functions | **2597** in 269 files |
 | Dashboard pages | **18** |
-| Python | 324 files, 82,702 lines |
+| Python | 326 files, 83,135 lines |
 
 ---
 
 ## HTTP API
 
-278 operations, grouped by OpenAPI tag.
+279 operations, grouped by OpenAPI tag.
 
 ### `kernel` — 30
 
@@ -231,7 +231,7 @@ Generated `2026-10-13 07:26 UTC` from `feat/dev-agent-safety` @ `d9088ea`
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
 
-### `drivers` — 10
+### `drivers` — 11
 
 | Method | Path | Summary |
 |---|---|---|
@@ -245,6 +245,7 @@ Generated `2026-10-13 07:26 UTC` from `feat/dev-agent-safety` @ `d9088ea`
 | GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
 | POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
 
 ### `procedures` — 7
 
@@ -506,7 +507,7 @@ Generated `2026-10-13 07:26 UTC` from `feat/dev-agent-safety` @ `d9088ea`
 
 ## Database tables
 
-69 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+70 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -514,6 +515,7 @@ Generated `2026-10-13 07:26 UTC` from `feat/dev-agent-safety` @ `d9088ea`
 | `advisor_sessions` | 13 | ✓ | `014_personal_ai` |
 | `agent_messages` | 18 | ✓ | `017_agent_networks` |
 | `agent_personas` | 23 | ✓ | `—` |
+| `agent_run_steps` | 12 | ✓ | `044_agent_run_steps` |
 | `agent_sessions` | 15 | ✓ | `—` |
 | `agent_tasks` | 40 | ✓ | `—` |
 | `approval_queue` | 25 | ✓ | `018_autonomous_ai` |
@@ -584,7 +586,7 @@ Generated `2026-10-13 07:26 UTC` from `feat/dev-agent-safety` @ `d9088ea`
 
 ## Events
 
-78 event types on the async EventBus.
+79 event types on the async EventBus.
 
 **Task** (13) — `agent:task:cancelled` · `agent:task:child_failed` · `agent:task:children_complete` · `agent:task:completed` · `agent:task:delegated` · `agent:task:failed` · `agent:task:handoff` · `driver:task:bounced` · `kernel:task:cancelled` · `kernel:task:completed` · `kernel:task:failed` · `kernel:task:spawned` · `kernel:task:timeout`
 
@@ -596,13 +598,13 @@ Generated `2026-10-13 07:26 UTC` from `feat/dev-agent-safety` @ `d9088ea`
 
 **Approval** (3) — `approval:requested` · `approval:resolved` · `driver:approval:filed`
 
+**Driver** (3) — `driver:dispatched` · `driver:result` · `driver:steps`
+
 **Preference** (3) — `preference:challenged` · `preference:created` · `preference:updated`
 
 **Autonomous** (2) — `autonomy:action:completed` · `autonomy:action:pending`
 
 **Conversation** (2) — `conversation:distilled` · `conversation:message`
-
-**Driver** (2) — `driver:dispatched` · `driver:result`
 
 **Interview** (2) — `capture:interview:answered` · `capture:interview:asked`
 
@@ -805,9 +807,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-43 revisions, head `043_assistant_message_surface`.
+44 revisions, head `044_agent_run_steps`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps`
 
 ---
 
@@ -817,16 +819,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 206 | 1976 |
-| `tests/integration/` | 59 | 598 |
+| `tests/unit/` | 208 | 1986 |
+| `tests/integration/` | 60 | 599 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **266** | **2586** |
+| **total** | **269** | **2597** |
 
 ---
 
 ## Configuration
 
-190 settings, all overridable by environment variable.
+191 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -989,6 +991,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_BIN` | `'claude'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_TIMEOUT_SECONDS` | `1200` |
 | `LIFE_GRAPH_DEV_TASK_RUNNER_ENABLED` | `True` |
+| `LIFE_GRAPH_TRAJECTORY_STEP_MAX_CHARS` | `16000` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_MODEL` | `—` |
 | `LIFE_GRAPH_DRIVER_PR_AGENT_BIN` | `'pr-agent'` |
