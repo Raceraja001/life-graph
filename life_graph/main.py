@@ -534,6 +534,10 @@ from life_graph.api import kernel as kernel_api
 
 v1_router.include_router(kernel_api.router)
 
+from life_graph.api import observability as observability_api
+
+v1_router.include_router(observability_api.router)
+
 from life_graph.api import preferences as preferences_api
 
 v1_router.include_router(preferences_api.router)

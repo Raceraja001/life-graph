@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-13 09:54 UTC` from `feat/dev-agent-safety` @ `a88fedf`
+Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-10-13 09:54 UTC` from `feat/dev-agent-safety` @ `a88fedf`
 
 | | |
 |---|---|
-| HTTP operations | **279** across 239 paths, 38 tags |
+| HTTP operations | **287** across 247 paths, 39 tags |
 | Database tables | **70** |
 | Migrations | **44** (head: `044_agent_run_steps`) |
 | Event types | **79** |
@@ -24,15 +24,15 @@ Generated `2026-10-13 09:54 UTC` from `feat/dev-agent-safety` @ `a88fedf`
 | Agent tools | **13** |
 | Scheduled jobs | **20** |
 | Config settings | **191** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2597** in 269 files |
+| Test functions | **2609** in 271 files |
 | Dashboard pages | **18** |
-| Python | 326 files, 83,135 lines |
+| Python | 330 files, 84,005 lines |
 
 ---
 
 ## HTTP API
 
-279 operations, grouped by OpenAPI tag.
+287 operations, grouped by OpenAPI tag.
 
 ### `kernel` — 30
 
@@ -175,6 +175,26 @@ Generated `2026-10-13 09:54 UTC` from `feat/dev-agent-safety` @ `a88fedf`
 | GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
 | GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
 
+### `drivers` — 15
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/drivers` | List registered drivers |
+| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
+| GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
+| GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
+| GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
+| GET | `/api/v1/kernel/drivers/scorecards` | Per driver and model: success, bounces, merges, cost |
+| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
+| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
+| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
+| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
+| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
+| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
+
 ### `judgment-engine` — 14
 
 | Method | Path | Summary |
@@ -230,22 +250,6 @@ Generated `2026-10-13 09:54 UTC` from `feat/dev-agent-safety` @ `a88fedf`
 | POST | `/api/v1/memories/{memory_id}/reinforce` | Reinforce a memory — confirm it is still accurate |
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
-
-### `drivers` — 11
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/kernel/drivers` | List registered drivers |
-| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
-| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
-| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
-| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
-| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
-| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
-| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
-| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
 
 ### `procedures` — 7
 
@@ -395,6 +399,15 @@ Generated `2026-10-13 09:54 UTC` from `feat/dev-agent-safety` @ `a88fedf`
 | POST | `/api/v1/ingest/image` | Ingest an image for OCR |
 | POST | `/api/v1/ingest/transcribe` | Transcribe a voice recording without storing it as a memory |
 | POST | `/api/v1/ingest/voice` | Ingest a voice recording |
+
+### `observability` — 4
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/observability/agents` | Every persona, its model, and tools it lists that do not exist |
+| GET | `/api/v1/kernel/observability/budget` | Month-to-date spend against the cap, with the top tasks |
+| GET | `/api/v1/kernel/observability/decision-gaps` | Topics discussed often with no recorded decision |
+| GET | `/api/v1/kernel/observability/system` | Subsystems, dev-task runner, queue, drivers and local models |
 
 ### `push` — 4
 
@@ -774,6 +787,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | Spec | Status | Evidence |
 |---|---|---|
 | `agent-drivers` | Built | `life_graph/drivers/dispatcher.py` |
+| `agent-observability` | Unclassified | — |
 | `approvals-feed` | Built | `life_graph/api/approvals.py` |
 | `bills-from-mail` | Unclassified | — |
 | `capture-spine` | Built | `life_graph/services/capture.py` |
@@ -819,10 +833,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 208 | 1986 |
-| `tests/integration/` | 60 | 599 |
+| `tests/unit/` | 209 | 1994 |
+| `tests/integration/` | 61 | 603 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **269** | **2597** |
+| **total** | **271** | **2609** |
 
 ---
 

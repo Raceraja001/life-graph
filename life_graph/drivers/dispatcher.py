@@ -1655,6 +1655,9 @@ class TaskDispatcher:
         the task row, and a run's steps (hundreds, some large) belong in
         agent_run_steps, not in AgentTask.properties.
         """
+        if result.metadata is not None:
+            # Which driver produced this: the scorecards group by it.
+            result.metadata.setdefault("driver", driver_name)
         steps = (result.metadata or {}).pop("steps", None)
         if not steps:
             return

@@ -473,19 +473,43 @@ def _stage(task: AgentTask, approvals: list[Approval]) -> str:
     return task.status
 
 
+def driver_of(task: AgentTask) -> str | None:
+    """Which driver ran the task: recorded since 2026-10-13, inferred before.
+
+    Older rows never stored it, but each driver leaves its own metadata:
+    claude_code a CLI ``session_id``, local an orchestrator ``tool_calls`` count.
+    """
+    metadata = (task.result or {}).get("metadata") or {}
+    if metadata.get("driver"):
+        return str(metadata["driver"])
+    if "session_id" in metadata or "num_turns" in metadata:
+        return "claude_code"
+    if "tool_calls" in metadata:
+        return "local"
+    return None
+
+
 def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
     result = task.result or {}
     metadata = result.get("metadata") or {}
+    props = task.properties or {}
     pr = next((a for a in approvals if a.kind == "driver_pr"), None)
     merge = next((a for a in approvals if a.kind == "driver_merge"), None)
     return {
         "id": str(task.id),
         "title": task.title,
         "instruction": task.instructions,
+        "task_type": task.task_type,
         "project_id": str(task.project_id) if task.project_id else None,
-        "project_name": (task.properties or {}).get("project_name"),
+        "project_name": props.get("project_name"),
         "persona": task.assigned_agent,
-        "origin": (task.properties or {}).get("origin", "dashboard"),
+        "driver": driver_of(task),
+        "model": metadata.get("model"),
+        "num_turns": metadata.get("num_turns"),
+        "origin": props.get("origin", "dashboard"),
+        "plan_task_id": props.get("plan_task_id"),
+        "plan_task_index": props.get("plan_task_index"),
+        "plan_task_count": props.get("plan_task_count"),
         "status": task.status,
         "stage": _stage(task, approvals),
         "error": task.error,
@@ -498,7 +522,16 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "pr_url": (pr.payload or {}).get("pr_url") if pr else None,
         "merge_commit": (merge.payload or {}).get("merge_commit") if merge else None,
         "approvals": [
-            {"id": str(a.id), "kind": a.kind, "status": a.status, "title": a.title}
+            {
+                "id": str(a.id),
+                "kind": a.kind,
+                "status": a.status,
+                "title": a.title,
+                # The reviewer's reasoning: why it was approved or rejected.
+                "note": a.resolution_note,
+                "resolved_by": a.resolved_by,
+                "resolved_at": a.resolved_at.isoformat() if a.resolved_at else None,
+            }
             for a in approvals
         ],
         "created_at": task.created_at.isoformat() if task.created_at else None,

@@ -428,3 +428,46 @@ async def get_dev_task_steps(task_id: str):
     async with async_session() as session:
         steps = await list_steps(session, get_current_tenant_id(), tid)
     return success_response(data={"task_id": task_id, "count": len(steps), "steps": steps})
+
+
+# ── Plans, scorecards, failures (docs/specs/agent-observability.md) ──
+
+
+@router.get("/plans", summary="Plan tasks, each with its tasks counted by stage")
+async def list_dev_plans(limit: int = Query(30, ge=1, le=200)):
+    from life_graph.services.agent_insights import list_plans
+
+    async with async_session() as session:
+        data = await list_plans(session, get_current_tenant_id(), limit=limit)
+    return success_response(data=data)
+
+
+@router.get("/plans/{plan_id}", summary="One plan: spec, criteria and its tasks in order")
+async def get_dev_plan(plan_id: str):
+    from life_graph.services.agent_insights import get_plan
+
+    async with async_session() as session:
+        data = await get_plan(session, get_current_tenant_id(), plan_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return success_response(data=data)
+
+
+@router.get("/scorecards", summary="Per driver and model: success, bounces, merges, cost")
+async def get_driver_scorecards(days: int = Query(30, ge=1, le=365)):
+    from life_graph.services.agent_insights import scorecards
+
+    async with async_session() as session:
+        data = await scorecards(session, get_current_tenant_id(), days=days)
+    return success_response(data=data)
+
+
+@router.get("/failures", summary="Failed dev tasks with their primary cause")
+async def get_driver_failures(
+    days: int = Query(30, ge=1, le=365), limit: int = Query(200, ge=1, le=1000)
+):
+    from life_graph.services.agent_insights import failures
+
+    async with async_session() as session:
+        data = await failures(session, get_current_tenant_id(), days=days, limit=limit)
+    return success_response(data=data)
