@@ -97,7 +97,7 @@ _SPEC_HEADINGS = (
     "AC-1: <what must be true> — test: tests/unit/test_example.py::test_name\n"
     "**Design:** the approach, in a sentence or two.\n"
     "**Tasks:** a numbered list of the concrete steps you will take. End each "
-    "task with the criteria it satisfies, e.g. \"1. Add the parser (AC-1)\". A "
+    'task with the criteria it satisfies, e.g. "1. Add the parser (AC-1)". A '
     "task that cites a criterion also writes or updates that criterion's test.\n\n"
 )
 _SPEC_FIRST_PREFIX = (
@@ -122,8 +122,15 @@ _PLAN_ONLY_PREFIX = (
 # shell (file_write, code_edit, run_command, and the git_* tools, which the
 # claude_code driver maps to a full Bash) is dropped for the plan stage.
 _PLAN_READ_TOOLS = frozenset(
-    {"file_read", "code_read", "code_search", "code_list", "web_search", "browse_web",
-     "memory_search"}
+    {
+        "file_read",
+        "code_read",
+        "code_search",
+        "code_list",
+        "web_search",
+        "browse_web",
+        "memory_search",
+    }
 )
 _SPEC_SECTION_RE = re.compile(r"##\s*Spec\b(.*?)(?:\n##\s|\Z)", re.DOTALL | re.IGNORECASE)
 
@@ -1360,7 +1367,12 @@ class TaskDispatcher:
             logger.info("Task %s: plan approval filed", task_id)
             await self._emit(
                 EventType.APPROVAL_FILED,
-                {"tenant_id": tenant_id, "kind": "driver_plan", "title": appr.title, "detail": appr.detail},
+                {
+                    "tenant_id": tenant_id,
+                    "kind": "driver_plan",
+                    "title": appr.title,
+                    "detail": appr.detail,
+                },
             )
         except Exception:
             logger.warning("Failed to file plan approval for task %s", task_id, exc_info=True)
@@ -1499,7 +1511,12 @@ class TaskDispatcher:
         if appr.status == "pending":
             await self._emit(
                 EventType.APPROVAL_FILED,
-                {"tenant_id": tenant_id, "kind": "driver_pr", "title": appr.title, "detail": appr.detail},
+                {
+                    "tenant_id": tenant_id,
+                    "kind": "driver_pr",
+                    "title": appr.title,
+                    "detail": appr.detail,
+                },
             )
 
     async def _auto_open_pr(

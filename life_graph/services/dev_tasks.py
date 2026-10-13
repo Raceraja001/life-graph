@@ -22,12 +22,17 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, or_, select, text, update
 
 from life_graph.models.db import AgentTask, Approval, VerificationRun
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+    from sqlalchemy.ext.asyncio import (
+        AsyncConnection,
+        AsyncEngine,
+        AsyncSession,
+        async_sessionmaker,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -313,7 +318,12 @@ async def auto_merge_status(session: AsyncSession, tenant_id: str) -> list[dict[
     return out
 
 
-_AUDIT_MANIFEST_CANDIDATES = ("uv.lock", "pyproject.toml", "requirements-dev.txt", "requirements.txt")
+_AUDIT_MANIFEST_CANDIDATES = (
+    "uv.lock",
+    "pyproject.toml",
+    "requirements-dev.txt",
+    "requirements.txt",
+)
 
 
 def _pip_audit_declared(project_path: str) -> tuple[bool, str | None]:
@@ -495,6 +505,50 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "started_at": task.started_at.isoformat() if task.started_at else None,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
     }
+
+
+# One dev-task runner per database. Every API process used to run the queue
+# and the startup recovery, so a preview server from another worktree (older
+# code, same DB) claimed a plan's queued tasks and ran them without the merge
+# gate, and its startup recovery would fail the real runner's in-flight task.
+RUNNER_LOCK_KEY = 0x4C474456  # "LGDV"
+
+
+async def acquire_runner_lock(engine: AsyncEngine) -> AsyncConnection | None:
+    """Hold the dev-task runner lock on a dedicated connection, or return None.
+
+    A Postgres session-level advisory lock: it lives as long as the returned
+    connection, so the caller keeps it open for the process's lifetime and
+    closes it on shutdown. None means another process is the runner.
+    """
+    conn = await engine.connect()
+    try:
+        got = (
+            await conn.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": RUNNER_LOCK_KEY})
+        ).scalar()
+        # Session-level locks survive commit; committing keeps this connection
+        # from sitting idle in a transaction for hours.
+        await conn.commit()
+    except BaseException:
+        await conn.close()
+        raise
+    if not got:
+        await conn.close()
+        return None
+    return conn
+
+
+async def release_runner_lock(conn: AsyncConnection) -> None:
+    """Release the lock, then hand the connection back.
+
+    An explicit unlock, not just close(): close() returns the connection to
+    the pool with its Postgres session -- and so the lock -- still alive.
+    """
+    try:
+        await conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": RUNNER_LOCK_KEY})
+        await conn.commit()
+    finally:
+        await conn.close()
 
 
 async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) -> int:

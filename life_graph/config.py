@@ -403,6 +403,10 @@ class Settings(BaseSettings):
     # fallback cut a real plan-only run off mid-exploration of this repo;
     # 1200 matches the local driver.
     driver_claude_code_timeout_seconds: int = 1200
+    # Set false on a preview/secondary instance so it never even tries to be
+    # the dev-task runner. Without it, the database advisory lock still keeps
+    # it from running alongside the real one (services/dev_tasks.py).
+    dev_task_runner_enabled: bool = True
     # Dissenting cheap-model review before an auto-verified task lands.
     # Off by default — pure LLM overhead until agents run unattended.
     driver_second_opinion_enabled: bool = False

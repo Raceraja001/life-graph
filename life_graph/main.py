@@ -32,7 +32,7 @@ from life_graph.config import settings
 from life_graph.core.events import enable_redis_bridge, event_bus
 from life_graph.core.logging import setup_logging
 from life_graph.core.plugins import PluginManager
-from life_graph.storage.database import async_session, engine
+from life_graph.storage.database import async_session
 from life_graph.storage.redis import check_redis, close_redis, init_redis
 
 # Configure structured logging (JSON in prod, text in dev)
@@ -346,12 +346,32 @@ async def lifespan(app: FastAPI):
         driver_registry.register(ClaudeCodeDriver())
         logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
 
+    # Only the process holding the runner lock recovers and runs dev tasks, so
+    # a second instance on the same database (a preview from another worktree)
+    # can neither claim queued tasks nor fail the real runner's in-flight one.
+    app.state.dev_task_runner_lock = None
+    with startup_step(report, "dev_task_runner_lock"):
+        from life_graph.services.dev_tasks import acquire_runner_lock
+        from life_graph.storage.database import engine
+
+        if settings.dev_task_runner_enabled:
+            app.state.dev_task_runner_lock = await acquire_runner_lock(engine)
+            if app.state.dev_task_runner_lock is None:
+                logger.warning(
+                    "Another Life Graph process is the dev-task runner for this "
+                    "database; this one will not recover or run dev tasks"
+                )
+        else:
+            logger.info("Dev-task runner disabled (LIFE_GRAPH_DEV_TASK_RUNNER_ENABLED=false)")
+    is_dev_task_runner = app.state.dev_task_runner_lock is not None
+
     with startup_step(report, "dev_tasks_recovery"):
         from life_graph.services.dev_tasks import fail_interrupted
 
-        interrupted = await fail_interrupted(async_session)
-        if interrupted:
-            logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
+        if is_dev_task_runner:
+            interrupted = await fail_interrupted(async_session)
+            if interrupted:
+                logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
 
     with startup_step(report, "dev_outcome_recorder"):
         from life_graph.services.dev_outcomes import dev_outcome_recorder
@@ -367,7 +387,8 @@ async def lifespan(app: FastAPI):
 
         # Queued dev tasks (nightly suggestions) run here, where the drivers
         # are registered, one at a time.
-        app.state.dev_task_queue = asyncio.create_task(run_queue(async_session))
+        if is_dev_task_runner:
+            app.state.dev_task_queue = asyncio.create_task(run_queue(async_session))
 
     if report.failed:
         logger.warning(
@@ -384,6 +405,13 @@ async def lifespan(app: FastAPI):
     # failed by fail_interrupted on the next start).
     if app.state.dev_task_queue is not None:
         app.state.dev_task_queue.cancel()
+    if app.state.dev_task_runner_lock is not None:
+        from life_graph.services.dev_tasks import release_runner_lock
+
+        try:
+            await release_runner_lock(app.state.dev_task_runner_lock)
+        except Exception:
+            logger.warning("Closing the dev-task runner lock failed", exc_info=True)
 
     # Shutdown — close MCP bridge connections
     try:
