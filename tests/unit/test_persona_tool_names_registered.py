@@ -28,6 +28,12 @@ DEFERRED_NAMES = {"memory_search"}
 
 
 def test_every_persona_allowed_tool_is_registered_or_deferred():
+    # Connector tools (calendar_*, email_*, ...) register at startup, not on
+    # import -- without this the test only passed when an earlier test in the
+    # run had happened to call it.
+    from life_graph.connectors.tools import register_tools
+
+    register_tools()
     registered = set(registry.tool_names)
     unexplained = {}
     for defn in _BUILTIN_PERSONAS:
