@@ -279,3 +279,38 @@ def test_registered_in_registry_as_memory_search():
     assert params["required"] == ["query"]
     assert set(params["properties"]) == {"query", "limit"}
     assert params["properties"]["limit"]["default"] == 5
+
+
+def test_registered_by_main_startup():
+    """The @tool decorator only fires on import, so boot must import us.
+
+    Asserted against the "agent_tools" startup step specifically — an
+    import anywhere else in the module would not survive a reshuffle of
+    the lifespan steps.
+    """
+    import ast
+    import textwrap
+
+    from life_graph import main
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(main.lifespan)))
+
+    step = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.With)
+        and any(
+            isinstance(item.context_expr, ast.Call)
+            and getattr(item.context_expr.func, "id", None) == "startup_step"
+            and item.context_expr.args[1].value == "agent_tools"
+            for item in node.items
+        )
+    )
+    imported = {
+        alias.name
+        for node in ast.walk(step)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+
+    assert "life_graph.tools.memory_search" in imported
