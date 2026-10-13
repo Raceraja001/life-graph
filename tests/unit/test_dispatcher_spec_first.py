@@ -11,7 +11,12 @@ import pytest
 import life_graph.drivers.dispatcher as disp_mod
 from life_graph.core.budget import BudgetDecision
 from life_graph.drivers.base import ContextPacket, DriverResult
-from life_graph.drivers.dispatcher import _SPEC_FIRST_PREFIX, TaskDispatcher, _extract_spec
+from life_graph.drivers.dispatcher import (
+    _PLAN_ONLY_PREFIX,
+    _SPEC_FIRST_PREFIX,
+    TaskDispatcher,
+    _extract_spec,
+)
 
 
 class _FakeResult:
@@ -161,3 +166,59 @@ async def test_no_spec_section_leaves_metadata_without_a_spec_key(monkeypatch):
     )
 
     assert "spec" not in (result.metadata or {})
+
+
+class _ToolSeeingDriver(_SpecWritingDriver):
+    async def dispatch(self, packet, workdir, timeout=300) -> DriverResult:
+        self.tools_seen = packet.allowed_tools
+        return await super().dispatch(packet, workdir, timeout)
+
+
+class _Persona:
+    system_prompt = "you fix code"
+    model = None
+
+    def __init__(self, allowed_tools):
+        self.allowed_tools = allowed_tools
+
+
+async def _plan_dispatch(monkeypatch, allowed_tools):
+    driver = _ToolSeeingDriver("## Spec\n**Requirements:** x\n**Tasks:** 1. a")
+    disp = TaskDispatcher(session_factory=lambda: _FakeSession(), event_bus=None)
+    _wire(disp, monkeypatch, driver)
+
+    async def _persona(*_a, **_k):
+        return _Persona(allowed_tools)
+
+    monkeypatch.setattr(disp, "_load_persona", _persona)
+    await disp.dispatch_task(
+        tenant_id="t1", task_id=str(uuid.uuid4()), instruction="Add a helper function",
+        verify_chain=[], spec_first=True, task_type="plan", persona_name="code-fixer",
+    )
+    return driver
+
+
+@pytest.mark.asyncio
+async def test_a_plan_task_is_told_to_stop_after_the_spec_not_to_implement(monkeypatch):
+    driver = await _plan_dispatch(monkeypatch, ["file_read", "file_write"])
+
+    assert driver.instruction_seen.startswith(_PLAN_ONLY_PREFIX)
+    assert "implement it" not in driver.instruction_seen
+    assert "do NOT create, edit or delete any file" in driver.instruction_seen
+    assert driver.instruction_seen.endswith("Add a helper function")
+
+
+@pytest.mark.asyncio
+async def test_a_plan_task_loses_every_write_and_shell_tool(monkeypatch):
+    driver = await _plan_dispatch(
+        monkeypatch,
+        ["file_read", "file_write", "code_edit", "run_command", "git_status", "code_search"],
+    )
+
+    assert sorted(driver.tools_seen) == ["code_search", "file_read"]
+
+
+@pytest.mark.asyncio
+async def test_an_unscoped_or_write_only_plan_persona_still_gets_read_access(monkeypatch):
+    assert (await _plan_dispatch(monkeypatch, None)).tools_seen == ["file_read"]
+    assert (await _plan_dispatch(monkeypatch, ["file_write"])).tools_seen == ["file_read"]

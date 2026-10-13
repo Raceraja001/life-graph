@@ -89,9 +89,7 @@ DEFAULT_VERIFY_CHAIN = [
 # pause-for-approval architecture, most of the benefit (a reviewable plan,
 # a forcing function against misreading the instruction) for one-file's
 # worth of code.
-_SPEC_FIRST_PREFIX = (
-    "Before changing anything, write a short spec as the FIRST part of "
-    "your response, using exactly these headings:\n"
+_SPEC_HEADINGS = (
     "## Spec\n"
     "**Requirements:** the acceptance criteria this change must satisfy, one "
     "per line, each with an id and the pytest test that will prove it, "
@@ -101,8 +99,31 @@ _SPEC_FIRST_PREFIX = (
     "**Tasks:** a numbered list of the concrete steps you will take. End each "
     "task with the criteria it satisfies, e.g. \"1. Add the parser (AC-1)\". A "
     "task that cites a criterion also writes or updates that criterion's test.\n\n"
-    "Then implement it. Keep the spec to a few lines total — it's a plan, "
+)
+_SPEC_FIRST_PREFIX = (
+    "Before changing anything, write a short spec as the FIRST part of "
+    "your response, using exactly these headings:\n"
+    + _SPEC_HEADINGS
+    + "Then implement it. Keep the spec to a few lines total — it's a plan, "
     "not documentation.\n\n---\n\n"
+)
+# A plan task's spec is the whole job. Reusing _SPEC_FIRST_PREFIX ("...Then
+# implement it.") had a claude_code plan run write the full feature, which
+# no_diff_in_plan then rightly rejected.
+_PLAN_ONLY_PREFIX = (
+    "This is a PLAN-ONLY task for human review: do NOT create, edit or delete "
+    "any file. Read the code as much as you need to plan well, then reply with "
+    "a spec using exactly these headings, and nothing else:\n"
+    + _SPEC_HEADINGS
+    + "Stop after the spec. The tasks run later, one at a time, after a human "
+    "approves this plan.\n\n---\n\n"
+)
+# Plan tasks keep only the tools that read. Anything mapping to a write or a
+# shell (file_write, code_edit, run_command, and the git_* tools, which the
+# claude_code driver maps to a full Bash) is dropped for the plan stage.
+_PLAN_READ_TOOLS = frozenset(
+    {"file_read", "code_read", "code_search", "code_list", "web_search", "browse_web",
+     "memory_search"}
 )
 _SPEC_SECTION_RE = re.compile(r"##\s*Spec\b(.*?)(?:\n##\s|\Z)", re.DOTALL | re.IGNORECASE)
 
@@ -339,7 +360,9 @@ class TaskDispatcher:
             # Override the task_id from the caller
             packet.task_id = uuid.UUID(task_id) if isinstance(task_id, str) else task_id
 
-            if spec_first:
+            if task_type == "plan":
+                packet.instruction = _PLAN_ONLY_PREFIX + packet.instruction
+            elif spec_first:
                 packet.instruction = _SPEC_FIRST_PREFIX + packet.instruction
 
             # Step 2b: Resolve the pinned persona ONCE (reused for driver
@@ -352,6 +375,12 @@ class TaskDispatcher:
                 allowed = getattr(persona, "allowed_tools", None)
                 packet.allowed_tools = list(allowed) if allowed is not None else None
                 packet.persona_model = getattr(persona, "model", None) or None
+            if task_type == "plan":
+                # Prompting alone didn't hold (see _PLAN_ONLY_PREFIX); take
+                # the write tools away too. An unscoped or write-only persona
+                # still gets file_read, since a plan needs to read the code.
+                read = [t for t in (packet.allowed_tools or []) if t in _PLAN_READ_TOOLS]
+                packet.allowed_tools = read or ["file_read"]
 
             # A persona declares the checks its own work must clear —
             # dependency-updater asks for tests_pass because its whole job is
