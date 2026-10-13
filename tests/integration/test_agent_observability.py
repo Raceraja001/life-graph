@@ -222,3 +222,28 @@ async def test_budget_reports_spend_against_the_cap_and_top_tasks():
     assert b["by_category"] == {"driver": 0.75}
     assert b["top_tasks"][0]["id"] == str(spender.id)
     assert b["projected_month_usd"] >= 0.75
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_decision_gaps_skip_branches_paths_and_pr_numbers():
+    from life_graph.models.db import Memory
+    from life_graph.services.observability import decision_gaps
+    from life_graph.storage.database import async_session
+
+    await _add(
+        *[
+            Memory(
+                tenant_id=TENANT,
+                content=f"note {i}",
+                status="active",
+                properties={"entities": ["PR #29", "fix/local-llm", "Qodo"], "fact_type": "fact"},
+            )
+            for i in range(4)
+        ]
+    )
+
+    async with async_session() as s:
+        gaps = await decision_gaps(s, TENANT, min_mentions=4)
+
+    assert [g["entity"] for g in gaps] == ["qodo"]

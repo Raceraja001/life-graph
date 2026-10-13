@@ -272,6 +272,8 @@ async def decision_gaps(
                 func.length(mentions.c.entity) >= 3,
                 mentions.c.entity.notin_(_NOT_TOPICS),
                 mentions.c.entity.op("!~")("^[0-9 .#]+$"),
+                # Branches, paths and PR numbers are references, not topics.
+                mentions.c.entity.op("!~")("/|^(pr|pull request|issue) ?#?[0-9]+$"),
             )
             .group_by(mentions.c.entity)
             .having(

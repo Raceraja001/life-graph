@@ -36,21 +36,9 @@ if TYPE_CHECKING:
 FAILED = ("failed", "cancelled", "timeout")
 
 
-def _pinned_driver(persona: str | None) -> str | None:
-    """The driver a built-in persona pins (code-fixer -> claude_code, ...)."""
-    from life_graph.kernel.personas import _BUILTIN_PERSONAS
-
-    for p in _BUILTIN_PERSONAS:
-        if p["name"] == persona and p.get("driver") not in (None, "auto"):
-            return p["driver"]
-    return None
-
-
 def _driver(task: AgentTask) -> str:
-    """Recorded or inferred driver, else the persona's pinned one, else the persona."""
-    return (
-        driver_of(task) or _pinned_driver(task.assigned_agent) or task.assigned_agent or "unknown"
-    )
+    """The driver (see dev_tasks.driver_of), else the persona name."""
+    return driver_of(task) or task.assigned_agent or "unknown"
 
 
 async def _tasks(session: AsyncSession, tenant_id: str, *filters: Any, limit: int = 500):

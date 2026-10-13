@@ -478,6 +478,8 @@ def driver_of(task: AgentTask) -> str | None:
 
     Older rows never stored it, but each driver leaves its own metadata:
     claude_code a CLI ``session_id``, local an orchestrator ``tool_calls`` count.
+    A run that failed before leaving either (a timeout, a budget refusal) falls
+    back to the driver its persona pins.
     """
     metadata = (task.result or {}).get("metadata") or {}
     if metadata.get("driver"):
@@ -486,6 +488,16 @@ def driver_of(task: AgentTask) -> str | None:
         return "claude_code"
     if "tool_calls" in metadata:
         return "local"
+    return _pinned_driver(task.assigned_agent)
+
+
+def _pinned_driver(persona: str | None) -> str | None:
+    """The driver a built-in persona pins (code-fixer -> claude_code, ...)."""
+    from life_graph.kernel.personas import _BUILTIN_PERSONAS
+
+    for p in _BUILTIN_PERSONAS:
+        if p["name"] == persona and p.get("driver") not in (None, "auto"):
+            return str(p["driver"])
     return None
 
 

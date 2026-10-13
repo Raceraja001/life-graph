@@ -1,6 +1,7 @@
 # Agent Observability — Watch, Study and Run the Agents — Feature Spec
 
-> **Status: In progress (2026-10-13).** Builds on step recording (`c410413`:
+> **Status: Built (2026-10-13).** All eight pages, verified in a real browser at desktop
+> and phone width (life-graph-ui smoke suite, 54 tests). Builds on step recording (`c410413`:
 > `drivers/steps.py`, `services/trajectories.py`, table `agent_run_steps`).
 > Backend in this repo; pages in the separate `life-graph-ui` app (Luminaux
 > template, `src/pages/lg/`).
@@ -153,3 +154,13 @@ memory (tag `decision`), which goes through the usual dedup and review.
 7. **UI: Playwright smoke tests.** One per new page.
 8. **`gen_state.py --html`.** Then a final pass in a real browser, on desktop
    and phone.
+
+## Where the build differs from the text above
+
+These differences were found while building:
+- **Scorecards group by driver, not by (driver, model).** Runs from before 2026-10-13 never recorded a model, so a (driver, model) key split one driver across cards. Each card lists the models it has seen instead.
+- **Failure causes return `signals`.** Every matching rule is listed behind the primary cause. The recorded local run's primary cause is "no spec", but its signals show *why*: empty tool arguments and a model that went unavailable.
+- **The driver falls back to the persona's pinned one.** A run that failed before leaving any driver metadata (a timeout or a budget refusal) is attributed to the driver its persona pins.
+- **Decision gaps normalise topic names and filter non-topics.** Names are lowercased and `-`/`_` are folded, so "life-graph" and "Life Graph" are one topic. Pronouns, branch and path names, and PR numbers are dropped.
+- **The chat stream now forwards top-level `tool_call` / `tool_result`.** Results are redacted and trimmed. The Agents console's test run needed them, and they had been dropped.
+- **UI layout fix (template).** `useRouteLayout` treated any route with a URL parameter as a 404 and rendered it full-bleed, so the page header overflowed on phones. It now matches route patterns. This was caught by the phone-width smoke tests added for the replay and plan board pages.
