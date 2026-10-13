@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-09-30 12:05 UTC` from `feat/dev-agent-safety` @ `bdd125e`
+Generated `2026-10-13 07:26 UTC` from `feat/dev-agent-safety` @ `d9088ea`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-09-30 12:05 UTC` from `feat/dev-agent-safety` @ `bdd125e`
 
 | | |
 |---|---|
-| HTTP operations | **277** across 237 paths, 38 tags |
+| HTTP operations | **278** across 238 paths, 38 tags |
 | Database tables | **69** |
 | Migrations | **43** (head: `043_assistant_message_surface`) |
-| Event types | **77** |
+| Event types | **78** |
 | Built-in personas | **16** |
 | Agent tools | **13** |
 | Scheduled jobs | **20** |
-| Config settings | **184** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2427** in 246 files |
+| Config settings | **190** (prefix `LIFE_GRAPH_`) |
+| Test functions | **2586** in 266 files |
 | Dashboard pages | **18** |
-| Python | 317 files, 80,166 lines |
+| Python | 324 files, 82,702 lines |
 
 ---
 
 ## HTTP API
 
-277 operations, grouped by OpenAPI tag.
+278 operations, grouped by OpenAPI tag.
 
 ### `kernel` — 30
 
@@ -231,7 +231,7 @@ Generated `2026-09-30 12:05 UTC` from `feat/dev-agent-safety` @ `bdd125e`
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
 
-### `drivers` — 9
+### `drivers` — 10
 
 | Method | Path | Summary |
 |---|---|---|
@@ -244,6 +244,7 @@ Generated `2026-09-30 12:05 UTC` from `feat/dev-agent-safety` @ `bdd125e`
 | GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
 | GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
 
 ### `procedures` — 7
 
@@ -583,7 +584,7 @@ Generated `2026-09-30 12:05 UTC` from `feat/dev-agent-safety` @ `bdd125e`
 
 ## Events
 
-77 event types on the async EventBus.
+78 event types on the async EventBus.
 
 **Task** (13) — `agent:task:cancelled` · `agent:task:child_failed` · `agent:task:children_complete` · `agent:task:completed` · `agent:task:delegated` · `agent:task:failed` · `agent:task:handoff` · `driver:task:bounced` · `kernel:task:cancelled` · `kernel:task:completed` · `kernel:task:failed` · `kernel:task:spawned` · `kernel:task:timeout`
 
@@ -593,9 +594,9 @@ Generated `2026-09-30 12:05 UTC` from `feat/dev-agent-safety` @ `bdd125e`
 
 **Workflow** (4) — `agent:workflow:completed` · `agent:workflow:failed` · `agent:workflow:started` · `agent:workflow:step_completed`
 
-**Preference** (3) — `preference:challenged` · `preference:created` · `preference:updated`
+**Approval** (3) — `approval:requested` · `approval:resolved` · `driver:approval:filed`
 
-**Approval** (2) — `approval:requested` · `approval:resolved`
+**Preference** (3) — `preference:challenged` · `preference:created` · `preference:updated`
 
 **Autonomous** (2) — `autonomy:action:completed` · `autonomy:action:pending`
 
@@ -816,16 +817,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 189 | 1843 |
-| `tests/integration/` | 56 | 572 |
+| `tests/unit/` | 206 | 1976 |
+| `tests/integration/` | 59 | 598 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **246** | **2427** |
+| **total** | **266** | **2586** |
 
 ---
 
 ## Configuration
 
-184 settings, all overridable by environment variable.
+190 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -986,8 +987,14 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_AUTONOMY_MAX_BLAST_RADIUS` | `3` |
 | `LIFE_GRAPH_AUTONOMY_DEFAULT_LEVEL` | `'L0'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_BIN` | `'claude'` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_CODE_TIMEOUT_SECONDS` | `1200` |
+| `LIFE_GRAPH_DEV_TASK_RUNNER_ENABLED` | `True` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_MODEL` | `—` |
+| `LIFE_GRAPH_DRIVER_PR_AGENT_BIN` | `'pr-agent'` |
+| `LIFE_GRAPH_DRIVER_PR_DESCRIPTION_ENABLED` | `True` |
+| `LIFE_GRAPH_DRIVER_CODE_CONTEXT_ENABLED` | `True` |
+| `LIFE_GRAPH_DRIVER_PR_DESCRIPTION_MODEL` | `—` |
 | `LIFE_GRAPH_DRIVER_GH_BIN` | `'gh'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX` | `'none'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_IMAGE` | `'life-graph-verifier:py3.12'` |
