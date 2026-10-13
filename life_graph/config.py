@@ -399,6 +399,10 @@ class Settings(BaseSettings):
 
     # ── Agent Drivers ───────────────────────────────────
     driver_claude_code_bin: str = "claude"  # Claude Code CLI binary for the claude_code driver
+    # Per-dispatch limit for the claude_code driver. The dispatcher's 300s
+    # fallback cut a real plan-only run off mid-exploration of this repo;
+    # 1200 matches the local driver.
+    driver_claude_code_timeout_seconds: int = 1200
     # Dissenting cheap-model review before an auto-verified task lands.
     # Off by default — pure LLM overhead until agents run unattended.
     driver_second_opinion_enabled: bool = False

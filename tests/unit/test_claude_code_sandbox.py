@@ -181,3 +181,11 @@ async def test_host_dispatch_is_unaffected_when_sandbox_is_off(tmp_path, monkeyp
 
     assert result.success is True
     assert result.metadata["sandboxed"] is False
+
+
+def test_dispatch_timeout_comes_from_settings_not_the_300s_fallback(monkeypatch):
+    from life_graph.config import settings
+
+    assert ClaudeCodeDriver().dispatch_timeout == 1200
+    monkeypatch.setattr(settings, "driver_claude_code_timeout_seconds", 1800)
+    assert ClaudeCodeDriver().dispatch_timeout == 1800

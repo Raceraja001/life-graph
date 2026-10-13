@@ -124,6 +124,11 @@ class ClaudeCodeDriver:
     def __init__(self, binary: str | None = None) -> None:
         self._binary = binary or getattr(settings, "driver_claude_code_bin", "claude")
 
+    @property
+    def dispatch_timeout(self) -> int:
+        """Read by the dispatcher in place of its 300s fallback."""
+        return settings.driver_claude_code_timeout_seconds
+
     # ── Protocol ──────────────────────────────────────────────
 
     async def available(self) -> bool:
