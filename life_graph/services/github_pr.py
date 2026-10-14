@@ -113,11 +113,15 @@ async def _git(repo: str | Path, *args: str) -> tuple[int, str, str]:
     return await _run([*_hardened_git(repo), *args])
 
 
-async def describe_landing(repo_path: str | Path, branch: str) -> dict[str, Any]:
+async def describe_landing(
+    repo_path: str | Path, branch: str, *, base_branch: str | None = None
+) -> dict[str, Any]:
     """What a later PR needs to know about a just-landed branch.
 
-    Called right after landing, while the origin checkout is still on the
-    branch the task's worktree was cut from.
+    *base_branch* is the project's pinned base when it has one (the worktree
+    was cut from ``origin/<base>``); otherwise the origin checkout's current
+    branch is used, read right after landing while it is still the one the
+    task's worktree was cut from.
     """
     info: dict[str, Any] = {}
     code, out, _ = await _git(repo_path, "rev-parse", f"{branch}^{{commit}}")
@@ -126,6 +130,9 @@ async def describe_landing(repo_path: str | Path, branch: str) -> dict[str, Any]
     code, out, _ = await _git(repo_path, "rev-parse", f"{branch}^")
     if code == 0:
         info["base_commit"] = out
+    if base_branch:
+        info["base_branch"] = base_branch
+        return info
     code, out, _ = await _git(repo_path, "symbolic-ref", "--short", "-q", "HEAD")
     if code == 0 and out:
         info["base_branch"] = out
@@ -549,7 +556,9 @@ async def revert_merge_commit(payload: dict[str, Any]) -> dict[str, Any]:
                 f"git revert {sha[:8]} conflicted — needs a human to resolve: {err[-400:]}"
             )
 
-        code, _, err = await _git(worktree, "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
+        code, _, err = await _git(
+            worktree, "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}"
+        )
         if code != 0:
             raise PullRequestError(f"git push of revert branch failed: {err[-300:]}")
     finally:
@@ -563,7 +572,19 @@ async def revert_merge_commit(payload: dict[str, Any]) -> dict[str, Any]:
         "and re-apply the change once the underlying issue is understood."
     )
     code, out, err = await _run(
-        [gh, "pr", "create", "--head", branch, "--base", base_branch, "--title", title, "--body", body],
+        [
+            gh,
+            "pr",
+            "create",
+            "--head",
+            branch,
+            "--base",
+            base_branch,
+            "--title",
+            title,
+            "--body",
+            body,
+        ],
         cwd=repo,
     )
     if code != 0:

@@ -753,3 +753,24 @@ async def test_pr_state_reports_merged(pr_state_env):
 async def test_pr_state_rejects_a_bad_url(pr_state_env):
     with pytest.raises(PullRequestError, match="not a valid PR url"):
         await github_pr.pr_state({**pr_state_env.payload, "pr_url": "not-a-url"})
+
+
+@pytest.mark.asyncio
+async def test_describe_landing_uses_a_pinned_base_branch(tmp_path):
+    import subprocess
+
+    from life_graph.services.github_pr import describe_landing
+
+    def git(*args):
+        subprocess.run(["git", "-c", "user.email=t@t.com", "-c", "user.name=t", *args],
+                       cwd=str(tmp_path), check=True, capture_output=True)
+
+    git("init", "-b", "feature-checkout")
+    git("commit", "--allow-empty", "-m", "base")
+    git("branch", "lg/task-1")
+
+    pinned = await describe_landing(tmp_path, "lg/task-1", base_branch="main")
+    unpinned = await describe_landing(tmp_path, "lg/task-1")
+
+    assert pinned["base_branch"] == "main"
+    assert unpinned["base_branch"] == "feature-checkout"

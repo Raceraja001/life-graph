@@ -435,7 +435,7 @@ async def test_dependency_audit_readiness_false_when_not_declared(tmp_path, monk
 
 @pytest.mark.asyncio
 @skip_on_db_error
-async def test_restart_marks_abandoned_tasks_failed(project):
+async def test_a_restart_requeues_an_abandoned_task_once_then_fails_it(project):
     from life_graph.models.db import AgentTask
     from life_graph.services import dev_tasks
     from life_graph.storage.database import async_session
@@ -451,6 +451,18 @@ async def test_restart_marks_abandoned_tasks_failed(project):
         await s.commit()
         row_id = row.id
 
+    # First restart: it goes back on the queue, to run again from the start.
+    await dev_tasks.fail_interrupted(async_session)
+    async with async_session() as s:
+        row = await s.get(AgentTask, row_id)
+        assert row.status == "queued"
+        assert row.properties["run_mode"] == dev_tasks.QUEUE_MODE
+        assert row.properties["interrupt_requeues"] == 1
+        assert row.status_history[-1]["note"] == "re-queued after an API restart"
+        row.status = "running"  # claimed again, then interrupted again
+        await s.commit()
+
+    # Second interruption of the same task: now it fails.
     assert await dev_tasks.fail_interrupted(async_session) >= 1
     async with async_session() as s:
         row = await s.get(AgentTask, row_id)

@@ -795,6 +795,7 @@ class TaskDispatcher:
                         unverifiable_checks=[r.verifier for r in unverifiable],
                         auto_open_pr=bool(packet.project_context.get("auto_open_pr")),
                         auto_merge=bool(packet.project_context.get("auto_merge")),
+                        base_branch=packet.project_context.get("base_branch") or None,
                     )
 
             # Step 7: Record stats + emit result
@@ -1421,6 +1422,7 @@ class TaskDispatcher:
         unverifiable_checks: list[str] | None = None,
         auto_open_pr: bool = False,
         auto_merge: bool = False,
+        base_branch: str | None = None,
     ) -> None:
         """File a ``driver_pr`` approval for a landed branch.
 
@@ -1445,7 +1447,7 @@ class TaskDispatcher:
             from life_graph.models.db import Approval
             from life_graph.services.github_pr import describe_landing
 
-            landing = await describe_landing(repo_path, branch)
+            landing = await describe_landing(repo_path, branch, base_branch=base_branch)
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else branch
             pr_description = await self._draft_pr_description(repo_path, landing, instruction)
             payload = {

@@ -113,7 +113,8 @@ async def test_claim_restart_and_run(project, monkeypatch):
         start=False,
         properties={"origin": "nightly"},
     )
-    # An immediate-mode task left queued by a crashed process is abandoned...
+    # An immediate-mode task left queued by a crashed process is re-queued
+    # into queue mode (it runs once more instead of failing)...
     async with async_session() as s:
         stale = AgentTask(
             tenant_id=TENANT,
@@ -127,7 +128,9 @@ async def test_claim_restart_and_run(project, monkeypatch):
         stale_id = stale.id
     await dev_tasks.fail_interrupted(async_session)
     async with async_session() as s:
-        assert (await s.get(AgentTask, stale_id)).status == "failed"
+        stale_row = await s.get(AgentTask, stale_id)
+        assert stale_row.status == "queued"
+        assert stale_row.properties["run_mode"] == dev_tasks.QUEUE_MODE
         # ...but a queue-mode task is still waiting its turn.
         assert (await s.get(AgentTask, uuid.UUID(queued["id"]))).status == "queued"
 

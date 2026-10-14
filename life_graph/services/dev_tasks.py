@@ -22,7 +22,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, or_, select, text, update
+from sqlalchemy import and_, or_, select, text
 
 from life_graph.models.db import AgentTask, Approval, VerificationRun
 
@@ -596,12 +596,22 @@ async def release_runner_lock(conn: AsyncConnection) -> None:
         await conn.close()
 
 
+# A task cut short by a restart runs again once (from the start, in a fresh
+# worktree) before it counts as failed: restarts are routine, and failing the
+# task made a plan stop for a reason that had nothing to do with its work.
+INTERRUPT_REQUEUES = 1
+_INTERRUPTED = "Interrupted: the API restarted while this task was running"
+
+
 async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) -> int:
-    """Mark dev tasks abandoned by a previous process as failed.
+    """Recover dev tasks abandoned by a previous process.
 
     That is every ``running`` task, and ``queued`` tasks that were meant to
-    start immediately. Tasks queued for :func:`run_queue` are still waiting
-    for their turn and are left alone.
+    start immediately (tasks queued for :func:`run_queue` are still waiting
+    for their turn and are left alone). Each goes back on the queue once --
+    ``run_mode`` becomes ``queue`` so :func:`run_queue` picks it up -- and
+    is failed only when it was already re-queued before. Returns how many
+    were failed.
     """
     abandoned_queued = and_(
         AgentTask.status == "queued",
@@ -610,18 +620,38 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
             AgentTask.properties["run_mode"].astext != QUEUE_MODE,
         ),
     )
+    failed = 0
     async with session_factory() as session:
-        result = await session.execute(
-            update(AgentTask)
-            .where(_kind_filter(), or_(AgentTask.status == "running", abandoned_queued))
-            .values(
-                status="failed",
-                error="Interrupted: the API restarted while this task was running",
-                completed_at=datetime.now(UTC),
+        rows = (
+            (
+                await session.execute(
+                    select(AgentTask).where(
+                        _kind_filter(), or_(AgentTask.status == "running", abandoned_queued)
+                    )
+                )
             )
+            .scalars()
+            .all()
         )
+        now = datetime.now(UTC)
+        for task in rows:
+            props = dict(task.properties or {})
+            done = int(props.get("interrupt_requeues") or 0)
+            if done < INTERRUPT_REQUEUES:
+                props["interrupt_requeues"] = done + 1
+                props["run_mode"] = QUEUE_MODE
+                task.properties = props
+                task.status = "queued"
+                task.started_at = None
+                task.status_history = _history(task, "queued", "re-queued after an API restart")
+                logger.warning("Re-queued dev task %s after an API restart", task.id)
+            else:
+                task.status = "failed"
+                task.error = _INTERRUPTED
+                task.completed_at = now
+                failed += 1
         await session.commit()
-        return result.rowcount or 0
+    return failed
 
 
 # ── Queue runner ─────────────────────────────────────────────

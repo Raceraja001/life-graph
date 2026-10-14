@@ -42,6 +42,8 @@ logger = logging.getLogger(__name__)
 #   nightly_max_tasks     cap on open nightly tasks per project (default 2)
 #   nightly_persona       persona that works them (default code-fixer-local)
 #   nightly_lint_paths    paths the nightly ruff scan covers (default: the whole repo)
+#   base_branch           branch every dev task is cut from (fetched from origin) and PRs
+#                          target; unset = whatever the local checkout is on
 #   deploy_command        shell command to run after a merge, in the project's repo path
 #   deploy_on_merge       file a driver_deploy approval after each merge — a THIRD, separate
 #                          opt-in from auto_open_pr/auto_merge, and never trust-auto-approved:
@@ -61,6 +63,7 @@ _USER_META_KEYS = frozenset(
         "nightly_lint_paths",
         "deploy_command",
         "deploy_on_merge",
+        "base_branch",
     }
 )
 

@@ -91,14 +91,21 @@ if [ $BACKEND -eq 1 ] || [ $BOTH -eq 1 ] || [ $ALL -eq 1 ]; then
     fi
 
     step "[backend] Starting uvicorn on :$API_PORT..."
+    # No --reload by default: a reload restarts the API on every saved file,
+    # and a restart cuts off any dev task that is mid-run. DEV_RELOAD=1 opts
+    # back in for pure UI/API work; scripts/restart-api.sh restarts safely.
     # WATCHFILES_FORCE_POLLING: this repo lives on a Windows drive mounted
-    # into WSL2 (DrvFs), which does not deliver inotify events — --reload's
-    # file watcher silently never fires there, so an edit can sit "applied"
-    # while the running process still serves the old code. Polling is the
-    # only watch mode DrvFs actually supports.
-    (cd "$ROOT" && nohup env WATCHFILES_FORCE_POLLING=true "$PY" -m uvicorn life_graph.main:app \
-        --host 0.0.0.0 --port "$API_PORT" --reload --reload-dir life_graph \
-        >"$LOG_DIR/uvicorn.log" 2>&1 & echo $! >"$RUN_DIR/api.pid")
+    # into WSL2 (DrvFs), which does not deliver inotify events — polling is
+    # the only watch mode that fires there.
+    reload_args=()
+    [ "${DEV_RELOAD:-0}" = "1" ] && reload_args=(--reload --reload-dir life_graph)
+    # exec: the subshell becomes uvicorn, so api.pid is uvicorn's own pid. It
+    # used to record a wrapper subshell, so stop.sh killed the wrapper while
+    # uvicorn kept the port.
+    (cd "$ROOT" && exec nohup env WATCHFILES_FORCE_POLLING=true "$PY" -m uvicorn life_graph.main:app \
+        --host 0.0.0.0 --port "$API_PORT" "${reload_args[@]}" \
+        >"$LOG_DIR/uvicorn.log" 2>&1 </dev/null) &
+    echo $! >"$RUN_DIR/api.pid"
     dim "pid $(cat "$RUN_DIR/api.pid" 2>/dev/null)  log: logs/uvicorn.log"
     wait_for_http "http://localhost:$API_PORT/health" 25 "API" || dim "check logs/uvicorn.log"
 fi

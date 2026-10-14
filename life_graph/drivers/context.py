@@ -166,6 +166,7 @@ class ContextPacketBuilder:
                         "required_checks",
                         "auto_open_pr",
                         "auto_merge",
+                        "base_branch",
                     )
                 },
             }
