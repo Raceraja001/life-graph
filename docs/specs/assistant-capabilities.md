@@ -140,8 +140,9 @@ rather than beside it.
   - a monitor that fails 5 times in a row is paused.
 - **Interfaces:**
   - API CRUD;
-  - the tool `watch_page`, so the scout can set one up when asked ("tell me
-    when this drops under ₹20,000").
+  - the tool `watch_page`, so the assistant can set one up when asked ("tell me
+    when this drops under ₹20,000"). Scheduled advisory personas such as scout
+    get only `list_page_monitors`: they must hold read-only tools.
 
 ### Phase E — Ops for the apps it builds
 - The `app_uptime` watcher runs for every project that has `health_url` set.

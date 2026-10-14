@@ -346,3 +346,11 @@ def test_today_line_uses_the_user_timezone(monkeypatch):
     monkeypatch.setattr(settings, "user_timezone", "Asia/Kolkata")
     line = persona_context.today_line(datetime(2026, 10, 14, 20, 0, tzinfo=UTC))
     assert line == "Current date and time: Thursday 15 October 2026, 01:30 (Asia/Kolkata)."
+
+
+def test_read_only_assistant_tools_are_registered_and_exclude_the_writers():
+    from life_graph.tools.assistant import READ_ONLY_TOOLS
+    from life_graph.tools.registry import registry
+
+    assert set(registry.tool_names) >= READ_ONLY_TOOLS
+    assert not READ_ONLY_TOOLS & {"watch_page", "make_study_cards"}

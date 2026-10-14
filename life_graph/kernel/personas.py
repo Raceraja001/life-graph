@@ -345,7 +345,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         ),
         "intent_tags": ["learn", "tutorial", "study"],
         "temperature": 0.6,
-        "allowed_tools": ["web_search", "memory_search", "make_study_cards", "study_cards_due"],
+        "allowed_tools": ["web_search", "memory_search", "study_cards_due"],
     },
     {
         "name": "scout",
@@ -371,7 +371,6 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "web_search",
             "browse_web",
             "memory_search",
-            "watch_page",
             "list_page_monitors",
         ],
     },

@@ -15,6 +15,20 @@ from typing import Any
 from life_graph.connectors.locality import LOCAL, current_audience
 from life_graph.tools.registry import tool
 
+# Tools here that only read. The others (watch_page, make_study_cards) write
+# rows, so scheduled advisory personas must not hold them
+# (tests/integration/test_ambient_advisory_safety.py); the user-driven
+# assistant persona does.
+READ_ONLY_TOOLS = frozenset(
+    {
+        "documents_expiring",
+        "spending_summary",
+        "list_page_monitors",
+        "study_cards_due",
+        "invoices_status",
+    }
+)
+
 
 def _tenant() -> str | None:
     from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
