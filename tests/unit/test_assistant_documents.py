@@ -114,3 +114,36 @@ class _FakeLM:
 async def test_extract_survives_a_broken_model():
     fields = await documents.extract(PASSPORT_OCR, client=_FakeLM("not json"), now=NOW)
     assert fields["kind"] == "passport" and fields["expires_on"] == date(2027, 3, 11)
+
+
+def test_the_full_number_never_survives_in_the_title():
+    model = {"kind": "passport", "title": "Indian passport — Z1234567", "number": "Z1234567"}
+    fields = documents.fields_from(PASSPORT_OCR, model, NOW)
+    assert fields["title"] == "Indian passport"
+    assert documents.scrub("Policy 2311203012345678000 car", "") == "Policy car"
+    assert documents.scrub("Samsung TV warranty") == "Samsung TV warranty"
+
+
+@pytest.mark.parametrize(
+    ("text", "issued", "expected"),
+    [
+        (
+            "This product is covered for 2 years from the date of purchase.",
+            date(2025, 3, 5),
+            date(2027, 3, 4),
+        ),
+        ("Warranty: 18 months", date(2026, 1, 31), date(2027, 7, 30)),
+        ("one year warranty on parts", date(2024, 2, 29), date(2025, 2, 27)),
+        ("Bought for 2 people", date(2025, 1, 1), None),
+    ],
+)
+def test_expiry_from_a_duration(text, issued, expected):
+    assert documents.expiry_from_duration(text, issued) == expected
+
+
+def test_a_duration_fills_a_missing_expiry():
+    text = "Samsung warranty card. Date of purchase: 5 March 2025. Covered for 2 years from the date of purchase."
+    fields = documents.fields_from(
+        text, {"kind": "warranty", "issued": "5 March 2025", "expires": ""}, NOW
+    )
+    assert fields["expires_on"] == date(2027, 3, 4)

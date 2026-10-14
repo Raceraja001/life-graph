@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -159,19 +159,66 @@ def fields_from(text: str, model: dict[str, Any] | None, now: datetime) -> dict[
     issued = _dated(model.get("issued"), now) or date_after_keyword(text, _ISSUE_KEYWORD, now)
     if issued and expires and issued > expires:
         issued, expires = expires, issued
-    title = str(model.get("title") or "").strip()[:200]
+    if expires is None and issued is not None:
+        # "covered for 2 years from the date of purchase": no date written, but
+        # a duration from the issue date is (qwen3 left these blank).
+        expires = expiry_from_duration(text, issued)
+    number = str(model.get("number") or "")
+    title = scrub(str(model.get("title") or "").strip(), number)[:200]
     if not title:
         first = next((ln.strip() for ln in (text or "").splitlines() if ln.strip()), "")
-        title = first[:80] or kind.replace("_", " ").title()
+        title = scrub(first, number)[:80] or kind.replace("_", " ").title()
     return {
         "kind": kind,
         "title": title,
-        "issuer": (str(model.get("issuer") or "").strip()[:200] or None),
-        "holder": (str(model.get("holder") or "").strip()[:120] or None),
-        "number_last4": last4(model.get("number")),
+        "issuer": (scrub(str(model.get("issuer") or "").strip(), number)[:200] or None),
+        "holder": (scrub(str(model.get("holder") or "").strip(), number)[:120] or None),
+        "number_last4": last4(number),
         "issued_on": issued,
         "expires_on": expires,
     }
+
+
+_LONG_ID = re.compile(r"\b(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{6,}\b")
+_DURATION = re.compile(
+    r"\b(\d{1,2}|one|two|three|four|five|ten)[\s-]*(years?|yrs?|months?)\b"
+    r"(?=[^.\n]{0,60}\b(warranty|guarantee|cover|covered|valid|validity|from|term|period)\b)"
+    r"|\b(warranty|guarantee|cover(?:ed)?|valid(?:ity)?|term|period)\b[^.\n]{0,40}?\b"
+    r"(\d{1,2}|one|two|three|four|five|ten)[\s-]*(years?|yrs?|months?)\b",
+    re.I,
+)
+_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "ten": 10}
+
+
+def scrub(value: str, number: str = "") -> str:
+    """Drop the document number, and any long token with digits, from free text.
+
+    The model put the full passport number in the title ("Indian passport —
+    Z1234567"), which defeats keeping only the last four characters.
+    """
+    out = value
+    if len(number.strip()) >= 4:
+        out = out.replace(number.strip(), "")
+    out = _LONG_ID.sub("", out)
+    out = re.sub(r"\s*[—–-]\s*$", "", re.sub(r"\s{2,}", " ", out)).strip(" ,;:—–-")
+    return out
+
+
+def expiry_from_duration(text: str, start: date) -> date | None:
+    m = _DURATION.search(text or "")
+    if not m:
+        return None
+    count_raw, unit = (m.group(1), m.group(2)) if m.group(1) else (m.group(5), m.group(6))
+    count = _WORDS.get(count_raw.lower()) if not count_raw.isdigit() else int(count_raw)
+    if not count:
+        return None
+    months = count * 12 if unit.lower().startswith("y") else count
+    year, month = divmod(start.month - 1 + months, 12)
+    import calendar
+
+    day = min(start.day, calendar.monthrange(start.year + year, month + 1)[1])
+    # Cover ends the day before the anniversary.
+    return date(start.year + year, month + 1, day) - timedelta(days=1)
 
 
 async def extract(text: str, *, client=None, now: datetime | None = None) -> dict[str, Any]:
