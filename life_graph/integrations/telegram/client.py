@@ -179,9 +179,15 @@ class TelegramClient:
         await self._call("sendChatAction", {"chat_id": chat_id, "action": action})
 
     async def send_voice(
-        self, chat_id: int | str, audio: bytes, *, filename: str = "reply.ogg", caption: str = ""
+        self,
+        chat_id: int | str,
+        audio: bytes,
+        *,
+        filename: str = "reply.mp3",
+        mime: str = "audio/mpeg",
+        caption: str = "",
     ) -> dict:
-        """Send an OGG/Opus voice message (multipart, so not through ``_call``)."""
+        """Send a voice message, MP3 or OGG/Opus (multipart, so not through ``_call``)."""
         if not self._token:
             raise TelegramError("Telegram bot token is not configured")
         if self._client is None:
@@ -192,7 +198,7 @@ class TelegramClient:
         response = await self._client.post(
             f"{API_BASE}/bot{self._token}/sendVoice",
             data=data,
-            files={"voice": (filename, audio, "audio/ogg")},
+            files={"voice": (filename, audio, mime)},
         )
         return self._result("sendVoice", response)
 

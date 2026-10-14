@@ -115,7 +115,7 @@ def spoken(text: str) -> str:
 
 
 async def speak(text: str, *, client: httpx.AsyncClient | None = None) -> bytes | None:
-    """OGG/Opus audio for ``text``, or None when TTS is off or fails."""
+    """Audio for ``text`` in ``tts_format`` (mp3 by default), or None when TTS is off or fails."""
     if not settings.tts_base_url or not text.strip():
         return None
     own = client is None
@@ -127,7 +127,7 @@ async def speak(text: str, *, client: httpx.AsyncClient | None = None) -> bytes 
                 "model": settings.tts_model,
                 "voice": settings.tts_voice,
                 "input": spoken(text),
-                "response_format": "opus",
+                "response_format": settings.tts_format,
             },
         )
         resp.raise_for_status()

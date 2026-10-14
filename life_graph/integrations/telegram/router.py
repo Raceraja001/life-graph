@@ -307,7 +307,13 @@ async def _converse(chat_id: int, tenant_id: str, question: str, *, voice: bool 
             try:
                 async with TelegramClient() as client:
                     if client.configured:
-                        await client.send_voice(chat_id, audio)
+                        ogg = settings.tts_format == "opus"
+                        await client.send_voice(
+                            chat_id,
+                            audio,
+                            filename="reply.ogg" if ogg else f"reply.{settings.tts_format}",
+                            mime="audio/ogg" if ogg else "audio/mpeg",
+                        )
             except TelegramError as exc:
                 logger.warning("telegram: voice reply failed — %s", exc.description)
 

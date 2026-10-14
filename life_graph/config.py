@@ -538,6 +538,8 @@ class Settings(BaseSettings):
     tts_base_url: str = ""
     tts_model: str = "speaches-ai/Kokoro-82M-v1.0-ONNX"
     tts_voice: str = "af_heart"
+    # speaches offers mp3|flac|wav|pcm (no opus); Telegram voice notes take mp3 or ogg/opus.
+    tts_format: str = "mp3"
 
     # ── Invoices (services/invoices.py) ────────────────
     invoice_seller_name: str = ""  # shown on invoices and signed under emails

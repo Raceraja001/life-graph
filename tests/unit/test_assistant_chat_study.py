@@ -77,7 +77,7 @@ async def test_speak_calls_an_openai_compatible_endpoint(monkeypatch):
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         audio = await assistant_chat.speak("Hi **there**", client=client)
     assert audio == b"OggS-audio" and seen["path"] == "/v1/audio/speech"
-    assert b'"response_format":"opus"' in seen["body"].replace(b" ", b"")
+    assert b'"response_format":"mp3"' in seen["body"].replace(b" ", b"")
 
     def broken(request):
         return httpx.Response(500)
