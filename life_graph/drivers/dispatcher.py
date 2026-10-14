@@ -89,6 +89,21 @@ DEFAULT_VERIFY_CHAIN = [
 # pause-for-approval architecture, most of the benefit (a reviewable plan,
 # a forcing function against misreading the instruction) for one-file's
 # worth of code.
+# Registry settings the verifier chain reads (never from the worktree, which
+# the agent controls). One list, so the first attempt and the bounce agree.
+SANDBOX_SETTINGS: tuple[str, ...] = (
+    "sandbox_setup",
+    "sandbox_test_command",
+    "sandbox_test_timeout",
+    "sandbox_toolchain",
+    "sandbox_js_test_runner",
+    "sandbox_start_command",
+    "sandbox_app_port",
+    "sandbox_e2e_command",
+    "sandbox_e2e_timeout",
+)
+
+
 _SPEC_HEADINGS = (
     "## Spec\n"
     "**Requirements:** the acceptance criteria this change must satisfy, one "
@@ -561,9 +576,7 @@ class TaskDispatcher:
                     "output": result.output,
                     "task_type": task_type,
                     "instruction": instruction,
-                    "sandbox_setup": packet.project_context.get("sandbox_setup"),
-                    "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
-                    "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
+                    **{k: packet.project_context.get(k) for k in SANDBOX_SETTINGS},
                     "acceptance_tests": acceptance_tests or [],
                 }
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
@@ -1199,9 +1212,7 @@ class TaskDispatcher:
             "output": bounce_result.output,
             "task_type": packet.task_type,
             "instruction": bounce_instruction,
-            "sandbox_setup": packet.project_context.get("sandbox_setup"),
-            "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
-            "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
+            **{k: packet.project_context.get(k) for k in SANDBOX_SETTINGS},
             "acceptance_tests": acceptance_tests or [],
         }
         v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)

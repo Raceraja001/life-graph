@@ -27,6 +27,13 @@ _CITE_RE = re.compile(r"\bAC-(\d+)\b", re.IGNORECASE)
 # optionally followed by ::node parts, is accepted -- nothing that could read
 # as an option (-p plugin, --rootdir, ...), no absolute paths, no "..".
 _SAFE_TEST_REF_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*\.py(::[A-Za-z0-9_\[\]\-.]+)*$")
+# The same for a JS/TS test (vitest/jest): a *.test.* or *.spec.* file, then
+# optionally one ::test name. JS test names are sentences ("adds a todo"), so
+# spaces and light punctuation are allowed in the name; it is only ever passed
+# as one argv element (never through a shell) and regex-escaped for -t.
+_SAFE_JS_TEST_REF_RE = re.compile(
+    r"^[A-Za-z0-9_][A-Za-z0-9_./-]*\.(test|spec)\.[cm]?[jt]sx?(::[A-Za-z0-9 _\-.,'()]+)?$"
+)
 
 
 @dataclass(frozen=True)
@@ -39,10 +46,19 @@ class AcceptanceCriterion:
 
 
 def is_safe_test_ref(ref: str | None) -> bool:
-    """Whether *ref* is a plain relative pytest path/node id, safe as an argument."""
+    """Whether *ref* is a plain relative test path/node id, safe as an argument.
+
+    A pytest path (``tests/x.py::test_y``) or a JS/TS test file with an
+    optional test name (``tests/x.test.ts::adds a todo``).
+    """
     if not ref or ".." in ref.split("::", 1)[0].split("/"):
         return False
-    return bool(_SAFE_TEST_REF_RE.match(ref))
+    return bool(_SAFE_TEST_REF_RE.match(ref) or _SAFE_JS_TEST_REF_RE.match(ref))
+
+
+def is_js_test_ref(ref: str) -> bool:
+    """Whether a (safe) test reference names a JS/TS test rather than a pytest one."""
+    return bool(_SAFE_JS_TEST_REF_RE.match(ref))
 
 
 def parse_criteria(spec_text: str | None) -> list[AcceptanceCriterion]:

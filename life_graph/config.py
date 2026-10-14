@@ -431,6 +431,9 @@ class Settings(BaseSettings):
     driver_gh_bin: str = "gh"
     verifier_sandbox: str = "none"
     verifier_sandbox_image: str = "life-graph-verifier:py3.12"
+    # Projects whose registry sets sandbox_toolchain=node are checked here
+    # instead (docker build -t life-graph-verifier:node22 docker/verifier-node).
+    verifier_sandbox_node_image: str = "life-graph-verifier:node22"
     verifier_sandbox_cache_dir: str = ""  # cached project venvs; "" = ~/.cache/life-graph/...
     verifier_sandbox_memory: str = "4g"
     verifier_sandbox_cpus: str = "4"

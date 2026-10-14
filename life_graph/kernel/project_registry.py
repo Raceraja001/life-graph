@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 #   sandbox_setup         dependency install command for the verifier sandbox
 #   sandbox_test_command  what tests_pass runs, e.g. "python -m pytest -q tests/unit"
 #   sandbox_test_timeout  seconds tests_pass may take
+#   sandbox_toolchain     "python" (default) or "node": which verifier image checks run in
+#   sandbox_js_test_runner  "vitest" (default) or "jest", for JS/TS acceptance tests
+#   sandbox_start_command, sandbox_app_port, sandbox_e2e_command, sandbox_e2e_timeout
+#                          app_e2e_pass: start the app in the sandbox, then drive it
 #   required_checks       verifiers every dev task in this project must pass
 #   auto_open_pr          open PRs without approval for drivers proven on this project
 #   auto_merge            merge those PRs without approval too, same trust bar — a
@@ -54,6 +58,12 @@ _USER_META_KEYS = frozenset(
         "sandbox_setup",
         "sandbox_test_command",
         "sandbox_test_timeout",
+        "sandbox_toolchain",
+        "sandbox_js_test_runner",
+        "sandbox_start_command",
+        "sandbox_app_port",
+        "sandbox_e2e_command",
+        "sandbox_e2e_timeout",
         "required_checks",
         "auto_open_pr",
         "auto_merge",

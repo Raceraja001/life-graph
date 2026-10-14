@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from life_graph.services import sandbox
-from life_graph.services.acceptance import is_safe_test_ref
+from life_graph.services.acceptance import is_js_test_ref, is_safe_test_ref
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -152,6 +152,7 @@ class VerifierChain:
         self.register("claims_evidenced", _verify_claims_evidenced)
         self.register("no_diff_in_plan", _verify_no_diff_in_plan)
         self.register("acceptance_tests_pass", _verify_acceptance_tests_pass)
+        self.register("app_e2e_pass", _verify_app_e2e_pass)
 
 
 # ── 9 Built-in Verifiers ─────────────────────────────────────
@@ -282,6 +283,8 @@ _DEFAULT_TEST_ARGV = [
     "no:cacheprovider",
 ]
 _DEFAULT_TEST_TIMEOUT = 300
+# A Node project's own `test` script (package.json) is "the tests".
+_DEFAULT_NODE_TEST_ARGV = ["npm", "test", "--silent"]
 
 
 async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
@@ -290,19 +293,25 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
     # which made tests_pass unusable for such projects. Never read from the
     # worktree: the agent controls it.
     command = ctx.get("sandbox_test_command")
+    node = sandbox.node_toolchain(ctx)
+    default = _DEFAULT_NODE_TEST_ARGV if node else _DEFAULT_TEST_ARGV
     try:
-        argv = shlex.split(command) if command else _DEFAULT_TEST_ARGV
+        argv = shlex.split(command) if command else default
     except ValueError as exc:
         return None, {"note": f"sandbox_test_command does not parse: {exc}"}
     if not argv:
-        argv = _DEFAULT_TEST_ARGV
+        argv = default
     timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
     try:
-        venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
-        result = await sandbox.run(argv, workdir, venv=venv, timeout=timeout)
+        if node:
+            deps = await sandbox.prepare_node_env(workdir, ctx.get("sandbox_setup"))
+            result = await sandbox.run(argv, workdir, node_deps=deps, timeout=timeout)
+        else:
+            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            result = await sandbox.run(argv, workdir, venv=venv, timeout=timeout)
     except sandbox.SandboxUnavailableError as exc:
         return None, {"note": str(exc), "sandbox": "docker", "command": argv}
-    if _missing_module(result, "pytest"):
+    if not node and _missing_module(result, "pytest"):
         return None, {"note": "pytest is not installed in the project environment"}
     return result.returncode == 0, {
         "stdout": result.stdout[-500:],
@@ -379,6 +388,8 @@ async def _verify_acceptance_tests_pass(workdir: Path, ctx: dict) -> tuple[bool 
     missing = [r for r in refs if not (workdir / r.split("::", 1)[0]).is_file()]
     if missing:
         return False, {"missing": missing, "note": "bound test file(s) were never written"}
+    if any(is_js_test_ref(r) for r in refs):
+        return await _js_acceptance_tests(workdir, ctx, refs)
 
     args = ["-m", "pytest", "-q", "--tb=short", "-p", "no:cacheprovider", *refs]
     if sandbox.enabled():
@@ -412,6 +423,126 @@ async def _verify_acceptance_tests_pass(workdir: Path, ctx: dict) -> tuple[bool 
         "tests": refs,
         "returncode": result.returncode,
         "stdout": result.stdout[-800:],
+    }
+
+
+_JS_RUNNERS = {
+    # One file, optionally narrowed to one test by (regex-escaped) name.
+    "vitest": lambda file, name: [
+        "vitest",
+        "run",
+        file,
+        *(["-t", re.escape(name)] if name else []),
+    ],
+    "jest": lambda file, name: ["jest", "--ci", file, *(["-t", re.escape(name)] if name else [])],
+}
+
+
+async def _js_acceptance_tests(
+    workdir: Path, ctx: dict, refs: list[str]
+) -> tuple[bool | None, dict]:
+    """Bound JS/TS tests, one runner invocation each, in the Node sandbox.
+
+    Inconclusive (not failed) without the sandbox or the Node toolchain: on
+    the host there is no isolated way to install and run the project's code.
+    """
+    if not sandbox.enabled():
+        return None, {"note": "JS acceptance tests run only in the docker sandbox"}
+    if not sandbox.node_toolchain(ctx):
+        return None, {"note": "JS test refs, but the project is not on sandbox_toolchain=node"}
+    runner = (ctx.get("sandbox_js_test_runner") or "vitest").strip().lower()
+    if runner not in _JS_RUNNERS:
+        return None, {"note": f"unknown sandbox_js_test_runner {runner!r}"}
+    timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
+    try:
+        deps = await sandbox.prepare_node_env(workdir, ctx.get("sandbox_setup"))
+    except sandbox.SandboxUnavailableError as exc:
+        return None, {"note": str(exc), "sandbox": "docker"}
+    runs = []
+    for ref in refs:
+        file, _, name = ref.partition("::")
+        try:
+            result = await sandbox.run(
+                _JS_RUNNERS[runner](file, name or None), workdir, node_deps=deps, timeout=timeout
+            )
+        except sandbox.SandboxUnavailableError as exc:
+            return None, {"note": str(exc), "sandbox": "docker"}
+        out = f"{result.stdout}\n{result.stderr}"
+        # vitest/jest exit 0 when -t matched nothing (every test "skipped"); a
+        # bound test that does not exist must fail, as pytest's exit 5 does.
+        # So require at least one test to have actually passed: vitest prints
+        # "Tests  1 passed | 2 skipped (3)", jest "Tests: 1 passed, 2 skipped".
+        ran = re.search(r"Tests:?\s+(\d+) passed", out)
+        matched = not name or bool(ran and int(ran.group(1)) > 0)
+        runs.append(
+            {
+                "test": ref,
+                "returncode": result.returncode,
+                "passed": result.returncode == 0 and matched,
+                "stdout": out[-400:],
+            }
+        )
+    return all(r["passed"] for r in runs), {"tests": refs, "runner": runner, "runs": runs}
+
+
+_E2E_DEFAULT_TIMEOUT = 300
+
+
+async def _verify_app_e2e_pass(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
+    """Start the app inside the sandbox and run its end-to-end checks against it.
+
+    Reads three settings from the project registry, never from the worktree
+    (the agent controls it):
+    - ``sandbox_start_command`` starts the app (e.g. ``npm start``);
+    - ``sandbox_app_port`` is the port it listens on;
+    - ``sandbox_e2e_command`` drives it (Playwright, or plain HTTP checks).
+
+    Server and checks share one container, so the sandbox keeps its
+    no-network rule: they talk over the container's own loopback.
+    Inconclusive when not configured or when the sandbox is off.
+    """
+    start, e2e = ctx.get("sandbox_start_command"), ctx.get("sandbox_e2e_command")
+    if not (start and e2e):
+        return None, {"note": "no sandbox_start_command / sandbox_e2e_command for this project"}
+    if not sandbox.enabled():
+        return None, {"note": "end-to-end checks run only in the docker sandbox"}
+    try:
+        port = int(ctx.get("sandbox_app_port") or 3000)
+    except (TypeError, ValueError):
+        return None, {"note": "sandbox_app_port is not a number"}
+    if not 1 <= port <= 65535:
+        return None, {"note": "sandbox_app_port is out of range"}
+    timeout = int(ctx.get("sandbox_e2e_timeout") or _E2E_DEFAULT_TIMEOUT)
+    # start/e2e are registry strings set by the project's owner, the same
+    # trust level as sandbox_test_command; they run inside the sandbox only.
+    script = (
+        f"export PORT={port}\n"
+        f"({start}) >/tmp/app.log 2>&1 &\napp=$!\n"
+        "up=0\nfor i in $(seq 1 60); do\n"
+        f"  if (echo > /dev/tcp/127.0.0.1/{port}) 2>/dev/null; then up=1; break; fi\n"
+        "  kill -0 $app 2>/dev/null || break\n  sleep 1\ndone\n"
+        'if [ "$up" != 1 ]; then echo "APP_DID_NOT_START"; tail -n 40 /tmp/app.log; exit 97; fi\n'
+        f"({e2e})\nrc=$?\n"
+        'kill $app 2>/dev/null; [ "$rc" = 0 ] || tail -n 40 /tmp/app.log\nexit $rc\n'
+    )
+    try:
+        if sandbox.node_toolchain(ctx):
+            deps = await sandbox.prepare_node_env(workdir, ctx.get("sandbox_setup"))
+            result = await sandbox.run(
+                ["bash", "-c", script], workdir, node_deps=deps, timeout=timeout
+            )
+        else:
+            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            result = await sandbox.run(["bash", "-c", script], workdir, venv=venv, timeout=timeout)
+    except sandbox.SandboxUnavailableError as exc:
+        return None, {"note": str(exc), "sandbox": "docker"}
+    started = "APP_DID_NOT_START" not in result.stdout
+    return result.returncode == 0, {
+        "returncode": result.returncode,
+        "app_started": started,
+        "port": port,
+        "stdout": f"{result.stdout}\n{result.stderr}"[-800:],
+        "sandbox": "docker",
     }
 
 

@@ -35,7 +35,7 @@ watch. On 2026-10-13 a human had to rescue it from:
 
 ## Phases
 
-### Phase 0 — The pipeline survives on its own
+### Phase 0 — The pipeline survives on its own — BUILT (ee77965)
 1. **Restart safety.**
    - The API runs without `--reload` by default (`DEV_RELOAD=1` opts in).
    - `scripts/restart-api.sh` restarts only once no dev task is running.
@@ -47,7 +47,7 @@ watch. On 2026-10-13 a human had to rescue it from:
 3. **CI on agent PRs.** CI runs on pull requests into any branch, not just
    master. The merge gate already requires every reported check to pass.
 
-### Phase 1 — Verify applications, not just Python
+### Phase 1 — Verify applications, not just Python — BUILT
 4. **Node sandbox.** A `node:22` verifier image; `acceptance_tests_pass`
    resolves JS/TS test refs (`path.test.ts::name`) to vitest or jest.
 5. **End-to-end verifier `app_e2e_pass`.** It starts the app in the sandbox
