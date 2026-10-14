@@ -27,9 +27,11 @@ import textwrap
 
 import pytest
 
+from life_graph.watchers.app_uptime_watcher import AppUptimeWatcher
 from life_graph.watchers.base import BaseWatcher
 from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
 from life_graph.watchers.dependency_watcher import DependencyWatcher
+from life_graph.watchers.page_monitor_watcher import PageMonitorWatcher
 from life_graph.watchers.server_health_watcher import ServerHealthWatcher
 from life_graph.watchers.tech_radar_watcher import TechRadarWatcher
 from life_graph.workers import tasks
@@ -39,6 +41,8 @@ ALL_WATCHERS = [
     CodeQualityWatcher,
     DependencyWatcher,
     TechRadarWatcher,
+    PageMonitorWatcher,
+    AppUptimeWatcher,
 ]
 
 

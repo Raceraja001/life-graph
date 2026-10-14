@@ -236,3 +236,47 @@ async def study_cards_due() -> str:
         cards = await study.due_cards(session, tenant, today, limit=5)
         total = await study.count_due(session, tenant, today)
     return _out({"due": total, "next": [{"deck": c.deck, "front": c.front} for c in cards]})
+
+
+@tool(
+    name="invoices_status",
+    description=(
+        "The user's invoices to clients: drafts, sent and unpaid (with overdue ones"
+        " flagged), and recently paid. Cloud models see counts only."
+    ),
+    parameters_schema={"type": "object", "properties": {}},
+)
+async def invoices_status() -> str:
+    from life_graph.services import invoices
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    today = _today()
+    async with async_session() as session:
+        rows = await invoices.list_all(session, tenant)
+    unpaid = [i for i in rows if i.status == "sent"]
+    overdue = [i for i in unpaid if i.due_on < today]
+    if current_audience() != LOCAL:
+        return _out(
+            {
+                "drafts": sum(i.status == "draft" for i in rows),
+                "unpaid": len(unpaid),
+                "overdue": len(overdue),
+                "note": "Clients and amounts are kept on the user's device.",
+            }
+        )
+    view = lambda i: {  # noqa: E731
+        k: v
+        for k, v in invoices.to_dict(i).items()
+        if k in ("number", "client_name", "total", "currency", "status", "due_on")
+    }
+    return _out(
+        {
+            "today": today.isoformat(),
+            "drafts": [view(i) for i in rows if i.status == "draft"],
+            "unpaid": [{**view(i), "overdue": i.due_on < today} for i in unpaid],
+            "recently_paid": [view(i) for i in rows if i.status == "paid"][:5],
+        }
+    )

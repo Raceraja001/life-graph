@@ -27,12 +27,13 @@ Sweep = Callable[[Any, str, date, Any], Awaitable[int]]
 
 def _features() -> list[tuple[str, Any, Sweep]]:
     """(name, model holding tenant rows, sweep function) for each feature."""
-    from life_graph.models.assistant import Document, MoneyBudget
-    from life_graph.services import documents, money
+    from life_graph.models.assistant import Document, Invoice, MoneyBudget
+    from life_graph.services import documents, invoices, money
 
     return [
         ("documents", Document, documents.sweep_reminders),
         ("budgets", MoneyBudget, money.sweep_budgets),
+        ("invoices", Invoice, invoices.sweep_overdue),
     ]
 
 
@@ -100,4 +101,13 @@ async def brief_lines(session_factory, tenant_id: str, today: date | None = None
             lines.append(line)
     except Exception:
         logger.warning("brief: study line failed for %s", tenant_id, exc_info=True)
+    try:
+        from life_graph.services import invoices
+
+        async with session_factory() as session:
+            overdue = await invoices.overdue_count(session, tenant_id, today)
+        if line := invoices.brief_line(overdue):
+            lines.append(line)
+    except Exception:
+        logger.warning("brief: invoices line failed for %s", tenant_id, exc_info=True)
     return lines

@@ -1,8 +1,41 @@
 # Assistant Capabilities Beyond Development — Roadmap Spec
 
-> **Status: In progress (2026-10-14).** The user handed this over to plan and
+> **Status: Built (2026-10-14), Phases A–H.** The user handed this over to plan and
 > build without waiting ("plan for them and do them without waiting for me").
-> Each phase records what was built and what is stubbed.
+>
+> **Where each piece lives:**
+>
+> | Phase | Code |
+> |---|---|
+> | A | `tools/web_search.py`, `services/safe_fetch.py`, `services/sources.py`, `services/persona_context.py`, `tools/shell_allowlist.py`, `docker/searxng/` |
+> | B | `services/documents.py` (migration 045) |
+> | C | `services/money.py` (046) |
+> | D | `services/page_monitors.py` with `watchers/page_monitor_watcher.py` (047) |
+> | E | `watchers/app_uptime_watcher.py` |
+> | F | `services/assistant_chat.py`, the Telegram router, the `assistant` persona |
+> | G | `services/study.py` (048) |
+> | H | `services/invoices.py` (049), the `support-desk` persona |
+>
+> Shared pieces: `api/assistant.py`, `tools/assistant.py`, `services/assistant_daily.py` (daily sweep and the brief's "Coming up") and `watchers/provision.py`.
+>
+> **Stubbed, behind settings:**
+>
+> | What | How it is stubbed | Setting that switches it on |
+> |---|---|---|
+> | TTS | Replies are text only | `tts_base_url` |
+> | Bank feeds | Statements by CSV, alerts pasted or sent with `/txn` | — |
+> | PDF statements | Unsupported | — |
+> | Invoice sending | Returns the email as a draft for the user to send | — |
+> | Customer-facing support endpoint | Not built; the persona works from chat and the kernel API | — |
+>
+> **Where the build differs from the text below:**
+> - **Scout findings arrays** are checked per finding, in place. Each finding is marked `unverified` when its `source` was not fetched in the run. An appended note would break findings_bridge's JSON contract.
+> - **Every tool-using persona** now gets the current date. A live run showed qwen3 calling a two-week-old release "a future date".
+> - **Support-desk is not source-checked**, because it cites file paths rather than URLs. Instead its file tools are *confined* to the project's README and docs/ at run time, so a prompt rule is not the only boundary.
+> - **Startup reconciles built-in personas for every tenant that has personas**, not only `default`. Before this, new personas and prompt fixes never reached the user's tenant.
+> - **Fixed along the way:** the project register and PATCH request models silently dropped the settings added by the autonomous-development roadmap (base_branch, smoke and rollback commands, the sandbox and deploy settings). They are now declared.
+> - **Budget alerts are a sweep, not a watcher.** They run with the other daily reminders an hour before the brief, so they are held for it.
+> - **No `/doc` command:** the `/doc` caption is read on the photo itself, and media is now routed before commands.
 
 ## Goal
 

@@ -302,7 +302,7 @@ class Settings(BaseSettings):
     fetch_allow_hosts: str = ""
     # Personas whose answers must cite URLs a tool returned in the same run
     # (services/sources.py). Comma-separated persona names.
-    require_sources_personas: str = "scout,rex,support-desk"
+    require_sources_personas: str = "scout,rex"
 
     # ── Connectors (calendar, email, … — docs/specs/connectors.md) ───────────
     # Replaces the unused google_credentials_json / google_delegated_user stubs:
@@ -538,6 +538,10 @@ class Settings(BaseSettings):
     tts_base_url: str = ""
     tts_model: str = "speaches-ai/Kokoro-82M-v1.0-ONNX"
     tts_voice: str = "af_heart"
+
+    # ── Invoices (services/invoices.py) ────────────────
+    invoice_seller_name: str = ""  # shown on invoices and signed under emails
+    invoice_seller_details: str = ""  # address, tax id… separated by "|"
 
     # ── Derived Properties ─────────────────────────────
 

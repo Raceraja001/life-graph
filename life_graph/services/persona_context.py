@@ -91,3 +91,32 @@ async def projects_block(session_factory, tenant_id: str) -> str:
             for r in rows
         ]
     )
+
+
+# Personas that may read only a project's documentation, never its code:
+# the support desk answers customers, so its file tools are confined to the
+# README and docs/ of the project the task names (no project, no files).
+DOCS_ONLY_PERSONAS = frozenset({"support-desk"})
+
+
+async def docs_roots(session_factory, tenant_id: str, task_id) -> list[str]:
+    """The README files and docs/ directory of the task's project, or []."""
+    from pathlib import Path
+
+    from life_graph.models.db import AgentTask
+
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                select(Project.path)
+                .join(AgentTask, AgentTask.project_id == Project.id)
+                .where(AgentTask.tenant_id == tenant_id, AgentTask.id == task_id)
+            )
+        ).scalar_one_or_none()
+    if not row:
+        return []
+    base = Path(row)
+    roots = [str(p) for p in base.glob("README*") if p.is_file()]
+    if (base / "docs").is_dir():
+        roots.append(str(base / "docs"))
+    return roots

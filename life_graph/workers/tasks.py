@@ -776,6 +776,24 @@ async def run_daily_brief(ctx: dict) -> dict:
     return {"tenants": len(tenant_ids), "composed": composed, "results": results}
 
 
+# ── Assistant: daily reminders (documents, budgets, invoices) ────────────
+
+
+async def run_assistant_daily(ctx: dict) -> dict:
+    """Daily cron, an hour before the brief: send due assistant reminders.
+
+    docs/specs/assistant-capabilities.md. services/assistant_daily.py walks
+    each feature (document expiry, budgets, overdue invoices) for every
+    tenant that has rows, so the reminders are held for the brief.
+    """
+    from life_graph.api.dependencies import get_notification_engine
+    from life_graph.services.assistant_daily import run_daily
+
+    report = await run_daily(async_session, get_notification_engine())
+    logger.info("Assistant daily sweep: %s", report)
+    return report
+
+
 # ── Judgment Engine: Nightly Recalibration ───────────────────────────────
 
 

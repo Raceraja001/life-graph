@@ -526,3 +526,159 @@ async def delete_card(card_id: str) -> dict[str, Any]:
         await session.delete(card)
         await session.commit()
     return success_response({"deleted": card_id})
+
+
+# ── Invoices ────────────────────────────────────────────────────────────────
+
+
+class InvoiceItem(BaseModel):
+    description: str = Field(min_length=1, max_length=300)
+    quantity: float = Field(default=1, gt=0)
+    unit_price: float = Field(ge=0)
+
+
+class InvoiceIn(BaseModel):
+    client_name: str = Field(min_length=1, max_length=200)
+    client_email: str | None = Field(default=None, max_length=200)
+    client_details: str | None = Field(default=None, max_length=2000)
+    items: list[InvoiceItem] = Field(min_length=1, max_length=100)
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+    tax_rate: float = Field(default=0, ge=0, le=100)
+    due_days: int = Field(default=15, ge=0, le=365)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class InvoicePatch(BaseModel):
+    client_name: str | None = Field(default=None, max_length=200)
+    client_email: str | None = Field(default=None, max_length=200)
+    client_details: str | None = Field(default=None, max_length=2000)
+    items: list[InvoiceItem] | None = None
+    tax_rate: float | None = Field(default=None, ge=0, le=100)
+    due_on: date | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class PaidIn(BaseModel):
+    paid_on: date | None = None
+
+
+async def _invoice(session, tenant_id: str, invoice_id: str):
+    from life_graph.services import invoices
+
+    inv = await invoices.get(session, tenant_id, _uuid(invoice_id))
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return inv
+
+
+@router.get("/invoices")
+async def list_invoices(status: str | None = None) -> dict[str, Any]:
+    from life_graph.services import invoices
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        rows = await invoices.list_all(session, tenant_id, status)
+    return success_response([invoices.to_dict(i) for i in rows])
+
+
+@router.post("/invoices", status_code=201)
+async def create_invoice(body: InvoiceIn) -> dict[str, Any]:
+    from life_graph.services import invoices
+
+    tenant_id = get_current_tenant_id()
+    data = body.model_dump()
+    data["items"] = [i.model_dump() for i in body.items]
+    async with async_session() as session:
+        try:
+            inv = await invoices.create(session, tenant_id, today=_today(), **data)
+        except invoices.InvoiceError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await session.commit()
+        await session.refresh(inv)
+    return success_response(invoices.to_dict(inv))
+
+
+@router.get("/invoices/{invoice_id}")
+async def get_invoice(invoice_id: str) -> dict[str, Any]:
+    from life_graph.services import invoices
+
+    async with async_session() as session:
+        inv = await _invoice(session, get_current_tenant_id(), invoice_id)
+    return success_response(invoices.to_dict(inv))
+
+
+@router.get("/invoices/{invoice_id}/html")
+async def invoice_html(invoice_id: str):
+    from fastapi.responses import HTMLResponse
+
+    from life_graph.services import invoices
+
+    async with async_session() as session:
+        inv = await _invoice(session, get_current_tenant_id(), invoice_id)
+    return HTMLResponse(invoices.render_html(inv))
+
+
+@router.patch("/invoices/{invoice_id}")
+async def edit_invoice(invoice_id: str, body: InvoicePatch) -> dict[str, Any]:
+    from life_graph.services import invoices
+
+    changes = body.model_dump(exclude_unset=True)
+    if body.items is not None:
+        changes["items"] = [i.model_dump() for i in body.items]
+    async with async_session() as session:
+        inv = await _invoice(session, get_current_tenant_id(), invoice_id)
+        try:
+            invoices.edit(inv, changes)
+        except invoices.InvoiceError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await session.commit()
+        await session.refresh(inv)
+    return success_response(invoices.to_dict(inv))
+
+
+@router.post("/invoices/{invoice_id}/send")
+async def send_invoice(invoice_id: str) -> dict[str, Any]:
+    """Mark sent and return the email draft. Nothing is mailed from here."""
+    from life_graph.services import invoices
+
+    async with async_session() as session:
+        inv = await _invoice(session, get_current_tenant_id(), invoice_id)
+        try:
+            draft = invoices.mark_sent(inv, _today())
+        except invoices.InvoiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        await session.commit()
+        await session.refresh(inv)
+    return success_response(
+        {"invoice": invoices.to_dict(inv), "email": draft, "delivery": "manual"}
+    )
+
+
+@router.post("/invoices/{invoice_id}/paid")
+async def paid_invoice(invoice_id: str, body: PaidIn) -> dict[str, Any]:
+    from life_graph.services import invoices
+
+    async with async_session() as session:
+        inv = await _invoice(session, get_current_tenant_id(), invoice_id)
+        try:
+            invoices.mark_paid(inv, body.paid_on or _today())
+        except invoices.InvoiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        await session.commit()
+        await session.refresh(inv)
+    return success_response(invoices.to_dict(inv))
+
+
+@router.post("/invoices/{invoice_id}/void")
+async def void_invoice(invoice_id: str) -> dict[str, Any]:
+    from life_graph.services import invoices
+
+    async with async_session() as session:
+        inv = await _invoice(session, get_current_tenant_id(), invoice_id)
+        try:
+            invoices.void(inv)
+        except invoices.InvoiceError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        await session.commit()
+        await session.refresh(inv)
+    return success_response(invoices.to_dict(inv))

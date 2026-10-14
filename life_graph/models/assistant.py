@@ -183,3 +183,46 @@ class ReviewCard(Base):
         Index("uq_review_cards_dedup", "tenant_id", "dedup_key", unique=True),
         Index("ix_review_cards_due", "tenant_id", "due_on"),
     )
+
+
+class Invoice(Base):
+    """An invoice the user issues to a client (services/invoices.py).
+
+    ``items`` is a list of ``{description, quantity, unit_price}``; the totals
+    are computed by the service and stored, so a later edit to the tax rule
+    cannot silently change an invoice already sent. ``number`` is unique per
+    tenant (``INV-2026-0001``).
+    """
+
+    __tablename__ = "invoices"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    number: Mapped[str] = mapped_column(String(32), nullable=False)
+    client_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    client_email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    client_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
+    items: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    tax: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(8), nullable=False, default="draft")
+    issued_on: Mapped[date] = mapped_column(Date, nullable=False)
+    due_on: Mapped[date] = mapped_column(Date, nullable=False)
+    sent_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    paid_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_reminded_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        Index("uq_invoices_number", "tenant_id", "number", unique=True),
+        Index("ix_invoices_tenant_status", "tenant_id", "status", "due_on"),
+    )
