@@ -603,3 +603,19 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def sqlalchemy_sync_url(url: str) -> str:
+    """*url* with the psycopg2 driver named, for a synchronous SQLAlchemy engine.
+
+    SQLAlchemy 2.1 changed what a bare ``postgresql://`` URL means: its
+    default driver went from psycopg2 to psycopg (v3). We depend on
+    psycopg2-binary, so a fresh install (CI) failed migrations with "No module
+    named 'psycopg'" while older local installs worked. Naming the driver
+    makes the URL mean the same thing on every SQLAlchemy version. Only for
+    SQLAlchemy: plain ``psycopg2.connect`` still wants the bare scheme.
+    """
+    for bare in ("postgresql://", "postgres://"):
+        if url.startswith(bare):
+            return "postgresql+psycopg2://" + url[len(bare) :]
+    return url

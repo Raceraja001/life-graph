@@ -31,3 +31,13 @@ def test_vertex_location_default_is_global():
 
 def test_vertex_credentials_path_defaults_empty():
     assert Settings().vertex_credentials_path == ""
+
+
+def test_sync_url_names_the_psycopg2_driver():
+    # SQLAlchemy 2.1 made a bare postgresql:// mean psycopg v3; we ship psycopg2.
+    from life_graph.config import sqlalchemy_sync_url
+
+    assert sqlalchemy_sync_url("postgresql://u:p@h:5432/db") == "postgresql+psycopg2://u:p@h:5432/db"
+    assert sqlalchemy_sync_url("postgres://u@h/db") == "postgresql+psycopg2://u@h/db"
+    assert sqlalchemy_sync_url("postgresql+psycopg2://u@h/db") == "postgresql+psycopg2://u@h/db"
+    assert sqlalchemy_sync_url("sqlite:///x.db") == "sqlite:///x.db"
