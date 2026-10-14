@@ -68,3 +68,29 @@ async def documents_expiring(days: int = 90) -> str:
             d = {k: d[k] for k in ("kind", "title", "expires_on", "days_left")}
         items.append(d)
     return _out({"today": today.isoformat(), "documents": items})
+
+
+@tool(
+    name="spending_summary",
+    description=(
+        "The user's spending per category for a month (default this month) against"
+        " their budgets. Cloud models see percentages only."
+    ),
+    parameters_schema={
+        "type": "object",
+        "properties": {"month": {"type": "string", "description": "YYYY-MM; default this month"}},
+    },
+)
+async def spending_summary(month: str | None = None) -> str:
+    from life_graph.services import money
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    try:
+        async with async_session() as session:
+            data = await money.summary(session, tenant, month, _today())
+    except ValueError:
+        return json.dumps({"error": "month must be YYYY-MM"})
+    return _out(data if current_audience() == LOCAL else money.cloud_view(data))
