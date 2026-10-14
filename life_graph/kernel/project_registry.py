@@ -46,6 +46,10 @@ logger = logging.getLogger(__name__)
 #   nightly_max_tasks     cap on open nightly tasks per project (default 2)
 #   nightly_persona       persona that works them (default code-fixer-local)
 #   nightly_lint_paths    paths the nightly ruff scan covers (default: the whole repo)
+#   smoke_command         run after a successful deploy; failing it runs rollback_command
+#                          (if set) and queues a fix task (services/production_findings.py)
+#   rollback_command      undo a deploy whose smoke check failed
+#   fix_persona           persona that works production fix tasks (default code-fixer-local)
 #   auto_approve_plans    let a small, gap-free, non-sensitive plan from a trusted driver
 #                          approve itself (services/plan_policy.py); off by default
 #   base_branch           branch every dev task is cut from (fetched from origin) and PRs
@@ -77,6 +81,9 @@ _USER_META_KEYS = frozenset(
         "deploy_on_merge",
         "base_branch",
         "auto_approve_plans",
+        "smoke_command",
+        "rollback_command",
+        "fix_persona",
     }
 )
 

@@ -415,6 +415,8 @@ class Settings(BaseSettings):
     # A plan approves itself only for a project with auto_approve_plans set,
     # at most this many tasks, and every other rule in services/plan_policy.py.
     auto_plan_max_tasks: int = 3
+    # Seconds a project's smoke_command may take after a deploy.
+    post_deploy_smoke_timeout: int = 300
     # Set false on a preview/secondary instance so it never even tries to be
     # the dev-task runner. Without it, the database advisory lock still keeps
     # it from running alongside the real one (services/dev_tasks.py).

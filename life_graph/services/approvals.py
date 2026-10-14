@@ -395,6 +395,10 @@ class ApprovalService:
             "branch": payload.get("base_branch"),
             "merge_commit": payload.get("merge_commit"),
             "deploy_command": command,
+            # Run after a successful deploy (services/approvals.py
+            # _post_deploy_checks); operator-set, like deploy_command.
+            "smoke_command": meta.get("smoke_command"),
+            "rollback_command": meta.get("rollback_command"),
         }
         deploy_appr = Approval(
             tenant_id=merge_appr.tenant_id,
@@ -407,6 +411,7 @@ class ApprovalService:
             detail=(
                 f"After merge {str(payload.get('merge_commit') or '?')[:8]}, run in "
                 f"{project.name}'s repo:\n\n{command}\n\n"
+                f"{_post_deploy_plan(meta)}"
                 "Never auto-approved, regardless of driver trust."
             ),
             source="driver_deploy",
@@ -475,7 +480,87 @@ class ApprovalService:
             "deployed_at": datetime.now(UTC).isoformat(),
         }
         done = f"Deployed (exit 0): {stdout[-300:] or '(no output)'}"
+        checks = await self._post_deploy_checks(appr, repo)
+        if checks:
+            done = f"{done} | {checks}"
         appr.resolution_note = f"{appr.resolution_note} | {done}" if appr.resolution_note else done
+
+    async def _post_deploy_checks(self, appr: Approval, repo: str) -> str | None:
+        """After a successful deploy: smoke check, rollback on failure, file a fix.
+
+        Returns a one-line outcome for the approval note, or None when the
+        project has no smoke_command. Never raises: the deploy already
+        happened, and the approval must record that whatever the checks find.
+        """
+        from life_graph.config import settings
+
+        payload = appr.payload or {}
+        smoke = payload.get("smoke_command")
+        if not smoke:
+            return None
+        code, output = await _run_shell(smoke, repo, settings.post_deploy_smoke_timeout)
+        appr.payload = {**payload, "smoke": {"exit": code, "output": output[-2000:]}}
+        if code == 0:
+            return "smoke check passed"
+
+        outcome = f"smoke check FAILED (exit {code})"
+        rollback = payload.get("rollback_command")
+        if rollback:
+            rcode, rout = await _run_shell(rollback, repo, 600)
+            appr.payload = {**appr.payload, "rollback": {"exit": rcode, "output": rout[-2000:]}}
+            outcome += "; rolled back" if rcode == 0 else f"; ROLLBACK FAILED (exit {rcode})"
+        try:
+            from life_graph.services.production_findings import file_fix_task
+            from life_graph.storage.database import async_session
+
+            project = await self._project_dict(appr.tenant_id, payload.get("project_id"))
+            if project is not None:
+                commit = str(payload.get("merge_commit") or "?")[:8]
+                filed = await file_fix_task(
+                    async_session,
+                    appr.tenant_id,
+                    project,
+                    kind="post_deploy_smoke",
+                    title=f"smoke check failed after deploying {commit}",
+                    detail=f"Command: {smoke}\nExit {code}\n\n{output[-3000:]}",
+                    signature=smoke,
+                )
+                outcome += (
+                    f"; fix task {filed['queued']} queued"
+                    if "queued" in filed
+                    else f"; fix task {filed['deduplicated']} already open"
+                )
+        except Exception:
+            logger.warning("Could not file a fix task after a failed smoke check", exc_info=True)
+        # Reuses the "needs your attention" channel (push + Telegram).
+        await event_bus.emit(
+            EventType.APPROVAL_FILED,
+            {
+                "tenant_id": appr.tenant_id,
+                "kind": "deploy_smoke_failed",
+                "title": f"Deploy smoke check failed: {appr.title}",
+                "detail": outcome,
+            },
+            source="approvals",
+        )
+        return outcome
+
+    async def _project_dict(self, tenant_id: str, project_id: str | None) -> dict | None:
+        """A registry project as the dict dev-task creation takes, or None."""
+        if not project_id:
+            return None
+        try:
+            project = await self.session.get(Project, uuid.UUID(str(project_id)))
+        except (ValueError, TypeError):
+            return None
+        if project is None or project.tenant_id != tenant_id:
+            return None
+        return {
+            "id": str(project.id),
+            "name": project.name,
+            "path": project.path,
+            "scan_metadata": project.scan_metadata or {},
+        }
 
     async def _apply_driver_plan(self, tenant_id: str, appr: Approval, approve: bool) -> None:
         """Dispatch the approved plan as one task, or fan out its Tasks list.
@@ -852,3 +937,36 @@ class ApprovalService:
 def _num(value: Any) -> str | None:
     """JSON-safe rendering of a Numeric/Decimal accuracy value."""
     return None if value is None else str(value)
+
+
+def _post_deploy_plan(meta: dict) -> str:
+    """What runs after the deploy, for the approval's detail (shown to the approver)."""
+    smoke = meta.get("smoke_command")
+    if not smoke:
+        return ""
+    rollback = meta.get("rollback_command")
+    tail = (
+        f"and, if it fails, the rollback:\n\n{rollback}\n\n"
+        if rollback
+        else "No rollback_command is set: a failing smoke check only files a fix task.\n\n"
+    )
+    return f"Then the smoke check:\n\n{smoke}\n\n{tail}"
+
+
+async def _run_shell(command: str, cwd: str, timeout: int) -> tuple[int, str]:
+    """Run an operator-set shell command in *cwd*: (exit code, combined output)."""
+    import asyncio
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except TimeoutError:
+        return 124, f"timed out after {timeout}s"
+    except OSError as exc:
+        return 127, f"could not run: {exc}"
+    return proc.returncode or 0, out.decode(errors="replace")

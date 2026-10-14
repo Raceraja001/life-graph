@@ -67,7 +67,7 @@ watch. On 2026-10-13 a human had to rescue it from:
 9. **Planner rules.** No verification-only tasks; generated docs are
    regenerated inside the task that changes the code.
 
-### Phase 3 — Close the loop
+### Phase 3 — Close the loop — BUILT
 10. **Post-deploy smoke check and rollback.** A `smoke_command` runs after
     `deploy_command`; on failure `rollback_command` runs and a finding is
     filed.

@@ -471,3 +471,44 @@ async def get_driver_failures(
     async with async_session() as session:
         data = await failures(session, get_current_tenant_id(), days=days, limit=limit)
     return success_response(data=data)
+
+
+class ProductionFindingBody(BaseModel):
+    """A production failure reported by a monitor (uptime check, error tracker, ...)."""
+
+    kind: str = Field("monitor", max_length=64, description="What saw it, e.g. uptime, sentry")
+    title: str = Field(..., min_length=3, max_length=300, description="One line: what broke")
+    detail: str = Field("", max_length=8000, description="Evidence: error, status, stack trace")
+    signature: str | None = Field(
+        None, max_length=500, description="Same failure, same signature (de-duplication key)"
+    )
+
+
+@router.post(
+    "/projects/{project_id}/findings",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Report a production failure; queues a fix task (de-duplicated)",
+)
+async def report_production_finding(project_id: str, body: ProductionFindingBody):
+    """For external monitors: the fix goes through the normal dev-task gates
+    (budget, verification, PR and merge approvals), never straight to production."""
+    from life_graph.kernel.project_registry import ProjectRegistry
+    from life_graph.services.production_findings import file_fix_task
+
+    tenant = get_current_tenant_id()
+    try:
+        project = await ProjectRegistry(session_factory=async_session).get_by_id(tenant, project_id)
+    except ValueError:
+        project = None
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    result = await file_fix_task(
+        async_session,
+        tenant,
+        project,
+        kind=body.kind,
+        title=body.title,
+        detail=body.detail,
+        signature=body.signature,
+    )
+    return success_response(data=result)
