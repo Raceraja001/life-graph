@@ -308,3 +308,41 @@ async def test_run_command_in_allowlist_mode_runs_without_a_shell(root, monkeypa
     assert out["exit_code"] == 0 and "app.log" in out["stdout"]
     denied = json.loads(await terminal.run_command("wc -l app.log; id", str(root)))
     assert "not allowed" in denied["error"]
+
+
+def test_findings_arrays_are_marked_in_place_and_stay_parseable():
+    from life_graph.services.findings_bridge import parse_findings
+
+    fetched = [json.dumps({"results": [{"url": "https://fastapi.tiangolo.com/release-notes/"}]})]
+    reply = "Two things.\n" + json.dumps(
+        [
+            {
+                "title": "FastAPI 0.124",
+                "detail": "New release.",
+                "source": "https://fastapi.tiangolo.com/release-notes",
+                "urgency": "brief",
+            },
+            {"title": "Made up", "detail": "From memory.", "urgency": "now"},
+        ]
+    )
+    checked, outcome = sources.apply(reply, fetched)
+    assert outcome == {"findings": 2, "unverified_findings": 1, "fetched": 1, "unverified": True}
+    found = parse_findings(checked)
+    assert "Source: https://fastapi.tiangolo.com/release-notes" in found[0]["detail"]
+    assert "Unverified" not in found[0]["detail"]
+    assert "Unverified" in found[1]["detail"]
+    assert checked.startswith("Two things.\n")
+
+
+def test_a_fenced_findings_array_is_checked_too():
+    reply = 'x\n```json\n[{"title": "A", "detail": "d", "urgency": "brief"}]\n```'
+    checked, outcome = sources.apply(reply, [])
+    assert outcome["unverified_findings"] == 1 and checked.endswith("```")
+
+
+def test_today_line_uses_the_user_timezone(monkeypatch):
+    from datetime import UTC, datetime
+
+    monkeypatch.setattr(settings, "user_timezone", "Asia/Kolkata")
+    line = persona_context.today_line(datetime(2026, 10, 14, 20, 0, tzinfo=UTC))
+    assert line == "Current date and time: Thursday 15 October 2026, 01:30 (Asia/Kolkata)."

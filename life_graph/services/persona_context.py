@@ -9,8 +9,12 @@ its absolute path and its base branch.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
+
 from sqlalchemy import select
 
+from life_graph.config import settings
 from life_graph.models.db import Project
 
 # Tools whose arguments are paths on this machine.
@@ -30,6 +34,16 @@ PATH_TOOLS = frozenset(
     }
 )
 MAX_PROJECTS = 20
+
+
+def today_line(now: datetime | None = None) -> str:
+    """The current date and time in the user's timezone, for the system prompt."""
+    try:
+        tz = ZoneInfo(settings.user_timezone)
+    except Exception:  # noqa: BLE001 — a bad setting must not break every run
+        tz = ZoneInfo("UTC")
+    local = (now or datetime.now(UTC)).astimezone(tz)
+    return f"Current date and time: {local:%A %d %B %Y, %H:%M} ({tz.key})."
 
 
 def needs_projects(allowed_tools: list[str] | None) -> bool:

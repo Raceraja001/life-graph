@@ -80,3 +80,53 @@ def annotate(answer: str, outcome: dict[str, Any]) -> str:
     if outcome["unverified"]:
         return answer + NO_SOURCES_NOTE
     return answer
+
+
+def _fetched(tool_results: list[str]) -> set[str]:
+    return {normalise(u) for result in tool_results for u in urls_in(result)}
+
+
+def check_findings(
+    findings: list[Any], tool_results: list[str]
+) -> tuple[list[Any], dict[str, Any]]:
+    """Mark each finding whose source no tool returned as ``unverified``.
+
+    Advisory personas end their reply with a JSON findings array that
+    services/findings_bridge.py parses, so a note appended after it would
+    break the contract. Each finding is checked on its own instead: its
+    ``source`` (and any URL in its ``detail``) must be one this run fetched.
+    """
+    fetched = _fetched(tool_results)
+    marked: list[Any] = []
+    unverified = 0
+    for item in findings:
+        if not isinstance(item, dict):
+            marked.append(item)
+            continue
+        cited = urls_in(f"{item.get('source') or ''} {item.get('detail') or ''}")
+        item = {k: v for k, v in item.items() if k != "unverified"}
+        if not any(normalise(u) in fetched for u in cited):
+            item["unverified"] = True
+            unverified += 1
+        marked.append(item)
+    return marked, {
+        "findings": len([f for f in findings if isinstance(f, dict)]),
+        "unverified_findings": unverified,
+        "fetched": len(fetched),
+        "unverified": unverified > 0,
+    }
+
+
+def apply(answer: str, tool_results: list[str]) -> tuple[str, dict[str, Any]]:
+    """The checked answer and the outcome, for either reply shape."""
+    import json
+
+    from life_graph.services.findings_bridge import trailing_json_array
+
+    found = trailing_json_array(answer)
+    if found is not None:
+        start, end, findings = found
+        marked, outcome = check_findings(findings, tool_results)
+        return answer[:start] + json.dumps(marked, ensure_ascii=False) + answer[end:], outcome
+    outcome = check(answer, tool_results)
+    return annotate(answer, outcome), outcome

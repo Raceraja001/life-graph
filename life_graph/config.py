@@ -302,7 +302,7 @@ class Settings(BaseSettings):
     fetch_allow_hosts: str = ""
     # Personas whose answers must cite URLs a tool returned in the same run
     # (services/sources.py). Comma-separated persona names.
-    require_sources_personas: str = "scout,rex,tutor,support-desk"
+    require_sources_personas: str = "scout,rex,support-desk"
 
     # ── Connectors (calendar, email, … — docs/specs/connectors.md) ───────────
     # Replaces the unused google_credentials_json / google_delegated_user stubs:

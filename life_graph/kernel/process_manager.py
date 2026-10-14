@@ -565,6 +565,9 @@ class ProcessManager:
         if orchestrator.model != "claude-cli":
             from life_graph.services import persona_context
 
+            # A local model has no idea what day it is: asked for "the latest
+            # release", it called a two-week-old one "a future date".
+            system_prompt = f"{system_prompt or ''}\n\n{persona_context.today_line()}".strip()
             if persona_context.needs_projects(allow):
                 try:
                     block = await persona_context.projects_block(self._session_factory, tenant_id)
@@ -620,10 +623,12 @@ class ProcessManager:
         out: dict[str, Any] = {"response": response, "token_count": token_count}
 
         if check_sources:
-            outcome = sources.check(response, tool_results)
-            out["response"] = sources.annotate(response, outcome)
-            out["sources"] = outcome
-            note = out["response"][len(response) :]
+            out["response"], out["sources"] = sources.apply(response, tool_results)
+            # A prose answer gains a note at its end, which a streaming chat
+            # still needs; a findings array is marked in place and read from
+            # the result, so nothing more is streamed for it.
+            checked = out["response"]
+            note = checked[len(response) :] if checked.startswith(response) else ""
             if stream_key is not None:
                 if note:
                     bus.publish(stream_key, {**meta, "event": {"type": "token", "content": note}})
