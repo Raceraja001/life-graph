@@ -230,11 +230,17 @@ async def mechanical_autofix(workdir: Path, ctx: dict) -> dict:
     try:
         subprocess.run(
             [ruff, "check", "--fix", "--fix-only", "--", *rel],
-            capture_output=True, text=True, timeout=60, cwd=str(workdir),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(workdir),
         )
         subprocess.run(
             [ruff, "format", "--", *rel],
-            capture_output=True, text=True, timeout=60, cwd=str(workdir),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=str(workdir),
         )
     except Exception as exc:
         return {"ran": True, "fixed": False, "error": str(exc)}
@@ -669,13 +675,19 @@ async def _verify_no_vulnerable_deps_in_diff(workdir: Path, ctx: dict) -> tuple[
             "touched": touched,
         }
     except subprocess.TimeoutExpired:
-        return None, {"note": "pip-audit timed out (needs network, not sandboxed)", "touched": touched}
+        return None, {
+            "note": "pip-audit timed out (needs network, not sandboxed)",
+            "touched": touched,
+        }
 
     if result.returncode not in (0, 1):
         # 0: no vulnerabilities. 1: vulnerabilities found. Anything else is
         # pip-audit itself failing (bad env, no network, ...) — not a
         # verdict on the dependencies.
-        return None, {"note": f"pip-audit could not run: {result.stderr[-300:]}", "touched": touched}
+        return None, {
+            "note": f"pip-audit could not run: {result.stderr[-300:]}",
+            "touched": touched,
+        }
 
     try:
         report = json.loads(result.stdout or "{}")

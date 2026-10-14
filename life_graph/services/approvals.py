@@ -592,7 +592,11 @@ class ApprovalService:
             )
             dispatched_ids.append(task.get("id"))
 
-        appr.payload = {**payload, "dispatched_task_ids": dispatched_ids, "plan_group_id": plan_group_id}
+        appr.payload = {
+            **payload,
+            "dispatched_task_ids": dispatched_ids,
+            "plan_group_id": plan_group_id,
+        }
         appr.resolution_note = f"Queued {len(dispatched_ids)} tasks (group {plan_group_id[:8]})"
 
     async def _apply_promotion(

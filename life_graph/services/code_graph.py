@@ -133,8 +133,9 @@ def _python_files(root: Path) -> list[Path]:
     out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(
-            d for d in dirnames if d not in VENDORED_DIRS and not d.startswith(".")
-            and not d.endswith(".egg-info")
+            d
+            for d in dirnames
+            if d not in VENDORED_DIRS and not d.startswith(".") and not d.endswith(".egg-info")
         )
         out.extend(Path(dirpath) / f for f in sorted(filenames) if f.endswith(".py"))
         if len(out) >= _MAX_FILES:
@@ -201,7 +202,9 @@ def context_for(graph: CodeGraph, instruction: str) -> str:
             continue
         lines = [f"### `{symbol}`"]
         if len(definitions) > 1:
-            lines.append(f"{len(definitions)} definitions share this name (calls resolved by name):")
+            lines.append(
+                f"{len(definitions)} definitions share this name (calls resolved by name):"
+            )
         for d in definitions[:_MAX_DEFINITIONS_PER_SYMBOL]:
             lines.append(f"- defined: `{d.qualname}` at {d.file}:{d.line}")
             # Only callees defined in real code: a method name that resolves

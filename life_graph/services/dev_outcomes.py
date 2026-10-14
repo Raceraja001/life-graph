@@ -404,7 +404,9 @@ async def sync_all(session_factory) -> dict[str, Any]:
                 await session.commit()
             except Exception as exc:
                 await session.rollback()
-                logger.warning("post-merge CI check failed for approval %s", approval_id, exc_info=True)
+                logger.warning(
+                    "post-merge CI check failed for approval %s", approval_id, exc_info=True
+                )
                 reports.append({"approval": str(approval_id), "error": str(exc)[:200]})
 
     async with session_factory() as session:
@@ -430,7 +432,9 @@ async def sync_all(session_factory) -> dict[str, Any]:
                 await session.commit()
             except Exception as exc:
                 await session.rollback()
-                logger.warning("rollforward check failed for approval %s", approval_id, exc_info=True)
+                logger.warning(
+                    "rollforward check failed for approval %s", approval_id, exc_info=True
+                )
                 reports.append({"approval": str(approval_id), "error": str(exc)[:200]})
 
     return {"synced": len(reports), "reports": reports}

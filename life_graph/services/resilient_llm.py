@@ -139,7 +139,11 @@ class ResilientLLM:
             # env — that var is also OpenAI's own, and clobbering it would
             # break every other direct-OpenAI call in the process for the
             # sake of one entry in this chain.
-            kwargs = {**kwargs, "api_base": settings.omniroute_url, "api_key": settings.omniroute_api_key}
+            kwargs = {
+                **kwargs,
+                "api_base": settings.omniroute_url,
+                "api_key": settings.omniroute_api_key,
+            }
         resp = await litellm.acompletion(model=model, messages=messages, **kwargs)
         if kwargs.get("stream"):
             first_chunk = await resp.__anext__()
