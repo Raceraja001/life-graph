@@ -292,6 +292,17 @@ class Settings(BaseSettings):
 
     # ── Tavily (web search tool) ──────────────────────
     tavily_api_key: str = ""  # Set LIFE_GRAPH_TAVILY_API_KEY
+    # auto = SearXNG if searxng_url is set, then Tavily if keyed, then the
+    # keyless DuckDuckGo HTML endpoint. Or name one: searxng|tavily|duckduckgo.
+    web_search_provider: str = "auto"
+    searxng_url: str = ""  # e.g. http://localhost:8888 (JSON format enabled)
+    web_search_max_results: int = 6
+    # Hosts agent fetches may reach even though they resolve to a private
+    # address (services/safe_fetch.py). Comma-separated host names.
+    fetch_allow_hosts: str = ""
+    # Personas whose answers must cite URLs a tool returned in the same run
+    # (services/sources.py). Comma-separated persona names.
+    require_sources_personas: str = "scout,rex,tutor,support-desk"
 
     # ── Connectors (calendar, email, … — docs/specs/connectors.md) ───────────
     # Replaces the unused google_credentials_json / google_delegated_user stubs:
@@ -489,6 +500,9 @@ class Settings(BaseSettings):
     # docstrings used to claim a "personal tenant only" restriction that no
     # code implemented.
     tool_shell_enabled: bool = True  # master switch for run_command
+    # full = an arbitrary shell string (denylist only); allowlist = read-only
+    # programs run without a shell (tools/shell_allowlist.py).
+    tool_shell_mode: str = "full"
     # Tenants permitted to use host tools. Empty string = every tenant,
     # which is only sane for a single-tenant personal deployment.
     tool_privileged_tenants: str = "default"

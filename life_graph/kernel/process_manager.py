@@ -562,6 +562,17 @@ class ProcessManager:
         else:
             tools = None
 
+        if orchestrator.model != "claude-cli":
+            from life_graph.services import persona_context
+
+            if persona_context.needs_projects(allow):
+                try:
+                    block = await persona_context.projects_block(self._session_factory, tenant_id)
+                    if block:
+                        system_prompt = f"{system_prompt or ''}\n\n{block}".strip()
+                except Exception:
+                    logger.warning("Project context for %s failed", agent_name, exc_info=True)
+
         import json as _json
 
         from life_graph.core.task_context import get_current_task_context
@@ -577,7 +588,12 @@ class ProcessManager:
         )
 
         # Collect streamed output
+        from life_graph.services import sources
+
+        check_sources = sources.required_for(agent_name)
         response_parts: list[str] = []
+        tool_results: list[str] = []
+        held_done: dict | None = None
         token_count = 0
 
         async for event_str in orchestrator.run(messages, system_prompt=system_prompt, tools=tools):
@@ -586,17 +602,34 @@ class ProcessManager:
                 data = _json.loads(event_str.removeprefix("data: ").strip())
             except (ValueError, KeyError):
                 continue
+            if check_sources and data.get("type") == "done":
+                # Held back so a source note can still reach a streaming chat
+                # client before the stream ends.
+                held_done = data
+                continue
             if stream_key is not None:
                 bus.publish(stream_key, {**meta, "event": data})
             if data.get("type") == "token":
                 content = data.get("content", "")
                 response_parts.append(content)
                 token_count += 1
+            elif data.get("type") == "tool_result":
+                tool_results.append(str(data.get("result") or ""))
 
-        return {
-            "response": "".join(response_parts),
-            "token_count": token_count,
-        }
+        response = "".join(response_parts)
+        out: dict[str, Any] = {"response": response, "token_count": token_count}
+
+        if check_sources:
+            outcome = sources.check(response, tool_results)
+            out["response"] = sources.annotate(response, outcome)
+            out["sources"] = outcome
+            note = out["response"][len(response) :]
+            if stream_key is not None:
+                if note:
+                    bus.publish(stream_key, {**meta, "event": {"type": "token", "content": note}})
+                if held_done is not None:
+                    bus.publish(stream_key, {**meta, "event": held_done})
+        return out
 
     # ── State Transitions ─────────────────────────────────
 

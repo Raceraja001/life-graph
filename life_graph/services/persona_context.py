@@ -1,0 +1,79 @@
+"""Context a persona needs before its first tool call: which projects exist.
+
+The 2026-10-12 survey found cody passing a relative path (rejected by the
+file guards) and swe-lead asking the user for the repo path. Both hold code
+tools but were never told where the code is. Personas whose tools touch files,
+code, git or the shell now get a short block naming each registered project,
+its absolute path and its base branch.
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import select
+
+from life_graph.models.db import Project
+
+# Tools whose arguments are paths on this machine.
+PATH_TOOLS = frozenset(
+    {
+        "code_read",
+        "code_search",
+        "code_list",
+        "code_edit",
+        "file_read",
+        "file_write",
+        "git_status",
+        "git_log",
+        "git_diff",
+        "git_branch",
+        "run_command",
+    }
+)
+MAX_PROJECTS = 20
+
+
+def needs_projects(allowed_tools: list[str] | None) -> bool:
+    """None means every tool, which includes the path tools."""
+    return allowed_tools is None or bool(PATH_TOOLS & set(allowed_tools))
+
+
+def render(projects: list[dict]) -> str:
+    if not projects:
+        return ""
+    lines = [
+        "## Projects you can work on",
+        "Use these absolute paths with file, code, git and shell tools:",
+    ]
+    for p in projects[:MAX_PROJECTS]:
+        branch = p.get("base_branch") or p.get("git_branch") or "?"
+        desc = f" — {p['description'][:80]}" if p.get("description") else ""
+        lines.append(f"- **{p['name']}**: `{p['path']}` (base branch {branch}){desc}")
+    return "\n".join(lines)
+
+
+async def projects_block(session_factory, tenant_id: str) -> str:
+    async with session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Project)
+                    .where(Project.tenant_id == tenant_id, Project.is_active.is_(True))
+                    .order_by(Project.name)
+                    .limit(MAX_PROJECTS)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return render(
+        [
+            {
+                "name": r.name,
+                "path": r.path,
+                "description": r.description,
+                "git_branch": r.git_branch,
+                "base_branch": (r.scan_metadata or {}).get("base_branch"),
+            }
+            for r in rows
+        ]
+    )
