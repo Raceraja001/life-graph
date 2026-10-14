@@ -173,6 +173,7 @@ class ContextPacketBuilder:
                         "auto_open_pr",
                         "auto_merge",
                         "base_branch",
+                        "auto_approve_plans",
                     )
                 },
             }

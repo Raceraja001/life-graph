@@ -474,7 +474,8 @@ class ApprovalService:
             "deploy_output": stdout,
             "deployed_at": datetime.now(UTC).isoformat(),
         }
-        appr.resolution_note = f"Deployed (exit 0): {stdout[-300:] or '(no output)'}"
+        done = f"Deployed (exit 0): {stdout[-300:] or '(no output)'}"
+        appr.resolution_note = f"{appr.resolution_note} | {done}" if appr.resolution_note else done
 
     async def _apply_driver_plan(self, tenant_id: str, appr: Approval, approve: bool) -> None:
         """Dispatch the approved plan as one task, or fan out its Tasks list.
@@ -516,7 +517,11 @@ class ApprovalService:
         from life_graph.storage.database import async_session as session_factory
 
         project_dict = {"id": str(project.id), "name": project.name}
-        tasks = _parse_tasks(spec)
+        parsed = _parse_tasks(spec)
+        # Check-only tasks ("run ruff and pytest") are dropped: verification
+        # already runs after every task, so they would cost a run and land nothing.
+        tasks = [t for t in parsed if not acceptance.is_check_only_task(t)]
+        skipped = len(parsed) - len(tasks)
         criteria = acceptance.parse_criteria(spec)
         defined = [c.id for c in criteria]
 
@@ -554,7 +559,10 @@ class ApprovalService:
                 },
             )
             appr.payload = {**payload, "dispatched_task_id": task.get("id")}
-            appr.resolution_note = f"Dispatched as task {task.get('id')}"
+            done = f"Dispatched as task {task.get('id')}"
+            appr.resolution_note = (
+                f"{appr.resolution_note} | {done}" if appr.resolution_note else done
+            )
             return
 
         plan_group_id = str(uuid.uuid4())
@@ -597,7 +605,14 @@ class ApprovalService:
             "dispatched_task_ids": dispatched_ids,
             "plan_group_id": plan_group_id,
         }
-        appr.resolution_note = f"Queued {len(dispatched_ids)} tasks (group {plan_group_id[:8]})"
+        queued = f"Queued {len(dispatched_ids)} tasks (group {plan_group_id[:8]})"
+        if skipped:
+            queued += f"; skipped {skipped} check-only task{'s' if skipped > 1 else ''}"
+        # Appended, not assigned: the reviewer's own note (why it was approved)
+        # used to be overwritten here.
+        appr.resolution_note = (
+            f"{appr.resolution_note} | {queued}" if appr.resolution_note else queued
+        )
 
     async def _apply_promotion(
         self, tenant_id: str, appr: Approval, approve: bool, resolved_by: str | None

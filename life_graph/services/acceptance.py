@@ -113,6 +113,11 @@ def spec_gaps(criteria: list[AcceptanceCriterion], tasks: list[str]) -> list[str
             else:
                 gaps.append(f"Task {i} cites {ac_id}, which the spec doesn't define.")
     gaps.extend(f"{c.id} is not covered by any task." for c in criteria if c.id not in covered)
+    gaps.extend(
+        f"Task {i} only runs checks; verification runs after every task, so it is skipped."
+        for i, task in enumerate(tasks, start=1)
+        if is_check_only_task(task)
+    )
     return gaps
 
 
@@ -140,3 +145,20 @@ def describe(criteria: list[AcceptanceCriterion], ac_ids: list[str]) -> str:
         else:
             lines.append(f"- {c.id}: {c.text}")
     return "\n".join(lines)
+
+
+# A task that only runs checks changes nothing: verification already runs
+# after every task, so it costs a driver run and lands no diff (seen: a plan's
+# "4. Run ruff check ..., pytest ..." task). Deterministic, no LLM.
+_CHECK_VERB_RE = re.compile(r"^\s*(?:re-?run|run|execute|verify|check|confirm|test)\b", re.I)
+_CHANGE_VERB_RE = re.compile(
+    r"\b(?:add|update|create|write|change|edit|remove|delete|fix|implement|regenerate|"
+    r"rename|move|refactor|replace|introduce|extend|wire|register|document)\b",
+    re.I,
+)
+
+
+def is_check_only_task(task_text: str) -> bool:
+    """Whether a plan task only runs checks (lint/tests) and changes nothing."""
+    text = task_text or ""
+    return bool(_CHECK_VERB_RE.match(text)) and not _CHANGE_VERB_RE.search(text)

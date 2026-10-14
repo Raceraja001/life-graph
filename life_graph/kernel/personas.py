@@ -274,6 +274,31 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "context_profile": {"domains": ["code"]},
     },
     {
+        "name": "code-fixer-opencode",
+        "display_name": "Code Fixer (OpenCode)",
+        "icon": "🧰",
+        "description": (
+            "Code Fixer on OpenCode, an open-source coding agent, with a local"
+            " model: the code never leaves the machine. An alternative engine to"
+            " code-fixer-local; compare them on the Agent scorecards."
+        ),
+        "system_prompt": (
+            "You are Code Fixer. Make the smallest change that fully does what"
+            " the task asks, in the project's existing style. Read the relevant"
+            " code first, edit it in place, and re-read what you changed. Do not"
+            " refactor or touch unrelated files. Finish with a short summary of"
+            " what you changed and why."
+        ),
+        "intent_tags": ["code", "fix", "local"],
+        "temperature": 0.2,
+        # Edits only: OpenCode's shell and web access are denied by the driver.
+        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit"],
+        "driver": "opencode",
+        "task_types": ["code_change"],
+        "verifier_chain": ["build_ok_diff", "lint_clean_diff"],
+        "context_profile": {"domains": ["code"]},
+    },
+    {
         "name": "code-fixer-auto",
         "display_name": "Code Fixer (auto)",
         "icon": "⚖️",

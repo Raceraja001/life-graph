@@ -56,7 +56,7 @@ watch. On 2026-10-13 a human had to rescue it from:
 6. **Pilot fixture app** with unit and e2e tests, exercised by an
    integration test.
 
-### Phase 2 — Engines and hands-off approvals
+### Phase 2 — Engines and hands-off approvals — BUILT
 7. **OpenCode driver.** `opencode run` headless in the sandbox; unavailable
    until the binary is installed, then compared on the scorecards.
 8. **Auto-approval policy for plans.**

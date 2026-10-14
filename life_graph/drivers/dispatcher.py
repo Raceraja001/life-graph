@@ -130,8 +130,15 @@ _PLAN_ONLY_PREFIX = (
     "any file. Read the code as much as you need to plan well, then reply with "
     "a spec using exactly these headings, and nothing else:\n"
     + _SPEC_HEADINGS
-    + "Stop after the spec. The tasks run later, one at a time, after a human "
-    "approves this plan.\n\n---\n\n"
+    + "Rules for the Tasks list:\n"
+    "- Every task changes something (code, tests or docs). No task that only "
+    "runs checks: lint and tests run automatically after every task, and a "
+    "check-only task is dropped.\n"
+    "- When a change makes a generated file stale (an inventory or state doc, "
+    "a lockfile, generated types), regenerate it inside that same task.\n"
+    "- Keep tasks few: each one is a separate run, review and merge.\n\n"
+    "Stop after the spec. The tasks run later, one at a time, after this plan "
+    "is approved.\n\n---\n\n"
 )
 # Plan tasks keep only the tools that read. Anything mapping to a write or a
 # shell (file_write, code_edit, run_command, and the git_* tools, which the
@@ -703,6 +710,7 @@ class TaskDispatcher:
                             project_id=project_uuid,
                             persona_name=persona_name,
                             session=session,
+                            auto_approve=bool(packet.project_context.get("auto_approve_plans")),
                         )
                         result.metadata = {**(result.metadata or {}), "spec": plan_spec}
                     else:
@@ -1317,6 +1325,7 @@ class TaskDispatcher:
         project_id: uuid.UUID | None,
         persona_name: str | None,
         session: AsyncSession,
+        auto_approve: bool = False,
     ) -> None:
         """File a ``driver_plan`` approval for a spec produced with no code changes.
 
@@ -1379,6 +1388,10 @@ class TaskDispatcher:
             async with session.begin_nested():
                 session.add(appr)
             logger.info("Task %s: plan approval filed", task_id)
+            if await self._maybe_auto_approve_plan(
+                appr, driver_name, project_id, session, auto_approve, spec_text, gaps
+            ):
+                return  # approved and fanned out: nothing is waiting on a person
             await self._emit(
                 EventType.APPROVAL_FILED,
                 {
@@ -1390,6 +1403,58 @@ class TaskDispatcher:
             )
         except Exception:
             logger.warning("Failed to file plan approval for task %s", task_id, exc_info=True)
+
+    async def _maybe_auto_approve_plan(
+        self,
+        appr,
+        driver_name: str,
+        project_id: uuid.UUID | None,
+        session: AsyncSession,
+        opted_in: bool,
+        spec_text: str,
+        gaps: list[str],
+    ) -> bool:
+        """Approve the plan without asking when services/plan_policy.py allows it.
+
+        Approval goes through ApprovalService.resolve, the same path a
+        person's click takes, so fan-out is identical. Whatever the outcome,
+        the reasons are written on the approval. Any failure leaves it
+        pending, exactly as with auto-approval off.
+        """
+        from life_graph.services import plan_policy
+        from life_graph.services.approvals import ApprovalService
+        from life_graph.services.dev_outcomes import track_record
+
+        try:
+            record = (
+                await track_record(session, appr.tenant_id, driver_name, project_id)
+                if opted_in
+                else {}
+            )
+            decision = plan_policy.decide(
+                opted_in=opted_in,
+                spec=spec_text,
+                tasks=_parse_tasks(spec_text),
+                gaps=gaps,
+                record=record,
+                merge_bar=AUTO_PR_MERGE_RATE,
+            )
+            if not decision.approve:
+                if opted_in:
+                    appr.detail = f"{appr.detail}\n\nNot auto-approved: {decision.summary}."
+                return False
+            await ApprovalService(session).resolve(
+                appr.tenant_id,
+                str(appr.id),
+                "approve",
+                note=f"Approved automatically: {decision.summary}.",
+                resolved_by="auto: small trusted plan",
+            )
+            logger.info("Plan %s auto-approved (%s)", appr.id, decision.summary)
+            return True
+        except Exception:
+            logger.warning("Plan auto-approval failed for %s; left pending", appr.id, exc_info=True)
+            return False
 
     async def _draft_pr_description(
         self, repo_path: str, landing: dict, instruction: str

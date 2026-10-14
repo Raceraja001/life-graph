@@ -403,6 +403,18 @@ class Settings(BaseSettings):
     # fallback cut a real plan-only run off mid-exploration of this repo;
     # 1200 matches the local driver.
     driver_claude_code_timeout_seconds: int = 1200
+    # OpenCode driver (drivers/opencode.py). Unavailable until the binary exists:
+    #   npm install --prefix ~/.local/opencode opencode-ai
+    driver_opencode_bin: str = "opencode"
+    driver_opencode_model: str = "ollama/qwen3-coder:30b"
+    driver_opencode_ollama_base: str = "http://localhost:11434/v1"
+    driver_opencode_timeout_seconds: int = 1200
+    # The host is not sandboxed for this driver, so OpenCode's shell stays
+    # denied unless this is set. Tests run in the verifier sandbox regardless.
+    driver_opencode_allow_bash: bool = False
+    # A plan approves itself only for a project with auto_approve_plans set,
+    # at most this many tasks, and every other rule in services/plan_policy.py.
+    auto_plan_max_tasks: int = 3
     # Set false on a preview/secondary instance so it never even tries to be
     # the dev-task runner. Without it, the database advisory lock still keeps
     # it from running alongside the real one (services/dev_tasks.py).
