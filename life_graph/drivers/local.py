@@ -17,8 +17,9 @@ For coding work three things the chat loop never needed are enforced here:
   :attr:`MAX_AGENT_ITERATIONS` and a longer :attr:`dispatch_timeout`, which
   the dispatcher reads.
 * **Honest failure.** The run is failed when the orchestrator reports an
-  error or the time budget runs out, instead of reporting success with
-  whatever partial text streamed.
+  error (``error`` or ``partial_error``), runs out of rounds, stops for being
+  stuck in a loop, or the time budget runs out, instead of reporting success
+  with whatever partial text streamed. ``metadata.stop_reason`` says which.
 """
 
 from __future__ import annotations
@@ -49,7 +50,9 @@ class LocalDriver:
     # A local 30B model on a consumer GPU is slow per round; the dispatcher
     # uses this instead of its 300s default.
     dispatch_timeout = 1200
-    MAX_AGENT_ITERATIONS = 40
+    # Was 40, partly because the context could not hold more rounds; the
+    # condenser (agents/condenser.py) now keeps a long run inside the window.
+    MAX_AGENT_ITERATIONS = 60
 
     async def available(self) -> bool:
         """Local driver is always available."""
@@ -130,10 +133,12 @@ class LocalDriver:
             output_parts: list[str] = []
             steps = StepCollector()
             tool_calls = 0
+            condensed = 0
             errors: list[str] = []
+            stop_reason = "completed"
 
             async def collect() -> None:
-                nonlocal tool_calls
+                nonlocal tool_calls, condensed, stop_reason
                 async for event_str in orchestrator.run(
                     messages=messages,
                     system_prompt=system_prompt,
@@ -151,14 +156,28 @@ class LocalDriver:
                         output_parts.append(data["content"])
                     elif kind == "tool_call":
                         tool_calls += 1
-                    elif kind == "error":
+                    elif kind == "condensed":
+                        condensed += 1
+                    elif kind in ("error", "partial_error"):
+                        # The orchestrator reports failures as partial_error
+                        # ("All models are currently unavailable"); counting
+                        # only "error" returned those runs as successes.
                         errors.append(str(data.get("message") or data.get("error") or data))
+                        stop_reason = "error"
+                    elif kind == "done" and data.get("stop_reason") in ("max_iterations", "stuck"):
+                        stop_reason = data["stop_reason"]
+                        errors.append(
+                            "ran out of tool rounds"
+                            if stop_reason == "max_iterations"
+                            else str(data.get("warning") or "stuck in a loop")
+                        )
 
             with confine_to(workdir):
                 try:
                     await asyncio.wait_for(collect(), timeout=timeout)
                 except TimeoutError:
                     errors.append(f"local driver timed out after {timeout}s")
+                    stop_reason = "timeout"
 
             duration = int((time.monotonic() - start) * 1000)
             return DriverResult(
@@ -170,6 +189,8 @@ class LocalDriver:
                 metadata={
                     "model": getattr(orchestrator, "model", packet.persona_model),
                     "tool_calls": tool_calls,
+                    "condensed": condensed,
+                    "stop_reason": stop_reason,
                     "steps": steps.finish(),
                     "workdir": str(workdir),
                 },

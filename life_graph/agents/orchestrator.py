@@ -60,6 +60,11 @@ class AgentOrchestrator:
         )
         self.max_tokens = max_tokens or settings.agent_llm_max_tokens
         self.FALLBACK_MODEL = settings.agent_fallback_model
+        # docs/specs/agent-condenser.md: keep long runs inside the context
+        # window and notice loops.
+        self.condense = settings.agent_condenser_enabled
+        self.detect_stuck = settings.agent_stuck_detection
+        self.context_tokens = settings.context_tokens_for(self.model)
 
     async def run(
         self,
@@ -160,12 +165,44 @@ class AgentOrchestrator:
 
         total_tokens = 0
         self._retry_count = 0
+        from life_graph.agents import condenser
+        from life_graph.agents.stuck import StuckDetector, nudge_text
+
+        detector = StuckDetector() if self.detect_stuck else None
+        budget = condenser.budget_for(self.context_tokens, self.max_tokens)
 
         for iteration in range(self.MAX_ITERATIONS):
             logger.debug("Agent iteration %d/%d", iteration + 1, self.MAX_ITERATIONS)
 
             try:
                 from life_graph.api.dependencies import get_resilient_llm
+
+                if self.condense and iteration > 0:
+                    # Fit the conversation into the window BEFORE sending it:
+                    # an over-long prompt loses its beginning (the system
+                    # prompt and the task) inside the model server.
+                    result_c = await condenser.condense(
+                        working_messages,
+                        budget=budget,
+                        summarise=condenser.summariser_for(
+                            get_resilient_llm().acompletion, self.model
+                        ),
+                        model=self.model,
+                    )
+                    if result_c.layer is not None:
+                        messages_before = len(working_messages)
+                        working_messages[:] = result_c.messages
+                        yield _sse(
+                            {
+                                "type": "condensed",
+                                "layer": result_c.layer,
+                                "before_tokens": result_c.before_tokens,
+                                "after_tokens": result_c.after_tokens,
+                                "budget": budget,
+                                "messages_before": messages_before,
+                                "messages_after": len(working_messages),
+                            }
+                        )
 
                 # Build completion kwargs.
                 completion_kwargs: dict[str, Any] = {
@@ -260,6 +297,7 @@ class AgentOrchestrator:
                             "type": "done",
                             "model": self.model,
                             "tokens": total_tokens,
+                            "stop_reason": "completed",
                         }
                     )
                     return
@@ -289,6 +327,7 @@ class AgentOrchestrator:
                 working_messages.append(assistant_msg)
 
                 # Execute each tool call.
+                stuck = None
                 for tc_info in assistant_tool_calls:
                     tool_name = tc_info["function"]["name"]
                     raw_args = tc_info["function"]["arguments"]
@@ -355,20 +394,67 @@ class AgentOrchestrator:
                         }
                     )
 
-                    # Append tool result for next LLM iteration.
+                    # Append tool result for next LLM iteration. One huge
+                    # result (a log, a whole file) keeps its head and tail
+                    # rather than filling the window by itself.
                     working_messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tc_info["id"],
-                            "content": result,
+                            "content": condenser.cap_result(str(result)),
                         }
                     )
+                    if detector is not None and stuck is None:
+                        stuck = detector.record(tool_name, tool_args, str(result))
 
                 logger.debug(
                     "Tool calls executed: %s",
                     [tc["function"]["name"] for tc in assistant_tool_calls],
                 )
                 self._retry_count = 0  # reset on success
+
+                if stuck is not None:
+                    # Acted on only after every result of this turn is in, so
+                    # no message lands between a tool call and its result.
+                    if detector.detections == 1:
+                        yield _sse(
+                            {
+                                "type": "stuck",
+                                "pattern": stuck.pattern,
+                                "tool": stuck.tool,
+                                "action": "nudged",
+                            }
+                        )
+                        working_messages.append({"role": "user", "content": nudge_text(stuck)})
+                    else:
+                        logger.warning(
+                            "Agent stuck again (%s on %s); stopping", stuck.pattern, stuck.tool
+                        )
+                        yield _sse(
+                            {
+                                "type": "stuck",
+                                "pattern": stuck.pattern,
+                                "tool": stuck.tool,
+                                "action": "stopped",
+                            }
+                        )
+                        yield _sse(
+                            {
+                                "type": "usage",
+                                "completion_tokens": total_tokens,
+                                "total_tokens": total_tokens,
+                            }
+                        )
+                        yield _sse(
+                            {
+                                "type": "done",
+                                "model": self.model,
+                                "tokens": total_tokens,
+                                "stop_reason": "stuck",
+                                "warning": f"Stopped: stuck in a loop ({stuck.pattern}).",
+                            }
+                        )
+                        return
 
             except ResilientLLMExhaustedError as exc:
                 # ResilientLLM already tried the caller's model plus the whole
@@ -383,7 +469,14 @@ class AgentOrchestrator:
                         "retryable": True,
                     }
                 )
-                yield _sse({"type": "done", "model": self.model, "tokens": total_tokens})
+                yield _sse(
+                    {
+                        "type": "done",
+                        "model": self.model,
+                        "tokens": total_tokens,
+                        "stop_reason": "error",
+                    }
+                )
                 return
 
             except Exception as exc:
@@ -413,7 +506,14 @@ class AgentOrchestrator:
                         "retryable": True,
                     }
                 )
-                yield _sse({"type": "done", "model": self.model, "tokens": total_tokens})
+                yield _sse(
+                    {
+                        "type": "done",
+                        "model": self.model,
+                        "tokens": total_tokens,
+                        "stop_reason": "error",
+                    }
+                )
                 return
 
         # Max iterations reached.
@@ -431,6 +531,7 @@ class AgentOrchestrator:
                 "model": self.model,
                 "tokens": total_tokens,
                 "warning": "Max tool-calling iterations reached.",
+                "stop_reason": "max_iterations",
             }
         )
 
