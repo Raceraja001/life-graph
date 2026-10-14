@@ -398,6 +398,7 @@ async def run_watchers(ctx: dict) -> dict:
     from life_graph.watchers.base import BaseWatcher
     from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
     from life_graph.watchers.dependency_watcher import DependencyWatcher
+    from life_graph.watchers.page_monitor_watcher import PageMonitorWatcher
     from life_graph.watchers.server_health_watcher import ServerHealthWatcher
     from life_graph.watchers.tech_radar_watcher import TechRadarWatcher
 
@@ -415,6 +416,7 @@ async def run_watchers(ctx: dict) -> dict:
         CodeQualityWatcher.name: CodeQualityWatcher,
         DependencyWatcher.name: DependencyWatcher,
         TechRadarWatcher.name: TechRadarWatcher,
+        PageMonitorWatcher.name: PageMonitorWatcher,
     }
 
     notification_engine = get_watcher_notification_engine()

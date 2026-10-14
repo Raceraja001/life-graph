@@ -306,3 +306,126 @@ async def delete_budget(category: str) -> dict[str, Any]:
     if not result.rowcount:
         raise HTTPException(status_code=404, detail="No budget for that category")
     return success_response({"deleted": category})
+
+
+# ── Page monitors ───────────────────────────────────────────────────────────
+
+
+class MonitorIn(BaseModel):
+    url: str = Field(max_length=2000)
+    name: str | None = Field(default=None, max_length=120)
+    mode: str = "change"
+    selector: str | None = Field(default=None, max_length=500)
+    threshold: float | None = None
+    pattern: str | None = Field(default=None, max_length=200)
+    interval_minutes: int = Field(default=180, ge=30, le=10080)
+
+
+class MonitorPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    paused: bool | None = None
+    threshold: float | None = None
+    interval_minutes: int | None = Field(default=None, ge=30, le=10080)
+
+
+async def _monitor(session, tenant_id: str, monitor_id: str):
+    from sqlalchemy import select
+
+    from life_graph.models.assistant import PageMonitor
+
+    row = (
+        await session.execute(
+            select(PageMonitor).where(
+                PageMonitor.tenant_id == tenant_id, PageMonitor.id == _uuid(monitor_id)
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Monitor not found")
+    return row
+
+
+@router.get("/monitors")
+async def list_monitors() -> dict[str, Any]:
+    from sqlalchemy import select
+
+    from life_graph.models.assistant import PageMonitor
+    from life_graph.services import page_monitors
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(PageMonitor)
+                    .where(PageMonitor.tenant_id == tenant_id)
+                    .order_by(PageMonitor.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return success_response([page_monitors.to_dict(m) for m in rows])
+
+
+@router.post("/monitors", status_code=201)
+async def add_monitor(body: MonitorIn) -> dict[str, Any]:
+    from life_graph.services import page_monitors
+    from life_graph.services.safe_fetch import FetchBlockedError
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        try:
+            m = await page_monitors.create(session, tenant_id, **body.model_dump())
+        except (ValueError, FetchBlockedError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await session.commit()
+        await session.refresh(m)
+    return success_response(page_monitors.to_dict(m))
+
+
+@router.patch("/monitors/{monitor_id}")
+async def edit_monitor(monitor_id: str, body: MonitorPatch) -> dict[str, Any]:
+    from decimal import Decimal
+
+    from life_graph.services import page_monitors
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        m = await _monitor(session, tenant_id, monitor_id)
+        changes = body.model_dump(exclude_unset=True)
+        if "threshold" in changes:
+            changes["threshold"] = (
+                Decimal(str(changes["threshold"])) if changes["threshold"] is not None else None
+            )
+        if changes.get("paused") is False:
+            changes["consecutive_failures"] = 0
+        for key, value in changes.items():
+            setattr(m, key, value)
+        await session.commit()
+        await session.refresh(m)
+    return success_response(page_monitors.to_dict(m))
+
+
+@router.post("/monitors/{monitor_id}/check")
+async def check_monitor(monitor_id: str) -> dict[str, Any]:
+    """Check one monitor now; returns the event it would raise, if any."""
+    from life_graph.services import page_monitors
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        m = await _monitor(session, tenant_id, monitor_id)
+        event = await page_monitors.check(m, page_monitors.now_utc())
+        await session.commit()
+        await session.refresh(m)
+    return success_response({"monitor": page_monitors.to_dict(m), "event": event})
+
+
+@router.delete("/monitors/{monitor_id}")
+async def delete_monitor(monitor_id: str) -> dict[str, Any]:
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        m = await _monitor(session, tenant_id, monitor_id)
+        await session.delete(m)
+        await session.commit()
+    return success_response({"deleted": monitor_id})

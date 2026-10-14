@@ -94,3 +94,92 @@ async def spending_summary(month: str | None = None) -> str:
     except ValueError:
         return json.dumps({"error": "month must be YYYY-MM"})
     return _out(data if current_audience() == LOCAL else money.cloud_view(data))
+
+
+@tool(
+    name="watch_page",
+    description=(
+        "Set up a monitor on a web page: tell the user when it changes (mode change),"
+        " when the price drops under a threshold (mode price_below), or when some text"
+        " appears (mode contains, with pattern). Only when the user asks to watch something."
+        " selector: optional simple CSS selector (e.g. span.price, [itemprop=price]) or"
+        " regex:<pattern>."
+    ),
+    parameters_schema={
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "name": {"type": "string", "description": "Short name, e.g. 'Pixel 9 price'"},
+            "mode": {"type": "string", "enum": ["change", "price_below", "contains"]},
+            "threshold": {"type": "number", "description": "For price_below"},
+            "pattern": {"type": "string", "description": "For contains"},
+            "selector": {"type": "string"},
+            "interval_minutes": {"type": "integer", "minimum": 30, "default": 180},
+        },
+        "required": ["url", "mode"],
+    },
+)
+async def watch_page(
+    url: str,
+    mode: str = "change",
+    name: str | None = None,
+    threshold: float | None = None,
+    pattern: str | None = None,
+    selector: str | None = None,
+    interval_minutes: int = 180,
+) -> str:
+    from life_graph.services import page_monitors
+    from life_graph.services.safe_fetch import FetchBlockedError
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    try:
+        async with async_session() as session:
+            monitor = await page_monitors.create(
+                session,
+                tenant,
+                url=url,
+                name=name,
+                mode=mode,
+                threshold=threshold,
+                pattern=pattern,
+                selector=selector,
+                interval_minutes=interval_minutes,
+            )
+            event = await page_monitors.check(monitor, page_monitors.now_utc())
+            await session.commit()
+            await session.refresh(monitor)
+    except (ValueError, FetchBlockedError) as exc:
+        return json.dumps({"error": str(exc)})
+    return _out(
+        {
+            "created": page_monitors.to_dict(monitor),
+            "first_check": event or "baseline recorded",
+        }
+    )
+
+
+@tool(
+    name="list_page_monitors",
+    description="The pages the user is watching, with the last value seen.",
+    parameters_schema={"type": "object", "properties": {}},
+)
+async def list_page_monitors() -> str:
+    from sqlalchemy import select
+
+    from life_graph.models.assistant import PageMonitor
+    from life_graph.services import page_monitors
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    async with async_session() as session:
+        rows = (
+            (await session.execute(select(PageMonitor).where(PageMonitor.tenant_id == tenant)))
+            .scalars()
+            .all()
+        )
+    return _out({"monitors": [page_monitors.to_dict(m) for m in rows]})

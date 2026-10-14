@@ -367,7 +367,13 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         ),
         "intent_tags": ["research", "scout", "digest"],
         "temperature": 0.5,
-        "allowed_tools": ["web_search", "browse_web", "memory_search"],
+        "allowed_tools": [
+            "web_search",
+            "browse_web",
+            "memory_search",
+            "watch_page",
+            "list_page_monitors",
+        ],
     },
     {
         "name": "admin",

@@ -11,7 +11,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, Index, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -119,3 +119,35 @@ class MoneyBudget(Base):
     )
 
     __table_args__ = (Index("uq_money_budgets_category", "tenant_id", "category", unique=True),)
+
+
+class PageMonitor(Base):
+    """A page the user asked to watch (services/page_monitors.py).
+
+    ``last_value`` holds the last price for ``price_below`` and 1/0 for
+    ``contains`` (present/absent), so alerts fire on transitions only.
+    """
+
+    __tablename__ = "page_monitors"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="change")
+    selector: Mapped[str | None] = mapped_column(Text, nullable=True)
+    threshold: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    pattern: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=180)
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    last_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (Index("ix_page_monitors_tenant", "tenant_id"),)
