@@ -395,6 +395,7 @@ async def run_watchers(ctx: dict) -> dict:
 
     from life_graph.api.dependencies import get_watcher_notification_engine
     from life_graph.core.events import EventType, event_bus
+    from life_graph.watchers.app_uptime_watcher import AppUptimeWatcher
     from life_graph.watchers.base import BaseWatcher
     from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
     from life_graph.watchers.dependency_watcher import DependencyWatcher
@@ -417,6 +418,7 @@ async def run_watchers(ctx: dict) -> dict:
         DependencyWatcher.name: DependencyWatcher,
         TechRadarWatcher.name: TechRadarWatcher,
         PageMonitorWatcher.name: PageMonitorWatcher,
+        AppUptimeWatcher.name: AppUptimeWatcher,
     }
 
     notification_engine = get_watcher_notification_engine()

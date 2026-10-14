@@ -15,7 +15,7 @@ import contextlib
 import json
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -1059,7 +1059,30 @@ async def delete_schedule(
 # ── Project Schemas ──────────────────────────────────────────
 
 
-class ProjectRegister(BaseModel):
+class _ProjectOpsSettings(BaseModel):
+    """Project settings added with docs/specs/autonomous-app-development.md and
+    assistant-capabilities.md. The registry stored them, but these request models
+    did not declare them, so pydantic dropped them and the API could not set them."""
+
+    sandbox_toolchain: Literal["python", "node", ""] | None = None
+    sandbox_js_test_runner: Literal["vitest", "jest", ""] | None = None
+    sandbox_start_command: str | None = Field(None, max_length=1000)
+    sandbox_app_port: int | None = Field(None, ge=0, le=65535)
+    sandbox_e2e_command: str | None = Field(None, max_length=1000)
+    sandbox_e2e_timeout: int | None = Field(None, ge=0, le=3600)
+    base_branch: str | None = Field(None, max_length=200, pattern=r"^[A-Za-z0-9._/-]*$")
+    auto_approve_plans: bool | None = None
+    deploy_command: str | None = Field(None, max_length=2000)
+    deploy_on_merge: bool | None = None
+    smoke_command: str | None = Field(None, max_length=2000)
+    rollback_command: str | None = Field(None, max_length=2000)
+    fix_persona: str | None = Field(None, max_length=100)
+    # Polled hourly by watchers/app_uptime_watcher.py; backup_check_command runs daily.
+    health_url: str | None = Field(None, max_length=2000, pattern=r"^(https?://\S+)?$")
+    backup_check_command: str | None = Field(None, max_length=2000)
+
+
+class ProjectRegister(_ProjectOpsSettings):
     """Request body for registering a project."""
 
     name: str = Field(
@@ -1129,7 +1152,7 @@ def _validate_checks(v: list[str] | None) -> list[str] | None:
     return list(dict.fromkeys(v))
 
 
-class ProjectUpdate(BaseModel):
+class ProjectUpdate(_ProjectOpsSettings):
     """Request body for updating a project's user-editable settings.
 
     Omitted fields are left unchanged; an empty value (``""``, ``[]``, ``0``)

@@ -302,23 +302,14 @@ async def due_monitors(session: AsyncSession, tenant_id: str, now: datetime) -> 
 
 async def ensure_watcher_config(session: AsyncSession, tenant_id: str) -> None:
     """The hourly watcher cron runs only watchers with a config row for the tenant."""
-    from sqlalchemy.dialects.postgresql import insert
+    from life_graph.watchers.provision import ensure_config
 
-    from life_graph.watchers.models import WatchConfig
-
-    await session.execute(
-        insert(WatchConfig)
-        .values(
-            tenant_id=tenant_id,
-            watcher_name="page_monitor",
-            display_name="Page monitors",
-            description="Pages the user asked to watch (docs/specs/assistant-capabilities.md, Phase D)",
-            schedule="0 * * * *",
-            enabled=True,
-            config={},
-            consecutive_failures=0,
-        )
-        .on_conflict_do_nothing(index_elements=["tenant_id", "watcher_name"])
+    await ensure_config(
+        session,
+        tenant_id,
+        "page_monitor",
+        "Page monitors",
+        "Pages the user asked to watch (docs/specs/assistant-capabilities.md, Phase D)",
     )
 
 
