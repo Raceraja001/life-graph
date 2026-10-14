@@ -1,8 +1,40 @@
 # Long Runs: Context Condenser, Stuck Detection, Honest Outcomes — Feature Spec
 
-> **Status: In progress (2026-10-14).** The user asked for a detailed plan
-> and then to build it without waiting ("create a detailed plan and then,
-> you can work on it and complete. don't expect me").
+> **Status: Built (2026-10-14); live trial incomplete.** The user asked for a
+> detailed plan and then to build it without waiting ("create a detailed plan
+> and then, you can work on it and complete. don't expect me").
+>
+> - **Code:**
+>   - `agents/condenser.py`;
+>   - `agents/stuck.py`;
+>   - the orchestrator's events and `stop_reason`;
+>   - `LocalDriver` outcomes;
+>   - failure causes `stuck` and `out_of_rounds`.
+> - **Tests:** unit tests plus mocked-model end-to-end tests
+>   (`tests/unit/test_agent_condenser.py`, `tests/unit/test_long_runs.py`).
+>   CI is green.
+>
+> **What the live trials showed** (qwen3-coder:30b, node-todo fixture):
+> 1. **Trial 1 made no tool calls** and answered in prose, yet was reported
+>    as a success. The verifiers caught it. **Added:** a coding run with no
+>    tool calls now fails with `stop_reason=no_action`, and the error says
+>    whether the tool calls were written out as text.
+> 2. **Trial 2 made three real tool calls**, then Ollama stalled ("Timeout
+>    on reading data from socket") and the run hit 1,200 s. It was correctly
+>    reported as `success=False, stop_reason=timeout`; before this change it
+>    would have been a success.
+>
+> **Not yet shown live:** a run long enough to condense. The machine could
+> not run it:
+> - qwen3-coder:30b does not fit the 16 GB GPU and spills into WSL's RAM;
+> - another project's dev server held about 14 GB at the same time;
+> - WSL stopped answering three times, under load averages of 80–150.
+>
+> When the machine is quiet, rerun the trial (`local_trial.py <context>
+> <model>` in the session scratchpad):
+> - with a small context to force condensing;
+> - at 32k to confirm no prompt goes over budget;
+> - with qwen3:14b, which fits the GPU, if the 30B model keeps stalling.
 >
 > **Prior art.** The ideas come from OpenHands' "condenser" and "stuck
 > detector" (MIT licence). Ideas are not copyrighted. No code was copied:
