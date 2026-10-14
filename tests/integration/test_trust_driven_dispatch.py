@@ -129,7 +129,7 @@ async def landing(monkeypatch):
 
     from life_graph.services import github_pr
 
-    async def fake_describe(repo_path, branch):
+    async def fake_describe(repo_path, branch, **_kw):  # base_branch= since Phase 0
         return {"head_commit": "a" * 40, "base_commit": "b" * 40, "base_branch": "master"}
 
     monkeypatch.setattr(github_pr, "describe_landing", fake_describe)
@@ -279,9 +279,7 @@ async def test_unverified_landing_never_auto_merges_even_with_earned_trust(landi
     on this project — that trust bar is reserved for work actually checked."""
     project = uuid.uuid4()
     await _record("trusted", project, merged=4, failed=0)
-    approvals = await _land(
-        "trusted", project, auto_open_pr=True, auto_merge=True, verified=False
-    )
+    approvals = await _land("trusted", project, auto_open_pr=True, auto_merge=True, verified=False)
     pr = approvals["driver_pr"]
     assert pr.status == "pending"  # not auto-opened despite earned trust
     assert pr.title.startswith("Open PR (UNVERIFIED)")
@@ -825,8 +823,14 @@ async def test_queued_task_carries_its_acceptance_tests_into_dispatch(monkeypatc
 
     # Exactly how run_queue() calls it: no acceptance_tests argument.
     await dev_tasks._run(
-        async_session, TENANT, task["id"], "Add the model", str(project),
-        "code-fixer-local", "code_change", interactive=False,
+        async_session,
+        TENANT,
+        task["id"],
+        "Add the model",
+        str(project),
+        "code-fixer-local",
+        "code_change",
+        interactive=False,
     )
 
     assert captured["acceptance_tests"] == ["tests/unit/test_model.py::test_save"]
