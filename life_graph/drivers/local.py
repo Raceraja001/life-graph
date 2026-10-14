@@ -18,8 +18,9 @@ For coding work three things the chat loop never needed are enforced here:
   the dispatcher reads.
 * **Honest failure.** The run is failed when the orchestrator reports an
   error (``error`` or ``partial_error``), runs out of rounds, stops for being
-  stuck in a loop, or the time budget runs out, instead of reporting success
-  with whatever partial text streamed. ``metadata.stop_reason`` says which.
+  stuck in a loop, makes no tool calls at all on a coding task, or the time
+  budget runs out, instead of reporting success with whatever partial text
+  streamed. ``metadata.stop_reason`` says which.
 """
 
 from __future__ import annotations
@@ -179,10 +180,28 @@ class LocalDriver:
                     errors.append(f"local driver timed out after {timeout}s")
                     stop_reason = "timeout"
 
+            output = "".join(output_parts)
+            if (
+                not errors
+                and tool_calls == 0
+                and packet.task_type in ("code", "code_change")
+                and packet.allowed_tools != []
+            ):
+                # A coding task that never touched a tool changed nothing. A
+                # live trial (qwen3-coder:30b, 2026-10-14) answered in prose
+                # and was reported as a success; verifiers caught it, but the
+                # driver's own record should not say it worked.
+                stop_reason = "no_action"
+                errors.append(
+                    "the model wrote tool calls as text instead of making them"
+                    if _looks_like_text_tool_calls(output)
+                    else "the model made no tool calls, so nothing was changed"
+                )
+
             duration = int((time.monotonic() - start) * 1000)
             return DriverResult(
                 success=not errors,
-                output="".join(output_parts),
+                output=output,
                 cost_usd=0.0,
                 duration_ms=duration,
                 error="; ".join(errors)[:2000] if errors else None,
@@ -212,3 +231,11 @@ class LocalDriver:
     def cost_per_task(self) -> float:
         """Local execution is free (uses local LLM or configured model)."""
         return 0.0
+
+
+_TEXT_TOOL_CALL_MARKERS = ("<tool_call>", "<function=", '"name": "code_', "```tool")
+
+
+def _looks_like_text_tool_calls(output: str) -> bool:
+    """A model whose chat template failed writes the call into its reply."""
+    return any(marker in output for marker in _TEXT_TOOL_CALL_MARKERS)

@@ -200,7 +200,10 @@ async def _dispatch(events, tmp_path):
     ("events", "success", "reason"),
     [
         (
-            [{"type": "token", "content": "ok"}, {"type": "done", "stop_reason": "completed"}],
+            [
+                {"type": "tool_call", "name": "code_read"},
+                {"type": "done", "stop_reason": "completed"},
+            ],
             True,
             "completed",
         ),
@@ -252,3 +255,45 @@ def test_failure_causes_name_the_new_stops():
     assert stuck["cause"] == "stuck"
     rounds = classify(status="failed", error="ran out of tool rounds", steps=[])
     assert rounds["cause"] == "out_of_rounds"
+
+
+@pytest.mark.asyncio
+async def test_a_coding_run_with_no_tool_calls_is_not_a_success(tmp_path):
+    from life_graph.drivers.base import ContextPacket
+    from life_graph.drivers.local import LocalDriver
+
+    events = [
+        {"type": "token", "content": "I added remove()."},
+        {"type": "done", "stop_reason": "completed"},
+    ]
+    with patch(
+        "life_graph.agents.orchestrator.AgentOrchestrator", lambda *a, **k: _FakeOrch(events)
+    ):
+        r = await LocalDriver().dispatch(
+            ContextPacket(task_id="t", tenant_id="t", task_type="code_change", instruction="x"),
+            tmp_path,
+        )
+    assert not r.success and r.metadata["stop_reason"] == "no_action"
+    assert "no tool calls" in r.error
+
+    text_calls = [
+        {"type": "token", "content": '<tool_call>{"name": "code_read"}</tool_call>'},
+        {"type": "done"},
+    ]
+    with patch(
+        "life_graph.agents.orchestrator.AgentOrchestrator", lambda *a, **k: _FakeOrch(text_calls)
+    ):
+        r = await LocalDriver().dispatch(
+            ContextPacket(task_id="t", tenant_id="t", task_type="code_change", instruction="x"),
+            tmp_path,
+        )
+    assert "as text" in r.error
+
+    with patch(
+        "life_graph.agents.orchestrator.AgentOrchestrator", lambda *a, **k: _FakeOrch(events)
+    ):
+        r = await LocalDriver().dispatch(
+            ContextPacket(task_id="t", tenant_id="t", task_type="research", instruction="x"),
+            tmp_path,
+        )
+    assert r.success  # answering in prose is the job for non-coding tasks
