@@ -512,3 +512,42 @@ async def report_production_finding(project_id: str, body: ProductionFindingBody
         signature=body.signature,
     )
     return success_response(data=result)
+
+
+class BootstrapBody(BaseModel):
+    """A new app: a name, a starting template and, optionally, the idea to plan."""
+
+    name: str = Field(..., min_length=2, max_length=41, description="lowercase, digits, dashes")
+    template: str = Field(..., max_length=64, description="see GET /kernel/drivers/templates")
+    idea: str | None = Field(None, max_length=8000, description="What the app should do")
+    start_plan: bool = Field(False, description="Start a plan-only dev task from the idea")
+    persona_name: str = Field("code-fixer-opencode", max_length=100)
+
+
+@router.get("/templates", summary="App templates a new project can start from")
+async def list_app_templates():
+    from life_graph.services.bootstrap import list_templates
+
+    return success_response(data=list_templates())
+
+
+@router.post(
+    "/projects/bootstrap",
+    status_code=status.HTTP_201_CREATED,
+    summary="Idea to app: scaffold, version, register and optionally plan a new app",
+)
+async def bootstrap_app(body: BootstrapBody):
+    from life_graph.services.bootstrap import BootstrapError, bootstrap
+
+    try:
+        data = await bootstrap(
+            get_current_tenant_id(),
+            name=body.name,
+            template=body.template,
+            idea=body.idea,
+            start_plan=body.start_plan,
+            persona_name=body.persona_name,
+        )
+    except (BootstrapError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return success_response(data=data)

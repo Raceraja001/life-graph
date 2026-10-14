@@ -93,3 +93,32 @@ async def test_steps_are_recorded_and_read_back_in_order_for_their_tenant_only()
     assert mine[0]["at"].startswith("2026-10-13T09:40:32")
     assert "abcdefgh12345678" not in mine[1]["content"]
     assert other == []
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_an_opted_out_tenant_has_no_steps_recorded(monkeypatch):
+    from life_graph.config import settings
+    from life_graph.core.events import Event, EventType
+    from life_graph.services.trajectories import TrajectoryRecorder, list_steps
+    from life_graph.storage.database import async_session
+
+    tenant = f"optout_{uuid.uuid4().hex[:8]}"
+    monkeypatch.setattr(settings, "trajectory_opt_out_tenants", f"someone,{tenant}")
+    task_id = await _task(tenant)
+
+    await TrajectoryRecorder()._on_steps(
+        Event(
+            type=EventType.DRIVER_STEPS,
+            payload={
+                "tenant_id": tenant,
+                "task_id": str(task_id),
+                "driver": "local",
+                "attempt": 1,
+                "steps": [{"seq": 1, "kind": "text", "content": "private"}],
+            },
+        )
+    )
+
+    async with async_session() as s:
+        assert await list_steps(s, tenant, task_id) == []

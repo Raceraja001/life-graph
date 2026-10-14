@@ -43,7 +43,7 @@ async def test_dispatch_stages_credentials_and_calls_run_driver(tmp_path, sandbo
 
     seen = {}
 
-    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout):
+    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None):
         seen["argv"] = argv
         seen["workdir"] = workdir
         seen["credentials_dir"] = credentials_dir
@@ -74,7 +74,7 @@ async def test_credentials_are_cleaned_up_even_on_failure(tmp_path, sandboxed, m
 
     staged_dirs = []
 
-    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout):
+    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None):
         staged_dirs.append(credentials_dir)
         raise RuntimeError("boom")
 
@@ -115,7 +115,7 @@ async def test_sandbox_unavailable_never_falls_back_to_the_host(tmp_path, sandbo
     creds.write_text("{}")
     monkeypatch.setattr(settings, "driver_claude_code_creds_path", str(creds))
 
-    async def unavailable(argv, workdir, credentials_dir, *, timeout):
+    async def unavailable(argv, workdir, credentials_dir, *, timeout, api_key=None):
         raise sandbox.SandboxUnavailableError("image not built")
 
     monkeypatch.setattr(sandbox, "run_driver", unavailable)
@@ -133,14 +133,16 @@ async def test_sandbox_unavailable_never_falls_back_to_the_host(tmp_path, sandbo
     assert "image not built" in result.error
 
 
-async def test_sandbox_timeout_reports_as_timeout_not_a_generic_error(tmp_path, sandboxed, monkeypatch):
+async def test_sandbox_timeout_reports_as_timeout_not_a_generic_error(
+    tmp_path, sandboxed, monkeypatch
+):
     from life_graph.config import settings
 
     creds = tmp_path / ".credentials.json"
     creds.write_text("{}")
     monkeypatch.setattr(settings, "driver_claude_code_creds_path", str(creds))
 
-    async def timed_out(argv, workdir, credentials_dir, *, timeout):
+    async def timed_out(argv, workdir, credentials_dir, *, timeout, api_key=None):
         raise sandbox.SandboxUnavailableError(f"sandboxed command timed out after {timeout}s")
 
     monkeypatch.setattr(sandbox, "run_driver", timed_out)
@@ -205,16 +207,37 @@ async def test_dispatch_streams_and_returns_every_step(tmp_path, sandboxed, monk
         json.dumps(e)
         for e in [
             {"type": "system", "subtype": "init", "model": "claude-opus-5"},
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "a"}}]}},
-            {"type": "user", "message": {"content": [
-                {"type": "tool_result", "tool_use_id": "t1", "content": "hi"}]}},
-            {"type": "result", "is_error": False, "result": "ok", "session_id": "s1",
-             "total_cost_usd": 0.25, "num_turns": 2},
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "t1",
+                            "name": "Read",
+                            "input": {"file_path": "a"},
+                        }
+                    ]
+                },
+            },
+            {
+                "type": "user",
+                "message": {
+                    "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "hi"}]
+                },
+            },
+            {
+                "type": "result",
+                "is_error": False,
+                "result": "ok",
+                "session_id": "s1",
+                "total_cost_usd": 0.25,
+                "num_turns": 2,
+            },
         ]
     )
 
-    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout):
+    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None):
         seen["argv"] = argv
         return sandbox.SandboxResult(0, stream, "")
 
@@ -227,5 +250,55 @@ async def test_dispatch_streams_and_returns_every_step(tmp_path, sandboxed, monk
     assert result.success is True and result.output == "ok" and result.cost_usd == 0.25
     assert result.metadata["model"] == "claude-opus-5"
     assert [(s["kind"], s["tool"]) for s in result.metadata["steps"]] == [
-        ("tool_call", "Read"), ("tool_result", "Read"),
+        ("tool_call", "Read"),
+        ("tool_result", "Read"),
     ]
+
+
+async def test_api_key_mode_passes_the_key_by_name_and_stages_no_login(
+    tmp_path, sandboxed, monkeypatch
+):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "driver_claude_code_auth", "api_key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-key-1234567890")
+    monkeypatch.setattr(settings, "driver_claude_code_creds_path", str(tmp_path / "nope"))
+
+    async def no_staging(source):
+        raise AssertionError("api_key mode must never stage the personal login")
+
+    monkeypatch.setattr(sandbox, "stage_credentials", no_staging)
+    seen = {}
+
+    async def fake_image():
+        return "sha256:x"
+
+    async def fake_exec(argv, timeout, container=None, env=None):
+        seen["argv"], seen["env"] = argv, env
+        return sandbox.SandboxResult(0, '{"result": "ok"}', "")
+
+    monkeypatch.setattr(sandbox, "_driver_image_id", fake_image)
+    monkeypatch.setattr(sandbox, "_exec", fake_exec)
+
+    result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path / "work")
+
+    assert result.success is True
+    argv = seen["argv"]
+    assert "ANTHROPIC_API_KEY" in argv  # by name only...
+    assert not any("sk-ant-test-key" in a for a in argv)  # ...never the value in argv
+    assert seen["env"] == {"ANTHROPIC_API_KEY": "sk-ant-test-key-1234567890"}
+    assert not any("claude-config" in a and ":/claude-config" in a for a in argv)
+
+
+async def test_api_key_mode_without_a_key_fails_instead_of_using_the_login(
+    tmp_path, sandboxed, monkeypatch
+):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "driver_claude_code_auth", "api_key")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(settings, "driver_claude_code_api_key", "")
+
+    result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path / "work")
+
+    assert result.success is False and "ANTHROPIC_API_KEY" in result.error

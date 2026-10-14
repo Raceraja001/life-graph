@@ -74,3 +74,18 @@ async def test_a_driver_without_steps_emits_nothing(monkeypatch):
     )
 
     assert EventType.DRIVER_STEPS not in emitted
+
+
+def test_each_tenant_gets_its_own_private_scratch_root():
+    import os
+    import stat
+    from pathlib import Path
+
+    from life_graph.drivers.dispatcher import tenant_scratch_root
+
+    a, b = tenant_scratch_root("tenant-a"), tenant_scratch_root("tenant-b")
+    assert a != b and Path(a).name == "tenant-a"
+    assert stat.S_IMODE(os.stat(a).st_mode) == 0o700
+    # A tenant id can never become a path that climbs out of the root.
+    weird = Path(tenant_scratch_root("../../etc"))
+    assert weird.parent == Path(a).parent and ".." not in weird.name.split("_")

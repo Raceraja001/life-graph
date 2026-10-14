@@ -1,0 +1,12 @@
+{
+  "description": "Node HTTP API: in-memory store, vitest unit tests, an HTTP end-to-end check.",
+  "settings": {
+    "sandbox_toolchain": "node",
+    "sandbox_js_test_runner": "vitest",
+    "sandbox_start_command": "node src/server.mjs",
+    "sandbox_app_port": 3000,
+    "sandbox_e2e_command": "node tests/e2e/smoke.mjs",
+    "required_checks": ["tests_pass", "app_e2e_pass", "no_secrets_in_diff"],
+    "base_branch": "main"
+  }
+}

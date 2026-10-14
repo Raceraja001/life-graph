@@ -147,7 +147,9 @@ def _limits(*, memory: str, cpus: str) -> list[str]:
     ]
 
 
-async def _exec(argv: list[str], timeout: int, container: str | None = None) -> SandboxResult:
+async def _exec(
+    argv: list[str], timeout: int, container: str | None = None, env: dict | None = None
+) -> SandboxResult:
     """Run a docker CLI command, killing the container itself on timeout.
 
     Killing the ``docker run`` client does not stop the container it started,
@@ -159,6 +161,9 @@ async def _exec(argv: list[str], timeout: int, container: str | None = None) -> 
             *argv,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            # Extra variables for the docker CLI itself (e.g. a key passed to
+            # the container by name); the parent environment is kept.
+            env={**os.environ, **env} if env else None,
         )
     except FileNotFoundError as exc:
         raise SandboxUnavailableError("docker CLI not found") from exc
@@ -381,9 +386,10 @@ async def _driver_image_id() -> str:
 async def run_driver(
     argv: list[str],
     workdir: Path,
-    credentials_dir: Path,
+    credentials_dir: Path | None,
     *,
     timeout: int = 300,
+    api_key: str | None = None,
 ) -> SandboxResult:
     """Run the claude_code driver's CLI invocation inside a container.
 
@@ -415,6 +421,26 @@ async def run_driver(
     """
     await _driver_image_id()
     container = f"lg-driver-{uuid.uuid4().hex[:12]}"
+    if api_key:
+        # Commercial mode: an API key, never the personal login. Passed by
+        # NAME (-e VAR, value from the docker client's environment), so the
+        # key never appears in a process listing the way -e VAR=value would.
+        auth = ["-e", "ANTHROPIC_API_KEY", "-e", "CLAUDE_CONFIG_DIR=/tmp/.claude"]
+        client_env = {"ANTHROPIC_API_KEY": api_key}
+    else:
+        if credentials_dir is None:
+            raise SandboxUnavailableError("claude_code sandbox needs credentials or an API key")
+        # rw, not :ro: the CLI refreshes its own access token in place from
+        # the refresh token and needs to write the result back — this is
+        # still only the throwaway copy from stage_credentials(), never the
+        # live ~/.claude, so a write here has nothing to corrupt.
+        auth = [
+            "-e",
+            "CLAUDE_CONFIG_DIR=/claude-config",
+            "-v",
+            f"{credentials_dir}:/claude-config",
+        ]
+        client_env = None
     docker_argv = [
         "docker",
         "run",
@@ -429,16 +455,9 @@ async def run_driver(
         ),
         "-e",
         "HOME=/tmp",
-        "-e",
-        "CLAUDE_CONFIG_DIR=/claude-config",
+        *auth,
         "-v",
         f"{workdir}:{WORK}",
-        # rw, not :ro: the CLI refreshes its own access token in place from
-        # the refresh token and needs to write the result back — this is
-        # still only the throwaway copy from stage_credentials(), never the
-        # live ~/.claude, so a write here has nothing to corrupt.
-        "-v",
-        f"{credentials_dir}:/claude-config",
         "-w",
         WORK,
         # The image's own binary, not argv[0]: argv[0] is the host's
@@ -449,7 +468,7 @@ async def run_driver(
         settings.driver_claude_sandbox_image,
         *argv[1:],
     ]
-    res = await _exec(docker_argv, timeout=timeout, container=container)
+    res = await _exec(docker_argv, timeout=timeout, container=container, env=client_env)
     if res.returncode in (125, 126, 127) and not res.stdout:
         raise SandboxUnavailableError(
             f"claude_code sandbox could not start: {res.stderr.strip()[-400:]}"

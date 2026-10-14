@@ -49,7 +49,7 @@ async def test_a_node_check_runs_in_a_tmp_copy_with_deps_at_root(tmp_path, monke
 
     captured = {}
 
-    async def fake_exec(argv, timeout, container=None):
+    async def fake_exec(argv, timeout, container=None, env=None):
         captured["argv"] = argv
         return sandbox.SandboxResult(0, "ok", "")
 

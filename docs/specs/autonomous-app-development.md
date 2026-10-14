@@ -1,6 +1,6 @@
 # Autonomous App Development — Roadmap Spec
 
-> **Status: In progress (2026-10-13).** The user handed this over to build end to
+> **Status: Built (2026-10-14).** All four phases. The user handed this over to build end to
 > end ("you can decide and complete these… third party info needed means, use
 > stubs"). Each item records what was built and what is stubbed.
 
@@ -75,7 +75,7 @@ watch. On 2026-10-13 a human had to rescue it from:
     check files a fix task as a suggestion (an approval), deduplicated per
     finding.
 
-### Phase 4 — Idea to app, commercial readiness
+### Phase 4 — Idea to app, commercial readiness — BUILT
 12. **Bootstrap.**
     - `POST /kernel/drivers/projects/bootstrap` scaffolds a new app from a
       local template, `git init`s it and registers it as a project.
@@ -87,3 +87,40 @@ watch. On 2026-10-13 a human had to rescue it from:
       personal login.
     - **Recording consent:** a per-tenant opt-out for step recording.
     - **Isolation:** per-tenant sandbox and worktree directories.
+
+## What is stubbed, and how to switch it on
+
+Every third-party piece is behind a setting or registry key. The code path is
+real and tested; turning a piece on is configuration.
+
+| Piece | Default (stub) | Switch on |
+|---|---|---|
+| GitHub repo for a new app | local bare repo under `<root>/.lg-remotes/` | `LIFE_GRAPH_BOOTSTRAP_CREATE_GITHUB=true` (uses `gh repo create --private`), or later `git remote set-url origin …` |
+| Deploy target | none: `deploy_command` is the operator's own script | set `deploy_command`, `smoke_command`, `rollback_command`, `deploy_on_merge` on the project |
+| External monitors (uptime, Sentry, …) | none | point them at `POST /kernel/drivers/projects/{id}/findings` |
+| Anthropic API (commercial use) | personal Claude login (`oauth`) | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_AUTH=api_key` + `ANTHROPIC_API_KEY` |
+| OpenCode | installed at `~/.local/opencode` on this machine | `LIFE_GRAPH_DRIVER_OPENCODE_BIN`, `…_MODEL` (any `provider/model`) |
+| Playwright for e2e | plain HTTP checks (`node tests/e2e/smoke.mjs`) | an image with browsers (`LIFE_GRAPH_VERIFIER_SANDBOX_NODE_IMAGE`) and a Playwright `sandbox_e2e_command` |
+
+Opt-ins that are deliberately **off** until a person turns them on per project:
+- `auto_approve_plans`;
+- `auto_open_pr`;
+- `auto_merge`;
+- `deploy_on_merge`.
+
+Deploys are never auto-approved. The $10 monthly budget cap was not raised.
+
+## Where the build differs from the text above
+
+These differences were found while building:
+- **CI itself was the first casualty.** Every CI run since 2026-10-03 had died pulling MinIO. Fixing that exposed further problems:
+  - SQLAlchemy 2.1 changed a bare `postgresql://` URL's default driver;
+  - migration 043 broke on any fresh database;
+  - 18 integration tests were stale.
+
+  The integration suite had never run in CI before 2026-10-14; it now passes there, 603 tests.
+- **`start.sh` recorded a wrapper's pid.** Its `(cd … && nohup … &)` recorded a wrapper subshell's pid and held the caller's pipe. Both scripts now `exec` uvicorn.
+- **Node checks run in a `/tmp` copy of the worktree.** vitest, jest, Vite and Next write caches next to the project, and the worktree mount stays read-only.
+- **vitest and jest exit 0 when `-t` matches nothing.** A bound JS test must therefore show at least one passing test.
+- **OpenCode waits on an open stdin.** The driver closes it. Its `external_directory: deny` held when the model tried to write outside the worktree.
+- **Plan fan-out overwrote the reviewer's note.** Plan fan-out and the deploy result overwrote the approval's reviewer note; they now append to it.

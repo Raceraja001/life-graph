@@ -403,6 +403,11 @@ class Settings(BaseSettings):
     # fallback cut a real plan-only run off mid-exploration of this repo;
     # 1200 matches the local driver.
     driver_claude_code_timeout_seconds: int = 1200
+    # "oauth" = the personal Claude login (staged into the sandbox); "api_key"
+    # = ANTHROPIC_API_KEY under Anthropic's commercial terms, required for a
+    # service sold to others. Prefer the env var to this setting for the key.
+    driver_claude_code_auth: str = "oauth"
+    driver_claude_code_api_key: str = ""
     # OpenCode driver (drivers/opencode.py). Unavailable until the binary exists:
     #   npm install --prefix ~/.local/opencode opencode-ai
     driver_opencode_bin: str = "opencode"
@@ -417,6 +422,11 @@ class Settings(BaseSettings):
     auto_plan_max_tasks: int = 3
     # Seconds a project's smoke_command may take after a deploy.
     post_deploy_smoke_timeout: int = 300
+    # Idea -> app (services/bootstrap.py): where new apps are created (default:
+    # the first tool root), and whether to create a private GitHub repo with gh
+    # (off: a local bare repo stands in as origin).
+    bootstrap_root: str = ""
+    bootstrap_create_github: bool = False
     # Set false on a preview/secondary instance so it never even tries to be
     # the dev-task runner. Without it, the database advisory lock still keeps
     # it from running alongside the real one (services/dev_tasks.py).
@@ -424,6 +434,9 @@ class Settings(BaseSettings):
     # Per-step content cap for recorded agent runs (services/trajectories.py).
     # One whole-file read can be megabytes; the real length is kept alongside.
     trajectory_step_max_chars: int = 16_000
+    # Tenants whose agent runs are NOT recorded step by step (consent: a
+    # customer may opt out). Comma-separated tenant ids.
+    trajectory_opt_out_tenants: str = ""
     # Dissenting cheap-model review before an auto-verified task lands.
     # Off by default — pure LLM overhead until agents run unattended.
     driver_second_opinion_enabled: bool = False
@@ -557,6 +570,11 @@ class Settings(BaseSettings):
     def tool_privileged_tenants_list(self) -> list[str]:
         """Tenants allowed to use host tools; empty list means no restriction."""
         return [t.strip() for t in self.tool_privileged_tenants.split(",") if t.strip()]
+
+    @property
+    def trajectory_opt_out_tenants_list(self) -> list[str]:
+        """Tenants opted out of step recording (services/trajectories.py)."""
+        return [t.strip() for t in self.trajectory_opt_out_tenants.split(",") if t.strip()]
 
     @property
     def tool_fs_roots_list(self) -> list[str]:

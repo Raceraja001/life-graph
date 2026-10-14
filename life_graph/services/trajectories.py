@@ -129,6 +129,10 @@ class TrajectoryRecorder:
         steps = data.get("steps") or []
         if not steps or not data.get("tenant_id") or not data.get("task_id"):
             return
+        if str(data["tenant_id"]) in settings.trajectory_opt_out_tenants_list:
+            # Recording is per-tenant consent: a customer who opted out has
+            # nothing of their agents' runs stored beyond the task itself.
+            return
         from life_graph.storage.database import async_session
 
         try:

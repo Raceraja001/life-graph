@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import time
 from pathlib import Path
@@ -116,6 +117,23 @@ def _allowed_cli_tools(allowed_tools: list[str] | None) -> list[str] | None:
     for name in allowed_tools:
         mapped.update(_TOOL_NAME_TO_CLI.get(name, ()))
     return sorted(mapped)
+
+
+def _api_key() -> str | None:
+    """The API key when ``driver_claude_code_auth = api_key``, else None (personal login).
+
+    A service sold to others should not run on one person's subscription
+    login; it needs Anthropic API access under commercial terms. This is the
+    switch. The key comes from ``ANTHROPIC_API_KEY`` (or the setting), and
+    api_key mode with no key is an error rather than a quiet fallback to the
+    personal login.
+    """
+    if settings.driver_claude_code_auth != "api_key":
+        return None
+    key = os.environ.get("ANTHROPIC_API_KEY") or settings.driver_claude_code_api_key
+    if not key:
+        raise RuntimeError("driver_claude_code_auth=api_key but no ANTHROPIC_API_KEY is set")
+    return key
 
 
 class ClaudeCodeDriver:
@@ -285,12 +303,14 @@ class ClaudeCodeDriver:
                 available. Never falls back to the host path — see
                 driver_claude_sandbox's docstring in config.py.
         """
+        api_key = _api_key()
         if not sandbox.driver_sandbox_enabled():
             proc = await asyncio.create_subprocess_exec(
                 *args,
                 cwd=str(cwd),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env={**os.environ, "ANTHROPIC_API_KEY": api_key} if api_key else None,
             )
             try:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -300,16 +320,22 @@ class ClaudeCodeDriver:
                 raise
             return proc.returncode, out, err
 
-        creds_source = Path(settings.driver_claude_code_creds_path).expanduser()
-        creds_dir = await sandbox.stage_credentials(creds_source)
+        # API-key mode stages no personal credentials at all.
+        creds_dir = None
+        if not api_key:
+            creds_source = Path(settings.driver_claude_code_creds_path).expanduser()
+            creds_dir = await sandbox.stage_credentials(creds_source)
         try:
-            result = await sandbox.run_driver(args, cwd, creds_dir, timeout=timeout)
+            result = await sandbox.run_driver(
+                args, cwd, creds_dir, timeout=timeout, api_key=api_key
+            )
         except sandbox.SandboxUnavailableError as exc:
             if "timed out" in str(exc):
                 raise TimeoutError(str(exc)) from exc
             raise
         finally:
-            shutil.rmtree(creds_dir, ignore_errors=True)
+            if creds_dir is not None:
+                shutil.rmtree(creds_dir, ignore_errors=True)
         return result.returncode, result.stdout.encode(), result.stderr.encode()
 
     @staticmethod

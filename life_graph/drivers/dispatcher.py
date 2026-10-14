@@ -89,6 +89,20 @@ DEFAULT_VERIFY_CHAIN = [
 # pause-for-approval architecture, most of the benefit (a reviewable plan,
 # a forcing function against misreading the instruction) for one-file's
 # worth of code.
+def tenant_scratch_root(tenant_id: str) -> str:
+    """A private (0700) parent for one tenant's dispatch scratch dirs and worktrees.
+
+    One customer's agent work never shares a directory with another's, and
+    a scratch dir's path says whose it is. The tenant id is reduced to safe
+    characters; it is already validated, this only keeps it a single name.
+    """
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", tenant_id or "unknown")[:64]
+    root = Path(tempfile.gettempdir()) / "lg-tenants" / safe
+    root.mkdir(parents=True, exist_ok=True)
+    root.chmod(0o700)
+    return str(root)
+
+
 # Registry settings the verifier chain reads (never from the worktree, which
 # the agent controls). One list, so the first attempt and the bounce agree.
 SANDBOX_SETTINGS: tuple[str, ...] = (
@@ -499,7 +513,11 @@ class TaskDispatcher:
             )
 
             # Step 4: Dispatch with workdir
-            scratch = Path(tempfile.mkdtemp(prefix=f"lg_dispatch_{task_id[:8]}_"))
+            scratch = Path(
+                tempfile.mkdtemp(
+                    prefix=f"lg_dispatch_{task_id[:8]}_", dir=tenant_scratch_root(tenant_id)
+                )
+            )
             workdir, worktree = await resolve_workdir(packet, scratch)
             if worktree is not None:
                 worktree_origin = packet.project_context.get("path")
