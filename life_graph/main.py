@@ -159,6 +159,7 @@ async def lifespan(app: FastAPI):
 
     # Startup — register agent tools (import triggers @tool decorator)
     with startup_step(report, "agent_tools"):
+        import life_graph.tools.assistant  # noqa: F401
         import life_graph.tools.browser  # noqa: F401
         import life_graph.tools.calculator  # noqa: F401
         import life_graph.tools.code  # noqa: F401
@@ -640,6 +641,10 @@ v1_router.include_router(model_health_api.router)
 from life_graph.api import integrations_telegram as telegram_api
 
 v1_router.include_router(telegram_api.router)
+
+from life_graph.api import assistant as assistant_api
+
+v1_router.include_router(assistant_api.router)
 
 app.include_router(v1_router)
 

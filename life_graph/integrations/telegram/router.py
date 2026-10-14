@@ -117,14 +117,15 @@ async def handle_message(msg: dict[str, Any], session: AsyncSession) -> None:
 
     # Past this point the message has a tenant, so give the storage layer one.
     with tenant_scope(tenant_id, "telegram"):
-        if text.startswith("/"):
+        # Media is checked before text because a photo or voice note may carry
+        # a caption. Treating the caption as the whole message would file the
+        # words and silently discard the recording they describe. That holds
+        # for a caption that looks like a command too ("/doc" on a photo).
+        media = tg_media.extract(msg)
+        if media is None and text.startswith("/"):
             await _handle_command(chat_id, tenant_id, text, session)
             return
 
-        # Media is checked before text because a photo or voice note may carry
-        # a caption. Treating the caption as the whole message would file the
-        # words and silently discard the recording they describe.
-        media = tg_media.extract(msg)
         if media is not None:
             await tg_media.handle(media, msg, chat_id, tenant_id, text, _reply)
             return
