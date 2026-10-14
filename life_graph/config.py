@@ -530,6 +530,14 @@ class Settings(BaseSettings):
     # mistapped message should not be sufficient authority to run something
     # irreversible. /pending stays available regardless — reading is not deciding.
     telegram_allow_approvals: bool = False
+    # Conversation from Telegram (/ask, /chat — services/assistant_chat.py).
+    telegram_assistant_persona: str = "assistant"
+    telegram_ask_timeout_seconds: int = 240
+    # Spoken replies: an OpenAI-compatible /v1/audio/speech server (speaches
+    # on :8010 locally). Empty = text replies only.
+    tts_base_url: str = ""
+    tts_model: str = "speaches-ai/Kokoro-82M-v1.0-ONNX"
+    tts_voice: str = "af_heart"
 
     # ── Derived Properties ─────────────────────────────
 

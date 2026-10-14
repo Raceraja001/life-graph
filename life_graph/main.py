@@ -248,6 +248,22 @@ async def lifespan(app: FastAPI):
         if seeded:
             # Inserted OR reconciled — seed_builtins logs the breakdown.
             logger.info("Seeded/reconciled %d built-in personas for default tenant", seeded)
+        # Every other tenant that already has personas gets new built-ins and
+        # prompt fixes too; otherwise only "default" ever saw them.
+        from sqlalchemy import distinct, select
+
+        from life_graph.models.db import AgentPersona
+        from life_graph.storage.database import async_session as _personas_session
+
+        async with _personas_session() as session:
+            persona_tenants = (
+                (await session.execute(select(distinct(AgentPersona.tenant_id)))).scalars().all()
+            )
+        for persona_tenant in persona_tenants:
+            if persona_tenant and persona_tenant != "default":
+                n = await persona_svc.seed_builtins(persona_tenant)
+                if n:
+                    logger.info("Seeded/reconciled %d built-in personas for %s", n, persona_tenant)
 
     # Startup — seed ambient scheduled jobs for default tenant
     with startup_step(report, "seed_ambient_jobs"):

@@ -429,3 +429,100 @@ async def delete_monitor(monitor_id: str) -> dict[str, Any]:
         await session.delete(m)
         await session.commit()
     return success_response({"deleted": monitor_id})
+
+
+# ── Study cards ─────────────────────────────────────────────────────────────
+
+
+class GenerateCards(BaseModel):
+    """Cards from pasted notes (``text``) or from approved memories on ``topic``."""
+
+    text: str | None = Field(default=None, max_length=20_000)
+    topic: str | None = Field(default=None, max_length=120)
+    deck: str | None = Field(default=None, max_length=80)
+
+
+class CardIn(BaseModel):
+    front: str = Field(min_length=1, max_length=500)
+    back: str = Field(min_length=1, max_length=1500)
+    deck: str = Field(default="general", max_length=80)
+
+
+class GradeIn(BaseModel):
+    grade: str
+
+
+@router.get("/study/due")
+async def due_cards(limit: int = 20, deck: str | None = None) -> dict[str, Any]:
+    from life_graph.services import study
+
+    tenant_id = get_current_tenant_id()
+    today = _today()
+    async with async_session() as session:
+        cards = await study.due_cards(session, tenant_id, today, max(1, min(limit, 100)), deck)
+        total = await study.count_due(session, tenant_id, today)
+    return success_response([study.card_dict(c) for c in cards], meta={"due": total})
+
+
+@router.post("/study/generate")
+async def generate_cards(body: GenerateCards) -> dict[str, Any]:
+    from life_graph.services import study
+
+    if not (body.text or body.topic):
+        raise HTTPException(status_code=422, detail="Give text to study from, or a topic")
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        out = await study.generate(
+            session, tenant_id, today=_today(), text=body.text, topic=body.topic, deck=body.deck
+        )
+        await session.commit()
+    return success_response(out)
+
+
+@router.post("/study/cards", status_code=201)
+async def add_card(body: CardIn) -> dict[str, Any]:
+    from life_graph.services import study
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        added = await study.add_cards(
+            session,
+            tenant_id,
+            [{"front": body.front, "back": body.back}],
+            deck=body.deck,
+            today=_today(),
+        )
+        await session.commit()
+    return success_response({"added": added})
+
+
+@router.post("/study/cards/{card_id}/grade")
+async def grade(card_id: str, body: GradeIn) -> dict[str, Any]:
+    from life_graph.services import study
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        card = await study.get_card(session, tenant_id, _uuid(card_id))
+        if card is None:
+            raise HTTPException(status_code=404, detail="Card not found")
+        try:
+            study.grade_card(card, body.grade, _today())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await session.commit()
+        await session.refresh(card)
+    return success_response(study.card_dict(card))
+
+
+@router.delete("/study/cards/{card_id}")
+async def delete_card(card_id: str) -> dict[str, Any]:
+    from life_graph.services import study
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        card = await study.get_card(session, tenant_id, _uuid(card_id))
+        if card is None:
+            raise HTTPException(status_code=404, detail="Card not found")
+        await session.delete(card)
+        await session.commit()
+    return success_response({"deleted": card_id})

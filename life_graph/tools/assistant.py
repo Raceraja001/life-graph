@@ -183,3 +183,56 @@ async def list_page_monitors() -> str:
             .all()
         )
     return _out({"monitors": [page_monitors.to_dict(m) for m in rows]})
+
+
+@tool(
+    name="make_study_cards",
+    description=(
+        "Write spaced-repetition flashcards for the user, from notes they give you"
+        " (text) or from their saved memories about a topic. Only when they ask to study."
+    ),
+    parameters_schema={
+        "type": "object",
+        "properties": {
+            "topic": {"type": "string"},
+            "text": {"type": "string", "description": "Notes to make cards from"},
+            "deck": {"type": "string"},
+        },
+    },
+)
+async def make_study_cards(
+    topic: str | None = None, text: str | None = None, deck: str | None = None
+) -> str:
+    from life_graph.services import study
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    if not (topic or text):
+        return json.dumps({"error": "give a topic or some text"})
+    async with async_session() as session:
+        out = await study.generate(
+            session, tenant, today=_today(), text=text, topic=topic, deck=deck
+        )
+        await session.commit()
+    return _out(out)
+
+
+@tool(
+    name="study_cards_due",
+    description="How many study cards are due today, and the first few questions.",
+    parameters_schema={"type": "object", "properties": {}},
+)
+async def study_cards_due() -> str:
+    from life_graph.services import study
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    today = _today()
+    async with async_session() as session:
+        cards = await study.due_cards(session, tenant, today, limit=5)
+        total = await study.count_due(session, tenant, today)
+    return _out({"due": total, "next": [{"deck": c.deck, "front": c.front} for c in cards]})

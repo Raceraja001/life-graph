@@ -11,7 +11,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, Index, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -151,3 +151,35 @@ class PageMonitor(Base):
     )
 
     __table_args__ = (Index("ix_page_monitors_tenant", "tenant_id"),)
+
+
+class ReviewCard(Base):
+    """A spaced-repetition study card (services/study.py, SM-2 scheduling).
+
+    ``dedup_key`` is a hash of the normalised front, so generating cards from
+    the same notes twice does not make duplicates.
+    """
+
+    __tablename__ = "review_cards"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    deck: Mapped[str] = mapped_column(String(80), nullable=False, default="general")
+    front: Mapped[str] = mapped_column(Text, nullable=False)
+    back: Mapped[str] = mapped_column(Text, nullable=False)
+    source_memory_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    ease: Mapped[float] = mapped_column(Float, nullable=False, default=2.5)
+    interval_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    repetitions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    due_on: Mapped[date] = mapped_column(Date, nullable=False)
+    last_grade: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    reviews: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dedup_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (
+        Index("uq_review_cards_dedup", "tenant_id", "dedup_key", unique=True),
+        Index("ix_review_cards_due", "tenant_id", "due_on"),
+    )

@@ -91,4 +91,13 @@ async def brief_lines(session_factory, tenant_id: str, today: date | None = None
             lines.append(line)
     except Exception:
         logger.warning("brief: budgets line failed for %s", tenant_id, exc_info=True)
+    try:
+        from life_graph.services import study
+
+        async with session_factory() as session:
+            due = await study.count_due(session, tenant_id, today)
+        if line := study.brief_line(due):
+            lines.append(line)
+    except Exception:
+        logger.warning("brief: study line failed for %s", tenant_id, exc_info=True)
     return lines

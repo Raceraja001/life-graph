@@ -172,7 +172,32 @@ class TelegramClient:
             kwargs["timeout"] = httpx.Timeout(read_timeout, connect=10.0)
 
         response = await self._client.post(url, **kwargs)
+        return self._result(method, response)
 
+    async def send_chat_action(self, chat_id: int | str, action: str = "typing") -> None:
+        """Show "typing…" while a slow answer is being worked out."""
+        await self._call("sendChatAction", {"chat_id": chat_id, "action": action})
+
+    async def send_voice(
+        self, chat_id: int | str, audio: bytes, *, filename: str = "reply.ogg", caption: str = ""
+    ) -> dict:
+        """Send an OGG/Opus voice message (multipart, so not through ``_call``)."""
+        if not self._token:
+            raise TelegramError("Telegram bot token is not configured")
+        if self._client is None:
+            raise RuntimeError("TelegramClient used outside its async context manager")
+        data: dict[str, Any] = {"chat_id": str(chat_id)}
+        if caption:
+            data["caption"] = caption[:1024]
+        response = await self._client.post(
+            f"{API_BASE}/bot{self._token}/sendVoice",
+            data=data,
+            files={"voice": (filename, audio, "audio/ogg")},
+        )
+        return self._result("sendVoice", response)
+
+    @staticmethod
+    def _result(method: str, response: httpx.Response) -> Any:
         # 429 carries the wait time in the body, not the standard header, and it
         # is not an error to shout about — it is Telegram pacing us.
         try:

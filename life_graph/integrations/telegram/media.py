@@ -99,6 +99,7 @@ async def handle(
     tenant_id: str,
     caption: str,
     reply: Callable[[int, str], Awaitable[None]],
+    converse: Callable[..., Awaitable[None]] | None = None,
 ) -> None:
     """Download one piece of media and put it through the multimodal path.
 
@@ -135,7 +136,13 @@ async def handle(
         return
 
     try:
-        if media["kind"] == "voice":
+        if media["kind"] == "voice" and converse is not None:
+            # Chat mode: the voice note is a question, not a memory.
+            result = await service.transcribe_only(data, media["filename"])
+            question = (result.get("transcript") or "").strip()
+            await reply(chat_id, _confirm("Heard", question).removesuffix("\n\nSaved."))
+            await converse(chat_id, tenant_id, question, voice=True)
+        elif media["kind"] == "voice":
             result = await service.process_voice(data, media["filename"], tenant_id)
             body = (result.get("transcript") or "").strip()
             await reply(chat_id, _confirm("Heard", body))
