@@ -143,8 +143,10 @@ def media_calls(monkeypatch):
     """Intercept the multimodal hand-off; transcription is tested elsewhere."""
     calls: list[dict] = []
 
-    async def fake_handle(media, msg, chat_id, tenant_id, caption, reply):
-        calls.append({"media": media, "tenant_id": tenant_id, "caption": caption})
+    async def fake_handle(media, msg, chat_id, tenant_id, caption, reply, converse=None):
+        calls.append(
+            {"media": media, "tenant_id": tenant_id, "caption": caption, "converse": converse}
+        )
 
     monkeypatch.setattr(tg_media, "handle", fake_handle)
     return calls
@@ -361,3 +363,112 @@ async def test_two_different_messages_are_still_two_captures(bound_chat, replies
         )
 
     assert len(await _events()) == 2
+
+
+# ── Conversation (docs/specs/assistant-capabilities.md, Phase F) ──
+
+
+@pytest.fixture
+def assistant(monkeypatch):
+    """In-memory chat modes and a fake assistant, so no model or Redis is needed."""
+    from life_graph.services import assistant_chat
+
+    modes: dict[int, str] = {}
+    asked: list[tuple[str, str]] = []
+
+    async def get_mode(chat_id):
+        return modes.get(chat_id, "capture")
+
+    async def set_mode(chat_id, mode):
+        modes[chat_id] = mode
+        return True
+
+    async def ask(tenant_id, question, **_kw):
+        asked.append((tenant_id, question))
+        return "Your next meeting is at 3pm."
+
+    monkeypatch.setattr(assistant_chat, "get_mode", get_mode)
+    monkeypatch.setattr(assistant_chat, "set_mode", set_mode)
+    monkeypatch.setattr(assistant_chat, "ask", ask)
+    return asked
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_ask_answers_and_stores_nothing(bound_chat, replies, assistant):
+    async with async_session() as session:
+        await tg_router.handle_message(_msg("/ask when is my next meeting?"), session)
+    assert assistant == [(TENANT, "when is my next meeting?")]
+    assert replies[-1] == (CHAT, "Your next meeting is at 3pm.")
+    assert await _events() == []
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_chat_mode_turns_messages_into_questions_until_capture(
+    bound_chat, replies, assistant
+):
+    async with async_session() as session:
+        await tg_router.handle_message(_msg("/chat"), session)
+        await tg_router.handle_message(_msg("what bills are due?"), session)
+        await tg_router.handle_message(_msg("/capture"), session)
+        await tg_router.handle_message(_msg("buy milk"), session)
+    assert assistant == [(TENANT, "what bills are due?")]
+    assert len(await _events()) == 1  # only "buy milk" became a memory
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_voice_in_chat_mode_is_handed_a_converse_callback(
+    bound_chat, replies, assistant, media_calls
+):
+    msg = _msg("", voice={"file_id": "v1", "duration": 4})
+    del msg["text"]
+    async with async_session() as session:
+        await tg_router.handle_message(msg, session)
+        await tg_router.handle_message(_msg("/chat"), session)
+        await tg_router.handle_message(msg, session)
+    assert media_calls[0]["converse"] is None  # capture mode: a memory, as before
+    assert media_calls[1]["converse"] is not None
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_doc_caption_reaches_the_media_path_not_the_command_router(
+    bound_chat, replies, media_calls
+):
+    msg = _msg("", photo=[{"file_id": "p"}])
+    del msg["text"]
+    msg["caption"] = "/doc passport"
+    async with async_session() as session:
+        await tg_router.handle_message(msg, session)
+    assert len(media_calls) == 1 and media_calls[0]["caption"] == "/doc passport"
+    assert not any("Unknown command" in text for _, text in replies)
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_txn_records_a_bank_alert_once(bound_chat, replies):
+    from life_graph.models.assistant import MoneyTransaction
+
+    sms = "/txn Rs.250.00 debited from A/c XX1234 on 12-10-26 to VPA swiggy@icici UPI Ref 1."
+    async with async_session() as session:
+        await tg_router.handle_message(_msg(sms), session)
+        await tg_router.handle_message(_msg(sms), session)
+        await tg_router.handle_message(_msg("/txn hello"), session)
+    assert replies[0][1].startswith("Recorded: debit 250.00 at swiggy@icici")
+    assert replies[1][1] == "Already recorded."
+    assert "doesn't look like a bank alert" in replies[2][1]
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(MoneyTransaction).where(MoneyTransaction.tenant_id == TENANT)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+        await session.execute(delete(MoneyTransaction).where(MoneyTransaction.tenant_id == TENANT))
+        await session.commit()

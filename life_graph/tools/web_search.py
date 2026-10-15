@@ -1,25 +1,169 @@
-"""Web search tool using the Tavily API.
+"""Web search tool: SearXNG, Tavily or DuckDuckGo, whichever is available.
 
-Falls back to a helpful message when the TAVILY_API_KEY environment
-variable is not configured.
+Research personas could not search at all while this needed a paid Tavily key
+(the 2026-10-12 survey). Providers, tried in this order under
+``web_search_provider=auto``:
+
+1. **SearXNG** at ``searxng_url``, self-hosted, no key, many engines at once;
+2. **Tavily**, when ``tavily_api_key`` is set;
+3. **DuckDuckGo's HTML endpoint**, keyless, parsed from markup, so it is the
+   fallback rather than the default.
+
+A provider that fails falls through to the next one; the result names the
+provider that answered, so a run can be studied later. Every result carries
+its URL: research answers must cite what was actually returned
+(services/sources.py).
 """
 
 from __future__ import annotations
 
+import html
 import json
 import logging
+import re
+from typing import TYPE_CHECKING
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import httpx
 
-from life_graph.config import Settings
+from life_graph.config import settings
 from life_graph.tools.registry import tool
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
 logger = logging.getLogger(__name__)
+
+Result = dict[str, str]
+
+
+async def _searxng(query: str, http: httpx.AsyncClient) -> list[Result]:
+    resp = await http.get(
+        settings.searxng_url.rstrip("/") + "/search",
+        params={"q": query, "format": "json", "safesearch": 1},
+    )
+    resp.raise_for_status()
+    return [
+        {"title": r.get("title", ""), "url": r.get("url", ""), "content": r.get("content", "")}
+        for r in resp.json().get("results", [])
+        if r.get("url")
+    ]
+
+
+async def _tavily(query: str, http: httpx.AsyncClient) -> list[Result]:
+    resp = await http.post(
+        "https://api.tavily.com/search",
+        json={
+            "api_key": settings.tavily_api_key,
+            "query": query,
+            "max_results": settings.web_search_max_results,
+        },
+    )
+    resp.raise_for_status()
+    return [
+        {"title": r.get("title", ""), "url": r.get("url", ""), "content": r.get("content", "")}
+        for r in resp.json().get("results", [])
+        if r.get("url")
+    ]
+
+
+_DDG_RESULT = re.compile(
+    r'<a[^>]+class="result__a"[^>]+href="(?P<href>[^"]+)"[^>]*>(?P<title>.*?)</a>'
+    r'(?:.*?<a[^>]+class="result__snippet"[^>]*>(?P<snippet>.*?)</a>)?',
+    re.DOTALL,
+)
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _ddg_url(href: str) -> str:
+    """DuckDuckGo wraps result links as //duckduckgo.com/l/?uddg=<target>."""
+    href = html.unescape(href)
+    parts = urlsplit(href if "//" in href else "https:" + href)
+    if parts.path.startswith("/l/"):
+        target = parse_qs(parts.query).get("uddg", [""])[0]
+        return unquote(target)
+    return href if href.startswith("http") else "https:" + href
+
+
+def parse_duckduckgo(markup: str) -> list[Result]:
+    """Results from DuckDuckGo's HTML page (pure, so it is tested offline)."""
+    out = []
+    for m in _DDG_RESULT.finditer(markup):
+        url = _ddg_url(m.group("href"))
+        if not url.startswith("http") or "duckduckgo.com/y.js" in url:
+            continue  # ads
+        clean = lambda s: html.unescape(_TAG.sub("", s or "")).strip()  # noqa: E731
+        out.append(
+            {"title": clean(m.group("title")), "url": url, "content": clean(m.group("snippet"))}
+        )
+    return out
+
+
+async def _duckduckgo(query: str, http: httpx.AsyncClient) -> list[Result]:
+    resp = await http.post("https://html.duckduckgo.com/html/", data={"q": query})
+    resp.raise_for_status()
+    return parse_duckduckgo(resp.text)
+
+
+PROVIDERS: dict[str, Callable[[str, httpx.AsyncClient], Awaitable[list[Result]]]] = {
+    "searxng": _searxng,
+    "tavily": _tavily,
+    "duckduckgo": _duckduckgo,
+}
+
+
+def provider_order() -> list[str]:
+    """Which providers to try, in order, given the settings."""
+    choice = (settings.web_search_provider or "auto").strip().lower()
+    if choice != "auto":
+        return [choice] if choice in PROVIDERS else []
+    order = []
+    if settings.searxng_url:
+        order.append("searxng")
+    if settings.tavily_api_key:
+        order.append("tavily")
+    order.append("duckduckgo")
+    return order
+
+
+async def search(query: str, *, client: httpx.AsyncClient | None = None) -> dict:
+    """Run the query through the first provider that answers."""
+    order = provider_order()
+    if not order:
+        return {"status": "not_configured", "message": "Unknown web_search_provider."}
+    errors: list[str] = []
+    own = client is None
+    http = client or httpx.AsyncClient(
+        timeout=20.0, headers={"User-Agent": "Mozilla/5.0 (LifeGraph personal assistant)"}
+    )
+    try:
+        for name in order:
+            try:
+                results = await PROVIDERS[name](query, http)
+            except Exception as exc:  # noqa: BLE001 — fall through to the next provider
+                logger.warning("web_search provider %s failed: %s", name, exc)
+                errors.append(f"{name}: {type(exc).__name__}")
+                continue
+            if results:
+                return {
+                    "status": "ok",
+                    "provider": name,
+                    "query": query,
+                    "results": results[: settings.web_search_max_results],
+                }
+            errors.append(f"{name}: no results")
+    finally:
+        if own:
+            await http.aclose()
+    return {"status": "error", "query": query, "message": "No provider answered.", "tried": errors}
 
 
 @tool(
     name="web_search",
-    description="Search the web for current information",
+    description=(
+        "Search the web for current information. Returns titles, URLs and "
+        "snippets; cite the URLs you rely on."
+    ),
     parameters_schema={
         "type": "object",
         "properties": {
@@ -32,92 +176,6 @@ logger = logging.getLogger(__name__)
     },
 )
 async def web_search(query: str) -> str:
-    """Search the web using the Tavily API.
-
-    Args:
-        query: The search query string.
-
-    Returns:
-        JSON string with search results or a configuration message.
-    """
-    # NOTE: Add `tavily_api_key: str = ""` to life_graph.config.Settings
-    # to enable this tool. Until then, getattr() safely returns None.
-    api_key = getattr(Settings(), "tavily_api_key", None)
-
-    if not api_key:
-        logger.info("Web search skipped — TAVILY_API_KEY not set")
-        return json.dumps(
-            {
-                "status": "not_configured",
-                "message": (
-                    "Web search is not configured. "
-                    "Set the TAVILY_API_KEY environment variable "
-                    "to enable web search."
-                ),
-            }
-        )
-
+    """Search the web; JSON with the provider used and the results."""
     logger.info("Searching web for: %s", query)
-
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                "https://api.tavily.com/search",
-                json={
-                    "api_key": api_key,
-                    "query": query,
-                    "max_results": 5,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-
-        results = []
-        for item in data.get("results", []):
-            results.append(
-                {
-                    "title": item.get("title", ""),
-                    "url": item.get("url", ""),
-                    "content": item.get("content", ""),
-                }
-            )
-
-        logger.info("Web search returned %d results", len(results))
-        return json.dumps(
-            {
-                "status": "ok",
-                "query": query,
-                "results": results,
-            }
-        )
-
-    except httpx.TimeoutException:
-        logger.warning("Web search timed out for query: %s", query)
-        return json.dumps(
-            {
-                "status": "error",
-                "message": "Search request timed out. Please try again.",
-            }
-        )
-
-    except httpx.HTTPStatusError as exc:
-        logger.error(
-            "Tavily API error: %d %s",
-            exc.response.status_code,
-            exc.response.text[:200],
-        )
-        return json.dumps(
-            {
-                "status": "error",
-                "message": (f"Search API returned HTTP {exc.response.status_code}."),
-            }
-        )
-
-    except Exception as exc:
-        logger.exception("Unexpected web search error: %s", exc)
-        return json.dumps(
-            {
-                "status": "error",
-                "message": f"Search failed: {type(exc).__name__}",
-            }
-        )
+    return json.dumps(await search(query))

@@ -9,6 +9,7 @@ produced an empty toolset for most personas.
 
 from __future__ import annotations
 
+import life_graph.tools.assistant  # noqa: F401
 import life_graph.tools.browser  # noqa: F401
 import life_graph.tools.calculator  # noqa: F401
 import life_graph.tools.code  # noqa: F401

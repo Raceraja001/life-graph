@@ -17,6 +17,7 @@ def test_advisory_allowed_tools_are_read_only():
     {web_search, browse_web, memory_search, get_current_datetime}
     """
     from life_graph.connectors.tools import _SCHEMAS as CONNECTOR_TOOLS
+    from life_graph.tools.assistant import READ_ONLY_TOOLS as ASSISTANT_READ_TOOLS
 
     # Connector tools (calendar_events, email_search, bills_due, ...) only
     # read the local connector index; connectors are read-only by design.
@@ -26,6 +27,9 @@ def test_advisory_allowed_tools_are_read_only():
         "memory_search",
         "get_current_datetime",
         *CONNECTOR_TOOLS,
+        # Assistant tools that only read (documents, spending, monitors, cards,
+        # invoices); watch_page and make_study_cards write and are excluded.
+        *ASSISTANT_READ_TOOLS,
     }
     for name in AMBIENT_ADVISORY:
         persona = next(

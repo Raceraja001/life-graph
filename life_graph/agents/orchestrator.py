@@ -186,6 +186,12 @@ class AgentOrchestrator:
                 # Accumulate content and tool calls from the stream.
                 content_parts: list[str] = []
                 tool_calls_acc: dict[int, dict[str, Any]] = {}
+                # Ollama (through LiteLLM) sends each parallel tool call whole,
+                # every one at index 0. Accumulating by index alone glued them
+                # into one call with arguments like '{"days": 1}{}', and the
+                # next request was rejected for it, failing the whole run. A
+                # delta that starts a new call at a used index gets its own slot.
+                remap: dict[int, int] = {}
 
                 async for chunk in response:
                     delta = chunk.choices[0].delta if chunk.choices else None
@@ -206,7 +212,20 @@ class AgentOrchestrator:
                     # Accumulate tool calls across chunks.
                     if delta.tool_calls:
                         for tc in delta.tool_calls:
-                            idx = tc.index if tc.index is not None else 0
+                            raw_idx = tc.index if tc.index is not None else 0
+                            idx = remap.get(raw_idx, raw_idx)
+                            slot = tool_calls_acc.get(idx)
+                            starts_new = bool(
+                                tc.function
+                                and tc.function.name
+                                and slot is not None
+                                and slot["name"]
+                            ) or bool(
+                                tc.id and slot is not None and slot["id"] and tc.id != slot["id"]
+                            )
+                            if starts_new:
+                                idx = max(tool_calls_acc) + 1
+                                remap[raw_idx] = idx
                             if idx not in tool_calls_acc:
                                 tool_calls_acc[idx] = {
                                     "id": tc.id or "",
@@ -251,11 +270,13 @@ class AgentOrchestrator:
                     tc_data = tool_calls_acc[idx]
                     assistant_tool_calls.append(
                         {
-                            "id": tc_data["id"],
+                            # Blank ids (Ollama) would make every tool result
+                            # answer the same call.
+                            "id": tc_data["id"] or f"call_{iteration}_{idx}",
                             "type": "function",
                             "function": {
                                 "name": tc_data["name"],
-                                "arguments": tc_data["arguments"],
+                                "arguments": _valid_json_args(tc_data["arguments"]),
                             },
                         }
                     )
@@ -420,3 +441,25 @@ class AgentOrchestrator:
 def _sse(data: dict[str, Any]) -> str:
     """Format a dictionary as an SSE data line."""
     return f"data: {json.dumps(data)}\n\n"
+
+
+def _valid_json_args(raw: str) -> str:
+    """Tool-call arguments that a model server will accept back.
+
+    The arguments are echoed to the model in the next request, and Ollama
+    rejects the whole request when they are not a JSON object. Keep the first
+    complete object of a garbled string ('{"a": 1}{}' → '{"a": 1}'), or send
+    an empty object; the tool itself already ran with what could be parsed.
+    """
+    if not raw:
+        return "{}"
+    try:
+        value = json.loads(raw)
+        return raw if isinstance(value, dict) else "{}"
+    except json.JSONDecodeError:
+        pass
+    try:
+        value, _end = json.JSONDecoder().raw_decode(raw.lstrip())
+    except json.JSONDecodeError:
+        return "{}"
+    return json.dumps(value) if isinstance(value, dict) else "{}"

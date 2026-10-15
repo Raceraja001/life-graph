@@ -50,6 +50,8 @@ logger = logging.getLogger(__name__)
 #                          (if set) and queues a fix task (services/production_findings.py)
 #   rollback_command      undo a deploy whose smoke check failed
 #   fix_persona           persona that works production fix tasks (default code-fixer-local)
+#   health_url            polled hourly by the app_uptime watcher: status, latency, TLS expiry
+#   backup_check_command  run daily by the same watcher; non-zero exit = backups are failing
 #   auto_approve_plans    let a small, gap-free, non-sensitive plan from a trusted driver
 #                          approve itself (services/plan_policy.py); off by default
 #   base_branch           branch every dev task is cut from (fetched from origin) and PRs
@@ -84,6 +86,8 @@ _USER_META_KEYS = frozenset(
         "smoke_command",
         "rollback_command",
         "fix_persona",
+        "health_url",
+        "backup_check_command",
     }
 )
 
@@ -108,6 +112,20 @@ def _confined_project_path(path: str) -> str:
     if not resolved.is_dir():
         raise ValueError(f"Path does not exist: {path!r}")
     return str(resolved)
+
+
+async def _provision_uptime(session: Any, tenant_id: str, meta: dict[str, Any]) -> None:
+    """A health URL or backup check runs only once the tenant has the watcher's config."""
+    if meta.get("health_url") or meta.get("backup_check_command"):
+        from life_graph.watchers.provision import ensure_config
+
+        await ensure_config(
+            session,
+            tenant_id,
+            "app_uptime",
+            "App uptime",
+            "Health, TLS expiry and backups of registered apps (watchers/app_uptime_watcher.py)",
+        )
 
 
 def _user_scan_metadata(data: dict[str, Any]) -> dict[str, Any]:
@@ -457,6 +475,7 @@ class ProjectRegistry:
                 last_scanned_at=now,
             )
             session.add(project)
+            await _provision_uptime(session, tenant_id, user_meta)
             await session.commit()
             await session.refresh(project)
 
@@ -663,6 +682,7 @@ class ProjectRegistry:
                     else:
                         meta.pop(key, None)
                 project.scan_metadata = meta
+                await _provision_uptime(session, tenant_id, meta)
             project.updated_at = datetime.now(UTC)
             await session.commit()
             await session.refresh(project)
