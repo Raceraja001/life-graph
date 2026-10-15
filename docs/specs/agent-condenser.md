@@ -1,6 +1,6 @@
 # Long Runs: Context Condenser, Stuck Detection, Honest Outcomes — Feature Spec
 
-> **Status: Built (2026-10-14); live trial incomplete.** The user asked for a
+> **Status: Built and shown live (2026-10-15).** The user asked for a
 > detailed plan and then to build it without waiting ("create a detailed plan
 > and then, you can work on it and complete. don't expect me").
 >
@@ -24,17 +24,28 @@
 >    reported as `success=False, stop_reason=timeout`; before this change it
 >    would have been a success.
 >
-> **Not yet shown live:** a run long enough to condense. The machine could
-> not run it:
-> - qwen3-coder:30b does not fit the 16 GB GPU and spills into WSL's RAM;
-> - another project's dev server held about 14 GB at the same time;
-> - WSL stopped answering three times, under load averages of 80–150.
+> **Shown live on 2026-10-15** (qwen3:14b, which fits the GPU; the 30B
+> model kept stalling WSL). Every mechanism fired:
 >
-> When the machine is quiet, rerun the trial (`local_trial.py <context>
-> <model>` in the session scratchpad):
-> - with a small context to force condensing;
-> - at 32k to confirm no prompt goes over budget;
-> - with qwen3:14b, which fits the GPU, if the 30B model keeps stalling.
+> | Window | What happened |
+> |---|---|
+> | 8k, run 1 | mask ×2, summary ×2, a loop nudge, then a `stuck` stop, reported as `success=False` |
+> | 8k, run 2 | 40 tool calls, 9 condensations across every layer, and a `no_progress` nudge |
+> | 32k | finished in 40 s with no condensing needed |
+>
+> The trials led to three fixes:
+> 1. **Masking now keeps the newest read of each file** while it still fits.
+>    Edits failed once a file's only copy was masked, because the model had
+>    to guess the exact text to replace.
+> 2. **A coding run where no edit landed now fails** with `no_change`. Every
+>    `code_edit` was refused and the run was still reported as a success.
+> 3. **A kept tail that is itself over budget gets its older results masked.**
+>    One turn can make many parallel calls: a 32-message tail stayed at
+>    4,785 tokens against a 2,304 budget even with the middle dropped.
+>
+> **Still a model-quality limit:** qwen3:14b often fails to reproduce exact
+> text for `code_edit`, and once claimed a test it never wrote. The
+> acceptance verifier caught it, which is what the verifiers are for.
 >
 > **Prior art.** The ideas come from OpenHands' "condenser" and "stuck
 > detector" (MIT licence). Ideas are not copyrighted. No code was copied:
