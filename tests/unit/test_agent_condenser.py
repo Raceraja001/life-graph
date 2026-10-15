@@ -246,3 +246,47 @@ async def test_the_newest_read_of_each_file_survives_masking():
 async def test_newest_reads_are_masked_too_when_they_alone_do_not_fit():
     out = await condenser.condense(_conversation(12, 4000), budget=6000)
     assert out.layer == "mask" and out.after_tokens <= 6000
+
+
+def _wide_turns(turns: int, calls_per_turn: int, chars: int) -> list[dict]:
+    """Assistant turns that each make several parallel tool calls."""
+    msgs = [
+        {"role": "system", "content": "SYSTEM"},
+        {"role": "user", "content": "TASK"},
+    ]
+    for t in range(turns):
+        calls = [
+            {
+                "id": f"t{t}c{c}",
+                "type": "function",
+                "function": {
+                    "name": "code_read",
+                    "arguments": json.dumps({"path": f"f{t}_{c}.py"}),
+                },
+            }
+            for c in range(calls_per_turn)
+        ]
+        msgs.append({"role": "assistant", "content": None, "tool_calls": calls})
+        msgs += [
+            {"role": "tool", "tool_call_id": tc["id"], "content": f"[{tc['id']}] " + "w" * chars}
+            for tc in calls
+        ]
+    return msgs
+
+
+@pytest.mark.asyncio
+async def test_a_wide_tail_is_masked_when_dropping_the_middle_is_not_enough():
+    # 6 turns x 7 parallel reads: the 4 kept turns alone are 28 big results.
+    msgs = _wide_turns(6, 7, 1200)
+    tail_only = sum(len(condenser._text(m)) for m in msgs[2 + 8 * 2 :]) // 4
+    budget = tail_only // 2  # the tail alone does not fit
+
+    async def summarise(middle):
+        return "short summary"
+
+    for summ in (summarise, None):
+        out = await condenser.condense(msgs, budget=budget, summarise=summ)
+        assert out.after_tokens <= budget, (summ, out.after_tokens, budget)
+        assert condenser.valid(out.messages)
+        last_turn = [m for m in out.messages if m.get("tool_call_id", "").startswith("t5")]
+        assert all(m["content"].startswith("[t5") for m in last_turn)  # latest turn verbatim

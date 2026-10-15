@@ -250,6 +250,14 @@ async def condense(
                 masked, after = trial, trial_tokens
         return Condensed(masked, "mask", before, after)
 
+    # "The last N turns" counts assistant turns, and one turn can make many
+    # parallel calls: a live run kept 32 messages of tail and stayed at 4,785
+    # tokens against a 2,304 budget even with the whole middle dropped. When
+    # the tail itself is the problem, its older results are masked too; only
+    # the latest turn, which the model is acting on, stays verbatim.
+    last = max((i for i, m in enumerate(tail) if m.get("role") == "assistant"), default=0)
+    lean_tail = mask(tail[:last], names) + tail[last:]
+
     if summarise is not None:
         try:
             summary = (await summarise(middle)).strip()
@@ -259,15 +267,20 @@ async def condense(
         if summary:
             from life_graph.services.redaction import redact
 
-            candidate = (
-                head + [{"role": "user", "content": f"{SUMMARY_TAG}\n{redact(summary)}"}] + tail
-            )
-            after = count_tokens(candidate, model)
-            if after <= budget:
-                return Condensed(candidate, "summary", before, after)
+            note = {"role": "user", "content": f"{SUMMARY_TAG}\n{redact(summary)}"}
+            for kept_tail in (tail, lean_tail):
+                candidate = head + [note] + kept_tail
+                after = count_tokens(candidate, model)
+                if after <= budget:
+                    return Condensed(candidate, "summary", before, after)
 
-    candidate = head + [{"role": "user", "content": DROPPED_TAG}] + tail
-    return Condensed(candidate, "truncate", before, count_tokens(candidate, model))
+    dropped = {"role": "user", "content": DROPPED_TAG}
+    candidate = head + [dropped] + tail
+    after = count_tokens(candidate, model)
+    if after > budget:
+        candidate = head + [dropped] + lean_tail
+        after = count_tokens(candidate, model)
+    return Condensed(candidate, "truncate", before, after)
 
 
 def summariser_for(acompletion: Callable[..., Awaitable[Any]], model: str) -> Summarise:
