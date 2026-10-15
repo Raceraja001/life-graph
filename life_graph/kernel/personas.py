@@ -249,7 +249,8 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "icon": "🏠",
         "description": (
             "Code Fixer on a local model: the code never leaves the machine."
-            " Set its model to a local coder (e.g. ollama_chat/qwen3-coder:30b)."
+            " Set its model to a local model that fits the GPU: ollama_chat/gpt-oss:20b"
+            " scored best on the driver benchmark (evals/driver_bench/README.md)."
             " Same verification and PR approval as Code Fixer."
         ),
         "system_prompt": (
