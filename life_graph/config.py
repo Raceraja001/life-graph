@@ -276,6 +276,14 @@ class Settings(BaseSettings):
     agent_llm_max_tokens: int = 4096
     agent_fallback_model: str = "gemini/gemini-3.5-flash-lite"
     agent_max_iterations: int = 5
+    # Long runs (docs/specs/agent-condenser.md). The context window the
+    # condenser budgets against: Ollama here serves every model at
+    # OLLAMA_CONTEXT_LENGTH=32768 and silently drops the START of a longer
+    # prompt. Per-model overrides are JSON, quoted as a whole in .env.
+    agent_condenser_enabled: bool = True
+    agent_context_tokens: int = 32768
+    agent_context_tokens_by_model: str = "{}"
+    agent_stuck_detection: bool = True
 
     # ── OS Kernel ──────────────────────────────────────────
     # Must stay > ProcessManager.MAX_DELEGATION_DEPTH (currently 5): each
@@ -614,6 +622,17 @@ class Settings(BaseSettings):
     def capture_no_extract_surfaces_list(self) -> list[str]:
         """Surfaces that are logged as capture events but never extracted."""
         return [s.strip() for s in self.capture_no_extract_surfaces.split(",") if s.strip()]
+
+    def context_tokens_for(self, model: str | None) -> int:
+        """The context window to budget a run against (agent_context_tokens_by_model)."""
+        import json
+
+        try:
+            overrides = json.loads(self.agent_context_tokens_by_model or "{}")
+        except ValueError:
+            overrides = {}
+        value = overrides.get(model or "") if isinstance(overrides, dict) else None
+        return int(value) if isinstance(value, int) and value > 0 else self.agent_context_tokens
 
     @property
     def llm_fallback_chain_list(self) -> list[str]:

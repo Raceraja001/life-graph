@@ -184,6 +184,19 @@ class StepCollector:
                     "at": None,
                 }
             )
+        elif kind in ("condensed", "stuck"):
+            # agents/condenser.py and agents/stuck.py: where a run's memory
+            # was cut and where it went round in circles, kept for study.
+            self._flush_text()
+            detail = {k: v for k, v in data.items() if k != "type"}
+            self.steps.append(
+                {
+                    "kind": kind,
+                    "tool": data.get("tool") if kind == "stuck" else None,
+                    "content": json.dumps(detail, default=str),
+                    "at": None,
+                }
+            )
 
     def finish(self) -> list[dict]:
         self._flush_text()

@@ -183,6 +183,19 @@ def fake_orchestrator(monkeypatch):
             # Tool call made from inside the run: confinement must apply.
             seen["read"] = json.loads(await code.code_read("pkg/mod.py"))
             yield 'data: {"type": "tool_call", "name": "code_read"}\n\n'
+            if behaviour == "claim_only":
+                # Says it changed something without editing: not a success.
+                yield 'data: {"type": "token", "content": "Changed b."}\n\n'
+                return
+            edit = await code.code_edit(
+                "pkg/mod.py", "def b():\n    return 1", "def b():\n    return 2"
+            )
+            yield "data: " + json.dumps({"type": "tool_call", "name": "code_edit"}) + "\n\n"
+            yield (
+                "data: "
+                + json.dumps({"type": "tool_result", "name": "code_edit", "result": edit})
+                + "\n\n"
+            )
             yield 'data: {"type": "token", "content": "Changed b."}\n\n'
 
     monkeypatch.setattr(orch_mod, "AgentOrchestrator", Fake)
@@ -198,7 +211,8 @@ async def test_local_driver_uses_persona_model_and_confines_tools(repo, fake_orc
     assert result.success, result.error
     assert result.output == "Changed b."
     assert result.metadata["model"] == "ollama_chat/qwen3-coder:30b"
-    assert result.metadata["tool_calls"] == 1
+    assert result.metadata["tool_calls"] == 2
+    assert "return 2" in (repo["wt"] / "pkg" / "mod.py").read_text()
     assert fake_orchestrator["instance"].MAX_ITERATIONS == LocalDriver.MAX_AGENT_ITERATIONS
     assert sorted(fake_orchestrator["tools"]) == ["code_edit", "code_read"]
     assert fake_orchestrator["read"]["total_lines"] == 6  # worktree reachable during the run
@@ -223,3 +237,11 @@ def test_dispatcher_honours_driver_timeout():
     from life_graph.drivers.local import LocalDriver
 
     assert LocalDriver.dispatch_timeout > 300
+
+
+async def test_local_driver_does_not_believe_a_claimed_change(repo, fake_orchestrator):
+    from life_graph.drivers.local import LocalDriver
+
+    fake_orchestrator["behaviour"] = "claim_only"
+    result = await LocalDriver().dispatch(_packet(), repo["wt"], timeout=5)
+    assert not result.success and result.metadata["stop_reason"] == "no_change"

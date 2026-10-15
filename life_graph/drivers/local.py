@@ -17,8 +17,10 @@ For coding work three things the chat loop never needed are enforced here:
   :attr:`MAX_AGENT_ITERATIONS` and a longer :attr:`dispatch_timeout`, which
   the dispatcher reads.
 * **Honest failure.** The run is failed when the orchestrator reports an
-  error or the time budget runs out, instead of reporting success with
-  whatever partial text streamed.
+  error (``error`` or ``partial_error``), runs out of rounds, stops for being
+  stuck in a loop, makes no tool calls at all on a coding task, or the time
+  budget runs out, instead of reporting success with whatever partial text
+  streamed. ``metadata.stop_reason`` says which.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
+from life_graph.agents.stuck import is_error_result
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.steps import StepCollector
 
@@ -36,6 +39,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Tools that change files; a coding run where none of them succeeded changed nothing.
+EDIT_TOOLS = frozenset({"code_edit", "file_write"})
 
 
 class LocalDriver:
@@ -49,7 +55,9 @@ class LocalDriver:
     # A local 30B model on a consumer GPU is slow per round; the dispatcher
     # uses this instead of its 300s default.
     dispatch_timeout = 1200
-    MAX_AGENT_ITERATIONS = 40
+    # Was 40, partly because the context could not hold more rounds; the
+    # condenser (agents/condenser.py) now keeps a long run inside the window.
+    MAX_AGENT_ITERATIONS = 60
 
     async def available(self) -> bool:
         """Local driver is always available."""
@@ -130,10 +138,13 @@ class LocalDriver:
             output_parts: list[str] = []
             steps = StepCollector()
             tool_calls = 0
+            condensed = 0
+            good_edits = failed_edits = 0
             errors: list[str] = []
+            stop_reason = "completed"
 
             async def collect() -> None:
-                nonlocal tool_calls
+                nonlocal tool_calls, condensed, stop_reason, good_edits, failed_edits
                 async for event_str in orchestrator.run(
                     messages=messages,
                     system_prompt=system_prompt,
@@ -151,25 +162,80 @@ class LocalDriver:
                         output_parts.append(data["content"])
                     elif kind == "tool_call":
                         tool_calls += 1
-                    elif kind == "error":
+                    elif kind == "tool_result" and data.get("name") in EDIT_TOOLS:
+                        if is_error_result(str(data.get("result") or "")):
+                            failed_edits += 1
+                        else:
+                            good_edits += 1
+                    elif kind == "condensed":
+                        condensed += 1
+                    elif kind in ("error", "partial_error"):
+                        # The orchestrator reports failures as partial_error
+                        # ("All models are currently unavailable"); counting
+                        # only "error" returned those runs as successes.
                         errors.append(str(data.get("message") or data.get("error") or data))
+                        stop_reason = "error"
+                    elif kind == "done" and data.get("stop_reason") in ("max_iterations", "stuck"):
+                        stop_reason = data["stop_reason"]
+                        errors.append(
+                            "ran out of tool rounds"
+                            if stop_reason == "max_iterations"
+                            else str(data.get("warning") or "stuck in a loop")
+                        )
 
             with confine_to(workdir):
                 try:
                     await asyncio.wait_for(collect(), timeout=timeout)
                 except TimeoutError:
                     errors.append(f"local driver timed out after {timeout}s")
+                    stop_reason = "timeout"
+
+            output = "".join(output_parts)
+            if (
+                not errors
+                and tool_calls == 0
+                and packet.task_type in ("code", "code_change")
+                and packet.allowed_tools != []
+            ):
+                # A coding task that never touched a tool changed nothing. A
+                # live trial (qwen3-coder:30b, 2026-10-14) answered in prose
+                # and was reported as a success; verifiers caught it, but the
+                # driver's own record should not say it worked.
+                stop_reason = "no_action"
+                errors.append(
+                    "the model wrote tool calls as text instead of making them"
+                    if _looks_like_text_tool_calls(output)
+                    else "the model made no tool calls, so nothing was changed"
+                )
+            elif (
+                not errors
+                and good_edits == 0
+                and packet.task_type in ("code", "code_change")
+                and (packet.allowed_tools is None or EDIT_TOOLS & set(packet.allowed_tools))
+            ):
+                # Tools were used but nothing was written: every edit was
+                # refused ("`old` not found"), or none was tried. A live run
+                # (qwen3:14b, 2026-10-15) ended like that and was reported as
+                # a success.
+                stop_reason = "no_change"
+                errors.append(
+                    f"all {failed_edits} edit(s) failed, so nothing was changed"
+                    if failed_edits
+                    else "the model never edited a file, so nothing was changed"
+                )
 
             duration = int((time.monotonic() - start) * 1000)
             return DriverResult(
                 success=not errors,
-                output="".join(output_parts),
+                output=output,
                 cost_usd=0.0,
                 duration_ms=duration,
                 error="; ".join(errors)[:2000] if errors else None,
                 metadata={
                     "model": getattr(orchestrator, "model", packet.persona_model),
                     "tool_calls": tool_calls,
+                    "condensed": condensed,
+                    "stop_reason": stop_reason,
                     "steps": steps.finish(),
                     "workdir": str(workdir),
                 },
@@ -191,3 +257,11 @@ class LocalDriver:
     def cost_per_task(self) -> float:
         """Local execution is free (uses local LLM or configured model)."""
         return 0.0
+
+
+_TEXT_TOOL_CALL_MARKERS = ("<tool_call>", "<function=", '"name": "code_', "```tool")
+
+
+def _looks_like_text_tool_calls(output: str) -> bool:
+    """A model whose chat template failed writes the call into its reply."""
+    return any(marker in output for marker in _TEXT_TOOL_CALL_MARKERS)

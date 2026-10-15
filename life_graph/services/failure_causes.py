@@ -20,6 +20,8 @@ CAUSES: dict[str, str] = {
     "sandbox_unavailable": "Sandbox could not start",
     "interrupted": "Interrupted by a restart",
     "timeout": "Timed out",
+    "stuck": "Stuck in a loop",
+    "out_of_rounds": "Ran out of tool rounds",
     "plan_not_run": "Not run: an earlier plan task stopped",
     "plan_no_spec": "Plan produced no spec",
     "plan_wrote_files": "Plan-only run changed files",
@@ -88,6 +90,12 @@ def classify(
         matches.append(("interrupted", err))
     if "timed out" in low:
         matches.append(("timeout", err))
+    if "stuck in a loop" in low or any(
+        s.get("kind") == "stuck" and '"stopped"' in (s.get("content") or "") for s in steps
+    ):
+        matches.append(("stuck", err[:300] or None))
+    if "ran out of tool rounds" in low:
+        matches.append(("out_of_rounds", None))
     if low.startswith("not run:"):
         matches.append(("plan_not_run", err[:300]))
     if "no '## spec'" in low:
