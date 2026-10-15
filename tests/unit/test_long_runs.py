@@ -201,11 +201,40 @@ async def _dispatch(events, tmp_path):
     [
         (
             [
-                {"type": "tool_call", "name": "code_read"},
+                {"type": "tool_call", "name": "code_edit"},
+                {"type": "tool_result", "name": "code_edit", "result": '{"edited": "a.py"}'},
                 {"type": "done", "stop_reason": "completed"},
             ],
             True,
             "completed",
+        ),
+        (
+            [
+                {"type": "tool_call", "name": "code_edit"},
+                {
+                    "type": "tool_result",
+                    "name": "code_edit",
+                    "result": '{"error": "`old` not found"}',
+                },
+                {"type": "tool_call", "name": "code_edit"},
+                {
+                    "type": "tool_result",
+                    "name": "code_edit",
+                    "result": '{"error": "`old` not found"}',
+                },
+                {"type": "done", "stop_reason": "completed"},
+            ],
+            False,
+            "no_change",
+        ),
+        (
+            [
+                {"type": "tool_call", "name": "code_read"},
+                {"type": "tool_result", "name": "code_read", "result": "x = 1"},
+                {"type": "done", "stop_reason": "completed"},
+            ],
+            False,
+            "no_change",
         ),
         (
             [

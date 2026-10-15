@@ -136,9 +136,34 @@ def _tool_names(messages: list[Message]) -> dict[str, tuple[str, str]]:
     return names
 
 
-def mask(middle: list[Message], names: dict[str, tuple[str, str]]) -> list[Message]:
+READ_TOOLS = frozenset({"code_read", "file_read"})
+
+
+def latest_reads(messages: list[Message], names: dict[str, tuple[str, str]]) -> list[str]:
+    """tool_call_ids of the most recent read of each file, newest first.
+
+    An edit needs the file's exact text. Masking the only copy of a file the
+    model is about to change makes it guess, and its edits then fail with
+    "`old` not found".
+    """
+    newest: dict[str, str] = {}
+    for m in messages:
+        if m.get("role") == "tool":
+            tool, hint = names.get(m.get("tool_call_id", ""), ("", ""))
+            if tool in READ_TOOLS and hint:
+                newest[hint] = m["tool_call_id"]
+    order = [m.get("tool_call_id") for m in messages if m.get("role") == "tool"]
+    return sorted(newest.values(), key=order.index, reverse=True)
+
+
+def mask(
+    middle: list[Message], names: dict[str, tuple[str, str]], keep: set[str] | None = None
+) -> list[Message]:
     out = []
     for m in middle:
+        if keep and m.get("tool_call_id") in keep:
+            out.append(m)
+            continue
         if m.get("role") == "tool" and not str(m.get("content", "")).startswith("[earlier result"):
             tool, hint = names.get(m.get("tool_call_id", ""), ("tool", ""))
             size = len(str(m.get("content") or ""))
@@ -210,10 +235,19 @@ async def condense(
         after = count_tokens(candidate, model)
         return Condensed(candidate, "mask" if after < before else None, before, after)
 
-    names = _tool_names(middle)
+    names = _tool_names(messages)
     masked = head + mask(middle, names) + tail
     after = count_tokens(masked, model)
     if after <= budget:
+        # Give back the newest read of each file, most recent first, while it
+        # still fits: an edit needs the file's exact text.
+        kept: set[str] = set()
+        for call_id in latest_reads(middle, names):
+            trial = head + mask(middle, names, kept | {call_id}) + tail
+            trial_tokens = count_tokens(trial, model)
+            if trial_tokens <= budget:
+                kept.add(call_id)
+                masked, after = trial, trial_tokens
         return Condensed(masked, "mask", before, after)
 
     if summarise is not None:

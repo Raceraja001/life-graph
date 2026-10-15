@@ -141,9 +141,9 @@ async def test_masking_keeps_head_tail_and_protocol():
     assert len(tools) == 12  # nothing removed, only elided
     assert tools[0]["content"].startswith("[earlier result elided: code_read f0.py, 4,004 chars")
     assert tools[-1]["content"].startswith("[11] xxx")  # the recent turns stay verbatim
-    assert (
-        sum(t["content"].startswith("[earlier") for t in tools) == 12 - condenser.KEEP_RECENT_TURNS
-    )
+    masked = sum(t["content"].startswith("[earlier") for t in tools)
+    # Every middle result is masked, except recent reads given back while they fit.
+    assert 0 < masked <= 12 - condenser.KEEP_RECENT_TURNS
 
 
 @pytest.mark.asyncio
@@ -226,3 +226,23 @@ def test_context_tokens_override(monkeypatch):
     assert s.context_tokens_for("ollama_chat/big") == 65536
     assert s.context_tokens_for("other") == 32768
     assert Settings(agent_context_tokens_by_model="not json").context_tokens_for("x") > 0
+
+
+@pytest.mark.asyncio
+async def test_the_newest_read_of_each_file_survives_masking():
+    msgs = _conversation(12, 1500)  # 8 masked-zone reads, each ~400 tokens
+    # Turn 7 re-reads f1.py: that newest copy is given back; the turn-1 copy of
+    # the same file stays masked even though there would be room for it.
+    msgs[2 + 2 * 7]["tool_calls"][0]["function"]["arguments"] = json.dumps({"path": "f1.py"})
+    out = await condenser.condense(msgs, budget=3000)
+    assert out.layer == "mask" and condenser.valid(out.messages)
+    by_id = {m["tool_call_id"]: m["content"] for m in out.messages if m["role"] == "tool"}
+    assert by_id["c1"].startswith("[earlier result elided")
+    assert by_id["c7"].startswith("[7] xxx")  # newest read of f1.py, kept verbatim
+    assert by_id["c0"].startswith("[earlier result elided")
+
+
+@pytest.mark.asyncio
+async def test_newest_reads_are_masked_too_when_they_alone_do_not_fit():
+    out = await condenser.condense(_conversation(12, 4000), budget=6000)
+    assert out.layer == "mask" and out.after_tokens <= 6000

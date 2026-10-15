@@ -31,6 +31,7 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
+from life_graph.agents.stuck import is_error_result
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.steps import StepCollector
 
@@ -38,6 +39,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Tools that change files; a coding run where none of them succeeded changed nothing.
+EDIT_TOOLS = frozenset({"code_edit", "file_write"})
 
 
 class LocalDriver:
@@ -135,11 +139,12 @@ class LocalDriver:
             steps = StepCollector()
             tool_calls = 0
             condensed = 0
+            good_edits = failed_edits = 0
             errors: list[str] = []
             stop_reason = "completed"
 
             async def collect() -> None:
-                nonlocal tool_calls, condensed, stop_reason
+                nonlocal tool_calls, condensed, stop_reason, good_edits, failed_edits
                 async for event_str in orchestrator.run(
                     messages=messages,
                     system_prompt=system_prompt,
@@ -157,6 +162,11 @@ class LocalDriver:
                         output_parts.append(data["content"])
                     elif kind == "tool_call":
                         tool_calls += 1
+                    elif kind == "tool_result" and data.get("name") in EDIT_TOOLS:
+                        if is_error_result(str(data.get("result") or "")):
+                            failed_edits += 1
+                        else:
+                            good_edits += 1
                     elif kind == "condensed":
                         condensed += 1
                     elif kind in ("error", "partial_error"):
@@ -196,6 +206,22 @@ class LocalDriver:
                     "the model wrote tool calls as text instead of making them"
                     if _looks_like_text_tool_calls(output)
                     else "the model made no tool calls, so nothing was changed"
+                )
+            elif (
+                not errors
+                and good_edits == 0
+                and packet.task_type in ("code", "code_change")
+                and (packet.allowed_tools is None or EDIT_TOOLS & set(packet.allowed_tools))
+            ):
+                # Tools were used but nothing was written: every edit was
+                # refused ("`old` not found"), or none was tried. A live run
+                # (qwen3:14b, 2026-10-15) ended like that and was reported as
+                # a success.
+                stop_reason = "no_change"
+                errors.append(
+                    f"all {failed_edits} edit(s) failed, so nothing was changed"
+                    if failed_edits
+                    else "the model never edited a file, so nothing was changed"
                 )
 
             duration = int((time.monotonic() - start) * 1000)
