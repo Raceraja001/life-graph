@@ -1,10 +1,10 @@
-"""Every persona's allowed_tools must name a real registered tool, OR be one
-of the explicitly-deferred aspirational names (memory_search — see
-kernel/personas.py). This is the regression guard for the bug found during
-the B2 final review: several personas referenced "terminal"/"git"/
-"file_read"/"file_write"/"docker"/"ssh" — none of which matched any
-registered tool name, so persona tool-scoping silently produced an empty
-toolset for most personas.
+"""Every persona's allowed_tools must name a real registered tool. No
+deferred/aspirational names are left — "memory_search" was the last one and
+is now registered (life_graph/tools/memory_search.py). This is the regression
+guard for the bug found during the B2 final review: several personas
+referenced "terminal"/"git"/"file_read"/"file_write"/"docker"/"ssh" — none of
+which matched any registered tool name, so persona tool-scoping silently
+produced an empty toolset for most personas.
 """
 
 from __future__ import annotations
@@ -16,18 +16,26 @@ import life_graph.tools.datetime_tool  # noqa: F401
 import life_graph.tools.delegate  # noqa: F401
 import life_graph.tools.filesystem  # noqa: F401
 import life_graph.tools.git  # noqa: F401
+import life_graph.tools.memory_search  # noqa: F401
 import life_graph.tools.system_inspect  # noqa: F401
 import life_graph.tools.terminal  # noqa: F401
 import life_graph.tools.web_search  # noqa: F401
 from life_graph.kernel.personas import _BUILTIN_PERSONAS
 from life_graph.tools.registry import registry
 
-# Deferred, documented-unregistered names — NOT a bug, do not "fix" by
-# removing these from personas.py. See kernel/ambient.py's comment.
-DEFERRED_NAMES = {"memory_search"}
+# Deferred, documented-unregistered names. Empty: every persona tool name now
+# resolves to a registered tool. Keep it empty — a new persona name belongs in
+# the registry, not here.
+DEFERRED_NAMES: set[str] = set()
 
 
 def test_every_persona_allowed_tool_is_registered_or_deferred():
+    # Connector tools (calendar_*, email_*, ...) register at startup, not on
+    # import -- without this the test only passed when an earlier test in the
+    # run had happened to call it.
+    from life_graph.connectors.tools import register_tools
+
+    register_tools()
     registered = set(registry.tool_names)
     unexplained = {}
     for defn in _BUILTIN_PERSONAS:

@@ -2514,6 +2514,38 @@ class VerificationRun(Base):
         return f"<VerificationRun(id={self.id!s:.8}, attempt={self.attempt}, passed={self.passed})>"
 
 
+class AgentRunStep(Base):
+    """One step of a driver run: what the agent said, called, got back.
+
+    Written by services/trajectories.py from the ``driver:steps`` event, one
+    row per step, so a run can be replayed in order and studied afterwards.
+    ``kind`` is an open string (drivers/steps.py lists the values in use).
+    ``content`` is redacted and capped at write time; ``properties`` carries
+    ``original_chars`` when it was cut, plus ``ref``/``is_error``.
+    """
+
+    __tablename__ = "agent_run_steps"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    driver: Mapped[str] = mapped_column(String(64), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    tool: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    properties: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    step_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (Index("ix_agent_run_steps_task", "tenant_id", "task_id", "attempt", "seq"),)
+
+
 # NOTE: The Era-8 autonomy models (AutoAction, ApprovalQueueEntry, AuditLogEntry,
 # AutonomyLevel, TrustScore, ActionSafetyRule, ShadowEnrollment, ShadowRun) live in
 # life_graph/autonomy/models.py and must be imported from there directly. Do NOT

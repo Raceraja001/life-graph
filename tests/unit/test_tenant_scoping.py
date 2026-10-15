@@ -53,6 +53,10 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     ("workers/tasks.py", "failure_pattern_mining"): "tenant discovery",
     ("workers/decay.py", "run_all_decay_sweeps"): "tenant discovery",
     ("workers/cleanup.py", "cleanup_memories_all"): "tenant discovery",
+    ("services/observability.py", "system"): (
+        "deployment-level queue depth: the dev-task runner is one per database and "
+        "claims across tenants, so its queued/running counts are global (counts only)"
+    ),
     ("connectors/store.py", "purge_expired"): (
         "nightly retention across every tenant: deletes by age and by disabled account"
     ),

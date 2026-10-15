@@ -34,23 +34,56 @@ logger = logging.getLogger(__name__)
 #   sandbox_setup         dependency install command for the verifier sandbox
 #   sandbox_test_command  what tests_pass runs, e.g. "python -m pytest -q tests/unit"
 #   sandbox_test_timeout  seconds tests_pass may take
+#   sandbox_toolchain     "python" (default) or "node": which verifier image checks run in
+#   sandbox_js_test_runner  "vitest" (default) or "jest", for JS/TS acceptance tests
+#   sandbox_start_command, sandbox_app_port, sandbox_e2e_command, sandbox_e2e_timeout
+#                          app_e2e_pass: start the app in the sandbox, then drive it
 #   required_checks       verifiers every dev task in this project must pass
 #   auto_open_pr          open PRs without approval for drivers proven on this project
+#   auto_merge            merge those PRs without approval too, same trust bar — a
+#                          separate opt-in: opening is reversible, merging isn't
 #   nightly_suggestions   queue nightly dev tasks for failing tests / lint / TODOs
 #   nightly_max_tasks     cap on open nightly tasks per project (default 2)
 #   nightly_persona       persona that works them (default code-fixer-local)
 #   nightly_lint_paths    paths the nightly ruff scan covers (default: the whole repo)
+#   smoke_command         run after a successful deploy; failing it runs rollback_command
+#                          (if set) and queues a fix task (services/production_findings.py)
+#   rollback_command      undo a deploy whose smoke check failed
+#   fix_persona           persona that works production fix tasks (default code-fixer-local)
+#   auto_approve_plans    let a small, gap-free, non-sensitive plan from a trusted driver
+#                          approve itself (services/plan_policy.py); off by default
+#   base_branch           branch every dev task is cut from (fetched from origin) and PRs
+#                          target; unset = whatever the local checkout is on
+#   deploy_command        shell command to run after a merge, in the project's repo path
+#   deploy_on_merge       file a driver_deploy approval after each merge — a THIRD, separate
+#                          opt-in from auto_open_pr/auto_merge, and never trust-auto-approved:
+#                          a bad deploy is live in a way a bad merge isn't, so this always
+#                          waits for an explicit human click regardless of driver trust
 _USER_META_KEYS = frozenset(
     {
         "sandbox_setup",
         "sandbox_test_command",
         "sandbox_test_timeout",
+        "sandbox_toolchain",
+        "sandbox_js_test_runner",
+        "sandbox_start_command",
+        "sandbox_app_port",
+        "sandbox_e2e_command",
+        "sandbox_e2e_timeout",
         "required_checks",
         "auto_open_pr",
+        "auto_merge",
         "nightly_suggestions",
         "nightly_max_tasks",
         "nightly_persona",
         "nightly_lint_paths",
+        "deploy_command",
+        "deploy_on_merge",
+        "base_branch",
+        "auto_approve_plans",
+        "smoke_command",
+        "rollback_command",
+        "fix_persona",
     }
 )
 

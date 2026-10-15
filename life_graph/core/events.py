@@ -138,6 +138,10 @@ class EventType(StrEnum):
     SECOND_OPINION_DISSENT = "driver:second_opinion:dissent"
     TASK_BOUNCED = "driver:task:bounced"
     PIPELINE_TASK_ORIGINATED = "driver:pipeline:task_originated"
+    APPROVAL_FILED = "driver:approval:filed"
+    # Every step of one driver attempt (drivers/steps.py shape), for the
+    # trajectory recorder. Emitted once per attempt, after the attempt ends.
+    DRIVER_STEPS = "driver:steps"
 
 
 @dataclass

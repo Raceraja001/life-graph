@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _BRANCH_RE = re.compile(r"^lg/task-[0-9a-f-]{1,36}$")
+_REVERT_BRANCH_RE = re.compile(r"^lg/revert-[0-9a-f]{7,40}$")
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _TIMEOUT = 120
 _TITLE_MAX = 72
@@ -112,11 +113,15 @@ async def _git(repo: str | Path, *args: str) -> tuple[int, str, str]:
     return await _run([*_hardened_git(repo), *args])
 
 
-async def describe_landing(repo_path: str | Path, branch: str) -> dict[str, Any]:
+async def describe_landing(
+    repo_path: str | Path, branch: str, *, base_branch: str | None = None
+) -> dict[str, Any]:
     """What a later PR needs to know about a just-landed branch.
 
-    Called right after landing, while the origin checkout is still on the
-    branch the task's worktree was cut from.
+    *base_branch* is the project's pinned base when it has one (the worktree
+    was cut from ``origin/<base>``); otherwise the origin checkout's current
+    branch is used, read right after landing while it is still the one the
+    task's worktree was cut from.
     """
     info: dict[str, Any] = {}
     code, out, _ = await _git(repo_path, "rev-parse", f"{branch}^{{commit}}")
@@ -125,22 +130,54 @@ async def describe_landing(repo_path: str | Path, branch: str) -> dict[str, Any]
     code, out, _ = await _git(repo_path, "rev-parse", f"{branch}^")
     if code == 0:
         info["base_commit"] = out
+    if base_branch:
+        info["base_branch"] = base_branch
+        return info
     code, out, _ = await _git(repo_path, "symbolic-ref", "--short", "-q", "HEAD")
     if code == 0 and out:
         info["base_branch"] = out
     return info
 
 
-def _pr_body(payload: dict[str, Any]) -> str:
+async def landed_diff(repo_path: str | Path, base_commit: str, head_commit: str) -> str:
+    """The landed change as a unified diff; empty on any git failure."""
+    if not (_SHA_RE.match(base_commit or "") and _SHA_RE.match(head_commit or "")):
+        return ""
+    code, out, _ = await _git(repo_path, "diff", "--no-color", base_commit, head_commit)
+    return out if code == 0 else ""
+
+
+def _verification_line(payload: dict[str, Any]) -> str:
     checks = payload.get("checks") or []
+    if payload.get("verified") is False:
+        # An UNVERIFIED landing used to say "Passed: <every check>" here --
+        # in a PR body anyone can read, about checks that never ran.
+        unverified = payload.get("unverifiable_checks") or checks
+        passed = [c for c in checks if c not in unverified]
+        line = (
+            "**Not verified:** "
+            + (", ".join(f"`{c}`" for c in unverified) if unverified else "verification")
+            + " could not run for this project. Reviewed by hand before opening."
+        )
+        if passed:
+            line += " Passed: " + ", ".join(f"`{c}`" for c in passed) + "."
+        return line
+    return ("Passed: " + ", ".join(f"`{c}`" for c in checks)) if checks else "No checks ran."
+
+
+def _pr_body(payload: dict[str, Any]) -> str:
+    description = payload.get("pr_description")
     lines = [
         payload.get("instruction") or "",
         "",
-        "## Agent summary",
-        (payload.get("summary") or "(none)")[:3000],
+        *(
+            [description]
+            if description
+            else ["## Agent summary", (payload.get("summary") or "(none)")[:3000]]
+        ),
         "",
         "## Verification",
-        ("Passed: " + ", ".join(f"`{c}`" for c in checks)) if checks else "No checks ran.",
+        _verification_line(payload),
         "",
         f"Task `{payload.get('task_id')}` · driver `{payload.get('driver')}` · "
         f"opened by Life Graph after human approval.",
@@ -309,6 +346,7 @@ async def merge_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
     pr = json.loads(out)
 
     if pr.get("state") == "MERGED":
+        await _sync_base_branch(repo, base_branch)
         return {
             "merged": True,
             "already": True,
@@ -369,9 +407,212 @@ async def merge_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
     if code == 0 and out:
         merge_commit = (json.loads(out).get("mergeCommit") or {}).get("oid")
     logger.info("Merged PR #%s (%s) as %s", number, branch, merge_commit)
+    await _sync_base_branch(repo, base_branch)
     return {
         "merged": True,
         "already": False,
         "merge_commit": merge_commit,
         "checks": len(rollup),
     }
+
+
+async def _sync_base_branch(repo: str | Path, base_branch: str) -> None:
+    """Fast-forward the local base branch to match origin after a merge.
+
+    Every dispatch clones its worktree from this local ref, not from GitHub
+    directly (``resolve_workdir`` branches off local ``base_branch``). Leaving
+    it behind here means every task dispatched after a merge is silently
+    built on a stale base until someone happens to ``git pull`` by hand —
+    missing files a just-merged PR added, and diffs computed against code
+    that no longer matches what is actually on GitHub. Best-effort: a sync
+    failure must not turn a successful merge into a reported failure.
+    """
+    code, current, _ = await _git(repo, "symbolic-ref", "--short", "-q", "HEAD")
+    code2, _, err2 = await _git(
+        repo, "fetch", "--quiet", "origin", f"{base_branch}:refs/remotes/origin/{base_branch}"
+    )
+    if code2 != 0:
+        logger.warning("Could not fetch %s after merge: %s", base_branch, err2[-200:])
+        return
+    if code == 0 and current == base_branch:
+        code3, _, err3 = await _git(repo, "merge", "--ff-only", f"origin/{base_branch}")
+    else:
+        code3, _, err3 = await _git(
+            repo, "update-ref", f"refs/heads/{base_branch}", f"refs/remotes/origin/{base_branch}"
+        )
+    if code3 != 0:
+        logger.warning("Could not fast-forward local %s after merge: %s", base_branch, err3[-200:])
+
+
+# ── Post-merge CI safety net ────────────────────────────────────
+
+_COMMIT_STATUS_OK = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED", "EXPECTED"})
+
+
+async def commit_ci_status(payload: dict[str, Any]) -> str:
+    """Combined CI state for a commit already on the base branch: one of
+    'success', 'failure', or 'pending' (includes "no checks configured" —
+    treated the same as pending so a caller never acts on silence).
+
+    ``merge_pull_request`` already refuses to merge a PR with failing or
+    pending checks, so this is for the rarer case where the *base branch's*
+    result differs from what the PR itself was tested with — a flaky test,
+    or a squash landing differently than the branch that was checked.
+    """
+    from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+    sha = payload.get("merge_commit") or ""
+    if not _SHA_RE.match(sha):
+        raise PullRequestError(f"not a full commit sha: {sha!r}")
+    try:
+        repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="pull request")
+    except ToolDeniedError as exc:
+        raise PullRequestError(str(exc)) from exc
+
+    gh = settings.driver_gh_bin
+    code, out, err = await _run(
+        [gh, "api", f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs"],
+        cwd=repo,
+    )
+    if code != 0:
+        raise PullRequestError(f"could not read check runs for {sha[:8]}: {(err or out)[-300:]}")
+    runs = (json.loads(out) or {}).get("check_runs") or []
+    if not runs:
+        return "pending"
+    for run in runs:
+        if run.get("status") != "completed":
+            return "pending"
+        if (run.get("conclusion") or "").upper() not in _COMMIT_STATUS_OK:
+            return "failure"
+    return "success"
+
+
+async def revert_merge_commit(payload: dict[str, Any]) -> dict[str, Any]:
+    """Open a PR that reverts a commit already on the base branch.
+
+    Used when :func:`commit_ci_status` comes back 'failure' for a commit
+    that already merged. Reverts in a throwaway worktree so the shared
+    checkout (and anything else using it concurrently) is never touched.
+
+    Returns ``{"pr_url", "branch", "existing"}``. Idempotent: a second call
+    for the same commit finds the existing revert PR rather than erroring or
+    reverting twice. Raises PullRequestError on any git/gh failure,
+    including a real revert conflict — that needs a human, not a retry.
+    """
+    from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+    sha = payload.get("merge_commit") or ""
+    base_branch = payload.get("base_branch") or ""
+    if not (_SHA_RE.match(sha) and base_branch):
+        raise PullRequestError("revert needs a full merge commit sha and a base branch")
+    try:
+        repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="pull request")
+    except ToolDeniedError as exc:
+        raise PullRequestError(str(exc)) from exc
+
+    branch = f"lg/revert-{sha[:8]}"
+    gh = settings.driver_gh_bin
+
+    code, url, _ = await _run([gh, "pr", "view", branch, "--json", "url", "-q", ".url"], cwd=repo)
+    if code == 0 and url:
+        return {"pr_url": url, "branch": branch, "existing": True}
+
+    code, _, err = await _git(
+        repo, "fetch", "--quiet", "origin", f"{base_branch}:refs/remotes/origin/{base_branch}"
+    )
+    if code != 0:
+        raise PullRequestError(f"could not fetch {base_branch!r}: {err[-200:]}")
+
+    import tempfile
+    from pathlib import Path
+
+    worktree = Path(tempfile.mkdtemp(prefix="lg-revert-"))
+    try:
+        code, _, err = await _git(
+            repo, "worktree", "add", "--detach", str(worktree), f"origin/{base_branch}"
+        )
+        if code != 0:
+            raise PullRequestError(f"could not create revert worktree: {err[-300:]}")
+
+        code, _, err = await _run(
+            [
+                "git",
+                "-C",
+                str(worktree),
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "user.email=life-graph@localhost",
+                "-c",
+                "user.name=Life Graph",
+                "revert",
+                "--no-edit",
+                sha,
+            ]
+        )
+        if code != 0:
+            await _run(["git", "-C", str(worktree), "revert", "--abort"])
+            raise PullRequestError(
+                f"git revert {sha[:8]} conflicted — needs a human to resolve: {err[-400:]}"
+            )
+
+        code, _, err = await _git(
+            worktree, "push", "--quiet", "origin", f"HEAD:refs/heads/{branch}"
+        )
+        if code != 0:
+            raise PullRequestError(f"git push of revert branch failed: {err[-300:]}")
+    finally:
+        await _run(["git", "-C", str(repo), "worktree", "remove", "--force", str(worktree)])
+
+    title = f"Revert: {(payload.get('title') or sha[:8]).strip()}"[:_TITLE_MAX]
+    body = (
+        f"Reverts {sha} — its checks went red on `{base_branch}` after merging "
+        "(the original PR's own checks had passed).\n\n"
+        "Opened automatically by Life Graph's post-merge CI check. Investigate "
+        "and re-apply the change once the underlying issue is understood."
+    )
+    code, out, err = await _run(
+        [
+            gh,
+            "pr",
+            "create",
+            "--head",
+            branch,
+            "--base",
+            base_branch,
+            "--title",
+            title,
+            "--body",
+            body,
+        ],
+        cwd=repo,
+    )
+    if code != 0:
+        raise PullRequestError(f"gh pr create failed for revert: {(err or out)[-400:]}")
+    pr_url = out.splitlines()[-1].strip() if out else ""
+    logger.warning("Opened revert PR for %s (broke CI on %s): %s", sha[:8], base_branch, pr_url)
+    return {"pr_url": pr_url, "branch": branch, "existing": False}
+
+
+async def pr_state(payload: dict[str, Any]) -> str:
+    """'OPEN', 'MERGED', or 'CLOSED' for the PR at ``payload['pr_url']``.
+
+    Used to tell whether a revert has actually been acted on yet — opening
+    a revert PR is not itself a verdict that the break was real, a human
+    merging it is.
+    """
+    from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+    url = payload.get("pr_url") or ""
+    if not _PR_URL_RE.match(url):
+        raise PullRequestError(f"not a valid PR url: {url!r}")
+    try:
+        repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="pull request")
+    except ToolDeniedError as exc:
+        raise PullRequestError(str(exc)) from exc
+
+    gh = settings.driver_gh_bin
+    code, out, err = await _run([gh, "pr", "view", url, "--json", "state"], cwd=repo)
+    if code != 0:
+        raise PullRequestError(f"could not read PR state for {url}: {(err or out)[-300:]}")
+    return (json.loads(out) or {}).get("state", "")

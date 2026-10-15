@@ -392,3 +392,106 @@ class TestNotificationFlow:
         assert list_resp.status_code == 200
         data = list_resp.json()["data"]
         assert data["total"] == 0
+
+
+# ── External Alert Endpoint ──────────────────────────────────
+
+
+@pytest_asyncio.fixture
+async def auth_client() -> AsyncClient:
+    """Same as ``client``, but with a valid service key if one is configured.
+
+    A local .env with a real ``LIFE_GRAPH_SERVICE_API_KEYS`` (as this repo's
+    does, for the dev-agent's own dispatches) makes ``AuthMiddleware`` enforce
+    auth even in dev mode — the plain ``client`` fixture 401s in that case,
+    same as any other caller without a key would.
+    """
+    from life_graph.config import settings
+
+    headers = dict(TENANT_HEADERS)
+    if settings.service_api_keys_list:
+        headers["Authorization"] = f"Bearer {settings.service_api_keys_list[0]}"
+    elif settings.api_key:
+        headers["Authorization"] = f"Bearer {settings.api_key}"
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:
+        yield c
+
+
+class TestExternalAlert:
+    """POST /api/v1/kernel/alerts/external"""
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_external_alert_creates_notification_and_notifies_telegram(
+        self,
+        auth_client: AsyncClient,
+        monkeypatch,
+    ):
+        """A tool like pulse posting here gets a notification row and a
+        Telegram delivery attempt, tagged with its source."""
+        sent: dict[str, Any] = {}
+
+        async def fake_send(self, **kwargs: Any) -> bool:
+            sent.update(kwargs)
+            return True
+
+        monkeypatch.setattr(
+            "life_graph.watchers.channels.telegram_channel.TelegramChannel.send",
+            fake_send,
+        )
+
+        resp = await auth_client.post(
+            "/api/v1/kernel/alerts/external",
+            json={
+                "title": "2 service(s) down: postgres, redis",
+                "details": "checked at 2026-09-19T09:00:00Z",
+                "severity": "critical",
+                "source": "pulse",
+            },
+        )
+        if resp.status_code == 500:
+            pytest.skip("DB unavailable")
+
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["title"] == "[pulse] 2 service(s) down: postgres, redis"
+        assert data["priority"] == "critical"
+
+        assert sent["severity"] == "critical"
+        assert sent["title"] == "[pulse] 2 service(s) down: postgres, redis"
+        assert sent["watcher_name"] == "pulse"
+
+    @pytest.mark.asyncio
+    @skip_on_db_error
+    async def test_external_alert_invalid_severity_falls_back_to_important(
+        self,
+        auth_client: AsyncClient,
+        monkeypatch,
+    ):
+        """An unrecognised severity string should not be rejected outright —
+        the sender is an external tool that shouldn't need to know life-graph's
+        exact priority vocabulary — it just shouldn't be trusted as 'critical'."""
+        sent: dict[str, Any] = {}
+
+        async def fake_send(self, **kwargs: Any) -> bool:
+            sent.update(kwargs)
+            return True
+
+        monkeypatch.setattr(
+            "life_graph.watchers.channels.telegram_channel.TelegramChannel.send",
+            fake_send,
+        )
+
+        resp = await auth_client.post(
+            "/api/v1/kernel/alerts/external",
+            json={"title": "quota exhausted", "severity": "urgent!!"},
+        )
+        if resp.status_code == 500:
+            pytest.skip("DB unavailable")
+
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["priority"] == "important"
+        assert sent["severity"] == "important"

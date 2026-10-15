@@ -30,6 +30,7 @@ import time
 from typing import TYPE_CHECKING
 
 from life_graph.drivers.base import ContextPacket, DriverResult
+from life_graph.drivers.steps import StepCollector
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -127,6 +128,7 @@ class LocalDriver:
                 ]
 
             output_parts: list[str] = []
+            steps = StepCollector()
             tool_calls = 0
             errors: list[str] = []
 
@@ -143,6 +145,7 @@ class LocalDriver:
                         data = json.loads(event_str[6:].strip())
                     except json.JSONDecodeError:
                         continue
+                    steps.add(data)
                     kind = data.get("type")
                     if kind == "token" and data.get("content"):
                         output_parts.append(data["content"])
@@ -167,6 +170,7 @@ class LocalDriver:
                 metadata={
                     "model": getattr(orchestrator, "model", packet.persona_model),
                     "tool_calls": tool_calls,
+                    "steps": steps.finish(),
                     "workdir": str(workdir),
                 },
             )

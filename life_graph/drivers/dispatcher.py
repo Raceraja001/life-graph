@@ -16,13 +16,15 @@ One-bounce rule:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 import tempfile
 import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
@@ -34,13 +36,14 @@ from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import ContextPacketBuilder
 from life_graph.drivers.registry import driver_registry
 from life_graph.drivers.workdir import (
+    diff_against_head,
     preserve_verified_work,
     remove_worktree,
     resolve_workdir,
     worktree_intact,
 )
 from life_graph.services.governor import governor
-from life_graph.services.verifiers import VerifierResult, verifier_chain
+from life_graph.services.verifiers import VerifierResult, mechanical_autofix, verifier_chain
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,7 +69,176 @@ AUTO_PR_MERGE_RATE = 0.8
 # task once (a wasted frontier call) and then escalated to needs_human, every
 # time, forever. A verifier chain judges the diff; a persona may ask for
 # something stricter via its own verifier_chain.
-DEFAULT_VERIFY_CHAIN = ["build_ok_diff", "lint_clean_diff"]
+#
+# no_secrets_in_diff and no_vulnerable_deps_in_diff are in the default
+# chain, not opt-in like most other checks — see _ALWAYS_ON_CHECKS below,
+# which is what actually guarantees they run even for a persona that picks
+# its own chain; listed here too so the default chain reads as complete on
+# its own.
+DEFAULT_VERIFY_CHAIN = [
+    "build_ok_diff",
+    "lint_clean_diff",
+    "no_secrets_in_diff",
+    "no_vulnerable_deps_in_diff",
+]
+
+
+# spec_first: ask the driver to write its plan before touching anything,
+# spec-driven-development style (requirements → design → tasks), in the
+# same call rather than a separate pre-pass — no extra driver cost, no new
+# pause-for-approval architecture, most of the benefit (a reviewable plan,
+# a forcing function against misreading the instruction) for one-file's
+# worth of code.
+def tenant_scratch_root(tenant_id: str) -> str:
+    """A private (0700) parent for one tenant's dispatch scratch dirs and worktrees.
+
+    One customer's agent work never shares a directory with another's, and
+    a scratch dir's path says whose it is. The tenant id is reduced to safe
+    characters; it is already validated, this only keeps it a single name.
+    """
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", tenant_id or "unknown")[:64]
+    root = Path(tempfile.gettempdir()) / "lg-tenants" / safe
+    root.mkdir(parents=True, exist_ok=True)
+    root.chmod(0o700)
+    return str(root)
+
+
+# Registry settings the verifier chain reads (never from the worktree, which
+# the agent controls). One list, so the first attempt and the bounce agree.
+SANDBOX_SETTINGS: tuple[str, ...] = (
+    "sandbox_setup",
+    "sandbox_test_command",
+    "sandbox_test_timeout",
+    "sandbox_toolchain",
+    "sandbox_js_test_runner",
+    "sandbox_start_command",
+    "sandbox_app_port",
+    "sandbox_e2e_command",
+    "sandbox_e2e_timeout",
+)
+
+
+_SPEC_HEADINGS = (
+    "## Spec\n"
+    "**Requirements:** the acceptance criteria this change must satisfy, one "
+    "per line, each with an id and the pytest test that will prove it, "
+    "exactly like:\n"
+    "AC-1: <what must be true> — test: tests/unit/test_example.py::test_name\n"
+    "**Design:** the approach, in a sentence or two.\n"
+    "**Tasks:** a numbered list of the concrete steps you will take. End each "
+    'task with the criteria it satisfies, e.g. "1. Add the parser (AC-1)". A '
+    "task that cites a criterion also writes or updates that criterion's test.\n\n"
+)
+_SPEC_FIRST_PREFIX = (
+    "Before changing anything, write a short spec as the FIRST part of "
+    "your response, using exactly these headings:\n"
+    + _SPEC_HEADINGS
+    + "Then implement it. Keep the spec to a few lines total — it's a plan, "
+    "not documentation.\n\n---\n\n"
+)
+# A plan task's spec is the whole job. Reusing _SPEC_FIRST_PREFIX ("...Then
+# implement it.") had a claude_code plan run write the full feature, which
+# no_diff_in_plan then rightly rejected.
+_PLAN_ONLY_PREFIX = (
+    "This is a PLAN-ONLY task for human review: do NOT create, edit or delete "
+    "any file. Read the code as much as you need to plan well, then reply with "
+    "a spec using exactly these headings, and nothing else:\n"
+    + _SPEC_HEADINGS
+    + "Rules for the Tasks list:\n"
+    "- Every task changes something (code, tests or docs). No task that only "
+    "runs checks: lint and tests run automatically after every task, and a "
+    "check-only task is dropped.\n"
+    "- When a change makes a generated file stale (an inventory or state doc, "
+    "a lockfile, generated types), regenerate it inside that same task.\n"
+    "- Keep tasks few: each one is a separate run, review and merge.\n\n"
+    "Stop after the spec. The tasks run later, one at a time, after this plan "
+    "is approved.\n\n---\n\n"
+)
+# Plan tasks keep only the tools that read. Anything mapping to a write or a
+# shell (file_write, code_edit, run_command, and the git_* tools, which the
+# claude_code driver maps to a full Bash) is dropped for the plan stage.
+_PLAN_READ_TOOLS = frozenset(
+    {
+        "file_read",
+        "code_read",
+        "code_search",
+        "code_list",
+        "web_search",
+        "browse_web",
+        "memory_search",
+    }
+)
+_SPEC_SECTION_RE = re.compile(r"##\s*Spec\b(.*?)(?:\n##\s|\Z)", re.DOTALL | re.IGNORECASE)
+
+
+def _extract_spec(output: str | None) -> str | None:
+    """Pull the ``## Spec`` section out of a driver's narrative output, if any."""
+    if not output:
+        return None
+    match = _SPEC_SECTION_RE.search(output)
+    return match.group(1).strip() or None if match else None
+
+
+_TASKS_SECTION_RE = re.compile(r"\*\*Tasks:?\*\*\s*(.*)", re.DOTALL | re.IGNORECASE)
+# A candidate list marker: "3." or "3)" at the start or after whitespace, then
+# whitespace. Only the next expected number counts (see _parse_tasks), so a
+# "(default 5, max 20)" inside task 1 is text, not task 20.
+_TASK_MARKER_RE = re.compile(r"(?:^|(?<=\s))(\d+)[.)](?=\s)")
+_PLAN_SPEC_MAX_CHARS = 50_000
+_BOLD_HEADING_RE = re.compile(r"\*\*[A-Za-z][\w -]*:?\*\*")
+
+
+def _parse_tasks(spec_text: str | None) -> list[str]:
+    """Pull the numbered task list out of a spec's ``**Tasks:**`` section.
+
+    Tolerates both inline ("1. x 2. y") and multi-line numbering — the
+    model's own formatting varies and neither is wrong. Returns ``[]`` when
+    no numbered list is found, so callers fall back to a single combined
+    dispatch rather than fanning out on a guess.
+    """
+    if not spec_text:
+        return []
+    section = _TASKS_SECTION_RE.search(spec_text)
+    if not section:
+        return []
+    block = section.group(1)
+    # Stop at the next bold heading, if the model added one after Tasks.
+    block = _BOLD_HEADING_RE.split(block)[0]
+    starts = []
+    for marker in _TASK_MARKER_RE.finditer(block):
+        if int(marker.group(1)) == len(starts) + 1:
+            starts.append(marker)
+    items = []
+    for i, marker in enumerate(starts):
+        end = starts[i + 1].start() if i + 1 < len(starts) else len(block)
+        text = block[marker.end() : end].strip()
+        if text:
+            items.append(text)
+    return items
+
+
+_CODE_CONTEXT_TIMEOUT_SECONDS = 30
+
+
+async def _code_context(workdir: Path, instruction: str) -> str:
+    """Callers/callees of the symbols *instruction* names. "" on any failure.
+
+    Built from the task's own worktree (fresh, never stale), off the event
+    loop since parsing a few hundred files is CPU and disk work. Best-effort:
+    a context that can't be built must never fail a dispatch.
+    """
+    if not settings.driver_code_context_enabled:
+        return ""
+    try:
+        from life_graph.services.code_graph import build_graph, context_for
+
+        graph = await asyncio.wait_for(
+            asyncio.to_thread(build_graph, workdir), timeout=_CODE_CONTEXT_TIMEOUT_SECONDS
+        )
+        return context_for(graph, instruction)
+    except Exception:
+        logger.warning("Could not build code context for %s", workdir, exc_info=True)
+        return ""
 
 
 class DispatchError(Exception):
@@ -97,14 +269,27 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
         return None
 
 
+# Appended unconditionally in _with_required_checks, after persona/caller
+# resolution — a persona picking its own verifier_chain (personas.py has
+# several) opts out of the default chain, but must not thereby opt out of
+# these. Unlike required_checks these are not project-configurable: there
+# is no legitimate reason for any project to dispatch without them.
+#
+# no_vulnerable_deps_in_diff self-gates (a real pass, not a no-op) unless
+# the diff touches a dependency manifest, so it costs nothing on the
+# overwhelming majority of dispatches that never touch one.
+_ALWAYS_ON_CHECKS = ("no_secrets_in_diff", "no_vulnerable_deps_in_diff")
+
+
 def _with_required_checks(chain: list[str], project_context: dict) -> list[str]:
-    """Append the project's required checks (e.g. tests_pass) that *chain* lacks.
+    """Append the project's required checks (e.g. tests_pass), plus the
+    always-on checks, that *chain* lacks.
 
     A project can require checks for all of its tasks on top of whatever the
     caller or persona asked for. Read from the registry via the packet's
     project context, never from the worktree the agent controls.
     """
-    required = project_context.get("required_checks") or []
+    required = [*(project_context.get("required_checks") or []), *_ALWAYS_ON_CHECKS]
     return [*chain, *(c for c in dict.fromkeys(required) if c not in chain)]
 
 
@@ -139,20 +324,20 @@ class TaskDispatcher:
 
     @staticmethod
     def _build_default_reviewer():
-        """Build the second-opinion reviewer from settings (off by default)."""
+        """Build the second-opinion reviewer from settings (off by default).
+
+        Backed by PR-Agent (services/pr_agent_review.py), which reads the
+        actual diff rather than the driver's narrative account of it —
+        same settings surface (driver_second_opinion_enabled/_model) the
+        older thin LLM-skim reviewer used, same gate position.
+        """
         from life_graph.config import settings
-        from life_graph.services.second_opinion import SecondOpinionReviewer
+        from life_graph.services.pr_agent_review import PRAgentReviewer
 
-        enabled = settings.driver_second_opinion_enabled
-        llm = None
-        if enabled:
-            from life_graph.services.llm_client import LMStudioClient
-
-            llm = LMStudioClient()
-        return SecondOpinionReviewer(
-            llm=llm,
-            model=settings.driver_second_opinion_model,
-            enabled=enabled,
+        return PRAgentReviewer(
+            model=settings.driver_second_opinion_model or settings.agent_llm_model,
+            enabled=settings.driver_second_opinion_enabled,
+            bin_path=settings.driver_pr_agent_bin,
         )
 
     async def dispatch_task(
@@ -169,6 +354,8 @@ class TaskDispatcher:
         verify_chain: list[str] | None = None,
         interactive: bool = False,
         isolate_workdir: bool = False,
+        spec_first: bool = False,
+        acceptance_tests: list[str] | None = None,
     ) -> DriverResult:
         """Dispatch a task through the full driver pipeline.
 
@@ -230,6 +417,11 @@ class TaskDispatcher:
             # Override the task_id from the caller
             packet.task_id = uuid.UUID(task_id) if isinstance(task_id, str) else task_id
 
+            if task_type == "plan":
+                packet.instruction = _PLAN_ONLY_PREFIX + packet.instruction
+            elif spec_first:
+                packet.instruction = _SPEC_FIRST_PREFIX + packet.instruction
+
             # Step 2b: Resolve the pinned persona ONCE (reused for driver
             # selection below) and scope the packet to it. Without this the
             # driver would run with the FULL tool registry — including the
@@ -240,6 +432,12 @@ class TaskDispatcher:
                 allowed = getattr(persona, "allowed_tools", None)
                 packet.allowed_tools = list(allowed) if allowed is not None else None
                 packet.persona_model = getattr(persona, "model", None) or None
+            if task_type == "plan":
+                # Prompting alone didn't hold (see _PLAN_ONLY_PREFIX); take
+                # the write tools away too. An unscoped or write-only persona
+                # still gets file_read, since a plan needs to read the code.
+                read = [t for t in (packet.allowed_tools or []) if t in _PLAN_READ_TOOLS]
+                packet.allowed_tools = read or ["file_read"]
 
             # A persona declares the checks its own work must clear —
             # dependency-updater asks for tests_pass because its whole job is
@@ -248,6 +446,11 @@ class TaskDispatcher:
             # tests never ran. An explicit caller argument still wins.
             verify_chain = _resolve_verify_chain(caller_verify_chain, persona)
             verify_chain = _with_required_checks(verify_chain, packet.project_context)
+            # A task fanned out from a plan carries the tests bound to the
+            # acceptance criteria it cites -- check those specifically, on
+            # top of whatever chain the persona/project asked for.
+            if acceptance_tests and "acceptance_tests_pass" not in verify_chain:
+                verify_chain = [*verify_chain, "acceptance_tests_pass"]
 
             # Step 2c: opt-in workdir isolation — only when the caller asked
             # for it AND a real project path resolved. A no-op flag on a
@@ -310,7 +513,11 @@ class TaskDispatcher:
             )
 
             # Step 4: Dispatch with workdir
-            scratch = Path(tempfile.mkdtemp(prefix=f"lg_dispatch_{task_id[:8]}_"))
+            scratch = Path(
+                tempfile.mkdtemp(
+                    prefix=f"lg_dispatch_{task_id[:8]}_", dir=tenant_scratch_root(tenant_id)
+                )
+            )
             workdir, worktree = await resolve_workdir(packet, scratch)
             if worktree is not None:
                 worktree_origin = packet.project_context.get("path")
@@ -327,9 +534,25 @@ class TaskDispatcher:
                 # prompt gates a whole section on `if packet.project_context:`.
                 packet.project_context["path"] = str(workdir)
                 packet.project_context["isolation"] = False
+                # Step 4a: where the symbols the instruction names are defined
+                # and who calls them, from this worktree's own code.
+                code_context = await _code_context(workdir, instruction)
+                if code_context:
+                    packet.instruction += (
+                        "\n\n--- CODE CONTEXT (where the symbols named above are "
+                        "defined and used in this project) ---\n"
+                        f"{code_context}\n"
+                        "Check these callers before changing a signature or return shape."
+                    )
             result = await driver.dispatch(
                 packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
             )
+            await self._emit_steps(tenant_id, task_id, driver.name, 1, result)
+            # Captured here, before later steps replace `result` with fresh
+            # DriverResult instances (verification failure, dissent, ...)
+            # that don't carry the original metadata forward — merged back
+            # in at Step 7 regardless of how the task ultimately resolved.
+            spec_text = _extract_spec(result.output) if spec_first else None
 
             # Book the actual spend into the Governor's ledger.
             await governor.record(tenant_id, BudgetCategory.DRIVER, result.cost_usd)
@@ -372,16 +595,41 @@ class TaskDispatcher:
                 )
 
             # Step 5: Run verifier chain
+            unverifiable: list[VerifierResult] = []
             if verify_chain and result.success:
                 task_context = {
                     "output": result.output,
                     "task_type": task_type,
                     "instruction": instruction,
-                    "sandbox_setup": packet.project_context.get("sandbox_setup"),
-                    "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
-                    "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
+                    **{k: packet.project_context.get(k) for k in SANDBOX_SETTINGS},
+                    "acceptance_tests": acceptance_tests or [],
                 }
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
+
+                # Step 5b: a mechanical auto-fix pass -- ruff --fix/--format,
+                # no driver call -- before the one-bounce rule spends a real
+                # (frontier) call re-dispatching a failure a formatter would
+                # have resolved for free. Skipped when there's nothing to
+                # gain: a clean result, or one that's only inconclusive
+                # (ruff can't make a missing tool appear).
+                if not verifier_chain.all_passed(v_results) and not verifier_chain.inconclusive(
+                    v_results
+                ):
+                    autofix = await mechanical_autofix(workdir, task_context)
+                    if autofix.get("fixed") and autofix.get("candidates"):
+                        logger.info(
+                            "Task %s: mechanical auto-fix ran on %s, re-verifying",
+                            task_id,
+                            autofix["candidates"],
+                        )
+                        v_results = await verifier_chain.run_chain(
+                            verify_chain, workdir, task_context
+                        )
+
+                # Recorded once, after any auto-fix retry: the pre-fix
+                # failure was transient and mechanical, not a decision worth
+                # keeping a row for — attempt 2 stays reserved for the
+                # post-BOUNCE (re-dispatched) re-check.
                 await self._record_verification(tenant_id, task_id, 1, v_results, session)
 
                 # An inconclusive check means the gate never ran — the tool it
@@ -437,6 +685,7 @@ class TaskDispatcher:
                         failure_report=v_results,
                         session=session,
                         verify_chain=verify_chain,
+                        acceptance_tests=acceptance_tests,
                     )
 
                     if bounce_result is not None:
@@ -459,6 +708,38 @@ class TaskDispatcher:
                         await self._create_approval_entry(
                             tenant_id, task_id, driver.name, v_results, session
                         )
+                elif task_type == "plan":
+                    # A plan dispatch passed no_diff_in_plan (genuinely no file
+                    # changes) -- file the spec for human review instead of the
+                    # normal second-opinion-review-then-land path, which has
+                    # nothing to review or land here.
+                    await self._emit(
+                        EventType.VERIFICATION_PASSED,
+                        {"task_id": task_id, "driver": driver.name},
+                    )
+                    plan_spec = _extract_spec(result.output)
+                    if plan_spec:
+                        await self._create_plan_approval(
+                            tenant_id=tenant_id,
+                            task_id=task_id,
+                            driver_name=driver.name,
+                            instruction=instruction,
+                            spec_text=plan_spec,
+                            project_id=project_uuid,
+                            persona_name=persona_name,
+                            session=session,
+                            auto_approve=bool(packet.project_context.get("auto_approve_plans")),
+                        )
+                        result.metadata = {**(result.metadata or {}), "spec": plan_spec}
+                    else:
+                        result = DriverResult(
+                            success=False,
+                            output=result.output,
+                            error="Plan dispatch produced no '## Spec' section to review",
+                            cost_usd=result.cost_usd,
+                            duration_ms=result.duration_ms,
+                            metadata={"needs_human": True},
+                        )
                 else:
                     await self._emit(
                         EventType.VERIFICATION_PASSED,
@@ -466,7 +747,11 @@ class TaskDispatcher:
                     )
 
                     # Step 6b: Second-opinion dissenting review before landing.
-                    verdict = await self._reviewer.review(task_type, instruction, result.output)
+                    # Reads the real diff, not the driver's narrative output --
+                    # staging here is harmless, preserve_verified_work below
+                    # re-stages (a no-op) and commits regardless of the verdict.
+                    diff_text = await diff_against_head(workdir)
+                    verdict = await self._reviewer.review(task_type, instruction, diff_text)
                     if verdict.ran and not verdict.approved:
                         await self._emit(
                             EventType.SECOND_OPINION_DISSENT,
@@ -507,8 +792,16 @@ class TaskDispatcher:
             # onto a branch keeps it reachable after removal, without merging,
             # pushing, or touching the default branch -- a reviewable branch is
             # what the approval step needs to act on.
+            # An inconclusive verifier result is not a pass, but it is also not
+            # evidence of anything wrong -- the change was simply never
+            # checked (e.g. the project doesn't have the tool yet). Discarding
+            # it here means the only way to know the diff was ever correct is
+            # this run's logs; land it like verified work so a human can
+            # still review and merge it by hand, but never auto-open or
+            # auto-merge it -- that trust bar is reserved for work that was
+            # actually checked.
             if (
-                result.success
+                (result.success or unverifiable)
                 and worktree is not None
                 and worktree_origin
                 and settings.driver_land_verified_work
@@ -537,10 +830,16 @@ class TaskDispatcher:
                         checks=verify_chain,
                         project_id=project_uuid,
                         session=session,
+                        verified=not unverifiable,
+                        unverifiable_checks=[r.verifier for r in unverifiable],
                         auto_open_pr=bool(packet.project_context.get("auto_open_pr")),
+                        auto_merge=bool(packet.project_context.get("auto_merge")),
+                        base_branch=packet.project_context.get("base_branch") or None,
                     )
 
             # Step 7: Record stats + emit result
+            if spec_text:
+                result.metadata = {**(result.metadata or {}), "spec": spec_text}
             await self._record_stats(tenant_id, driver.name, task_type, result, session)
 
             await self._emit(
@@ -880,6 +1179,7 @@ class TaskDispatcher:
         failure_report: list[VerifierResult],
         session: AsyncSession,
         verify_chain: list[str],
+        acceptance_tests: list[str] | None = None,
     ) -> DriverResult | None:
         """Re-dispatch once with failure context appended to instruction.
 
@@ -927,18 +1227,19 @@ class TaskDispatcher:
         bounce_result = await driver.dispatch(
             bounced_packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
         )
+        await self._emit_steps(tenant_id, task_id, driver.name, 2, bounce_result)
 
         if not bounce_result.success:
             return None
 
-        # Re-verify
+        # Re-verify -- against the same acceptance tests as the first attempt,
+        # or a bounce would quietly drop the check it was bounced for.
         task_context = {
             "output": bounce_result.output,
             "task_type": packet.task_type,
             "instruction": bounce_instruction,
-            "sandbox_setup": packet.project_context.get("sandbox_setup"),
-            "sandbox_test_command": packet.project_context.get("sandbox_test_command"),
-            "sandbox_test_timeout": packet.project_context.get("sandbox_test_timeout"),
+            **{k: packet.project_context.get(k) for k in SANDBOX_SETTINGS},
+            "acceptance_tests": acceptance_tests or [],
         }
         v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
         await self._record_verification(tenant_id, task_id, 2, v_results, session)
@@ -1019,8 +1320,184 @@ class TaskDispatcher:
             )
             session.add(entry)
             logger.info("Created second-opinion approval entry for task %s", task_id)
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": tenant_id,
+                    "kind": "driver_second_opinion_dissent",
+                    "title": f"Second-opinion dissent on task {task_id}",
+                    "detail": entry.trigger_detail,
+                },
+            )
         except Exception:
             logger.warning("Failed to create dissent approval entry", exc_info=True)
+
+    async def _create_plan_approval(
+        self,
+        *,
+        tenant_id: str,
+        task_id: str,
+        driver_name: str,
+        instruction: str,
+        spec_text: str,
+        project_id: uuid.UUID | None,
+        persona_name: str | None,
+        session: AsyncSession,
+        auto_approve: bool = False,
+    ) -> None:
+        """File a ``driver_plan`` approval for a spec produced with no code changes.
+
+        Approving it dispatches the ORIGINAL instruction plus this spec as a
+        normal code-writing task — the full existing pipeline (driver,
+        mechanical autofix, verify, second-opinion review, land, PR/merge
+        approvals), unchanged. Rejecting it is a plain no-op: the plan is
+        simply abandoned, nothing was ever landed to clean up.
+
+        Best-effort, like the other approval producers: a failure here is
+        logged and swallowed rather than failing a plan that already
+        verified cleanly (no file changes, a real spec).
+        """
+        try:
+            from life_graph.models.db import Approval
+            from life_graph.services.acceptance import parse_criteria, spec_gaps
+
+            title_line = instruction.strip().splitlines()[0] if instruction.strip() else "Plan"
+            gaps = spec_gaps(parse_criteria(spec_text), _parse_tasks(spec_text))
+            payload = {
+                "task_id": task_id,
+                "driver": driver_name,
+                "instruction": instruction[:4000],
+                # Not cut to 4000 like the instruction: approving fans out
+                # from THIS copy, so a cut spec silently drops the later tasks
+                # and their AC citations (seen: a 5.5k spec became 2 of 5 tasks,
+                # no tests bound). The cap only guards against a runaway output.
+                "spec": spec_text[:_PLAN_SPEC_MAX_CHARS],
+                "spec_gaps": gaps,
+                "project_id": str(project_id) if project_id else None,
+                "persona_name": persona_name,
+            }
+            # Gaps are advisory: the reviewer decides whether they matter, but
+            # they must see them -- not find out later that a criterion was
+            # never checked.
+            gap_text = (
+                "Gaps to consider before approving:\n" + "\n".join(f"- {g}" for g in gaps) + "\n\n"
+                if gaps
+                else "Every acceptance criterion has a test and is covered by a task.\n\n"
+            )
+            appr = Approval(
+                tenant_id=tenant_id,
+                kind="driver_plan",
+                title=f"Review plan: {title_line[:100]}",
+                # The actual spec, not just a description of the step -- every
+                # approvals surface (dashboard, mobile) renders `detail` alone,
+                # never `payload`, so a human approving from there needs the
+                # plan's actual content here or they are approving blind.
+                detail=(
+                    f"Driver '{driver_name}' produced this plan with no file changes:\n\n"
+                    f"{spec_text[:2000]}\n\n"
+                    f"{gap_text}"
+                    "Approve to dispatch the instruction and this spec together as "
+                    "a normal code-writing task; reject to abandon it."
+                ),
+                source="driver_plan",
+                source_ref=str(task_id),
+                payload=payload,
+            )
+            async with session.begin_nested():
+                session.add(appr)
+            logger.info("Task %s: plan approval filed", task_id)
+            if await self._maybe_auto_approve_plan(
+                appr, driver_name, project_id, session, auto_approve, spec_text, gaps
+            ):
+                return  # approved and fanned out: nothing is waiting on a person
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": tenant_id,
+                    "kind": "driver_plan",
+                    "title": appr.title,
+                    "detail": appr.detail,
+                },
+            )
+        except Exception:
+            logger.warning("Failed to file plan approval for task %s", task_id, exc_info=True)
+
+    async def _maybe_auto_approve_plan(
+        self,
+        appr,
+        driver_name: str,
+        project_id: uuid.UUID | None,
+        session: AsyncSession,
+        opted_in: bool,
+        spec_text: str,
+        gaps: list[str],
+    ) -> bool:
+        """Approve the plan without asking when services/plan_policy.py allows it.
+
+        Approval goes through ApprovalService.resolve, the same path a
+        person's click takes, so fan-out is identical. Whatever the outcome,
+        the reasons are written on the approval. Any failure leaves it
+        pending, exactly as with auto-approval off.
+        """
+        from life_graph.services import plan_policy
+        from life_graph.services.approvals import ApprovalService
+        from life_graph.services.dev_outcomes import track_record
+
+        try:
+            record = (
+                await track_record(session, appr.tenant_id, driver_name, project_id)
+                if opted_in
+                else {}
+            )
+            decision = plan_policy.decide(
+                opted_in=opted_in,
+                spec=spec_text,
+                tasks=_parse_tasks(spec_text),
+                gaps=gaps,
+                record=record,
+                merge_bar=AUTO_PR_MERGE_RATE,
+            )
+            if not decision.approve:
+                if opted_in:
+                    appr.detail = f"{appr.detail}\n\nNot auto-approved: {decision.summary}."
+                return False
+            await ApprovalService(session).resolve(
+                appr.tenant_id,
+                str(appr.id),
+                "approve",
+                note=f"Approved automatically: {decision.summary}.",
+                resolved_by="auto: small trusted plan",
+            )
+            logger.info("Plan %s auto-approved (%s)", appr.id, decision.summary)
+            return True
+        except Exception:
+            logger.warning("Plan auto-approval failed for %s; left pending", appr.id, exc_info=True)
+            return False
+
+    async def _draft_pr_description(
+        self, repo_path: str, landing: dict, instruction: str
+    ) -> str | None:
+        """Draft the PR description from the landed diff. None on any failure."""
+        if not settings.driver_pr_description_enabled:
+            return None
+        base, head = landing.get("base_commit"), landing.get("head_commit")
+        if not (base and head):
+            return None
+        try:
+            from life_graph.services.github_pr import landed_diff
+            from life_graph.services.llm_client import get_resilient_llm
+            from life_graph.services.pr_description import draft_pr_description
+
+            diff_text = await landed_diff(repo_path, base, head)
+            return await draft_pr_description(
+                diff_text,
+                instruction,
+                chat=get_resilient_llm().chat,
+                model=settings.driver_pr_description_model or settings.agent_llm_model,
+            )
+        except Exception:
+            logger.warning("Could not draft a PR description", exc_info=True)
+            return None
 
     async def _create_pr_approval(
         self,
@@ -1035,9 +1512,13 @@ class TaskDispatcher:
         checks: list[str],
         project_id: uuid.UUID | None,
         session: AsyncSession,
+        verified: bool = True,
+        unverifiable_checks: list[str] | None = None,
         auto_open_pr: bool = False,
+        auto_merge: bool = False,
+        base_branch: str | None = None,
     ) -> None:
-        """File a ``driver_pr`` approval for a verified, landed branch.
+        """File a ``driver_pr`` approval for a landed branch.
 
         Approving it pushes the branch and opens a pull request
         (``services/github_pr.py``). The payload pins the exact verified commit
@@ -1045,13 +1526,24 @@ class TaskDispatcher:
         checked — not on whatever the branch holds by the time someone taps it.
         Best-effort, like the other approval producers: a failure here leaves
         the branch landed and reviewable by hand.
+
+        ``verified`` is False for a branch landed off an inconclusive verifier
+        chain (the checks never ran, not that they failed) — the title and
+        detail say so plainly, and the caller is expected to have already
+        forced ``auto_open_pr`` off for this case; trust-based auto-approval
+        is reserved for work that was actually checked.
+
+        ``auto_merge`` is stored in the payload (not acted on here) so the
+        trust check runs at merge-approval time, whichever path files it —
+        a human approving ``driver_pr`` normally, or :meth:`_auto_open_pr`.
         """
         try:
             from life_graph.models.db import Approval
             from life_graph.services.github_pr import describe_landing
 
-            landing = await describe_landing(repo_path, branch)
+            landing = await describe_landing(repo_path, branch, base_branch=base_branch)
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else branch
+            pr_description = await self._draft_pr_description(repo_path, landing, instruction)
             payload = {
                 "task_id": task_id,
                 "driver": driver_name,
@@ -1061,19 +1553,42 @@ class TaskDispatcher:
                 "repo_path": repo_path,
                 "project_id": str(project_id) if project_id else None,
                 "checks": list(checks or []),
+                "unverifiable_checks": list(unverifiable_checks or []),
                 "cost_usd": result.cost_usd,
+                "auto_merge": auto_merge,
+                "verified": verified,
+                "pr_description": pr_description,
                 **landing,
             }
-            appr = Approval(
-                tenant_id=tenant_id,
-                kind="driver_pr",
-                title=f"Open PR: {title_line[:100]}",
-                detail=(
+            title_prefix = "Open PR" if verified else "Open PR (UNVERIFIED)"
+            if verified:
+                detail = (
                     f"Branch {branch} passed "
                     f"{', '.join(checks) if checks else 'no checks'} on driver "
                     f"'{driver_name}'. Approve to push it and open a pull request "
                     f"against {landing.get('base_branch') or '(unknown base)'}."
-                ),
+                )
+            else:
+                names = unverifiable_checks or checks
+                rest = [c for c in (checks or []) if c not in (unverifiable_checks or [])]
+                detail = (
+                    f"Branch {branch} was landed by driver '{driver_name}', but "
+                    f"{', '.join(names) if names else 'verification'} could not run "
+                    f"for this project — the change is neither known good nor known "
+                    f"bad on {'that check' if len(names) == 1 else 'those checks'}."
+                    + (f" ({', '.join(rest)} passed.)" if rest else "")
+                    + " Review the diff by hand before approving; this will not "
+                    "auto-open or auto-merge regardless of trust."
+                )
+            if pr_description:
+                # Shown before approving, since `detail` is all an approvals
+                # surface renders: the reviewer sees what the PR will say.
+                detail += f"\n\nProposed PR description:\n\n{pr_description[:1500]}"
+            appr = Approval(
+                tenant_id=tenant_id,
+                kind="driver_pr",
+                title=f"{title_prefix}: {title_line[:100]}",
+                detail=detail,
                 source="driver",
                 source_ref=str(task_id),
                 payload=payload,
@@ -1085,8 +1600,22 @@ class TaskDispatcher:
             logger.warning("Failed to file PR approval for task %s", task_id, exc_info=True)
             return
 
-        if auto_open_pr:
+        if auto_open_pr and verified:
             await self._auto_open_pr(appr, driver_name, project_id, session)
+
+        # Only notify if it's actually still waiting on someone -- a driver
+        # proven enough to earn auto_open_pr just resolved this above, and
+        # "approval needed" for something already approved is a false alarm.
+        if appr.status == "pending":
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": tenant_id,
+                    "kind": "driver_pr",
+                    "title": appr.title,
+                    "detail": appr.detail,
+                },
+            )
 
     async def _auto_open_pr(
         self,
@@ -1098,9 +1627,13 @@ class TaskDispatcher:
         """Open the PR without asking when the project opted in and the driver
         has earned it there (established record, merge rate >= AUTO_PR_MERGE_RATE).
 
-        Only the *opening* is automated: the merge approval is filed as usual,
-        so nothing reaches the base branch without the user. Any failure leaves
-        the ``driver_pr`` approval pending, exactly as if auto-open were off.
+        The merge approval is still filed as usual after opening, so by
+        default nothing reaches the base branch without the user — unless the
+        project *also* opted into ``auto_merge`` (a second, separate flag: see
+        ``ApprovalService._maybe_auto_merge``), in which case that freshly
+        filed approval is itself checked against the same trust bar and may
+        resolve immediately too. Any failure here leaves the ``driver_pr``
+        approval pending, exactly as if auto-open were off.
         """
         from life_graph.services.approvals import ApprovalService
         from life_graph.services.dev_outcomes import track_record
@@ -1129,8 +1662,22 @@ class TaskDispatcher:
             f"merged on this project. PR: {outcome['pr_url']}"
         )
         appr.payload = {**(appr.payload or {}), "pr_url": outcome["pr_url"], "auto_opened": True}
-        ApprovalService(session).file_merge_approval(appr)
+        approvals = ApprovalService(session)
+        merge_appr = approvals.file_merge_approval(appr)
+        await approvals.maybe_auto_merge(
+            merge_appr, driver_name, project_id, bool((appr.payload or {}).get("auto_merge"))
+        )
         logger.info("Auto-opened PR %s (%s)", outcome["pr_url"], driver_name)
+        if merge_appr.status == "pending":
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": merge_appr.tenant_id,
+                    "kind": "driver_merge",
+                    "title": merge_appr.title,
+                    "detail": merge_appr.detail,
+                },
+            )
 
     async def _create_approval_entry(
         self,
@@ -1183,8 +1730,43 @@ class TaskDispatcher:
             )
             session.add(entry)
             logger.info("Created approval entry for task %s — needs human review", task_id)
+            await self._emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": tenant_id,
+                    "kind": action_name,
+                    "title": f"Review needed: task {task_id}",
+                    "detail": detail,
+                },
+            )
         except Exception:
             logger.warning("Failed to create approval entry", exc_info=True)
+
+    async def _emit_steps(
+        self, tenant_id: str, task_id: Any, driver_name: str, attempt: int, result: DriverResult
+    ) -> None:
+        """Hand one attempt's steps to the trajectory recorder.
+
+        Popped off the result, not copied: the metadata is later merged into
+        the task row, and a run's steps (hundreds, some large) belong in
+        agent_run_steps, not in AgentTask.properties.
+        """
+        if result.metadata is not None:
+            # Which driver produced this: the scorecards group by it.
+            result.metadata.setdefault("driver", driver_name)
+        steps = (result.metadata or {}).pop("steps", None)
+        if not steps:
+            return
+        await self._emit(
+            EventType.DRIVER_STEPS,
+            {
+                "tenant_id": tenant_id,
+                "task_id": str(task_id),
+                "driver": driver_name,
+                "attempt": attempt,
+                "steps": steps,
+            },
+        )
 
     async def _emit(self, event_type: EventType, payload: dict) -> None:
         """Emit an event if event_bus is available."""

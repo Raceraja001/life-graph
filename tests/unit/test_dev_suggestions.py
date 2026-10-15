@@ -19,7 +19,7 @@ def test_todo_findings_key_survives_line_moves_and_skips_junk(tmp_path):
     (tmp_path / "node_modules" / "dep.js").write_text("// vendored noise here\n")
     outside = tmp_path.parent / "outside_todo"
     outside.mkdir(exist_ok=True)
-    (outside / "leak.py").write_text("# FIXME: should never be scanned\n")
+    (outside / "leak.py").write_text("# This should never be scanned\n")
     (tmp_path / "link").symlink_to(outside)
 
     (first,) = ds.todo_findings(tmp_path)

@@ -231,7 +231,7 @@ def _tokens_then_no_top_level_done_events(task_id: str) -> list[dict]:
 
 
 def _delegation_events(task_id: str) -> list[dict]:
-    """Parent tool_call/usage (dropped) + a child that only ever emits done."""
+    """Parent tool_call (forwarded) and usage (dropped) + a child that only emits done."""
     return [
         {
             "task_id": task_id,
@@ -317,11 +317,12 @@ async def test_chat_stream_expands_delegation_start_done_for_tokenless_child(
                     break
 
     types = [e["type"] for e in events]
-    # parent tool_call is dropped; the childless-token 'done' expands to two frames
-    assert types == ["start", "delegation_start", "child_done", "done"]
-    assert events[1]["child_id"] == "child-1"
-    assert events[1]["persona"] == "scout"
+    # the parent's tool_call is forwarded (clients that show tool use need it);
+    # usage is dropped; the childless-token 'done' expands to two frames
+    assert types == ["start", "tool_call", "delegation_start", "child_done", "done"]
     assert events[2]["child_id"] == "child-1"
+    assert events[2]["persona"] == "scout"
+    assert events[3]["child_id"] == "child-1"
 
 
 @pytest.mark.asyncio
@@ -354,11 +355,18 @@ async def test_chat_stream_continues_past_child_error_to_top_level_done(client, 
                     break
 
     types = [e["type"] for e in events]
-    # parent tool_call dropped; child error surfaces as non-fatal `child_error`
+    # parent tool_call forwarded; child error surfaces as non-fatal `child_error`
     # but does not truncate the stream; Jarvis's own deltas and final done
     # still arrive after it.
-    assert types == ["start", "child_error", "assistant_delta", "assistant_delta", "done"]
-    child_error = events[1]
+    assert types == [
+        "start",
+        "tool_call",
+        "child_error",
+        "assistant_delta",
+        "assistant_delta",
+        "done",
+    ]
+    child_error = next(e for e in events if e["type"] == "child_error")
     assert child_error["child_id"] == "child-err-1"
     assert child_error["persona"] == "scout"
     assert child_error["message"] == "litellm.AuthenticationError"

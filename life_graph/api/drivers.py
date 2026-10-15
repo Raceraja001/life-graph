@@ -6,6 +6,7 @@ Tags: [drivers]
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -256,6 +257,27 @@ class DevTaskCreate(BaseModel):
     instruction: str = Field(..., min_length=5, max_length=8000)
     project_id: str = Field(..., description="Registered project to work in")
     persona_name: str = Field("code-fixer", description="A persona with a driver set")
+    spec_first: bool = Field(
+        False,
+        description=(
+            "Ask the driver to write a short requirements/design/tasks spec "
+            "before it touches anything, and surface it on the task. Costs "
+            "nothing extra (same driver call) but adds a few lines to the "
+            "response — worth it for ambiguous or multi-step work, not for "
+            "a one-line fix."
+        ),
+    )
+    plan_only: bool = Field(
+        False,
+        description=(
+            "Dispatch a PLAN, not code: the driver may only write a spec "
+            "(## Spec: requirements/design/tasks), enforced by a verifier — "
+            "any file change bounces it, same one-bounce rule as any other "
+            "failure. A successful plan files a driver_plan approval; "
+            "approving it dispatches the instruction + spec together as a "
+            "normal code-writing task. Implies spec_first."
+        ),
+    )
 
 
 @router.post(
@@ -290,6 +312,9 @@ async def create_dev_task(body: DevTaskCreate):
         instruction=body.instruction,
         project=project,
         persona_name=body.persona_name,
+        task_type="plan" if body.plan_only else "code_change",
+        spec_first=body.spec_first or body.plan_only,
+        verify_chain=["no_diff_in_plan"] if body.plan_only else None,
     )
     return success_response(data=task)
 
@@ -303,6 +328,60 @@ async def list_dev_tasks(limit: int = Query(50, ge=1, le=200)):
     return success_response(data=data)
 
 
+@router.get(
+    "/tasks/stats",
+    summary="Merge rate and timing per persona/project, from dev task history",
+)
+async def get_dev_task_stats():
+    """Complements GET /stats (driver-level, tenant-wide, from DriverStat
+    day buckets): this breaks the same kind of question down by project too,
+    so "local: 62% success" doesn't quietly blend a struggling project in
+    with a thriving one. Answers "is this actually working" without reading
+    every task by hand: merge rate, in-flight/needs-review counts, and
+    average duration/cost, per (persona, project) pair. Same trust bar the
+    dispatcher itself uses lives in TrustScore/track_record; this is a
+    *readable summary* of dev_task outcomes, not another trust source."""
+    from life_graph.services import dev_tasks
+
+    async with async_session() as session:
+        data = await dev_tasks.dev_task_stats(session, get_current_tenant_id())
+    return success_response(data=data)
+
+
+@router.get(
+    "/tasks/auto-merge-status",
+    summary="Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project",
+)
+async def get_auto_merge_status():
+    """Same numbers dispatcher.py's maybe_auto_merge reads before deciding
+    whether to skip an approval — merge_rate, established, the threshold,
+    and whether the project opted in — so "why isn't this auto-merging" is
+    answered by one glance instead of a hand-run curl against /tasks/stats
+    plus mentally comparing it to 80%."""
+    from life_graph.services import dev_tasks
+
+    async with async_session() as session:
+        data = await dev_tasks.auto_merge_status(session, get_current_tenant_id())
+    return success_response(data=data)
+
+
+@router.get(
+    "/tasks/dependency-audit-readiness",
+    summary="Which registered projects can actually run no_vulnerable_deps_in_diff",
+)
+async def get_dependency_audit_readiness():
+    """The verifier itself already reports 'pip-audit not available' per
+    task, correctly, as inconclusive rather than a silent pass — but that
+    only surfaces after someone dispatches a task that happens to touch a
+    dependency manifest. This checks every active project's own manifest
+    for a declared pip-audit dependency up front, so the gap is visible
+    before it's found the hard way."""
+    from life_graph.services import dev_tasks
+
+    data = await dev_tasks.dependency_audit_readiness(get_current_tenant_id())
+    return success_response(data=data)
+
+
 @router.get("/tasks/{task_id}", summary="Get one dev task")
 async def get_dev_task(task_id: str):
     from life_graph.services import dev_tasks
@@ -311,4 +390,164 @@ async def get_dev_task(task_id: str):
         data = await dev_tasks.get_dev_task(session, get_current_tenant_id(), task_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Dev task not found")
+    return success_response(data=data)
+
+
+@router.post(
+    "/tasks/{task_id}/conformance",
+    summary="Re-check a task's spec against the project's current code",
+)
+async def check_dev_task_conformance(task_id: str):
+    """Run every acceptance criterion's bound test against the project's
+    current HEAD (in a throwaway worktree) and store a per-criterion report
+    on the task. Synchronous: returns once the tests have run."""
+    from life_graph.services.conformance import ConformanceError, check_conformance
+
+    try:
+        report = await check_conformance(async_session, get_current_tenant_id(), task_id)
+    except ConformanceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return success_response(data=report)
+
+
+@router.get(
+    "/tasks/{task_id}/steps",
+    summary="Every recorded step of a dev task's driver runs, in order",
+)
+async def get_dev_task_steps(task_id: str):
+    """What the agent said, each tool call and its result, per attempt
+    (attempt 2 is the bounce). Content is redacted and size-capped; a step
+    cut short carries ``properties.original_chars``. Empty when the task's
+    driver ran before step recording existed."""
+    from life_graph.services.trajectories import list_steps
+
+    try:
+        tid = uuid.UUID(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="task_id must be a UUID") from exc
+    async with async_session() as session:
+        steps = await list_steps(session, get_current_tenant_id(), tid)
+    return success_response(data={"task_id": task_id, "count": len(steps), "steps": steps})
+
+
+# ── Plans, scorecards, failures (docs/specs/agent-observability.md) ──
+
+
+@router.get("/plans", summary="Plan tasks, each with its tasks counted by stage")
+async def list_dev_plans(limit: int = Query(30, ge=1, le=200)):
+    from life_graph.services.agent_insights import list_plans
+
+    async with async_session() as session:
+        data = await list_plans(session, get_current_tenant_id(), limit=limit)
+    return success_response(data=data)
+
+
+@router.get("/plans/{plan_id}", summary="One plan: spec, criteria and its tasks in order")
+async def get_dev_plan(plan_id: str):
+    from life_graph.services.agent_insights import get_plan
+
+    async with async_session() as session:
+        data = await get_plan(session, get_current_tenant_id(), plan_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return success_response(data=data)
+
+
+@router.get("/scorecards", summary="Per driver and model: success, bounces, merges, cost")
+async def get_driver_scorecards(days: int = Query(30, ge=1, le=365)):
+    from life_graph.services.agent_insights import scorecards
+
+    async with async_session() as session:
+        data = await scorecards(session, get_current_tenant_id(), days=days)
+    return success_response(data=data)
+
+
+@router.get("/failures", summary="Failed dev tasks with their primary cause")
+async def get_driver_failures(
+    days: int = Query(30, ge=1, le=365), limit: int = Query(200, ge=1, le=1000)
+):
+    from life_graph.services.agent_insights import failures
+
+    async with async_session() as session:
+        data = await failures(session, get_current_tenant_id(), days=days, limit=limit)
+    return success_response(data=data)
+
+
+class ProductionFindingBody(BaseModel):
+    """A production failure reported by a monitor (uptime check, error tracker, ...)."""
+
+    kind: str = Field("monitor", max_length=64, description="What saw it, e.g. uptime, sentry")
+    title: str = Field(..., min_length=3, max_length=300, description="One line: what broke")
+    detail: str = Field("", max_length=8000, description="Evidence: error, status, stack trace")
+    signature: str | None = Field(
+        None, max_length=500, description="Same failure, same signature (de-duplication key)"
+    )
+
+
+@router.post(
+    "/projects/{project_id}/findings",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Report a production failure; queues a fix task (de-duplicated)",
+)
+async def report_production_finding(project_id: str, body: ProductionFindingBody):
+    """For external monitors: the fix goes through the normal dev-task gates
+    (budget, verification, PR and merge approvals), never straight to production."""
+    from life_graph.kernel.project_registry import ProjectRegistry
+    from life_graph.services.production_findings import file_fix_task
+
+    tenant = get_current_tenant_id()
+    try:
+        project = await ProjectRegistry(session_factory=async_session).get_by_id(tenant, project_id)
+    except ValueError:
+        project = None
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    result = await file_fix_task(
+        async_session,
+        tenant,
+        project,
+        kind=body.kind,
+        title=body.title,
+        detail=body.detail,
+        signature=body.signature,
+    )
+    return success_response(data=result)
+
+
+class BootstrapBody(BaseModel):
+    """A new app: a name, a starting template and, optionally, the idea to plan."""
+
+    name: str = Field(..., min_length=2, max_length=41, description="lowercase, digits, dashes")
+    template: str = Field(..., max_length=64, description="see GET /kernel/drivers/templates")
+    idea: str | None = Field(None, max_length=8000, description="What the app should do")
+    start_plan: bool = Field(False, description="Start a plan-only dev task from the idea")
+    persona_name: str = Field("code-fixer-opencode", max_length=100)
+
+
+@router.get("/templates", summary="App templates a new project can start from")
+async def list_app_templates():
+    from life_graph.services.bootstrap import list_templates
+
+    return success_response(data=list_templates())
+
+
+@router.post(
+    "/projects/bootstrap",
+    status_code=status.HTTP_201_CREATED,
+    summary="Idea to app: scaffold, version, register and optionally plan a new app",
+)
+async def bootstrap_app(body: BootstrapBody):
+    from life_graph.services.bootstrap import BootstrapError, bootstrap
+
+    try:
+        data = await bootstrap(
+            get_current_tenant_id(),
+            name=body.name,
+            template=body.template,
+            idea=body.idea,
+            start_plan=body.start_plan,
+            persona_name=body.persona_name,
+        )
+    except (BootstrapError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return success_response(data=data)

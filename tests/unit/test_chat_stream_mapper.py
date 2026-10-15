@@ -42,9 +42,28 @@ def test_depth0_done_maps_to_done():
     assert map_bus_event(ev(0, "jarvis", "done"), set()) == {"type": "done"}
 
 
-def test_tool_call_and_usage_are_dropped():
-    assert map_bus_event(ev(0, "jarvis", "tool_call", name="delegate_to_persona"), set()) is None
+def test_top_level_tool_calls_and_results_are_forwarded_usage_is_dropped():
+    call = map_bus_event(
+        ev(0, "admin", "tool_call", name="memory_search", arguments={"query": "dify"}), set()
+    )
+    assert call == {"type": "tool_call", "name": "memory_search", "arguments": '{"query": "dify"}'}
     assert map_bus_event(ev(0, "jarvis", "usage"), set()) is None
+
+
+def test_tool_results_are_redacted_and_trimmed():
+    out = map_bus_event(
+        ev(
+            0,
+            "cody",
+            "tool_result",
+            name="file_read",
+            result="API_KEY=abcdefghijklmnop\n" + "x" * 5000,
+        ),
+        set(),
+    )
+    assert out["type"] == "tool_result" and out["name"] == "file_read"
+    assert "abcdefghijklmnop" not in out["result"]
+    assert len(out["result"]) <= 2001 and out["result"].endswith("…")
 
 
 def test_child_done_without_prior_token_signals_both():

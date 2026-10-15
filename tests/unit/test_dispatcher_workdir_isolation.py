@@ -272,3 +272,77 @@ async def test_isolation_failure_does_not_hand_the_driver_the_real_repo(
     assert result.success is True
     assert driver.workdir_seen != not_a_repo
     assert driver.workdir_seen.is_dir()
+
+
+# ── Code context (callers/callees) reaches the driver ────────
+
+
+class _InstructionSpyDriver:
+    name = "instruction_spy"
+
+    def __init__(self):
+        self.instruction = None
+
+    def cost_per_task(self) -> float:
+        return 0.0
+
+    async def dispatch(self, packet, workdir, timeout=300) -> DriverResult:
+        self.instruction = packet.instruction
+        return DriverResult(success=True, output="ran", cost_usd=0.0)
+
+
+def _repo_with_helper(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "core.py").write_text(
+        "def helper():\n    return 1\n\ndef caller():\n    return helper()\n"
+    )
+    subprocess.run(["git", "init"], cwd=str(repo), check=True, capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=str(repo), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-m", "init"],
+        cwd=str(repo), check=True, capture_output=True,
+    )
+    return repo
+
+
+@pytest.mark.asyncio
+async def test_driver_sees_callers_of_symbols_it_was_asked_about(tmp_path, monkeypatch):
+    repo = _repo_with_helper(tmp_path)
+    driver = _InstructionSpyDriver()
+    disp = TaskDispatcher(session_factory=lambda: _FakeSession(), event_bus=None)
+    _wire(disp, monkeypatch, driver, real_project_path=str(repo))
+
+    async def _packet(*_a, **kwargs):
+        return ContextPacket(
+            task_id=uuid.uuid4(), tenant_id="t1", task_type="code",
+            instruction="Change `helper` to return 2", project_context={"path": str(repo)},
+        )
+
+    monkeypatch.setattr(disp._context_builder, "build_packet", _packet)
+
+    await disp.dispatch_task(
+        tenant_id="t1", task_id=str(uuid.uuid4()), instruction="Change `helper` to return 2",
+        project_id=str(uuid.uuid4()), isolate_workdir=True, verify_chain=[],
+    )
+
+    assert "CODE CONTEXT" in driver.instruction
+    assert "`core.caller`" in driver.instruction
+
+
+@pytest.mark.asyncio
+async def test_code_context_can_be_turned_off(tmp_path, monkeypatch):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "driver_code_context_enabled", False)
+    repo = _repo_with_helper(tmp_path)
+    driver = _InstructionSpyDriver()
+    disp = TaskDispatcher(session_factory=lambda: _FakeSession(), event_bus=None)
+    _wire(disp, monkeypatch, driver, real_project_path=str(repo))
+
+    await disp.dispatch_task(
+        tenant_id="t1", task_id=str(uuid.uuid4()), instruction="Change `helper`",
+        project_id=str(uuid.uuid4()), isolate_workdir=True, verify_chain=[],
+    )
+
+    assert "CODE CONTEXT" not in driver.instruction

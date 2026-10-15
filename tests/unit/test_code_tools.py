@@ -59,6 +59,34 @@ async def test_code_read_pages_stay_under_registry_cap(repo):
     assert seen == 400
 
 
+async def test_code_read_end_line_stops_at_the_requested_line(repo):
+    """A local model naturally reaches for start/end line params (seen live:
+    qwen3-coder:30b called code_read with end_line and stop_at_line, both of
+    which errored — this pins the fix, an actual end_line parameter."""
+    with confine_to(repo["wt"]):
+        page = json.loads(await code.code_read("pkg/mod.py", start_line=1, end_line=2))
+    assert page["content"] == "1: def a():\n2:     return 1"
+    # The requested range was delivered in full — no more pages to fetch,
+    # even though the file has lines beyond 2.
+    assert page["next_start_line"] is None
+    assert page["total_lines"] == 6
+
+
+async def test_code_read_end_line_still_pages_when_the_range_is_large(repo):
+    big = repo["wt"] / "big.py"
+    big.write_text("\n".join(f"x_{i} = '{'y' * 90}'" for i in range(400)))
+    with confine_to(repo["wt"]):
+        page = json.loads(await code.code_read("big.py", start_line=1, end_line=400))
+    assert len(page["content"].splitlines()) < 400  # cut by the char cap, not end_line
+    assert page["next_start_line"] is not None  # more of the requested range remains
+
+
+async def test_code_read_end_line_before_start_line_is_ignored(repo):
+    with confine_to(repo["wt"]):
+        page = json.loads(await code.code_read("pkg/mod.py", start_line=3, end_line=1))
+    assert "3: " in page["content"] and "6: " in page["content"]  # pages to EOF as usual
+
+
 async def test_code_edit_replaces_exactly_one_snippet(repo):
     with confine_to(repo["wt"]):
         ambiguous = json.loads(

@@ -1095,7 +1095,15 @@ class ProjectRegister(BaseModel):
     auto_open_pr: bool | None = Field(
         None,
         description="Open PRs without the approval step for drivers with an established"
-        " merge record (>= 80%) on this project. Merging always stays an approval.",
+        " merge record (>= 80%) on this project. Merging is a separate opt-in — see"
+        " auto_merge — and stays a manual approval unless that is also set.",
+    )
+    auto_merge: bool | None = Field(
+        None,
+        description="Merge those PRs without approval too, same trust bar as"
+        " auto_open_pr. A separate opt-in on purpose: opening a PR is reversible,"
+        " merging to the base branch is the step that actually matters. CI/required"
+        " checks are still always enforced, same as a manual merge.",
     )
     nightly_suggestions: bool | None = Field(
         None, description="Queue nightly dev tasks for failing tests, lint and TODOs"
@@ -1135,6 +1143,7 @@ class ProjectUpdate(BaseModel):
     sandbox_test_timeout: int | None = Field(None, ge=0, le=3600)
     required_checks: list[str] | None = None
     auto_open_pr: bool | None = None
+    auto_merge: bool | None = None
     nightly_suggestions: bool | None = None
     nightly_max_tasks: int | None = Field(None, ge=0, le=10)
     nightly_persona: str | None = Field(None, max_length=100)
@@ -1448,3 +1457,55 @@ async def mark_all_read(
             "message": f"{count} notifications marked as read",
         },
     )
+
+
+class ExternalAlert(BaseModel):
+    """An alert from a tool this tenant runs outside life-graph (e.g. pulse)."""
+
+    title: str = Field(..., max_length=500)
+    details: str | None = None
+    severity: str = Field("important", description="critical | important | info")
+    source: str | None = Field(None, max_length=100, description="Sending system, e.g. 'pulse'")
+
+
+@router.post(
+    "/alerts/external",
+    summary="Receive an alert from an external system and deliver it",
+)
+async def receive_external_alert(
+    alert: ExternalAlert,
+    svc: Any = Depends(get_notification_engine),
+):
+    """Record the alert and push it to Telegram immediately.
+
+    For tools life-graph doesn't run itself — pulse's service/quota monitor
+    posts here with the same API key as every other kernel call, instead of
+    an arbitrary webhook URL, so a down service or an exhausted Claude quota
+    reaches the same paired chat as everything else life-graph tells the
+    tenant, rather than living in a separate inbox nobody watches.
+    """
+    from life_graph.watchers.channels.telegram_channel import TelegramChannel
+
+    tenant_id = get_current_tenant_id()
+    priority = alert.severity.lower()
+    if priority not in ("critical", "important", "info"):
+        priority = "important"
+    title = f"[{alert.source}] {alert.title}" if alert.source else alert.title
+
+    notif = await svc.create(
+        tenant_id,
+        title=title,
+        body=alert.details,
+        priority=priority,
+        channel="webhook",
+        source_type="external_alert",
+    )
+    await TelegramChannel().send(
+        config={},
+        tenant_id=tenant_id,
+        severity=priority,
+        title=title,
+        details=alert.details,
+        watcher_name=alert.source,
+    )
+    return success_response(data=notif)

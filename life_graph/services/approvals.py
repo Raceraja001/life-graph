@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
-from life_graph.models.db import Approval, Memory
+from life_graph.core.events import EventType, event_bus
+from life_graph.models.db import Approval, Memory, Project
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
 
 if TYPE_CHECKING:
@@ -205,6 +206,10 @@ class ApprovalService:
             await self._apply_driver_pr(appr, approve)
         elif appr.kind == "driver_merge":
             await self._apply_driver_merge(appr, approve)
+        elif appr.kind == "driver_deploy":
+            await self._apply_driver_deploy(appr, approve)
+        elif appr.kind == "driver_plan":
+            await self._apply_driver_plan(tenant_id, appr, approve)
 
         await self.session.flush()
         return self._serialize(appr)
@@ -230,7 +235,86 @@ class ApprovalService:
         appr.payload = {**(appr.payload or {}), "pr_url": outcome["pr_url"]}
         note = f"PR: {outcome['pr_url']}"
         appr.resolution_note = f"{appr.resolution_note}\n{note}" if appr.resolution_note else note
-        self.file_merge_approval(appr)
+        payload = appr.payload or {}
+        merge_appr = self.file_merge_approval(appr)
+        await self.maybe_auto_merge(
+            merge_appr,
+            payload.get("driver", ""),
+            payload.get("project_id"),
+            bool(payload.get("auto_merge")),
+        )
+        # Only notify if it's actually still waiting on someone -- earned
+        # auto_merge just resolved this above, and "approval needed" for
+        # something already approved is a false alarm.
+        if merge_appr.status == "pending":
+            await event_bus.emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": merge_appr.tenant_id,
+                    "kind": "driver_merge",
+                    "title": merge_appr.title,
+                    "detail": merge_appr.detail,
+                },
+                source="approvals",
+            )
+
+    async def maybe_auto_merge(
+        self,
+        merge_appr: Approval,
+        driver_name: str,
+        project_id: str | None,
+        auto_merge: bool,
+    ) -> None:
+        """Auto-resolve a freshly filed ``driver_merge`` approval, if earned.
+
+        A second, separate opt-in from ``auto_open_pr``: opening a PR is
+        reversible, merging to the base branch is the step that actually
+        matters, so a project must choose that explicitly rather than
+        inheriting it from the PR-open setting. Called from both places a
+        ``driver_merge`` approval gets filed: here (a human approved
+        ``driver_pr`` normally) and :meth:`TaskDispatcher._auto_open_pr`
+        (the PR itself was opened automatically too).
+
+        Same trust bar as ``auto_open_pr`` (established record, merge rate
+        >= ``AUTO_PR_MERGE_RATE``) — CI/required-checks are always enforced
+        regardless, by :func:`github_pr.merge_pull_request` itself via
+        ``--match-head-commit``, exactly as a manual merge is. Any failure
+        (untrusted driver, CI not green, merge conflict, ...) leaves the
+        approval pending, exactly as if auto-merge were off.
+        """
+        if not auto_merge:
+            return
+        if (merge_appr.payload or {}).get("verified") is False:
+            logger.info("Auto-merge skipped: branch was landed off an unverified diff")
+            return
+        from life_graph.drivers.dispatcher import AUTO_PR_MERGE_RATE
+        from life_graph.services.dev_outcomes import track_record
+
+        record = await track_record(self.session, merge_appr.tenant_id, driver_name, project_id)
+        if not (record["established"] and record["merge_rate"] >= AUTO_PR_MERGE_RATE):
+            logger.info(
+                "Auto-merge skipped: %s has %d/%d merged on this project",
+                driver_name,
+                record["merged"],
+                record["total"],
+            )
+            return
+        try:
+            await self._apply_driver_merge(merge_appr, True)
+        except ApprovalActionError as exc:
+            logger.warning("Auto-merge failed, left for approval: %s", exc)
+            return
+        merge_appr.status = "approved"
+        merge_appr.resolved_at = datetime.now(UTC)
+        merge_appr.resolved_by = "auto: trusted driver"
+        note = (
+            f"Merged automatically: {driver_name} has {record['merged']}/{record['total']} "
+            f"merged on this project."
+        )
+        merge_appr.resolution_note = (
+            f"{merge_appr.resolution_note}\n{note}" if merge_appr.resolution_note else note
+        )
+        logger.info("Auto-merged PR for driver %s", driver_name)
 
     def file_merge_approval(self, pr_approval: Approval) -> Approval:
         """Queue the separate decision to merge a PR that was just opened.
@@ -276,6 +360,344 @@ class ApprovalService:
         elif not outcome.get("checks"):
             note += " — no CI checks ran on this PR; sandbox verification was the gate"
         appr.resolution_note = f"{appr.resolution_note}\n{note}" if appr.resolution_note else note
+        await self._maybe_file_deploy_approval(appr)
+
+    async def _maybe_file_deploy_approval(self, merge_appr: Approval) -> None:
+        """File a ``driver_deploy`` approval when the project opted in.
+
+        Deliberately a THIRD, separate opt-in from ``auto_open_pr``/
+        ``auto_merge``, and unlike those two this one is never trust-gated —
+        there is no ``auto_deploy``. A driver's trust record is calibrated
+        against merge outcomes (did the PR turn out to be good code?), not
+        against production incidents, and a bad deploy is live in a way a
+        bad merge isn't. Approving ``driver_deploy`` always requires an
+        explicit human click, regardless of how proven the driver is.
+        """
+        payload = merge_appr.payload or {}
+        project_id = payload.get("project_id")
+        if not project_id:
+            return
+        try:
+            project = await self.session.get(Project, uuid.UUID(str(project_id)))
+        except (ValueError, TypeError):
+            project = None
+        if project is None:
+            return
+        meta = project.scan_metadata or {}
+        command = meta.get("deploy_command")
+        if not (meta.get("deploy_on_merge") and command):
+            return
+        deploy_payload = {
+            "task_id": payload.get("task_id"),
+            "driver": payload.get("driver"),
+            "project_id": str(project_id),
+            "repo_path": payload.get("repo_path"),
+            "branch": payload.get("base_branch"),
+            "merge_commit": payload.get("merge_commit"),
+            "deploy_command": command,
+            # Run after a successful deploy (services/approvals.py
+            # _post_deploy_checks); operator-set, like deploy_command.
+            "smoke_command": meta.get("smoke_command"),
+            "rollback_command": meta.get("rollback_command"),
+        }
+        deploy_appr = Approval(
+            tenant_id=merge_appr.tenant_id,
+            kind="driver_deploy",
+            title=f"Deploy {project.name} @ {str(payload.get('merge_commit') or '?')[:8]}",
+            # The actual command, not just that one exists -- every approvals
+            # surface (dashboard, mobile) renders `detail` alone, never
+            # `payload`, so a human approving a deploy from there needs to see
+            # exactly what will run, not take it on faith.
+            detail=(
+                f"After merge {str(payload.get('merge_commit') or '?')[:8]}, run in "
+                f"{project.name}'s repo:\n\n{command}\n\n"
+                f"{_post_deploy_plan(meta)}"
+                "Never auto-approved, regardless of driver trust."
+            ),
+            source="driver_deploy",
+            source_ref=payload.get("task_id"),
+            payload=deploy_payload,
+        )
+        self.session.add(deploy_appr)
+        await event_bus.emit(
+            EventType.APPROVAL_FILED,
+            {
+                "tenant_id": deploy_appr.tenant_id,
+                "kind": "driver_deploy",
+                "title": deploy_appr.title,
+                "detail": deploy_appr.detail,
+            },
+            source="approvals",
+        )
+
+    async def _apply_driver_deploy(self, appr: Approval, approve: bool) -> None:
+        """Run the project's own deploy command (approve). Reject: no-op.
+
+        The command is whatever the project operator configured in
+        ``scan_metadata.deploy_command`` — never agent-authored, the same
+        trust level as ``sandbox_setup``/``sandbox_test_command`` (an
+        operator-supplied string, not something the worktree or the diff
+        controls). Raises on failure so the approval stays pending for a
+        retry, exactly like :meth:`_apply_driver_pr`.
+        """
+        if not approve:
+            return
+        import asyncio
+
+        from life_graph.tools._guards import ToolDeniedError, resolve_in_roots
+
+        payload = appr.payload or {}
+        command = payload.get("deploy_command")
+        if not command:
+            raise ApprovalActionError("no deploy_command on this approval")
+        try:
+            repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="deploy")
+        except ToolDeniedError as exc:
+            raise ApprovalActionError(str(exc)) from exc
+
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                cwd=repo,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=600)
+        except TimeoutError as exc:
+            raise ApprovalActionError("deploy command timed out after 600s") from exc
+        except OSError as exc:
+            raise ApprovalActionError(f"deploy command could not run: {exc}") from exc
+
+        stdout = out.decode(errors="replace")[-2000:]
+        stderr = err.decode(errors="replace")[-2000:]
+        if proc.returncode != 0:
+            raise ApprovalActionError(
+                f"deploy command exited {proc.returncode}: {(stderr or stdout)[-500:]}"
+            )
+        appr.payload = {
+            **payload,
+            "deploy_output": stdout,
+            "deployed_at": datetime.now(UTC).isoformat(),
+        }
+        done = f"Deployed (exit 0): {stdout[-300:] or '(no output)'}"
+        checks = await self._post_deploy_checks(appr, repo)
+        if checks:
+            done = f"{done} | {checks}"
+        appr.resolution_note = f"{appr.resolution_note} | {done}" if appr.resolution_note else done
+
+    async def _post_deploy_checks(self, appr: Approval, repo: str) -> str | None:
+        """After a successful deploy: smoke check, rollback on failure, file a fix.
+
+        Returns a one-line outcome for the approval note, or None when the
+        project has no smoke_command. Never raises: the deploy already
+        happened, and the approval must record that whatever the checks find.
+        """
+        from life_graph.config import settings
+
+        payload = appr.payload or {}
+        smoke = payload.get("smoke_command")
+        if not smoke:
+            return None
+        code, output = await _run_shell(smoke, repo, settings.post_deploy_smoke_timeout)
+        appr.payload = {**payload, "smoke": {"exit": code, "output": output[-2000:]}}
+        if code == 0:
+            return "smoke check passed"
+
+        outcome = f"smoke check FAILED (exit {code})"
+        rollback = payload.get("rollback_command")
+        if rollback:
+            rcode, rout = await _run_shell(rollback, repo, 600)
+            appr.payload = {**appr.payload, "rollback": {"exit": rcode, "output": rout[-2000:]}}
+            outcome += "; rolled back" if rcode == 0 else f"; ROLLBACK FAILED (exit {rcode})"
+        try:
+            from life_graph.services.production_findings import file_fix_task
+            from life_graph.storage.database import async_session
+
+            project = await self._project_dict(appr.tenant_id, payload.get("project_id"))
+            if project is not None:
+                commit = str(payload.get("merge_commit") or "?")[:8]
+                filed = await file_fix_task(
+                    async_session,
+                    appr.tenant_id,
+                    project,
+                    kind="post_deploy_smoke",
+                    title=f"smoke check failed after deploying {commit}",
+                    detail=f"Command: {smoke}\nExit {code}\n\n{output[-3000:]}",
+                    signature=smoke,
+                )
+                outcome += (
+                    f"; fix task {filed['queued']} queued"
+                    if "queued" in filed
+                    else f"; fix task {filed['deduplicated']} already open"
+                )
+        except Exception:
+            logger.warning("Could not file a fix task after a failed smoke check", exc_info=True)
+        # Reuses the "needs your attention" channel (push + Telegram).
+        await event_bus.emit(
+            EventType.APPROVAL_FILED,
+            {
+                "tenant_id": appr.tenant_id,
+                "kind": "deploy_smoke_failed",
+                "title": f"Deploy smoke check failed: {appr.title}",
+                "detail": outcome,
+            },
+            source="approvals",
+        )
+        return outcome
+
+    async def _project_dict(self, tenant_id: str, project_id: str | None) -> dict | None:
+        """A registry project as the dict dev-task creation takes, or None."""
+        if not project_id:
+            return None
+        try:
+            project = await self.session.get(Project, uuid.UUID(str(project_id)))
+        except (ValueError, TypeError):
+            return None
+        if project is None or project.tenant_id != tenant_id:
+            return None
+        return {
+            "id": str(project.id),
+            "name": project.name,
+            "path": project.path,
+            "scan_metadata": project.scan_metadata or {},
+        }
+
+    async def _apply_driver_plan(self, tenant_id: str, appr: Approval, approve: bool) -> None:
+        """Dispatch the approved plan as one task, or fan out its Tasks list.
+
+        A spec whose ``**Tasks:**`` section parses into 2+ numbered items
+        becomes that many child dev tasks, QUEUED (not started immediately)
+        so :func:`dev_tasks.run_queue` — already running as an API lifespan
+        task — runs them one at a time, oldest first: task 2 only starts
+        once task 1 has actually finished, since it may depend on task 1's
+        code. A spec with 0 or 1 parsed tasks falls back to today's single
+        combined dispatch rather than fanning out on a guess.
+
+        Reject: a plain no-op — the plan is simply abandoned, nothing was
+        ever landed to clean up. Raises on a missing/stale project so the
+        approval stays pending for a retry, same shape as the other
+        producers in this module.
+        """
+        if not approve:
+            return
+        payload = appr.payload or {}
+        project_id = payload.get("project_id")
+        instruction = payload.get("instruction") or ""
+        spec = payload.get("spec") or ""
+        persona_name = payload.get("persona_name")
+        if not (project_id and instruction and persona_name):
+            raise ApprovalActionError(
+                "plan approval payload is missing project_id/instruction/persona_name"
+            )
+
+        try:
+            project = await self.session.get(Project, uuid.UUID(str(project_id)))
+        except (ValueError, TypeError):
+            project = None
+        if project is None:
+            raise ApprovalActionError(f"project {project_id} no longer exists")
+
+        from life_graph.drivers.dispatcher import _parse_tasks
+        from life_graph.services import acceptance, dev_tasks
+        from life_graph.storage.database import async_session as session_factory
+
+        project_dict = {"id": str(project.id), "name": project.name}
+        parsed = _parse_tasks(spec)
+        # Check-only tasks ("run ruff and pytest") are dropped: verification
+        # already runs after every task, so they would cost a run and land nothing.
+        tasks = [t for t in parsed if not acceptance.is_check_only_task(t)]
+        skipped = len(parsed) - len(tasks)
+        criteria = acceptance.parse_criteria(spec)
+        defined = [c.id for c in criteria]
+
+        def _criteria_block(ac_ids: list[str]) -> str:
+            text = acceptance.describe(criteria, ac_ids)
+            if not text:
+                return ""
+            return (
+                "\n\n--- ACCEPTANCE CRITERIA THIS TASK MUST SATISFY ---\n"
+                f"{text}\n"
+                "Write or update each criterion's test, and make it pass. These "
+                "tests are run to verify this task."
+            )
+
+        if len(tasks) < 2:
+            combined_instruction = (
+                f"{instruction}\n\n"
+                "--- APPROVED PLAN ---\n"
+                "The following plan was reviewed and approved. Implement it.\n\n"
+                f"{spec}"
+                f"{_criteria_block(defined)}"
+            )
+            task = await dev_tasks.create_dev_task(
+                session_factory,
+                tenant_id,
+                instruction=combined_instruction,
+                project=project_dict,
+                persona_name=persona_name,
+                task_type="code_change",
+                properties={
+                    "origin": "plan_approval",
+                    "plan_task_id": payload.get("task_id"),
+                    "acceptance_criteria": defined,
+                    "acceptance_tests": acceptance.bound_tests(criteria, defined),
+                },
+            )
+            appr.payload = {**payload, "dispatched_task_id": task.get("id")}
+            done = f"Dispatched as task {task.get('id')}"
+            appr.resolution_note = (
+                f"{appr.resolution_note} | {done}" if appr.resolution_note else done
+            )
+            return
+
+        plan_group_id = str(uuid.uuid4())
+        dispatched_ids = []
+        for i, item in enumerate(tasks, start=1):
+            # Only the criteria this task cites (and that the spec defines)
+            # are checked on it -- task 1 isn't failed for AC-3's test that
+            # task 3 is meant to write.
+            cites = [ac for ac in acceptance.cited_criteria(item) if ac in defined]
+            task_instruction = (
+                f"{instruction}\n\n"
+                "--- APPROVED PLAN (full spec, for context) ---\n"
+                f"{spec}\n\n"
+                f"--- YOUR TASK ({i} of {len(tasks)}) ---\n"
+                f"{item}"
+                f"{_criteria_block(cites)}"
+            )
+            task = await dev_tasks.create_dev_task(
+                session_factory,
+                tenant_id,
+                instruction=task_instruction,
+                project=project_dict,
+                persona_name=persona_name,
+                task_type="code_change",
+                start=False,  # queued -- run_queue() runs the group in order
+                properties={
+                    "origin": "plan_approval",
+                    "plan_task_id": payload.get("task_id"),
+                    "plan_group_id": plan_group_id,
+                    "plan_task_index": i,
+                    "plan_task_count": len(tasks),
+                    "acceptance_criteria": cites,
+                    "acceptance_tests": acceptance.bound_tests(criteria, cites),
+                },
+            )
+            dispatched_ids.append(task.get("id"))
+
+        appr.payload = {
+            **payload,
+            "dispatched_task_ids": dispatched_ids,
+            "plan_group_id": plan_group_id,
+        }
+        queued = f"Queued {len(dispatched_ids)} tasks (group {plan_group_id[:8]})"
+        if skipped:
+            queued += f"; skipped {skipped} check-only task{'s' if skipped > 1 else ''}"
+        # Appended, not assigned: the reviewer's own note (why it was approved)
+        # used to be overwritten here.
+        appr.resolution_note = (
+            f"{appr.resolution_note} | {queued}" if appr.resolution_note else queued
+        )
 
     async def _apply_promotion(
         self, tenant_id: str, appr: Approval, approve: bool, resolved_by: str | None
@@ -515,3 +937,36 @@ class ApprovalService:
 def _num(value: Any) -> str | None:
     """JSON-safe rendering of a Numeric/Decimal accuracy value."""
     return None if value is None else str(value)
+
+
+def _post_deploy_plan(meta: dict) -> str:
+    """What runs after the deploy, for the approval's detail (shown to the approver)."""
+    smoke = meta.get("smoke_command")
+    if not smoke:
+        return ""
+    rollback = meta.get("rollback_command")
+    tail = (
+        f"and, if it fails, the rollback:\n\n{rollback}\n\n"
+        if rollback
+        else "No rollback_command is set: a failing smoke check only files a fix task.\n\n"
+    )
+    return f"Then the smoke check:\n\n{smoke}\n\n{tail}"
+
+
+async def _run_shell(command: str, cwd: str, timeout: int) -> tuple[int, str]:
+    """Run an operator-set shell command in *cwd*: (exit code, combined output)."""
+    import asyncio
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except TimeoutError:
+        return 124, f"timed out after {timeout}s"
+    except OSError as exc:
+        return 127, f"could not run: {exc}"
+    return proc.returncode or 0, out.decode(errors="replace")
