@@ -43,6 +43,16 @@ logger = logging.getLogger(__name__)
 # Tools that change files; a coding run where none of them succeeded changed nothing.
 EDIT_TOOLS = frozenset({"code_edit", "file_write"})
 
+# How many times a coding run that ends its turn without a landed edit is sent
+# back to work. A live run (gpt-oss:20b, 2026-10-16) read the file, then
+# replied with nothing after eight calls; it never got to the edit.
+MAX_NO_EDIT_NUDGES = 2
+NO_EDIT_NUDGE = (
+    "You have not changed any file yet, and this task needs a change. Make the "
+    "edit now with code_edit or file_write, then re-read the file to check it. "
+    "If the change is impossible, say exactly why."
+)
+
 
 class LocalDriver:
     """Wraps the existing local AgentOrchestrator as an AgentDriver.
@@ -142,12 +152,24 @@ class LocalDriver:
             good_edits = failed_edits = 0
             errors: list[str] = []
             stop_reason = "completed"
+            nudges = 0
+            may_edit = packet.task_type in ("code", "code_change") and (
+                packet.allowed_tools is None or bool(EDIT_TOOLS & set(packet.allowed_tools))
+            )
+
+            def keep_going() -> str | None:
+                nonlocal nudges
+                if not may_edit or good_edits or nudges >= MAX_NO_EDIT_NUDGES:
+                    return None
+                nudges += 1
+                return NO_EDIT_NUDGE
 
             async def collect() -> None:
                 nonlocal tool_calls, condensed, stop_reason, good_edits, failed_edits
                 async for event_str in orchestrator.run(
                     messages=messages,
                     system_prompt=system_prompt,
+                    keep_going=keep_going,
                     **run_kwargs,
                 ):
                     if not event_str.startswith("data: "):
@@ -235,6 +257,7 @@ class LocalDriver:
                     "model": getattr(orchestrator, "model", packet.persona_model),
                     "tool_calls": tool_calls,
                     "condensed": condensed,
+                    "nudges": nudges,
                     "stop_reason": stop_reason,
                     "steps": steps.finish(),
                     "workdir": str(workdir),

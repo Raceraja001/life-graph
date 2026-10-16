@@ -1,0 +1,179 @@
+"""Harness fixes from the first real dev-agent run on gpt-oss:20b (2026-10-16):
+misnamed tool arguments are fitted or explained, and a coding run that ends its
+turn without an edit is sent back to work, at most twice."""
+
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from life_graph.agents.orchestrator import AgentOrchestrator
+from life_graph.tools.registry import ToolRegistry, fit_args
+
+
+def _read(path: str, start_line: int = 1, end_line: int | None = None) -> str:
+    return f"{path}:{start_line}-{end_line}"
+
+
+# ── Argument fitting ────────────────────────────────────────────────────────
+
+
+def test_swapped_words_are_renamed():
+    args, err = fit_args("code_read", _read, {"path": "a.py", "line_start": 5, "line_end": 9})
+    assert err is None
+    assert args == {"path": "a.py", "start_line": 5, "end_line": 9}
+
+
+def test_near_spelling_is_renamed():
+    args, err = fit_args("code_read", _read, {"paths": "a.py"})
+    assert err is None and args == {"path": "a.py"}
+
+
+def test_missing_required_lists_the_real_parameters():
+    _, err = fit_args("code_read", _read, {"start_line": 70, "end_line": 140})
+    assert "path" in err and "Parameters: path (required), start_line=1, end_line=None" in err
+
+
+def test_unknown_argument_is_refused_not_dropped():
+    _, err = fit_args("code_read", _read, {"path": "a.py", "colour": "red"})
+    assert "no parameter 'colour'" in err
+
+
+def test_a_named_parameter_is_never_overwritten_by_a_guess():
+    # start_line is given; line_start must not silently replace it.
+    _, err = fit_args("code_read", _read, {"path": "a.py", "start_line": 1, "line_start": 5})
+    assert err and "line_start" in err
+
+
+def test_handlers_taking_kwargs_are_left_alone():
+    def anything(**kw):
+        return kw
+
+    assert fit_args("x", anything, {"whatever": 1}) == ({"whatever": 1}, None)
+
+
+@pytest.mark.asyncio
+async def test_registry_returns_the_fit_error_to_the_model():
+    reg = ToolRegistry()
+    reg.register("code_read", "read", {"type": "object", "properties": {}}, _read)
+    out = json.loads(await reg.execute("code_read", {"end_line": 3}))
+    assert "Parameters: path (required)" in out["error"]
+    assert await reg.execute("code_read", {"path": "a.py", "line_start": 2}) == "a.py:2-None"
+
+
+# ── Orchestrator: keep_going ────────────────────────────────────────────────
+
+
+async def _stream(chunks):
+    for chunk in chunks:
+        yield SimpleNamespace(choices=[SimpleNamespace(delta=chunk)])
+
+
+def _text(t):
+    return _stream([SimpleNamespace(content=t, tool_calls=None)])
+
+
+async def _events(agen):
+    return [json.loads(e.removeprefix("data: ").strip()) async for e in agen]
+
+
+@pytest.mark.asyncio
+async def test_keep_going_sends_the_nudge_back_and_continues():
+    orch = AgentOrchestrator(model="test-model")
+    orch.condense = False
+    asks = iter(["Edit the file now.", None])
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as llm:
+        llm.side_effect = [_text("I looked at it."), _text("Done.")]
+        events = await _events(
+            orch.run(
+                messages=[{"role": "user", "content": "fix it"}], keep_going=lambda: next(asks)
+            )
+        )
+
+    assert [e["type"] for e in events if e["type"] in ("nudge", "done")] == ["nudge", "done"]
+    second = llm.call_args_list[1].kwargs["messages"]
+    assert second[-2] == {"role": "assistant", "content": "I looked at it."}
+    assert second[-1] == {"role": "user", "content": "Edit the file now."}
+
+
+@pytest.mark.asyncio
+async def test_without_keep_going_a_text_reply_ends_the_run():
+    orch = AgentOrchestrator(model="test-model")
+    orch.condense = False
+    with patch("litellm.acompletion", new_callable=AsyncMock) as llm:
+        llm.side_effect = [_text("Done.")]
+        events = await _events(orch.run(messages=[{"role": "user", "content": "hi"}]))
+    assert llm.await_count == 1 and events[-1]["stop_reason"] == "completed"
+
+
+# ── Local driver: nudges a run that has not edited ──────────────────────────
+
+
+class _Orch:
+    MAX_ITERATIONS = 0
+
+    def __init__(self, edit_after_nudges):
+        self.model = "test-model"
+        self.edit_after = edit_after_nudges
+        self.nudges = []
+
+    async def run(self, keep_going=None, **_kw):
+        turn = 0
+        while True:
+            if turn == self.edit_after:
+                yield "data: " + json.dumps({"type": "tool_call", "name": "code_edit"})
+                yield "data: " + json.dumps(
+                    {"type": "tool_result", "name": "code_edit", "result": '{"edited": "a.py"}'}
+                )
+            nudge = keep_going()
+            if not nudge:
+                return
+            self.nudges.append(nudge)
+            turn += 1
+
+
+async def _dispatch(orch, tmp_path, task_type="code_change", allowed_tools=None):
+    from life_graph.drivers.base import ContextPacket
+    from life_graph.drivers.local import LocalDriver
+
+    with patch("life_graph.agents.orchestrator.AgentOrchestrator", lambda *a, **k: orch):
+        return await LocalDriver().dispatch(
+            ContextPacket(
+                task_id="t1",
+                tenant_id="t",
+                task_type=task_type,
+                instruction="do it",
+                allowed_tools=allowed_tools,
+            ),
+            tmp_path,
+            timeout=30,
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_nudged_run_that_then_edits_succeeds(tmp_path):
+    orch = _Orch(edit_after_nudges=1)
+    result = await _dispatch(orch, tmp_path)
+    assert result.success, result.error
+    assert len(orch.nudges) == 1 and result.metadata["nudges"] == 1
+
+
+@pytest.mark.asyncio
+async def test_nudges_stop_after_two_and_the_run_fails_honestly(tmp_path):
+    orch = _Orch(edit_after_nudges=99)
+    result = await _dispatch(orch, tmp_path)
+    # The fake never called a tool at all, so this is no_action, not no_change.
+    assert not result.success and result.metadata["stop_reason"] == "no_action"
+    assert result.metadata["nudges"] == 2
+
+
+@pytest.mark.asyncio
+async def test_non_coding_and_read_only_runs_are_not_nudged(tmp_path):
+    orch = _Orch(edit_after_nudges=99)
+    await _dispatch(orch, tmp_path, task_type="research")
+    await _dispatch(orch, tmp_path, allowed_tools=["code_read", "code_search"])
+    assert orch.nudges == []

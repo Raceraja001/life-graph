@@ -170,7 +170,7 @@ def fake_orchestrator(monkeypatch):
             self.model = model
             seen["instance"] = self
 
-        async def run(self, messages, system_prompt=None, tools=None):
+        async def run(self, messages, system_prompt=None, tools=None, keep_going=None):
             seen["tools"] = [t["function"]["name"] for t in tools or []]
             behaviour = seen.get("behaviour", "edit")
             if behaviour == "hang":
