@@ -321,14 +321,28 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
     }
 
 
+def _ruff_issues(stdout: str, limit: int = 2000) -> str:
+    """Every finding, from the top. The last 500 characters of ruff's full
+    output held one finding and "Found 4 errors": the agent fixed that one
+    and bounced on the rest (task 6f442de2, 2026-10-16)."""
+    if len(stdout) <= limit:
+        return stdout
+    cut = stdout.rfind("\n", 0, limit)
+    head = stdout[: cut if cut > 0 else limit]
+    return f"{head}\n… ({stdout.count(chr(10)) - head.count(chr(10))} more lines)"
+
+
 async def _sandboxed_ruff(workdir: Path, args: list[str]) -> tuple[bool | None, dict]:
+    if args[0] == "check":
+        # One line per finding, so all of them fit in the evidence.
+        args = [args[0], "--output-format=concise", *args[1:]]
     try:
         # --no-cache right after the subcommand: anything after "--" is a path.
         result = await sandbox.run(["ruff", args[0], "--no-cache", *args[1:]], workdir, timeout=120)
     except sandbox.SandboxUnavailableError as exc:
         return None, {"note": str(exc), "sandbox": "docker"}
     return result.returncode == 0, {
-        "issues": result.stdout[-500:],
+        "issues": _ruff_issues(result.stdout),
         "returncode": result.returncode,
         "sandbox": "docker",
     }
@@ -853,7 +867,7 @@ async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None
         return None, {"note": "ruff not available for this project"}
     try:
         result = subprocess.run(
-            [ruff, "check", "--no-fix", *[str(f) for f in changed]],
+            [ruff, "check", "--no-fix", "--output-format=concise", *[str(f) for f in changed]],
             capture_output=True,
             text=True,
             timeout=60,
@@ -864,7 +878,11 @@ async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None
     except Exception as e:
         return False, {"error": str(e)}
     passed = result.returncode == 0
-    return passed, {"issues": result.stdout[-500:], "returncode": result.returncode, "ruff": ruff}
+    return passed, {
+        "issues": _ruff_issues(result.stdout),
+        "returncode": result.returncode,
+        "ruff": ruff,
+    }
 
 
 async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dict]:

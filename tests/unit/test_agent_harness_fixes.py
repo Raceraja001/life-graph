@@ -64,6 +64,17 @@ async def test_registry_returns_the_fit_error_to_the_model():
     assert await reg.execute("code_read", {"path": "a.py", "line_start": 2}) == "a.py:2-None"
 
 
+def test_lint_evidence_keeps_every_finding_from_the_top():
+    from life_graph.services.verifiers import _ruff_issues
+
+    short = "a.py:1:1: F821 Undefined name `logging`\nFound 1 error.\n"
+    assert _ruff_issues(short) == short
+    long = "".join(f"a.py:{i}:1: W291 Trailing whitespace\n" for i in range(1, 200))
+    out = _ruff_issues(long)
+    assert out.startswith("a.py:1:1:") and len(out) < 2100
+    assert out.endswith("more lines)")
+
+
 # ── Orchestrator: keep_going ────────────────────────────────────────────────
 
 
