@@ -194,17 +194,44 @@ class OpencodeDriver:
                     error=f"opencode binary {self._binary!r} not found",
                     duration_ms=int((time.monotonic() - start) * 1000),
                 )
+            # Read as it streams: communicate() under wait_for dropped everything
+            # on a timeout, so a 20-minute run left no steps (task cce99bf5).
+            out_buf, err_buf = bytearray(), bytearray()
+
+            async def drain(stream: asyncio.StreamReader, buf: bytearray) -> None:
+                while chunk := await stream.read(65536):
+                    buf.extend(chunk)
+
+            readers = [
+                asyncio.ensure_future(drain(proc.stdout, out_buf)),
+                asyncio.ensure_future(drain(proc.stderr, err_buf)),
+            ]
             try:
-                out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                await asyncio.wait_for(proc.wait(), timeout=timeout)
             except TimeoutError:
                 proc.kill()
                 await proc.wait()
+                # A child still holding the pipe would keep the readers open.
+                _, pending = await asyncio.wait(readers, timeout=5)
+                for r in pending:
+                    r.cancel()
+                text, steps, meta = parse_events(out_buf.decode(errors="replace"))
                 return DriverResult(
                     success=False,
+                    output=text[:20000],
                     error=f"opencode timed out after {timeout}s",
                     duration_ms=int((time.monotonic() - start) * 1000),
-                    metadata={"exit_status": "timeout", "driver": self.name},
+                    metadata={
+                        "exit_status": "timeout",
+                        "driver": self.name,
+                        "model": settings.driver_opencode_model,
+                        "num_turns": meta.get("turns"),
+                        "steps": steps,
+                        "workdir": str(cwd),
+                    },
                 )
+            await asyncio.gather(*readers)
+            out, err = bytes(out_buf), bytes(err_buf)
             text, steps, meta = parse_events(out.decode(errors="replace"))
             success = proc.returncode == 0 and "error" not in meta
             return DriverResult(
@@ -244,6 +271,14 @@ class OpencodeDriver:
             "project. Your changes are verified by the project's own tests after you "
             "finish, so make the change complete, then stop."
         )
+        if not settings.driver_opencode_allow_bash:
+            # Without this, qwen3-coder spent a 20-minute run writing test-runner
+            # scripts it could not execute (task cce99bf5, 2026-10-16).
+            parts.append(
+                "You cannot run commands or tests here. Do not write runner or scratch "
+                "files: change only the files the task needs."
+            )
+        return "\n\n".join(parts)
         return "\n\n".join(parts)
 
     def capabilities(self) -> list[str]:

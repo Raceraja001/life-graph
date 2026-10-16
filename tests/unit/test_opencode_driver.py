@@ -117,6 +117,32 @@ def test_config_points_an_ollama_model_at_the_local_server(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_a_timed_out_run_keeps_the_steps_it_printed(tmp_path):
+    fake = tmp_path / "opencode"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys, time\n"
+        f"print({REAL_RUN!r}, flush=True)\n"
+        "time.sleep(30)\n"
+    )
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    work = tmp_path / "work"
+    work.mkdir()
+
+    result = await OpencodeDriver(binary=str(fake)).dispatch(
+        _packet(work, ["code_edit"]), work, timeout=3
+    )
+
+    assert result.success is False and "timed out" in result.error
+    assert result.metadata["exit_status"] == "timeout"
+    assert len(result.metadata["steps"]) == 6
+
+
+def test_the_prompt_says_commands_cannot_run(tmp_path):
+    assert "cannot run commands" in OpencodeDriver._prompt(_packet(tmp_path))
+
+
 async def test_unavailable_without_the_binary(tmp_path):
     assert await OpencodeDriver(binary=str(tmp_path / "no-opencode")).available() is False
 
