@@ -20,6 +20,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select
 
 from life_graph.api.dependencies import (
     get_chief_router,
@@ -654,7 +655,92 @@ class ChatStreamRequest(BaseModel):
     message: str = Field(..., min_length=1, description="User message to send to the persona")
     target_agent: str = Field(default="jarvis", description="Persona to converse with")
     project_id: uuid.UUID | None = None
-    session_id: uuid.UUID | None = None
+    session_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Conversation to continue. Omit on the first turn: one is created and its id "
+            "comes back on the `start` event, to send with every later turn so the persona "
+            "sees what was already said."
+        ),
+    )
+
+
+# How many earlier turns a persona is given. Each turn is a user message and a
+# reply, so this is CHAT_HISTORY_TURNS * 2 messages — enough for a conversation
+# to hold together, bounded so a long thread cannot grow past the context
+# window of a local model and start silently dropping the system prompt.
+CHAT_HISTORY_TURNS = 10
+
+
+async def _start_chat_session(tenant_id: str, target_agent: str, message: str) -> uuid.UUID:
+    """Open a conversation and return its id.
+
+    `user_message` is the opening message and is not updated afterwards — the
+    column records how the conversation began, and the turns themselves live in
+    agent_tasks.
+    """
+    from life_graph.models.db import AgentSession
+    from life_graph.storage.database import async_session
+
+    async with async_session() as session:
+        row = AgentSession(
+            tenant_id=tenant_id,
+            user_message=message,
+            routed_to=target_agent,
+            status="active",
+        )
+        session.add(row)
+        await session.commit()
+        return row.id
+
+
+async def _load_chat_history(tenant_id: str, session_id: uuid.UUID) -> list[dict[str, str]]:
+    """Earlier turns of this conversation, oldest first.
+
+    Rebuilt from the agent_tasks rows each turn already writes rather than from
+    anything the client sends: the transcript the persona is shown is then the
+    one that actually happened, and a caller cannot put words in its mouth by
+    editing the history it posts back.
+
+    Only completed tasks with a reply count. A turn that failed, timed out, or
+    was cancelled mid-answer left no answer, and feeding its empty string back
+    as an assistant message teaches the model that saying nothing is a valid
+    reply.
+    """
+    from life_graph.models.db import AgentTask
+    from life_graph.storage.database import async_session
+
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(AgentTask)
+                    .where(
+                        AgentTask.tenant_id == tenant_id,
+                        AgentTask.session_id == session_id,
+                        AgentTask.status == "completed",
+                        AgentTask.parent_task_id.is_(None),
+                    )
+                    # Newest first, then reversed: the cut has to keep the most
+                    # recent turns, and ordering ascending with a LIMIT would
+                    # hand back the oldest ones instead.
+                    .order_by(AgentTask.created_at.desc())
+                    .limit(CHAT_HISTORY_TURNS)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    history: list[dict[str, str]] = []
+    for task in reversed(rows):
+        asked = (task.input or {}).get("message")
+        answered = (task.result or {}).get("response")
+        if not asked or not answered:
+            continue
+        history.append({"role": "user", "content": asked})
+        history.append({"role": "assistant", "content": answered})
+    return history
 
 
 @router.post(
@@ -696,12 +782,24 @@ async def chat_stream(
         # means the client's connection opens right after the (cached)
         # persona lookup instead of waiting on this insert too.
         try:
+            # A conversation needs a row to hang its turns off, and the first
+            # turn of a new one does not have it yet. Creating it here rather
+            # than making the client call /route first keeps a plain chat a
+            # single request, and the id goes back on `start` so the next turn
+            # can name the conversation it belongs to.
+            session_id = body.session_id
+            if session_id is None:
+                session_id = await _start_chat_session(tenant_id, body.target_agent, body.message)
+                history: list[dict[str, str]] = []
+            else:
+                history = await _load_chat_history(tenant_id, session_id)
+
             spawn = await pm.spawn(
                 tenant_id=tenant_id,
                 agent_name=body.target_agent,
-                input_data={"message": body.message},
+                input_data={"message": body.message, "history": history},
                 task_name=f"chat:{body.target_agent}",
-                session_id=body.session_id,
+                session_id=session_id,
                 project_id=body.project_id,
             )
         except Exception as exc:
@@ -709,7 +807,14 @@ async def chat_stream(
             return
         task_id = spawn["task_id"]  # == root_task_id for a top-level task
 
-        yield sse({"type": "start", "task_id": task_id, "persona": body.target_agent})
+        yield sse(
+            {
+                "type": "start",
+                "task_id": task_id,
+                "persona": body.target_agent,
+                "session_id": str(session_id),
+            }
+        )
         seen: set[str] = set()
         it = bus.subscribe(task_id).__aiter__()
         # A delegated child waiting on a slow model can leave the bus idle for
