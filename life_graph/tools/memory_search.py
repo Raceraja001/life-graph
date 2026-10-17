@@ -135,8 +135,9 @@ async def memory_search(query: str, limit: int = DEFAULT_LIMIT) -> str:
             )
             results = [_to_row(memory) for memory, _score in hits]
         except Exception as exc:
-            logger.warning("memory_search failed for %r: %s", query, exc)
+            # Never the query text: a search can carry personal details.
+            logger.warning("memory_search failed (query of %d chars): %s", len(query), exc)
             return json.dumps({"error": f"Memory search failed: {exc}"})
 
-    logger.info("memory_search returned %d memories for: %s", len(results), query)
+    logger.info("memory_search returned %d memories", len(results))
     return json.dumps({"query": query, "count": len(results), "results": results})

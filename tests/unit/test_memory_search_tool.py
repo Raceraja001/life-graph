@@ -314,3 +314,43 @@ def test_registered_by_main_startup():
     }
 
     assert "life_graph.tools.memory_search" in imported
+
+
+SECRET_QUERY = "my blood test results from Dr. Rao"
+
+
+async def test_the_query_text_is_never_logged_on_success(wire, caplog):
+    import logging
+
+    wire()
+    with tenant_scope("acme"), caplog.at_level(logging.DEBUG, logger="life_graph"):
+        result = json.loads(await memory_search(SECRET_QUERY))
+    assert result["count"] == 1
+    logged = [r for r in caplog.records if r.name == "life_graph.tools.memory_search"]
+    assert any("returned 1 memories" in r.getMessage() for r in logged)
+    # Not in any record at INFO or above, from this tool or the registry.
+    assert not any(
+        "blood test" in r.getMessage() for r in caplog.records if r.levelno >= logging.INFO
+    )
+
+
+async def test_the_query_text_is_never_logged_on_failure(wire, caplog):
+    import logging
+
+    wire(store=FakeStore(raises=RuntimeError("pgvector down")))
+    with tenant_scope("acme"), caplog.at_level(logging.INFO):
+        result = json.loads(await memory_search(SECRET_QUERY))
+    assert "error" in result
+    warning = next(r for r in caplog.records if r.levelno == logging.WARNING)
+    assert f"query of {len(SECRET_QUERY)} chars" in warning.getMessage()
+    assert "pgvector down" in warning.getMessage()
+    assert not any(
+        "blood test" in r.getMessage() for r in caplog.records if r.levelno >= logging.INFO
+    )
+
+
+async def test_the_reply_still_echoes_the_query(wire):
+    # The model reads the reply, not the logs: keep the query in it.
+    wire()
+    with tenant_scope("acme"):
+        assert json.loads(await memory_search(SECRET_QUERY))["query"] == SECRET_QUERY
