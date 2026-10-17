@@ -20,7 +20,7 @@ mcp = FastMCP("life-graph-tests")
 
 
 @mcp.tool()
-async def run_tests(paths: list[str]) -> str:
+async def run_tests(paths: list[str] | str) -> str:
     """Run pytest on specific test files or test ids (e.g. tests/unit/test_x.py or
     tests/unit/test_x.py::test_name) in the project's sandbox, and see why they
     fail. Use it to check a test you wrote before you finish."""

@@ -15,6 +15,7 @@ agent saw here.
 from __future__ import annotations
 
 import json
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import PurePosixPath
@@ -40,6 +41,29 @@ def project_settings(ctx: dict) -> Iterator[None]:
         yield
     finally:
         _project.reset(token)
+
+
+def as_paths(paths: list[str] | str) -> list[str]:
+    """A list of test paths from whatever shape the model sent.
+
+    qwen3-coder (OpenCode, task 954c8a51) sent the list as a string,
+    ``"['tests/unit/test_x.py']"``, three times; the schema refused each
+    call and it never saw a test result.
+    """
+    if not isinstance(paths, str):
+        return [str(p) for p in paths]
+    text = paths.strip()
+    if text.startswith("["):
+        import ast
+
+        try:
+            parsed = ast.literal_eval(text)
+        except (ValueError, SyntaxError):
+            parsed = None
+        if isinstance(parsed, (list, tuple)):
+            return [str(p) for p in parsed]
+        text = text.strip("[]")
+    return [p.strip().strip("'\"") for p in re.split(r"[,\s]+", text) if p.strip().strip("'\"")]
 
 
 def _clean(paths: list[str]) -> list[str] | str:
@@ -87,7 +111,7 @@ async def run_tests(paths: list[str] | str) -> str:
         return json.dumps({"error": "tests run only in the sandbox, which is off here"})
     if (ctx.get("sandbox_toolchain") or "python") != "python":
         return json.dumps({"error": "run_tests supports Python projects only"})
-    cleaned = _clean([paths] if isinstance(paths, str) else list(paths))
+    cleaned = _clean(as_paths(paths))
     if isinstance(cleaned, str):
         return json.dumps({"error": cleaned})
     if not cleaned:

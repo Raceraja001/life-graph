@@ -137,3 +137,24 @@ def test_the_free_code_fixers_run_both_checks():
     for name in ("code-fixer-local", "code-fixer-opencode", "code-fixer-auto"):
         chain = next(p for p in _BUILTIN_PERSONAS if p["name"] == name)["verifier_chain"]
         assert {"diff_within_scope", "tests_exercise_code"} <= set(chain), name
+
+
+@pytest.mark.parametrize(
+    ("sent", "paths"),
+    [
+        # What qwen3-coder sent through OpenCode on task 954c8a51.
+        (
+            "['tests/unit/test_memory_search_logging.py']",
+            ["tests/unit/test_memory_search_logging.py"],
+        ),
+        ('["tests/a.py", "tests/b.py::test_x"]', ["tests/a.py", "tests/b.py::test_x"]),
+        ("tests/a.py, tests/b.py", ["tests/a.py", "tests/b.py"]),
+        ("tests/a.py", ["tests/a.py"]),
+        (["tests/a.py"], ["tests/a.py"]),
+        ("[tests/a.py]", ["tests/a.py"]),
+    ],
+)
+def test_run_tests_takes_the_path_shapes_models_send(sent, paths):
+    from life_graph.tools.run_tests import as_paths
+
+    assert as_paths(sent) == paths
