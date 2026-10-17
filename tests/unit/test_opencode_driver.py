@@ -156,7 +156,7 @@ def test_run_tests_is_served_over_mcp_only_with_the_sandbox(tmp_path, monkeypatc
     packet.project_context["sandbox_setup"] = "uv sync --frozen"
     monkeypatch.setattr(sandbox, "enabled", lambda: True)
     server = _config(packet, tmp_path)["mcp"]["lg_tests"]
-    assert server["command"][1:] == ["-m", "life_graph.tools.run_tests_mcp"]
+    assert server["command"][1:] == ["-I", "-m", "life_graph.tools.run_tests_mcp"]
     assert server["environment"]["LG_RUN_TESTS_WORKDIR"] == str(tmp_path)
     assert server["environment"]["LG_RUN_TESTS_SETUP"] == "uv sync --frozen"
     assert server["environment"]["LIFE_GRAPH_VERIFIER_SANDBOX"]

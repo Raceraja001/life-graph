@@ -89,7 +89,13 @@ def _run_tests_server(packet: ContextPacket, workdir: Path) -> dict | None:
     }
     return {
         "type": "local",
-        "command": [sys.executable, "-m", "life_graph.tools.run_tests_mcp"],
+        # -I: OpenCode starts the server in the worktree, and `python -m` puts
+        # the current directory first on sys.path. Task 4b3249d4 imported the
+        # worktree's life_graph (cut from master, no run_tests_mcp) and the
+        # server died; on the life-graph project an agent could also rewrite
+        # the very tool that keeps tests in the sandbox. Isolated mode imports
+        # only the installed life_graph and ignores PYTHON* variables.
+        "command": [sys.executable, "-I", "-m", "life_graph.tools.run_tests_mcp"],
         "environment": env,
         "enabled": True,
     }
