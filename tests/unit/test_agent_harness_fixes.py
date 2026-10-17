@@ -203,7 +203,7 @@ class _Orch:
                 yield "data: " + json.dumps(
                     {"type": "tool_result", "name": "code_edit", "result": '{"edited": "a.py"}'}
                 )
-            nudge = keep_going()
+            nudge = await keep_going()
             if not nudge:
                 return
             self.nudges.append(nudge)
@@ -318,3 +318,138 @@ def test_code_fixer_local_can_run_tests():
 
     local = next(p for p in _BUILTIN_PERSONAS if p["name"] == "code-fixer-local")
     assert "run_tests" in local["allowed_tools"]
+
+
+# ── Self-check: the harness runs the agent's own changed tests ──────────────
+
+
+def _git(cwd, *args):
+    import subprocess
+
+    subprocess.run(
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", *args],
+        cwd=str(cwd),
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture
+def repo_with_changes(tmp_path):
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_old.py").write_text("def test_a():\n    pass\n")
+    (tmp_path / "tests" / "test_gone.py").write_text("")
+    (tmp_path / "mod.py").write_text("X = 1\n")
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-qm", "init")
+    (tmp_path / "tests" / "test_old.py").write_text("def test_a():\n    assert 0\n")
+    (tmp_path / "tests" / "unit").mkdir()
+    (tmp_path / "tests" / "unit" / "test_new.py").write_text("def test_b():\n    pass\n")
+    (tmp_path / "mod.py").write_text("X = 2\n")
+    (tmp_path / "tests" / "test_gone.py").unlink()
+    return tmp_path
+
+
+@pytest.mark.asyncio
+async def test_changed_tests_are_the_added_and_modified_test_files(repo_with_changes):
+    from life_graph.drivers.self_check import changed_tests
+
+    assert await changed_tests(repo_with_changes) == [
+        "tests/test_old.py",
+        "tests/unit/test_new.py",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_self_check_feeds_back_failing_tests_only(repo_with_changes, sandboxed):
+    from life_graph.drivers.self_check import check
+
+    feedback = await check(repo_with_changes, {"sandbox_setup": "uv sync"})
+    assert feedback and "/w/test_x.py:6: AssertionError" in feedback
+    assert sandboxed["argv"][-2:] == ["tests/test_old.py", "tests/unit/test_new.py"]
+
+
+@pytest.mark.asyncio
+async def test_self_check_is_silent_when_tests_pass_or_none_changed(
+    repo_with_changes, monkeypatch, tmp_path_factory
+):
+    from life_graph.drivers import self_check
+    from life_graph.services import sandbox
+
+    async def prepare_env(workdir, setup=None):
+        return workdir
+
+    async def passing(argv, workdir, **_):
+        return sandbox.SandboxResult(0, "2 passed in 0.01s\n", "")
+
+    monkeypatch.setattr(sandbox, "enabled", lambda: True)
+    monkeypatch.setattr(sandbox, "prepare_env", prepare_env)
+    monkeypatch.setattr(sandbox, "run", passing)
+    assert await self_check.check(repo_with_changes, {}) is None
+
+    clean = tmp_path_factory.mktemp("clean")
+    _git(clean, "init", "-q")
+    assert await self_check.check(clean, {}) is None
+
+
+class _EditingOrch(_Orch):
+    """Edits on its first turn, then just keeps answering."""
+
+    def __init__(self):
+        super().__init__(edit_after_nudges=0)
+
+
+@pytest.mark.asyncio
+async def test_local_driver_sends_failing_tests_back_at_most_twice(tmp_path, monkeypatch):
+    from life_graph.drivers import self_check
+
+    calls = []
+
+    async def failing(workdir, ctx):
+        calls.append(workdir)
+        return "The harness ran the tests you added or changed, and they fail: ..."
+
+    monkeypatch.setattr(self_check, "check", failing)
+    orch = _EditingOrch()
+    result = await _dispatch(orch, tmp_path)
+    assert len(calls) == 2 and result.metadata["self_checks"] == 2
+    assert orch.nudges[0].startswith("The harness ran the tests")
+
+
+@pytest.mark.asyncio
+async def test_opencode_continues_its_session_with_the_failing_tests(tmp_path, monkeypatch):
+    import stat
+
+    from life_graph.drivers import self_check
+    from life_graph.drivers.opencode import OpencodeDriver
+    from tests.unit.test_opencode_driver import REAL_RUN, _packet
+
+    seen = tmp_path / "argv.log"
+    fake = tmp_path / "opencode"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        f"open({str(seen)!r}, 'a').write(json.dumps(sys.argv[1:]) + chr(10))\n"
+        f"print({REAL_RUN!r})\n"
+    )
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    answers = iter(["tests fail: assert -1 == 5", None])
+
+    async def check(workdir, ctx):
+        return next(answers)
+
+    monkeypatch.setattr(self_check, "check", check)
+    work = tmp_path / "work"
+    work.mkdir()
+    result = await OpencodeDriver(binary=str(fake)).dispatch(
+        _packet(work, ["code_edit"]), work, timeout=300
+    )
+
+    runs = [json.loads(line) for line in seen.read_text().splitlines()]
+    assert len(runs) == 2 and result.success and result.metadata["self_checks"] == 1
+    assert "--session" not in runs[0]
+    assert runs[1][runs[1].index("--session") + 1] == "ses_1"
+    assert runs[1][-1] == "tests fail: assert -1 == 5"
+    assert len(result.metadata["steps"]) == 12  # both runs' steps, renumbered
+    assert [s["seq"] for s in result.metadata["steps"]] == list(range(1, 13))

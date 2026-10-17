@@ -32,6 +32,7 @@ import time
 from typing import TYPE_CHECKING
 
 from life_graph.agents.stuck import is_error_result
+from life_graph.drivers import self_check
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.steps import StepCollector
 
@@ -157,12 +158,24 @@ class LocalDriver:
                 packet.allowed_tools is None or bool(EDIT_TOOLS & set(packet.allowed_tools))
             )
 
-            def keep_going() -> str | None:
-                nonlocal nudges
-                if not may_edit or good_edits or nudges >= MAX_NO_EDIT_NUDGES:
+            self_checks = 0
+
+            async def keep_going() -> str | None:
+                nonlocal nudges, self_checks
+                if not may_edit:
                     return None
-                nudges += 1
-                return NO_EDIT_NUDGE
+                if not good_edits:
+                    if nudges >= MAX_NO_EDIT_NUDGES:
+                        return None
+                    nudges += 1
+                    return NO_EDIT_NUDGE
+                # Edited: run the tests it added or changed (drivers/self_check.py).
+                if self_checks >= self_check.MAX_SELF_CHECKS:
+                    return None
+                feedback = await self_check.check(workdir, packet.project_context or {})
+                if feedback:
+                    self_checks += 1
+                return feedback
 
             async def collect() -> None:
                 nonlocal tool_calls, condensed, stop_reason, good_edits, failed_edits
@@ -260,6 +273,7 @@ class LocalDriver:
                     "tool_calls": tool_calls,
                     "condensed": condensed,
                     "nudges": nudges,
+                    "self_checks": self_checks,
                     "stop_reason": stop_reason,
                     "steps": steps.finish(),
                     "workdir": str(workdir),

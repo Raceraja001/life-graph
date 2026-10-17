@@ -8,6 +8,7 @@ Server-Sent Events.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -19,7 +20,7 @@ from life_graph.services.resilient_llm import ResilientLLMExhaustedError
 from life_graph.tools.registry import registry
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable
+    from collections.abc import AsyncGenerator, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ class AgentOrchestrator:
         messages: list[dict[str, Any]],
         system_prompt: str | None = None,
         tools: list[dict[str, Any]] | None = None,
-        keep_going: Callable[[], str | None] | None = None,
+        keep_going: Callable[[], str | None | Awaitable[str | None]] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Run the agent loop, streaming SSE events.
 
@@ -285,6 +286,8 @@ class AgentOrchestrator:
                 # try (a coding run that has not edited anything yet).
                 if not tool_calls_acc and keep_going is not None:
                     nudge = keep_going()
+                    if inspect.isawaitable(nudge):
+                        nudge = await nudge
                     if nudge:
                         working_messages.append(
                             {"role": "assistant", "content": "".join(content_parts)}

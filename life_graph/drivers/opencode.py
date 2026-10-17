@@ -33,14 +33,25 @@ import shutil
 import sys
 import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from life_graph.config import settings
+from life_graph.drivers import self_check
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.steps import number
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _Run:
+    returncode: int | None
+    out: bytes
+    err: bytes
+    timed_out: bool = False
+
 
 # life_graph tool names that grant writing files (persona allow-lists).
 _WRITE_TOOLS = frozenset({"file_write", "code_edit"})
@@ -197,6 +208,49 @@ class OpencodeDriver:
             logger.debug("opencode unavailable: %r not found", self._binary)
         return found
 
+    async def _invoke(
+        self, prompt: str, cwd: Path, env: dict, timeout: int, session_id: str | None
+    ) -> _Run:
+        """One ``opencode run``; with *session_id*, continues that session."""
+        argv = [self._binary, "run", "--format", "json", "--auto"]
+        argv += ["-m", settings.driver_opencode_model, "--dir", str(cwd)]
+        if session_id:
+            argv += ["--session", session_id]
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            prompt,
+            cwd=str(cwd),
+            env=env,
+            # OpenCode waits on an open stdin: closed, it runs headless.
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        # Read as it streams: communicate() under wait_for dropped everything
+        # on a timeout, so a 20-minute run left no steps (task cce99bf5).
+        out_buf, err_buf = bytearray(), bytearray()
+
+        async def drain(stream: asyncio.StreamReader, buf: bytearray) -> None:
+            while chunk := await stream.read(65536):
+                buf.extend(chunk)
+
+        readers = [
+            asyncio.ensure_future(drain(proc.stdout, out_buf)),
+            asyncio.ensure_future(drain(proc.stderr, err_buf)),
+        ]
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=timeout)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            # A child still holding the pipe would keep the readers open.
+            _, pending = await asyncio.wait(readers, timeout=5)
+            for r in pending:
+                r.cancel()
+            return _Run(None, bytes(out_buf), bytes(err_buf), timed_out=True)
+        await asyncio.gather(*readers)
+        return _Run(proc.returncode, bytes(out_buf), bytes(err_buf))
+
     async def dispatch(
         self, packet: ContextPacket, workdir: Path, timeout: int = 300
     ) -> DriverResult:
@@ -208,77 +262,60 @@ class OpencodeDriver:
             config_file.write_text(json.dumps(_config(packet, cwd)))
             prompt = self._prompt(packet)
             env = {**os.environ, "OPENCODE_CONFIG": str(config_file)}
-            argv = [
-                self._binary,
-                "run",
-                "--format",
-                "json",
-                "--auto",
-                "-m",
-                settings.driver_opencode_model,
-                "--dir",
-                str(cwd),
-                prompt,
-            ]
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    *argv,
-                    cwd=str(cwd),
-                    env=env,
-                    # OpenCode waits on an open stdin: closed, it runs headless.
-                    stdin=asyncio.subprocess.DEVNULL,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-            except FileNotFoundError:
-                return DriverResult(
-                    success=False,
-                    error=f"opencode binary {self._binary!r} not found",
-                    duration_ms=int((time.monotonic() - start) * 1000),
-                )
-            # Read as it streams: communicate() under wait_for dropped everything
-            # on a timeout, so a 20-minute run left no steps (task cce99bf5).
-            out_buf, err_buf = bytearray(), bytearray()
-
-            async def drain(stream: asyncio.StreamReader, buf: bytearray) -> None:
-                while chunk := await stream.read(65536):
-                    buf.extend(chunk)
-
-            readers = [
-                asyncio.ensure_future(drain(proc.stdout, out_buf)),
-                asyncio.ensure_future(drain(proc.stderr, err_buf)),
-            ]
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=timeout)
-            except TimeoutError:
-                proc.kill()
-                await proc.wait()
-                # A child still holding the pipe would keep the readers open.
-                _, pending = await asyncio.wait(readers, timeout=5)
-                for r in pending:
-                    r.cancel()
-                text, steps, meta = parse_events(out_buf.decode(errors="replace"))
-                return DriverResult(
-                    success=False,
-                    output=text[:20000],
-                    error=f"opencode timed out after {timeout}s",
-                    duration_ms=int((time.monotonic() - start) * 1000),
-                    metadata={
-                        "exit_status": "timeout",
-                        "driver": self.name,
-                        "model": settings.driver_opencode_model,
-                        "num_turns": meta.get("turns"),
-                        "steps": steps,
-                        "workdir": str(cwd),
-                    },
-                )
-            await asyncio.gather(*readers)
-            out, err = bytes(out_buf), bytes(err_buf)
-            text, steps, meta = parse_events(out.decode(errors="replace"))
-            success = proc.returncode == 0 and "error" not in meta
+            deadline = start + timeout
+            steps: list[dict] = []
+            texts: list[str] = []
+            session_id: str | None = None
+            turns = 0
+            self_checks = 0
+            while True:
+                try:
+                    run = await self._invoke(
+                        prompt, cwd, env, max(1, int(deadline - time.monotonic())), session_id
+                    )
+                except FileNotFoundError:
+                    return DriverResult(
+                        success=False,
+                        error=f"opencode binary {self._binary!r} not found",
+                        duration_ms=int((time.monotonic() - start) * 1000),
+                    )
+                text, run_steps, meta = parse_events(run.out.decode(errors="replace"))
+                steps += run_steps
+                if text:
+                    texts.append(text)
+                session_id = meta.get("session_id") or session_id
+                turns += meta.get("turns") or 0
+                if run.timed_out:
+                    return DriverResult(
+                        success=False,
+                        output=(texts[-1] if texts else "")[:20000],
+                        error=f"opencode timed out after {timeout}s",
+                        duration_ms=int((time.monotonic() - start) * 1000),
+                        metadata={
+                            "exit_status": "timeout",
+                            "driver": self.name,
+                            "model": settings.driver_opencode_model,
+                            "num_turns": turns,
+                            "steps": number(steps),
+                            "workdir": str(cwd),
+                            "self_checks": self_checks,
+                        },
+                    )
+                success = run.returncode == 0 and "error" not in meta
+                if not success or self_checks >= self_check.MAX_SELF_CHECKS or not session_id:
+                    break
+                # The harness runs the tests the agent added or changed and, if
+                # they fail, continues the same session with the output
+                # (drivers/self_check.py).
+                feedback = await self_check.check(cwd, packet.project_context or {})
+                if not feedback or time.monotonic() > deadline - 60:
+                    break
+                self_checks += 1
+                prompt = feedback
+            err = run.err
             return DriverResult(
                 success=success,
-                output=text[:20000],
+                output=(texts[-1] if texts else "")[:20000],
                 cost_usd=0.0,  # local model; a paid provider is not metered here
                 duration_ms=int((time.monotonic() - start) * 1000),
                 error=None
@@ -289,12 +326,13 @@ class OpencodeDriver:
                 metadata={
                     "driver": self.name,
                     "model": settings.driver_opencode_model,
-                    "session_id": meta.get("session_id"),
-                    "num_turns": meta.get("turns"),
-                    "steps": steps,
+                    "session_id": session_id,
+                    "num_turns": turns,
+                    "steps": number(steps),
                     "workdir": str(cwd),
                     "isolated": worktree is not None,
                     "exit_status": "ok" if success else "failed",
+                    "self_checks": self_checks,
                 },
             )
         finally:
