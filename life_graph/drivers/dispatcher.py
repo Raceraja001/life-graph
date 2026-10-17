@@ -281,6 +281,24 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
 _ALWAYS_ON_CHECKS = ("no_secrets_in_diff", "no_vulnerable_deps_in_diff")
 
 
+def failure_text(result: VerifierResult) -> str:
+    """One failed check as the agent reads it on a bounce. The evidence used
+    to go in as a dict repr: pytest's output became one line of literal \\n
+    escapes, and the agent rewrote its test without fixing the cause (task
+    dbffae5f, 2026-10-16). Multi-line text is kept as indented lines."""
+    lines = [f"- {result.verifier} failed:"]
+    evidence = result.evidence or {}
+    if not isinstance(evidence, dict):
+        evidence = {"evidence": evidence}
+    for key, value in evidence.items():
+        if isinstance(value, str) and "\n" in value:
+            lines.append(f"  {key}:")
+            lines.extend(f"    {ln}" for ln in value.rstrip("\n").split("\n"))
+        else:
+            lines.append(f"  {key}: {value}")
+    return "\n".join(lines)
+
+
 def _with_required_checks(chain: list[str], project_context: dict) -> list[str]:
     """Append the project's required checks (e.g. tests_pass), plus the
     always-on checks, that *chain* lacks.
@@ -1186,7 +1204,7 @@ class TaskDispatcher:
         Returns:
             DriverResult if bounce succeeded verification, None if it also failed.
         """
-        failures = [f"- {r.verifier}: {r.evidence}" for r in failure_report if not r.passed]
+        failures = [failure_text(r) for r in failure_report if not r.passed]
         bounce_instruction = (
             f"{packet.instruction}\n\n"
             f"--- PREVIOUS ATTEMPT FAILED VERIFICATION ---\n"

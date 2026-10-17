@@ -115,6 +115,29 @@ def test_test_evidence_caps_a_long_section_but_keeps_the_summary():
     assert _test_evidence("x" * 900) == "x" * 500
 
 
+def test_bounce_feedback_is_readable_text_not_a_dict_repr():
+    from life_graph.drivers.dispatcher import failure_text
+    from life_graph.services.verifiers import VerifierResult
+
+    r = VerifierResult(
+        verifier="tests_pass",
+        passed=False,
+        evidence={
+            "stdout": "=== FAILURES ===\nE   AttributeError: no get_store\n",
+            "returncode": 1,
+        },
+    )
+    text = failure_text(r)
+    assert "\\n" not in text
+    assert text.split("\n") == [
+        "- tests_pass failed:",
+        "  stdout:",
+        "    === FAILURES ===",
+        "    E   AttributeError: no get_store",
+        "  returncode: 1",
+    ]
+
+
 # ── Orchestrator: keep_going ────────────────────────────────────────────────
 
 
