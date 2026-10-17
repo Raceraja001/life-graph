@@ -251,3 +251,70 @@ async def test_non_coding_and_read_only_runs_are_not_nudged(tmp_path):
     await _dispatch(orch, tmp_path, task_type="research")
     await _dispatch(orch, tmp_path, allowed_tools=["code_read", "code_search"])
     assert orch.nudges == []
+
+
+# ── run_tests: the agent checks its own test, in the sandbox only ───────────
+
+
+@pytest.fixture
+def sandboxed(monkeypatch, tmp_path):
+    from life_graph.services import sandbox
+
+    calls = {}
+
+    async def prepare_env(workdir, setup=None):
+        calls["setup"] = setup
+        return tmp_path / "venv"
+
+    async def run(argv, workdir, *, venv=None, timeout=120, **_):
+        calls.update(argv=argv, workdir=workdir, venv=venv)
+        return sandbox.SandboxResult(1, PYTEST_OUT, "")
+
+    monkeypatch.setattr(sandbox, "enabled", lambda: True)
+    monkeypatch.setattr(sandbox, "prepare_env", prepare_env)
+    monkeypatch.setattr(sandbox, "run", run)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_run_tests_runs_pytest_in_the_sandbox_with_the_project_setup(sandboxed, tmp_path):
+    from life_graph.tools._guards import confine_to
+    from life_graph.tools.run_tests import project_settings, run_tests
+
+    with confine_to(tmp_path), project_settings({"sandbox_setup": "uv sync"}):
+        out = json.loads(await run_tests(["tests/unit/test_x.py::test_bad"]))
+
+    assert out["passed"] is False and "/w/test_x.py:6: AssertionError" in out["output"]
+    assert sandboxed["setup"] == "uv sync" and sandboxed["workdir"] == tmp_path.resolve()
+    assert sandboxed["argv"][:3] == ["python", "-m", "pytest"]
+    assert sandboxed["argv"][-1] == "tests/unit/test_x.py::test_bad"
+
+
+@pytest.mark.asyncio
+async def test_run_tests_refuses_outside_a_task_and_without_the_sandbox(monkeypatch, tmp_path):
+    from life_graph.services import sandbox
+    from life_graph.tools._guards import confine_to
+    from life_graph.tools.run_tests import project_settings, run_tests
+
+    assert "only inside a dev task" in json.loads(await run_tests(["tests"]))["error"]
+    monkeypatch.setattr(sandbox, "enabled", lambda: False)
+    with confine_to(tmp_path), project_settings({}):
+        assert "only in the sandbox" in json.loads(await run_tests(["tests"]))["error"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", ["/etc/passwd", "../other/test_x.py", "--rootdir=/", ""])
+async def test_run_tests_takes_only_paths_inside_the_project(sandboxed, tmp_path, bad):
+    from life_graph.tools._guards import confine_to
+    from life_graph.tools.run_tests import project_settings, run_tests
+
+    with confine_to(tmp_path), project_settings({}):
+        out = json.loads(await run_tests([bad]))
+    assert "error" in out and "argv" not in sandboxed
+
+
+def test_code_fixer_local_can_run_tests():
+    from life_graph.kernel.personas import _BUILTIN_PERSONAS
+
+    local = next(p for p in _BUILTIN_PERSONAS if p["name"] == "code-fixer-local")
+    assert "run_tests" in local["allowed_tools"]

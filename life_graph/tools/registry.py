@@ -307,6 +307,7 @@ def tool(
     name: str,
     description: str,
     parameters_schema: dict[str, Any],
+    timeout_seconds: int | None = None,
 ) -> Callable[..., Any]:
     """Decorator to register a function as an agent tool.
 
@@ -324,13 +325,14 @@ def tool(
         name: Unique tool name.
         description: Human-readable description for the LLM.
         parameters_schema: JSON Schema for the tool's parameters.
+        timeout_seconds: Override for the default execution timeout.
 
     Returns:
         The original function, now registered in the global registry.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        registry.register(name, description, parameters_schema, func)
+        registry.register(name, description, parameters_schema, func, timeout_seconds)
         return func
 
     return decorator

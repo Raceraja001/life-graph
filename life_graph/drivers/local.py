@@ -205,7 +205,9 @@ class LocalDriver:
                             else str(data.get("warning") or "stuck in a loop")
                         )
 
-            with confine_to(workdir):
+            from life_graph.tools.run_tests import project_settings
+
+            with confine_to(workdir), project_settings(packet.project_context or {}):
                 try:
                     await asyncio.wait_for(collect(), timeout=timeout)
                 except TimeoutError:

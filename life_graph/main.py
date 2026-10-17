@@ -168,6 +168,7 @@ async def lifespan(app: FastAPI):
         import life_graph.tools.filesystem  # noqa: F401
         import life_graph.tools.git  # noqa: F401
         import life_graph.tools.memory_search  # noqa: F401
+        import life_graph.tools.run_tests  # noqa: F401
         import life_graph.tools.system_inspect  # noqa: F401
         import life_graph.tools.terminal  # noqa: F401
         import life_graph.tools.web_search  # noqa: F401
