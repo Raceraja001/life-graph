@@ -295,8 +295,9 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         ),
         "intent_tags": ["code", "fix", "local"],
         "temperature": 0.2,
-        # Edits only: OpenCode's shell and web access are denied by the driver.
-        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit"],
+        # Edits, and tests in the sandbox over MCP (run_tests): OpenCode's
+        # shell and web access are denied by the driver.
+        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit", "run_tests"],
         "driver": "opencode",
         "task_types": ["code_change"],
         "verifier_chain": ["build_ok_diff", "lint_clean_diff"],

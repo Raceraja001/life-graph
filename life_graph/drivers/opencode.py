@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -45,7 +46,45 @@ logger = logging.getLogger(__name__)
 _WRITE_TOOLS = frozenset({"file_write", "code_edit"})
 
 
-def _config(packet: ContextPacket) -> dict:
+def _can_run_tests(packet: ContextPacket) -> bool:
+    """A Python project, with the sandbox on and run_tests in the persona's tools."""
+    from life_graph.services import sandbox
+
+    allowed = packet.allowed_tools
+    ctx = packet.project_context or {}
+    return (
+        (allowed is None or "run_tests" in allowed)
+        and sandbox.enabled()
+        and (ctx.get("sandbox_toolchain") or "python") == "python"
+    )
+
+
+def _run_tests_server(packet: ContextPacket, workdir: Path) -> dict | None:
+    """OpenCode's way to run tests: the sandbox-only run_tests tool, served
+    over MCP (tools/run_tests_mcp.py). Bash stays denied."""
+    if not _can_run_tests(packet):
+        return None
+    ctx = packet.project_context or {}
+    # The server starts in the worktree, which has no .env: pass the sandbox
+    # settings it needs explicitly.
+    env = {
+        "LG_RUN_TESTS_WORKDIR": str(workdir),
+        "LG_RUN_TESTS_SETUP": ctx.get("sandbox_setup") or "",
+        "LIFE_GRAPH_VERIFIER_SANDBOX": settings.verifier_sandbox,
+        "LIFE_GRAPH_VERIFIER_SANDBOX_IMAGE": settings.verifier_sandbox_image,
+        "LIFE_GRAPH_VERIFIER_SANDBOX_CACHE_DIR": str(settings.verifier_sandbox_cache_dir),
+        "LIFE_GRAPH_VERIFIER_SANDBOX_CPUS": str(settings.verifier_sandbox_cpus),
+        "LIFE_GRAPH_VERIFIER_SANDBOX_MEMORY": str(settings.verifier_sandbox_memory),
+    }
+    return {
+        "type": "local",
+        "command": [sys.executable, "-m", "life_graph.tools.run_tests_mcp"],
+        "environment": env,
+        "enabled": True,
+    }
+
+
+def _config(packet: ContextPacket, workdir: Path | None = None) -> dict:
     """The OpenCode config for one dispatch: provider, model and permissions."""
     model = settings.driver_opencode_model
     provider, _, model_id = model.partition("/")
@@ -71,6 +110,9 @@ def _config(packet: ContextPacket) -> dict:
                 "models": {model_id: {}},
             }
         }
+    server = _run_tests_server(packet, workdir) if workdir is not None else None
+    if server is not None:
+        config["mcp"] = {"lg_tests": server}
     return config
 
 
@@ -163,7 +205,7 @@ class OpencodeDriver:
         config_dir = Path(tempfile.mkdtemp(prefix="lg-opencode-"))
         try:
             config_file = config_dir / "opencode.json"
-            config_file.write_text(json.dumps(_config(packet)))
+            config_file.write_text(json.dumps(_config(packet, cwd)))
             prompt = self._prompt(packet)
             env = {**os.environ, "OPENCODE_CONFIG": str(config_file)}
             argv = [
@@ -274,11 +316,16 @@ class OpencodeDriver:
         if not settings.driver_opencode_allow_bash:
             # Without this, qwen3-coder spent a 20-minute run writing test-runner
             # scripts it could not execute (task cce99bf5, 2026-10-16).
+            tests = (
+                "To run a test, use the run_tests tool (lg_tests_run_tests) and fix it "
+                "until it passes."
+                if _can_run_tests(packet)
+                else "You cannot run tests here either."
+            )
             parts.append(
-                "You cannot run commands or tests here. Do not write runner or scratch "
+                f"You cannot run shell commands. {tests} Do not write runner or scratch "
                 "files: change only the files the task needs."
             )
-        return "\n\n".join(parts)
         return "\n\n".join(parts)
 
     def capabilities(self) -> list[str]:
