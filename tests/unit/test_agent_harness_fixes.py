@@ -138,6 +138,19 @@ def test_bounce_feedback_is_readable_text_not_a_dict_repr():
     ]
 
 
+@pytest.mark.asyncio
+async def test_tool_argument_values_never_reach_info_logs(caplog):
+    import logging
+
+    reg = ToolRegistry()
+    reg.register("code_read", "read", {"type": "object", "properties": {}}, _read)
+    with caplog.at_level(logging.INFO, logger="life_graph.tools.registry"):
+        await reg.execute("code_read", {"path": "my-private-diary.txt"})
+    info = [r.getMessage() for r in caplog.records if r.levelno >= logging.INFO]
+    assert any("code_read" in m and "['path']" in m for m in info)
+    assert not any("my-private-diary" in m for m in info)
+
+
 # ── Orchestrator: keep_going ────────────────────────────────────────────────
 
 

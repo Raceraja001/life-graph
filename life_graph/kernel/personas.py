@@ -274,7 +274,12 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "allowed_tools": ["code_read", "code_search", "code_list", "code_edit", "run_tests"],
         "driver": "local",
         "task_types": ["code_change"],
-        "verifier_chain": ["build_ok_diff", "lint_clean_diff"],
+        "verifier_chain": [
+            "build_ok_diff",
+            "lint_clean_diff",
+            "diff_within_scope",
+            "tests_exercise_code",
+        ],
         "context_profile": {"domains": ["code"]},
     },
     {
@@ -300,7 +305,12 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "allowed_tools": ["code_read", "code_search", "code_list", "code_edit", "run_tests"],
         "driver": "opencode",
         "task_types": ["code_change"],
-        "verifier_chain": ["build_ok_diff", "lint_clean_diff"],
+        "verifier_chain": [
+            "build_ok_diff",
+            "lint_clean_diff",
+            "diff_within_scope",
+            "tests_exercise_code",
+        ],
         "context_profile": {"domains": ["code"]},
     },
     {
@@ -329,7 +339,12 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "allowed_tools": ["code_read", "code_search", "code_list", "code_edit"],
         "driver": "auto",
         "task_types": ["code_change"],
-        "verifier_chain": ["build_ok_diff", "lint_clean_diff"],
+        "verifier_chain": [
+            "build_ok_diff",
+            "lint_clean_diff",
+            "diff_within_scope",
+            "tests_exercise_code",
+        ],
         "context_profile": {"domains": ["code"]},
     },
     # ── Personal-life personas (docs/specs/personal-roles.md) ──
