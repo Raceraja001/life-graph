@@ -222,7 +222,10 @@ class ToolRegistry:
             raise KeyError(error_msg)
 
         entry = self._tools[name]
-        logger.info("Executing tool: %s with args: %s", name, args)
+        # Argument names only at INFO: the values are what the model sent, a
+        # search query or a captured note included, and must not reach the logs.
+        logger.info("Executing tool: %s with args: %s", name, sorted(args))
+        logger.debug("Tool %s args: %s", name, args)
 
         args, arg_error = fit_args(name, entry.handler, args)
         if arg_error:

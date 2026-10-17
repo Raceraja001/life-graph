@@ -14,6 +14,7 @@ import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from life_graph.services import sandbox
@@ -147,6 +148,7 @@ class VerifierChain:
         self.register("no_secrets_in_diff", _verify_no_secrets_in_diff)
         self.register("no_vulnerable_deps_in_diff", _verify_no_vulnerable_deps_in_diff)
         self.register("diff_within_scope", _verify_diff_within_scope)
+        self.register("tests_exercise_code", _verify_tests_exercise_code)
         self.register("citations_present", _verify_citations_present)
         self.register("style_conforms", _verify_style_conforms)
         self.register("claims_evidenced", _verify_claims_evidenced)
@@ -909,25 +911,163 @@ async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None
     }
 
 
-async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dict]:
-    """Check that changes are within expected files."""
-    allowed_files = ctx.get("allowed_files", [])
-    if not allowed_files:
-        return True, {"note": "No scope constraint"}
+def _local_modules(workdir: Path) -> set[str]:
+    """Top-level importable names defined by the project itself."""
+    names = set()
+    for entry in workdir.iterdir():
+        if entry.name in ("tests", "test") or entry.name.startswith("."):
+            continue
+        if entry.is_dir() and (entry / "__init__.py").is_file():
+            names.add(entry.name)
+        elif entry.suffix == ".py" and entry.name not in ("setup.py", "conftest.py"):
+            names.add(entry.stem)
+    return names
+
+
+def _test_smells(source: str, local: set[str]) -> list[str]:
+    """Why a test file does not exercise the code, or ``[]``."""
+    import ast
+
     try:
-        result = subprocess.run(
-            [*_HARDENED_GIT, "diff", "--name-only", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            cwd=str(workdir),
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []  # build_ok_diff reports it
+    smells = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            literals = [a.value for a in node.args if isinstance(a, ast.Constant)]
+            if isinstance(node.func, ast.Name) and node.func.id == "open":
+                target = literals[0] if literals else None
+            elif isinstance(node.func, ast.Attribute) and node.func.attr in (
+                "read_text",
+                "read_bytes",
+                "open",
+            ):
+                inner = node.func.value
+                target = (
+                    inner.args[0].value
+                    if isinstance(inner, ast.Call)
+                    and inner.args
+                    and isinstance(inner.args[0], ast.Constant)
+                    else None
+                )
+            else:
+                continue
+            if isinstance(target, str) and target.endswith(".py") and not _is_test_path(target):
+                smells.append(f"reads the source file {target!r} instead of running it")
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] in local:
+            imported |= {a.asname or a.name for a in node.names}
+        elif isinstance(node, ast.Import):
+            imported |= {
+                (a.asname or a.name).split(".")[0]
+                for a in node.names
+                if a.name.split(".")[0] in local
+            }
+    if imported:
+        used = False
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Call, ast.ClassDef)):
+                # Called, passed along, or subclassed (a stub of the class under test).
+                parts = (
+                    [*node.bases]
+                    if isinstance(node, ast.ClassDef)
+                    else [node.func, *node.args, *(k.value for k in node.keywords)]
+                )
+                for part in parts:
+                    for sub in ast.walk(part):
+                        if isinstance(sub, ast.Name) and sub.id in imported:
+                            used = True
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                # patch("pkg.mod.name") targets the code by its dotted path.
+                if node.value.split(".")[0] in local and "." in node.value:
+                    used = True
+        if not used:
+            smells.append(f"imports {', '.join(sorted(imported))} but never calls or patches it")
+    return smells
+
+
+async def _verify_tests_exercise_code(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+    """A test the agent added or changed must run the code, not read it.
+
+    OpenCode passed every check on task d917e132 (2026-10-17) with a "test"
+    that opened memory_search.py and asserted strings in it, and only checked
+    the imported function ``is not None``: it could not fail for any change
+    in behaviour. Static and cheap: an AST look at changed test files only.
+    """
+    tests = [
+        f for f in _changed_python_files(workdir) if _is_test_path(str(f.relative_to(workdir)))
+    ]
+    if not tests:
+        return True, {"note": "no changed test files"}
+    local = _local_modules(workdir)
+    found = {}
+    for f in tests:
+        try:
+            smells = _test_smells(f.read_text(encoding="utf-8", errors="replace"), local)
+        except OSError:
+            continue
+        if smells:
+            found[str(f.relative_to(workdir))] = smells
+    evidence: dict = {"checked": [str(f.relative_to(workdir)) for f in tests], "problems": found}
+    if found:
+        evidence["hint"] = (
+            "Write the test to call the code it is about (with mocks or fixtures for "
+            "its dependencies) and assert on what it does, so it fails if the change "
+            "is reverted."
         )
-        changed = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
-        out_of_scope = [f for f in changed if f not in allowed_files]
-        passed = len(out_of_scope) == 0
-        return passed, {"changed": changed, "out_of_scope": out_of_scope}
-    except Exception as e:
-        return True, {"note": f"Git check failed: {e}"}
+    return not found, evidence
+
+
+_NAMED_PATH = re.compile(
+    r"(?<![\w/.-])((?:[\w.-]+/)*[\w.-]+\.(?:py|pyi|ts|tsx|js|jsx|mjs|md|toml|ya?ml|json|sql|sh|cfg|ini|txt|html|css))(?![\w/-])"
+)
+
+
+def named_paths(instruction: str) -> list[str]:
+    """File paths an instruction names, e.g. ``life_graph/tools/memory_search.py``."""
+    return sorted({m.group(1).removeprefix("./") for m in _NAMED_PATH.finditer(instruction or "")})
+
+
+def _is_test_path(rel: str) -> bool:
+    p = PurePosixPath(rel)
+    name = p.name
+    return (
+        (p.parts and p.parts[0] in ("tests", "test", "__tests__"))
+        or (name.startswith("test_") and name.endswith(".py"))
+        or name.endswith(("_test.py", ".test.ts", ".test.tsx", ".test.js", ".spec.ts", ".spec.js"))
+    )
+
+
+async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+    """Check that changes stay within the files the task is about.
+
+    The scope is ``allowed_files`` when given; otherwise the files the task's
+    own instruction names (``scope_instruction``, the original text, not a
+    bounce's, whose failure output names unrelated paths). A task that names
+    no file has no constraint. Tests may always be added or changed. On
+    2026-10-17 gpt-oss:20b edited api/dependencies.py to make its broken
+    test import, on a task that said "change nothing else", and OpenCode left
+    a run_test.sh behind; neither was checked.
+    """
+    allowed = list(ctx.get("allowed_files") or named_paths(ctx.get("scope_instruction") or ""))
+    if not allowed:
+        return True, {"note": "No scope constraint"}
+    changed = [str(f.relative_to(workdir)) for f in _changed_files(workdir)]
+    bare = {a for a in allowed if "/" not in a}
+    out_of_scope = [
+        f
+        for f in changed
+        if f not in allowed and PurePosixPath(f).name not in bare and not _is_test_path(f)
+    ]
+    evidence: dict = {"allowed": allowed, "changed": changed, "out_of_scope": out_of_scope}
+    if out_of_scope:
+        evidence["hint"] = (
+            "These files are outside the task. Revert them; if the task really "
+            "needs them, say why in your summary instead of changing them."
+        )
+    return not out_of_scope, evidence
 
 
 async def _verify_citations_present(workdir: Path, ctx: dict) -> tuple[bool, dict]:

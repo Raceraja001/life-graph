@@ -619,6 +619,7 @@ class TaskDispatcher:
                     "output": result.output,
                     "task_type": task_type,
                     "instruction": instruction,
+                    "scope_instruction": instruction,
                     **{k: packet.project_context.get(k) for k in SANDBOX_SETTINGS},
                     "acceptance_tests": acceptance_tests or [],
                 }
@@ -1256,6 +1257,9 @@ class TaskDispatcher:
             "output": bounce_result.output,
             "task_type": packet.task_type,
             "instruction": bounce_instruction,
+            # The original task, not the bounce text: its failure output names
+            # unrelated paths that would widen diff_within_scope.
+            "scope_instruction": packet.instruction,
             **{k: packet.project_context.get(k) for k in SANDBOX_SETTINGS},
             "acceptance_tests": acceptance_tests or [],
         }
