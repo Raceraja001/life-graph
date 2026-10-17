@@ -50,7 +50,7 @@ EDIT_TOOLS = frozenset({"code_edit", "file_write"})
 MAX_NO_EDIT_NUDGES = 2
 NO_EDIT_NUDGE = (
     "You have not changed any file yet, and this task needs a change. Make the "
-    "edit now with code_edit or file_write, then re-read the file to check it. "
+    "edit now with code_edit, then re-read the file to check it. "
     "If the change is impossible, say exactly why."
 )
 

@@ -293,7 +293,7 @@ class AgentOrchestrator:
                             {"role": "assistant", "content": "".join(content_parts)}
                         )
                         working_messages.append({"role": "user", "content": nudge})
-                        yield _sse({"type": "nudge", "reason": "no_edit", "message": nudge})
+                        yield _sse({"type": "nudge", "message": nudge})
                         continue
                 if not tool_calls_acc:
                     logger.info(
