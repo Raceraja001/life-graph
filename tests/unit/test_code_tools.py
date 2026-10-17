@@ -113,6 +113,26 @@ async def test_code_edit_creates_but_never_clobbers(repo):
     assert (repo["wt"] / "pkg" / "new.py").read_text() == "X = 1\n"
 
 
+async def test_code_edit_empty_range_inserts_appends_and_creates(repo):
+    mod = repo["wt"] / "pkg" / "mod.py"
+    with confine_to(repo["wt"]):
+        # Before line 4, replacing nothing.
+        ins = json.loads(await code.code_edit("pkg/mod.py", "", "# here", 4, 3))
+        assert "edited" in ins, ins
+        assert mod.read_text() == "def a():\n    return 1\n\n# here\n\ndef b():\n    return 1\n"
+        # last line + 1 (code_read counts 7 lines) appends and keeps the final newline.
+        app = json.loads(await code.code_edit("pkg/mod.py", "", "X = 2", 8, 7))
+        assert "edited" in app, app
+        assert mod.read_text().endswith("    return 1\nX = 2\n")
+        # Inserting at line 1 of a missing file creates it.
+        new = json.loads(await code.code_edit("pkg/fresh.py", "", "Y = 1\n", 1, 0))
+        assert "created" in new
+        # An empty range past the end is still refused.
+        far = json.loads(await code.code_edit("pkg/mod.py", "", "Z", 50, 49))
+        assert "outside the file" in far["error"]
+    assert (repo["wt"] / "pkg" / "fresh.py").read_text() == "Y = 1\n"
+
+
 async def test_code_edit_refuses_git_internals(repo):
     (repo["wt"] / ".git").write_text("gitdir: /somewhere\n")
     with confine_to(repo["wt"]):
@@ -170,7 +190,7 @@ def fake_orchestrator(monkeypatch):
             self.model = model
             seen["instance"] = self
 
-        async def run(self, messages, system_prompt=None, tools=None):
+        async def run(self, messages, system_prompt=None, tools=None, keep_going=None):
             seen["tools"] = [t["function"]["name"] for t in tools or []]
             behaviour = seen.get("behaviour", "edit")
             if behaviour == "hang":

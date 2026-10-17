@@ -8,6 +8,7 @@ Server-Sent Events.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -19,7 +20,7 @@ from life_graph.services.resilient_llm import ResilientLLMExhaustedError
 from life_graph.tools.registry import registry
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ class AgentOrchestrator:
         messages: list[dict[str, Any]],
         system_prompt: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        keep_going: Callable[[], str | None | Awaitable[str | None]] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Run the agent loop, streaming SSE events.
 
@@ -85,6 +87,9 @@ class AgentOrchestrator:
             messages: Conversation history.
             system_prompt: Optional system prompt to prepend.
             tools: Tool definitions (defaults to global registry).
+            keep_going: Asked when the model ends a turn without tool calls.
+                Text it returns goes back as a user message and the loop
+                continues (within MAX_ITERATIONS); ``None`` ends the run.
 
         Yields:
             SSE-formatted event strings.
@@ -277,7 +282,19 @@ class AgentOrchestrator:
                                 if tc.function.arguments:
                                     tool_calls_acc[idx]["arguments"] += tc.function.arguments
 
-                # If no tool calls, we're done.
+                # If no tool calls, we're done, unless the caller wants another
+                # try (a coding run that has not edited anything yet).
+                if not tool_calls_acc and keep_going is not None:
+                    nudge = keep_going()
+                    if inspect.isawaitable(nudge):
+                        nudge = await nudge
+                    if nudge:
+                        working_messages.append(
+                            {"role": "assistant", "content": "".join(content_parts)}
+                        )
+                        working_messages.append({"role": "user", "content": nudge})
+                        yield _sse({"type": "nudge", "message": nudge})
+                        continue
                 if not tool_calls_acc:
                     logger.info(
                         "Agent completed: iterations=%d, tokens=%d",

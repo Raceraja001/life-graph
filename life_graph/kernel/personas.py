@@ -260,15 +260,18 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " code_search or code_list, read it with code_read (follow"
             " next_start_line for long files), change it with code_edit"
             " (copy `old` exactly, without the line-number prefixes), then"
-            " code_read the changed lines to confirm. Never rewrite a whole"
-            " file to change part of it. Do not refactor or touch unrelated"
-            " files. Finish with a short summary of what you changed and why."
+            " code_read the changed lines to confirm. If you add or change a"
+            " test, run it with run_tests and fix it until it passes. Never"
+            " rewrite a whole file to change part of it. Do not refactor or"
+            " touch unrelated files. Finish with a short summary of what you"
+            " changed and why."
         ),
         "intent_tags": ["code", "fix", "local"],
         "temperature": 0.2,
         # Code tools only: no shell, no whole-file writes. The local driver
-        # confines them to the task's worktree.
-        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit"],
+        # confines them to the task's worktree; run_tests runs pytest only in
+        # the verifier's sandbox (tools/run_tests.py).
+        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit", "run_tests"],
         "driver": "local",
         "task_types": ["code_change"],
         "verifier_chain": ["build_ok_diff", "lint_clean_diff"],
@@ -292,8 +295,9 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         ),
         "intent_tags": ["code", "fix", "local"],
         "temperature": 0.2,
-        # Edits only: OpenCode's shell and web access are denied by the driver.
-        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit"],
+        # Edits, and tests in the sandbox over MCP (run_tests): OpenCode's
+        # shell and web access are denied by the driver.
+        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit", "run_tests"],
         "driver": "opencode",
         "task_types": ["code_change"],
         "verifier_chain": ["build_ok_diff", "lint_clean_diff"],
@@ -551,6 +555,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "code_search",
             "code_list",
             "code_edit",
+            "run_tests",
             "inspect_system",
             "calendar_events",
             "calendar_next",

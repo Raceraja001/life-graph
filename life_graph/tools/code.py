@@ -155,7 +155,9 @@ async def code_read(path: str, start_line: int = 1, end_line: int | None = None)
         " enough surrounding lines to make it unique. Small differences in indentation,"
         " trailing spaces or code_read's line-number prefixes are tolerated. Or replace"
         " whole lines: pass `start_line` and `end_line` (from code_read) with an empty"
-        " `old`. To create a new file, pass an empty `old` and the whole file as `new`."
+        " `old`; end_line = start_line - 1 inserts before start_line without replacing"
+        " (start_line = last line + 1 appends). To create a new file, pass an empty `old`"
+        " and the whole file as `new`."
         " The reply shows the edited lines."
     ),
     parameters_schema={
@@ -195,6 +197,18 @@ async def code_edit(
     try:
         p = _resolve(path, "code_edit")
         check_writable(p, tool_name="code_edit")
+        # An empty range (end_line = start_line - 1) inserts before start_line.
+        # gpt-oss:20b creates files that way (start_line=1, end_line=0) and
+        # appends with start_line=last+1; both were refused, 13 times in one
+        # run (task 6f442de2, 2026-10-16).
+        inserting = (
+            old == ""
+            and start_line is not None
+            and end_line is not None
+            and int(end_line) == int(start_line) - 1
+        )
+        if inserting and int(start_line) == 1 and not p.exists():
+            start_line = end_line = None
         if old == "" and start_line is None:
             if p.exists():
                 return json.dumps(
@@ -215,7 +229,12 @@ async def code_edit(
             lines = text.split("\n")
             first = int(start_line)
             last = int(end_line) if end_line is not None else first
-            if not (1 <= first <= last <= len(lines)):
+            if inserting and 1 <= first <= len(lines) + 1:
+                if first == len(lines) + 1 and lines[-1] == "":
+                    # Appending: go before the empty piece after the final
+                    # newline, so the file still ends with one.
+                    first, last = len(lines), len(lines) - 1
+            elif not (1 <= first <= last <= len(lines)):
                 return json.dumps(
                     {"error": f"Line range {first}-{last} is outside the file (1-{len(lines)})"}
                 )

@@ -314,21 +314,59 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
     if not node and _missing_module(result, "pytest"):
         return None, {"note": "pytest is not installed in the project environment"}
     return result.returncode == 0, {
-        "stdout": result.stdout[-500:],
+        "stdout": _test_evidence(result.stdout),
         "returncode": result.returncode,
         "sandbox": "docker",
         "command": argv,
     }
 
 
+def _ruff_issues(stdout: str, limit: int = 2000) -> str:
+    """Every finding, from the top. The last 500 characters of ruff's full
+    output held one finding and "Found 4 errors": the agent fixed that one
+    and bounced on the rest (task 6f442de2, 2026-10-16)."""
+    if len(stdout) <= limit:
+        return stdout
+    cut = stdout.rfind("\n", 0, limit)
+    head = stdout[: cut if cut > 0 else limit]
+    return f"{head}\n… ({stdout.count(chr(10)) - head.count(chr(10))} more lines)"
+
+
+def _test_evidence(stdout: str, limit: int = 2000) -> str:
+    """Why the tests failed, not only which. The last 500 characters of a
+    pytest run are its warnings and the FAILED names; the agent rewrote its
+    test twice without seeing the assertion (task 71046102, 2026-10-16). Keep
+    the FAILURES/ERRORS section from the top, without the warnings summary,
+    and the final summary line."""
+    starts = [i for i in (stdout.find("= FAILURES ="), stdout.find("= ERRORS =")) if i >= 0]
+    if not starts:
+        return stdout[-500:]
+    section = stdout[stdout.rfind("\n", 0, min(starts)) + 1 :]
+    w = section.find(" warnings summary ")
+    if w >= 0:
+        docs = section.find("-- Docs:", w)
+        cut = section.rfind("\n", 0, w)
+        rest = section[section.find("\n", docs) + 1 :] if docs >= 0 else ""
+        section = section[: cut + 1 if cut >= 0 else 0] + rest
+    lines = section.rstrip("\n").split("\n")
+    summary = lines[-1] if lines else ""
+    if len(section) > limit:
+        head = section[: limit - len(summary) - 4]
+        section = head[: head.rfind("\n") + 1] + "…\n" + summary
+    return section
+
+
 async def _sandboxed_ruff(workdir: Path, args: list[str]) -> tuple[bool | None, dict]:
+    if args[0] == "check":
+        # One line per finding, so all of them fit in the evidence.
+        args = [args[0], "--output-format=concise", *args[1:]]
     try:
         # --no-cache right after the subcommand: anything after "--" is a path.
         result = await sandbox.run(["ruff", args[0], "--no-cache", *args[1:]], workdir, timeout=120)
     except sandbox.SandboxUnavailableError as exc:
         return None, {"note": str(exc), "sandbox": "docker"}
     return result.returncode == 0, {
-        "issues": result.stdout[-500:],
+        "issues": _ruff_issues(result.stdout),
         "returncode": result.returncode,
         "sandbox": "docker",
     }
@@ -343,7 +381,7 @@ async def _verify_tests_pass(workdir: Path, ctx: dict) -> tuple[bool | None, dic
         return None, {"note": "no Python interpreter found for this project"}
     try:
         result = subprocess.run(
-            [python, "-m", "pytest", str(workdir), "-q", "--tb=no", "-x"],
+            [python, "-m", "pytest", str(workdir), "-q", "--tb=line", "-x"],
             capture_output=True,
             text=True,
             timeout=120,
@@ -362,7 +400,7 @@ async def _verify_tests_pass(workdir: Path, ctx: dict) -> tuple[bool | None, dic
         }
     passed = result.returncode == 0
     return passed, {
-        "stdout": result.stdout[-500:],
+        "stdout": _test_evidence(result.stdout),
         "returncode": result.returncode,
         "python": python,
     }
@@ -422,7 +460,7 @@ async def _verify_acceptance_tests_pass(workdir: Path, ctx: dict) -> tuple[bool 
     return result.returncode == 0, {
         "tests": refs,
         "returncode": result.returncode,
-        "stdout": result.stdout[-800:],
+        "stdout": _test_evidence(result.stdout),
     }
 
 
@@ -853,7 +891,7 @@ async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None
         return None, {"note": "ruff not available for this project"}
     try:
         result = subprocess.run(
-            [ruff, "check", "--no-fix", *[str(f) for f in changed]],
+            [ruff, "check", "--no-fix", "--output-format=concise", *[str(f) for f in changed]],
             capture_output=True,
             text=True,
             timeout=60,
@@ -864,7 +902,11 @@ async def _verify_lint_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None
     except Exception as e:
         return False, {"error": str(e)}
     passed = result.returncode == 0
-    return passed, {"issues": result.stdout[-500:], "returncode": result.returncode, "ruff": ruff}
+    return passed, {
+        "issues": _ruff_issues(result.stdout),
+        "returncode": result.returncode,
+        "ruff": ruff,
+    }
 
 
 async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dict]:

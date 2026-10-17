@@ -32,6 +32,7 @@ import time
 from typing import TYPE_CHECKING
 
 from life_graph.agents.stuck import is_error_result
+from life_graph.drivers import self_check
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.steps import StepCollector
 
@@ -42,6 +43,16 @@ logger = logging.getLogger(__name__)
 
 # Tools that change files; a coding run where none of them succeeded changed nothing.
 EDIT_TOOLS = frozenset({"code_edit", "file_write"})
+
+# How many times a coding run that ends its turn without a landed edit is sent
+# back to work. A live run (gpt-oss:20b, 2026-10-16) read the file, then
+# replied with nothing after eight calls; it never got to the edit.
+MAX_NO_EDIT_NUDGES = 2
+NO_EDIT_NUDGE = (
+    "You have not changed any file yet, and this task needs a change. Make the "
+    "edit now with code_edit, then re-read the file to check it. "
+    "If the change is impossible, say exactly why."
+)
 
 
 class LocalDriver:
@@ -142,12 +153,36 @@ class LocalDriver:
             good_edits = failed_edits = 0
             errors: list[str] = []
             stop_reason = "completed"
+            nudges = 0
+            may_edit = packet.task_type in ("code", "code_change") and (
+                packet.allowed_tools is None or bool(EDIT_TOOLS & set(packet.allowed_tools))
+            )
+
+            self_checks = 0
+
+            async def keep_going() -> str | None:
+                nonlocal nudges, self_checks
+                if not may_edit:
+                    return None
+                if not good_edits:
+                    if nudges >= MAX_NO_EDIT_NUDGES:
+                        return None
+                    nudges += 1
+                    return NO_EDIT_NUDGE
+                # Edited: run the tests it added or changed (drivers/self_check.py).
+                if self_checks >= self_check.MAX_SELF_CHECKS:
+                    return None
+                feedback = await self_check.check(workdir, packet.project_context or {})
+                if feedback:
+                    self_checks += 1
+                return feedback
 
             async def collect() -> None:
                 nonlocal tool_calls, condensed, stop_reason, good_edits, failed_edits
                 async for event_str in orchestrator.run(
                     messages=messages,
                     system_prompt=system_prompt,
+                    keep_going=keep_going,
                     **run_kwargs,
                 ):
                     if not event_str.startswith("data: "):
@@ -183,7 +218,9 @@ class LocalDriver:
                             else str(data.get("warning") or "stuck in a loop")
                         )
 
-            with confine_to(workdir):
+            from life_graph.tools.run_tests import project_settings
+
+            with confine_to(workdir), project_settings(packet.project_context or {}):
                 try:
                     await asyncio.wait_for(collect(), timeout=timeout)
                 except TimeoutError:
@@ -235,6 +272,8 @@ class LocalDriver:
                     "model": getattr(orchestrator, "model", packet.persona_model),
                     "tool_calls": tool_calls,
                     "condensed": condensed,
+                    "nudges": nudges,
+                    "self_checks": self_checks,
                     "stop_reason": stop_reason,
                     "steps": steps.finish(),
                     "workdir": str(workdir),

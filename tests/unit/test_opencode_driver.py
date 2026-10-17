@@ -117,6 +117,57 @@ def test_config_points_an_ollama_model_at_the_local_server(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_a_timed_out_run_keeps_the_steps_it_printed(tmp_path):
+    fake = tmp_path / "opencode"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys, time\n"
+        f"print({REAL_RUN!r}, flush=True)\n"
+        "time.sleep(30)\n"
+    )
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    work = tmp_path / "work"
+    work.mkdir()
+
+    result = await OpencodeDriver(binary=str(fake)).dispatch(
+        _packet(work, ["code_edit"]), work, timeout=3
+    )
+
+    assert result.success is False and "timed out" in result.error
+    assert result.metadata["exit_status"] == "timeout"
+    assert len(result.metadata["steps"]) == 6
+
+
+def test_the_prompt_says_what_can_and_cannot_run(tmp_path, monkeypatch):
+    from life_graph.services import sandbox
+
+    monkeypatch.setattr(sandbox, "enabled", lambda: False)
+    assert "cannot run tests" in OpencodeDriver._prompt(_packet(tmp_path))
+    monkeypatch.setattr(sandbox, "enabled", lambda: True)
+    prompt = OpencodeDriver._prompt(_packet(tmp_path, ["code_edit", "run_tests"]))
+    assert "cannot run shell commands" in prompt and "lg_tests_run_tests" in prompt
+
+
+def test_run_tests_is_served_over_mcp_only_with_the_sandbox(tmp_path, monkeypatch):
+    from life_graph.services import sandbox
+
+    packet = _packet(tmp_path, ["code_edit", "run_tests"])
+    packet.project_context["sandbox_setup"] = "uv sync --frozen"
+    monkeypatch.setattr(sandbox, "enabled", lambda: True)
+    server = _config(packet, tmp_path)["mcp"]["lg_tests"]
+    assert server["command"][1:] == ["-I", "-m", "life_graph.tools.run_tests_mcp"]
+    assert server["environment"]["LG_RUN_TESTS_WORKDIR"] == str(tmp_path)
+    assert server["environment"]["LG_RUN_TESTS_SETUP"] == "uv sync --frozen"
+    assert server["environment"]["LIFE_GRAPH_VERIFIER_SANDBOX"]
+    # Bash is still denied: the tests run in the sandbox, not on the host.
+    assert _config(packet, tmp_path)["permission"]["bash"] == "deny"
+
+    assert "mcp" not in _config(_packet(tmp_path, ["code_edit"]), tmp_path)
+    monkeypatch.setattr(sandbox, "enabled", lambda: False)
+    assert "mcp" not in _config(packet, tmp_path)
+
+
 async def test_unavailable_without_the_binary(tmp_path):
     assert await OpencodeDriver(binary=str(tmp_path / "no-opencode")).available() is False
 
