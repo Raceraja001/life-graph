@@ -56,8 +56,22 @@ async def changed_tests(workdir: Path) -> list[str]:
     return sorted(found)
 
 
-async def check(workdir: Path, project_context: dict) -> str | None:
-    """Feedback for the agent if its changed tests fail, else ``None``."""
+# The checks cheap enough to run inside the dispatch. Task 5c760cb6
+# (2026-10-17) passed everything but one unused variable, and the bounce, a
+# fresh run, re-read the task, found it done and fixed nothing; in-session
+# the agent still has the context to fix a lint error in one edit.
+CHEAP_CHECKS = ("lint_clean_diff", "diff_within_scope", "tests_exercise_code")
+
+
+def task_of(instruction: str | None) -> str:
+    """The original task: a bounce's instruction ends with it after a marker."""
+    from life_graph.services.verifiers import BOUNCE_TASK_MARKER
+
+    text = instruction or ""
+    return text.split(BOUNCE_TASK_MARKER, 1)[1].strip() if BOUNCE_TASK_MARKER in text else text
+
+
+async def _test_feedback(workdir: Path, project_context: dict) -> str | None:
     from life_graph.tools._guards import confine_to
     from life_graph.tools.run_tests import project_settings, run_tests
 
@@ -73,12 +87,44 @@ async def check(workdir: Path, project_context: dict) -> str | None:
     if "error" in result:
         # The sandbox is off or unavailable: nothing to act on here; the
         # verifier chain reports it.
-        logger.info("self-check skipped: %s", result["error"])
+        logger.info("self-check tests skipped: %s", result["error"])
         return None
     if result.get("passed"):
         return None
     return (
-        "The harness ran the tests you added or changed, and they fail:\n\n"
+        "The tests you added or changed fail:\n\n"
         f"{result.get('output', '').strip()}\n\n"
-        "Fix them (the test or the code, whichever is wrong), then stop."
+        "Fix them (the test or the code, whichever is wrong)."
+    )
+
+
+async def _check_feedback(workdir: Path, project_context: dict, instruction: str) -> str | None:
+    from life_graph.services.verifiers import failure_text, mechanical_autofix, verifier_chain
+
+    ctx = {**project_context, "scope_instruction": task_of(instruction)}
+    # Free first: what ruff fixes by itself is not worth the agent's turn.
+    await mechanical_autofix(workdir, ctx)
+    results = await verifier_chain.run_chain(list(CHEAP_CHECKS), workdir, ctx)
+    failed = [r for r in results if not r.passed and not getattr(r, "inconclusive", False)]
+    if not failed:
+        return None
+    return "These checks fail on your change:\n\n" + "\n".join(failure_text(r) for r in failed)
+
+
+async def check(workdir: Path, project_context: dict, instruction: str | None = None) -> str | None:
+    """Feedback for the agent if its changed tests or the cheap checks fail."""
+    parts = [
+        p
+        for p in (
+            await _test_feedback(workdir, project_context),
+            await _check_feedback(workdir, project_context, instruction or ""),
+        )
+        if p
+    ]
+    if not parts:
+        return None
+    return (
+        "The harness checked your change before handing it on.\n\n"
+        + "\n\n".join(parts)
+        + "\n\nFix these in the files as they are now, then stop."
     )

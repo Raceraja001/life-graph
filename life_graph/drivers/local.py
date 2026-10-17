@@ -172,7 +172,9 @@ class LocalDriver:
                 # Edited: run the tests it added or changed (drivers/self_check.py).
                 if self_checks >= self_check.MAX_SELF_CHECKS:
                     return None
-                feedback = await self_check.check(workdir, packet.project_context or {})
+                feedback = await self_check.check(
+                    workdir, packet.project_context or {}, packet.instruction
+                )
                 if feedback:
                     self_checks += 1
                 return feedback

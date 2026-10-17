@@ -43,7 +43,13 @@ from life_graph.drivers.workdir import (
     worktree_intact,
 )
 from life_graph.services.governor import governor
-from life_graph.services.verifiers import VerifierResult, mechanical_autofix, verifier_chain
+from life_graph.services.verifiers import (  # noqa: F401  (failure_text: re-exported)
+    BOUNCE_TASK_MARKER,
+    VerifierResult,
+    failure_text,
+    mechanical_autofix,
+    verifier_chain,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -279,24 +285,6 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
 # the diff touches a dependency manifest, so it costs nothing on the
 # overwhelming majority of dispatches that never touch one.
 _ALWAYS_ON_CHECKS = ("no_secrets_in_diff", "no_vulnerable_deps_in_diff")
-
-
-def failure_text(result: VerifierResult) -> str:
-    """One failed check as the agent reads it on a bounce. The evidence used
-    to go in as a dict repr: pytest's output became one line of literal \\n
-    escapes, and the agent rewrote its test without fixing the cause (task
-    dbffae5f, 2026-10-16). Multi-line text is kept as indented lines."""
-    lines = [f"- {result.verifier} failed:"]
-    evidence = result.evidence or {}
-    if not isinstance(evidence, dict):
-        evidence = {"evidence": evidence}
-    for key, value in evidence.items():
-        if isinstance(value, str) and "\n" in value:
-            lines.append(f"  {key}:")
-            lines.extend(f"    {ln}" for ln in value.rstrip("\n").split("\n"))
-        else:
-            lines.append(f"  {key}: {value}")
-    return "\n".join(lines)
 
 
 def _with_required_checks(chain: list[str], project_context: dict) -> list[str]:
@@ -1206,10 +1194,16 @@ class TaskDispatcher:
             DriverResult if bounce succeeded verification, None if it also failed.
         """
         failures = [failure_text(r) for r in failure_report if not r.passed]
+        # The failures first, and the work so far stated as done: with the task
+        # first, OpenCode re-read it, found its change already in place and
+        # stopped without touching the lint error it was sent back for (task
+        # 5c760cb6, 2026-10-17).
         bounce_instruction = (
-            f"{packet.instruction}\n\n"
-            f"--- PREVIOUS ATTEMPT FAILED VERIFICATION ---\n"
-            f"Fix these issues and try again:\n" + "\n".join(failures)
+            "Your previous attempt at this task is already in the working tree. It"
+            " failed these checks:\n\n" + "\n".join(failures) + "\n\n"
+            "Fix exactly these problems in the files as they are now; do not start"
+            " over. When the fix is in, stop.\n\n"
+            f"{BOUNCE_TASK_MARKER}\n{packet.instruction}"
         )
 
         # Update packet with bounce instruction

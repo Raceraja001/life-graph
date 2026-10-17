@@ -158,3 +158,88 @@ def test_run_tests_takes_the_path_shapes_models_send(sent, paths):
     from life_graph.tools.run_tests import as_paths
 
     assert as_paths(sent) == paths
+
+
+def test_task_of_recovers_the_original_task_from_a_bounce():
+    from life_graph.drivers.self_check import task_of
+    from life_graph.services.verifiers import BOUNCE_TASK_MARKER
+
+    bounce = f"Your previous attempt ... failed:\n- x\n\n{BOUNCE_TASK_MARKER}\n{TASK}"
+    assert task_of(bounce) == TASK
+    assert task_of(TASK) == TASK
+    assert task_of(None) == ""
+
+
+@pytest.mark.asyncio
+async def test_self_check_reports_a_failing_cheap_check(project, monkeypatch):
+    from life_graph.drivers import self_check
+    from life_graph.services import verifiers
+    from life_graph.services.verifiers import VerifierResult
+
+    async def no_tests(workdir, ctx):
+        return None
+
+    async def autofix(workdir, ctx):
+        return {"ran": False}
+
+    seen = {}
+
+    async def run_chain(chain, workdir, ctx):
+        seen.update(chain=chain, scope=ctx.get("scope_instruction"))
+        return [
+            VerifierResult(
+                "lint_clean_diff", False, {"issues": "t.py:44:5: F841 unused `result`\n"}
+            ),
+            VerifierResult("diff_within_scope", True, {}),
+            VerifierResult("tests_exercise_code", False, {"note": "x"}, inconclusive=True),
+        ]
+
+    monkeypatch.setattr(self_check, "_test_feedback", no_tests)
+    monkeypatch.setattr(verifiers, "mechanical_autofix", autofix)
+    monkeypatch.setattr(verifiers.verifier_chain, "run_chain", run_chain)
+    bounce = f"Fix it.\n\n{verifiers.BOUNCE_TASK_MARKER}\n{TASK}"
+    feedback = await self_check.check(project, {}, bounce)
+
+    assert "F841 unused `result`" in feedback and "lint_clean_diff failed" in feedback
+    assert "tests_exercise_code" not in feedback  # inconclusive is not the agent's to fix
+    assert seen["scope"] == TASK
+    assert seen["chain"] == list(self_check.CHEAP_CHECKS)
+
+
+@pytest.mark.asyncio
+async def test_the_bounce_leads_with_the_failures_and_keeps_the_task_last(monkeypatch, tmp_path):
+    from life_graph.drivers.base import ContextPacket, DriverResult
+    from life_graph.drivers.dispatcher import TaskDispatcher
+    from life_graph.services.verifiers import BOUNCE_TASK_MARKER, VerifierResult
+
+    sent = {}
+
+    class Driver:
+        name = "fake"
+
+        async def dispatch(self, packet, workdir, timeout=300):
+            sent["instruction"] = packet.instruction
+            return DriverResult(success=False, error="stop here")
+
+    disp = TaskDispatcher(session_factory=lambda: None, event_bus=None)
+
+    async def noop(*a, **k):
+        return None
+
+    monkeypatch.setattr(disp, "_emit", noop)
+    monkeypatch.setattr(disp, "_emit_steps", noop)
+    packet = ContextPacket(task_id="t", tenant_id="t", task_type="code_change", instruction=TASK)
+    await disp._bounce_task(
+        tenant_id="t",
+        task_id="task-1",
+        driver=Driver(),
+        packet=packet,
+        workdir=tmp_path,
+        failure_report=[VerifierResult("lint_clean_diff", False, {"issues": "F841\n"})],
+        session=None,
+        verify_chain=["lint_clean_diff"],
+    )
+    text = sent["instruction"]
+    assert text.startswith("Your previous attempt at this task is already in the working tree")
+    assert text.index("lint_clean_diff failed") < text.index(BOUNCE_TASK_MARKER)
+    assert text.endswith(TASK)

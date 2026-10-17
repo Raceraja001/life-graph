@@ -375,9 +375,15 @@ async def test_changed_tests_are_the_added_and_modified_test_files(repo_with_cha
 
 
 @pytest.mark.asyncio
-async def test_self_check_feeds_back_failing_tests_only(repo_with_changes, sandboxed):
+async def test_self_check_feeds_back_failing_tests_only(repo_with_changes, sandboxed, monkeypatch):
+    from life_graph.drivers import self_check
     from life_graph.drivers.self_check import check
 
+    async def no_checks(*_a):
+        return None
+
+    # Tests only here; the cheap checks run sandboxed ruff, which would be the last call.
+    monkeypatch.setattr(self_check, "_check_feedback", no_checks)
     feedback = await check(repo_with_changes, {"sandbox_setup": "uv sync"})
     assert feedback and "/w/test_x.py:6: AssertionError" in feedback
     assert sandboxed["argv"][-2:] == ["tests/test_old.py", "tests/unit/test_new.py"]
@@ -419,7 +425,7 @@ async def test_local_driver_sends_failing_tests_back_at_most_twice(tmp_path, mon
 
     calls = []
 
-    async def failing(workdir, ctx):
+    async def failing(workdir, ctx, instruction=None):
         calls.append(workdir)
         return "The harness ran the tests you added or changed, and they fail: ..."
 
@@ -449,7 +455,7 @@ async def test_opencode_continues_its_session_with_the_failing_tests(tmp_path, m
     fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
     answers = iter(["tests fail: assert -1 == 5", None])
 
-    async def check(workdir, ctx):
+    async def check(workdir, ctx, instruction=None):
         return next(answers)
 
     monkeypatch.setattr(self_check, "check", check)
