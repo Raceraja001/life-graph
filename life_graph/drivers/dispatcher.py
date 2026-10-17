@@ -1260,6 +1260,12 @@ class TaskDispatcher:
             "acceptance_tests": acceptance_tests or [],
         }
         v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
+        # The same free ruff pass as before the bounce: the retry's own lint
+        # (an unsorted import, task 144b5ed2) is no reason to fail it.
+        if not verifier_chain.all_passed(v_results) and not verifier_chain.inconclusive(v_results):
+            autofix = await mechanical_autofix(workdir, task_context)
+            if autofix.get("fixed") and autofix.get("candidates"):
+                v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
         await self._record_verification(tenant_id, task_id, 2, v_results, session)
 
         if verifier_chain.all_passed(v_results):
