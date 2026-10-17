@@ -48,7 +48,6 @@ async def test_binary_not_found_returns_failure(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_timeout_kills_process_and_returns_failure(monkeypatch):
-    import asyncio
 
     class _HangingProcess(_FakeProcess):
         def __init__(self):
@@ -61,10 +60,12 @@ async def test_timeout_kills_process_and_returns_failure(monkeypatch):
         return _HangingProcess()
 
     monkeypatch.setattr("asyncio.create_subprocess_exec", _fake_exec)
-    monkeypatch.setattr(
-        "asyncio.wait_for",
-        lambda coro, timeout: (_ for _ in ()).throw(TimeoutError()),
-    )
+
+    def _mock_wait_for(coro, timeout):
+        coro.close()
+        raise TimeoutError()
+
+    monkeypatch.setattr("asyncio.wait_for", _mock_wait_for)
 
     result = await run_claude_cli("hi", timeout=1.0)
 
