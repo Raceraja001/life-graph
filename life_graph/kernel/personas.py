@@ -696,9 +696,12 @@ class PersonaService:
         _load_persona``, ``kernel/process_manager._run_agent``) read
         the DB row, never ``_BUILTIN_PERSONAS``, so a tenant seeded
         under an older version would keep stale ``allowed_tools`` /
-        ``system_prompt`` forever. Every ``is_builtin=True`` row is
+        ``system_prompt`` /
+        ``driver`` /
+        ``verifier_chain`` /
+        ``task_types`` forever. Every ``is_builtin=True`` row is
         therefore reconciled against its definition on each call —
-        but ONLY those two fields, and only when they actually
+        but ONLY those five fields, and only when they actually
         differ (no no-op write on every startup). Rows a user
         created themselves (``is_builtin=False``) are never touched,
         and neither are the built-ins' other fields (display_name,
