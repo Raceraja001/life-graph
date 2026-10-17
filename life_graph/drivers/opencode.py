@@ -313,7 +313,9 @@ class OpencodeDriver:
                 # The harness runs the tests the agent added or changed and, if
                 # they fail, continues the same session with the output
                 # (drivers/self_check.py).
-                feedback = await self_check.check(cwd, packet.project_context or {})
+                feedback = await self_check.check(
+                    cwd, packet.project_context or {}, packet.instruction
+                )
                 if not feedback or time.monotonic() > deadline - 60:
                     break
                 self_checks += 1

@@ -1112,3 +1112,24 @@ async def _verify_claims_evidenced(workdir: Path, ctx: dict) -> tuple[bool, dict
 
 # ── Module-level singleton ───────────────────────────────────
 verifier_chain = VerifierChain()
+
+
+BOUNCE_TASK_MARKER = "--- THE TASK (for reference) ---"
+
+
+def failure_text(result: VerifierResult) -> str:
+    """One failed check as the agent reads it on a bounce. The evidence used
+    to go in as a dict repr: pytest's output became one line of literal \\n
+    escapes, and the agent rewrote its test without fixing the cause (task
+    dbffae5f, 2026-10-16). Multi-line text is kept as indented lines."""
+    lines = [f"- {result.verifier} failed:"]
+    evidence = result.evidence or {}
+    if not isinstance(evidence, dict):
+        evidence = {"evidence": evidence}
+    for key, value in evidence.items():
+        if isinstance(value, str) and "\n" in value:
+            lines.append(f"  {key}:")
+            lines.extend(f"    {ln}" for ln in value.rstrip("\n").split("\n"))
+        else:
+            lines.append(f"  {key}: {value}")
+    return "\n".join(lines)
