@@ -75,6 +75,46 @@ def test_lint_evidence_keeps_every_finding_from_the_top():
     assert out.endswith("more lines)")
 
 
+# Real `pytest -q --tb=line` output (pytest 9.1), paths shortened.
+PYTEST_OUT = """.FF                                                                      [100%]
+=================================== FAILURES ===================================
+E   AssertionError: assert 'my secret query' not in 'found my secret query here'
+/w/test_x.py:6: AssertionError: assert 'my secret query' not in 'found my secret query here'
+E   KeyError: 'boom'
+/w/test_x.py:8: KeyError: 'boom'
+=============================== warnings summary ===============================
+test_x.py::test_bad
+  /w/test_x.py:5: DeprecationWarning: noise
+    warnings.warn("noise", DeprecationWarning)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED test_x.py::test_bad - AssertionError: assert 'my secret query' not in ...
+FAILED test_x.py::test_err - KeyError: 'boom'
+2 failed, 1 passed, 1 warning in 0.04s
+"""
+
+
+def test_test_evidence_keeps_the_reasons_and_drops_the_warnings():
+    from life_graph.services.verifiers import _test_evidence
+
+    out = _test_evidence(PYTEST_OUT)
+    assert out.startswith("=") and "FAILURES" in out.split("\n")[0]
+    assert "/w/test_x.py:6: AssertionError" in out and "KeyError: 'boom'" in out
+    assert "DeprecationWarning" not in out
+    assert out.rstrip().endswith("2 failed, 1 passed, 1 warning in 0.04s")
+
+
+def test_test_evidence_caps_a_long_section_but_keeps_the_summary():
+    from life_graph.services.verifiers import _test_evidence
+
+    many = "=== FAILURES ===\n" + "E   boom\n" * 600 + "600 failed in 1s\n"
+    out = _test_evidence(many)
+    assert len(out) <= 2000 and out.rstrip().endswith("600 failed in 1s")
+    # No failures section (e.g. vitest): the tail, as before.
+    assert _test_evidence("x" * 900) == "x" * 500
+
+
 # ── Orchestrator: keep_going ────────────────────────────────────────────────
 
 
