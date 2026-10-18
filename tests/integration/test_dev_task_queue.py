@@ -161,3 +161,58 @@ async def test_claim_restart_and_run(project, monkeypatch):
     assert call["persona_name"] == "code-fixer-local"
     async with async_session() as s:
         assert (await s.get(AgentTask, claimed.id)).status == "completed"
+
+
+async def test_a_started_task_requeued_by_a_restart_stays_interactive(project, monkeypatch):
+    """A task someone started keeps that status when an API restart re-queues
+    it: task eda04c34 (2026-10-17) was re-queued, run as unattended work and
+    denied by the budget. Unattended (nightly) work stays budget-governed."""
+    from life_graph.drivers.base import DriverResult
+    from life_graph.drivers.dispatcher import TaskDispatcher
+    from life_graph.models.db import AgentTask
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    async def not_now(*_a, **_k):  # the restart happens before it runs
+        return None
+
+    real_run = dev_tasks._run
+    monkeypatch.setattr(dev_tasks, "_run", not_now)
+    started = await dev_tasks.create_dev_task(
+        async_session,
+        TENANT,
+        instruction="Fix item B",
+        project=project,
+        persona_name="code-fixer-opencode",
+    )
+    nightly = await dev_tasks.create_dev_task(
+        async_session,
+        TENANT,
+        instruction="Fix item C",
+        project=project,
+        persona_name="code-fixer-local",
+        start=False,
+        properties={"origin": "nightly"},
+    )
+    async with async_session() as s:
+        row = await s.get(AgentTask, uuid.UUID(started["id"]))
+        row.status = "running"  # it was mid-run when the API went down
+        await s.commit()
+    await dev_tasks.fail_interrupted(async_session)
+    monkeypatch.setattr(dev_tasks, "_run", real_run)
+
+    calls = {}
+
+    async def fake_dispatch(self, **kw):
+        calls[kw["task_id"]] = kw["interactive"]
+        return DriverResult(success=True, output="fixed")
+
+    monkeypatch.setattr(TaskDispatcher, "dispatch_task", fake_dispatch)
+    wanted = {started["id"], nightly["id"]}
+    while wanted - calls.keys():
+        claimed = await dev_tasks.claim_next_queued(async_session)
+        assert claimed is not None
+        if str(claimed.id) in wanted:
+            await dev_tasks.run_claimed(async_session, claimed)
+    assert calls[started["id"]] is True
+    assert calls[nightly["id"]] is False
