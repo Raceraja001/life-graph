@@ -551,3 +551,42 @@ async def test_edits_that_net_out_to_nothing_are_sent_back(tmp_path, monkeypatch
     orch = _NetZeroOrch(tmp_path / "a.py")
     await _dispatch(orch, tmp_path)
     assert orch.nudges == [NO_NET_CHANGE_NUDGE, NO_NET_CHANGE_NUDGE]
+
+
+@pytest.mark.asyncio
+async def test_opencode_is_told_when_its_run_changed_nothing(tmp_path, monkeypatch):
+    import stat
+
+    from life_graph.drivers import self_check
+    from life_graph.drivers.local import NO_NET_CHANGE_NUDGE
+    from life_graph.drivers.opencode import OpencodeDriver
+    from tests.unit.test_opencode_driver import REAL_RUN, _packet
+
+    seen = tmp_path / "argv.log"
+    fake = tmp_path / "opencode"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        f"open({str(seen)!r}, 'a').write(json.dumps(sys.argv[1:]) + chr(10))\n"
+        f"print({REAL_RUN!r})\n"
+    )
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+
+    async def all_clear(*_a):
+        return None
+
+    monkeypatch.setattr(self_check, "check", all_clear)
+    work = tmp_path / "work"
+    work.mkdir()
+    _git(work, "init", "-q")
+    (work / "a.py").write_text("X = 1\n")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "init")
+    result = await OpencodeDriver(binary=str(fake)).dispatch(
+        _packet(work, ["code_edit"]), work, timeout=300
+    )
+    runs = [json.loads(line) for line in seen.read_text().splitlines()]
+    # The fake never edits: it is told twice, then the run ends (the dispatcher
+    # fails it as no_change).
+    assert [r[-1] for r in runs[1:]] == [NO_NET_CHANGE_NUDGE, NO_NET_CHANGE_NUDGE]
+    assert result.metadata["self_checks"] == 2

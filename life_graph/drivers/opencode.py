@@ -40,7 +40,7 @@ from life_graph.config import settings
 from life_graph.drivers import self_check
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.steps import number
-from life_graph.drivers.workdir import remove_worktree, resolve_workdir
+from life_graph.drivers.workdir import diff_against_head, remove_worktree, resolve_workdir
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +316,18 @@ class OpencodeDriver:
                 feedback = await self_check.check(
                     cwd, packet.project_context or {}, packet.instruction
                 )
+                if (
+                    not feedback
+                    and packet.task_type in ("code", "code_change")
+                    and (cwd / ".git").exists()
+                    and not await diff_against_head(cwd)
+                ):
+                    # Task 25df9f39 read twelve files, decided nothing was
+                    # needed and stopped; the dispatcher then failed it as
+                    # no_change without the agent ever being told.
+                    from life_graph.drivers.local import NO_NET_CHANGE_NUDGE
+
+                    feedback = NO_NET_CHANGE_NUDGE
                 if not feedback or time.monotonic() > deadline - 60:
                     break
                 self_checks += 1
