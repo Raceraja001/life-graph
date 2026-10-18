@@ -177,3 +177,41 @@ async def test_the_bounce_gets_the_same_free_autofix(tmp_path, monkeypatch):
     # formatter's job, not a reason to send the task to a human.
     assert driver.dispatch_count == 2
     assert result.success is True
+
+
+class _ChangesNothingDriver(_WritesAnUnusedImportDriver):
+    """Reports success without leaving any file changed (task ade60cc6)."""
+
+    async def dispatch(self, packet, workdir, timeout=300) -> DriverResult:
+        self.dispatch_count += 1
+        return DriverResult(success=True, output="Added task_diff.", cost_usd=0.0)
+
+
+@pytest.mark.asyncio
+async def test_a_coding_task_that_changed_nothing_fails(tmp_path, monkeypatch):
+    real_repo = tmp_path / "repo"
+    real_repo.mkdir()
+    subprocess.run(["git", "init"], cwd=str(real_repo), check=True, capture_output=True)
+    (real_repo / "a.py").write_text("X = 1\n")
+    subprocess.run(["git", "add", "-A"], cwd=str(real_repo), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-m", "init"],
+        cwd=str(real_repo), check=True, capture_output=True,
+    )
+
+    driver = _ChangesNothingDriver()
+    disp = TaskDispatcher(session_factory=lambda: _FakeSession(), event_bus=None)
+    _wire(disp, monkeypatch, driver, str(real_repo))
+
+    result = await disp.dispatch_task(
+        tenant_id="t1", task_id=str(uuid.uuid4()), instruction="add a module", task_type="code_change",
+        project_id=str(uuid.uuid4()), isolate_workdir=True,
+        verify_chain=["lint_clean_diff"],
+    )
+
+    # Not "completed" on vacuously passing diff checks, and not bounced either:
+    # there is nothing to fix, the task was simply not done.
+    assert result.success is False
+    assert "changed no files" in result.error
+    assert result.metadata["stop_reason"] == "no_change"
+    assert driver.dispatch_count == 1

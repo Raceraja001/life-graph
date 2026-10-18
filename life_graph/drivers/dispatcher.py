@@ -600,6 +600,27 @@ class TaskDispatcher:
                     metadata={"needs_human": True, "worktree_tampered": True},
                 )
 
+            # Step 4c: a coding task that left no file changed did not do the
+            # task. Every diff-scoped verifier passes vacuously on an empty
+            # diff, so this used to finish as "completed": task ade60cc6
+            # (2026-10-18) added one import, ruff's autofix removed it as
+            # unused, and nothing else was ever written.
+            if (
+                result.success
+                and task_type in ("code", "code_change")
+                and worktree is not None
+                and not await diff_against_head(worktree)
+            ):
+                logger.warning("Task %s: the run changed no files", task_id)
+                result = DriverResult(
+                    success=False,
+                    output=result.output,
+                    error="The run changed no files, so there is nothing to verify or land",
+                    cost_usd=result.cost_usd,
+                    duration_ms=result.duration_ms,
+                    metadata={**(result.metadata or {}), "stop_reason": "no_change"},
+                )
+
             # Step 5: Run verifier chain
             unverifiable: list[VerifierResult] = []
             if verify_chain and result.success:

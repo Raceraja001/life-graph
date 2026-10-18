@@ -511,3 +511,43 @@ async def test_plan_nudges_stop_after_two(tmp_path):
     orch = _PlanOrch(spec_after_nudges=99)
     await _dispatch(orch, tmp_path, task_type="plan", allowed_tools=["code_read"])
     assert len(orch.nudges) == 2
+
+
+class _NetZeroOrch(_Orch):
+    """Edits a file, then puts it back as it was: a good edit, no net change."""
+
+    def __init__(self, path):
+        super().__init__(edit_after_nudges=99)
+        self.path = path
+
+    async def run(self, keep_going=None, **_kw):
+        original = self.path.read_text()
+        self.path.write_text(original + "import os\n")
+        yield "data: " + json.dumps({"type": "tool_call", "name": "code_edit"})
+        yield "data: " + json.dumps(
+            {"type": "tool_result", "name": "code_edit", "result": '{"edited": "a.py"}'}
+        )
+        self.path.write_text(original)  # what ruff's autofix did to the unused import
+        while True:
+            nudge = await keep_going()
+            if not nudge:
+                return
+            self.nudges.append(nudge)
+
+
+@pytest.mark.asyncio
+async def test_edits_that_net_out_to_nothing_are_sent_back(tmp_path, monkeypatch):
+    from life_graph.drivers import self_check
+    from life_graph.drivers.local import NO_NET_CHANGE_NUDGE
+
+    async def all_clear(*_a):
+        return None
+
+    monkeypatch.setattr(self_check, "check", all_clear)
+    _git(tmp_path, "init", "-q")
+    (tmp_path / "a.py").write_text("X = 1\n")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-qm", "init")
+    orch = _NetZeroOrch(tmp_path / "a.py")
+    await _dispatch(orch, tmp_path)
+    assert orch.nudges == [NO_NET_CHANGE_NUDGE, NO_NET_CHANGE_NUDGE]
