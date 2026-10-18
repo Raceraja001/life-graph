@@ -187,7 +187,7 @@ async def create_task(
     valid_priorities = {"low", "normal", "high", "critical"}
     if body.priority not in valid_priorities:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid priority '{body.priority}'. "
             f"Must be one of: {', '.join(sorted(valid_priorities))}",
         )

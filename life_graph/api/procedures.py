@@ -117,7 +117,7 @@ async def update_procedure(procedure_id: uuid.UUID, body: ProcedureUpdate):
 
     if not updates:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="No fields to update",
         )
 
