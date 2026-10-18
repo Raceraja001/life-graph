@@ -68,6 +68,10 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
         "cron discovery of opened agent PRs across tenants; each approval row "
         "carries its own tenant_id and is processed under it"
     ),
+    ("services/approvals.py", "retry_auto_merges"): (
+        "same cron as sync_all: pending driver_merge approvals across tenants; "
+        "maybe_auto_merge reads each row's own tenant_id for the trust record"
+    ),
     ("services/dev_tasks.py", "claim_next_queued"): (
         "single queue runner for the process; the claimed row carries its own "
         "tenant_id and the task runs under that tenant's context"
