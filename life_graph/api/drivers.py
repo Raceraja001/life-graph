@@ -430,6 +430,27 @@ async def get_dev_task_steps(task_id: str):
     return success_response(data={"task_id": task_id, "count": len(steps), "steps": steps})
 
 
+@router.get(
+    "/tasks/{task_id}/diff",
+    summary="The change a landed dev task made, as a unified diff",
+)
+async def get_dev_task_diff(task_id: str):
+    """From the task's newest driver_pr approval: branch, commits, changed
+    files and the diff (capped; ``truncated`` says so). 404 until the task
+    has landed a change."""
+    from life_graph.services import dev_tasks
+
+    try:
+        uuid.UUID(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="task_id must be a UUID") from exc
+    async with async_session() as session:
+        data = await dev_tasks.task_diff(session, get_current_tenant_id(), task_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="No landed change for this dev task")
+    return success_response(data=data)
+
+
 # ── Plans, scorecards, failures (docs/specs/agent-observability.md) ──
 
 
