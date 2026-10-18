@@ -924,6 +924,25 @@ def _local_modules(workdir: Path) -> set[str]:
     return names
 
 
+# Calls that only ask whether something is a function: passing the code under
+# test to one of these does not exercise it. Deliberately narrow: isinstance()
+# and hasattr() on a config value or an enum are real tests (0 of the existing
+# test files trip this list; with isinstance/hasattr in it, 2 did).
+_PROBE_CALLS = frozenset({"callable", "iscoroutinefunction", "isfunction", "ismethod", "signature"})
+
+
+def _call_name(func) -> str | None:
+    """``callable`` for ``callable(x)``, ``iscoroutinefunction`` for
+    ``inspect.iscoroutinefunction(x)``; None for anything else."""
+    import ast
+
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
 def _test_smells(source: str, local: set[str]) -> list[str]:
     """Why a test file does not exercise the code, or ``[]``."""
     import ast
@@ -970,9 +989,14 @@ def _test_smells(source: str, local: set[str]) -> list[str]:
         for node in ast.walk(tree):
             if isinstance(node, (ast.Call, ast.ClassDef)):
                 # Called, passed along, or subclassed (a stub of the class under test).
+                # Handing it to an introspection builtin is not use:
+                # `assert callable(task_diff)` passed this check (task d8222c64).
+                probe = isinstance(node, ast.Call) and _call_name(node.func) in _PROBE_CALLS
                 parts = (
                     [*node.bases]
                     if isinstance(node, ast.ClassDef)
+                    else [node.func]
+                    if probe
                     else [node.func, *node.args, *(k.value for k in node.keywords)]
                 )
                 for part in parts:
