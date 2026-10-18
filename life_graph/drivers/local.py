@@ -53,6 +53,11 @@ NO_EDIT_NUDGE = (
     "edit now with code_edit, then re-read the file to check it. "
     "If the change is impossible, say exactly why."
 )
+NO_PLAN_NUDGE = (
+    "You have not written the plan yet. Stop exploring and write it now: start "
+    "with the line '## Spec', then **Requirements:**, **Design:** and **Tasks:** "
+    "exactly as the task describes."
+)
 
 
 class LocalDriver:
@@ -162,6 +167,13 @@ class LocalDriver:
 
             async def keep_going() -> str | None:
                 nonlocal nudges, self_checks
+                if packet.task_type == "plan":
+                    # Plan runs deliver text, not edits: one ended after twenty
+                    # reads with an empty reply (task f5d3c67a, 2026-10-18).
+                    if "## Spec" in "".join(output_parts) or nudges >= MAX_NO_EDIT_NUDGES:
+                        return None
+                    nudges += 1
+                    return NO_PLAN_NUDGE
                 if not may_edit:
                     return None
                 if not good_edits:

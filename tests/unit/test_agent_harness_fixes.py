@@ -472,3 +472,42 @@ async def test_opencode_continues_its_session_with_the_failing_tests(tmp_path, m
     assert runs[1][-1] == "tests fail: assert -1 == 5"
     assert len(result.metadata["steps"]) == 12  # both runs' steps, renumbered
     assert [s["seq"] for s in result.metadata["steps"]] == list(range(1, 13))
+
+
+class _PlanOrch(_Orch):
+    """Explores, then answers with nothing, until the Nth nudge."""
+
+    def __init__(self, spec_after_nudges):
+        super().__init__(edit_after_nudges=99)
+        self.spec_after = spec_after_nudges
+
+    async def run(self, keep_going=None, **_kw):
+        turn = 0
+        while True:
+            yield "data: " + json.dumps({"type": "tool_call", "name": "code_read"})
+            if turn == self.spec_after:
+                yield "data: " + json.dumps(
+                    {"type": "token", "content": "## Spec\n**Requirements:** AC-1 ...\n"}
+                )
+            nudge = await keep_going()
+            if not nudge:
+                return
+            self.nudges.append(nudge)
+            turn += 1
+
+
+@pytest.mark.asyncio
+async def test_a_plan_run_that_writes_no_spec_is_asked_for_it(tmp_path):
+    from life_graph.drivers.local import NO_PLAN_NUDGE
+
+    orch = _PlanOrch(spec_after_nudges=1)
+    result = await _dispatch(orch, tmp_path, task_type="plan", allowed_tools=["code_read"])
+    assert orch.nudges == [NO_PLAN_NUDGE]
+    assert "## Spec" in result.output
+
+
+@pytest.mark.asyncio
+async def test_plan_nudges_stop_after_two(tmp_path):
+    orch = _PlanOrch(spec_after_nudges=99)
+    await _dispatch(orch, tmp_path, task_type="plan", allowed_tools=["code_read"])
+    assert len(orch.nudges) == 2
