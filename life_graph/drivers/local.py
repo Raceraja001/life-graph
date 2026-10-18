@@ -55,9 +55,10 @@ NO_EDIT_NUDGE = (
     "If the change is impossible, say exactly why."
 )
 NO_NET_CHANGE_NUDGE = (
-    "Your edits so far leave no file changed (an automatic lint fix may have "
-    "removed something you added but did not use yet). The task is not done: "
-    "make the full change now, then re-read the files to check it."
+    "No file is changed yet, and the task asks for a change (if you added "
+    "something not used yet, an automatic lint fix may have removed it). The "
+    "task is not done: make the full change now, then re-read the files to "
+    "check it."
 )
 NO_PLAN_NUDGE = (
     "You have not written the plan yet. Stop exploring and write it now: start "
