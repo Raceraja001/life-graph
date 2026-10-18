@@ -94,6 +94,10 @@ async def create_dev_task(
                 "kind": KIND,
                 "project_name": project["name"],
                 **({} if start else {"run_mode": QUEUE_MODE}),
+                # A task started now was asked for by someone, so the Governor
+                # never blocks it; kept so a re-queue after an API restart runs
+                # it the same way (run_queue).
+                "interactive": start,
             },
             tags=[KIND],
             status_history=[{"status": "queued", "at": datetime.now(UTC).isoformat()}],
@@ -790,6 +794,24 @@ async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -
     return claimed
 
 
+async def run_claimed(session_factory: async_sessionmaker[AsyncSession], task: AgentTask) -> None:
+    """Run one task :func:`claim_next_queued` returned."""
+    await _run(
+        session_factory,
+        task.tenant_id,
+        str(task.id),
+        task.instructions or "",
+        str(task.project_id),
+        task.assigned_agent or "code-fixer-local",
+        task.task_type or "code_change",
+        # Queued work is unattended and under the budget. But a task someone
+        # started that an API restart put back on the queue stays theirs:
+        # before this, task eda04c34 (started from MCP) was re-queued and then
+        # denied for "monthly budget exhausted" (2026-10-17).
+        interactive=bool((task.properties or {}).get("interactive", False)),
+    )
+
+
 async def run_queue(session_factory: async_sessionmaker[AsyncSession]) -> None:
     """Run queued dev tasks one at a time, forever (API process lifespan task).
 
@@ -804,16 +826,7 @@ async def run_queue(session_factory: async_sessionmaker[AsyncSession]) -> None:
                 await asyncio.sleep(QUEUE_POLL_SECONDS)
                 continue
             logger.info("Running queued dev task %s (%s)", task.id, task.title)
-            await _run(
-                session_factory,
-                task.tenant_id,
-                str(task.id),
-                task.instructions or "",
-                str(task.project_id),
-                task.assigned_agent or "code-fixer-local",
-                task.task_type or "code_change",
-                interactive=False,
-            )
+            await run_claimed(session_factory, task)
         except asyncio.CancelledError:
             raise
         except Exception:
