@@ -287,6 +287,36 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
 _ALWAYS_ON_CHECKS = ("no_secrets_in_diff", "no_vulnerable_deps_in_diff")
 
 
+_LOCAL_MODEL_PREFIXES = ("ollama/", "ollama_chat/")
+
+
+def _is_local_model(model: str | None) -> bool:
+    return bool(model) and model.lower().startswith(_LOCAL_MODEL_PREFIXES)
+
+
+def runs_on_local_model(driver_name: str, persona_model: str | None) -> bool:
+    """True when every model this dispatch could call runs on this machine.
+
+    The Governor's monthly cap is for paid API spend (the user, 2026-10-18:
+    "budget cap only for api"). A local run cannot spend money, but it is
+    only local if nothing it may fall back to is a paid model, so the agent
+    fallback model and the whole fallback chain must be local too. Decided
+    from the models, not cost_per_task(): the local driver reports $0 even
+    when its persona model is an API model.
+    """
+    if driver_name == "opencode":
+        models = [settings.driver_opencode_model]
+    elif driver_name == "local":
+        models = [
+            persona_model or settings.agent_llm_model,
+            settings.agent_fallback_model,
+            *settings.llm_fallback_chain_list,
+        ]
+    else:
+        return False  # claude_code and the rest call paid APIs
+    return all(_is_local_model(m) for m in models if m)
+
+
 def _with_required_checks(chain: list[str], project_context: dict) -> list[str]:
     """Append the project's required checks (e.g. tests_pass), plus the
     always-on checks, that *chain* lacks.
@@ -477,11 +507,13 @@ class TaskDispatcher:
             # Step 3b: Governor budget gate — refuse before spending, not after.
             # Autonomous dispatches are throttled/denied when the monthly budget
             # is exhausted; interactive (user-initiated) tasks are never blocked.
+            # The cap governs paid API spend only: a run whose every model is
+            # local (Ollama) cannot spend, so it is never denied.
             decision = await governor.authorize(
                 tenant_id,
                 BudgetCategory.DRIVER,
                 estimated_usd=driver.cost_per_task(),
-                interactive=interactive,
+                interactive=interactive or runs_on_local_model(driver.name, packet.persona_model),
             )
             if not decision.allowed:
                 logger.warning(

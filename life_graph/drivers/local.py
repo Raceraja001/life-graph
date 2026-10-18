@@ -129,6 +129,9 @@ class LocalDriver:
                 "relative to that root. Read the relevant code before editing, make "
                 "edits with code_edit, and re-read what you changed.",
             ]
+            instructions = _project_instructions(workdir)
+            if instructions:
+                system_parts.append(f"Project instructions (AGENTS.md):\n{instructions}")
             if packet.project_context:
                 system_parts.append(
                     f"Project context: {json.dumps(packet.project_context, default=str)}"
@@ -329,6 +332,24 @@ class LocalDriver:
     def cost_per_task(self) -> float:
         """Local execution is free (uses local LLM or configured model)."""
         return 0.0
+
+
+PROJECT_INSTRUCTIONS_MAX_CHARS = 7000
+
+
+def _project_instructions(workdir) -> str:
+    """The project's AGENTS.md, which OpenCode reads by itself: its
+    conventions (test helpers, style) had to be pasted into every local task
+    by hand (2026-10-18). Capped so a long file cannot crowd the context;
+    empty when there is none or it cannot be read."""
+    try:
+        text = (workdir / "AGENTS.md").read_text(encoding="utf-8", errors="replace")
+    except (OSError, TypeError):
+        return ""
+    if len(text) > PROJECT_INSTRUCTIONS_MAX_CHARS:
+        cut = text.rfind("\n", 0, PROJECT_INSTRUCTIONS_MAX_CHARS)
+        text = text[: cut if cut > 0 else PROJECT_INSTRUCTIONS_MAX_CHARS] + "\n…"
+    return text.strip()
 
 
 _TEXT_TOOL_CALL_MARKERS = ("<tool_call>", "<function=", '"name": "code_', "```tool")
