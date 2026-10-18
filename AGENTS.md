@@ -74,6 +74,12 @@ The build loop:
 - **Test pattern**: `httpx.AsyncClient` + `ASGITransport` + `@pytest_asyncio.fixture`, with
   tenant headers.
 - **Defensive tests**: accept 500 when the DB is unreachable, but never accept 422 for valid input.
+- **Unit tests of code that queries the database or calls git**: use `tests/unit/fakes.py`
+  (no DB needed). `FakeSession(row)` makes each `session.execute()` return that row
+  (`FakeSession(None)` for "not found", a list for many rows); `session.statements` records
+  the queries and `sql(stmt)` renders one for asserts; `fake_landed_diff(monkeypatch, text)`
+  replaces the git diff. Call the function under test and assert on what it returns, never
+  just `callable()`. Worked example: `tests/unit/test_dev_task_diff.py`.
 
 ### Design Rules
 
