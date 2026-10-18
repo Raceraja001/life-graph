@@ -812,6 +812,76 @@ async def run_claimed(session_factory: async_sessionmaker[AsyncSession], task: A
     )
 
 
+TASK_DIFF_MAX_CHARS = 200_000
+
+
+async def task_diff(session: AsyncSession, tenant_id: str, task_id: str) -> dict | None:
+    """A landed dev task's change, from its newest ``driver_pr`` approval, so a
+    reviewer can read it without git (GET /kernel/drivers/tasks/{id}/diff).
+
+    Returns None if no matching approval is found. Otherwise a dict with
+    task_id, branch, base_commit, head_commit, files (changed paths), the
+    diff text capped at :data:`TASK_DIFF_MAX_CHARS`, and ``truncated``.
+
+    Written by the dev agent (OpenCode, task 90033c3e); its tests were not
+    usable and were replaced.
+    """
+    from life_graph.services.github_pr import landed_diff
+
+    # Find the newest Approval with kind "driver_pr" and matching payload.task_id
+    result = await session.execute(
+        select(Approval)
+        .where(
+            Approval.tenant_id == tenant_id,
+            Approval.kind == "driver_pr",
+            Approval.payload["task_id"].astext == task_id,
+        )
+        .order_by(Approval.created_at.desc())
+        .limit(1)
+    )
+
+    approval = result.scalar_one_or_none()
+    if approval is None:
+        return None
+
+    # Extract the required fields from the payload
+    payload = approval.payload
+    repo_path = payload["repo_path"]
+    base_commit = payload["base_commit"]
+    head_commit = payload["head_commit"]
+    branch = payload["branch"]
+
+    # Get the diff text
+    diff_text = await landed_diff(repo_path, base_commit, head_commit)
+
+    # Parse file paths from the diff
+    files = []
+    if diff_text:
+        for line in diff_text.splitlines():
+            if line.startswith("diff --git a/"):
+                # Extract the file path after "a/"
+                start_pos = line.find("a/") + 2
+                end_pos = line.find(" b/", start_pos)
+                if end_pos != -1:
+                    files.append(line[start_pos:end_pos])
+
+    # Cap the diff text
+    truncated = False
+    if len(diff_text) > TASK_DIFF_MAX_CHARS:
+        diff_text = diff_text[:TASK_DIFF_MAX_CHARS]
+        truncated = True
+
+    return {
+        "task_id": task_id,
+        "branch": branch,
+        "base_commit": base_commit,
+        "head_commit": head_commit,
+        "files": files,
+        "diff": diff_text,
+        "truncated": truncated,
+    }
+
+
 async def run_queue(session_factory: async_sessionmaker[AsyncSession]) -> None:
     """Run queued dev tasks one at a time, forever (API process lifespan task).
 
