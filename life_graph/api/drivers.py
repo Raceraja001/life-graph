@@ -278,6 +278,15 @@ class DevTaskCreate(BaseModel):
             "normal code-writing task. Implies spec_first."
         ),
     )
+    queue: bool = Field(
+        False,
+        description=(
+            "Queue the task instead of starting it: the API's queue runner "
+            "runs queued tasks one at a time (one local model, one GPU). Use "
+            "it to hand over a backlog. Queued work is unattended, so the "
+            "budget cap applies to it unless every model it uses is local."
+        ),
+    )
 
 
 @router.post(
@@ -315,6 +324,7 @@ async def create_dev_task(body: DevTaskCreate):
         task_type="plan" if body.plan_only else "code_change",
         spec_first=body.spec_first or body.plan_only,
         verify_chain=["no_diff_in_plan"] if body.plan_only else None,
+        start=not body.queue,
     )
     return success_response(data=task)
 
