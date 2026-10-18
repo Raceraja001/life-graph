@@ -35,6 +35,7 @@ from life_graph.agents.stuck import is_error_result
 from life_graph.drivers import self_check
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.steps import StepCollector
+from life_graph.drivers.workdir import diff_against_head
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -52,6 +53,11 @@ NO_EDIT_NUDGE = (
     "You have not changed any file yet, and this task needs a change. Make the "
     "edit now with code_edit, then re-read the file to check it. "
     "If the change is impossible, say exactly why."
+)
+NO_NET_CHANGE_NUDGE = (
+    "Your edits so far leave no file changed (an automatic lint fix may have "
+    "removed something you added but did not use yet). The task is not done: "
+    "make the full change now, then re-read the files to check it."
 )
 NO_PLAN_NUDGE = (
     "You have not written the plan yet. Stop exploring and write it now: start "
@@ -189,7 +195,19 @@ class LocalDriver:
                 )
                 if feedback:
                     self_checks += 1
-                return feedback
+                    return feedback
+                # Edits that net out to nothing are no change at all: task
+                # ade60cc6 added one import and stopped, and the self-check's
+                # ruff autofix removed it as unused. Only for a git checkout:
+                # elsewhere there is no diff to read.
+                if (
+                    nudges < MAX_NO_EDIT_NUDGES
+                    and (workdir / ".git").exists()
+                    and not await diff_against_head(workdir)
+                ):
+                    nudges += 1
+                    return NO_NET_CHANGE_NUDGE
+                return None
 
             async def collect() -> None:
                 nonlocal tool_calls, condensed, stop_reason, good_edits, failed_edits
