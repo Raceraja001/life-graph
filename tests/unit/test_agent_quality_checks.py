@@ -243,3 +243,57 @@ async def test_the_bounce_leads_with_the_failures_and_keeps_the_task_last(monkey
     assert text.startswith("Your previous attempt at this task is already in the working tree")
     assert text.index("lint_clean_diff failed") < text.index(BOUNCE_TASK_MARKER)
     assert text.endswith(TASK)
+
+
+# The "test" OpenCode wrote on task d8222c64: it can only fail if the import does.
+CALLABLE_ONLY_TEST = """import pytest
+
+
+@pytest.mark.asyncio
+async def test_task_diff_function_exists():
+    from life_graph.services.dev_tasks import task_diff
+
+    assert callable(task_diff)
+"""
+
+
+@pytest.mark.parametrize(
+    "probe",
+    [
+        "assert callable(task_diff)",
+        "assert inspect.iscoroutinefunction(task_diff)",
+        "assert inspect.signature(task_diff)",
+    ],
+)
+def test_handing_the_code_to_an_introspection_builtin_is_not_use(probe):
+    source = (
+        "import inspect\n"
+        "from life_graph.services.dev_tasks import task_diff\n\n"
+        f"def test_x():\n    {probe}\n"
+    )
+    assert any("never calls or patches" in s for s in _test_smells(source, {"life_graph"}))
+
+
+def test_the_callable_only_test_is_caught():
+    smells = _test_smells(CALLABLE_ONLY_TEST, {"life_graph"})
+    assert any("imports task_diff but never calls or patches it" in s for s in smells)
+
+
+def test_calling_the_code_inside_a_probe_still_counts():
+    # The result of a real call may be checked with isinstance.
+    source = (
+        "from life_graph.services.dev_tasks import task_diff\n\n"
+        "async def test_x():\n    assert isinstance(await task_diff(1, 2, 3), dict)\n"
+    )
+    assert _test_smells(source, {"life_graph"}) == []
+
+
+def test_isinstance_and_hasattr_on_config_and_enums_are_real_tests():
+    source = (
+        "from life_graph.config import settings\n"
+        "from life_graph.core.events import EventType\n\n"
+        "def test_x():\n"
+        "    assert isinstance(settings.capture_llm_clean, bool)\n"
+        "    assert hasattr(EventType, 'TASK_BOUNCED')\n"
+    )
+    assert _test_smells(source, {"life_graph"}) == []
