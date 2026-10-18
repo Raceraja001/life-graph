@@ -1,7 +1,7 @@
 """GET /kernel/drivers/tasks/{id}/diff and dev_tasks.task_diff: a landed dev
 task's change, read from its newest driver_pr approval, without git by hand.
 
-No DB: the session's execute() is faked, and so is landed_diff (it shells out
+No DB: tests/unit/fakes.py stands in for the session, and for landed_diff (it shells out
 to git)."""
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from fastapi import HTTPException
 
 from life_graph.core.tenant import tenant_scope
 from life_graph.services import dev_tasks
+from tests.unit.fakes import FakeSession, fake_landed_diff, sql
 
 TASK = str(uuid.uuid4())
 PAYLOAD = {
@@ -31,38 +32,11 @@ TWO_FILE_DIFF = (
 )
 
 
-class FakeSession:
-    def __init__(self, approval):
-        self.approval = approval
-        self.statements = []
-
-    async def execute(self, stmt):
-        self.statements.append(stmt)
-        return SimpleNamespace(scalar_one_or_none=lambda: self.approval)
-
-
-@pytest.fixture
-def git(monkeypatch):
-    from life_graph.services import github_pr
-
-    calls = []
-
-    def _set(text):
-        async def landed_diff(repo_path, base, head):
-            calls.append((repo_path, base, head))
-            return text
-
-        monkeypatch.setattr(github_pr, "landed_diff", landed_diff)
-        return calls
-
-    return _set
-
-
 # ── task_diff ───────────────────────────────────────────────────────────────
 
 
-async def test_task_diff_found(git):
-    calls = git(TWO_FILE_DIFF)
+async def test_task_diff_found(monkeypatch):
+    calls = fake_landed_diff(monkeypatch, TWO_FILE_DIFF)
     session = FakeSession(SimpleNamespace(payload=PAYLOAD))
     result = await dev_tasks.task_diff(session, "t1", TASK)
 
@@ -77,26 +51,28 @@ async def test_task_diff_found(git):
     }
     assert calls == [("/repo", "a" * 40, "b" * 40)]
     # Scoped to the tenant and the driver_pr kind, newest first.
-    sql = str(session.statements[0].compile(compile_kwargs={"literal_binds": True}))
-    assert "'t1'" in sql and "'driver_pr'" in sql and "DESC" in sql
+    text = sql(session.statements[0])
+    assert "'t1'" in text and "'driver_pr'" in text and "DESC" in text
 
 
-async def test_task_diff_not_found(git):
-    calls = git(TWO_FILE_DIFF)
+async def test_task_diff_not_found(monkeypatch):
+    calls = fake_landed_diff(monkeypatch, TWO_FILE_DIFF)
     assert await dev_tasks.task_diff(FakeSession(None), "t1", TASK) is None
     assert calls == []  # no git call without an approval
 
 
-async def test_task_diff_truncated(git):
-    git("diff --git a/big.txt b/big.txt\n" + "+x\n" * dev_tasks.TASK_DIFF_MAX_CHARS)
+async def test_task_diff_truncated(monkeypatch):
+    fake_landed_diff(
+        monkeypatch, "diff --git a/big.txt b/big.txt\n" + "+x\n" * dev_tasks.TASK_DIFF_MAX_CHARS
+    )
     result = await dev_tasks.task_diff(FakeSession(SimpleNamespace(payload=PAYLOAD)), "t1", TASK)
     assert len(result["diff"]) == dev_tasks.TASK_DIFF_MAX_CHARS
     assert result["truncated"] is True
     assert result["files"] == ["big.txt"]  # read from the whole diff, not the cut
 
 
-async def test_task_diff_when_git_fails(git):
-    git("")  # landed_diff's answer to any git failure
+async def test_task_diff_when_git_fails(monkeypatch):
+    fake_landed_diff(monkeypatch, "")  # landed_diff's answer to any git failure
     result = await dev_tasks.task_diff(FakeSession(SimpleNamespace(payload=PAYLOAD)), "t1", TASK)
     assert result["diff"] == "" and result["files"] == [] and result["truncated"] is False
 
