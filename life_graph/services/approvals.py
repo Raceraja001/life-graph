@@ -970,3 +970,49 @@ async def _run_shell(command: str, cwd: str, timeout: int) -> tuple[int, str]:
     except OSError as exc:
         return 127, f"could not run: {exc}"
     return proc.returncode or 0, out.decode(errors="replace")
+
+
+async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str, int]:
+    """Try auto-merge again on pending ``driver_merge`` approvals.
+
+    :meth:`ApprovalService.maybe_auto_merge` runs once, right after the PR is
+    opened, when its CI is usually still running; a "checks not green" there
+    left the approval pending for good. On 2026-10-19 five agent PRs (#79,
+    #81-#84) sat green and unmerged until someone approved them by hand. This
+    re-runs the same check (same trust bar, CI still enforced by the merge
+    itself) on approvals whose PR asked for auto-merge. Called by the
+    15-minute ``sync_dev_task_prs`` job.
+    """
+    from datetime import timedelta
+
+    since = datetime.now(UTC) - timedelta(days=max_age_days)
+    merged = tried = 0
+    async with session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Approval).where(
+                        Approval.kind == "driver_merge",
+                        Approval.status == "pending",
+                        Approval.created_at >= since,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for appr in rows:
+            payload = appr.payload or {}
+            if not payload.get("auto_merge"):
+                continue
+            tried += 1
+            svc = ApprovalService(session)
+            await svc.maybe_auto_merge(
+                appr, payload.get("driver") or "", payload.get("project_id"), True
+            )
+            if appr.status == "approved":
+                merged += 1
+        await session.commit()
+    if tried:
+        logger.info("Auto-merge retry: %d of %d pending merges went through", merged, tried)
+    return {"tried": tried, "merged": merged}

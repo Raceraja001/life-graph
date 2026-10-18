@@ -935,9 +935,17 @@ async def sync_dev_task_prs(ctx: dict) -> dict:
     approvals feed are handled by its event subscriber; this catches what
     happens on GitHub directly.
     """
+    from life_graph.services.approvals import retry_auto_merges
     from life_graph.services.dev_outcomes import sync_all
 
+    # First, so a PR that auto-merges now is settled by this same sync.
+    try:
+        retried = await retry_auto_merges(async_session)
+    except Exception:  # never let a retry failure stop the sync itself
+        logger.warning("Auto-merge retry failed", exc_info=True)
+        retried = {"tried": 0, "merged": 0, "error": True}
     result = await sync_all(async_session)
+    result["auto_merge_retry"] = retried
     logger.info("Dev PR sync: %s", {k: v for k, v in result.items() if k != "reports"})
     return result
 
