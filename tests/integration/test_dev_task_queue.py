@@ -216,3 +216,41 @@ async def test_a_started_task_requeued_by_a_restart_stays_interactive(project, m
             await dev_tasks.run_claimed(async_session, claimed)
     assert calls[started["id"]] is True
     assert calls[nightly["id"]] is False
+
+
+async def test_a_queued_plan_still_runs_as_a_plan(project, monkeypatch):
+    """POST /tasks with queue=true hands work to the queue runner; a queued
+    plan must keep its spec_first and its no_diff_in_plan check."""
+    from life_graph.drivers.base import DriverResult
+    from life_graph.drivers.dispatcher import TaskDispatcher
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    queued = await dev_tasks.create_dev_task(
+        async_session,
+        TENANT,
+        instruction="Plan item D",
+        project=project,
+        persona_name="code-fixer-local",
+        task_type="plan",
+        start=False,
+        spec_first=True,
+        verify_chain=["no_diff_in_plan"],
+    )
+    calls = {}
+
+    async def fake_dispatch(self, **kw):
+        calls[kw["task_id"]] = kw
+        return DriverResult(success=True, output="## Spec\n...")
+
+    monkeypatch.setattr(TaskDispatcher, "dispatch_task", fake_dispatch)
+    while queued["id"] not in calls:
+        claimed = await dev_tasks.claim_next_queued(async_session)
+        assert claimed is not None
+        if str(claimed.id) == queued["id"]:
+            await dev_tasks.run_claimed(async_session, claimed)
+    kw = calls[queued["id"]]
+    assert kw["spec_first"] is True
+    assert kw["verify_chain"] == ["no_diff_in_plan"]
+    assert kw["task_type"] == "plan"
+    assert kw["interactive"] is False

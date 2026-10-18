@@ -98,6 +98,13 @@ async def create_dev_task(
                 # never blocks it; kept so a re-queue after an API restart runs
                 # it the same way (run_queue).
                 "interactive": start,
+                # What run_queue needs to run it as asked (a queued plan is
+                # still a plan).
+                **(
+                    {}
+                    if start
+                    else {"spec_first": spec_first, "verify_chain": list(verify_chain or [])}
+                ),
             },
             tags=[KIND],
             status_history=[{"status": "queued", "at": datetime.now(UTC).isoformat()}],
@@ -809,6 +816,8 @@ async def run_claimed(session_factory: async_sessionmaker[AsyncSession], task: A
         # before this, task eda04c34 (started from MCP) was re-queued and then
         # denied for "monthly budget exhausted" (2026-10-17).
         interactive=bool((task.properties or {}).get("interactive", False)),
+        spec_first=bool((task.properties or {}).get("spec_first", False)),
+        verify_chain=list((task.properties or {}).get("verify_chain") or []) or None,
     )
 
 
