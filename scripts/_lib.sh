@@ -53,6 +53,14 @@ done
 [ -n "$PY" ] || PY="$(command -v python3 || true)"
 unset _venv _venv_candidates
 
+# User-installed tools the API shells out to: gh (PR push and merge, through
+# `gh auth git-credential`), ruff, opencode. A non-login shell or the systemd
+# user unit has no ~/.local/bin on PATH, and approving a PR then failed with
+# "gh: not found" (2026-10-17).
+if [ -d "$HOME/.local/bin" ] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
 # Ask the app where its Postgres and Redis actually are. Falls back to the
 # defaults only when the config cannot be loaded at all.
 load_service_ports() {
