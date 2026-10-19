@@ -304,6 +304,13 @@ def runs_on_local_model(driver_name: str, persona_model: str | None) -> bool:
     from the models, not cost_per_task(): the local driver reports $0 even
     when its persona model is an API model.
     """
+    if driver_name == "cloud":
+        # Not local, but just as unable to spend: the cloud driver refuses a
+        # model that isn't free and fails over only to free ones
+        # (drivers/cloud.py).
+        from life_graph.services.compute_router import is_free_cloud_model
+
+        return is_free_cloud_model(persona_model)
     if driver_name == "opencode":
         models = [settings.driver_opencode_model]
     elif driver_name == "local":
@@ -1026,6 +1033,16 @@ class TaskDispatcher:
                         if driver and await driver.available():
                             logger.info("Persona %s pins driver %s", persona_name, pinned_driver)
                             return driver
+                        if driver and getattr(driver, "pin_required", False):
+                            # The cloud driver: falling through would run its
+                            # persona's model on another driver, outside the
+                            # free-only, no-personal-data rules.
+                            raise DispatchError(
+                                f"Persona {persona_name} pins driver {pinned_driver}, "
+                                "which is not available"
+                            )
+            except DispatchError:
+                raise
             except Exception:
                 logger.warning("Failed to check persona driver pin", exc_info=True)
 

@@ -45,7 +45,7 @@ you already remembered).
 
 ## Design invariants
 
-These five rules are load-bearing. Changing one is an architectural decision, not an
+These rules are load-bearing. Changing one is an architectural decision, not an
 implementation detail.
 
 ### 1. LLM as advisor, not authority
@@ -94,6 +94,26 @@ distinct third state, not as a pass.
 
 The whole autonomy ladder is built so that the failure mode of any missing configuration is
 *asking the human*, not acting.
+
+### 6. One person, one tenant
+
+The owner's whole life (work, study, family, health) lives in **one** tenant (`raja`), around
+one identity. Do not split a person into `work`/`home` sub-tenants: how he weighs a family
+trade-off informs how he weighs an architecture one, and that only works if the graph can
+reach across. Domains are tags, graph edges and surfaces (`domain: work_his`,
+`domain: family`), not tenants. `tenant_id` is the boundary between *different customers*.
+
+### 7. Personal data stays on the machine
+
+Memories, preferences, beliefs, family and health notes, and voice audio are processed by
+local models only. Code is different: the owner allows coding work to run on **free** cloud
+models while the GPU is busy with speech (`services/compute_router.py`, the `cloud` driver),
+and that path strips preferences, procedures and memories from the prompt and refuses any
+model that is not free.
+
+Known exceptions, stated rather than hidden: Telegram's servers carry what is sent through
+the bot, and a cloud TTS voice (such as Edge-TTS) sends reply text to its provider. Replacing
+those with local equivalents is open work, not something to assume is done.
 
 ---
 

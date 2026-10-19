@@ -376,6 +376,9 @@ async def lifespan(app: FastAPI):
         from life_graph.drivers.opencode import OpencodeDriver
 
         driver_registry.register(OpencodeDriver())
+        from life_graph.drivers.cloud import CloudDriver
+
+        driver_registry.register(CloudDriver())
         logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
 
     # Only the process holding the runner lock recovers and runs dev tasks, so

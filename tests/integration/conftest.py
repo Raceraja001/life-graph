@@ -286,3 +286,16 @@ def minio_available() -> bool:
         endpoint = f"http://{endpoint}"
     u = urlparse(endpoint)
     return service_up(u.hostname or "127.0.0.1", u.port or 9000)
+
+
+@pytest.fixture(autouse=True)
+def _no_speech_on_the_gpu(monkeypatch):
+    """The queue router (services/compute_router.py) holds local coding work
+    while a speech model is loaded in Ollama. Whatever this machine has
+    loaded must not decide whether a test's queued task gets claimed."""
+    from life_graph.services import compute_router
+
+    async def none():
+        return None
+
+    monkeypatch.setattr(compute_router, "speech_in_use", none)

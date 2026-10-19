@@ -392,6 +392,53 @@ async def get_dependency_audit_readiness():
     return success_response(data=data)
 
 
+class PresenceUpdate(BaseModel):
+    """The manual active/away switch for routing queued coding work."""
+
+    mode: str = Field(..., pattern="^(auto|active|away)$", examples=["away"])
+    # For how long; omitted = until changed. Ignored for "auto".
+    minutes: int | None = Field(None, ge=1, le=7 * 24 * 60, examples=[120])
+
+
+async def _compute_status(tenant_id: str) -> dict:
+    from life_graph.services import compute_router
+
+    snap = await compute_router.snapshot(async_session, tenant_id)
+    sample = compute_router.decide("code-fixer-local", {}, snap)
+    return {
+        "presence": await compute_router.get_presence(tenant_id),
+        "active": snap.active,
+        "local_hours": snap.local_hours,
+        "free_gb": round(snap.free_gb, 1) if snap.free_gb is not None else None,
+        "cloud_models": list(snap.cloud),
+        "cloud_cooling": await compute_router.cloud_cooling(),
+        "next_task": {"where": sample.where, "persona": sample.persona, "reason": sample.reason},
+    }
+
+
+@router.get(
+    "/compute",
+    summary="Where queued coding work runs right now: local GPU, free cloud model, or later",
+)
+async def get_compute_status():
+    """The routing facts (services/compute_router.py) and what a nightly
+    local-model task would do if it were claimed now."""
+    return success_response(data=await _compute_status(get_current_tenant_id()))
+
+
+@router.put("/compute/presence", summary="Set the active/away switch (auto clears it)")
+async def put_presence(body: PresenceUpdate):
+    """Mode "active" keeps queued coding work off the GPU; "away" lets it run
+    locally even if speech models are loaded; "auto" goes back to detecting
+    it from chat, Telegram and voice activity."""
+    from life_graph.services import compute_router
+
+    tenant_id = get_current_tenant_id()
+    if not await compute_router.set_presence(tenant_id, body.mode, body.minutes):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Redis is not available")
+    return success_response(data=await _compute_status(tenant_id))
+
+
 @router.get("/tasks/{task_id}", summary="Get one dev task")
 async def get_dev_task(task_id: str):
     from life_graph.services import dev_tasks

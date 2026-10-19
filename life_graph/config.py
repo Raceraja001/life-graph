@@ -450,6 +450,37 @@ class Settings(BaseSettings):
     # the dev-task runner. Without it, the database advisory lock still keeps
     # it from running alongside the real one (services/dev_tasks.py).
     dev_task_runner_enabled: bool = True
+    # Where queued coding work runs (services/compute_router.py). The one GPU
+    # is the user's while he is active (speech models), so queued tasks then go
+    # to a free cloud model or wait; local runs happen while he is away.
+    # Code may leave the machine this way; personal data never does (the
+    # cloud driver strips preferences/procedures/memories).
+    dev_route_queue: bool = True
+    # Free cloud coding models, in failover order. Only free ones are accepted
+    # (openrouter/...:free, nvidia_nim/...); a model whose provider has no key
+    # is skipped, so with no keys the cloud route is simply off.
+    dev_cloud_models: str = (
+        "openrouter/poolside/laguna-s-2.1:free,"
+        "openrouter/nvidia/nemotron-3-super-120b-a12b:free,"
+        "openrouter/cohere/north-mini-code:free"
+    )
+    # The user counts as active for this long after his last chat message,
+    # Telegram message or voice capture.
+    user_active_minutes: int = 30
+    # Ollama model-name fragments that mean speech is in use (comma-separated).
+    speech_models: str = "gemma3"
+    ollama_api_base: str = "http://localhost:11434"
+    # Local coding only in these hours of user_timezone, e.g. "23-7"; empty
+    # means whenever the user is away.
+    dev_local_hours: str = ""
+    # OpenCode with a 30B model needs this much free RAM (WSL stalled with
+    # swap full during a 30B run, 2026-10-17); below it the task waits.
+    opencode_min_free_gb: float = 12.0
+    # After the free cloud models are exhausted (rate limit), stop routing to
+    # them for this long; the task goes back on the queue.
+    cloud_rate_limit_cooldown_seconds: int = 3600
+    # NVIDIA build.nvidia.com free API (LiteLLM's nvidia_nim/ provider).
+    nvidia_nim_api_key: str = ""
     # Per-step content cap for recorded agent runs (services/trajectories.py).
     # One whole-file read can be megabytes; the real length is kept alongside.
     trajectory_step_max_chars: int = 16_000
@@ -656,6 +687,16 @@ class Settings(BaseSettings):
     def llm_fallback_chain_list(self) -> list[str]:
         """Parse comma-separated free-model fallback chain."""
         return [m.strip() for m in self.llm_fallback_chain.split(",") if m.strip()]
+
+    @property
+    def dev_cloud_models_list(self) -> list[str]:
+        """Parse the comma-separated free cloud coding models."""
+        return [m.strip() for m in self.dev_cloud_models.split(",") if m.strip()]
+
+    @property
+    def speech_models_list(self) -> list[str]:
+        """Parse the comma-separated speech model-name fragments."""
+        return [m.strip().lower() for m in self.speech_models.split(",") if m.strip()]
 
     @property
     def is_development(self) -> bool:

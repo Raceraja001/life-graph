@@ -539,3 +539,37 @@ async def test_no_paid_fallback_configured_exhausts_as_before(monkeypatch):
 
     with pytest.raises(ResilientLLMExhaustedError):
         await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+
+
+@pytest.mark.asyncio
+async def test_only_models_replaces_the_whole_chain(monkeypatch):
+    """A free cloud run (drivers/cloud.py) fails over only to the models it
+    allows: not the local chain, OmniRoute or the paid fallback."""
+    monkeypatch.setattr(rl.settings, "omniroute_api_key", "or-key", raising=False)
+    monkeypatch.setattr(rl.settings, "omniroute_model", "openai/auto", raising=False)
+    monkeypatch.setattr(rl.settings, "llm_paid_fallback_model", "paid/model", raising=False)
+    tried = []
+
+    async def fail(*, model, **_kw):
+        tried.append(model)
+        raise rl.litellm.RateLimitError("rate", "prov", model)
+
+    monkeypatch.setattr(rl.litellm, "acompletion", fail)
+    h = FakeHealth()
+
+    with rl.only_models(["X", "A", "Y"]), pytest.raises(ResilientLLMExhaustedError):
+        await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}], model="X")
+    assert tried[:3] == ["X", "A", "Y"]
+    assert set(tried) == {"X", "A", "Y"}  # the forced retry is one of them too
+    assert "B" not in tried and "openai/auto" not in tried and "paid/model" not in tried
+
+
+@pytest.mark.asyncio
+async def test_only_models_ends_with_its_block(monkeypatch):
+    call = AsyncMock(side_effect=[rl.litellm.APIError(500, "boom", "prov", "A"), _resp("hi")])
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    with rl.only_models(["X"]):
+        pass
+    out = await ResilientLLM(health=FakeHealth()).chat([{"role": "user", "content": "q"}])
+    assert out == "hi"
+    assert call.call_args.kwargs["model"] == "B"  # the normal chain is back

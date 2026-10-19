@@ -30,14 +30,16 @@ gate, drivers, judgment engine, and ambient layers are all built; see
 
 ### Before You Write Code
 
-1. **Read [Personal Assistant Ecosystem & Agent Charter](docs/design/10_personal_assistant_ecosystem_and_agent_charter.md)** — Raja's core Jarvis vision, the unified identity rule (`tenant: raja`), local 16GB VRAM safety, and how satellite agents coordinate.
-2. **Read [CHARTER.md](CHARTER.md)** — intent, the five design invariants, non-goals, and
+1. **Read [CHARTER.md](CHARTER.md)** — intent, the design invariants, non-goals, and
    the current frontier.
-3. **Skim [docs/STATE.md](docs/STATE.md)** — the generated inventory. If something already
+2. **Skim [docs/STATE.md](docs/STATE.md)** — the generated inventory. If something already
    exists, it is listed there. Do not rebuild it.
-4. **Check `docs/specs/`** for the feature you are touching. Each spec now carries a
+3. **Check `docs/specs/`** for the feature you are touching. Each spec now carries a
    one-line status header (`Built` / `Spec'd, not built` / `Not this product`).
-5. **Check `.comms/inbox/`** for a task assigned to you.
+4. **Check `.comms/inbox/`** for a task assigned to you.
+
+For the wider picture — the personal-assistant goal and the repos around this one — see
+[the ecosystem doc](docs/design/10_personal_assistant_ecosystem_and_agent_charter.md).
 
 If a number in any prose document disagrees with `docs/STATE.md`, `docs/STATE.md` is right
 and the prose is stale — fix the prose or delete the number.
@@ -84,7 +86,7 @@ The build loop:
 
 ### Design Rules
 
-The five invariants are stated in full, with their reasoning, in
+The invariants are stated in full, with their reasoning, in
 [CHARTER.md](CHARTER.md#design-invariants). In short:
 
 - **LLM as advisor, not authority** — prefer rule-based and local approaches; consult a model
@@ -93,6 +95,9 @@ The five invariants are stated in full, with their reasoning, in
 - **Event-driven** — fire an event and subscribe; do not reach into the producing service.
 - **Tenant-scoped** — a query that forgets `tenant_id` is a cross-tenant data leak.
 - **Fail-closed autonomy** — an unmatched action is `DANGEROUS` and gets queued, never run.
+- **One person, one tenant** — the owner's whole life is tenant `raja`; domains are tags.
+- **Personal data stays local** — only code may reach a (free) cloud model, never memories
+  or preferences.
 
 Plus: new memories go through the dedup pipeline, and consolidation/decay/proactive-recall
 patterns are how memory is expected to behave.

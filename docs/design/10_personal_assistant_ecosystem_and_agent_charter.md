@@ -1,99 +1,86 @@
-# 10. Personal Assistant Ecosystem & Agent Charter
+# 10. Personal Assistant Ecosystem
 
-> **Mandatory reading for any AI agent, coding assistant, or background worker.**
-> This document states Raja's core vision, the "Jarvis" personal assistant thesis,
-> the unified identity model, and the operating rules for the multi-agent ecosystem.
+> **Status:** Active design | **Last updated:** 2026-10-19
 >
-> **Last updated:** 2026-10-19 | **Status:** Active Canonical Design
+> Why Life Graph exists for its owner, and how the repos around it fit together. The rules
+> themselves (one tenant, personal data stays local) are invariants in
+> [CHARTER.md](../../CHARTER.md#design-invariants); this page is the context for them.
+> Exact endpoints, models and jobs live in [STATE.md](../STATE.md); no numbers here.
 
 ---
 
-## 1. The Core Vision: The "Jarvis" Life-Partner Thesis
+## 1. The goal: a lifelong personal assistant
 
-Life Graph is **not** just a multi-tenant SaaS backend or a database utility.
+Life Graph is not only a multi-tenant backend. For its owner (Raja) it is meant to be a
+lifelong assistant (think Jarvis), across:
 
-It is designed to be **Raja's lifelong personal AI assistant and partner** (Jarvis to Iron Man) across all facets of his life:
-* **Work & Engineering:** Healthcare HIS, ERP, software architecture, and DevOps.
-* **Study & Research:** AI research, computer science, paper syntheses, and flashcards (`per-learn`).
-* **Family & Personal Life:** Life with his wife, home routines, health, promises, commitments, and native Tamil voice interaction.
-* **Hobbies & Interests:** Continuous learning and personal growth.
+* **Work and engineering:** the hospital system (HIS), ERP, architecture, DevOps.
+* **Study and research:** AI and computer science, paper notes, flashcards.
+* **Family and personal life:** home routines, health, promises and commitments, in Tamil,
+  Tanglish and English, by voice.
+* **Hobbies and growth.**
 
-Every AI agent operating in this repository must understand that it is building a system that models **how Raja thinks, how he makes decisions, and what his non-negotiable values are.**
-
----
-
-## 2. Invariant: The Unified Identity Model (`tenant: raja`)
-
-### Rule: One Human Being = One Unified Memory Graph
-* **Do NOT partition Raja into sub-tenants** (`work_tenant`, `home_tenant`, etc.).
-* A human mind is not compartmentalized into separate corporate silos. How Raja decides trade-offs in family life informs his risk tolerance in business architecture; health and energy inform work scheduling.
-* All life facets live under **`tenant_id: "raja"`** and radiate from a single central **Identity Node (`Raja`)**.
-* `tenant_id` exists strictly as a boundary for **future external SaaS customers** (e.g. `tenant: customer_b`), never for splitting Raja's own life.
-
-### How Domains are Scoped without Clutter
-* Separation of concerns is handled via **Tags**, **Graph Edges**, and **Surfaces** in Apache AGE and Postgres:
-  * `domain: family`, `domain: work_his`, `domain: study`, `domain: health`
-  * When a coding agent works on `his`, it filters searches by `domain: work_his`, but traverses to Raja's **Core Principles** (`tag: core_principle`, `tag: preference`) so it writes code matching his exact philosophy.
-  * When the Telegram assistant plans family routines, it respects family time while maintaining awareness of critical work deployments.
+An agent working here is building a system that learns how he thinks, how he decides and
+what he will not trade away. Treat his recorded preferences and decisions as the spec.
 
 ---
 
-## 3. The Dual-Sphere Architecture & VRAM Invariant
+## 2. One identity
 
-### Hardware Constraints
-The local host (`race-wsl`) runs an **NVIDIA GeForce RTX 5080 with 16 GB VRAM**. 
-16 GB cannot hold multiple massive models simultaneously. VRAM must be managed strictly:
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│               LOCAL RTX 5080 VRAM BUDGET (Max ~11.5 GB Used)           │
-│  • gemma3:12b (Tamil/English conversational core)         ~8.0 GB      │
-│  • faster-whisper CUDA (medium/turbo speech recognition)   ~1.5 GB      │
-│  • bge-m3 (Life Graph vector embedding engine)            ~0.6 GB      │
-│  • Headroom for Windows / WSL display buffers              ~1.5 GB      │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-### Sphere A: The Private Life & Voice Vault (100% Local)
-* **Components:** `tamil-ai` (Port 8005), `life-graph` (Port 8080), Faster-Whisper, Edge-TTS, and Gemma 3 12B.
-* **Privacy Rule:** Family names, photos, health notes, personal voice audio, and wife/home conversations **MUST NEVER leave the local machine**. They are processed exclusively on the local RTX 5080.
-* **Residency:** `OLLAMA_MAX_LOADED_MODELS=2` in `/home/raja/docker/ollama/docker-compose.yml` keeps both `gemma3:12b` and `bge-m3` warm in VRAM permanently.
-
-### Sphere B: The Autonomous Tech Swarm (Cloud Free-Tier Swarm)
-* **Components:** OpenRouter free tier (`qwen-2.5-coder-32b:free`, `llama-3.3-70b:free`, `gemini-2.0-flash:free`), LiteLLM gateway (Port 4000).
-* **The Micro-Task Rule:**
-  * Agents executing coding tasks must **NOT** load heavy 30B models locally that starve the local voice VRAM.
-  * Deconstruct coding features into atomic micro-tasks (< 50 lines).
-  * Dispatch generic coding tasks to the free cloud swarm.
-  * Run local verification in an isolated git worktree via `ruff check` and `pytest`.
-  * Only merge if **100% of tests pass** (Fail-closed autonomy).
+All of it lives in tenant `raja`, around one identity node, with domains as tags and graph
+edges (`domain: work_his`, `domain: family`, `domain: study`), never as sub-tenants. A coding
+agent on `his` filters to `domain: work_his` yet can still reach his core principles
+(`tag: core_principle`, `tag: preference`). See CHARTER invariant 6.
 
 ---
 
-## 4. The Satellite Ecosystem Map
+## 3. One GPU, two jobs
 
-To prevent `life-graph` from bloating into an unmaintainable monolith, the ecosystem is decoupled across modular repositories:
+The machine has one 16 GB GPU. Speech (tamil-ai's conversational model plus speech
+recognition) and the coding agents (gpt-oss:20b, OpenCode with a 30B coder) cannot all fit
+at once, so the GPU is scheduled, not divided:
 
-| Repository / Service | Host / Port | Role |
-| :--- | :--- | :--- |
-| **`life-graph`** | `race-wsl:8080` | **The Brain & Substrate:** Knowledge graph (Apache AGE), semantic search (pgvector), nightly sleep consolidation (3AM), capture spine, judgment engine. |
-| **`life-graph-ui`** | `race-wsl:5173` | **The Visual Cockpit:** React + TypeScript dashboard, approval queues, memory timelines, graph visualizer. |
-| **`tamil-ai`** | `race-wsl:8005` | **Ears & Mouth:** Real-time conversational Tamil/English voice studio (`faster-whisper`, `edge-tts`, WebSocket stream, `life_graph_bridge.py`). |
-| **`his` / `apptx-v2`** | `~/Projects/` | **Engineering Domains:** Hospital Information System and multi-tenant ERP codebases. |
-| **`per-learn`** | `~/Projects/` | **Study & Knowledge:** AI concepts, architecture guides, and study notes. |
-| **Telegram Bridge** | Background Poller | **Mobile Life Interface:** Phone capture of text, photos, and voice notes via `@BotFather` integration. |
+* **While he is active** (a chat, Telegram or voice turn in the last half hour, a speech
+  model loaded, or the manual switch set to active), the GPU is his. Queued coding work goes
+  to a **free** cloud model (OpenRouter `:free`, NVIDIA's free API) or waits.
+* **While he is away** (nights, mostly) queued coding work runs locally, as before.
+* **Never paid.** When the free models are rate-limited, the task goes back on the queue for
+  the GPU.
+
+Implemented by `services/compute_router.py` and the `cloud` driver (`drivers/cloud.py`):
+the cloud path drops preferences, procedures and memories from the prompt, refuses any
+model that is not free, fails over only to other free models, and earns its own trust
+record before anything it writes can auto-merge. The switch and the current routing are at
+`GET /api/v1/kernel/drivers/compute` and `PUT /api/v1/kernel/drivers/compute/presence`.
+
+What may leave the machine: **code and coding instructions**, on that path only. Everything
+personal stays local (CHARTER invariant 7, which also lists the known exceptions: Telegram
+transit and any cloud TTS voice).
 
 ---
 
-## 5. Protocols for Any Agent Working with Raja
+## 4. The repos around Life Graph
 
-When you (an AI agent) are tasked with building, debugging, or modifying code in this ecosystem:
+To keep Life Graph from becoming a monolith, the ecosystem is split across repos:
 
-1. **Check Established Context First:**
-   * Query Life Graph: `POST /api/v1/search/` with `X-Tenant-ID: raja` before proposing major architectural shifts or asking Raja to re-explain his stack.
-2. **Deterministic Code Over LLM Prompts:**
-   * If logic can be solved with Python regex, standard algorithms, or database queries, do not burn LLM tokens. Reserve models for genuine ambiguity.
-3. **Capture Decisions Automatically:**
-   * When an architectural or product decision is made, emit a capture event: `POST /api/v1/capture/` with `X-Tenant-ID: raja` and `surface: "agent"` so the rest of the ecosystem stays synchronized.
-4. **Preserve Native Language Support:**
-   * The conversational assistant natively speaks fluent Tamil, Tanglish, and English. Never degrade Tamil phonetic accuracy or replace the warm conversational tone with robotic generic replies.
+| Repo / service | Role |
+| :--- | :--- |
+| **life-graph** | The brain: knowledge graph, semantic search, nightly consolidation, capture spine, judgment engine, dev agents, Telegram bot. |
+| **life-graph-ui** | The cockpit: dashboard, approval queues, memory timelines, graph view. Local only, never pushed (commercial template). |
+| **tamil-ai** | Ears and mouth: real-time Tamil/English voice studio; searches and captures to Life Graph (`surface: voice`). |
+| **his**, **apptx-v2** | Engineering domains: the hospital system and the multi-tenant ERP. |
+| **per-learn** | Study notes and guides. |
+
+---
+
+## 5. Working with Raja's context
+
+1. **Look before asking.** Search Life Graph (`POST /api/v1/search/`, tenant `raja`, with the
+   service API key) before proposing a big change or asking him to re-explain his stack.
+2. **Plain code before a model.** If regex, an algorithm or a query can do it, do not spend
+   a model call (CHARTER invariant 1).
+3. **Record his decisions, not yours.** When *he* makes an architectural or product decision,
+   capture it (`POST /api/v1/capture/`, `surface: "agent"`). Agents' own small choices are not
+   decisions to record; logging them buries his.
+4. **Keep the languages.** The assistant speaks Tamil, Tanglish and English. Never trade away
+   Tamil accuracy or the warm tone for a generic reply.
