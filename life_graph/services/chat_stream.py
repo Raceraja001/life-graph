@@ -13,14 +13,24 @@ channel ``stream:{tenant_id}:{root_task_id}`` — same publish/subscribe surface
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING
+
+from life_graph.services.redaction import redact
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 _END = {"type": "__end__"}
 _BUFFER_MAX = 200
+# A tool call's arguments / result as shown in chat; the full run is recorded
+# elsewhere (agent_run_steps) for dev tasks.
+_TOOL_TEXT_MAX = 2000
+
+
+def _trim(text: str) -> str:
+    return text if len(text) <= _TOOL_TEXT_MAX else text[:_TOOL_TEXT_MAX] + "…"
 
 
 class ChatStreamBus:
@@ -141,7 +151,22 @@ def map_bus_event(raw: dict, seen_children: set[str]) -> dict | None:
             return {"type": "assistant_delta", "text": event.get("content", "")}
         if etype == "done":
             return {"type": "done"}
-        return None  # tool_call/tool_result/usage on the top-level task are dropped
+        # What the persona did, for clients that show it (the Agents console's
+        # test run). Clients that don't know these types skip them. Results
+        # are redacted and trimmed: a tool result can be a whole file.
+        if etype == "tool_call":
+            return {
+                "type": "tool_call",
+                "name": event.get("name"),
+                "arguments": _trim(json.dumps(event.get("arguments"), default=str)),
+            }
+        if etype == "tool_result":
+            return {
+                "type": "tool_result",
+                "name": event.get("name"),
+                "result": _trim(redact(str(event.get("result") or ""))),
+            }
+        return None  # usage on the top-level task is dropped
 
     # depth >= 1 : a delegated child
     if etype in ("error", "partial_error"):

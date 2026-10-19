@@ -1,0 +1,152 @@
+# Coding-engine benchmark tasks (scripts/bench_drivers.py).
+#
+# Each task runs on a fresh copy of a fixture app. When the engine finishes,
+# `hidden_test` is written into the copy and run in the verifier sandbox: the
+# engine never sees it, so a task passes only if the code is actually right,
+# whatever the engine's own tests or summary say.
+
+fixtures:
+  node-todo:
+    path: tests/fixtures/apps/node-todo
+    toolchain: node
+  python-todo:
+    path: life_graph/templates/apps/python-api
+    toolchain: python
+
+tasks:
+  - id: node-remove
+    fixture: node-todo
+    instruction: >-
+      In src/todos.mjs, add a remove(id) method to the store returned by createStore:
+      it deletes the todo with that id and returns it, and throws Error('no todo <id>')
+      when there is none.
+    hidden_test:
+      path: tests/hidden.test.mjs
+      command: [npx, vitest, run, tests/hidden.test.mjs]
+      content: |
+        import {describe, expect, it} from 'vitest'
+        import {createStore} from '../src/todos.mjs'
+        describe('remove', () => {
+            it('removes and returns the todo', () => {
+                const s = createStore()
+                const a = s.add('a'); s.add('b')
+                expect(s.remove(a.id)).toEqual(a)
+                expect(s.list().map((t) => t.title)).toEqual(['b'])
+            })
+            it('throws for a missing id', () => {
+                expect(() => createStore().remove(9)).toThrow('no todo 9')
+            })
+        })
+
+  - id: node-toggle
+    fixture: node-todo
+    instruction: >-
+      In src/todos.mjs, add a toggle(id) method to the store: it flips the todo's done
+      flag (false to true, true to false) and returns the todo; it throws
+      Error('no todo <id>') when there is none.
+    hidden_test:
+      path: tests/hidden.test.mjs
+      command: [npx, vitest, run, tests/hidden.test.mjs]
+      content: |
+        import {expect, it} from 'vitest'
+        import {createStore} from '../src/todos.mjs'
+        it('toggles done both ways', () => {
+            const s = createStore()
+            const a = s.add('a')
+            expect(s.toggle(a.id).done).toBe(true)
+            expect(s.toggle(a.id).done).toBe(false)
+            expect(s.list()[0].done).toBe(false)
+        })
+        it('throws for a missing id', () => {
+            expect(() => createStore().toggle(3)).toThrow('no todo 3')
+        })
+
+  - id: node-search
+    fixture: node-todo
+    instruction: >-
+      In src/todos.mjs, add a search(query) method to the store that returns copies of
+      the todos whose title contains query, case-insensitively, in their original order.
+      An empty query returns every todo.
+    hidden_test:
+      path: tests/hidden.test.mjs
+      command: [npx, vitest, run, tests/hidden.test.mjs]
+      content: |
+        import {expect, it} from 'vitest'
+        import {createStore} from '../src/todos.mjs'
+        it('finds by title, case-insensitively', () => {
+            const s = createStore()
+            s.add('Buy MILK'); s.add('walk dog'); s.add('milk the cow')
+            expect(s.search('milk').map((t) => t.title)).toEqual(['Buy MILK', 'milk the cow'])
+            expect(s.search('').length).toBe(3)
+        })
+        it('returns copies', () => {
+            const s = createStore()
+            s.add('x')
+            s.search('x')[0].title = 'changed'
+            expect(s.list()[0].title).toBe('x')
+        })
+
+  - id: py-remove
+    fixture: python-todo
+    instruction: >-
+      In app/store.py, add a remove(item_id) method to Store: it deletes the item with
+      that id and returns it, and raises KeyError when there is none.
+    hidden_test:
+      path: tests/test_hidden.py
+      command: [python, -m, pytest, -q, tests/test_hidden.py]
+      content: |
+        import pytest
+        from app.store import Store
+
+        def test_remove_returns_and_deletes():
+            s = Store()
+            a = s.add("a"); s.add("b")
+            assert s.remove(a["id"]) == a
+            assert [i["title"] for i in s.list()] == ["b"]
+
+        def test_remove_missing_raises():
+            with pytest.raises(KeyError):
+                Store().remove(7)
+
+  - id: py-complete
+    fixture: python-todo
+    instruction: >-
+      In app/store.py, add a complete(item_id) method to Store that marks the item done
+      and returns a copy of it; it raises KeyError when there is no such item.
+    hidden_test:
+      path: tests/test_hidden.py
+      command: [python, -m, pytest, -q, tests/test_hidden.py]
+      content: |
+        import pytest
+        from app.store import Store
+
+        def test_complete_marks_done():
+            s = Store()
+            a = s.add("a")
+            done = s.complete(a["id"])
+            assert done["done"] is True and s.list()[0]["done"] is True
+            done["title"] = "changed"
+            assert s.list()[0]["title"] == "a"
+
+        def test_complete_missing_raises():
+            with pytest.raises(KeyError):
+                Store().complete(1)
+
+  - id: py-stats
+    fixture: python-todo
+    instruction: >-
+      In app/store.py, add a stats() method to Store returning a dict with keys "total",
+      "done" and "open": the number of items, of done items, and of items not done.
+      Items have a boolean "done" field.
+    hidden_test:
+      path: tests/test_hidden.py
+      command: [python, -m, pytest, -q, tests/test_hidden.py]
+      content: |
+        from app.store import Store
+
+        def test_stats():
+            s = Store()
+            assert s.stats() == {"total": 0, "done": 0, "open": 0}
+            s.add("a"); s.add("b")
+            s._items[0]["done"] = True
+            assert s.stats() == {"total": 2, "done": 1, "open": 1}

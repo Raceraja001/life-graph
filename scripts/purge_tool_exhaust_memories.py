@@ -38,7 +38,7 @@ import sys
 
 from sqlalchemy import create_engine, text
 
-from life_graph.config import settings
+from life_graph.config import settings, sqlalchemy_sync_url
 
 SURFACE = "tool_exhaust"
 
@@ -72,7 +72,7 @@ def main() -> int:
     parser.add_argument("--tenant", help="limit to one tenant (default: all)")
     args = parser.parse_args()
 
-    engine = create_engine(settings.database_url_sync)
+    engine = create_engine(sqlalchemy_sync_url(settings.database_url_sync))
     params = _params(args.tenant)
     where = _where(args.tenant)
 

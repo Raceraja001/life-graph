@@ -395,9 +395,11 @@ async def run_watchers(ctx: dict) -> dict:
 
     from life_graph.api.dependencies import get_watcher_notification_engine
     from life_graph.core.events import EventType, event_bus
+    from life_graph.watchers.app_uptime_watcher import AppUptimeWatcher
     from life_graph.watchers.base import BaseWatcher
     from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
     from life_graph.watchers.dependency_watcher import DependencyWatcher
+    from life_graph.watchers.page_monitor_watcher import PageMonitorWatcher
     from life_graph.watchers.server_health_watcher import ServerHealthWatcher
     from life_graph.watchers.tech_radar_watcher import TechRadarWatcher
 
@@ -415,6 +417,8 @@ async def run_watchers(ctx: dict) -> dict:
         CodeQualityWatcher.name: CodeQualityWatcher,
         DependencyWatcher.name: DependencyWatcher,
         TechRadarWatcher.name: TechRadarWatcher,
+        PageMonitorWatcher.name: PageMonitorWatcher,
+        AppUptimeWatcher.name: AppUptimeWatcher,
     }
 
     notification_engine = get_watcher_notification_engine()
@@ -772,6 +776,24 @@ async def run_daily_brief(ctx: dict) -> dict:
     return {"tenants": len(tenant_ids), "composed": composed, "results": results}
 
 
+# ── Assistant: daily reminders (documents, budgets, invoices) ────────────
+
+
+async def run_assistant_daily(ctx: dict) -> dict:
+    """Daily cron, an hour before the brief: send due assistant reminders.
+
+    docs/specs/assistant-capabilities.md. services/assistant_daily.py walks
+    each feature (document expiry, budgets, overdue invoices) for every
+    tenant that has rows, so the reminders are held for the brief.
+    """
+    from life_graph.api.dependencies import get_notification_engine
+    from life_graph.services.assistant_daily import run_daily
+
+    report = await run_daily(async_session, get_notification_engine())
+    logger.info("Assistant daily sweep: %s", report)
+    return report
+
+
 # ── Judgment Engine: Nightly Recalibration ───────────────────────────────
 
 
@@ -913,9 +935,17 @@ async def sync_dev_task_prs(ctx: dict) -> dict:
     approvals feed are handled by its event subscriber; this catches what
     happens on GitHub directly.
     """
+    from life_graph.services.approvals import retry_auto_merges
     from life_graph.services.dev_outcomes import sync_all
 
+    # First, so a PR that auto-merges now is settled by this same sync.
+    try:
+        retried = await retry_auto_merges(async_session)
+    except Exception:  # never let a retry failure stop the sync itself
+        logger.warning("Auto-merge retry failed", exc_info=True)
+        retried = {"tried": 0, "merged": 0, "error": True}
     result = await sync_all(async_session)
+    result["auto_merge_retry"] = retried
     logger.info("Dev PR sync: %s", {k: v for k, v in result.items() if k != "reports"})
     return result
 

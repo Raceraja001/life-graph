@@ -46,6 +46,8 @@ logger = logging.getLogger(__name__)
 
 WORK = "/work"
 VENV = "/venv"
+# Where docker/claude-driver/Dockerfile installs the CLI.
+DRIVER_CLI = "/usr/local/bin/claude"
 
 # Files whose content decides what the setup phase installs.
 _MANIFESTS: tuple[str, ...] = (
@@ -73,6 +75,33 @@ _CREATE_VENV = (
 )
 
 SETUP_TIMEOUT = 900
+
+# ── Node toolchain ───────────────────────────────────────────
+#
+# A project whose registry sets ``sandbox_toolchain: node`` is checked in the
+# Node image instead. Its dependencies cannot go in /work/node_modules (the
+# worktree is mounted read-only, by design), so setup installs them into a
+# cached directory, and checks mount that at /node_modules: Node's module
+# resolution walks up from /work to /, so `import "vitest"` in /work/tests
+# finds /node_modules/vitest with no config at all.
+NODE_DEPS = "/node_modules"
+_NODE_MANIFESTS: tuple[str, ...] = (
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+)
+# Runs in the cache directory after the manifests are copied there. npm only:
+# a pnpm/yarn lockfile falls back to `npm install` from package.json.
+NODE_DEFAULT_SETUP = (
+    "if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; "
+    "then npm ci --no-audit --no-fund --loglevel=error; "
+    "else npm install --no-audit --no-fund --loglevel=error; fi"
+)
+
+
+def node_toolchain(ctx: dict) -> bool:
+    """Whether the project registry put this project on the Node toolchain."""
+    return (ctx.get("sandbox_toolchain") or "").strip().lower() == "node"
 
 
 class SandboxUnavailableError(Exception):
@@ -118,7 +147,9 @@ def _limits(*, memory: str, cpus: str) -> list[str]:
     ]
 
 
-async def _exec(argv: list[str], timeout: int, container: str | None = None) -> SandboxResult:
+async def _exec(
+    argv: list[str], timeout: int, container: str | None = None, env: dict | None = None
+) -> SandboxResult:
     """Run a docker CLI command, killing the container itself on timeout.
 
     Killing the ``docker run`` client does not stop the container it started,
@@ -130,6 +161,9 @@ async def _exec(argv: list[str], timeout: int, container: str | None = None) -> 
             *argv,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            # Extra variables for the docker CLI itself (e.g. a key passed to
+            # the container by name); the parent environment is kept.
+            env={**os.environ, **env} if env else None,
         )
     except FileNotFoundError as exc:
         raise SandboxUnavailableError("docker CLI not found") from exc
@@ -166,11 +200,13 @@ async def _image_id() -> str:
     return res.stdout.strip()
 
 
-def _env_key(workdir: Path, image_id: str, setup: str) -> str:
+def _env_key(
+    workdir: Path, image_id: str, setup: str, manifests: tuple[str, ...] = _MANIFESTS
+) -> str:
     h = hashlib.sha256()
     h.update(image_id.encode())
     h.update(b"\0" + setup.encode())
-    for name in _MANIFESTS:
+    for name in manifests:
         f = workdir / name
         h.update(b"\0" + name.encode() + b"\0")
         if f.is_file() and not f.is_symlink():
@@ -251,6 +287,91 @@ async def prepare_env(workdir: Path, setup: str | None = None) -> Path:
     return ready
 
 
+async def _node_image_id() -> str:
+    image = settings.verifier_sandbox_node_image
+    res = await _exec(["docker", "image", "inspect", "--format", "{{.Id}}", image], timeout=30)
+    if res.returncode != 0:
+        raise SandboxUnavailableError(
+            f"node sandbox image {image!r} not available — build it with "
+            f"`docker build -t {image} docker/verifier-node`"
+        )
+    return res.stdout.strip()
+
+
+async def prepare_node_env(workdir: Path, setup: str | None = None) -> Path:
+    """Return a host directory holding the project's ``node_modules``, installing if needed.
+
+    The manifests are copied out of the read-only worktree into the cache
+    directory and installed there, with network (setup is the only phase that
+    has it). Keyed by image, setup command and manifest contents, like the
+    Python venv cache.
+
+    Raises:
+        SandboxUnavailableError: docker or the image is missing, no
+            package.json, or the install failed.
+    """
+    if not (workdir / "package.json").is_file() or (workdir / "package.json").is_symlink():
+        raise SandboxUnavailableError("node toolchain, but the project has no package.json")
+    image_id = await _node_image_id()
+    command = setup or NODE_DEFAULT_SETUP
+    key = "node-" + _env_key(workdir, image_id, command, _NODE_MANIFESTS)
+    root = _cache_root()
+    ready = root / key
+
+    lock = _setup_locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        if (ready / "node_modules").is_dir():
+            return ready
+        root.mkdir(parents=True, exist_ok=True)
+        partial = root / f"{key}.partial-{uuid.uuid4().hex[:8]}"
+        partial.mkdir()
+        container = f"lg-verify-node-setup-{uuid.uuid4().hex[:12]}"
+        copy = " ".join(
+            f"if [ -f {WORK}/{m} ] && [ ! -L {WORK}/{m} ]; then cp {WORK}/{m} /deps/; fi;"
+            for m in _NODE_MANIFESTS
+        )
+        argv = [
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            container,
+            *_limits(memory=settings.verifier_sandbox_memory, cpus=settings.verifier_sandbox_cpus),
+            "-e",
+            "HOME=/tmp",
+            "-e",
+            "npm_config_cache=/tmp/.npm",
+            "-e",
+            "npm_config_update_notifier=false",
+            "-v",
+            f"{workdir}:{WORK}:ro",
+            "-v",
+            f"{partial}:/deps",
+            "-w",
+            "/deps",
+            "--entrypoint",
+            "sh",
+            settings.verifier_sandbox_node_image,
+            "-c",
+            f"set -e; {copy} {command}",
+        ]
+        try:
+            res = await _exec(argv, timeout=SETUP_TIMEOUT, container=container)
+            if res.returncode != 0 or not (partial / "node_modules").is_dir():
+                raise SandboxUnavailableError(
+                    f"node sandbox setup failed (exit {res.returncode}): "
+                    f"{(res.stderr or res.stdout)[-800:]}"
+                )
+            try:
+                partial.rename(ready)
+            except OSError:
+                shutil.rmtree(partial, ignore_errors=True)
+        except BaseException:
+            shutil.rmtree(partial, ignore_errors=True)
+            raise
+    return ready
+
+
 async def _driver_image_id() -> str:
     image = settings.driver_claude_sandbox_image
     res = await _exec(["docker", "image", "inspect", "--format", "{{.Id}}", image], timeout=30)
@@ -265,9 +386,10 @@ async def _driver_image_id() -> str:
 async def run_driver(
     argv: list[str],
     workdir: Path,
-    credentials_dir: Path,
+    credentials_dir: Path | None,
     *,
     timeout: int = 300,
+    api_key: str | None = None,
 ) -> SandboxResult:
     """Run the claude_code driver's CLI invocation inside a container.
 
@@ -299,6 +421,26 @@ async def run_driver(
     """
     await _driver_image_id()
     container = f"lg-driver-{uuid.uuid4().hex[:12]}"
+    if api_key:
+        # Commercial mode: an API key, never the personal login. Passed by
+        # NAME (-e VAR, value from the docker client's environment), so the
+        # key never appears in a process listing the way -e VAR=value would.
+        auth = ["-e", "ANTHROPIC_API_KEY", "-e", "CLAUDE_CONFIG_DIR=/tmp/.claude"]
+        client_env = {"ANTHROPIC_API_KEY": api_key}
+    else:
+        if credentials_dir is None:
+            raise SandboxUnavailableError("claude_code sandbox needs credentials or an API key")
+        # rw, not :ro: the CLI refreshes its own access token in place from
+        # the refresh token and needs to write the result back — this is
+        # still only the throwaway copy from stage_credentials(), never the
+        # live ~/.claude, so a write here has nothing to corrupt.
+        auth = [
+            "-e",
+            "CLAUDE_CONFIG_DIR=/claude-config",
+            "-v",
+            f"{credentials_dir}:/claude-config",
+        ]
+        client_env = None
     docker_argv = [
         "docker",
         "run",
@@ -313,24 +455,20 @@ async def run_driver(
         ),
         "-e",
         "HOME=/tmp",
-        "-e",
-        "CLAUDE_CONFIG_DIR=/claude-config",
+        *auth,
         "-v",
         f"{workdir}:{WORK}",
-        # rw, not :ro: the CLI refreshes its own access token in place from
-        # the refresh token and needs to write the result back — this is
-        # still only the throwaway copy from stage_credentials(), never the
-        # live ~/.claude, so a write here has nothing to corrupt.
-        "-v",
-        f"{credentials_dir}:/claude-config",
         "-w",
         WORK,
+        # The image's own binary, not argv[0]: argv[0] is the host's
+        # configured path (driver_claude_code_bin, e.g. ~/.local/bin/claude),
+        # which does not exist inside the container.
         "--entrypoint",
-        argv[0],
+        DRIVER_CLI,
         settings.driver_claude_sandbox_image,
         *argv[1:],
     ]
-    res = await _exec(docker_argv, timeout=timeout, container=container)
+    res = await _exec(docker_argv, timeout=timeout, container=container, env=client_env)
     if res.returncode in (125, 126, 127) and not res.stdout:
         raise SandboxUnavailableError(
             f"claude_code sandbox could not start: {res.stderr.strip()[-400:]}"
@@ -365,21 +503,39 @@ async def run(
     workdir: Path,
     *,
     venv: Path | None = None,
+    node_deps: Path | None = None,
     timeout: int = 120,
 ) -> SandboxResult:
     """Run *argv* in the check-phase sandbox with *workdir* mounted at ``/work``.
 
     Arguments that are paths must be relative to *workdir* (or under ``/work``):
-    host paths do not exist inside the container.
+    host paths do not exist inside the container. With *node_deps* (from
+    :func:`prepare_node_env`) the Node image runs instead, with those
+    dependencies at /node_modules and their binaries on PATH.
 
     Raises:
         SandboxUnavailableError: the container could not run or timed out.
     """
     path = "/usr/local/bin:/usr/bin:/bin"
+    image = settings.verifier_sandbox_image
     mounts = ["-v", f"{workdir}:{WORK}:ro"]
     if venv is not None:
         mounts += ["-v", f"{venv}:{VENV}:ro"]
         path = f"{VENV}/bin:{path}"
+    entry, args, tmp_size = argv[0], argv[1:], "512m"
+    if node_deps is not None:
+        mounts += ["-v", f"{node_deps / 'node_modules'}:{NODE_DEPS}:ro"]
+        path = f"{NODE_DEPS}/.bin:{path}"
+        image = settings.verifier_sandbox_node_image
+        # Node tooling writes next to the project: vitest's results cache and
+        # Vite's cache under ./node_modules, jest's cache, Next's .next. The
+        # worktree mount stays read-only, so the check runs in a throwaway
+        # copy under /tmp instead. Resolution still walks up to /node_modules.
+        entry, args, tmp_size = (
+            "sh",
+            ["-c", 'cp -a /work/. /tmp/work/ && cd /tmp/work && exec "$@"', "sh", *argv],
+            "2g",
+        )
     container = f"lg-verify-{uuid.uuid4().hex[:12]}"
     docker_argv = [
         "docker",
@@ -391,7 +547,7 @@ async def run(
         "none",
         "--read-only",
         "--tmpfs",
-        "/tmp:rw,exec,size=512m",
+        f"/tmp:rw,exec,size={tmp_size}",
         *_limits(memory=settings.verifier_sandbox_memory, cpus=settings.verifier_sandbox_cpus),
         "-e",
         "HOME=/tmp",
@@ -405,9 +561,9 @@ async def run(
         "-w",
         WORK,
         "--entrypoint",
-        argv[0],
-        settings.verifier_sandbox_image,
-        *argv[1:],
+        entry,
+        image,
+        *args,
     ]
     res = await _exec(docker_argv, timeout=timeout, container=container)
     # 125: docker itself failed (bad flag, daemon down); 126/127: entrypoint

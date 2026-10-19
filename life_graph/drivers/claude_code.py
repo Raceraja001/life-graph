@@ -1,9 +1,11 @@
 """Claude Code headless driver — wrap, don't rebuild (strategic-decision.md).
 
 Invokes the Claude Code CLI in headless mode (``claude -p "<packet>"
---output-format json``) with ``cwd`` set to the project path — or an
-isolated git worktree when the project context asks for isolation —
-and normalizes the JSON result to a :class:`DriverResult`.
+--output-format stream-json --verbose``) with ``cwd`` set to the project
+path — or an isolated git worktree when the project context asks for
+isolation — and normalizes the final result event to a
+:class:`DriverResult`, with every step of the run in ``metadata["steps"]``
+(see drivers/steps.py).
 
 Graceful degradation: when the ``claude`` binary is not installed on
 this host, :meth:`available` returns False and the dispatcher skips
@@ -15,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import time
 from pathlib import Path
@@ -22,6 +25,7 @@ from pathlib import Path
 from life_graph.config import settings
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import render_memory_block
+from life_graph.drivers.steps import parse_claude_stream
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.services import sandbox
 
@@ -115,6 +119,23 @@ def _allowed_cli_tools(allowed_tools: list[str] | None) -> list[str] | None:
     return sorted(mapped)
 
 
+def _api_key() -> str | None:
+    """The API key when ``driver_claude_code_auth = api_key``, else None (personal login).
+
+    A service sold to others should not run on one person's subscription
+    login; it needs Anthropic API access under commercial terms. This is the
+    switch. The key comes from ``ANTHROPIC_API_KEY`` (or the setting), and
+    api_key mode with no key is an error rather than a quiet fallback to the
+    personal login.
+    """
+    if settings.driver_claude_code_auth != "api_key":
+        return None
+    key = os.environ.get("ANTHROPIC_API_KEY") or settings.driver_claude_code_api_key
+    if not key:
+        raise RuntimeError("driver_claude_code_auth=api_key but no ANTHROPIC_API_KEY is set")
+    return key
+
+
 class ClaudeCodeDriver:
     """Wraps Claude Code headless mode as an AgentDriver."""
 
@@ -123,6 +144,11 @@ class ClaudeCodeDriver:
 
     def __init__(self, binary: str | None = None) -> None:
         self._binary = binary or getattr(settings, "driver_claude_code_bin", "claude")
+
+    @property
+    def dispatch_timeout(self) -> int:
+        """Read by the dispatcher in place of its 300s fallback."""
+        return settings.driver_claude_code_timeout_seconds
 
     # ── Protocol ──────────────────────────────────────────────
 
@@ -170,7 +196,9 @@ class ClaudeCodeDriver:
 
         cwd, worktree = await resolve_workdir(packet, workdir)
         try:
-            args = [self._binary, "-p", prompt, "--output-format", "json"]
+            # stream-json (which -p only allows with --verbose) instead of
+            # json: the same final result, plus every step that led to it.
+            args = [self._binary, "-p", prompt, "--output-format", "stream-json", "--verbose"]
             if cli_tools is not None:
                 args += [
                     _ALLOWED_TOOLS_FLAG,
@@ -210,7 +238,7 @@ class ClaudeCodeDriver:
                 )
 
             duration = int((time.monotonic() - start) * 1000)
-            data = self._parse_output(out)
+            data, steps = parse_claude_stream((out or b"").decode(errors="replace"))
             success = returncode == 0 and not data.get("is_error", False)
             return DriverResult(
                 success=success,
@@ -227,6 +255,8 @@ class ClaudeCodeDriver:
                     "exit_status": "ok" if success else "failed",
                     "session_id": data.get("session_id"),
                     "num_turns": data.get("num_turns"),
+                    "model": data.get("model"),
+                    "steps": steps,
                     "workdir": str(cwd),
                     "isolated": worktree is not None,
                     "sandboxed": sandboxed,
@@ -273,12 +303,14 @@ class ClaudeCodeDriver:
                 available. Never falls back to the host path — see
                 driver_claude_sandbox's docstring in config.py.
         """
+        api_key = _api_key()
         if not sandbox.driver_sandbox_enabled():
             proc = await asyncio.create_subprocess_exec(
                 *args,
                 cwd=str(cwd),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env={**os.environ, "ANTHROPIC_API_KEY": api_key} if api_key else None,
             )
             try:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -288,16 +320,22 @@ class ClaudeCodeDriver:
                 raise
             return proc.returncode, out, err
 
-        creds_source = Path(settings.driver_claude_code_creds_path).expanduser()
-        creds_dir = await sandbox.stage_credentials(creds_source)
+        # API-key mode stages no personal credentials at all.
+        creds_dir = None
+        if not api_key:
+            creds_source = Path(settings.driver_claude_code_creds_path).expanduser()
+            creds_dir = await sandbox.stage_credentials(creds_source)
         try:
-            result = await sandbox.run_driver(args, cwd, creds_dir, timeout=timeout)
+            result = await sandbox.run_driver(
+                args, cwd, creds_dir, timeout=timeout, api_key=api_key
+            )
         except sandbox.SandboxUnavailableError as exc:
             if "timed out" in str(exc):
                 raise TimeoutError(str(exc)) from exc
             raise
         finally:
-            shutil.rmtree(creds_dir, ignore_errors=True)
+            if creds_dir is not None:
+                shutil.rmtree(creds_dir, ignore_errors=True)
         return result.returncode, result.stdout.encode(), result.stderr.encode()
 
     @staticmethod
@@ -332,15 +370,3 @@ class ClaudeCodeDriver:
             if memory_block:
                 parts.append(memory_block)
         return "\n".join(parts)
-
-    @staticmethod
-    def _parse_output(out: bytes) -> dict:
-        """Parse the CLI's JSON stdout; tolerate plain-text output."""
-        text = (out or b"").decode(errors="replace").strip()
-        if not text:
-            return {}
-        try:
-            data = json.loads(text)
-            return data if isinstance(data, dict) else {"result": data}
-        except json.JSONDecodeError:
-            return {"result": text}

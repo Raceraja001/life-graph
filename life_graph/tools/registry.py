@@ -8,6 +8,8 @@ executed by the agent orchestrator.
 from __future__ import annotations
 
 import asyncio
+import difflib
+import inspect
 import json
 import logging
 import time
@@ -22,6 +24,64 @@ TOOL_TIMEOUT_SECONDS = 15
 
 # A post-execution hook receives one observation dict and returns nothing.
 PostExecHook = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+def _closest_param(arg: str, free: list[str]) -> str | None:
+    """The parameter a misnamed argument most likely meant, if it is clear.
+
+    Same words in another order (``line_start`` for ``start_line``) or a near
+    spelling (``contents`` for ``content``)."""
+    words = sorted(arg.lower().split("_"))
+    same = [p for p in free if sorted(p.lower().split("_")) == words]
+    if len(same) == 1:
+        return same[0]
+    close = difflib.get_close_matches(arg, free, n=2, cutoff=0.8)
+    return close[0] if len(close) == 1 else None
+
+
+def _signature_text(sig: inspect.Signature) -> str:
+    out = []
+    for name, p in sig.parameters.items():
+        if p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD):
+            continue
+        out.append(f"{name} (required)" if p.default is p.empty else f"{name}={p.default!r}")
+    return ", ".join(out)
+
+
+def fit_args(
+    name: str, handler: Callable[..., Any], args: dict[str, Any]
+) -> tuple[dict[str, Any], str | None]:
+    """Fit a model's arguments to the handler before calling it.
+
+    Local models guess parameter names. A live run (gpt-oss:20b, 2026-10-16)
+    sent ``code_read(line_start=…)`` and then left out ``path``; each got a
+    bare ``TypeError`` and it never got to the edit. A clear near-miss is
+    renamed; anything else returns an error that lists the real parameters.
+    """
+    try:
+        sig = inspect.signature(handler)
+    except (TypeError, ValueError):
+        return args, None
+    params = sig.parameters
+    if any(p.kind is p.VAR_KEYWORD for p in params.values()):
+        return args, None
+    fixed = {k: v for k, v in args.items() if k in params}
+    unknown = [k for k in args if k not in params]
+    for k in unknown:
+        free = [
+            p
+            for p, spec in params.items()
+            if p not in fixed and spec.kind in (spec.POSITIONAL_OR_KEYWORD, spec.KEYWORD_ONLY)
+        ]
+        target = _closest_param(k, free)
+        if target is None:
+            return args, f"{name} has no parameter '{k}'. Parameters: {_signature_text(sig)}"
+        fixed[target] = args[k]
+    try:
+        sig.bind(**fixed)
+    except TypeError as exc:
+        return args, f"Bad arguments for {name}: {exc}. Parameters: {_signature_text(sig)}"
+    return fixed, None
 
 
 @dataclass
@@ -162,7 +222,14 @@ class ToolRegistry:
             raise KeyError(error_msg)
 
         entry = self._tools[name]
-        logger.info("Executing tool: %s with args: %s", name, args)
+        # Argument names only at INFO: the values are what the model sent, a
+        # search query or a captured note included, and must not reach the logs.
+        logger.info("Executing tool: %s with args: %s", name, sorted(args))
+        logger.debug("Tool %s args: %s", name, args)
+
+        args, arg_error = fit_args(name, entry.handler, args)
+        if arg_error:
+            return json.dumps({"error": arg_error})
 
         start = time.monotonic()
         try:
@@ -243,6 +310,7 @@ def tool(
     name: str,
     description: str,
     parameters_schema: dict[str, Any],
+    timeout_seconds: int | None = None,
 ) -> Callable[..., Any]:
     """Decorator to register a function as an agent tool.
 
@@ -260,13 +328,14 @@ def tool(
         name: Unique tool name.
         description: Human-readable description for the LLM.
         parameters_schema: JSON Schema for the tool's parameters.
+        timeout_seconds: Override for the default execution timeout.
 
     Returns:
         The original function, now registered in the global registry.
     """
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        registry.register(name, description, parameters_schema, func)
+        registry.register(name, description, parameters_schema, func, timeout_seconds)
         return func
 
     return decorator

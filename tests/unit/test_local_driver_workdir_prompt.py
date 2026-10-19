@@ -43,3 +43,32 @@ async def test_dispatch_tells_the_model_its_workdir(monkeypatch, tmp_path):
     await driver.dispatch(packet, workdir)
 
     assert str(workdir) in captured["system_prompt"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_includes_the_projects_agents_md(monkeypatch, tmp_path):
+    captured.clear()
+
+    class _FakeOrchestrator:
+        def run(self, **kwargs):
+            return _fake_run(**kwargs)
+
+    monkeypatch.setattr("life_graph.agents.orchestrator.AgentOrchestrator", _FakeOrchestrator)
+    workdir = tmp_path / "wt_agents"
+    workdir.mkdir()
+    (workdir / "AGENTS.md").write_text("# Rules\nUse tests/unit/fakes.py for DB tests.\n")
+    packet = ContextPacket(
+        task_id=uuid.uuid4(), tenant_id="t1", task_type="code", instruction="fix it"
+    )
+    await LocalDriver().dispatch(packet, workdir)
+    assert "Project instructions (AGENTS.md):" in captured["system_prompt"]
+    assert "Use tests/unit/fakes.py for DB tests." in captured["system_prompt"]
+
+
+def test_a_long_agents_md_is_capped_at_a_line(tmp_path):
+    from life_graph.drivers.local import PROJECT_INSTRUCTIONS_MAX_CHARS, _project_instructions
+
+    (tmp_path / "AGENTS.md").write_text("rule line\n" * 2000)
+    text = _project_instructions(tmp_path)
+    assert len(text) <= PROJECT_INSTRUCTIONS_MAX_CHARS + 2 and text.endswith("…")
+    assert _project_instructions(tmp_path / "missing") == ""

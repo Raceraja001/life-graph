@@ -53,6 +53,10 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     ("workers/tasks.py", "failure_pattern_mining"): "tenant discovery",
     ("workers/decay.py", "run_all_decay_sweeps"): "tenant discovery",
     ("workers/cleanup.py", "cleanup_memories_all"): "tenant discovery",
+    ("services/observability.py", "system"): (
+        "deployment-level queue depth: the dev-task runner is one per database and "
+        "claims across tenants, so its queued/running counts are global (counts only)"
+    ),
     ("connectors/store.py", "purge_expired"): (
         "nightly retention across every tenant: deletes by age and by disabled account"
     ),
@@ -63,6 +67,10 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     ("services/dev_outcomes.py", "sync_all"): (
         "cron discovery of opened agent PRs across tenants; each approval row "
         "carries its own tenant_id and is processed under it"
+    ),
+    ("services/approvals.py", "retry_auto_merges"): (
+        "same cron as sync_all: pending driver_merge approvals across tenants; "
+        "maybe_auto_merge reads each row's own tenant_id for the trust record"
     ),
     ("services/dev_tasks.py", "claim_next_queued"): (
         "single queue runner for the process; the claimed row carries its own "

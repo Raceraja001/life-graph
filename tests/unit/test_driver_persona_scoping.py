@@ -349,7 +349,10 @@ async def test_local_driver_passes_only_the_personas_tools(fake_orchestrator, tm
         _packet(allowed_tools=["git_status", "git_log"]), tmp_path
     )
 
-    assert result.success is True
+    # The fake model only says "done": a coding run that made no tool calls
+    # is reported as a failure since docs/specs/agent-condenser.md. What this
+    # test is about is the tool set the orchestrator was given.
+    assert result.success is False and result.metadata["stop_reason"] == "no_action"
     kwargs = fake_orchestrator.calls[0]
     names = {t["function"]["name"] for t in kwargs["tools"]}
     assert names == {"git_status", "git_log"}

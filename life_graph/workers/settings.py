@@ -142,6 +142,7 @@ class WorkerSettings:
         "life_graph.workers.tasks.learn_project_task",
         "life_graph.workers.tasks.send_approval_escalations",
         "life_graph.workers.tasks.run_daily_brief",
+        "life_graph.workers.tasks.run_assistant_daily",
         "life_graph.workers.tasks.failure_pattern_mining",
         "life_graph.workers.tasks.run_nightly_calibration",
         "life_graph.workers.tasks.sync_connectors",
@@ -312,6 +313,13 @@ class WorkerSettings:
             "life_graph.workers.tasks.run_daily_brief",
             hour=settings.brief_hour_utc,
             minute=0,
+            run_at_startup=False,
+        ),
+        # ── Assistant reminders: an hour before the brief, so they are held for it ──
+        cron(
+            "life_graph.workers.tasks.run_assistant_daily",
+            hour=(settings.brief_hour_utc - 1) % 24,
+            minute=30,
             run_at_startup=False,
         ),
         # ── Judgment Engine: nightly recalibration ──

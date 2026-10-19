@@ -113,7 +113,8 @@ async def test_claim_restart_and_run(project, monkeypatch):
         start=False,
         properties={"origin": "nightly"},
     )
-    # An immediate-mode task left queued by a crashed process is abandoned...
+    # An immediate-mode task left queued by a crashed process is re-queued
+    # into queue mode (it runs once more instead of failing)...
     async with async_session() as s:
         stale = AgentTask(
             tenant_id=TENANT,
@@ -127,7 +128,9 @@ async def test_claim_restart_and_run(project, monkeypatch):
         stale_id = stale.id
     await dev_tasks.fail_interrupted(async_session)
     async with async_session() as s:
-        assert (await s.get(AgentTask, stale_id)).status == "failed"
+        stale_row = await s.get(AgentTask, stale_id)
+        assert stale_row.status == "queued"
+        assert stale_row.properties["run_mode"] == dev_tasks.QUEUE_MODE
         # ...but a queue-mode task is still waiting its turn.
         assert (await s.get(AgentTask, uuid.UUID(queued["id"]))).status == "queued"
 
@@ -158,3 +161,96 @@ async def test_claim_restart_and_run(project, monkeypatch):
     assert call["persona_name"] == "code-fixer-local"
     async with async_session() as s:
         assert (await s.get(AgentTask, claimed.id)).status == "completed"
+
+
+async def test_a_started_task_requeued_by_a_restart_stays_interactive(project, monkeypatch):
+    """A task someone started keeps that status when an API restart re-queues
+    it: task eda04c34 (2026-10-17) was re-queued, run as unattended work and
+    denied by the budget. Unattended (nightly) work stays budget-governed."""
+    from life_graph.drivers.base import DriverResult
+    from life_graph.drivers.dispatcher import TaskDispatcher
+    from life_graph.models.db import AgentTask
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    async def not_now(*_a, **_k):  # the restart happens before it runs
+        return None
+
+    real_run = dev_tasks._run
+    monkeypatch.setattr(dev_tasks, "_run", not_now)
+    started = await dev_tasks.create_dev_task(
+        async_session,
+        TENANT,
+        instruction="Fix item B",
+        project=project,
+        persona_name="code-fixer-opencode",
+    )
+    nightly = await dev_tasks.create_dev_task(
+        async_session,
+        TENANT,
+        instruction="Fix item C",
+        project=project,
+        persona_name="code-fixer-local",
+        start=False,
+        properties={"origin": "nightly"},
+    )
+    async with async_session() as s:
+        row = await s.get(AgentTask, uuid.UUID(started["id"]))
+        row.status = "running"  # it was mid-run when the API went down
+        await s.commit()
+    await dev_tasks.fail_interrupted(async_session)
+    monkeypatch.setattr(dev_tasks, "_run", real_run)
+
+    calls = {}
+
+    async def fake_dispatch(self, **kw):
+        calls[kw["task_id"]] = kw["interactive"]
+        return DriverResult(success=True, output="fixed")
+
+    monkeypatch.setattr(TaskDispatcher, "dispatch_task", fake_dispatch)
+    wanted = {started["id"], nightly["id"]}
+    while wanted - calls.keys():
+        claimed = await dev_tasks.claim_next_queued(async_session)
+        assert claimed is not None
+        if str(claimed.id) in wanted:
+            await dev_tasks.run_claimed(async_session, claimed)
+    assert calls[started["id"]] is True
+    assert calls[nightly["id"]] is False
+
+
+async def test_a_queued_plan_still_runs_as_a_plan(project, monkeypatch):
+    """POST /tasks with queue=true hands work to the queue runner; a queued
+    plan must keep its spec_first and its no_diff_in_plan check."""
+    from life_graph.drivers.base import DriverResult
+    from life_graph.drivers.dispatcher import TaskDispatcher
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    queued = await dev_tasks.create_dev_task(
+        async_session,
+        TENANT,
+        instruction="Plan item D",
+        project=project,
+        persona_name="code-fixer-local",
+        task_type="plan",
+        start=False,
+        spec_first=True,
+        verify_chain=["no_diff_in_plan"],
+    )
+    calls = {}
+
+    async def fake_dispatch(self, **kw):
+        calls[kw["task_id"]] = kw
+        return DriverResult(success=True, output="## Spec\n...")
+
+    monkeypatch.setattr(TaskDispatcher, "dispatch_task", fake_dispatch)
+    while queued["id"] not in calls:
+        claimed = await dev_tasks.claim_next_queued(async_session)
+        assert claimed is not None
+        if str(claimed.id) == queued["id"]:
+            await dev_tasks.run_claimed(async_session, claimed)
+    kw = calls[queued["id"]]
+    assert kw["spec_first"] is True
+    assert kw["verify_chain"] == ["no_diff_in_plan"]
+    assert kw["task_type"] == "plan"
+    assert kw["interactive"] is False

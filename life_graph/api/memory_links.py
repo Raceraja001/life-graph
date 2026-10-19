@@ -43,7 +43,7 @@ async def create_link(
         target_id = uuid.UUID(body.target_memory_id)
     except ValueError as err:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid target_memory_id format",
         ) from err
 
