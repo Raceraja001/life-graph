@@ -30,13 +30,14 @@ gate, drivers, judgment engine, and ambient layers are all built; see
 
 ### Before You Write Code
 
-1. **Read [CHARTER.md](CHARTER.md)** — intent, the five design invariants, non-goals, and
+1. **Read [Personal Assistant Ecosystem & Agent Charter](docs/design/10_personal_assistant_ecosystem_and_agent_charter.md)** — Raja's core Jarvis vision, the unified identity rule (`tenant: raja`), local 16GB VRAM safety, and how satellite agents coordinate.
+2. **Read [CHARTER.md](CHARTER.md)** — intent, the five design invariants, non-goals, and
    the current frontier.
-2. **Skim [docs/STATE.md](docs/STATE.md)** — the generated inventory. If something already
+3. **Skim [docs/STATE.md](docs/STATE.md)** — the generated inventory. If something already
    exists, it is listed there. Do not rebuild it.
-3. **Check `docs/specs/`** for the feature you are touching. Each spec now carries a
+4. **Check `docs/specs/`** for the feature you are touching. Each spec now carries a
    one-line status header (`Built` / `Spec'd, not built` / `Not this product`).
-4. **Check `.comms/inbox/`** for a task assigned to you.
+5. **Check `.comms/inbox/`** for a task assigned to you.
 
 If a number in any prose document disagrees with `docs/STATE.md`, `docs/STATE.md` is right
 and the prose is stale — fix the prose or delete the number.
