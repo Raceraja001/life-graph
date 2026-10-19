@@ -246,6 +246,15 @@ class LocalDriver:
                         # only "error" returned those runs as successes.
                         errors.append(str(data.get("message") or data.get("error") or data))
                         stop_reason = "error"
+                    elif kind == "done" and data.get("stop_reason") == "stuck" and good_edits:
+                        # Stuck *after* a landed edit: the free cloud models
+                        # kept re-reading and re-checking correct work until
+                        # loop detection stopped them (6 of 12 benchmark runs,
+                        # all of which passed the hidden test, 2026-10-19).
+                        # Not a failure of the driver: the verifier chain is
+                        # the judge, and an empty net change still fails
+                        # (dispatcher Step 4c). The user's call, 2026-10-19.
+                        stop_reason = "stuck_after_edit"
                     elif kind == "done" and data.get("stop_reason") in ("max_iterations", "stuck"):
                         stop_reason = data["stop_reason"]
                         errors.append(

@@ -267,6 +267,37 @@ async def _dispatch(events, tmp_path):
             False,
             "stuck",
         ),
+        (
+            # Stuck after a landed edit: the verifiers judge it, not the
+            # driver (free cloud models looped on correct work, 2026-10-19).
+            [
+                {"type": "tool_call", "name": "code_edit"},
+                {"type": "tool_result", "name": "code_edit", "result": '{"ok": true}'},
+                {"type": "stuck", "pattern": "repeat", "tool": "code_read", "action": "stopped"},
+                {
+                    "type": "done",
+                    "stop_reason": "stuck",
+                    "warning": "Stopped: stuck in a loop (repeat).",
+                },
+            ],
+            True,
+            "stuck_after_edit",
+        ),
+        (
+            # A failed edit is not a landed one: still stuck, still failed.
+            [
+                {"type": "tool_call", "name": "code_edit"},
+                {
+                    "type": "tool_result",
+                    "name": "code_edit",
+                    "result": '{"error": "`old` not found"}',
+                },
+                {"type": "stuck", "pattern": "repeat", "tool": "code_edit", "action": "stopped"},
+                {"type": "done", "stop_reason": "stuck", "warning": "Stopped: stuck."},
+            ],
+            False,
+            "stuck",
+        ),
     ],
 )
 async def test_local_driver_outcomes(events, success, reason, tmp_path):
