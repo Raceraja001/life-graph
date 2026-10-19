@@ -80,7 +80,14 @@ def make_driver(engine: str):
         if model:
             settings.driver_opencode_model = model
         return OpencodeDriver(), None
-    raise SystemExit(f"unknown engine kind {kind!r} (use local:<model> or opencode:<model>)")
+    if kind == "cloud":
+        # A free cloud model, as code-fixer-cloud runs it (drivers/cloud.py).
+        from life_graph.drivers.cloud import CloudDriver
+
+        return CloudDriver(), model or None
+    raise SystemExit(
+        f"unknown engine kind {kind!r} (use local:<model>, opencode:<model> or cloud:<model>)"
+    )
 
 
 def edit_counts(steps: list[dict]) -> tuple[int, int]:
