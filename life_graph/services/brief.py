@@ -74,6 +74,7 @@ class BriefComposer:
         watcher_summary = await self._watcher_summary(tenant_id, since)
         big_decisions = await self._big_decisions(tenant_id, since)
         connector_sections = await self._connector_sections(tenant_id, now)
+        assistant_lines = await self._assistant_lines(tenant_id)
 
         if not (
             held
@@ -82,6 +83,7 @@ class BriefComposer:
             or watcher_summary
             or big_decisions
             or connector_sections
+            or assistant_lines
         ):
             logger.info("No brief content for tenant %s — staying silent", tenant_id)
             return None
@@ -89,6 +91,10 @@ class BriefComposer:
         body = self._format_body(
             held, question_data, capture_summary, watcher_summary, big_decisions
         )
+        if assistant_lines:
+            # Kinds, dates and percentages only: this body leaves the machine.
+            coming = ["## Coming up", *[f"- {line}" for line in assistant_lines], ""]
+            body = "\n".join([*coming, body]).strip()
         if connector_sections and connector_sections["external"]["text"]:
             # The stored body is what Telegram and Web Push send off the
             # machine, so it carries the cloud rendering; the dashboard reads
@@ -285,6 +291,16 @@ class BriefComposer:
                 .group_by(WatchEvent.watcher_name)
             )
             return {name or "unknown": count for name, count in result.all()}
+
+    async def _assistant_lines(self, tenant_id: str) -> list[str]:
+        """Documents, budgets, study cards, invoices (services/assistant_daily.py)."""
+        try:
+            from life_graph.services.assistant_daily import brief_lines
+
+            return await brief_lines(self._session_factory, tenant_id)
+        except Exception:
+            logger.warning("Assistant brief lines failed for %s", tenant_id, exc_info=True)
+            return []
 
     async def _connector_sections(self, tenant_id: str, now: datetime) -> dict[str, Any] | None:
         """Calendar/mail sections; a connector problem never blocks the brief."""

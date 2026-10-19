@@ -56,7 +56,7 @@ async def close_redis() -> None:
     global _pool, _redis
 
     if _redis:
-        await _redis.close()
+        await _redis.aclose()
         _redis = None
     if _pool:
         await _pool.disconnect()

@@ -23,6 +23,20 @@ logger = logging.getLogger(__name__)
 _VALID_URGENCY = {"now", "brief"}
 
 
+def trailing_json_array(text: str) -> tuple[int, int, list[Any]] | None:
+    """(start, end, array) when the text ends with a JSON array (optionally
+    closing a ``` fence), else None."""
+    dec = json.JSONDecoder()
+    for idx in (i for i, c in enumerate(text) if c == "["):
+        try:
+            obj, end = dec.raw_decode(text, idx)
+        except ValueError:
+            continue
+        if isinstance(obj, list) and text[end:].strip() in ("", "```"):
+            return idx, end, obj
+    return None
+
+
 def _extract_json_array(text: str) -> list[Any] | None:
     """Return the trailing JSON array from text, or None if there is none.
 
@@ -67,10 +81,16 @@ def parse_findings(result_text: str) -> list[dict[str, Any]]:
         urgency = item.get("urgency", "brief")
         if urgency not in _VALID_URGENCY:
             urgency = "brief"
+        detail = str(item.get("detail", ""))
+        if item.get("source"):
+            detail = f"{detail}\n\nSource: {item['source']}".strip()
+        if item.get("unverified"):
+            # services/sources.py found no tool result backing this finding.
+            detail = f"{detail}\n\n⚠️ Unverified: no search or fetched page in this run backs it."
         findings.append(
             {
                 "title": str(item["title"])[:200],
-                "detail": str(item.get("detail", "")),
+                "detail": detail,
                 "urgency": urgency,
             }
         )

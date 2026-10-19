@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-09-24 12:38 UTC` from `unknown` @ `unknown`
+Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 
 ---
 
@@ -16,28 +16,29 @@ Generated `2026-09-24 12:38 UTC` from `unknown` @ `unknown`
 
 | | |
 |---|---|
-| HTTP operations | **273** across 233 paths, 38 tags |
-| Database tables | **69** |
-| Migrations | **42** (head: `042_connector_tasks`) |
-| Event types | **77** |
+| HTTP operations | **287** across 247 paths, 39 tags |
+| Database tables | **70** |
+| Migrations | **44** (head: `044_agent_run_steps`) |
+| Event types | **79** |
 | Built-in personas | **16** |
 | Agent tools | **13** |
 | Scheduled jobs | **20** |
-| Config settings | **181** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2363** in 243 files |
+| Config settings | **191** (prefix `LIFE_GRAPH_`) |
+| Test functions | **2609** in 271 files |
 | Dashboard pages | **18** |
-| Python | 317 files, 78,979 lines |
+| Python | 330 files, 84,005 lines |
 
 ---
 
 ## HTTP API
 
-273 operations, grouped by OpenAPI tag.
+287 operations, grouped by OpenAPI tag.
 
-### `kernel` — 29
+### `kernel` — 30
 
 | Method | Path | Summary |
 |---|---|---|
+| POST | `/api/v1/kernel/alerts/external` | Receive an alert from an external system and deliver it |
 | POST | `/api/v1/kernel/chat/stream` | Stream a persona chat response (SSE) |
 | POST | `/api/v1/kernel/classify` | Classify intent without routing |
 | GET | `/api/v1/kernel/models` | List available LLM models for the persona picker |
@@ -174,6 +175,26 @@ Generated `2026-09-24 12:38 UTC` from `unknown` @ `unknown`
 | GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
 | GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
 
+### `drivers` — 15
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/drivers` | List registered drivers |
+| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
+| GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
+| GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
+| GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
+| GET | `/api/v1/kernel/drivers/scorecards` | Per driver and model: success, bounces, merges, cost |
+| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
+| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
+| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
+| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
+| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
+| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
+
 ### `judgment-engine` — 14
 
 | Method | Path | Summary |
@@ -252,17 +273,6 @@ Generated `2026-09-24 12:38 UTC` from `unknown` @ `unknown`
 | GET | `/api/v1/conversations/{conversation_id}` | Get Conversation |
 | POST | `/api/v1/conversations/{conversation_id}/distill` | Distill Conversation Endpoint |
 | POST | `/api/v1/conversations/{conversation_id}/messages` | Post Message |
-
-### `drivers` — 6
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/kernel/drivers` | List registered drivers |
-| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
-| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
-| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
-| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
 
 ### `preferences` — 6
 
@@ -390,6 +400,15 @@ Generated `2026-09-24 12:38 UTC` from `unknown` @ `unknown`
 | POST | `/api/v1/ingest/transcribe` | Transcribe a voice recording without storing it as a memory |
 | POST | `/api/v1/ingest/voice` | Ingest a voice recording |
 
+### `observability` — 4
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/observability/agents` | Every persona, its model, and tools it lists that do not exist |
+| GET | `/api/v1/kernel/observability/budget` | Month-to-date spend against the cap, with the top tasks |
+| GET | `/api/v1/kernel/observability/decision-gaps` | Topics discussed often with no recorded decision |
+| GET | `/api/v1/kernel/observability/system` | Subsystems, dev-task runner, queue, drivers and local models |
+
 ### `push` — 4
 
 | Method | Path | Summary |
@@ -501,7 +520,7 @@ Generated `2026-09-24 12:38 UTC` from `unknown` @ `unknown`
 
 ## Database tables
 
-69 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+70 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -509,6 +528,7 @@ Generated `2026-09-24 12:38 UTC` from `unknown` @ `unknown`
 | `advisor_sessions` | 13 | ✓ | `014_personal_ai` |
 | `agent_messages` | 18 | ✓ | `017_agent_networks` |
 | `agent_personas` | 23 | ✓ | `—` |
+| `agent_run_steps` | 12 | ✓ | `044_agent_run_steps` |
 | `agent_sessions` | 15 | ✓ | `—` |
 | `agent_tasks` | 40 | ✓ | `—` |
 | `approval_queue` | 25 | ✓ | `018_autonomous_ai` |
@@ -579,7 +599,7 @@ Generated `2026-09-24 12:38 UTC` from `unknown` @ `unknown`
 
 ## Events
 
-77 event types on the async EventBus.
+79 event types on the async EventBus.
 
 **Task** (13) — `agent:task:cancelled` · `agent:task:child_failed` · `agent:task:children_complete` · `agent:task:completed` · `agent:task:delegated` · `agent:task:failed` · `agent:task:handoff` · `driver:task:bounced` · `kernel:task:cancelled` · `kernel:task:completed` · `kernel:task:failed` · `kernel:task:spawned` · `kernel:task:timeout`
 
@@ -589,15 +609,15 @@ Generated `2026-09-24 12:38 UTC` from `unknown` @ `unknown`
 
 **Workflow** (4) — `agent:workflow:completed` · `agent:workflow:failed` · `agent:workflow:started` · `agent:workflow:step_completed`
 
-**Preference** (3) — `preference:challenged` · `preference:created` · `preference:updated`
+**Approval** (3) — `approval:requested` · `approval:resolved` · `driver:approval:filed`
 
-**Approval** (2) — `approval:requested` · `approval:resolved`
+**Driver** (3) — `driver:dispatched` · `driver:result` · `driver:steps`
+
+**Preference** (3) — `preference:challenged` · `preference:created` · `preference:updated`
 
 **Autonomous** (2) — `autonomy:action:completed` · `autonomy:action:pending`
 
 **Conversation** (2) — `conversation:distilled` · `conversation:message`
-
-**Driver** (2) — `driver:dispatched` · `driver:result`
 
 **Interview** (2) — `capture:interview:answered` · `capture:interview:asked`
 
@@ -767,6 +787,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | Spec | Status | Evidence |
 |---|---|---|
 | `agent-drivers` | Built | `life_graph/drivers/dispatcher.py` |
+| `agent-observability` | Unclassified | — |
 | `approvals-feed` | Built | `life_graph/api/approvals.py` |
 | `bills-from-mail` | Unclassified | — |
 | `capture-spine` | Built | `life_graph/services/capture.py` |
@@ -800,9 +821,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-42 revisions, head `042_connector_tasks`.
+44 revisions, head `044_agent_run_steps`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps`
 
 ---
 
@@ -812,16 +833,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 186 | 1803 |
-| `tests/integration/` | 56 | 548 |
+| `tests/unit/` | 209 | 1994 |
+| `tests/integration/` | 61 | 603 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **243** | **2363** |
+| **total** | **271** | **2609** |
 
 ---
 
 ## Configuration
 
-181 settings, all overridable by environment variable.
+191 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -899,6 +920,9 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_LLM_COOLDOWN_MAX_SECONDS` | `900` |
 | `LIFE_GRAPH_LLM_HEALTH_TTL_SECONDS` | `3600` |
 | `LIFE_GRAPH_LLM_PAID_FALLBACK_MODEL` | `—` |
+| `LIFE_GRAPH_OMNIROUTE_API_KEY` | `''` |
+| `LIFE_GRAPH_OMNIROUTE_URL` | `'http://localhost:20128/v1'` |
+| `LIFE_GRAPH_OMNIROUTE_MODEL` | `'openai/auto'` |
 | `LIFE_GRAPH_RESEARCH_STALE_DAYS` | `30` |
 | `LIFE_GRAPH_RESEARCH_MAX_PER_RUN` | `5` |
 | `LIFE_GRAPH_RESEARCH_MONTHLY_BUDGET_USD` | `0.6` |
@@ -979,8 +1003,15 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_AUTONOMY_MAX_BLAST_RADIUS` | `3` |
 | `LIFE_GRAPH_AUTONOMY_DEFAULT_LEVEL` | `'L0'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_BIN` | `'claude'` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_CODE_TIMEOUT_SECONDS` | `1200` |
+| `LIFE_GRAPH_DEV_TASK_RUNNER_ENABLED` | `True` |
+| `LIFE_GRAPH_TRAJECTORY_STEP_MAX_CHARS` | `16000` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_MODEL` | `—` |
+| `LIFE_GRAPH_DRIVER_PR_AGENT_BIN` | `'pr-agent'` |
+| `LIFE_GRAPH_DRIVER_PR_DESCRIPTION_ENABLED` | `True` |
+| `LIFE_GRAPH_DRIVER_CODE_CONTEXT_ENABLED` | `True` |
+| `LIFE_GRAPH_DRIVER_PR_DESCRIPTION_MODEL` | `—` |
 | `LIFE_GRAPH_DRIVER_GH_BIN` | `'gh'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX` | `'none'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_IMAGE` | `'life-graph-verifier:py3.12'` |

@@ -59,6 +59,34 @@ async def test_code_read_pages_stay_under_registry_cap(repo):
     assert seen == 400
 
 
+async def test_code_read_end_line_stops_at_the_requested_line(repo):
+    """A local model naturally reaches for start/end line params (seen live:
+    qwen3-coder:30b called code_read with end_line and stop_at_line, both of
+    which errored — this pins the fix, an actual end_line parameter."""
+    with confine_to(repo["wt"]):
+        page = json.loads(await code.code_read("pkg/mod.py", start_line=1, end_line=2))
+    assert page["content"] == "1: def a():\n2:     return 1"
+    # The requested range was delivered in full — no more pages to fetch,
+    # even though the file has lines beyond 2.
+    assert page["next_start_line"] is None
+    assert page["total_lines"] == 6
+
+
+async def test_code_read_end_line_still_pages_when_the_range_is_large(repo):
+    big = repo["wt"] / "big.py"
+    big.write_text("\n".join(f"x_{i} = '{'y' * 90}'" for i in range(400)))
+    with confine_to(repo["wt"]):
+        page = json.loads(await code.code_read("big.py", start_line=1, end_line=400))
+    assert len(page["content"].splitlines()) < 400  # cut by the char cap, not end_line
+    assert page["next_start_line"] is not None  # more of the requested range remains
+
+
+async def test_code_read_end_line_before_start_line_is_ignored(repo):
+    with confine_to(repo["wt"]):
+        page = json.loads(await code.code_read("pkg/mod.py", start_line=3, end_line=1))
+    assert "3: " in page["content"] and "6: " in page["content"]  # pages to EOF as usual
+
+
 async def test_code_edit_replaces_exactly_one_snippet(repo):
     with confine_to(repo["wt"]):
         ambiguous = json.loads(
@@ -83,6 +111,26 @@ async def test_code_edit_creates_but_never_clobbers(repo):
         clobber = json.loads(await code.code_edit("pkg/new.py", "", "Y = 2\n"))
         assert "File exists" in clobber["error"]
     assert (repo["wt"] / "pkg" / "new.py").read_text() == "X = 1\n"
+
+
+async def test_code_edit_empty_range_inserts_appends_and_creates(repo):
+    mod = repo["wt"] / "pkg" / "mod.py"
+    with confine_to(repo["wt"]):
+        # Before line 4, replacing nothing.
+        ins = json.loads(await code.code_edit("pkg/mod.py", "", "# here", 4, 3))
+        assert "edited" in ins, ins
+        assert mod.read_text() == "def a():\n    return 1\n\n# here\n\ndef b():\n    return 1\n"
+        # last line + 1 (code_read counts 7 lines) appends and keeps the final newline.
+        app = json.loads(await code.code_edit("pkg/mod.py", "", "X = 2", 8, 7))
+        assert "edited" in app, app
+        assert mod.read_text().endswith("    return 1\nX = 2\n")
+        # Inserting at line 1 of a missing file creates it.
+        new = json.loads(await code.code_edit("pkg/fresh.py", "", "Y = 1\n", 1, 0))
+        assert "created" in new
+        # An empty range past the end is still refused.
+        far = json.loads(await code.code_edit("pkg/mod.py", "", "Z", 50, 49))
+        assert "outside the file" in far["error"]
+    assert (repo["wt"] / "pkg" / "fresh.py").read_text() == "Y = 1\n"
 
 
 async def test_code_edit_refuses_git_internals(repo):
@@ -142,7 +190,7 @@ def fake_orchestrator(monkeypatch):
             self.model = model
             seen["instance"] = self
 
-        async def run(self, messages, system_prompt=None, tools=None):
+        async def run(self, messages, system_prompt=None, tools=None, keep_going=None):
             seen["tools"] = [t["function"]["name"] for t in tools or []]
             behaviour = seen.get("behaviour", "edit")
             if behaviour == "hang":
@@ -155,6 +203,19 @@ def fake_orchestrator(monkeypatch):
             # Tool call made from inside the run: confinement must apply.
             seen["read"] = json.loads(await code.code_read("pkg/mod.py"))
             yield 'data: {"type": "tool_call", "name": "code_read"}\n\n'
+            if behaviour == "claim_only":
+                # Says it changed something without editing: not a success.
+                yield 'data: {"type": "token", "content": "Changed b."}\n\n'
+                return
+            edit = await code.code_edit(
+                "pkg/mod.py", "def b():\n    return 1", "def b():\n    return 2"
+            )
+            yield "data: " + json.dumps({"type": "tool_call", "name": "code_edit"}) + "\n\n"
+            yield (
+                "data: "
+                + json.dumps({"type": "tool_result", "name": "code_edit", "result": edit})
+                + "\n\n"
+            )
             yield 'data: {"type": "token", "content": "Changed b."}\n\n'
 
     monkeypatch.setattr(orch_mod, "AgentOrchestrator", Fake)
@@ -170,7 +231,8 @@ async def test_local_driver_uses_persona_model_and_confines_tools(repo, fake_orc
     assert result.success, result.error
     assert result.output == "Changed b."
     assert result.metadata["model"] == "ollama_chat/qwen3-coder:30b"
-    assert result.metadata["tool_calls"] == 1
+    assert result.metadata["tool_calls"] == 2
+    assert "return 2" in (repo["wt"] / "pkg" / "mod.py").read_text()
     assert fake_orchestrator["instance"].MAX_ITERATIONS == LocalDriver.MAX_AGENT_ITERATIONS
     assert sorted(fake_orchestrator["tools"]) == ["code_edit", "code_read"]
     assert fake_orchestrator["read"]["total_lines"] == 6  # worktree reachable during the run
@@ -195,3 +257,11 @@ def test_dispatcher_honours_driver_timeout():
     from life_graph.drivers.local import LocalDriver
 
     assert LocalDriver.dispatch_timeout > 300
+
+
+async def test_local_driver_does_not_believe_a_claimed_change(repo, fake_orchestrator):
+    from life_graph.drivers.local import LocalDriver
+
+    fake_orchestrator["behaviour"] = "claim_only"
+    result = await LocalDriver().dispatch(_packet(), repo["wt"], timeout=5)
+    assert not result.success and result.metadata["stop_reason"] == "no_change"

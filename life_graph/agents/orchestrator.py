@@ -8,6 +8,7 @@ Server-Sent Events.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -19,7 +20,7 @@ from life_graph.services.resilient_llm import ResilientLLMExhaustedError
 from life_graph.tools.registry import registry
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +61,18 @@ class AgentOrchestrator:
         )
         self.max_tokens = max_tokens or settings.agent_llm_max_tokens
         self.FALLBACK_MODEL = settings.agent_fallback_model
+        # docs/specs/agent-condenser.md: keep long runs inside the context
+        # window and notice loops.
+        self.condense = settings.agent_condenser_enabled
+        self.detect_stuck = settings.agent_stuck_detection
+        self.context_tokens = settings.context_tokens_for(self.model)
 
     async def run(
         self,
         messages: list[dict[str, Any]],
         system_prompt: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        keep_going: Callable[[], str | None | Awaitable[str | None]] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Run the agent loop, streaming SSE events.
 
@@ -80,6 +87,9 @@ class AgentOrchestrator:
             messages: Conversation history.
             system_prompt: Optional system prompt to prepend.
             tools: Tool definitions (defaults to global registry).
+            keep_going: Asked when the model ends a turn without tool calls.
+                Text it returns goes back as a user message and the loop
+                continues (within MAX_ITERATIONS); ``None`` ends the run.
 
         Yields:
             SSE-formatted event strings.
@@ -160,12 +170,44 @@ class AgentOrchestrator:
 
         total_tokens = 0
         self._retry_count = 0
+        from life_graph.agents import condenser
+        from life_graph.agents.stuck import StuckDetector, nudge_text
+
+        detector = StuckDetector() if self.detect_stuck else None
+        budget = condenser.budget_for(self.context_tokens, self.max_tokens)
 
         for iteration in range(self.MAX_ITERATIONS):
             logger.debug("Agent iteration %d/%d", iteration + 1, self.MAX_ITERATIONS)
 
             try:
                 from life_graph.api.dependencies import get_resilient_llm
+
+                if self.condense and iteration > 0:
+                    # Fit the conversation into the window BEFORE sending it:
+                    # an over-long prompt loses its beginning (the system
+                    # prompt and the task) inside the model server.
+                    result_c = await condenser.condense(
+                        working_messages,
+                        budget=budget,
+                        summarise=condenser.summariser_for(
+                            get_resilient_llm().acompletion, self.model
+                        ),
+                        model=self.model,
+                    )
+                    if result_c.layer is not None:
+                        messages_before = len(working_messages)
+                        working_messages[:] = result_c.messages
+                        yield _sse(
+                            {
+                                "type": "condensed",
+                                "layer": result_c.layer,
+                                "before_tokens": result_c.before_tokens,
+                                "after_tokens": result_c.after_tokens,
+                                "budget": budget,
+                                "messages_before": messages_before,
+                                "messages_after": len(working_messages),
+                            }
+                        )
 
                 # Build completion kwargs.
                 completion_kwargs: dict[str, Any] = {
@@ -186,6 +228,12 @@ class AgentOrchestrator:
                 # Accumulate content and tool calls from the stream.
                 content_parts: list[str] = []
                 tool_calls_acc: dict[int, dict[str, Any]] = {}
+                # Ollama (through LiteLLM) sends each parallel tool call whole,
+                # every one at index 0. Accumulating by index alone glued them
+                # into one call with arguments like '{"days": 1}{}', and the
+                # next request was rejected for it, failing the whole run. A
+                # delta that starts a new call at a used index gets its own slot.
+                remap: dict[int, int] = {}
 
                 async for chunk in response:
                     delta = chunk.choices[0].delta if chunk.choices else None
@@ -206,7 +254,20 @@ class AgentOrchestrator:
                     # Accumulate tool calls across chunks.
                     if delta.tool_calls:
                         for tc in delta.tool_calls:
-                            idx = tc.index if tc.index is not None else 0
+                            raw_idx = tc.index if tc.index is not None else 0
+                            idx = remap.get(raw_idx, raw_idx)
+                            slot = tool_calls_acc.get(idx)
+                            starts_new = bool(
+                                tc.function
+                                and tc.function.name
+                                and slot is not None
+                                and slot["name"]
+                            ) or bool(
+                                tc.id and slot is not None and slot["id"] and tc.id != slot["id"]
+                            )
+                            if starts_new:
+                                idx = max(tool_calls_acc) + 1
+                                remap[raw_idx] = idx
                             if idx not in tool_calls_acc:
                                 tool_calls_acc[idx] = {
                                     "id": tc.id or "",
@@ -221,7 +282,19 @@ class AgentOrchestrator:
                                 if tc.function.arguments:
                                     tool_calls_acc[idx]["arguments"] += tc.function.arguments
 
-                # If no tool calls, we're done.
+                # If no tool calls, we're done, unless the caller wants another
+                # try (a coding run that has not edited anything yet).
+                if not tool_calls_acc and keep_going is not None:
+                    nudge = keep_going()
+                    if inspect.isawaitable(nudge):
+                        nudge = await nudge
+                    if nudge:
+                        working_messages.append(
+                            {"role": "assistant", "content": "".join(content_parts)}
+                        )
+                        working_messages.append({"role": "user", "content": nudge})
+                        yield _sse({"type": "nudge", "message": nudge})
+                        continue
                 if not tool_calls_acc:
                     logger.info(
                         "Agent completed: iterations=%d, tokens=%d",
@@ -241,6 +314,7 @@ class AgentOrchestrator:
                             "type": "done",
                             "model": self.model,
                             "tokens": total_tokens,
+                            "stop_reason": "completed",
                         }
                     )
                     return
@@ -251,11 +325,13 @@ class AgentOrchestrator:
                     tc_data = tool_calls_acc[idx]
                     assistant_tool_calls.append(
                         {
-                            "id": tc_data["id"],
+                            # Blank ids (Ollama) would make every tool result
+                            # answer the same call.
+                            "id": tc_data["id"] or f"call_{iteration}_{idx}",
                             "type": "function",
                             "function": {
                                 "name": tc_data["name"],
-                                "arguments": tc_data["arguments"],
+                                "arguments": _valid_json_args(tc_data["arguments"]),
                             },
                         }
                     )
@@ -268,6 +344,7 @@ class AgentOrchestrator:
                 working_messages.append(assistant_msg)
 
                 # Execute each tool call.
+                stuck = None
                 for tc_info in assistant_tool_calls:
                     tool_name = tc_info["function"]["name"]
                     raw_args = tc_info["function"]["arguments"]
@@ -334,20 +411,67 @@ class AgentOrchestrator:
                         }
                     )
 
-                    # Append tool result for next LLM iteration.
+                    # Append tool result for next LLM iteration. One huge
+                    # result (a log, a whole file) keeps its head and tail
+                    # rather than filling the window by itself.
                     working_messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tc_info["id"],
-                            "content": result,
+                            "content": condenser.cap_result(str(result)),
                         }
                     )
+                    if detector is not None and stuck is None:
+                        stuck = detector.record(tool_name, tool_args, str(result))
 
                 logger.debug(
                     "Tool calls executed: %s",
                     [tc["function"]["name"] for tc in assistant_tool_calls],
                 )
                 self._retry_count = 0  # reset on success
+
+                if stuck is not None:
+                    # Acted on only after every result of this turn is in, so
+                    # no message lands between a tool call and its result.
+                    if detector.detections == 1:
+                        yield _sse(
+                            {
+                                "type": "stuck",
+                                "pattern": stuck.pattern,
+                                "tool": stuck.tool,
+                                "action": "nudged",
+                            }
+                        )
+                        working_messages.append({"role": "user", "content": nudge_text(stuck)})
+                    else:
+                        logger.warning(
+                            "Agent stuck again (%s on %s); stopping", stuck.pattern, stuck.tool
+                        )
+                        yield _sse(
+                            {
+                                "type": "stuck",
+                                "pattern": stuck.pattern,
+                                "tool": stuck.tool,
+                                "action": "stopped",
+                            }
+                        )
+                        yield _sse(
+                            {
+                                "type": "usage",
+                                "completion_tokens": total_tokens,
+                                "total_tokens": total_tokens,
+                            }
+                        )
+                        yield _sse(
+                            {
+                                "type": "done",
+                                "model": self.model,
+                                "tokens": total_tokens,
+                                "stop_reason": "stuck",
+                                "warning": f"Stopped: stuck in a loop ({stuck.pattern}).",
+                            }
+                        )
+                        return
 
             except ResilientLLMExhaustedError as exc:
                 # ResilientLLM already tried the caller's model plus the whole
@@ -362,7 +486,14 @@ class AgentOrchestrator:
                         "retryable": True,
                     }
                 )
-                yield _sse({"type": "done", "model": self.model, "tokens": total_tokens})
+                yield _sse(
+                    {
+                        "type": "done",
+                        "model": self.model,
+                        "tokens": total_tokens,
+                        "stop_reason": "error",
+                    }
+                )
                 return
 
             except Exception as exc:
@@ -392,7 +523,14 @@ class AgentOrchestrator:
                         "retryable": True,
                     }
                 )
-                yield _sse({"type": "done", "model": self.model, "tokens": total_tokens})
+                yield _sse(
+                    {
+                        "type": "done",
+                        "model": self.model,
+                        "tokens": total_tokens,
+                        "stop_reason": "error",
+                    }
+                )
                 return
 
         # Max iterations reached.
@@ -410,6 +548,7 @@ class AgentOrchestrator:
                 "model": self.model,
                 "tokens": total_tokens,
                 "warning": "Max tool-calling iterations reached.",
+                "stop_reason": "max_iterations",
             }
         )
 
@@ -420,3 +559,25 @@ class AgentOrchestrator:
 def _sse(data: dict[str, Any]) -> str:
     """Format a dictionary as an SSE data line."""
     return f"data: {json.dumps(data)}\n\n"
+
+
+def _valid_json_args(raw: str) -> str:
+    """Tool-call arguments that a model server will accept back.
+
+    The arguments are echoed to the model in the next request, and Ollama
+    rejects the whole request when they are not a JSON object. Keep the first
+    complete object of a garbled string ('{"a": 1}{}' → '{"a": 1}'), or send
+    an empty object; the tool itself already ran with what could be parsed.
+    """
+    if not raw:
+        return "{}"
+    try:
+        value = json.loads(raw)
+        return raw if isinstance(value, dict) else "{}"
+    except json.JSONDecodeError:
+        pass
+    try:
+        value, _end = json.JSONDecoder().raw_decode(raw.lstrip())
+    except json.JSONDecodeError:
+        return "{}"
+    return json.dumps(value) if isinstance(value, dict) else "{}"

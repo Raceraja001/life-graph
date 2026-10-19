@@ -126,9 +126,9 @@ async def test_existing_pr_is_returned_not_duplicated(setup):
         # A hard [:72] slice would land inside "test_dev_suggestions.py",
         # cutting off mid-word; instead it backs off to the last space.
         (
-            'Resolve this TODO comment in tests/unit/test_dev_suggestions.py '
+            "Resolve this TODO comment in tests/unit/test_dev_suggestions.py "
             '(around line 19): "vendored noise here"',
-            'Resolve this TODO comment in tests/unit/test_dev_suggestions.py…',
+            "Resolve this TODO comment in tests/unit/test_dev_suggestions.py…",
         ),
         # No space to back off to: falls back to the hard cut rather than
         # returning an empty title.
@@ -144,7 +144,7 @@ async def test_open_pull_request_uses_word_boundary_title(setup):
     payload = await _payload(
         setup,
         instruction=(
-            'Resolve this TODO comment in tests/unit/test_dev_suggestions.py '
+            "Resolve this TODO comment in tests/unit/test_dev_suggestions.py "
             '(around line 19): "vendored noise here"\nmore detail'
         ),
     )
@@ -332,6 +332,12 @@ async def test_landed_task_files_driver_pr_approval_with_pinned_commits(setup):
 # ── Merge ────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _no_mergeability_waits(monkeypatch):
+    """Real waits are seconds long; the tests that care patch asyncio.sleep."""
+    monkeypatch.setattr(github_pr, "MERGEABLE_WAITS", (0, 0, 0))
+
+
 @pytest.fixture
 def merge_env(tmp_path, monkeypatch):
     """A stub gh whose `pr view` answers from a JSON file the test controls."""
@@ -489,3 +495,317 @@ async def test_rejecting_merge_never_merges(monkeypatch):
     appr.kind = "driver_merge"
     out = await approvals_mod.ApprovalService(_Session(appr)).resolve("t", str(appr.id), "reject")
     assert out["status"] == "rejected"
+
+
+@pytest.fixture
+def real_merge_env(tmp_path, monkeypatch):
+    """Like ``setup``, but the stub ``gh pr merge`` actually lands the task
+    branch's commit on origin's master — standing in for GitHub squashing the
+    PR server-side — so a test can check whether the local clone notices.
+    """
+    from life_graph.config import settings
+
+    origin = tmp_path / "origin.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "master", str(origin))
+    repo = tmp_path / "root" / "repo"
+    repo.parent.mkdir()
+    git(tmp_path, "clone", "-q", str(origin), str(repo))
+    git(repo, "checkout", "-q", "-b", "master")
+    (repo / "f.txt").write_text("base\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "base")
+    git(repo, "push", "-q", "origin", "master")
+
+    branch = "lg/task-abcd1234"
+    git(repo, "branch", branch)
+    wt = tmp_path / "wt"
+    git(repo, "worktree", "add", "-q", str(wt), branch)
+    (wt / "f.txt").write_text("agent change\n")
+    git(wt, "commit", "-qam", "agent change")
+    head = git(wt, "rev-parse", "HEAD")
+    git(repo, "worktree", "remove", "--force", str(wt))
+
+    calls = tmp_path / "gh_calls.jsonl"
+    gh = tmp_path / "gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, subprocess, sys\n"
+        f"open({str(calls)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:3] == ['pr', 'view']:\n"
+        f"    print(json.dumps({{'state': 'OPEN', 'title': 'Fix it', "
+        f"'headRefOid': {head!r}, 'headRefName': {branch!r}, "
+        f"'baseRefName': 'master', 'mergeable': 'MERGEABLE', 'isDraft': False, "
+        f"'statusCheckRollup': [], 'mergeCommit': None}})); sys.exit(0)\n"
+        "if sys.argv[1:3] == ['pr', 'merge']:\n"
+        # Land the branch on origin's master directly — standing in for what
+        # GitHub does server-side on a real squash merge.
+        f"    subprocess.run(['git', '-C', {str(repo)!r}, 'push', '-q', 'origin', "
+        f"{branch!r} + ':master'], check=True)\n"
+        f"    print(json.dumps({{'mergeCommit': {{'oid': {head!r}}}}})); sys.exit(0)\n"
+    )
+    gh.chmod(0o755)
+    monkeypatch.setattr(settings, "driver_gh_bin", str(gh))
+    monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path / "root"))
+
+    payload = {
+        "pr_url": "https://github.com/me/repo/pull/27",
+        "head_commit": head,
+        "branch": branch,
+        "base_branch": "master",
+        "repo_path": str(repo),
+        "instruction": "Fix it",
+    }
+    return SimpleNamespace(repo=repo, payload=payload, head=head)
+
+
+async def test_merge_fast_forwards_local_base_branch(real_merge_env):
+    """Regression test: a squash merge only happens on GitHub's servers, so
+    without this the local clone every future dispatch worktrees from stays
+    stuck on the pre-merge commit — the next task can't see files the PR
+    just added, and diffs are computed against stale code."""
+    before = git(real_merge_env.repo, "rev-parse", "master")
+
+    out = await github_pr.merge_pull_request(real_merge_env.payload)
+
+    assert out["merged"]
+    after = git(real_merge_env.repo, "rev-parse", "master")
+    assert after != before
+    assert after == real_merge_env.head
+    assert (real_merge_env.repo / "f.txt").read_text() == "agent change\n"
+
+
+# ── Post-merge CI safety net ─────────────────────────────────
+
+
+@pytest.fixture
+def revert_env(tmp_path, monkeypatch):
+    """A real origin+clone with a "bad" commit already on master to revert,
+    plus a stub gh answering pr view / pr create / api check-runs."""
+    from life_graph.config import settings
+
+    origin = tmp_path / "origin.git"
+    git(tmp_path, "init", "-q", "--bare", "-b", "master", str(origin))
+    repo = tmp_path / "root" / "repo"
+    repo.parent.mkdir()
+    git(tmp_path, "clone", "-q", str(origin), str(repo))
+    git(repo, "checkout", "-q", "-b", "master")
+    (repo / "f.txt").write_text("base\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "base")
+    git(repo, "push", "-q", "origin", "master")
+
+    # The commit that later broke CI on master.
+    (repo / "f.txt").write_text("broken\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the bad change")
+    git(repo, "push", "-q", "origin", "master")
+    bad_sha = git(repo, "rev-parse", "HEAD")
+
+    calls = tmp_path / "gh_calls.jsonl"
+    check_runs_state = tmp_path / "check_runs.json"
+    check_runs_state.write_text(json.dumps({"check_runs": []}))
+    pr_view_exists = tmp_path / "pr_view_exists"
+    gh = tmp_path / "gh"
+    gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        f"open({str(calls)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1:3] == ['pr', 'view']:\n"
+        f"    if os.path.exists({str(pr_view_exists)!r}):\n"
+        "        print('https://github.com/me/repo/pull/99'); sys.exit(0)\n"
+        "    sys.exit(1)\n"
+        "if sys.argv[1:3] == ['pr', 'create']:\n"
+        "    print('https://github.com/me/repo/pull/99'); sys.exit(0)\n"
+        "if sys.argv[1] == 'api':\n"
+        f"    print(open({str(check_runs_state)!r}).read()); sys.exit(0)\n"
+    )
+    gh.chmod(0o755)
+    monkeypatch.setattr(settings, "driver_gh_bin", str(gh))
+    monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path / "root"))
+
+    def calls_made():
+        return [json.loads(x) for x in calls.read_text().splitlines()] if calls.exists() else []
+
+    payload = {
+        "merge_commit": bad_sha,
+        "base_branch": "master",
+        "repo_path": str(repo),
+        "title": "the bad change",
+    }
+    return SimpleNamespace(
+        repo=repo,
+        payload=payload,
+        bad_sha=bad_sha,
+        set_check_runs=lambda runs: check_runs_state.write_text(json.dumps({"check_runs": runs})),
+        mark_pr_exists=lambda: pr_view_exists.write_text(""),
+        calls=calls_made,
+    )
+
+
+async def test_revert_merge_commit_reverts_and_opens_pr(revert_env):
+    out = await github_pr.revert_merge_commit(revert_env.payload)
+
+    assert out["pr_url"] == "https://github.com/me/repo/pull/99"
+    assert out["branch"] == f"lg/revert-{revert_env.bad_sha[:8]}"
+    assert out["existing"] is False
+
+    git(revert_env.repo, "fetch", "-q", "origin", out["branch"])
+    reverted_content = git(revert_env.repo, "show", f"origin/{out['branch']}:f.txt")
+    assert reverted_content == "base"
+
+    create = next(c for c in revert_env.calls() if c[:2] == ["pr", "create"])
+    assert "--base" in create and create[create.index("--base") + 1] == "master"
+    assert create[create.index("--title") + 1].startswith("Revert:")
+
+
+async def test_revert_merge_commit_idempotent_when_pr_already_exists(revert_env):
+    revert_env.mark_pr_exists()
+
+    out = await github_pr.revert_merge_commit(revert_env.payload)
+
+    assert out == {
+        "pr_url": "https://github.com/me/repo/pull/99",
+        "branch": f"lg/revert-{revert_env.bad_sha[:8]}",
+        "existing": True,
+    }
+    assert not any(c[:2] == ["pr", "create"] for c in revert_env.calls())
+
+
+async def test_revert_merge_commit_conflict_raises(revert_env):
+    # A later commit that also touches f.txt so the revert of the earlier
+    # "bad" commit no longer applies cleanly.
+    (revert_env.repo / "f.txt").write_text("changed again\n")
+    git(revert_env.repo, "add", "-A")
+    git(revert_env.repo, "commit", "-qm", "unrelated later change")
+    git(revert_env.repo, "push", "-q", "origin", "master")
+
+    with pytest.raises(PullRequestError, match="conflicted"):
+        await github_pr.revert_merge_commit(revert_env.payload)
+
+
+async def test_revert_merge_commit_rejects_missing_fields(revert_env):
+    with pytest.raises(PullRequestError, match="commit sha and a base branch"):
+        await github_pr.revert_merge_commit({**revert_env.payload, "merge_commit": "short"})
+    with pytest.raises(PullRequestError, match="commit sha and a base branch"):
+        await github_pr.revert_merge_commit({**revert_env.payload, "base_branch": ""})
+
+
+async def test_commit_ci_status_pending_when_no_checks(revert_env):
+    assert await github_pr.commit_ci_status(revert_env.payload) == "pending"
+
+
+async def test_commit_ci_status_pending_while_running(revert_env):
+    revert_env.set_check_runs([{"status": "in_progress", "conclusion": None}])
+    assert await github_pr.commit_ci_status(revert_env.payload) == "pending"
+
+
+async def test_commit_ci_status_success_when_all_ok(revert_env):
+    revert_env.set_check_runs(
+        [
+            {"status": "completed", "conclusion": "success"},
+            {"status": "completed", "conclusion": "skipped"},
+        ]
+    )
+    assert await github_pr.commit_ci_status(revert_env.payload) == "success"
+
+
+async def test_commit_ci_status_failure_on_any_failed_check(revert_env):
+    revert_env.set_check_runs(
+        [
+            {"status": "completed", "conclusion": "success"},
+            {"status": "completed", "conclusion": "failure"},
+        ]
+    )
+    assert await github_pr.commit_ci_status(revert_env.payload) == "failure"
+
+
+# ── pr_state ──────────────────────────────────────────────────
+
+
+@pytest.fixture
+def pr_state_env(tmp_path, monkeypatch):
+    from life_graph.config import settings
+
+    repo = tmp_path / "root" / "repo"
+    repo.mkdir(parents=True)
+    state_file = tmp_path / "state.json"
+    gh = tmp_path / "gh"
+    gh.write_text(f"#!/usr/bin/env python3\nimport sys\nprint(open({str(state_file)!r}).read())\n")
+    gh.chmod(0o755)
+    monkeypatch.setattr(settings, "driver_gh_bin", str(gh))
+    monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path / "root"))
+
+    def set_state(state):
+        state_file.write_text(json.dumps({"state": state}))
+
+    set_state("OPEN")
+    payload = {"pr_url": "https://github.com/me/repo/pull/42", "repo_path": str(repo)}
+    return SimpleNamespace(set_state=set_state, payload=payload)
+
+
+async def test_pr_state_reports_open(pr_state_env):
+    assert await github_pr.pr_state(pr_state_env.payload) == "OPEN"
+
+
+async def test_pr_state_reports_merged(pr_state_env):
+    pr_state_env.set_state("MERGED")
+    assert await github_pr.pr_state(pr_state_env.payload) == "MERGED"
+
+
+async def test_pr_state_rejects_a_bad_url(pr_state_env):
+    with pytest.raises(PullRequestError, match="not a valid PR url"):
+        await github_pr.pr_state({**pr_state_env.payload, "pr_url": "not-a-url"})
+
+
+@pytest.mark.asyncio
+async def test_describe_landing_uses_a_pinned_base_branch(tmp_path):
+    import subprocess
+
+    from life_graph.services.github_pr import describe_landing
+
+    def git(*args):
+        subprocess.run(
+            ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", *args],
+            cwd=str(tmp_path),
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-b", "feature-checkout")
+    git("commit", "--allow-empty", "-m", "base")
+    git("branch", "lg/task-1")
+
+    pinned = await describe_landing(tmp_path, "lg/task-1", base_branch="main")
+    unpinned = await describe_landing(tmp_path, "lg/task-1")
+
+    assert pinned["base_branch"] == "main"
+    assert unpinned["base_branch"] == "feature-checkout"
+
+
+async def test_merge_waits_while_github_works_out_mergeability(merge_env, monkeypatch):
+    # Right after another PR merged, GitHub reports UNKNOWN for a few seconds.
+    merge_env.set_pr(mergeable="UNKNOWN")
+    waits = []
+
+    async def sleep(seconds):
+        waits.append(seconds)
+        merge_env.set_pr(mergeable="MERGEABLE")  # GitHub has caught up
+
+    monkeypatch.setattr(github_pr.asyncio, "sleep", sleep)
+    out = await github_pr.merge_pull_request(merge_env.payload)
+    assert out["merged"] and waits == [github_pr.MERGEABLE_WAITS[0]]
+    views = [c for c in merge_env.calls() if c[:2] == ["pr", "view"] and "mergeable" in c[-1]]
+    assert len(views) == 2
+
+
+async def test_merge_gives_up_if_mergeability_stays_unknown(merge_env, monkeypatch):
+    merge_env.set_pr(mergeable="UNKNOWN")
+
+    async def sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(github_pr.asyncio, "sleep", sleep)
+    with pytest.raises(PullRequestError, match="still computing"):
+        await github_pr.merge_pull_request(merge_env.payload)
+    views = [c for c in merge_env.calls() if c[:2] == ["pr", "view"] and "mergeable" in c[-1]]
+    assert len(views) == 1 + len(github_pr.MERGEABLE_WAITS)

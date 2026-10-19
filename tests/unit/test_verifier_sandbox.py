@@ -89,7 +89,7 @@ async def test_lint_diff_passes_relative_paths(docker_mode, tmp_path, monkeypatc
 async def test_run_flags_lock_the_container_down(docker_mode, tmp_path, monkeypatch):
     captured = {}
 
-    async def fake_exec(argv, timeout, container=None):
+    async def fake_exec(argv, timeout, container=None, env=None):
         captured["argv"] = argv
         return sandbox.SandboxResult(0, "", "")
 
@@ -107,7 +107,7 @@ async def test_run_flags_lock_the_container_down(docker_mode, tmp_path, monkeypa
 
 
 async def test_docker_start_failure_is_unavailable(docker_mode, tmp_path, monkeypatch):
-    async def fake_exec(argv, timeout, container=None):
+    async def fake_exec(argv, timeout, container=None, env=None):
         return sandbox.SandboxResult(125, "", "docker: Error response from daemon")
 
     monkeypatch.setattr(sandbox, "_exec", fake_exec)
@@ -132,7 +132,7 @@ async def test_failed_setup_leaves_nothing_reusable(docker_mode, tmp_path, monke
     workdir = tmp_path / "w"
     workdir.mkdir()
 
-    async def fake_exec(argv, timeout, container=None):
+    async def fake_exec(argv, timeout, container=None, env=None):
         if argv[:3] == ["docker", "image", "inspect"]:
             return sandbox.SandboxResult(0, "sha256:abc\n", "")
         return sandbox.SandboxResult(1, "", "resolution failed")
@@ -148,7 +148,7 @@ async def test_successful_setup_is_reused(docker_mode, tmp_path, monkeypatch):
     workdir.mkdir()
     runs = []
 
-    async def fake_exec(argv, timeout, container=None):
+    async def fake_exec(argv, timeout, container=None, env=None):
         if argv[:3] == ["docker", "image", "inspect"]:
             return sandbox.SandboxResult(0, "sha256:abc\n", "")
         runs.append(argv)
@@ -164,7 +164,7 @@ async def test_successful_setup_is_reused(docker_mode, tmp_path, monkeypatch):
 
 
 async def test_missing_image_is_unavailable(docker_mode, tmp_path, monkeypatch):
-    async def fake_exec(argv, timeout, container=None):
+    async def fake_exec(argv, timeout, container=None, env=None):
         return sandbox.SandboxResult(1, "", "No such image")
 
     monkeypatch.setattr(sandbox, "_exec", fake_exec)
@@ -193,7 +193,7 @@ async def test_run_driver_flags_open_network_and_write_the_workdir(
 ):
     captured = {}
 
-    async def fake_exec(argv, timeout, container=None):
+    async def fake_exec(argv, timeout, container=None, env=None):
         captured["argv"] = argv
         return sandbox.SandboxResult(0, "", "")
 
@@ -210,11 +210,30 @@ async def test_run_driver_flags_open_network_and_write_the_workdir(
     # rw, not :ro: the CLI refreshes its access token in place (confirmed by
     # hand — a :ro mount left it authenticating with a stale token).
     assert f"{creds}:/claude-config" in joined and f"{creds}:/claude-config:ro" not in joined
-    assert argv[argv.index("--entrypoint") + 1] == "claude"
+    assert argv[argv.index("--entrypoint") + 1] == "/usr/local/bin/claude"
+
+
+async def test_run_driver_uses_the_images_cli_not_the_host_path(
+    driver_docker_mode, tmp_path, monkeypatch
+):
+    captured = {}
+
+    async def fake_exec(argv, timeout, container=None, env=None):
+        captured["argv"] = argv
+        return sandbox.SandboxResult(0, "", "")
+
+    monkeypatch.setattr(sandbox, "_exec", fake_exec)
+    await sandbox.run_driver(
+        ["/home/someone/.local/bin/claude", "-p", "hi"], tmp_path / "w", tmp_path / "c"
+    )
+    argv = captured["argv"]
+    assert argv[argv.index("--entrypoint") + 1] == "/usr/local/bin/claude"
+    assert "/home/someone/.local/bin/claude" not in argv
+    assert argv[-2:] == ["-p", "hi"]
 
 
 async def test_run_driver_missing_image_is_unavailable(driver_docker_mode, tmp_path, monkeypatch):
-    async def fake_exec(argv, timeout, container=None):
+    async def fake_exec(argv, timeout, container=None, env=None):
         return sandbox.SandboxResult(1, "", "No such image")
 
     monkeypatch.setattr(sandbox, "_exec", fake_exec)

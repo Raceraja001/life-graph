@@ -72,6 +72,15 @@ dependencies = [
     # LLM (routing only, minimal usage)
     "litellm>=1.40",
     "google-auth>=2.30",  # Vertex AI credential handling (litellm's vertex_ai/* provider)
+    # Powers the diff-reading second-opinion reviewer (services/pr_agent_review.py)
+    # -- a real driver dispatch, not a dev-only tool, so this is a runtime
+    # dependency like litellm above, not the `dev` extra pip-audit lives in.
+    # Python>=3.12 only (pr-agent's own requirement) -- this project supports
+    # >=3.11, so the marker keeps a 3.11 install resolvable. The reviewer
+    # already fails open (approves, ran=False) when the binary is missing,
+    # so a 3.11 environment simply never runs this check, same as any other
+    # project that lacks it for the tools verifiers.py already covers.
+    "pr-agent>=0.47; python_version >= '3.12'",
 
     # Cold Start
     # pydriller and radon moved to the `cold-start` extra (see below):
@@ -110,6 +119,15 @@ dependencies = [
 
     # Web Push Notifications
     "pywebpush>=2.0",
+
+    # Transitive via pywebpush/py-vapid, google-auth and others, but pinned
+    # here directly: 49.0.0 carries PYSEC-2026-3552 / CVE-2026-69247, a
+    # timing side channel in PKCS#7/S-MIME decryption (pkcs7_decrypt_der/
+    # _pem/_smime). Nothing in life_graph calls those specifically, but the
+    # fix is a drop-in version bump with no known breaking API change, so
+    # there is no reason to stay on the vulnerable version once caught by
+    # no_vulnerable_deps_in_diff.
+    "cryptography>=50.0",
 ]
 
 [project.optional-dependencies]
@@ -146,6 +164,7 @@ dev = [
     "ruff==0.16.1",  # pinned: an unpinned linter breaks CI with no code change
     "httpx>=0.27",
     "testcontainers[postgres]>=4.7",
+    "pip-audit>=2.7",  # powers the no_vulnerable_deps_in_diff verifier
 ]
 # Everything a full self-hosted deployment uses, so `pip install life-graph[all]`
 # reproduces the old all-in-one install in one line.

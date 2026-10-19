@@ -1,0 +1,13 @@
+{
+  "name": "lg-fixture-todo",
+  "private": true,
+  "type": "module",
+  "description": "Pilot app for Life Graph's Node verifiers (tests/integration/test_node_sandbox.py).",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
+}

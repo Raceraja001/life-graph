@@ -174,6 +174,16 @@ class ResilientLLM:
         # Per attempt, not per call: the chain can start on a local model and
         # fail over to a hosted one, and these options mean nothing there.
         kwargs = {**kwargs, **_local_model_kwargs(model)}
+        if model == settings.omniroute_model:
+            # api_base/api_key passed per-call, not bridged into OPENAI_API_KEY
+            # env — that var is also OpenAI's own, and clobbering it would
+            # break every other direct-OpenAI call in the process for the
+            # sake of one entry in this chain.
+            kwargs = {
+                **kwargs,
+                "api_base": settings.omniroute_url,
+                "api_key": settings.omniroute_api_key,
+            }
         resp = await litellm.acompletion(model=model, messages=messages, **kwargs)
         if kwargs.get("stream"):
             first_chunk = await resp.__anext__()
@@ -192,6 +202,12 @@ class ResilientLLM:
         """
         primary = self._primary(model, tier)
         chain = [primary, *await self._rank_fallbacks(primary)]
+        # OmniRoute's own "auto" combo already prefers subscription/free
+        # tiers internally, so it goes before the hard-paid fallback below —
+        # tried only once our own free chain is exhausted, but still ahead
+        # of the model we've explicitly flagged as a paid last resort.
+        if settings.omniroute_api_key and settings.omniroute_model not in chain:
+            chain.append(settings.omniroute_model)
         if settings.llm_paid_fallback_model and settings.llm_paid_fallback_model not in chain:
             chain.append(settings.llm_paid_fallback_model)
         elif settings.llm_paid_fallback_model:
@@ -207,6 +223,8 @@ class ResilientLLM:
                 continue
             if m == settings.llm_paid_fallback_model:
                 logger.warning("Falling back to paid model %s", m)
+            elif m == settings.omniroute_model and settings.omniroute_api_key:
+                logger.warning("Falling back to OmniRoute (%s)", settings.omniroute_url)
             try:
                 return await self._attempt(m, messages, kwargs)
             except Exception as exc:  # noqa: BLE001 - classify + fail over

@@ -1,8 +1,16 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Bot, ExternalLink, GitBranch, GitMerge, GitPullRequest, Loader2, Send } from "lucide-react";
-import { useCreateDevTask, useDevTasks, useDriverPersonas, useProjects } from "@/lib/hooks";
+import { Bot, ExternalLink, GitBranch, GitMerge, GitPullRequest, Loader2, Send, ShieldAlert } from "lucide-react";
+import {
+  useAutoMergeStatus,
+  useCreateDevTask,
+  useDependencyAuditReadiness,
+  useDevTaskDetail,
+  useDevTasks,
+  useDriverPersonas,
+  useProjects,
+} from "@/lib/hooks";
 
 // stage (from the API) → label + badge colours. Order follows the pipeline.
 const STAGES: Record<string, { label: string; cls: string }> = {
@@ -126,6 +134,134 @@ function NewTaskForm() {
   );
 }
 
+// Same numbers the dispatcher itself reads before deciding whether to skip
+// a PR-open/merge approval — so "why isn't this auto-merging" is a glance
+// at this card, not a hand-run curl against /tasks/stats plus mentally
+// comparing it to 80%.
+function AutoMergeStatus() {
+  const status = useAutoMergeStatus();
+  const rows: any[] = status.data ?? [];
+
+  if (status.isLoading || status.isError || rows.length === 0) return null;
+
+  return (
+    <div className="bg-surface border border-line rounded-xl p-4 space-y-3">
+      <p className="text-sm font-medium text-ink">Auto-merge trust status</p>
+      <div className="space-y-2">
+        {rows.map((r) => {
+          const pct = r.merge_rate == null ? null : Math.round(r.merge_rate * 100);
+          const thresholdPct = Math.round(r.threshold * 100);
+          const opted = r.auto_open_pr || r.auto_merge;
+          return (
+            <div key={`${r.persona}-${r.project_id}`} className="text-xs space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-ink-mid">
+                  {r.project_name} <span className="text-ink-low">· {r.persona}</span>
+                </span>
+                <span
+                  className={
+                    !opted
+                      ? "text-ink-low"
+                      : r.earning_auto_merge
+                        ? "text-success font-medium"
+                        : "text-warning font-medium"
+                  }
+                >
+                  {!opted
+                    ? "not opted in"
+                    : !r.established
+                      ? `${r.total}/3 outcomes needed`
+                      : r.earning_auto_merge
+                        ? "auto-merge earned"
+                        : `${pct}% — needs ${thresholdPct}%`}
+                </span>
+              </div>
+              {opted && r.established && (
+                <div className="h-1.5 rounded-full bg-surface-3 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${r.earning_auto_merge ? "bg-success" : "bg-warning"}`}
+                    style={{ width: `${Math.min(100, pct ?? 0)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// no_vulnerable_deps_in_diff reports this correctly per-task already
+// (inconclusive, never a silent pass) — this surfaces the same gap before
+// anyone dispatches a task that happens to touch a manifest and finds out
+// the hard way. Renders nothing when every project is covered.
+function DependencyAuditGaps() {
+  const readiness = useDependencyAuditReadiness();
+  const rows: any[] = readiness.data ?? [];
+  const gaps = rows.filter((r) => !r.pip_audit_available);
+
+  if (readiness.isLoading || readiness.isError || gaps.length === 0) return null;
+
+  return (
+    <div className="bg-warning-soft border border-line rounded-xl p-4 flex items-start gap-2 text-xs">
+      <ShieldAlert className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+      <p className="text-ink-mid">
+        <span className="font-medium text-warning">No dependency-vulnerability scanning yet</span> for{" "}
+        {gaps.map((r, i) => (
+          <span key={r.project_id}>
+            {i > 0 && ", "}
+            {r.project_name}
+          </span>
+        ))}
+        {" — "}add <code className="text-ink">pip-audit</code> as a dev dependency to enable it.
+      </p>
+    </div>
+  );
+}
+
+// Which verifier failed and why — the detail behind a generic "Verification
+// failed" error. Fetched only once expanded: the list view already has
+// everything else it needs from the summary endpoint.
+function VerificationDetail({ taskId }: { taskId: string }) {
+  const [open, setOpen] = useState(false);
+  const detail = useDevTaskDetail(taskId, open);
+  const runs: any[] = detail.data?.verification ?? [];
+
+  return (
+    <details className="text-xs" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
+      <summary className="cursor-pointer text-ink-mid">Verification detail</summary>
+      {detail.isLoading && <p className="mt-1 text-ink-low">Loading…</p>}
+      {detail.isError && <p className="mt-1 text-danger">Couldn&rsquo;t load verification detail.</p>}
+      {!detail.isLoading && !detail.isError && runs.length === 0 && (
+        <p className="mt-1 text-ink-low">No verifier runs recorded for this task.</p>
+      )}
+      {runs.map((run) => (
+        <div key={run.attempt} className="mt-2 space-y-1">
+          <p className="text-ink-mid font-medium">
+            Attempt {run.attempt} — {run.passed ? "passed" : "failed"}
+          </p>
+          {(run.results ?? []).map((r: any) => (
+            <div
+              key={r.verifier}
+              className={`pl-2 border-l-2 ${r.passed ? "border-success/40" : "border-danger/40"}`}
+            >
+              <p className={r.passed ? "text-success" : "text-danger"}>
+                {r.verifier} — {r.inconclusive ? "could not run" : r.passed ? "passed" : "failed"}
+              </p>
+              {!r.passed && r.evidence && (
+                <pre className="mt-0.5 whitespace-pre-wrap break-words text-ink-low bg-surface-2 rounded px-2 py-1">
+                  {JSON.stringify(r.evidence, null, 2).slice(0, 2000)}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </details>
+  );
+}
+
 function TaskCard({ t }: { t: any }) {
   const stage = STAGES[t.stage] ?? { label: t.stage, cls: "bg-surface-3 text-ink-mid" };
   const pending = (t.approvals ?? []).find((a: any) => a.status === "pending");
@@ -182,6 +318,8 @@ function TaskCard({ t }: { t: any }) {
 
       {t.error && t.status === "failed" && <p className="text-xs text-danger break-words">{t.error}</p>}
 
+      {t.error && <VerificationDetail taskId={t.id} />}
+
       {t.output && (
         <details className="text-xs">
           <summary className="cursor-pointer text-ink-mid">Agent summary</summary>
@@ -203,6 +341,9 @@ export default function DevTasksPage() {
       </div>
 
       <NewTaskForm />
+
+      <AutoMergeStatus />
+      <DependencyAuditGaps />
 
       {tasks.isError ? (
         <p className="text-sm text-danger">Couldn&rsquo;t load tasks.</p>

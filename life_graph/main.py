@@ -32,7 +32,7 @@ from life_graph.config import settings
 from life_graph.core.events import enable_redis_bridge, event_bus
 from life_graph.core.logging import setup_logging
 from life_graph.core.plugins import PluginManager
-from life_graph.storage.database import async_session, engine
+from life_graph.storage.database import async_session
 from life_graph.storage.redis import check_redis, close_redis, init_redis
 
 # Configure structured logging (JSON in prod, text in dev)
@@ -159,6 +159,7 @@ async def lifespan(app: FastAPI):
 
     # Startup — register agent tools (import triggers @tool decorator)
     with startup_step(report, "agent_tools"):
+        import life_graph.tools.assistant  # noqa: F401
         import life_graph.tools.browser  # noqa: F401
         import life_graph.tools.calculator  # noqa: F401
         import life_graph.tools.code  # noqa: F401
@@ -166,6 +167,8 @@ async def lifespan(app: FastAPI):
         import life_graph.tools.delegate  # noqa: F401
         import life_graph.tools.filesystem  # noqa: F401
         import life_graph.tools.git  # noqa: F401
+        import life_graph.tools.memory_search  # noqa: F401
+        import life_graph.tools.run_tests  # noqa: F401
         import life_graph.tools.system_inspect  # noqa: F401
         import life_graph.tools.terminal  # noqa: F401
         import life_graph.tools.web_search  # noqa: F401
@@ -246,6 +249,22 @@ async def lifespan(app: FastAPI):
         if seeded:
             # Inserted OR reconciled — seed_builtins logs the breakdown.
             logger.info("Seeded/reconciled %d built-in personas for default tenant", seeded)
+        # Every other tenant that already has personas gets new built-ins and
+        # prompt fixes too; otherwise only "default" ever saw them.
+        from sqlalchemy import distinct, select
+
+        from life_graph.models.db import AgentPersona
+        from life_graph.storage.database import async_session as _personas_session
+
+        async with _personas_session() as session:
+            persona_tenants = (
+                (await session.execute(select(distinct(AgentPersona.tenant_id)))).scalars().all()
+            )
+        for persona_tenant in persona_tenants:
+            if persona_tenant and persona_tenant != "default":
+                n = await persona_svc.seed_builtins(persona_tenant)
+                if n:
+                    logger.info("Seeded/reconciled %d built-in personas for %s", n, persona_tenant)
 
     # Startup — seed ambient scheduled jobs for default tenant
     with startup_step(report, "seed_ambient_jobs"):
@@ -313,6 +332,13 @@ async def lifespan(app: FastAPI):
         telegram_delivery_handler.subscribe()
         logger.info("Telegram brief delivery enabled")
 
+    # Startup — wire a filed approval (driver_pr/merge/plan/deploy/...) -> push/Telegram
+    with startup_step(report, "approval_notifications"):
+        from life_graph.services.approval_notifications import approval_notification_handler
+
+        approval_notification_handler.subscribe()
+        logger.info("Approval-filed notifications enabled")
+
     # Startup — wire advisory runs -> notifications/push
     with startup_step(report, "findings_bridge"):
         from life_graph.services.findings_bridge import findings_bridge_handler
@@ -337,20 +363,50 @@ async def lifespan(app: FastAPI):
 
         driver_registry.register(LocalDriver())
         driver_registry.register(ClaudeCodeDriver())
+        from life_graph.drivers.opencode import OpencodeDriver
+
+        driver_registry.register(OpencodeDriver())
         logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
+
+    # Only the process holding the runner lock recovers and runs dev tasks, so
+    # a second instance on the same database (a preview from another worktree)
+    # can neither claim queued tasks nor fail the real runner's in-flight one.
+    app.state.dev_task_runner_lock = None
+    with startup_step(report, "dev_task_runner_lock"):
+        from life_graph.services.dev_tasks import acquire_runner_lock
+        from life_graph.storage.database import engine
+
+        if settings.dev_task_runner_enabled:
+            app.state.dev_task_runner_lock = await acquire_runner_lock(engine)
+            if app.state.dev_task_runner_lock is None:
+                logger.warning(
+                    "Another Life Graph process is the dev-task runner for this "
+                    "database; this one will not recover or run dev tasks"
+                )
+        else:
+            logger.info("Dev-task runner disabled (LIFE_GRAPH_DEV_TASK_RUNNER_ENABLED=false)")
+    is_dev_task_runner = app.state.dev_task_runner_lock is not None
 
     with startup_step(report, "dev_tasks_recovery"):
         from life_graph.services.dev_tasks import fail_interrupted
 
-        interrupted = await fail_interrupted(async_session)
-        if interrupted:
-            logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
+        if is_dev_task_runner:
+            interrupted = await fail_interrupted(async_session)
+            if interrupted:
+                logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
 
     with startup_step(report, "dev_outcome_recorder"):
         from life_graph.services.dev_outcomes import dev_outcome_recorder
 
         # APPROVAL_RESOLVED is emitted by the approvals API in this process.
         dev_outcome_recorder.subscribe()
+
+    with startup_step(report, "trajectory_recorder"):
+        from life_graph.services.trajectories import trajectory_recorder
+
+        # driver:steps is emitted by the dispatcher, in whichever process runs
+        # the dev task: that is this one, the runner-lock holder.
+        trajectory_recorder.subscribe()
 
     app.state.dev_task_queue = None
     with startup_step(report, "dev_task_queue"):
@@ -360,7 +416,8 @@ async def lifespan(app: FastAPI):
 
         # Queued dev tasks (nightly suggestions) run here, where the drivers
         # are registered, one at a time.
-        app.state.dev_task_queue = asyncio.create_task(run_queue(async_session))
+        if is_dev_task_runner:
+            app.state.dev_task_queue = asyncio.create_task(run_queue(async_session))
 
     if report.failed:
         logger.warning(
@@ -377,6 +434,13 @@ async def lifespan(app: FastAPI):
     # failed by fail_interrupted on the next start).
     if app.state.dev_task_queue is not None:
         app.state.dev_task_queue.cancel()
+    if app.state.dev_task_runner_lock is not None:
+        from life_graph.services.dev_tasks import release_runner_lock
+
+        try:
+            await release_runner_lock(app.state.dev_task_runner_lock)
+        except Exception:
+            logger.warning("Closing the dev-task runner lock failed", exc_info=True)
 
     # Shutdown — close MCP bridge connections
     try:
@@ -491,6 +555,10 @@ from life_graph.api import kernel as kernel_api
 
 v1_router.include_router(kernel_api.router)
 
+from life_graph.api import observability as observability_api
+
+v1_router.include_router(observability_api.router)
+
 from life_graph.api import preferences as preferences_api
 
 v1_router.include_router(preferences_api.router)
@@ -590,6 +658,10 @@ v1_router.include_router(model_health_api.router)
 from life_graph.api import integrations_telegram as telegram_api
 
 v1_router.include_router(telegram_api.router)
+
+from life_graph.api import assistant as assistant_api
+
+v1_router.include_router(assistant_api.router)
 
 app.include_router(v1_router)
 

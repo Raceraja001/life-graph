@@ -217,6 +217,18 @@ class Settings(BaseSettings):
     llm_health_ttl_seconds: int = 3600
     llm_paid_fallback_model: str | None = None
 
+    # ── OmniRoute (local multi-provider LLM gateway — its own 4-tier
+    # auto-fallback across subscription/API/cheap/free providers behind one
+    # OpenAI-compatible endpoint). Additive to the free chain above, not a
+    # replacement: ResilientLLM already does ordered failover + cooldowns +
+    # health tracking, so this is ONE more entry in that chain rather than a
+    # second competing router. Empty api key = not configured, entry never
+    # added to the chain. Get a key from the OmniRoute dashboard
+    # (http://localhost:20128 by default) under Endpoints.
+    omniroute_api_key: str = ""  # Set LIFE_GRAPH_OMNIROUTE_API_KEY
+    omniroute_url: str = "http://localhost:20128/v1"
+    omniroute_model: str = "openai/auto"
+
     # ── Personal AI: Research ────────────────────────────
     research_stale_days: int = 30
     research_max_per_run: int = 5
@@ -264,6 +276,14 @@ class Settings(BaseSettings):
     agent_llm_max_tokens: int = 4096
     agent_fallback_model: str = "gemini/gemini-3.5-flash-lite"
     agent_max_iterations: int = 5
+    # Long runs (docs/specs/agent-condenser.md). The context window the
+    # condenser budgets against: Ollama here serves every model at
+    # OLLAMA_CONTEXT_LENGTH=32768 and silently drops the START of a longer
+    # prompt. Per-model overrides are JSON, quoted as a whole in .env.
+    agent_condenser_enabled: bool = True
+    agent_context_tokens: int = 32768
+    agent_context_tokens_by_model: str = "{}"
+    agent_stuck_detection: bool = True
 
     # ── OS Kernel ──────────────────────────────────────────
     # Must stay > ProcessManager.MAX_DELEGATION_DEPTH (currently 5): each
@@ -280,6 +300,17 @@ class Settings(BaseSettings):
 
     # ── Tavily (web search tool) ──────────────────────
     tavily_api_key: str = ""  # Set LIFE_GRAPH_TAVILY_API_KEY
+    # auto = SearXNG if searxng_url is set, then Tavily if keyed, then the
+    # keyless DuckDuckGo HTML endpoint. Or name one: searxng|tavily|duckduckgo.
+    web_search_provider: str = "auto"
+    searxng_url: str = ""  # e.g. http://localhost:8888 (JSON format enabled)
+    web_search_max_results: int = 6
+    # Hosts agent fetches may reach even though they resolve to a private
+    # address (services/safe_fetch.py). Comma-separated host names.
+    fetch_allow_hosts: str = ""
+    # Personas whose answers must cite URLs a tool returned in the same run
+    # (services/sources.py). Comma-separated persona names.
+    require_sources_personas: str = "scout,rex"
 
     # ── Connectors (calendar, email, … — docs/specs/connectors.md) ───────────
     # Replaces the unused google_credentials_json / google_delegated_user stubs:
@@ -387,10 +418,56 @@ class Settings(BaseSettings):
 
     # ── Agent Drivers ───────────────────────────────────
     driver_claude_code_bin: str = "claude"  # Claude Code CLI binary for the claude_code driver
+    # Per-dispatch limit for the claude_code driver. The dispatcher's 300s
+    # fallback cut a real plan-only run off mid-exploration of this repo;
+    # 1200 matches the local driver.
+    driver_claude_code_timeout_seconds: int = 1200
+    # "oauth" = the personal Claude login (staged into the sandbox); "api_key"
+    # = ANTHROPIC_API_KEY under Anthropic's commercial terms, required for a
+    # service sold to others. Prefer the env var to this setting for the key.
+    driver_claude_code_auth: str = "oauth"
+    driver_claude_code_api_key: str = ""
+    # OpenCode driver (drivers/opencode.py). Unavailable until the binary exists:
+    #   npm install --prefix ~/.local/opencode opencode-ai
+    driver_opencode_bin: str = "opencode"
+    driver_opencode_model: str = "ollama/qwen3-coder:30b"
+    driver_opencode_ollama_base: str = "http://localhost:11434/v1"
+    driver_opencode_timeout_seconds: int = 1200
+    # The host is not sandboxed for this driver, so OpenCode's shell stays
+    # denied unless this is set. Tests run in the verifier sandbox regardless.
+    driver_opencode_allow_bash: bool = False
+    # A plan approves itself only for a project with auto_approve_plans set,
+    # at most this many tasks, and every other rule in services/plan_policy.py.
+    auto_plan_max_tasks: int = 3
+    # Seconds a project's smoke_command may take after a deploy.
+    post_deploy_smoke_timeout: int = 300
+    # Idea -> app (services/bootstrap.py): where new apps are created (default:
+    # the first tool root), and whether to create a private GitHub repo with gh
+    # (off: a local bare repo stands in as origin).
+    bootstrap_root: str = ""
+    bootstrap_create_github: bool = False
+    # Set false on a preview/secondary instance so it never even tries to be
+    # the dev-task runner. Without it, the database advisory lock still keeps
+    # it from running alongside the real one (services/dev_tasks.py).
+    dev_task_runner_enabled: bool = True
+    # Per-step content cap for recorded agent runs (services/trajectories.py).
+    # One whole-file read can be megabytes; the real length is kept alongside.
+    trajectory_step_max_chars: int = 16_000
+    # Tenants whose agent runs are NOT recorded step by step (consent: a
+    # customer may opt out). Comma-separated tenant ids.
+    trajectory_opt_out_tenants: str = ""
     # Dissenting cheap-model review before an auto-verified task lands.
     # Off by default — pure LLM overhead until agents run unattended.
     driver_second_opinion_enabled: bool = False
-    driver_second_opinion_model: str | None = None  # cheap model; None = client default
+    driver_second_opinion_model: str | None = None  # None = agent_llm_model
+    driver_pr_agent_bin: str = "pr-agent"  # the PR-Agent CLI backing the reviewer above
+    # Draft the PR description from the landed diff (one model call per landed
+    # task, best-effort -- falls back to the instruction + agent summary).
+    driver_pr_description_enabled: bool = True
+    # Give the driver the definitions/callers/callees of symbols its
+    # instruction names, from a stdlib-ast graph of the worktree (no model).
+    driver_code_context_enabled: bool = True
+    driver_pr_description_model: str | None = None  # None = agent_llm_model
     # Where verifiers execute agent-written code (tests, linters). "none" runs
     # them on the host as this process's user; "docker" runs each check in a
     # locked-down container (life_graph/services/sandbox.py). With "docker",
@@ -400,6 +477,9 @@ class Settings(BaseSettings):
     driver_gh_bin: str = "gh"
     verifier_sandbox: str = "none"
     verifier_sandbox_image: str = "life-graph-verifier:py3.12"
+    # Projects whose registry sets sandbox_toolchain=node are checked here
+    # instead (docker build -t life-graph-verifier:node22 docker/verifier-node).
+    verifier_sandbox_node_image: str = "life-graph-verifier:node22"
     verifier_sandbox_cache_dir: str = ""  # cached project venvs; "" = ~/.cache/life-graph/...
     verifier_sandbox_memory: str = "4g"
     verifier_sandbox_cpus: str = "4"
@@ -428,6 +508,9 @@ class Settings(BaseSettings):
     # docstrings used to claim a "personal tenant only" restriction that no
     # code implemented.
     tool_shell_enabled: bool = True  # master switch for run_command
+    # full = an arbitrary shell string (denylist only); allowlist = read-only
+    # programs run without a shell (tools/shell_allowlist.py).
+    tool_shell_mode: str = "full"
     # Tenants permitted to use host tools. Empty string = every tenant,
     # which is only sane for a single-tenant personal deployment.
     tool_privileged_tenants: str = "default"
@@ -455,6 +538,20 @@ class Settings(BaseSettings):
     # mistapped message should not be sufficient authority to run something
     # irreversible. /pending stays available regardless — reading is not deciding.
     telegram_allow_approvals: bool = False
+    # Conversation from Telegram (/ask, /chat — services/assistant_chat.py).
+    telegram_assistant_persona: str = "assistant"
+    telegram_ask_timeout_seconds: int = 240
+    # Spoken replies: an OpenAI-compatible /v1/audio/speech server (speaches
+    # on :8010 locally). Empty = text replies only.
+    tts_base_url: str = ""
+    tts_model: str = "speaches-ai/Kokoro-82M-v1.0-ONNX"
+    tts_voice: str = "af_heart"
+    # speaches offers mp3|flac|wav|pcm (no opus); Telegram voice notes take mp3 or ogg/opus.
+    tts_format: str = "mp3"
+
+    # ── Invoices (services/invoices.py) ────────────────
+    invoice_seller_name: str = ""  # shown on invoices and signed under emails
+    invoice_seller_details: str = ""  # address, tax id… separated by "|"
 
     # ── Derived Properties ─────────────────────────────
 
@@ -511,6 +608,11 @@ class Settings(BaseSettings):
         return [t.strip() for t in self.tool_privileged_tenants.split(",") if t.strip()]
 
     @property
+    def trajectory_opt_out_tenants_list(self) -> list[str]:
+        """Tenants opted out of step recording (services/trajectories.py)."""
+        return [t.strip() for t in self.trajectory_opt_out_tenants.split(",") if t.strip()]
+
+    @property
     def tool_fs_roots_list(self) -> list[str]:
         """Roots the file_* tools may touch. Defaults to the home directory."""
         roots = [r.strip() for r in self.tool_fs_roots.split(",") if r.strip()]
@@ -520,6 +622,17 @@ class Settings(BaseSettings):
     def capture_no_extract_surfaces_list(self) -> list[str]:
         """Surfaces that are logged as capture events but never extracted."""
         return [s.strip() for s in self.capture_no_extract_surfaces.split(",") if s.strip()]
+
+    def context_tokens_for(self, model: str | None) -> int:
+        """The context window to budget a run against (agent_context_tokens_by_model)."""
+        import json
+
+        try:
+            overrides = json.loads(self.agent_context_tokens_by_model or "{}")
+        except ValueError:
+            overrides = {}
+        value = overrides.get(model or "") if isinstance(overrides, dict) else None
+        return int(value) if isinstance(value, int) and value > 0 else self.agent_context_tokens
 
     @property
     def llm_fallback_chain_list(self) -> list[str]:
@@ -569,3 +682,19 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def sqlalchemy_sync_url(url: str) -> str:
+    """*url* with the psycopg2 driver named, for a synchronous SQLAlchemy engine.
+
+    SQLAlchemy 2.1 changed what a bare ``postgresql://`` URL means: its
+    default driver went from psycopg2 to psycopg (v3). We depend on
+    psycopg2-binary, so a fresh install (CI) failed migrations with "No module
+    named 'psycopg'" while older local installs worked. Naming the driver
+    makes the URL mean the same thing on every SQLAlchemy version. Only for
+    SQLAlchemy: plain ``psycopg2.connect`` still wants the bare scheme.
+    """
+    for bare in ("postgresql://", "postgres://"):
+        if url.startswith(bare):
+            return "postgresql+psycopg2://" + url[len(bare) :]
+    return url

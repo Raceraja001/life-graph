@@ -107,6 +107,91 @@ async def test_diff_scoped_verifiers_tolerate_a_non_git_directory(tmp_path):
     assert all(r.passed for r in results)
 
 
+# ── no_secrets_in_diff ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_flags_a_private_key_in_a_new_file(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "creds.pem").write_text(
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK...\n-----END RSA PRIVATE KEY-----\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "creds.pem"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is False
+    findings = results[0].evidence["findings"]
+    assert findings and findings[0]["pattern"] == "private_key_block"
+    assert findings[0]["file"] == "creds.pem"
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_finding_never_echoes_the_secret_itself(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "config.py").write_text(
+        'AWS_KEY = "AKIAABCDEFGHIJKLMNOP"\n', encoding="utf-8"
+    )
+    subprocess.run(["git", "add", "config.py"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is False
+    blob = str(results[0].evidence)
+    assert "AKIAABCDEFGHIJKLMNOP" not in blob
+    assert "aws_access_key_id" in blob
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_ignores_pre_existing_secret_outside_the_diff(tmp_path):
+    _init_repo(tmp_path)
+    leaky = tmp_path / "old_creds.py"
+    leaky.write_text('KEY = "AKIAABCDEFGHIJKLMNOP"\n', encoding="utf-8")
+    subprocess.run(["git", "add", "old_creds.py"], cwd=str(tmp_path), check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-m", "pre-existing"],
+        cwd=str(tmp_path),
+        check=True,
+        capture_output=True,
+    )
+    (tmp_path / "new.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "new.py"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_allows_the_aws_documented_example_key(tmp_path):
+    _init_repo(tmp_path)
+    # AWS's own placeholder from their docs — appears in countless tutorials
+    # and test fixtures; must not be treated as a real leaked credential.
+    (tmp_path / "readme_snippet.py").write_text(
+        'EXAMPLE = "AKIAIOSFODNN7EXAMPLE"\n', encoding="utf-8"
+    )
+    subprocess.run(
+        ["git", "add", "readme_snippet.py"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_in_diff_passes_a_clean_diff(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "new.py").write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+    subprocess.run(["git", "add", "new.py"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    results = await verifier_chain.run_chain(["no_secrets_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+    assert results[0].evidence["findings"] == []
+
+
 # ── Untracked (never `git add`-ed) new files ─────────────────
 #
 # Nothing in the agent-tool pipeline stages files: there is no git-add tool
@@ -198,4 +283,183 @@ async def test_lint_clean_diff_still_fails_on_real_lint_errors(tmp_path):
 
     results = await verifier_chain.run_chain(["lint_clean_diff"], tmp_path, {})
 
+    assert results[0].passed is False
+
+
+# ── no_vulnerable_deps_in_diff ────────────────────────────────
+
+
+def _fake_pip_audit(tmp_path, report: dict, returncode: int = 0):
+    """A stub pip-audit binary installed at workdir/.venv/bin/pip-audit —
+    the real, non-mocked lookup path (no_vulnerable_deps_in_diff never
+    trusts an ambient one found only via PATH; see the regression test
+    below for why)."""
+    import json
+
+    bindir = tmp_path / ".venv" / "bin"
+    bindir.mkdir(parents=True, exist_ok=True)
+    script = bindir / "pip-audit"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        f"print({json.dumps(json.dumps(report))})\n"
+        f"sys.exit({returncode})\n"
+    )
+    script.chmod(0o755)
+    return str(script)
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_skips_when_no_manifest_touched(tmp_path, monkeypatch):
+    """No dependency manifest in the diff -> a real pass, no tool ever invoked."""
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "new.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "new.py"], cwd=str(tmp_path), check=True, capture_output=True)
+
+    def must_not_run(workdir, tool):
+        raise AssertionError("must not look for pip-audit when no manifest changed")
+
+    monkeypatch.setattr(verifiers_mod, "_project_tool", must_not_run)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+    assert results[0].inconclusive is False
+    assert results[0].evidence["touched"] == []
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_inconclusive_without_pip_audit(tmp_path, monkeypatch):
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+    # No .venv/bin/pip-audit anywhere under tmp_path -- nothing to find.
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].inconclusive is True
+    assert results[0].passed is False, "inconclusive must never read as a pass"
+    assert results[0].evidence["touched"] == ["requirements.txt"]
+    assert "pip-audit not available" in results[0].evidence["note"]
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_passes_when_pip_audit_finds_nothing(tmp_path, monkeypatch):
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    _fake_pip_audit(tmp_path, {"dependencies": [{"name": "requests", "vulns": []}]})
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].passed is True
+    assert results[0].evidence["vulnerabilities"] == []
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_fails_when_pip_audit_finds_a_vuln(tmp_path, monkeypatch):
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    report = {
+        "dependencies": [
+            {"name": "requests", "version": "2.0.0", "vulns": [{"id": "PYSEC-2018-28"}]}
+        ]
+    }
+    _fake_pip_audit(tmp_path, report, returncode=1)
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].passed is False
+    assert results[0].inconclusive is False
+    (vuln,) = results[0].evidence["vulnerabilities"]
+    assert vuln == {"package": "requests", "version": "2.0.0", "id": "PYSEC-2018-28"}
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_inconclusive_when_pip_audit_itself_fails(tmp_path, monkeypatch):
+    """A network failure or bad env (exit code neither 0 nor 1) is not a
+    verdict on the dependencies — must not be reported as a vulnerability."""
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    _fake_pip_audit(tmp_path, {}, returncode=2)
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].inconclusive is True
+    assert results[0].passed is False
+
+
+@pytest.mark.asyncio
+async def test_no_vulnerable_deps_never_trusts_an_ambient_pip_audit(tmp_path, monkeypatch):
+    """Regression test for a real bug: found live when this server's own
+    venv happened to have pip-audit installed and first on PATH.
+    shutil.which("pip-audit") found it, and the verifier ran it with no
+    arguments — which audits whatever Python environment *that* binary is
+    bound to, not the target project's. It reported a clean scan for a
+    project it had never actually looked at, a false pass strictly worse
+    than the inconclusive result it should have given.
+
+    Unlike ruff/pytest (which take an explicit target path, so even an
+    ambient binary still operates on the right directory), pip-audit has
+    no such argument, so an ambient one must never be trusted here at all
+    — only a venv actually inside this project's own workdir counts.
+    """
+    import life_graph.services.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "requirements.txt"], cwd=str(tmp_path), check=True, capture_output=True
+    )
+
+    # An "ambient" pip-audit reachable via shutil.which, e.g. on PATH from
+    # some unrelated project's venv -- deliberately NOT inside tmp_path.
+    ambient_dir = tmp_path.parent / "ambient-bin"
+    ambient_dir.mkdir(exist_ok=True)
+    ambient = ambient_dir / "pip-audit"
+    ambient.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        'print(\'{"dependencies": []}\')\n'  # a clean scan, if this ever ran
+        "sys.exit(0)\n"
+    )
+    ambient.chmod(0o755)
+    monkeypatch.setattr(verifiers_mod.shutil, "which", lambda tool: str(ambient))
+    monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
+
+    results = await verifier_chain.run_chain(["no_vulnerable_deps_in_diff"], tmp_path, {})
+
+    assert results[0].inconclusive is True, (
+        "must never fall back to an ambient pip-audit found only via PATH — "
+        "it audits its own interpreter's environment with no way to target "
+        "this project, so 'found on PATH' is not evidence it checked anything real"
+    )
     assert results[0].passed is False

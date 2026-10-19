@@ -149,13 +149,13 @@ def _alembic_config(script_location, sql: bool):
     """
     from alembic.config import Config
 
-    from life_graph.config import settings
+    from life_graph.config import settings, sqlalchemy_sync_url
 
     ini = script_location / "alembic.ini"
     cfg = Config(str(ini)) if ini.is_file() else Config()
     cfg.set_main_option("script_location", str(script_location))
     if not sql:
-        cfg.set_main_option("sqlalchemy.url", settings.database_url_sync)
+        cfg.set_main_option("sqlalchemy.url", sqlalchemy_sync_url(settings.database_url_sync))
     return cfg
 
 
