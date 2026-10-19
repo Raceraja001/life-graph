@@ -254,3 +254,99 @@ async def test_a_queued_plan_still_runs_as_a_plan(project, monkeypatch):
     assert kw["verify_chain"] == ["no_diff_in_plan"]
     assert kw["task_type"] == "plan"
     assert kw["interactive"] is False
+
+
+async def _claim_ours(task_id):
+    """Claim until our task comes up or nothing more is runnable."""
+    from life_graph.services import dev_tasks
+    from life_graph.storage.database import async_session
+
+    for _ in range(200):
+        claimed = await dev_tasks.claim_next_queued(async_session)
+        if claimed is None or str(claimed.id) == task_id:
+            return claimed
+    return None
+
+
+async def test_while_the_user_is_active_a_nightly_task_goes_to_the_cloud(project, monkeypatch):
+    from life_graph.drivers.base import DriverResult
+    from life_graph.drivers.dispatcher import TaskDispatcher
+    from life_graph.models.db import AgentTask
+    from life_graph.services import compute_router, dev_tasks
+    from life_graph.storage.database import async_session
+
+    async def active(_factory, _tenant):
+        return compute_router.Snapshot(
+            active="voice 2 min ago", local_hours=True, free_gb=30.0, cloud=("openrouter/m:free",)
+        )
+
+    monkeypatch.setattr(compute_router, "snapshot", active)
+    queued = await dev_tasks.create_dev_task(
+        async_session,
+        TENANT,
+        instruction="Fix item E",
+        project=project,
+        persona_name="code-fixer-local",
+        start=False,
+        properties={"origin": "nightly"},
+    )
+    claimed = await _claim_ours(queued["id"])
+    assert claimed is not None
+    assert claimed.assigned_agent == compute_router.CLOUD_PERSONA
+    assert claimed.properties["route"] == "cloud"
+    assert claimed.properties["routed_from"] == "code-fixer-local"
+    assert "voice 2 min ago" in claimed.status_history[-1]["note"]
+
+    async def rate_limited(self, **kw):
+        assert kw["persona_name"] == compute_router.CLOUD_PERSONA
+        return DriverResult(
+            success=False,
+            error="All models are currently unavailable. Please try again shortly.",
+            metadata={"stop_reason": "error"},
+        )
+
+    benched = []
+
+    async def cool(seconds=None):
+        benched.append(seconds)
+
+    monkeypatch.setattr(TaskDispatcher, "dispatch_task", rate_limited)
+    monkeypatch.setattr(compute_router, "cool_cloud_route", cool)
+    await dev_tasks.run_claimed(async_session, claimed)
+    async with async_session() as s:
+        row = await s.get(AgentTask, claimed.id)
+        assert row.status == "queued"  # back for the GPU, not failed
+        assert row.assigned_agent == "code-fixer-local"
+        assert row.properties["cloud_requeues"] == 1
+        row.status = "cancelled"  # don't leave it for later tests' claims
+        await s.commit()
+    assert benched == [None]
+
+
+async def test_while_the_user_is_active_without_a_cloud_model_it_waits(project, monkeypatch):
+    from life_graph.models.db import AgentTask
+    from life_graph.services import compute_router, dev_tasks
+    from life_graph.storage.database import async_session
+
+    async def active(_factory, _tenant):
+        return compute_router.Snapshot(
+            active="switch says active", local_hours=True, free_gb=30.0, cloud=()
+        )
+
+    monkeypatch.setattr(compute_router, "snapshot", active)
+    queued = await dev_tasks.create_dev_task(
+        async_session,
+        TENANT,
+        instruction="Fix item F",
+        project=project,
+        persona_name="code-fixer-local",
+        start=False,
+        properties={"origin": "nightly"},
+    )
+    assert await _claim_ours(queued["id"]) is None
+    async with async_session() as s:
+        row = await s.get(AgentTask, uuid.UUID(queued["id"]))
+        assert (row.status, row.assigned_agent) == ("queued", "code-fixer-local")
+        # Settle it so later tests' claims aren't held up by it.
+        row.status = "cancelled"
+        await s.commit()

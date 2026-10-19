@@ -651,6 +651,10 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
             if done < INTERRUPT_REQUEUES:
                 props["interrupt_requeues"] = done + 1
                 props["run_mode"] = QUEUE_MODE
+                # Routed to the cloud for that run only: route it afresh.
+                if props.get("routed_from"):
+                    task.assigned_agent = props.pop("routed_from")
+                props.pop("route", None)
                 task.properties = props
                 task.status = "queued"
                 task.started_at = None
@@ -748,8 +752,12 @@ async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -
     one whose predecessor can no longer merge is marked failed, along with
     the rest of its plan as the scan reaches them.
     """
+    from life_graph.services import compute_router
+
     stopped: list[tuple[AgentTask, AgentTask, str]] = []
     claimed: AgentTask | None = None
+    # One snapshot per tenant per claim: where the GPU stands right now.
+    snaps: dict[str, compute_router.Snapshot] = {}
     async with session_factory() as session:
         candidates = (
             (
@@ -788,9 +796,27 @@ async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -
                 if not (prev.properties or {}).get("plan_stopped"):
                     stopped.append((task, prev, stage))
                 continue
+            persona = task.assigned_agent or "code-fixer-local"
+            route = None
+            if persona in compute_router.LOCAL_CODE_PERSONAS:
+                if task.tenant_id not in snaps:
+                    snaps[task.tenant_id] = await compute_router.snapshot(
+                        session_factory, task.tenant_id
+                    )
+                route = compute_router.decide(persona, task.properties, snaps[task.tenant_id])
+                if route.where == "wait":
+                    logger.debug("Queued task %s waits: %s", task.id, route.reason)
+                    continue
+            note = "claimed from queue"
+            if route is not None and route.where in ("local", "cloud"):
+                note = f"claimed from queue ({route.where}: {route.reason})"
+                task.properties = {**(task.properties or {}), "route": route.where}
+                if route.where == "cloud":
+                    task.properties = {**task.properties, "routed_from": persona}
+                    task.assigned_agent = route.persona
             task.status = "running"
             task.started_at = datetime.now(UTC)
-            task.status_history = _history(task, "running", "claimed from queue")
+            task.status_history = _history(task, "running", note)
             claimed = task
             break
         await session.commit()
@@ -818,6 +844,121 @@ async def run_claimed(session_factory: async_sessionmaker[AsyncSession], task: A
         interactive=bool((task.properties or {}).get("interactive", False)),
         spec_first=bool((task.properties or {}).get("spec_first", False)),
         verify_chain=list((task.properties or {}).get("verify_chain") or []) or None,
+    )
+    try:
+        await _after_queued_run(session_factory, str(task.id))
+    except Exception:
+        logger.warning("Post-run handling of queued task %s failed", task.id, exc_info=True)
+
+
+# The orchestrator's message when every model in the run's chain failed (for a
+# cloud run, whose chain is only free cloud models, that means rate-limited),
+# and a 429 that arrived mid-stream, which skips failover ("Internal error:
+# RateLimitError").
+MODELS_EXHAUSTED = ("All models are currently unavailable", "RateLimitError")
+MAX_CLOUD_REQUEUES = 3
+ESCALATION_PERSONA = "code-fixer-opencode"
+
+
+def _models_exhausted(error: str | None) -> bool:
+    return any(s in (error or "") for s in MODELS_EXHAUSTED)
+
+
+def _cloud_exhausted(task: AgentTask) -> bool:
+    props = task.properties or {}
+    return (
+        task.status == "failed"
+        and props.get("route") == "cloud"
+        and _models_exhausted(task.error)
+        and int(props.get("cloud_requeues") or 0) < MAX_CLOUD_REQUEUES
+    )
+
+
+def _escalatable(task: AgentTask) -> bool:
+    """A failed nightly local-model task that the 30B OpenCode engine may still do.
+
+    Only when the agent actually ran and fell short: not a budget denial, a
+    dispatch error (no result), or models being unavailable. Once per finding.
+    """
+    props = task.properties or {}
+    result = task.result or {}
+    original = props.get("routed_from") or task.assigned_agent
+    return (
+        task.status == "failed"
+        and props.get("origin") == "nightly"
+        and original == "code-fixer-local"
+        and not props.get("escalated_from")
+        and not props.get("escalated_to")
+        and "metadata" in result
+        and not (result.get("metadata") or {}).get("budget_throttled")
+        and not _models_exhausted(task.error)
+    )
+
+
+async def _after_queued_run(
+    session_factory: async_sessionmaker[AsyncSession], task_id: str
+) -> None:
+    """After a queued run: put a rate-limited cloud run back on the queue, or
+    hand a failed nightly local run to OpenCode.
+
+    A cloud run whose free models were all exhausted did nothing wrong; it
+    benches the cloud route (compute_router.cool_cloud_route) and goes back on
+    the queue as the persona it was routed from, so it runs locally once the
+    user is away. A nightly task the local model could not finish is queued
+    once more for OpenCode, which the router only runs while the user is away
+    and enough RAM is free; it stays local (``local_only``).
+    """
+    from life_graph.services import compute_router
+
+    async with session_factory() as session:
+        task = await session.get(AgentTask, uuid.UUID(task_id))
+        if task is None:
+            return
+        props = task.properties or {}
+        if _cloud_exhausted(task):
+            await compute_router.cool_cloud_route()
+            note = "free cloud models rate-limited; back on the queue"
+            task.assigned_agent = props.get("routed_from") or task.assigned_agent
+            task.properties = {
+                **{k: v for k, v in props.items() if k not in ("route", "routed_from")},
+                "cloud_requeues": int(props.get("cloud_requeues") or 0) + 1,
+            }
+            task.status = "queued"
+            task.error = None
+            task.result = {}
+            task.started_at = None
+            task.completed_at = None
+            task.status_history = _history(task, "queued", note)
+            await session.commit()
+            logger.info("Queued task %s: %s", task_id, note)
+            return
+        if not _escalatable(task):
+            return
+        project = {"id": str(task.project_id), "name": props.get("project_name") or ""}
+        instruction = task.instructions or ""
+        tenant_id = task.tenant_id
+        task.properties = {**props, "escalated_to": ESCALATION_PERSONA}
+        await session.commit()
+
+    new = await create_dev_task(
+        session_factory,
+        tenant_id,
+        instruction=instruction,
+        project=project,
+        persona_name=ESCALATION_PERSONA,
+        start=False,
+        properties={
+            "origin": "nightly",
+            "finding_key": props.get("finding_key"),
+            "finding_kind": props.get("finding_kind"),
+            "escalated_from": task_id,
+            "local_only": True,
+        },
+        spec_first=bool(props.get("spec_first")),
+        verify_chain=list(props.get("verify_chain") or []) or None,
+    )
+    logger.info(
+        "Nightly task %s failed on the local model; queued %s for OpenCode", task_id, new["id"]
     )
 
 

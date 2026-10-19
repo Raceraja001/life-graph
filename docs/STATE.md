@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
+Generated `2026-10-19 15:02 UTC` from `feat/compute-routing` @ `9ee45cc`
 
 ---
 
@@ -16,23 +16,60 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 
 | | |
 |---|---|
-| HTTP operations | **287** across 247 paths, 39 tags |
-| Database tables | **70** |
-| Migrations | **44** (head: `044_agent_run_steps`) |
+| HTTP operations | **325** across 278 paths, 40 tags |
+| Database tables | **77** |
+| Migrations | **49** (head: `049_invoices`) |
 | Event types | **79** |
-| Built-in personas | **16** |
+| Built-in personas | **20** |
 | Agent tools | **13** |
-| Scheduled jobs | **20** |
-| Config settings | **191** (prefix `LIFE_GRAPH_`) |
-| Test functions | **2609** in 271 files |
+| Scheduled jobs | **21** |
+| Config settings | **232** (prefix `LIFE_GRAPH_`) |
+| Test functions | **2975** in 317 files |
 | Dashboard pages | **18** |
-| Python | 330 files, 84,005 lines |
+| Python | 364 files, 93,883 lines |
 
 ---
 
 ## HTTP API
 
-287 operations, grouped by OpenAPI tag.
+325 operations, grouped by OpenAPI tag.
+
+### `assistant` — 32
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/documents` | List Documents |
+| POST | `/api/v1/documents` | Add Document |
+| GET | `/api/v1/documents/expiring` | Expiring Documents |
+| DELETE | `/api/v1/documents/{doc_id}` | Delete Document |
+| PATCH | `/api/v1/documents/{doc_id}` | Edit Document |
+| GET | `/api/v1/invoices` | List Invoices |
+| POST | `/api/v1/invoices` | Create Invoice |
+| GET | `/api/v1/invoices/{invoice_id}` | Get Invoice |
+| PATCH | `/api/v1/invoices/{invoice_id}` | Edit Invoice |
+| GET | `/api/v1/invoices/{invoice_id}/html` | Invoice Html |
+| POST | `/api/v1/invoices/{invoice_id}/paid` | Paid Invoice |
+| POST | `/api/v1/invoices/{invoice_id}/send` | Send Invoice |
+| POST | `/api/v1/invoices/{invoice_id}/void` | Void Invoice |
+| POST | `/api/v1/money/alerts` | Import Alerts |
+| GET | `/api/v1/money/budgets` | List Budgets |
+| DELETE | `/api/v1/money/budgets/{category}` | Delete Budget |
+| PUT | `/api/v1/money/budgets/{category}` | Put Budget |
+| GET | `/api/v1/money/categories` | Money Categories |
+| POST | `/api/v1/money/import` | Import Statement |
+| GET | `/api/v1/money/summary` | Money Summary |
+| GET | `/api/v1/money/transactions` | List Transactions |
+| PATCH | `/api/v1/money/transactions/{txn_id}` | Recategorise |
+| GET | `/api/v1/monitors` | List Monitors |
+| POST | `/api/v1/monitors` | Add Monitor |
+| DELETE | `/api/v1/monitors/{monitor_id}` | Delete Monitor |
+| PATCH | `/api/v1/monitors/{monitor_id}` | Edit Monitor |
+| POST | `/api/v1/monitors/{monitor_id}/check` | Check Monitor |
+| POST | `/api/v1/study/cards` | Add Card |
+| DELETE | `/api/v1/study/cards/{card_id}` | Delete Card |
+| POST | `/api/v1/study/cards/{card_id}/grade` | Grade |
+| GET | `/api/v1/study/due` | Due Cards |
+| POST | `/api/v1/study/generate` | Generate Cards |
 
 ### `kernel` — 30
 
@@ -130,6 +167,32 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 | POST | `/api/v1/self-improving/prompt-versions/{version_id}/rollback` | Rollback to a previous prompt version |
 | GET | `/api/v1/self-improving/status` | How much the loop has to learn from |
 
+### `drivers` — 21
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/drivers` | List registered drivers |
+| GET | `/api/v1/kernel/drivers/compute` | Where queued coding work runs right now: local GPU, free cloud model, or later |
+| PUT | `/api/v1/kernel/drivers/compute/presence` | Set the active/away switch (auto clears it) |
+| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
+| GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
+| GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
+| GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
+| POST | `/api/v1/kernel/drivers/projects/bootstrap` | Idea to app: scaffold, version, register and optionally plan a new app |
+| POST | `/api/v1/kernel/drivers/projects/{project_id}/findings` | Report a production failure; queues a fix task (de-duplicated) |
+| GET | `/api/v1/kernel/drivers/scorecards` | Per driver and model: success, bounces, merges, cost |
+| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
+| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
+| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
+| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
+| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
+| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
+| GET | `/api/v1/kernel/drivers/templates` | App templates a new project can start from |
+
 ### `admin` — 20
 
 | Method | Path | Summary |
@@ -174,26 +237,6 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 | POST | `/api/v1/connectors/items/{item_id}/remind` | Turn a promise from sent mail into a reminder |
 | GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
 | GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
-
-### `drivers` — 15
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/kernel/drivers` | List registered drivers |
-| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
-| GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
-| GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
-| GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
-| GET | `/api/v1/kernel/drivers/scorecards` | Per driver and model: success, bounces, merges, cost |
-| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
-| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
-| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
-| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
-| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
-| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
-| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
 
 ### `judgment-engine` — 14
 
@@ -520,7 +563,7 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 
 ## Database tables
 
-70 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+77 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -542,6 +585,7 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 | `conversation_messages` | 8 | ✓ | `027_conversations` |
 | `conversations` | 6 | ✓ | `027_conversations` |
 | `cross_system_syncs` | 20 | ✓ | `017_agent_networks` |
+| `documents` | 15 | ✓ | `045_documents` |
 | `eval_cases` | 10 | — | `015_self_improving` |
 | `eval_results` | 14 | — | `015_self_improving` |
 | `eval_runs` | 18 | — | `015_self_improving` |
@@ -550,6 +594,7 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 | `external_sessions` | 11 | ✓ | `030_external_sessions` |
 | `extraction_traces` | 10 | ✓ | `038_extraction_traces` |
 | `intentions` | 16 | ✓ | `001_initial_schema` |
+| `invoices` | 21 | ✓ | `049_invoices` |
 | `job_runs` | 10 | ✓ | `003_multi_tenancy` |
 | `knowledge_gaps` | 9 | ✓ | `001_initial_schema` |
 | `life_graph.calibration_snapshots` | 11 | ✓ | `—` |
@@ -564,16 +609,21 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 | `memories` | 34 | ✓ | `001_initial_schema` |
 | `memory_links` | 8 | ✓ | `—` |
 | `memory_sessions` | 5 | — | `001_initial_schema` |
+| `money_budgets` | 7 | ✓ | `046_money` |
+| `money_category_rules` | 5 | ✓ | `046_money` |
+| `money_transactions` | 14 | ✓ | `046_money` |
 | `nightly_run_log` | 15 | ✓ | `015_self_improving` |
 | `notification_channels` | 9 | ✓ | `016_ambient_ai` |
 | `notifications` | 14 | ✓ | `013_projects_notifications` |
 | `optimization_runs` | 28 | ✓ | `015_self_improving` |
+| `page_monitors` | 17 | ✓ | `047_page_monitors` |
 | `preferences` | 21 | ✓ | `014_personal_ai` |
 | `procedures` | 14 | ✓ | `—` |
 | `projects` | 18 | ✓ | `013_projects_notifications` |
 | `prompt_versions` | 14 | ✓ | `015_self_improving` |
 | `push_subscriptions` | 8 | ✓ | `028_push_subscriptions` |
 | `research_runs` | 12 | ✓ | `014_personal_ai` |
+| `review_cards` | 14 | ✓ | `048_review_cards` |
 | `scheduled_jobs` | 19 | ✓ | `012_scheduled_jobs` |
 | `sessions` | 10 | ✓ | `001_initial_schema` |
 | `shadow_enrollments` | 9 | ✓ | `024_shadow_mode` |
@@ -679,7 +729,7 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 
 ## Built-in personas
 
-16 personas seeded at startup.
+20 personas seeded at startup.
 
 | Persona | Driver | Task types | Verifiers | Tools |
 |---|---|---|---|---:|
@@ -692,13 +742,17 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 | **uzhavu-ops** — Operates the Uzhavu platform — deploy checks, incident diagnosis, and fixes. | `claude_code` | `deploy_check`, `incident_fix` | `build_ok_diff`, `tests_pass` | 6 |
 | **dependency-updater** — Turns dependency-watcher findings into safe upgrade PRs, running project tests before landing. | `claude_code` | `dependency_update` | `tests_pass`, `diff_within_scope` | 7 |
 | **code-fixer** — Makes small, focused code changes in a registered project. File tools only — no shell — and every change is verified and offered as a PR for approval. | `claude_code` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 2 |
-| **code-fixer-local** — Code Fixer on a local model: the code never leaves the machine. Set its model to a local coder (e.g. ollama_chat/qwen3-coder:30b). Same verification and PR approval as Code Fixer. | `local` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 4 |
-| **code-fixer-auto** — Code Fixer that picks its driver per project from the record of merged vs rejected PRs: the free local model unless its work on that project keeps getting rejected, then Claude Code. | `auto` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 4 |
-| **tutor** — Tracks what you're learning, guides you, and checks understanding. | `—` | — | — | 2 |
-| **scout** — Ambiently researches topics useful to the user and surfaces findings. | `—` | — | — | 3 |
-| **admin** — Surfaces work/life admin items (bills, follow-ups, meeting prep) for review. | `—` | — | — | 11 |
+| **code-fixer-local** — Code Fixer on a local model: the code never leaves the machine. Set its model to a local model that fits the GPU: ollama_chat/gpt-oss:20b scored best on the driver benchmark (evals/driver_bench/README.md). Same verification and PR approval as Code Fixer. | `local` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
+| **code-fixer-opencode** — Code Fixer on OpenCode, an open-source coding agent, with a local model: the code never leaves the machine. An alternative engine to code-fixer-local; compare them on the Agent scorecards. | `opencode` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
+| **code-fixer-cloud** — Code Fixer on a free cloud model, for queued work while the GPU is busy with speech (services/compute_router.py). The code leaves the machine; personal context does not. Free models only, never paid. Its model is the first of dev_cloud_models; change it here. | `cloud` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
+| **code-fixer-auto** — Code Fixer that picks its driver per project from the record of merged vs rejected PRs: the free local model unless its work on that project keeps getting rejected, then Claude Code. | `auto` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 4 |
+| **tutor** — Tracks what you're learning, guides you, and checks understanding. | `—` | — | — | 3 |
+| **scout** — Ambiently researches topics useful to the user and surfaces findings. | `—` | — | — | 4 |
+| **admin** — Surfaces work/life admin items (bills, follow-ups, meeting prep) for review. | `—` | — | — | 13 |
+| **assistant** — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
+| **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
 | **swe-lead** — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — Explicitly-invoked orchestrator for requests that span multiple roles. | `—` | — | — | 27 |
+| **jarvis** — Explicitly-invoked orchestrator for requests that span multiple roles. | `—` | — | — | 35 |
 
 ---
 
@@ -708,7 +762,7 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 
 | Tool | Description |
 |---|---|
-| `browse_web` | Browse a web page and extract its text content. Use for: reading documentation, checking release notes, scraping articles, checking GitHub repos. Returns the page text content (no JavaScript execution). |
+| `browse_web` | Browse a web page and extract its text content. Use for: reading documentation, checking release notes, scraping articles, checking GitHub repos. Returns the page text content (no JavaScript execution). Private and local network addresses cannot be fetched. |
 | `calculator` | Evaluate a mathematical expression safely |
 | `delegate_to_persona` | Delegate a sub-task to another persona and get their result back. Use this when part of the request is better handled by a specialist persona than by you. |
 | `file_read` | Read the contents of a file on the host system. Provide an absolute path. Returns the file's text content, truncated if very large. |
@@ -720,13 +774,13 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 | `git_status` | Get the current git status of a repository. Shows modified, staged, and untracked files. |
 | `inspect_system` | Read-only system inspection. `check` must be one of: disk, docker_logs, docker_ps, git_status, memory, systemctl_status, uptime. Optional `target` names a container/service where relevant. Cannot modify anything. |
 | `run_command` | Execute a shell command on the host system and return the output. Use for: checking system status, running scripts, git operations, docker commands, file listing, etc. Commands time out after 30 seconds. DANGEROUS: Only use when explicitly asked by the user. |
-| `web_search` | Search the web for current information |
+| `web_search` | Search the web for current information. Returns titles, URLs and snippets; cite the URLs you rely on. |
 
 ---
 
 ## Scheduled jobs
 
-20 ARQ cron jobs (times are UTC).
+21 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -740,6 +794,7 @@ Generated `2026-10-13 10:40 UTC` from `feat/dev-agent-safety` @ `c410413`
 | `run_all_decay_sweeps` | 04:00 | `life_graph.workers.decay.run_all_decay_sweeps` |
 | `run_all_merge_suggestions` | 03:45 | `life_graph.workers.tasks.run_all_merge_suggestions` |
 | `run_all_research` | Sun 02:00 | `life_graph.workers.tasks.run_all_research` |
+| `run_assistant_daily` | daily at (settings.brief_hour_utc - 1) % 24:30 | `life_graph.workers.tasks.run_assistant_daily` |
 | `run_daily_brief` | daily at settings.brief_hour_utc:00 | `life_graph.workers.tasks.run_daily_brief` |
 | `run_daily_digest` | 08:00 | `life_graph.workers.tasks.run_daily_digest` |
 | `run_nightly_calibration` | 04:15 | `life_graph.workers.tasks.run_nightly_calibration` |
@@ -786,9 +841,12 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 | Spec | Status | Evidence |
 |---|---|---|
+| `agent-condenser` | Unclassified | — |
 | `agent-drivers` | Built | `life_graph/drivers/dispatcher.py` |
 | `agent-observability` | Unclassified | — |
 | `approvals-feed` | Built | `life_graph/api/approvals.py` |
+| `assistant-capabilities` | Unclassified | — |
+| `autonomous-app-development` | Unclassified | — |
 | `bills-from-mail` | Unclassified | — |
 | `capture-spine` | Built | `life_graph/services/capture.py` |
 | `connector-contacts` | Unclassified | — |
@@ -821,9 +879,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-44 revisions, head `044_agent_run_steps`.
+49 revisions, head `049_invoices`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices`
 
 ---
 
@@ -833,16 +891,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 209 | 1994 |
-| `tests/integration/` | 61 | 603 |
+| `tests/unit/` | 246 | 2328 |
+| `tests/integration/` | 70 | 635 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **271** | **2609** |
+| **total** | **317** | **2975** |
 
 ---
 
 ## Configuration
 
-191 settings, all overridable by environment variable.
+232 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -945,6 +1003,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_AGENT_LLM_MAX_TOKENS` | `4096` |
 | `LIFE_GRAPH_AGENT_FALLBACK_MODEL` | `'gemini/gemini-3.5-flash-lite'` |
 | `LIFE_GRAPH_AGENT_MAX_ITERATIONS` | `5` |
+| `LIFE_GRAPH_AGENT_CONDENSER_ENABLED` | `True` |
+| `LIFE_GRAPH_AGENT_CONTEXT_TOKENS` | `32768` |
+| `LIFE_GRAPH_AGENT_CONTEXT_TOKENS_BY_MODEL` | `'{}'` |
+| `LIFE_GRAPH_AGENT_STUCK_DETECTION` | `True` |
 | `LIFE_GRAPH_KERNEL_MAX_CONCURRENT_TASKS` | `8` |
 | `LIFE_GRAPH_KERNEL_DEFAULT_TIMEOUT` | `300` |
 | `LIFE_GRAPH_KERNEL_DEFAULT_MAX_RETRIES` | `2` |
@@ -952,6 +1014,11 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_KERNEL_ENABLE_SCHEDULER` | `True` |
 | `LIFE_GRAPH_KERNEL_MAX_CONSECUTIVE_FAILURES` | `3` |
 | `LIFE_GRAPH_TAVILY_API_KEY` | `''` |
+| `LIFE_GRAPH_WEB_SEARCH_PROVIDER` | `'auto'` |
+| `LIFE_GRAPH_SEARXNG_URL` | `''` |
+| `LIFE_GRAPH_WEB_SEARCH_MAX_RESULTS` | `6` |
+| `LIFE_GRAPH_FETCH_ALLOW_HOSTS` | `''` |
+| `LIFE_GRAPH_REQUIRE_SOURCES_PERSONAS` | `'scout,rex'` |
 | `LIFE_GRAPH_CONNECTORS_ENABLED` | `True` |
 | `LIFE_GRAPH_USER_TIMEZONE` | `'UTC'` |
 | `LIFE_GRAPH_CONNECTOR_SECRETS_DIR` | `'~/.config/life-graph/connectors'` |
@@ -1004,8 +1071,29 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_AUTONOMY_DEFAULT_LEVEL` | `'L0'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_BIN` | `'claude'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_TIMEOUT_SECONDS` | `1200` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_CODE_AUTH` | `'oauth'` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_CODE_API_KEY` | `''` |
+| `LIFE_GRAPH_DRIVER_OPENCODE_BIN` | `'opencode'` |
+| `LIFE_GRAPH_DRIVER_OPENCODE_MODEL` | `'ollama/qwen3-coder:30b'` |
+| `LIFE_GRAPH_DRIVER_OPENCODE_OLLAMA_BASE` | `'http://localhost:11434/v1'` |
+| `LIFE_GRAPH_DRIVER_OPENCODE_TIMEOUT_SECONDS` | `1200` |
+| `LIFE_GRAPH_DRIVER_OPENCODE_ALLOW_BASH` | `False` |
+| `LIFE_GRAPH_AUTO_PLAN_MAX_TASKS` | `3` |
+| `LIFE_GRAPH_POST_DEPLOY_SMOKE_TIMEOUT` | `300` |
+| `LIFE_GRAPH_BOOTSTRAP_ROOT` | `''` |
+| `LIFE_GRAPH_BOOTSTRAP_CREATE_GITHUB` | `False` |
 | `LIFE_GRAPH_DEV_TASK_RUNNER_ENABLED` | `True` |
+| `LIFE_GRAPH_DEV_ROUTE_QUEUE` | `True` |
+| `LIFE_GRAPH_DEV_CLOUD_MODELS` | `'openrouter/poolside/laguna-s-2.1:free,openrouter/nvidia/…` |
+| `LIFE_GRAPH_USER_ACTIVE_MINUTES` | `30` |
+| `LIFE_GRAPH_SPEECH_MODELS` | `'gemma3'` |
+| `LIFE_GRAPH_OLLAMA_API_BASE` | `'http://localhost:11434'` |
+| `LIFE_GRAPH_DEV_LOCAL_HOURS` | `''` |
+| `LIFE_GRAPH_OPENCODE_MIN_FREE_GB` | `12.0` |
+| `LIFE_GRAPH_CLOUD_RATE_LIMIT_COOLDOWN_SECONDS` | `3600` |
+| `LIFE_GRAPH_NVIDIA_NIM_API_KEY` | `''` |
 | `LIFE_GRAPH_TRAJECTORY_STEP_MAX_CHARS` | `16000` |
+| `LIFE_GRAPH_TRAJECTORY_OPT_OUT_TENANTS` | `''` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_MODEL` | `—` |
 | `LIFE_GRAPH_DRIVER_PR_AGENT_BIN` | `'pr-agent'` |
@@ -1015,6 +1103,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_GH_BIN` | `'gh'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX` | `'none'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_IMAGE` | `'life-graph-verifier:py3.12'` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX_NODE_IMAGE` | `'life-graph-verifier:node22'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_CACHE_DIR` | `''` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_MEMORY` | `'4g'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_CPUS` | `'4'` |
@@ -1024,6 +1113,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_CPUS` | `'4'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_CREDS_PATH` | `'~/.claude/.credentials.json'` |
 | `LIFE_GRAPH_TOOL_SHELL_ENABLED` | `True` |
+| `LIFE_GRAPH_TOOL_SHELL_MODE` | `'full'` |
 | `LIFE_GRAPH_TOOL_PRIVILEGED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_TOOL_FS_ROOTS` | `''` |
 | `LIFE_GRAPH_INTERVIEW_MAX_QUESTIONS_PER_DAY` | `3` |
@@ -1036,4 +1126,13 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_TELEGRAM_POLL_TIMEOUT` | `25` |
 | `LIFE_GRAPH_TELEGRAM_RATE_LIMIT_PER_MIN` | `20` |
 | `LIFE_GRAPH_TELEGRAM_ALLOW_APPROVALS` | `False` |
+| `LIFE_GRAPH_TELEGRAM_ASSISTANT_PERSONA` | `'assistant'` |
+| `LIFE_GRAPH_TELEGRAM_ASK_TIMEOUT_SECONDS` | `240` |
+| `LIFE_GRAPH_TTS_BASE_URL` | `''` |
+| `LIFE_GRAPH_TTS_MODEL` | `'speaches-ai/Kokoro-82M-v1.0-ONNX'` |
+| `LIFE_GRAPH_TTS_VOICE` | `'af_heart'` |
+| `LIFE_GRAPH_TTS_FORMAT` | `'mp3'` |
+| `LIFE_GRAPH_INVOICE_SELLER_NAME` | `''` |
+| `LIFE_GRAPH_INVOICE_SELLER_DETAILS` | `''` |
+| `LIFE_GRAPH_SEED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_PLAN_LIMITS` | `{'free': {'requests_per_min': 60, 'max_memories': 1000, '…` |

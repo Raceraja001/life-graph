@@ -11,9 +11,11 @@ retry also fails) it raises ResilientLLMExhaustedError; callers run their own fa
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 import os
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -30,6 +32,28 @@ logger = logging.getLogger(__name__)
 
 class ResilientLLMExhaustedError(Exception):
     """Raised when every model in the chain failed or is unavailable."""
+
+
+# When set, the only models a completion may fail over to (see only_models).
+_allowed_fallbacks: contextvars.ContextVar[tuple[str, ...] | None] = contextvars.ContextVar(
+    "resilient_llm_allowed_fallbacks", default=None
+)
+
+
+@contextmanager
+def only_models(models: list[str]):
+    """Within this block, completions fail over only to *models*.
+
+    The global chain (local models, OmniRoute, the paid fallback) is skipped
+    entirely. The cloud driver runs under this so that a free cloud run whose
+    models are rate-limited fails instead of quietly continuing on the GPU the
+    user is using, or on a paid model.
+    """
+    token = _allowed_fallbacks.set(tuple(models))
+    try:
+        yield
+    finally:
+        _allowed_fallbacks.reset(token)
 
 
 # Providers served from this machine, where `keep_alive` means something.
@@ -87,6 +111,8 @@ def _bridge_provider_credentials() -> None:
         os.environ["OPENROUTER_API_KEY"] = settings.openrouter_api_key
     if settings.openrouter_url and not os.environ.get("OPENROUTER_API_BASE"):
         os.environ["OPENROUTER_API_BASE"] = settings.openrouter_url
+    if settings.nvidia_nim_api_key and not os.environ.get("NVIDIA_NIM_API_KEY"):
+        os.environ["NVIDIA_NIM_API_KEY"] = settings.nvidia_nim_api_key
 
     if settings.vertex_credentials_path and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(
@@ -159,6 +185,24 @@ class ResilientLLM:
         keyed.sort(key=lambda pair: pair[0])
         return [m for _, m in keyed]
 
+    @staticmethod
+    def _append_last_resorts(chain: list[str]) -> None:
+        """Append OmniRoute, then the paid fallback, to the end of *chain*."""
+        # OmniRoute's own "auto" combo already prefers subscription/free
+        # tiers internally, so it goes before the hard-paid fallback below —
+        # tried only once our own free chain is exhausted, but still ahead
+        # of the model we've explicitly flagged as a paid last resort.
+        if settings.omniroute_api_key and settings.omniroute_model not in chain:
+            chain.append(settings.omniroute_model)
+        if settings.llm_paid_fallback_model and settings.llm_paid_fallback_model not in chain:
+            chain.append(settings.llm_paid_fallback_model)
+        elif settings.llm_paid_fallback_model:
+            logger.warning(
+                "Paid fallback model %s is already present in the free fallback chain; "
+                "the 'always last, cost-gated' guarantee does not hold in this configuration",
+                settings.llm_paid_fallback_model,
+            )
+
     async def _attempt(self, model: str, messages: list[dict], kwargs: dict) -> Any:
         """Make one live call to `model`, recording success health on return.
 
@@ -201,21 +245,13 @@ class ResilientLLM:
         one forced attempt made when all candidates were skipped for being in cooldown.
         """
         primary = self._primary(model, tier)
-        chain = [primary, *await self._rank_fallbacks(primary)]
-        # OmniRoute's own "auto" combo already prefers subscription/free
-        # tiers internally, so it goes before the hard-paid fallback below —
-        # tried only once our own free chain is exhausted, but still ahead
-        # of the model we've explicitly flagged as a paid last resort.
-        if settings.omniroute_api_key and settings.omniroute_model not in chain:
-            chain.append(settings.omniroute_model)
-        if settings.llm_paid_fallback_model and settings.llm_paid_fallback_model not in chain:
-            chain.append(settings.llm_paid_fallback_model)
-        elif settings.llm_paid_fallback_model:
-            logger.warning(
-                "Paid fallback model %s is already present in the free fallback chain; "
-                "the 'always last, cost-gated' guarantee does not hold in this configuration",
-                settings.llm_paid_fallback_model,
-            )
+        allowed = _allowed_fallbacks.get()
+        if allowed is not None:
+            # only_models(): no global chain, no OmniRoute, no paid fallback.
+            chain = [primary, *(m for m in dict.fromkeys(allowed) if m != primary)]
+        else:
+            chain = [primary, *await self._rank_fallbacks(primary)]
+            self._append_last_resorts(chain)
         skipped: list[str] = []
         for m in chain:
             if await self._health.in_cooldown(m):

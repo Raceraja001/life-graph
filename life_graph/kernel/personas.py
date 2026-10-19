@@ -314,6 +314,41 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "context_profile": {"domains": ["code"]},
     },
     {
+        "name": "code-fixer-cloud",
+        "display_name": "Code Fixer (free cloud)",
+        "icon": "☁️",
+        "description": (
+            "Code Fixer on a free cloud model, for queued work while the GPU is"
+            " busy with speech (services/compute_router.py). The code leaves the"
+            " machine; personal context does not. Free models only, never paid."
+            " Its model is the first of dev_cloud_models; change it here."
+        ),
+        "system_prompt": (
+            "You are Code Fixer. Make the smallest change that fully does what"
+            " the task asks, in the project's existing style. Work in steps: find"
+            " the relevant code with code_search or code_list, read it with"
+            " code_read (follow next_start_line for long files), change it with"
+            " code_edit (copy `old` exactly, without the line-number prefixes),"
+            " then code_read the changed lines to confirm. If you add or change a"
+            " test, run it with run_tests and fix it until it passes. Never"
+            " rewrite a whole file to change part of it. Do not refactor or"
+            " touch unrelated files. Finish with a short summary of what you"
+            " changed and why."
+        ),
+        "intent_tags": ["code", "fix", "cloud"],
+        "temperature": 0.2,
+        "allowed_tools": ["code_read", "code_search", "code_list", "code_edit", "run_tests"],
+        "driver": "cloud",
+        "task_types": ["code_change"],
+        "verifier_chain": [
+            "build_ok_diff",
+            "lint_clean_diff",
+            "diff_within_scope",
+            "tests_exercise_code",
+        ],
+        "context_profile": {"domains": ["code"]},
+    },
+    {
         "name": "code-fixer-auto",
         "display_name": "Code Fixer (auto)",
         "icon": "⚖️",
@@ -594,6 +629,15 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
 ]
 
 
+def _seed_model(defn: dict[str, Any]) -> str:
+    """The model a built-in persona is first seeded with: the configured agent
+    model, except a cloud-driver persona, which must start on a free cloud
+    model (drivers/cloud.py refuses anything else)."""
+    if defn.get("driver") == "cloud" and settings.dev_cloud_models_list:
+        return settings.dev_cloud_models_list[0]
+    return settings.agent_llm_model
+
+
 class PersonaService:
     """Manages agent persona CRUD and built-in seeding.
 
@@ -671,10 +715,24 @@ class PersonaService:
             Dict representation of the matching persona, or None.
         """
         async with self._session_factory() as session:
-            stmt = select(AgentPersona).where(
-                AgentPersona.tenant_id == tenant_id,
-                AgentPersona.is_active.is_(True),
-                AgentPersona.intent_tags.any(intent),
+            stmt = (
+                select(AgentPersona)
+                .where(
+                    AgentPersona.tenant_id == tenant_id,
+                    AgentPersona.is_active.is_(True),
+                    AgentPersona.intent_tags.any(intent),
+                )
+                # Several personas share an intent ("code": cody and every
+                # code-fixer). Without an order Postgres returned whichever
+                # row it read first, and adding code-fixer-cloud flipped chat
+                # routing to code-fixer (CI, 2026-10-19). A chat message goes
+                # to a conversational persona first; driver-pinned personas
+                # are for dev tasks.
+                .order_by(
+                    AgentPersona.driver.is_not(None),
+                    AgentPersona.created_at,
+                    AgentPersona.name,
+                )
             )
             result = await session.execute(stmt)
             persona = result.scalars().first()
@@ -767,7 +825,7 @@ class PersonaService:
                             # so every freshly seeded tenant arrived broken. The
                             # configured default is what the orchestrator itself
                             # falls back to (orchestrator.py), so they agree.
-                            model=settings.agent_llm_model,
+                            model=_seed_model(defn),
                             temperature=defn["temperature"],
                             max_tokens=4096,
                             allowed_tools=defn["allowed_tools"],
