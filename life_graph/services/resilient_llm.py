@@ -32,6 +32,43 @@ class ResilientLLMExhaustedError(Exception):
     """Raised when every model in the chain failed or is unavailable."""
 
 
+# Providers served from this machine, where `keep_alive` means something.
+# Deliberately not "openai/": in this codebase that prefix appears inside
+# OpenRouter ids like "openrouter/openai/gpt-oss-20b:free", which is a hosted
+# model that must not be handed an Ollama-only option.
+LOCAL_PROVIDERS = ("ollama/", "ollama_chat/", "lm_studio/")
+
+# How long Ollama holds a model in VRAM after a request.
+#
+# Its default is five minutes; after that the weights are evicted and the next
+# message pays to load them again — measured at ~4s for qwen3:14b here, which is
+# why a chat picked back up after a break takes several seconds to say "hi". The
+# cost lands entirely on interactive use: a scheduled job does not notice, a
+# person waiting for a greeting does.
+LOCAL_KEEP_ALIVE = "30m"
+
+
+def _local_model_kwargs(model: str) -> dict[str, Any]:
+    """Completion options that only apply to a locally served model.
+
+    Empty for anything hosted elsewhere — a cloud provider handed `keep_alive`
+    would at best ignore it, and at worst reject the request.
+    """
+    if not model.startswith(LOCAL_PROVIDERS):
+        return {}
+
+    extra: dict[str, Any] = {"keep_alive": LOCAL_KEEP_ALIVE}
+    if settings.lm_reasoning_effort:
+        # A thinking model answers "hi" with 141 tokens of hidden reasoning and
+        # 12 of greeting: 1.9s against 0.19s with thinking off, and far worse on
+        # a real question. This setting already said it applied to "local chat
+        # calls", but only the extraction client ever sent it, so every persona
+        # reply paid for reasoning nobody reads. Sent through extra_body so an
+        # SDK-side enum cannot reject values like "none".
+        extra["extra_body"] = {"reasoning_effort": settings.lm_reasoning_effort}
+    return extra
+
+
 def _bridge_provider_credentials() -> None:
     """Export LIFE_GRAPH_-configured provider creds to the env var names LiteLLM
     expects, so every provider in the fallback chain authenticates.
@@ -134,6 +171,9 @@ class ResilientLLM:
         unprotected, when the orchestrator iterates the stream itself.
         """
         t0 = time.monotonic()
+        # Per attempt, not per call: the chain can start on a local model and
+        # fail over to a hosted one, and these options mean nothing there.
+        kwargs = {**kwargs, **_local_model_kwargs(model)}
         if model == settings.omniroute_model:
             # api_base/api_key passed per-call, not bridged into OPENAI_API_KEY
             # env — that var is also OpenAI's own, and clobbering it would
