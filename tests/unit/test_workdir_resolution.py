@@ -149,3 +149,67 @@ async def test_remove_worktree_honors_the_repo_path_override(tmp_path):
     await remove_worktree(packet, worktree, repo_path=str(real_repo))
 
     assert not worktree.exists()
+
+
+def _git(cwd, *args):
+    import subprocess
+
+    return subprocess.run(
+        ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", *args],
+        cwd=str(cwd), check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
+@pytest.mark.asyncio
+async def test_a_pinned_base_is_cut_from_origin_not_the_checkout(tmp_path):
+    # origin has `main` at commit B; the local clone is checked out on another
+    # branch and its own `main` is behind (commit A). The worktree must start
+    # from origin/main (B), whatever the checkout is doing.
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(origin, "init", "-b", "main")
+    _git(origin, "commit", "--allow-empty", "-m", "A")
+    clone = tmp_path / "clone"
+    _git(tmp_path, "clone", "-q", str(origin), str(clone))
+    _git(origin, "commit", "--allow-empty", "-m", "B")
+    b = _git(origin, "rev-parse", "HEAD")
+    _git(clone, "checkout", "-q", "-b", "someone-elses-work")
+    _git(clone, "commit", "--allow-empty", "-m", "unrelated")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    packet = _packet({"path": str(clone), "isolation": True, "base_branch": "main"})
+
+    cwd, worktree = await resolve_workdir(packet, scratch)
+
+    assert worktree is not None
+    assert _git(worktree, "rev-parse", "HEAD") == b
+    await remove_worktree(packet, worktree)
+
+
+@pytest.mark.asyncio
+async def test_a_pinned_base_falls_back_to_the_local_branch_without_a_remote(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "commit", "--allow-empty", "-m", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "other")
+    _git(repo, "commit", "--allow-empty", "-m", "other work")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    packet = _packet({"path": str(repo), "isolation": True, "base_branch": "main"})
+
+    cwd, worktree = await resolve_workdir(packet, scratch)
+
+    assert worktree is not None
+    assert _git(worktree, "rev-parse", "HEAD") == base
+    await remove_worktree(packet, worktree)
+
+
+@pytest.mark.asyncio
+async def test_an_unsafe_base_branch_name_is_ignored(tmp_path):
+    from life_graph.drivers.workdir import _pinned_start
+
+    assert await _pinned_start(tmp_path, "--upload-pack=evil") is None
+    assert await _pinned_start(tmp_path, "main; rm -rf /") is None
+    assert await _pinned_start(tmp_path, None) is None

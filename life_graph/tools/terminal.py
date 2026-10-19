@@ -8,7 +8,12 @@ list. That restriction is now enforced in :mod:`life_graph.tools._guards`,
 along with a master switch (``LIFE_GRAPH_TOOL_SHELL_ENABLED``) and working
 directory confinement.
 
-WARNING: this executes an arbitrary shell string. The command denylist below
+``LIFE_GRAPH_TOOL_SHELL_MODE=allowlist`` replaces the shell string with
+:mod:`life_graph.tools.shell_allowlist`: read-only programs, exec without a
+shell, file arguments confined, no secrets in the child's environment. That
+mode is a real boundary; the warning below is about the default ``full`` mode.
+
+WARNING: in ``full`` mode this executes an arbitrary shell string. The command denylist below
 is a mistake-catcher, NOT a security boundary — denylisting a shell cannot
 work, and should not be reasoned about as though it does. The real controls
 are the tenant gate and the master switch. Anything a shell can reach, a
@@ -21,6 +26,7 @@ import asyncio
 import logging
 
 from life_graph.config import settings
+from life_graph.tools import shell_allowlist
 from life_graph.tools._guards import (
     ToolDeniedError,
     check_command,
@@ -75,22 +81,34 @@ async def run_command(command: str, working_directory: str | None = None) -> str
     if not settings.tool_shell_enabled:
         return json.dumps({"error": "Shell execution is disabled on this deployment."})
 
+    mode = (settings.tool_shell_mode or "full").strip().lower()
     try:
         check_tenant("run_command")
         check_command(command)
         cwd = resolve_cwd(working_directory, tool_name="run_command")
+        argv = shell_allowlist.parse(command, cwd) if mode == "allowlist" else None
     except ToolDeniedError as exc:
         return json.dumps({"error": str(exc)})
 
-    logger.info("Executing command: %s (cwd=%s)", command, cwd)
+    logger.info("Executing command (%s mode): %s (cwd=%s)", mode, command, cwd)
 
     try:
-        process = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(cwd),
-        )
+        if argv is not None:
+            process = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.DEVNULL,
+                cwd=str(cwd),
+                env=shell_allowlist.child_env(),
+            )
+        else:
+            process = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(cwd),
+            )
 
         stdout, stderr = await asyncio.wait_for(
             process.communicate(),

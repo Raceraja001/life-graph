@@ -44,7 +44,7 @@ import sys
 
 from sqlalchemy import create_engine, text
 
-from life_graph.config import settings
+from life_graph.config import settings, sqlalchemy_sync_url
 
 #: Content that describes how a session was run, not what was decided in it.
 #: Matched case-insensitively against the memory text.
@@ -106,7 +106,7 @@ def main() -> int:
     if not args.keep_ephemeral:
         drop = f"{drop} OR ({_EPH_SQL})"
 
-    engine = create_engine(settings.database_url_sync)
+    engine = create_engine(sqlalchemy_sync_url(settings.database_url_sync))
     params = _params()
 
     with engine.begin() as conn:

@@ -128,3 +128,79 @@ async def test_interactive_dispatch_reaches_driver_even_when_low(monkeypatch):
 
     assert driver.dispatched is True
     assert result.success is True
+
+
+# ── The cap is for paid API spend only (the user, 2026-10-18) ──────────────
+
+
+async def _authorize_call(monkeypatch, driver_name, persona_model):
+    """Dispatch an unattended task; return the kwargs the Governor saw."""
+    driver = _SpyDriver()
+    driver.name = driver_name
+    disp = TaskDispatcher(session_factory=lambda: _FakeSession(), event_bus=None)
+    seen = {}
+
+    async def _no_wip(*_a, **_k):
+        return None
+
+    async def _packet(*_a, **_k):
+        return ContextPacket(
+            task_id=uuid.uuid4(), tenant_id="t1", task_type="code", instruction="do it",
+            persona_model=persona_model,
+        )
+
+    async def _pick(*_a, **_k):
+        return driver
+
+    async def _emit(*_a, **_k):
+        return None
+
+    async def _authorize(*_a, **kw):
+        seen.update(kw)
+        return await _denied()()
+
+    monkeypatch.setattr(disp, "_check_wip_limits", _no_wip)
+    monkeypatch.setattr(disp._context_builder, "build_packet", _packet)
+    monkeypatch.setattr(disp, "_select_driver", _pick)
+    monkeypatch.setattr(disp, "_emit", _emit)
+    monkeypatch.setattr(disp_mod.governor, "authorize", _authorize)
+    await disp.dispatch_task(
+        tenant_id="t1", task_id=str(uuid.uuid4()), instruction="do it", task_type="code",
+        interactive=False,
+    )
+    return seen
+
+
+def _local_fallbacks(monkeypatch):
+    monkeypatch.setattr(disp_mod.settings, "agent_fallback_model", "ollama_chat/qwen3:4b")
+    monkeypatch.setattr(disp_mod.settings, "llm_fallback_chain", "ollama_chat/qwen3:4b")
+
+
+async def test_a_local_model_run_is_never_capped(monkeypatch):
+    _local_fallbacks(monkeypatch)
+    seen = await _authorize_call(monkeypatch, "local", "ollama_chat/gpt-oss:20b")
+    assert seen["interactive"] is True  # the Governor's never-blocked path
+
+
+async def test_a_paid_model_run_stays_capped(monkeypatch):
+    _local_fallbacks(monkeypatch)
+    seen = await _authorize_call(monkeypatch, "local", "anthropic/claude-sonnet-5-5")
+    assert seen["interactive"] is False
+
+
+async def test_a_local_run_that_can_fall_back_to_a_paid_model_stays_capped(monkeypatch):
+    monkeypatch.setattr(disp_mod.settings, "agent_fallback_model", "gemini/gemini-3.5-flash-lite")
+    monkeypatch.setattr(disp_mod.settings, "llm_fallback_chain", "ollama_chat/qwen3:4b")
+    seen = await _authorize_call(monkeypatch, "local", "ollama_chat/gpt-oss:20b")
+    assert seen["interactive"] is False
+
+
+def test_runs_on_local_model_by_driver(monkeypatch):
+    from life_graph.drivers.dispatcher import runs_on_local_model
+
+    _local_fallbacks(monkeypatch)
+    monkeypatch.setattr(disp_mod.settings, "driver_opencode_model", "ollama/qwen3-coder:30b")
+    assert runs_on_local_model("opencode", None) is True
+    monkeypatch.setattr(disp_mod.settings, "driver_opencode_model", "anthropic/claude-sonnet-5-5")
+    assert runs_on_local_model("opencode", None) is False
+    assert runs_on_local_model("claude_code", "ollama_chat/x") is False  # always paid

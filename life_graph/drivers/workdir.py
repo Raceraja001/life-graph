@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,6 +22,45 @@ if TYPE_CHECKING:
     from life_graph.drivers.base import ContextPacket
 
 logger = logging.getLogger(__name__)
+
+
+_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
+
+
+async def _pinned_start(project: Path, base_branch: str | None) -> str | None:
+    """The ref a worktree starts from when the project pins a base branch.
+
+    ``origin/<base>`` after a fetch, so a task is built on what is on GitHub,
+    not on whatever branch the local checkout happens to be on (switching
+    branches mid-plan used to change the base under a running plan). Falls
+    back to the local ``<base>`` when the fetch fails (offline, no remote);
+    None (= the checkout's HEAD, the old behaviour) when nothing is pinned.
+    """
+    if not base_branch or not _BRANCH_NAME_RE.match(base_branch) or base_branch.startswith("-"):
+        return None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "fetch",
+            "--quiet",
+            "origin",
+            f"{base_branch}:refs/remotes/origin/{base_branch}",
+            cwd=str(project),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=60)
+    except (OSError, TimeoutError) as exc:
+        logger.warning("Could not fetch base %s (%s) — using the local branch", base_branch, exc)
+        return base_branch
+    if proc.returncode != 0:
+        logger.warning(
+            "Could not fetch base %s (%s) — using the local branch",
+            base_branch,
+            err.decode(errors="replace").strip()[:200],
+        )
+        return base_branch
+    return f"origin/{base_branch}"
 
 
 async def resolve_workdir(packet: ContextPacket, fallback: Path) -> tuple[Path, Path | None]:
@@ -53,6 +93,7 @@ async def resolve_workdir(packet: ContextPacket, fallback: Path) -> tuple[Path, 
         return project, None
 
     worktree = fallback / f"wt_{uuid.uuid4().hex[:8]}"
+    start = await _pinned_start(project, packet.project_context.get("base_branch"))
     try:
         proc = await asyncio.create_subprocess_exec(
             "git",
@@ -60,6 +101,7 @@ async def resolve_workdir(packet: ContextPacket, fallback: Path) -> tuple[Path, 
             "add",
             "--detach",
             str(worktree),
+            *([start] if start else []),
             cwd=str(project),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -103,6 +145,56 @@ def worktree_intact(worktree: Path, origin: str | Path) -> bool:
     except (OSError, RuntimeError):
         return False
     return expected in target.parents
+
+
+async def diff_against_head(workdir: Path) -> str:
+    """Unified diff of every change (tracked, modified, untracked) since HEAD.
+
+    Stages everything first (``git add -A``) so new files show up — a plain
+    ``git diff HEAD`` only covers already-tracked files. This runs BEFORE
+    :func:`preserve_verified_work`, which re-stages (a harmless no-op) and
+    commits; staging here changes nothing about what eventually lands.
+
+    Same hardened git invocation as landing: this also runs on the host,
+    against a worktree the driver controls. Never raises — a diff that
+    could not be computed is reported as empty, not a dispatch failure.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            "add",
+            "-A",
+            cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        if proc.returncode != 0:
+            return ""
+
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "core.fsmonitor=false",
+            "diff",
+            "--cached",
+            cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, _err = await proc.communicate()
+        if proc.returncode != 0:
+            return ""
+        return out.decode(errors="replace")
+    except Exception as exc:
+        logger.warning("Could not compute diff for review: %s", exc)
+        return ""
 
 
 async def preserve_verified_work(

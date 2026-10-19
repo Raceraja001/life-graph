@@ -7,6 +7,11 @@ conclusion left there would never become a memory again. The hook writes
 stored, which are identifiable by the ``kind`` property the hook has always
 set.
 
+The table is schema-qualified, as 019 created it and 022 updates it: a fresh
+`alembic upgrade head` runs on one connection, and 002 pins its search_path
+to `public`, where an unqualified `capture_events` does not exist (found when
+CI first ran migrations from scratch).
+
 Both surfaces are ``TrustTier.VERIFIED``, so no row changes trust tier and
 nothing that was fenced becomes unfenced.
 
@@ -31,7 +36,7 @@ _PREDICATE = """
 def upgrade() -> None:
     op.execute(
         f"""
-        UPDATE capture_events
+        UPDATE life_graph.capture_events
         SET surface = 'assistant_message'
         WHERE {_PREDICATE.format(from_surface="tool_exhaust")}
         """
@@ -41,7 +46,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(
         f"""
-        UPDATE capture_events
+        UPDATE life_graph.capture_events
         SET surface = 'tool_exhaust'
         WHERE {_PREDICATE.format(from_surface="assistant_message")}
         """

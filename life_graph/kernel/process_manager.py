@@ -570,11 +570,40 @@ class ProcessManager:
             tools = None
 
         import json as _json
+        from contextlib import nullcontext
 
         from life_graph.core.task_context import get_current_task_context
+        from life_graph.services import persona_context
         from life_graph.services.chat_stream import get_chat_stream_bus
+        from life_graph.tools._guards import confine_to
 
         ctx = get_current_task_context()
+        confinement: Any = nullcontext()
+        if agent_name in persona_context.DOCS_ONLY_PERSONAS:
+            # Enforced, not just asked for in the prompt: the file tools reach
+            # the project's README and docs/ and nothing else; no project, no files.
+            roots = (
+                await persona_context.docs_roots(self._session_factory, tenant_id, ctx.task_id)
+                if ctx
+                else []
+            )
+            confinement = confine_to(*roots)
+            listing = "\n".join(f"- `{r}`" for r in roots) or "- (none: no project was given)"
+            system_prompt = f"{system_prompt or ''}\n\n## Documentation you may read\n{listing}"
+        if orchestrator.model != "claude-cli":
+            # A local model has no idea what day it is: asked for "the latest
+            # release", it called a two-week-old one "a future date".
+            system_prompt = f"{system_prompt or ''}\n\n{persona_context.today_line()}".strip()
+            if agent_name not in persona_context.DOCS_ONLY_PERSONAS and (
+                persona_context.needs_projects(allow)
+            ):
+                try:
+                    block = await persona_context.projects_block(self._session_factory, tenant_id)
+                    if block:
+                        system_prompt = f"{system_prompt or ''}\n\n{block}".strip()
+                except Exception:
+                    logger.warning("Project context for %s failed", agent_name, exc_info=True)
+
         bus = get_chat_stream_bus()
         stream_key = str(ctx.root_task_id or ctx.task_id) if ctx else None
         meta = (
@@ -584,26 +613,53 @@ class ProcessManager:
         )
 
         # Collect streamed output
+        from life_graph.services import sources
+
+        check_sources = sources.required_for(agent_name)
         response_parts: list[str] = []
+        tool_results: list[str] = []
+        held_done: dict | None = None
         token_count = 0
 
-        async for event_str in orchestrator.run(messages, system_prompt=system_prompt, tools=tools):
-            # Each event is an SSE string; extract content
-            try:
-                data = _json.loads(event_str.removeprefix("data: ").strip())
-            except (ValueError, KeyError):
-                continue
-            if stream_key is not None:
-                bus.publish(stream_key, {**meta, "event": data})
-            if data.get("type") == "token":
-                content = data.get("content", "")
-                response_parts.append(content)
-                token_count += 1
+        with confinement:
+            async for event_str in orchestrator.run(
+                messages, system_prompt=system_prompt, tools=tools
+            ):
+                # Each event is an SSE string; extract content
+                try:
+                    data = _json.loads(event_str.removeprefix("data: ").strip())
+                except (ValueError, KeyError):
+                    continue
+                if check_sources and data.get("type") == "done":
+                    # Held back so a source note can still reach a streaming chat
+                    # client before the stream ends.
+                    held_done = data
+                    continue
+                if stream_key is not None:
+                    bus.publish(stream_key, {**meta, "event": data})
+                if data.get("type") == "token":
+                    content = data.get("content", "")
+                    response_parts.append(content)
+                    token_count += 1
+                elif data.get("type") == "tool_result":
+                    tool_results.append(str(data.get("result") or ""))
 
-        return {
-            "response": "".join(response_parts),
-            "token_count": token_count,
-        }
+        response = "".join(response_parts)
+        out: dict[str, Any] = {"response": response, "token_count": token_count}
+
+        if check_sources:
+            out["response"], out["sources"] = sources.apply(response, tool_results)
+            # A prose answer gains a note at its end, which a streaming chat
+            # still needs; a findings array is marked in place and read from
+            # the result, so nothing more is streamed for it.
+            checked = out["response"]
+            note = checked[len(response) :] if checked.startswith(response) else ""
+            if stream_key is not None:
+                if note:
+                    bus.publish(stream_key, {**meta, "event": {"type": "token", "content": note}})
+                if held_done is not None:
+                    bus.publish(stream_key, {**meta, "event": held_done})
+        return out
 
     # ── State Transitions ─────────────────────────────────
 

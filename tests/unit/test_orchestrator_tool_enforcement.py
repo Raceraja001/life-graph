@@ -203,3 +203,100 @@ class TestDisallowedToolCallIsNotExecuted:
         tool_results = [e for e in events if e["type"] == "tool_result"]
         assert len(tool_results) == 1
         assert json.loads(tool_results[0]["result"]) == {"now": "2026-07-31T00:00:00Z"}
+
+
+def _fn(name):
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": "d",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    }
+
+
+class TestParallelToolCallsAtOneIndex:
+    """Ollama sends each parallel tool call whole, all at index 0 with no id.
+
+    They used to be glued into one call whose arguments were '{...}{}', and
+    the next request — carrying that call back — was rejected by the model
+    server, so a two-tool question failed with 'All models are unavailable'
+    (live run, 2026-10-14).
+    """
+
+    @pytest.mark.asyncio
+    async def test_two_whole_calls_at_index_zero_stay_two_calls(self):
+        orchestrator = AgentOrchestrator(model="test-model")
+        first = _stream(
+            [
+                _delta(tool_calls=[_tool_call(0, None, "calendar_events", '{"days": 1}')]),
+                _delta(tool_calls=[_tool_call(0, None, "bills_due", "{}")]),
+            ]
+        )
+        with (
+            patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion,
+            patch(
+                "life_graph.agents.orchestrator.registry.execute",
+                new_callable=AsyncMock,
+                return_value='{"ok": true}',
+            ) as mock_execute,
+        ):
+            mock_acompletion.side_effect = [first, _final_text_response()]
+            await _collect_events(
+                orchestrator.run(
+                    messages=[{"role": "user", "content": "calendar and bills?"}],
+                    tools=[_fn("calendar_events"), _fn("bills_due")],
+                )
+            )
+
+        calls = [c.args for c in mock_execute.call_args_list]
+        assert calls == [("calendar_events", {"days": 1}), ("bills_due", {})]
+        sent_back = mock_acompletion.call_args_list[1].kwargs["messages"]
+        assistant = next(m for m in sent_back if m["role"] == "assistant")
+        ids = [tc["id"] for tc in assistant["tool_calls"]]
+        assert len(set(ids)) == 2 and all(ids)
+        for tc in assistant["tool_calls"]:
+            json.loads(tc["function"]["arguments"])  # every echoed argument is valid JSON
+
+    @pytest.mark.asyncio
+    async def test_streamed_argument_fragments_still_join(self):
+        """The OpenAI shape — name once, then argument pieces — is unchanged."""
+        orchestrator = AgentOrchestrator(model="test-model")
+        first = _stream(
+            [
+                _delta(tool_calls=[_tool_call(0, "c1", "calendar_events", '{"da')]),
+                _delta(tool_calls=[_tool_call(0, None, None, 'ys": 2}')]),
+            ]
+        )
+        with (
+            patch("litellm.acompletion", new_callable=AsyncMock) as mock_acompletion,
+            patch(
+                "life_graph.agents.orchestrator.registry.execute",
+                new_callable=AsyncMock,
+                return_value="{}",
+            ) as mock_execute,
+        ):
+            mock_acompletion.side_effect = [first, _final_text_response()]
+            await _collect_events(
+                orchestrator.run(
+                    messages=[{"role": "user", "content": "x"}], tools=[_fn("calendar_events")]
+                )
+            )
+        assert [c.args for c in mock_execute.call_args_list] == [("calendar_events", {"days": 2})]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("", "{}"),
+        ('{"a": 1}', '{"a": 1}'),
+        ('{"a": 1}{}', '{"a": 1}'),
+        ("[1]", "{}"),
+        ("nope", "{}"),
+    ],
+)
+def test_valid_json_args(raw, expected):
+    from life_graph.agents.orchestrator import _valid_json_args
+
+    assert _valid_json_args(raw) == expected

@@ -463,6 +463,74 @@ async def test_paid_fallback_never_reordered_ahead_of_primary(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_omniroute_tried_after_free_chain_when_configured(monkeypatch):
+    monkeypatch.setattr(rl.settings, "omniroute_api_key", "or-key", raising=False)
+    monkeypatch.setattr(rl.settings, "omniroute_url", "http://localhost:20128/v1", raising=False)
+    monkeypatch.setattr(rl.settings, "omniroute_model", "openai/auto", raising=False)
+    call = AsyncMock(
+        side_effect=[
+            rl.litellm.APIError(500, "boom", "prov", "A"),
+            rl.litellm.APIError(500, "boom", "prov", "B"),
+            rl.litellm.APIError(500, "boom", "prov", "C"),
+            _resp("hi"),
+        ]
+    )
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+
+    out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+    assert out == "hi"
+    assert call.call_args.kwargs["model"] == "openai/auto"
+    # api_base/api_key passed per-call, not bridged into a shared env var.
+    assert call.call_args.kwargs["api_base"] == "http://localhost:20128/v1"
+    assert call.call_args.kwargs["api_key"] == "or-key"
+    assert h.success == ["openai/auto"]
+
+
+@pytest.mark.asyncio
+async def test_omniroute_tried_before_the_hard_paid_fallback(monkeypatch):
+    monkeypatch.setattr(rl.settings, "omniroute_api_key", "or-key", raising=False)
+    monkeypatch.setattr(rl.settings, "omniroute_model", "openai/auto", raising=False)
+    monkeypatch.setattr(rl.settings, "llm_paid_fallback_model", "PAID", raising=False)
+    call = AsyncMock(
+        side_effect=[
+            rl.litellm.APIError(500, "boom", "prov", "A"),
+            rl.litellm.APIError(500, "boom", "prov", "B"),
+            rl.litellm.APIError(500, "boom", "prov", "C"),
+            _resp("hi"),  # served by OmniRoute -- PAID never reached
+        ]
+    )
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+
+    out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+    assert out == "hi"
+    assert call.call_args.kwargs["model"] == "openai/auto"
+    assert h.success == ["openai/auto"]
+    assert "PAID" not in [m for m, _ in h.failure]
+
+
+@pytest.mark.asyncio
+async def test_omniroute_not_added_without_an_api_key(monkeypatch):
+    monkeypatch.setattr(rl.settings, "omniroute_api_key", "", raising=False)
+    monkeypatch.setattr(rl.settings, "llm_paid_fallback_model", "PAID", raising=False)
+    call = AsyncMock(
+        side_effect=[
+            rl.litellm.APIError(500, "boom", "prov", "A"),
+            rl.litellm.APIError(500, "boom", "prov", "B"),
+            rl.litellm.APIError(500, "boom", "prov", "C"),
+            _resp("hi"),
+        ]
+    )
+    monkeypatch.setattr(rl.litellm, "acompletion", call)
+    h = FakeHealth()
+
+    out = await ResilientLLM(health=h).chat([{"role": "user", "content": "q"}])
+    assert out == "hi"
+    assert call.call_args.kwargs["model"] == "PAID"  # straight to paid, omniroute skipped entirely
+
+
+@pytest.mark.asyncio
 async def test_no_paid_fallback_configured_exhausts_as_before(monkeypatch):
     monkeypatch.setattr(rl.settings, "llm_paid_fallback_model", None, raising=False)
     call = AsyncMock(side_effect=rl.litellm.APIError(500, "boom", "prov", "m"))

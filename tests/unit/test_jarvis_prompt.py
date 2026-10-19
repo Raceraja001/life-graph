@@ -1,3 +1,4 @@
+import life_graph.tools.assistant  # noqa: F401
 import life_graph.tools.browser  # noqa: F401
 import life_graph.tools.calculator  # noqa: F401
 import life_graph.tools.code  # noqa: F401

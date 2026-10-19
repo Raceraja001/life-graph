@@ -19,11 +19,10 @@ AMBIENT_ACTION: frozenset[str] = frozenset({"ops", "cody"})
 #
 # This is an ALLOWLIST, intersected with the live tool registry at run time
 # (see kernel/process_manager.py::_run_agent), so a name that is not registered
-# is simply dropped. One name here is still aspirational — "memory_search" —
-# because no memory-search tool is registered today; it is listed so the
-# capability turns on automatically once that tool lands (see
-# kernel/personas.py, which references it the same way). "file_read" is now
-# a real, registered tool (life_graph/tools/filesystem.py).
+# is simply dropped. Every name here is a real, registered tool today —
+# "file_read" is life_graph/tools/filesystem.py and "memory_search" is
+# life_graph/tools/memory_search.py (read-only by construction; it does not
+# reinforce or touch the memories it returns).
 AMBIENT_ACTION_READONLY_TOOLS: list[str] = [
     "inspect_system",
     "git_status",

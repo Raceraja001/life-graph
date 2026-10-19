@@ -87,6 +87,8 @@ def _walk(root: Path):
     description=(
         "Read a source file with line numbers, one page at a time. Returns "
         "`next_start_line` when the file continues — call again with it to read on. "
+        "Pass `end_line` to stop at a specific line instead of paging to the character "
+        "cap (still capped by the same page size if the requested range is large). "
         "Paths may be relative to the project root."
     ),
     parameters_schema={
@@ -100,21 +102,31 @@ def _walk(root: Path):
                 "type": "integer",
                 "description": "1-based line to start at. Default 1.",
             },
+            "end_line": {
+                "type": "integer",
+                "description": "1-based line to stop at, inclusive. Default: page to the "
+                "character cap. Ignored if smaller than start_line.",
+            },
         },
         "required": ["path"],
     },
 )
-async def code_read(path: str, start_line: int = 1) -> str:
+async def code_read(path: str, start_line: int = 1, end_line: int | None = None) -> str:
     try:
         p = _resolve(path, "code_read")
         if not p.is_file():
             return json.dumps({"error": f"Not a file: {path}"})
         lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
         start = max(1, int(start_line))
+        stop = (
+            min(len(lines), int(end_line)) if end_line is not None and end_line >= start else None
+        )
         out: list[str] = []
         used = 0
         n = start
         while n <= len(lines):
+            if stop is not None and n > stop:
+                break
             row = f"{n}: {lines[n - 1]}"
             if used + len(row) + 1 > PAGE_CHARS and out:
                 break
@@ -126,7 +138,7 @@ async def code_read(path: str, start_line: int = 1) -> str:
                 "path": str(p),
                 "total_lines": len(lines),
                 "content": "\n".join(out),
-                "next_start_line": n if n <= len(lines) else None,
+                "next_start_line": n if n <= len(lines) and (stop is None or n <= stop) else None,
             }
         )
     except ToolDeniedError as exc:
@@ -139,10 +151,14 @@ async def code_read(path: str, start_line: int = 1) -> str:
 @tool(
     name="code_edit",
     description=(
-        "Edit a file by replacing one exact snippet. `old` must appear exactly once "
-        "(include enough surrounding lines to make it unique; copy whitespace exactly, "
-        "without the line-number prefixes code_read shows). To create a new file, "
-        "pass an empty `old` and the whole file as `new`."
+        "Edit a file by replacing one snippet. `old` should appear exactly once: include"
+        " enough surrounding lines to make it unique. Small differences in indentation,"
+        " trailing spaces or code_read's line-number prefixes are tolerated. Or replace"
+        " whole lines: pass `start_line` and `end_line` (from code_read) with an empty"
+        " `old`; end_line = start_line - 1 inserts before start_line without replacing"
+        " (start_line = last line + 1 appends). To create a new file, pass an empty `old`"
+        " and the whole file as `new`."
+        " The reply shows the edited lines."
     ),
     parameters_schema={
         "type": "object",
@@ -153,14 +169,27 @@ async def code_read(path: str, start_line: int = 1) -> str:
             },
             "old": {
                 "type": "string",
-                "description": "Exact text to replace; empty to create a new file.",
+                "description": "Text to replace; empty to create a file or with a line range.",
             },
             "new": {"type": "string", "description": "Replacement text."},
+            "start_line": {
+                "type": "integer",
+                "description": "First line to replace (1-based), with end_line and empty old.",
+            },
+            "end_line": {"type": "integer", "description": "Last line to replace, inclusive."},
         },
         "required": ["path", "old", "new"],
     },
 )
-async def code_edit(path: str, old: str, new: str) -> str:
+async def code_edit(
+    path: str,
+    old: str,
+    new: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> str:
+    from life_graph.tools import edit_match
+
     if len(new) > MAX_EDIT_CHARS:
         return json.dumps(
             {"error": f"Replacement too large ({len(new)} chars, max {MAX_EDIT_CHARS})"}
@@ -168,26 +197,87 @@ async def code_edit(path: str, old: str, new: str) -> str:
     try:
         p = _resolve(path, "code_edit")
         check_writable(p, tool_name="code_edit")
-        if old == "":
+        # An empty range (end_line = start_line - 1) inserts before start_line.
+        # gpt-oss:20b creates files that way (start_line=1, end_line=0) and
+        # appends with start_line=last+1; both were refused, 13 times in one
+        # run (task 6f442de2, 2026-10-16).
+        inserting = (
+            old == ""
+            and start_line is not None
+            and end_line is not None
+            and int(end_line) == int(start_line) - 1
+        )
+        if inserting and int(start_line) == 1 and not p.exists():
+            start_line = end_line = None
+        if old == "" and start_line is None:
             if p.exists():
-                return json.dumps({"error": "File exists; pass the text to replace as `old`."})
+                return json.dumps(
+                    {
+                        "error": "File exists; pass the text to replace as `old`, or"
+                        " start_line/end_line to replace whole lines."
+                    }
+                )
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(new, encoding="utf-8")
             return json.dumps({"created": str(p), "lines": new.count("\n") + 1})
         if not p.is_file():
             return json.dumps({"error": f"Not a file: {path}"})
         text = p.read_text(encoding="utf-8")
-        count = text.count(old)
-        if count != 1:
-            hint = (
-                "not found — re-read the file and copy the text exactly"
-                if count == 0
-                else f"found {count} times — include more surrounding lines"
+
+        if old == "":
+            # Line-range mode: replace lines start..end with `new`.
+            lines = text.split("\n")
+            first = int(start_line)
+            last = int(end_line) if end_line is not None else first
+            if inserting and 1 <= first <= len(lines) + 1:
+                if first == len(lines) + 1 and lines[-1] == "":
+                    # Appending: go before the empty piece after the final
+                    # newline, so the file still ends with one.
+                    first, last = len(lines), len(lines) - 1
+            elif not (1 <= first <= last <= len(lines)):
+                return json.dumps(
+                    {"error": f"Line range {first}-{last} is outside the file (1-{len(lines)})"}
+                )
+            replaced = "\n".join(lines[first - 1 : last])
+            lines[first - 1 : last] = new.strip("\n").split("\n") if new.strip("\n") else []
+            updated = "\n".join(lines)
+            p.write_text(updated, encoding="utf-8")
+            start = len("\n".join(lines[: first - 1])) + (1 if first > 1 else 0)
+            return json.dumps(
+                {
+                    "edited": str(p),
+                    "at_line": first,
+                    "replaced_lines": f"{first}-{last}",
+                    "replaced": replaced[:600],
+                    "now": edit_match.excerpt(updated, start, len(new.strip("\n"))),
+                }
             )
-            return json.dumps({"error": f"`old` {hint}"})
-        at_line = text[: text.index(old)].count("\n") + 1
-        p.write_text(text.replace(old, new, 1), encoding="utf-8")
-        return json.dumps({"edited": str(p), "at_line": at_line})
+
+        found = edit_match.locate(text, old, new)
+        if isinstance(found, edit_match.Miss):
+            if found.reason == "ambiguous":
+                return json.dumps(
+                    {"error": f"`old` found {found.count} times — include more surrounding lines"}
+                )
+            near = edit_match.closest(text, old)
+            payload = {"error": "`old` not found — copy the text from the file exactly"}
+            if near:
+                payload["closest_match"] = near
+                payload["hint"] = (
+                    "The closest lines are shown with their numbers: copy them as `old`"
+                    " (without the numbers), or pass start_line/end_line."
+                )
+            return json.dumps(payload)
+        updated = text[: found.start] + found.new + text[found.end :]
+        p.write_text(updated, encoding="utf-8")
+        result = {
+            "edited": str(p),
+            "at_line": text[: found.start].count("\n") + 1,
+            "now": edit_match.excerpt(updated, found.start, len(found.new)),
+        }
+        if found.tier != "exact":
+            result["matched"] = found.tier  # how loosely `old` had to be matched
+        return json.dumps(result)
     except ToolDeniedError as exc:
         return _err(exc)
     except Exception as exc:

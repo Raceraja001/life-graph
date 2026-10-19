@@ -99,6 +99,7 @@ async def handle(
     tenant_id: str,
     caption: str,
     reply: Callable[[int, str], Awaitable[None]],
+    converse: Callable[..., Awaitable[None]] | None = None,
 ) -> None:
     """Download one piece of media and put it through the multimodal path.
 
@@ -135,7 +136,13 @@ async def handle(
         return
 
     try:
-        if media["kind"] == "voice":
+        if media["kind"] == "voice" and converse is not None:
+            # Chat mode: the voice note is a question, not a memory.
+            result = await service.transcribe_only(data, media["filename"])
+            question = (result.get("transcript") or "").strip()
+            await reply(chat_id, _confirm("Heard", question).removesuffix("\n\nSaved."))
+            await converse(chat_id, tenant_id, question, voice=True)
+        elif media["kind"] == "voice":
             result = await service.process_voice(data, media["filename"], tenant_id)
             body = (result.get("transcript") or "").strip()
             await reply(chat_id, _confirm("Heard", body))
@@ -144,6 +151,9 @@ async def handle(
                 data, media["filename"], tenant_id, caption=caption
             )
             body = (result.get("ocr_text") or "").strip()
+            if caption.strip().lower().startswith("/doc"):
+                await reply(chat_id, await _file_document(tenant_id, body, caption))
+                return
             await reply(chat_id, _confirm("Read", body) if body else "Saved.")
     except ValueError as exc:
         # The path raises this for "nothing to remember" — an image with no
@@ -160,6 +170,32 @@ async def handle(
 
 
 # ── Helpers ───────────────────────────────────────────────────────
+
+
+async def _file_document(tenant_id: str, ocr_text: str, caption: str) -> str:
+    """A photo captioned ``/doc``: file it in the documents vault, say what was read.
+
+    Text after ``/doc`` in the caption is added to what the photo says, so
+    "/doc car insurance renews 12 March 2027" works for a blurry photo too.
+    """
+    from life_graph.services import documents
+    from life_graph.storage.database import async_session
+
+    extra = caption.strip()[4:].strip()
+    text = "\n".join(t for t in (extra, ocr_text) if t)
+    if not text:
+        return "I couldn't read any text on that. Add the details after /doc in the caption."
+    async with async_session() as session:
+        doc = await documents.file_text(session, tenant_id, text, source="telegram")
+        await session.commit()
+        when = doc.expires_on.strftime("%d %b %Y") if doc.expires_on else None
+        title = doc.title
+    if when:
+        return f"Filed: {title}. Expires {when}; I'll remind you before then."
+    return (
+        f"Filed: {title}. I couldn't find an expiry date. Reply in the dashboard"
+        " to add one if it has one."
+    )
 
 
 def _is_forwarded(msg: dict[str, Any]) -> bool:

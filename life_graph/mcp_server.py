@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from typing import Any
 
 import httpx
@@ -51,7 +52,12 @@ mcp = FastMCP(
     "Life Graph Memory",
     instructions=(
         "Brain-inspired memory layer for AI agents. "
-        "Store, search, recall, and manage persistent memories across sessions."
+        "Store, search, recall, and manage persistent memories across sessions. "
+        "Also drives Life Graph's dev-agent: list projects, start a dev task "
+        "(or a plan-only task), check its stage, re-check a spec's acceptance "
+        "criteria against the current code, and list approvals waiting on "
+        "the human. Approving or rejecting is deliberately NOT available here — "
+        "that decision belongs to the person, in the dashboard or mobile app."
     ),
 )
 
@@ -497,6 +503,219 @@ async def graph_search(
         )
         resp.raise_for_status()
         return _result(_extract_data(resp.json()))
+
+
+# ── Dev-agent Tools ──────────────────────────────────────────────────────────
+#
+# Lets an editor agent (Claude Code, Cline, ...) drive Life Graph's dev-agent
+# pipeline. Starting a task is safe to expose: it goes through the full
+# pipeline -- isolated worktree, verifier chain, review, and the driver_pr /
+# driver_merge approvals -- exactly like a dashboard-started task. There is
+# intentionally no approve/reject tool: whoever calls an MCP tool is a model,
+# and every approval gate exists so that a human makes that decision.
+
+_DEV_TASK_LIST_FIELDS = (
+    "id",
+    "title",
+    "project_name",
+    "persona",
+    "stage",
+    "status",
+    "error",
+    "pr_url",
+    "created_at",
+)
+_APPROVAL_DETAIL_CHARS = 500
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except (ValueError, TypeError):
+        return False
+    return True
+
+
+async def _resolve_project_id(
+    client: httpx.AsyncClient, project: str, tenant_id: str | None
+) -> str:
+    """Accept a project id or its registered name (what a model naturally knows)."""
+    if _is_uuid(project):
+        return project
+    resp = await client.get("/api/v1/kernel/projects", headers=_headers(tenant_id))
+    resp.raise_for_status()
+    projects = (_extract_data(resp.json()) or {}).get("projects") or []
+    matches = [p for p in projects if str(p.get("name", "")).lower() == project.lower()]
+    if not matches:
+        names = ", ".join(sorted(str(p.get("name")) for p in projects)) or "none"
+        raise ValueError(f"No registered project named {project!r}. Registered: {names}")
+    return str(matches[0]["id"])
+
+
+@mcp.tool()
+async def list_projects(tenant_id: str | None = None) -> ToolResult:
+    """List the projects registered with Life Graph's dev-agent.
+
+    Use a project's `name` or `id` with `start_dev_task`.
+
+    Args:
+        tenant_id: Tenant scope
+    """
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
+        resp = await client.get("/api/v1/kernel/projects", headers=_headers(tenant_id))
+        resp.raise_for_status()
+        return _result(_extract_data(resp.json()))
+
+
+@mcp.tool()
+async def start_dev_task(
+    instruction: str,
+    project: str,
+    persona_name: str = "code-fixer-local",
+    plan_only: bool = False,
+    spec_first: bool = False,
+    tenant_id: str | None = None,
+) -> ToolResult:
+    """Start a dev-agent task in a registered project (runs in the background).
+
+    The task runs through the full pipeline: an isolated git worktree, the
+    verifier chain, review, then `driver_pr` / `driver_merge` approvals that a
+    human decides. Nothing reaches the project's default branch without them.
+    Poll progress with `get_dev_task`.
+
+    Works best scoped to one file per task. For larger work, use
+    `plan_only=True`: the agent writes only a spec (requirements/design/tasks,
+    no file changes allowed), a human approves it, and the plan's tasks then
+    run one at a time.
+
+    Args:
+        instruction: What to do, as specifically as possible
+        project: Registered project name (e.g. "life-graph") or its id
+        persona_name: Persona whose driver runs the task (default runs locally)
+        plan_only: Produce a reviewable plan instead of code
+        spec_first: Write a short spec before the code, in the same run
+        tenant_id: Tenant scope
+    """
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
+        project_id = await _resolve_project_id(client, project, tenant_id)
+        resp = await client.post(
+            "/api/v1/kernel/drivers/tasks",
+            json={
+                "instruction": instruction,
+                "project_id": project_id,
+                "persona_name": persona_name,
+                "plan_only": plan_only,
+                "spec_first": spec_first,
+            },
+            headers=_headers(tenant_id),
+        )
+        resp.raise_for_status()
+        task = _extract_data(resp.json()) or {}
+        return _result({k: task.get(k) for k in _DEV_TASK_LIST_FIELDS})
+
+
+@mcp.tool()
+async def get_dev_task(task_id: str, tenant_id: str | None = None) -> ToolResult:
+    """Get one dev task in full: stage, error, output, spec, PR, and every
+    verifier result (which check failed and its evidence).
+
+    Stages: queued, running, landed, needs_review, awaiting_pr, pr_open,
+    awaiting_merge, merged, closed, failed, completed.
+
+    Args:
+        task_id: The dev task's id (from `start_dev_task` or `list_dev_tasks`)
+        tenant_id: Tenant scope
+    """
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
+        resp = await client.get(
+            f"/api/v1/kernel/drivers/tasks/{task_id}", headers=_headers(tenant_id)
+        )
+        resp.raise_for_status()
+        return _result(_extract_data(resp.json()))
+
+
+@mcp.tool()
+async def list_dev_tasks(limit: int = 20, tenant_id: str | None = None) -> ToolResult:
+    """List recent dev tasks, newest first, as compact rows (no output text).
+
+    Expand one with `get_dev_task`.
+
+    Args:
+        limit: Max tasks (1-200, default 20)
+        tenant_id: Tenant scope
+    """
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
+        resp = await client.get(
+            "/api/v1/kernel/drivers/tasks",
+            params={"limit": limit},
+            headers=_headers(tenant_id),
+        )
+        resp.raise_for_status()
+        rows = _extract_data(resp.json()) or []
+        return _result([{k: r.get(k) for k in _DEV_TASK_LIST_FIELDS} for r in rows])
+
+
+@mcp.tool()
+async def check_spec_conformance(task_id: str, tenant_id: str | None = None) -> ToolResult:
+    """Re-check a task's spec against the project's current code.
+
+    Runs every acceptance criterion's bound test (from the spec's `AC-n: ...
+    — test: ...` lines) against the project's current HEAD, in a throwaway
+    worktree, and returns a per-criterion report: passing / failing /
+    untested (no test bound) / inconclusive (no test runner). Use on the
+    task that produced the spec -- a plan task, or a spec_first task.
+    Waits for the tests to finish, so it can take a few minutes.
+
+    Args:
+        task_id: The dev task whose spec to check
+        tenant_id: Tenant scope
+    """
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=900.0) as client:
+        resp = await client.post(
+            f"/api/v1/kernel/drivers/tasks/{task_id}/conformance",
+            headers=_headers(tenant_id),
+        )
+        resp.raise_for_status()
+        return _result(_extract_data(resp.json()))
+
+
+@mcp.tool()
+async def list_approvals(
+    status: str = "pending",
+    limit: int = 20,
+    tenant_id: str | None = None,
+) -> ToolResult:
+    """List items waiting on the human: PRs to open, merges, plans, deploys, ...
+
+    Read-only on purpose. Approving or rejecting is the person's decision and
+    happens in the Life Graph dashboard or mobile app, never from here.
+
+    Args:
+        status: pending (default), approved, rejected, or all
+        limit: Max items (1-500, default 20)
+        tenant_id: Tenant scope
+    """
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
+        resp = await client.get(
+            "/api/v1/approvals",
+            params={"status": status, "limit": limit},
+            headers=_headers(tenant_id),
+        )
+        resp.raise_for_status()
+        rows = _extract_data(resp.json()) or []
+        return _result(
+            [
+                {
+                    "id": r.get("id"),
+                    "kind": r.get("kind"),
+                    "title": r.get("title"),
+                    "status": r.get("status"),
+                    "detail": (r.get("detail") or "")[:_APPROVAL_DETAIL_CHARS],
+                    "created_at": r.get("created_at"),
+                }
+                for r in rows
+            ]
+        )
 
 
 # ── Resources ────────────────────────────────────────────────────────────────

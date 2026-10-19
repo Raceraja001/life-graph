@@ -37,6 +37,7 @@ from life_graph.core.trust import TrustTier
 from life_graph.integrations.telegram import commands as tg_commands
 from life_graph.integrations.telegram import media as tg_media
 from life_graph.integrations.telegram.client import TelegramClient, TelegramError
+from life_graph.services import assistant_chat
 from life_graph.services.capture import CaptureService
 from life_graph.services.telegram_binding import PairingError, TelegramBindingService
 
@@ -58,10 +59,16 @@ _UNBOUND_REPLY = (
 _HELP = (
     "Life Graph\n\n"
     "Send any message to save it as a memory.\n\n"
-    "Send a photo or a voice note and I'll read or transcribe it.\n\n"
-    "/help — this message\n"
+    "Send a photo or a voice note and I'll read or transcribe it.\n"
+    "Caption a photo /doc to file it as a document (passport, policy, warranty).\n\n"
+    "/ask <question> — ask me anything\n"
+    "/chat — talk to me (messages and voice notes become questions)\n"
+    "/capture — back to saving messages as memories\n"
+    "/txn <bank SMS> — record a transaction\n"
+    "/review — study your next flashcard\n"
     "/recall <query> — search your memories\n"
     "/pending — items awaiting your decision\n"
+    "/help — this message\n"
     "/unlink — disconnect this chat"
 )
 
@@ -117,16 +124,26 @@ async def handle_message(msg: dict[str, Any], session: AsyncSession) -> None:
 
     # Past this point the message has a tenant, so give the storage layer one.
     with tenant_scope(tenant_id, "telegram"):
-        if text.startswith("/"):
+        # Media is checked before text because a photo or voice note may carry
+        # a caption. Treating the caption as the whole message would file the
+        # words and silently discard the recording they describe. That holds
+        # for a caption that looks like a command too ("/doc" on a photo).
+        media = tg_media.extract(msg)
+        if media is None and text.startswith("/"):
             await _handle_command(chat_id, tenant_id, text, session)
             return
 
-        # Media is checked before text because a photo or voice note may carry
-        # a caption. Treating the caption as the whole message would file the
-        # words and silently discard the recording they describe.
-        media = tg_media.extract(msg)
+        chatting = await assistant_chat.get_mode(chat_id) == "chat"
         if media is not None:
-            await tg_media.handle(media, msg, chat_id, tenant_id, text, _reply)
+            await tg_media.handle(
+                media,
+                msg,
+                chat_id,
+                tenant_id,
+                text,
+                _reply,
+                converse=_converse if chatting else None,
+            )
             return
 
         if not text:
@@ -134,6 +151,9 @@ async def handle_message(msg: dict[str, Any], session: AsyncSession) -> None:
             await _reply(chat_id, "I can only read text, photos and voice notes.")
             return
 
+        if chatting:
+            await _converse(chat_id, tenant_id, text)
+            return
         await _capture(msg, chat_id, tenant_id, text, session)
 
 
@@ -237,8 +257,95 @@ async def _handle_command(chat_id: int, tenant_id: str, text: str, session: Asyn
     if command in {"recall", "pending", "approve", "reject", "yes", "confirm"}:
         await tg_commands.handle(chat_id, tenant_id, text, session, _reply)
         return
+    rest = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
+    if command == "ask":
+        if not rest:
+            await _reply(chat_id, "Ask me something: /ask what's on my calendar tomorrow?")
+            return
+        await _converse(chat_id, tenant_id, rest)
+        return
+    if command in {"chat", "capture"}:
+        if await assistant_chat.set_mode(chat_id, command):
+            await _reply(chat_id, _MODE_REPLY[command])
+        else:
+            await _reply(chat_id, "I can't switch modes right now; use /ask <question> instead.")
+        return
+    if command in {"txn", "spent"}:
+        await _record_transaction(chat_id, tenant_id, rest)
+        return
+    if command == "review":
+        await _review(chat_id, tenant_id, rest)
+        return
 
     await _reply(chat_id, f"Unknown command: /{command}\n\n{_HELP}")
+
+
+# ── Conversation (services/assistant_chat.py) ─────────────────────
+
+_MODE_REPLY = {
+    "chat": (
+        "Chat mode: your messages and voice notes are now questions for me.\n"
+        "/capture switches back to saving them as memories."
+    ),
+    "capture": "Capture mode: messages are saved as memories again. /chat to talk to me.",
+}
+
+
+async def _converse(chat_id: int, tenant_id: str, question: str, *, voice: bool = False) -> None:
+    """Answer a question; a voice question gets a spoken answer too, when TTS is on."""
+    try:
+        async with TelegramClient() as client:
+            if client.configured:
+                await client.send_chat_action(chat_id, "record_voice" if voice else "typing")
+    except TelegramError:
+        pass  # the indicator is cosmetic
+    answer = redact_secrets(await assistant_chat.ask(tenant_id, question))
+    await _reply(chat_id, answer)
+    if voice:
+        audio = await assistant_chat.speak(answer)
+        if audio:
+            try:
+                async with TelegramClient() as client:
+                    if client.configured:
+                        ogg = settings.tts_format == "opus"
+                        await client.send_voice(
+                            chat_id,
+                            audio,
+                            filename="reply.ogg" if ogg else f"reply.{settings.tts_format}",
+                            mime="audio/ogg" if ogg else "audio/mpeg",
+                        )
+            except TelegramError as exc:
+                logger.warning("telegram: voice reply failed — %s", exc.description)
+
+
+async def _record_transaction(chat_id: int, tenant_id: str, text: str) -> None:
+    """/txn <bank alert text>: record it in money (services/money.py)."""
+    from life_graph.services import money
+    from life_graph.storage.database import async_session
+
+    txn = money.parse_alert(text)
+    if txn is None:
+        await _reply(
+            chat_id, "That doesn't look like a bank alert. Paste the whole SMS after /txn."
+        )
+        return
+    async with async_session() as s:
+        counts = await money.store(s, tenant_id, [txn], source="alert")
+        await s.commit()
+    if not counts["added"]:
+        await _reply(chat_id, "Already recorded.")
+        return
+    where = f" at {txn.merchant}" if txn.merchant else ""
+    await _reply(
+        chat_id, f"Recorded: {txn.direction} {txn.amount:,.2f}{where} on {txn.occurred_on:%d %b}."
+    )
+
+
+async def _review(chat_id: int, tenant_id: str, arg: str) -> None:
+    """/review: the next due study card; /review again|hard|good|easy grades the last one."""
+    from life_graph.services import study
+
+    await _reply(chat_id, await study.telegram_review(chat_id, tenant_id, arg))
 
 
 # ── Helpers ───────────────────────────────────────────────────────

@@ -5,15 +5,18 @@
 #   test   — unit + integration tests against real pgvector+MinIO
 #   sdk-ts — TypeScript SDK build check
 #
-# Triggers on push/PR to master and main branches.
+# Triggers on every pull request, whatever its base branch. Dev-agent PRs
+# target feature branches (feat/...), and the merge gate requires every check
+# on a PR to pass, so a PR that CI never ran on had no gate but the agent's
+# own verifiers. Also on pushes to master/main and to feat/** branches.
 
 name: Life Graph CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, "feat/**"]
   pull_request:
-    branches: [master, main]
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -76,15 +79,13 @@ jobs:
     # Before this, CI used pgvector/pgvector:pg16, migration 002 hit
     # `extension "age" is not available`, and the job died at the migration
     # step — the integration suite had never actually executed here.
+    #
+    # MinIO is not a service container either. A service whose image cannot
+    # be pulled fails the whole job before a single step runs, and quay.io
+    # started answering "unauthorized" for the pinned MinIO release: every CI
+    # run since 2026-10-03 died there. It is started as an optional step
+    # below instead, and the archive tests skip themselves when it is absent.
     services:
-      minio:
-        # Docker Hub's minio/minio no longer serves images; upstream is quay.io.
-        image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-        ports:
-          - 9000:9000
       redis:
         image: redis:7-alpine
         ports:
@@ -150,6 +151,18 @@ jobs:
             -c "CREATE EXTENSION IF NOT EXISTS vector;" \
             -c "CREATE EXTENSION IF NOT EXISTS age;" \
             -c "SELECT extname, extversion FROM pg_extension WHERE extname IN ('vector', 'age') ORDER BY extname;"
+
+      - name: Start MinIO (optional)
+        continue-on-error: true
+        run: |
+          for image in quay.io/minio/minio:latest minio/minio:latest bitnami/minio:latest; do
+            if docker pull -q "$image" >/dev/null 2>&1; then
+              docker run -d --name life_graph_ci_minio -p 9000:9000 \
+                -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+                "$image" server /data && echo "minio from $image" && exit 0
+            fi
+          done
+          echo "::warning::no MinIO image could be pulled; archive tests will skip"
 
       - uses: actions/setup-python@v5
         with:

@@ -1,0 +1,12 @@
+{
+  "description": "Python HTTP API (standard library): in-memory store, pytest unit tests, an HTTP end-to-end check.",
+  "settings": {
+    "sandbox_toolchain": "python",
+    "sandbox_test_command": "python -m pytest -q tests/test_store.py",
+    "sandbox_start_command": "python -m app.server",
+    "sandbox_app_port": 8000,
+    "sandbox_e2e_command": "python tests/e2e_smoke.py",
+    "required_checks": ["tests_pass", "app_e2e_pass", "no_secrets_in_diff"],
+    "base_branch": "main"
+  }
+}

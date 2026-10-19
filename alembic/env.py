@@ -19,13 +19,13 @@ import life_graph.autonomy.models  # noqa: F401  - registers 8 tables
 import life_graph.self_improving.models  # noqa: F401  - registers 7 tables
 import life_graph.watchers.models  # noqa: F401  - registers 6 tables
 from alembic import context
-from life_graph.config import settings
+from life_graph.config import settings, sqlalchemy_sync_url
 from life_graph.models.db import Base
 
 config = context.config
 
 # Override sqlalchemy.url with settings
-config.set_main_option("sqlalchemy.url", settings.database_url_sync)
+config.set_main_option("sqlalchemy.url", sqlalchemy_sync_url(settings.database_url_sync))
 
 if config.config_file_name is not None:
     # disable_existing_loggers defaults to True, which sets .disabled on every
