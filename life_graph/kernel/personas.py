@@ -715,10 +715,24 @@ class PersonaService:
             Dict representation of the matching persona, or None.
         """
         async with self._session_factory() as session:
-            stmt = select(AgentPersona).where(
-                AgentPersona.tenant_id == tenant_id,
-                AgentPersona.is_active.is_(True),
-                AgentPersona.intent_tags.any(intent),
+            stmt = (
+                select(AgentPersona)
+                .where(
+                    AgentPersona.tenant_id == tenant_id,
+                    AgentPersona.is_active.is_(True),
+                    AgentPersona.intent_tags.any(intent),
+                )
+                # Several personas share an intent ("code": cody and every
+                # code-fixer). Without an order Postgres returned whichever
+                # row it read first, and adding code-fixer-cloud flipped chat
+                # routing to code-fixer (CI, 2026-10-19). A chat message goes
+                # to a conversational persona first; driver-pinned personas
+                # are for dev tasks.
+                .order_by(
+                    AgentPersona.driver.is_not(None),
+                    AgentPersona.created_at,
+                    AgentPersona.name,
+                )
             )
             result = await session.execute(stmt)
             persona = result.scalars().first()
