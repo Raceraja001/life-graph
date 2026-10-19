@@ -268,6 +268,8 @@ async def open_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
 
 # ── Merge ────────────────────────────────────────────────────
 
+# Seconds to wait, in turn, while GitHub has not worked out whether a PR can merge.
+MERGEABLE_WAITS: tuple[float, ...] = (3, 5, 8)
 _PR_URL_RE = re.compile(r"^https://github\.com/[\w.-]+/[\w.-]+/pull/(\d+)$")
 _CHECK_OK = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"})
 
@@ -340,10 +342,22 @@ async def merge_pull_request(payload: dict[str, Any]) -> dict[str, Any]:
     gh = settings.driver_gh_bin
     number = match.group(1)
     fields = "state,headRefOid,headRefName,baseRefName,mergeable,isDraft,statusCheckRollup,mergeCommit,title"
-    code, out, err = await _run([gh, "pr", "view", url, "--json", fields], cwd=repo)
-    if code != 0:
-        raise PullRequestError(f"could not read PR #{number}: {(err or out)[-300:]}")
-    pr = json.loads(out)
+
+    async def view() -> dict[str, Any]:
+        code, out, err = await _run([gh, "pr", "view", url, "--json", fields], cwd=repo)
+        if code != 0:
+            raise PullRequestError(f"could not read PR #{number}: {(err or out)[-300:]}")
+        return json.loads(out)
+
+    pr = await view()
+    # GitHub works mergeability out lazily, after the base branch moves: right
+    # after one agent PR merged, the next ones read UNKNOWN, and a retry run
+    # merged only one PR per 15 minutes (2026-10-19). Wait a few seconds for it.
+    for wait in MERGEABLE_WAITS:
+        if pr.get("state") != "OPEN" or pr.get("mergeable") not in (None, "UNKNOWN"):
+            break
+        await asyncio.sleep(wait)
+        pr = await view()
 
     if pr.get("state") == "MERGED":
         await _sync_base_branch(repo, base_branch)

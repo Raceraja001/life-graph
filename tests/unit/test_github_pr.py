@@ -126,9 +126,9 @@ async def test_existing_pr_is_returned_not_duplicated(setup):
         # A hard [:72] slice would land inside "test_dev_suggestions.py",
         # cutting off mid-word; instead it backs off to the last space.
         (
-            'Resolve this TODO comment in tests/unit/test_dev_suggestions.py '
+            "Resolve this TODO comment in tests/unit/test_dev_suggestions.py "
             '(around line 19): "vendored noise here"',
-            'Resolve this TODO comment in tests/unit/test_dev_suggestions.py…',
+            "Resolve this TODO comment in tests/unit/test_dev_suggestions.py…",
         ),
         # No space to back off to: falls back to the hard cut rather than
         # returning an empty title.
@@ -144,7 +144,7 @@ async def test_open_pull_request_uses_word_boundary_title(setup):
     payload = await _payload(
         setup,
         instruction=(
-            'Resolve this TODO comment in tests/unit/test_dev_suggestions.py '
+            "Resolve this TODO comment in tests/unit/test_dev_suggestions.py "
             '(around line 19): "vendored noise here"\nmore detail'
         ),
     )
@@ -330,6 +330,12 @@ async def test_landed_task_files_driver_pr_approval_with_pinned_commits(setup):
 
 
 # ── Merge ────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _no_mergeability_waits(monkeypatch):
+    """Real waits are seconds long; the tests that care patch asyncio.sleep."""
+    monkeypatch.setattr(github_pr, "MERGEABLE_WAITS", (0, 0, 0))
 
 
 @pytest.fixture
@@ -724,11 +730,7 @@ def pr_state_env(tmp_path, monkeypatch):
     repo.mkdir(parents=True)
     state_file = tmp_path / "state.json"
     gh = tmp_path / "gh"
-    gh.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys\n"
-        f"print(open({str(state_file)!r}).read())\n"
-    )
+    gh.write_text(f"#!/usr/bin/env python3\nimport sys\nprint(open({str(state_file)!r}).read())\n")
     gh.chmod(0o755)
     monkeypatch.setattr(settings, "driver_gh_bin", str(gh))
     monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path / "root"))
@@ -762,8 +764,12 @@ async def test_describe_landing_uses_a_pinned_base_branch(tmp_path):
     from life_graph.services.github_pr import describe_landing
 
     def git(*args):
-        subprocess.run(["git", "-c", "user.email=t@t.com", "-c", "user.name=t", *args],
-                       cwd=str(tmp_path), check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", *args],
+            cwd=str(tmp_path),
+            check=True,
+            capture_output=True,
+        )
 
     git("init", "-b", "feature-checkout")
     git("commit", "--allow-empty", "-m", "base")
@@ -774,3 +780,32 @@ async def test_describe_landing_uses_a_pinned_base_branch(tmp_path):
 
     assert pinned["base_branch"] == "main"
     assert unpinned["base_branch"] == "feature-checkout"
+
+
+async def test_merge_waits_while_github_works_out_mergeability(merge_env, monkeypatch):
+    # Right after another PR merged, GitHub reports UNKNOWN for a few seconds.
+    merge_env.set_pr(mergeable="UNKNOWN")
+    waits = []
+
+    async def sleep(seconds):
+        waits.append(seconds)
+        merge_env.set_pr(mergeable="MERGEABLE")  # GitHub has caught up
+
+    monkeypatch.setattr(github_pr.asyncio, "sleep", sleep)
+    out = await github_pr.merge_pull_request(merge_env.payload)
+    assert out["merged"] and waits == [github_pr.MERGEABLE_WAITS[0]]
+    views = [c for c in merge_env.calls() if c[:2] == ["pr", "view"] and "mergeable" in c[-1]]
+    assert len(views) == 2
+
+
+async def test_merge_gives_up_if_mergeability_stays_unknown(merge_env, monkeypatch):
+    merge_env.set_pr(mergeable="UNKNOWN")
+
+    async def sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(github_pr.asyncio, "sleep", sleep)
+    with pytest.raises(PullRequestError, match="still computing"):
+        await github_pr.merge_pull_request(merge_env.payload)
+    views = [c for c in merge_env.calls() if c[:2] == ["pr", "view"] and "mergeable" in c[-1]]
+    assert len(views) == 1 + len(github_pr.MERGEABLE_WAITS)
