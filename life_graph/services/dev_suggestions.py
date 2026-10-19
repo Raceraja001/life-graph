@@ -6,7 +6,9 @@ worker cron job looks for problems *without* an LLM, most valuable first:
 1. **failing tests** — the project's ``sandbox_test_command`` run in the
    verifier sandbox (only when the project configured one);
 2. **lint** — ``ruff check`` in the sandbox, one finding per file;
-3. **TODO / FIXME** comments — a plain file scan, no execution.
+3. **TODO / FIXME** comments — a plain file scan, no execution;
+4. **untested functions** (opt-in, ``nightly_untested``) — short public Python
+   functions no test file names, found by parsing, no execution.
 
 Scanning happens in a throwaway detached worktree of ``HEAD``, so local
 uncommitted edits in the live checkout never become suggestions, and nothing
@@ -75,7 +77,7 @@ _FAILED_RE = re.compile(r"^FAILED (\S+)", re.MULTILINE)
 
 @dataclass
 class Finding:
-    kind: str  # "tests" | "lint" | "todo"
+    kind: str  # "tests" | "lint" | "todo" | "untested"
     key: str
     title: str
     instruction: str
@@ -232,6 +234,102 @@ async def test_findings(root: Path, meta: dict[str, Any]) -> list[Finding]:
     ]
 
 
+UNTESTED_MIN_LINES = 6
+UNTESTED_MAX_LINES = 40
+MAX_UNTESTED_FINDINGS = 30
+_TEST_DIRS = ("tests", "test")
+
+
+def _test_corpus(root: Path) -> str:
+    """Every test file's text, to look function names up in."""
+    parts = []
+    for d in _TEST_DIRS:
+        base = root / d
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*.py")):
+            if any(p in _SKIP_DIRS for p in path.parts):
+                continue
+            try:
+                parts.append(path.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+    return "\n".join(parts)
+
+
+def untested_findings(root: Path, paths: list[str] | None = None) -> list[Finding]:
+    """Short public Python functions no test file names (no execution).
+
+    Opt-in per project (``nightly_untested``). Shortest first: the dev agent is
+    reliable on small, scoped test tasks (seven of seven, 2026-10-19), not on
+    large ones. A function that takes a ``session`` gets pointed at the
+    project's shared fakes when it has ``tests/unit/fakes.py``.
+    """
+    import ast
+
+    corpus = _test_corpus(root)
+    if not corpus:
+        return []  # no test suite to add to
+    has_fakes = (root / "tests" / "unit" / "fakes.py").is_file()
+    candidates: list[tuple[int, str, str, bool]] = []
+    bases = [root / p for p in paths] if paths else [root]
+    for base in bases:
+        files = [base] if base.is_file() else sorted(base.rglob("*.py")) if base.is_dir() else []
+        for path in files:
+            rel = str(path.relative_to(root))
+            parts = Path(rel).parts
+            if any(p in _SKIP_DIRS for p in parts) or parts[0] in _TEST_DIRS:
+                continue
+            if path.name.startswith("test_") or path.name == "conftest.py":
+                continue
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, SyntaxError, ValueError):
+                continue
+            for node in tree.body:
+                if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                    continue
+                # Private, or framework-bound: a decorated function is a route,
+                # a cached dependency, a registered tool... tested through its
+                # framework, not as a small unit (the first scan picked FastAPI
+                # handlers and DI getters).
+                if node.name.startswith("_") or node.decorator_list:
+                    continue
+                length = (node.end_lineno or node.lineno) - node.lineno + 1
+                if not UNTESTED_MIN_LINES <= length <= UNTESTED_MAX_LINES:
+                    continue
+                if re.search(rf"\b{re.escape(node.name)}\b", corpus):
+                    continue
+                takes_session = any(a.arg == "session" for a in node.args.args)
+                candidates.append((length, rel, node.name, takes_session))
+    candidates.sort()
+    found = []
+    for _length, rel, name, takes_session in candidates[:MAX_UNTESTED_FINDINGS]:
+        test_file = f"tests/unit/test_{Path(rel).stem}_{name}.py"
+        db = (
+            " It queries the database: use the shared fakes in tests/unit/fakes.py as "
+            "AGENTS.md describes (FakeSession(rows), session.statements, sql(stmt)); "
+            "see tests/unit/test_dev_task_diff.py."
+            if takes_session and has_fakes
+            else ""
+        )
+        found.append(
+            Finding(
+                kind="untested",
+                key=_key("untested", rel, name),
+                title=f"Add tests for {name} in {rel}",
+                instruction=(
+                    f"Write unit tests, in a new file {test_file}, for `{name}` in {rel}, "
+                    "which has none. Read the function first, then cover its main cases "
+                    "and an edge case; each test must call the function and assert on "
+                    f"what it returns or does.{db} Put every import at the top of the "
+                    "test file. Change no other file."
+                ),
+            )
+        )
+    return found
+
+
 async def collect_findings(repo_path: str, meta: dict[str, Any]) -> list[Finding]:
     """All findings for a project, most valuable first, scanned at ``HEAD``."""
     scratch = Path(tempfile.mkdtemp(prefix="lg_suggest_"))
@@ -256,6 +354,14 @@ async def collect_findings(repo_path: str, meta: dict[str, Any]) -> list[Finding
             *await test_findings(worktree, meta),
             *await lint_findings(worktree, meta.get("nightly_lint_paths")),
             *await asyncio.to_thread(todo_findings, worktree),
+            # Last: missing tests are worth less than anything broken.
+            *(
+                await asyncio.to_thread(
+                    untested_findings, worktree, meta.get("nightly_untested_paths")
+                )
+                if meta.get("nightly_untested")
+                else []
+            ),
         ]
     finally:
         cleanup = await asyncio.create_subprocess_exec(

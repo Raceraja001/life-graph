@@ -1134,6 +1134,11 @@ class ProjectRegister(_ProjectOpsSettings):
     nightly_max_tasks: int | None = Field(None, ge=1, le=10)
     nightly_persona: str | None = Field(None, max_length=100)
     nightly_lint_paths: list[str] | None = None
+    nightly_untested: bool | None = Field(
+        None,
+        description="Also queue unit tests for short public Python functions no test names",
+    )
+    nightly_untested_paths: list[str] | None = None
 
     @field_validator("required_checks")
     @classmethod
@@ -1171,6 +1176,11 @@ class ProjectUpdate(_ProjectOpsSettings):
     nightly_max_tasks: int | None = Field(None, ge=0, le=10)
     nightly_persona: str | None = Field(None, max_length=100)
     nightly_lint_paths: list[str] | None = None
+    nightly_untested: bool | None = Field(
+        None,
+        description="Also queue unit tests for short public Python functions no test names",
+    )
+    nightly_untested_paths: list[str] | None = None
 
     @field_validator("required_checks")
     @classmethod
