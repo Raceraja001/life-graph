@@ -46,6 +46,9 @@ logger = logging.getLogger(__name__)
 #   nightly_max_tasks     cap on open nightly tasks per project (default 2)
 #   nightly_persona       persona that works them (default code-fixer-local)
 #   nightly_lint_paths    paths the nightly ruff scan covers (default: the whole repo)
+#   nightly_untested      also queue tests for short public Python functions no test
+#                          names (opt-in; services/dev_suggestions.py untested_findings)
+#   nightly_untested_paths  paths that scan covers (default: the whole repo)
 #   smoke_command         run after a successful deploy; failing it runs rollback_command
 #                          (if set) and queues a fix task (services/production_findings.py)
 #   rollback_command      undo a deploy whose smoke check failed
@@ -79,6 +82,8 @@ _USER_META_KEYS = frozenset(
         "nightly_max_tasks",
         "nightly_persona",
         "nightly_lint_paths",
+        "nightly_untested",
+        "nightly_untested_paths",
         "deploy_command",
         "deploy_on_merge",
         "base_branch",

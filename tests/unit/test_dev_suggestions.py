@@ -144,3 +144,63 @@ async def test_lint_scan_is_scoped_and_skips_migrations(tmp_path, monkeypatch):
     excluded = argv[argv.index("--extend-exclude") + 1].split(",")
     assert "alembic" in excluded and "migrations" in excluded
     assert argv[argv.index("--") + 1 :] == ["life_graph"]
+
+
+def _body(n: int) -> str:
+    """A function body of n lines."""
+    return "".join(f"    x{i} = {i}\n" for i in range(n - 2)) + "    return x0\n"
+
+
+def _untested_project(tmp_path, *, fakes=True):
+    pkg = tmp_path / "app"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "svc.py").write_text(
+        "import functools\n\n\n"
+        f"def tested_fn():\n{_body(6)}\n\n"
+        f"async def query_rows(session, tenant_id):\n{_body(7)}\n\n"
+        f"def plain_helper(text):\n{_body(10)}\n\n"
+        f"def too_short():\n{_body(3)}\n\n"
+        f"def too_long():\n{_body(45)}\n\n"
+        f"def _private():\n{_body(8)}\n\n"
+        f"@functools.cache\ndef decorated():\n{_body(8)}\n"
+    )
+    (tmp_path / "tests" / "unit").mkdir(parents=True)
+    (tmp_path / "tests" / "unit" / "test_svc.py").write_text(
+        "from app.svc import tested_fn\n\ndef test_it():\n    assert tested_fn() == 0\n"
+    )
+    if fakes:
+        (tmp_path / "tests" / "unit" / "fakes.py").write_text("class FakeSession: ...\n")
+    return tmp_path
+
+
+def test_untested_findings_are_short_public_undecorated_functions(tmp_path):
+    root = _untested_project(tmp_path)
+    found = ds.untested_findings(root)
+    # Shortest first; tested, too short/long, private and decorated are skipped.
+    assert [f.title for f in found] == [
+        "Add tests for query_rows in app/svc.py",
+        "Add tests for plain_helper in app/svc.py",
+    ]
+    rows, helper = found
+    assert rows.kind == "untested" and "tests/unit/test_svc_query_rows.py" in rows.instruction
+    assert "tests/unit/fakes.py" in rows.instruction  # takes a session
+    assert "fakes.py" not in helper.instruction
+    assert rows.key == ds.untested_findings(root)[0].key  # stable across scans
+
+
+def test_untested_findings_without_the_fakes_or_any_tests(tmp_path):
+    root = _untested_project(tmp_path, fakes=False)
+    assert all("fakes.py" not in f.instruction for f in ds.untested_findings(root))
+    bare = tmp_path / "bare"
+    (bare / "app").mkdir(parents=True)
+    (bare / "app" / "m.py").write_text(f"def f():\n{_body(8)}\n")
+    assert ds.untested_findings(bare) == []  # no test suite to add to
+
+
+def test_untested_findings_respect_paths(tmp_path):
+    root = _untested_project(tmp_path)
+    (root / "other").mkdir()
+    (root / "other" / "x.py").write_text(f"def elsewhere():\n{_body(8)}\n")
+    assert all(f.title.endswith("app/svc.py") for f in ds.untested_findings(root, ["app"]))
+    assert any("elsewhere" in f.title for f in ds.untested_findings(root))
