@@ -553,6 +553,19 @@ class Settings(BaseSettings):
     invoice_seller_name: str = ""  # shown on invoices and signed under emails
     invoice_seller_details: str = ""  # address, tax id… separated by "|"
 
+    # ── Startup Seeding ─────────────────────────────────
+    # Which tenants get the built-in personas, ambient jobs and safety rules at
+    # startup. This was the literal "default" in three places, so every other
+    # tenant came up with an empty action_safety_rules table — and the
+    # classifier treats an action it cannot match as dangerous, which left a
+    # real tenant unable to take a single autonomous action with nothing in the
+    # logs to say why.
+    #
+    # Named tenants rather than every tenant seen, because seeding also sets
+    # the ambient project to L1 (safe actions run without asking). Granting
+    # that is a decision, so it is made here, deliberately.
+    seed_tenants: str = "default"
+
     # ── Derived Properties ─────────────────────────────
 
     @property
@@ -633,6 +646,11 @@ class Settings(BaseSettings):
             overrides = {}
         value = overrides.get(model or "") if isinstance(overrides, dict) else None
         return int(value) if isinstance(value, int) and value > 0 else self.agent_context_tokens
+
+    @property
+    def seed_tenants_list(self) -> list[str]:
+        """Tenants to seed at startup, in the order given."""
+        return [t.strip() for t in self.seed_tenants.split(",") if t.strip()]
 
     @property
     def llm_fallback_chain_list(self) -> list[str]:
