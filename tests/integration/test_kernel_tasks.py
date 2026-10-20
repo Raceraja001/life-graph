@@ -126,7 +126,7 @@ class TestCreateTask:
         response = await client.post(
             "/api/v1/kernel/tasks",
             json={
-                "agent_name": "rex",
+                "agent_name": "scout",
                 "task_name": "Research WebSocket scaling",
                 "input": {
                     "message": "Research best approaches",
@@ -141,7 +141,7 @@ class TestCreateTask:
 
         if response.status_code == 201:
             task = response.json()["data"]
-            assert task["agent_name"] == "rex"
+            assert task["agent_name"] == "scout"
             assert task["priority"] == "high"
 
     @pytest.mark.asyncio

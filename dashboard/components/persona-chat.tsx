@@ -36,9 +36,8 @@ type ChatEvent =
   | { type: "error"; message: string };
 
 const PERSONAS = [
-  { id: "jarvis", label: "Jarvis · coordinator" },
+  { id: "jarvis", label: "Jarvis · lead" },
   { id: "tutor", label: "Tutor" },
-  { id: "swe-lead", label: "SWE-Lead" },
   { id: "scout", label: "Scout" },
   { id: "admin", label: "Admin" },
 ];
@@ -46,7 +45,6 @@ const PERSONAS = [
 const ROLE_COLOR: Record<string, string> = {
   jarvis: "var(--accent-text)",
   tutor: "var(--success)",
-  "swe-lead": "var(--info)",
   scout: "var(--warning)",
   admin: "var(--accent-text)",
 };

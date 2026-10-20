@@ -39,7 +39,9 @@ _OPEN_STATUSES = ("queued", "running")
 PIPELINE_RULES: dict[str, tuple[str, str]] = {
     "dependency": ("dependency-updater", "dependency_update"),
     "dependency_watcher": ("dependency-updater", "dependency_update"),
-    "server_health": ("uzhavu-ops", "incident_fix"),
+    # ops investigates and proposes (read-only tools, see the spawn below);
+    # uzhavu-ops, which applied fixes itself, is retired.
+    "server_health": ("ops", "incident_fix"),
 }
 
 
@@ -177,12 +179,21 @@ class TaskOriginationService:
                 "finding": finding,
                 "fingerprint": fp,
             }
+            from life_graph.kernel.ambient import AMBIENT_ACTION, AMBIENT_ACTION_READONLY_TOOLS
+
             result = await self._pm.spawn(
                 tenant_id=tenant_id,
                 agent_name=agent_name,
                 input_data=input_data,
                 task_name=f"{task_type}: {str(finding.get('title', ''))[:80]}",
                 priority="high" if severity == "critical" else "normal",
+                # Unattended, an action role only investigates and proposes,
+                # exactly as on its schedule (kernel/ambient.py).
+                **(
+                    {"tool_override": AMBIENT_ACTION_READONLY_TOOLS}
+                    if agent_name in AMBIENT_ACTION
+                    else {}
+                ),
             )
             spawned.append(
                 {

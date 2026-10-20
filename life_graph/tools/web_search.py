@@ -179,3 +179,40 @@ async def web_search(query: str) -> str:
     """Search the web; JSON with the provider used and the results."""
     logger.info("Searching web for: %s", query)
     return json.dumps(await search(query))
+
+
+@tool(
+    name="research_web",
+    description=(
+        "Research a question on the web: reads several result pages and returns an "
+        "answer in short claims, each citing the pages that state it. Slower than "
+        "web_search; use it for questions that need more than one page (comparisons, "
+        "'what is the latest on'). Do not put personal details in the question."
+    ),
+    parameters_schema={
+        "type": "object",
+        "properties": {
+            "question": {"type": "string", "description": "The question, self-contained"},
+        },
+        "required": ["question"],
+    },
+)
+async def research_web(question: str) -> str:
+    """Job 6 as a tool for Jarvis (services/web_research.research)."""
+    from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
+    from life_graph.services.web_research import research
+    from life_graph.services.workers import WorkerError
+
+    tenant_id = get_current_tenant_id() if has_tenant_context() else "default"
+    try:
+        out = await research(question, tenant_id)
+    except WorkerError as exc:
+        return json.dumps({"status": "error", "message": str(exc)})
+    return json.dumps(
+        {
+            "status": "ok",
+            "answer": out["answer"],
+            "sources": out["sources"],
+            "pages_read": len(out["pages_read"]),
+        }
+    )

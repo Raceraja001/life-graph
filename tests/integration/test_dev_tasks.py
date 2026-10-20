@@ -166,7 +166,7 @@ async def test_validation(client, project):
         json={"instruction": "Do something", "project_id": str(uuid.uuid4())},
     )
     assert bad_project.status_code == 404
-    no_driver = await _start(client, project, "Do something", persona_name="rex")
+    no_driver = await _start(client, project, "Do something", persona_name="scout")
     assert no_driver.status_code == 400
     assert "no driver" in no_driver.json()["detail"]
 

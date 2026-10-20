@@ -145,13 +145,14 @@ def collect_events() -> dict[str, Any]:
 
 def collect_personas() -> dict[str, Any]:
     """Built-in agent personas seeded at startup."""
-    from life_graph.kernel.personas import _BUILTIN_PERSONAS
+    from life_graph.kernel.personas import _BUILTIN_PERSONAS, RETIRED_PERSONAS
 
     personas = []
     for p in _BUILTIN_PERSONAS:
         personas.append(
             {
                 "name": p.get("name", "—"),
+                "retired": p.get("name") in RETIRED_PERSONAS,
                 "display_name": p.get("display_name", ""),
                 "description": (p.get("description") or "").strip(),
                 "driver": p.get("driver") or "—",
@@ -161,7 +162,8 @@ def collect_personas() -> dict[str, Any]:
                 "intent_tags": list(p.get("intent_tags") or []),
             }
         )
-    return {"total": len(personas), "personas": personas}
+    retired = sum(p["retired"] for p in personas)
+    return {"total": len(personas) - retired, "retired": retired, "personas": personas}
 
 
 def collect_tools() -> dict[str, Any]:
@@ -576,7 +578,8 @@ def render_markdown(d: dict[str, Any]) -> str:
         "",
         "## Built-in personas",
         "",
-        f"{pe['total']} personas seeded at startup.",
+        f"{pe['total']} active personas seeded at startup, plus {pe['retired']} retired"
+        " (seeded switched off; docs/design/11_persona_roster_plan.md).",
         "",
         "| Persona | Driver | Task types | Verifiers | Tools |",
         "|---|---|---|---|---:|",
@@ -584,9 +587,9 @@ def render_markdown(d: dict[str, Any]) -> str:
     for p in pe["personas"]:
         tt = ", ".join(f"`{t}`" for t in p["task_types"]) or "—"
         vc = ", ".join(f"`{v}`" for v in p["verifier_chain"]) or "—"
+        name = f"~~{p['name']}~~ (retired)" if p["retired"] else f"**{p['name']}**"
         out.append(
-            f"| **{p['name']}** — {p['description']} | `{p['driver']}` | {tt} | {vc} "
-            f"| {len(p['tools'])} |"
+            f"| {name} — {p['description']} | `{p['driver']}` | {tt} | {vc} | {len(p['tools'])} |"
         )
     out.append("")
 

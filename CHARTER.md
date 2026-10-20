@@ -105,11 +105,25 @@ reach across. Domains are tags, graph edges and surfaces (`domain: work_his`,
 
 ### 7. Personal data stays on the machine
 
-Memories, preferences, beliefs, family and health notes, and voice audio are processed by
-local models only. Code is different: the owner allows coding work to run on **free** cloud
-models while the GPU is busy with speech (`services/compute_router.py`, the `cloud` driver),
-and that path strips preferences, procedures and memories from the prompt and refuses any
-model that is not free.
+Memories, preferences, beliefs, family and health notes, money, mail, calendar, documents and
+voice audio are processed by local models only. Other work may leave the machine, by the
+owner's rule (2026-10-20): free cloud models are used for code and public research even though
+free tiers may train on what they are sent, and personal details are hidden first.
+
+- **Code** runs on **free** cloud models while the GPU is busy with speech
+  (`services/compute_router.py`, the `cloud` driver); that path strips preferences, procedures
+  and memories from the prompt and refuses any model that is not free.
+- **Research workers** (`services/workers.py`) read only public pages handed to them; every
+  brief passes the scrub (`services/scrub.py`).
+- **Jarvis** picks its model per request (`services/lead.py`): a personal request runs on the
+  local model, pinned so it cannot fail over to a cloud one; anything else may run on its
+  configured model, and then the personal tools are not offered, the conversation is scrubbed
+  and no connector data is added. A personal request misjudged as general gets a refusal,
+  never the data.
+
+The scrub is a net, not a guarantee: it hides the shapes of personal details (phone numbers,
+emails, PAN, Aadhaar, cards, accounts), not names or context in free text. That is why the
+first defence is structural — personal tools and data never reach a cloud run at all.
 
 Known exceptions, stated rather than hidden: Telegram's servers carry what is sent through
 the bot, and a cloud TTS voice (such as Edge-TTS) sends reply text to its provider. Replacing

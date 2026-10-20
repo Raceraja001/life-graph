@@ -151,14 +151,8 @@ class TestDefaultRouting:
             DEFAULT_ROUTING,
         )
 
-        assert DEFAULT_ROUTING["code"] == "cody"
-        assert DEFAULT_ROUTING["research"] == "rex"
-        assert DEFAULT_ROUTING["deploy"] == "ops"
-        assert DEFAULT_ROUTING["monitor"] == "ops"
-        assert DEFAULT_ROUTING["data"] == "penny"
-        assert DEFAULT_ROUTING["docs"] == "scribe"
-        assert DEFAULT_ROUTING["question"] == "chief"
-        assert DEFAULT_ROUTING["general"] == "chief"
+        # Jarvis is the only lead (docs/design/11_persona_roster_plan.md).
+        assert set(DEFAULT_ROUTING.values()) == {"jarvis"}
 
 
 # ── Classify Endpoint ────────────────────────────────────────
@@ -273,8 +267,8 @@ class TestRouteEndpoint:
         if response.status_code == 201:
             data = response.json()["data"]
             assert "session_id" in data
-            assert data["classified_intent"] == "code"
-            assert data["routed_to"] == "cody"
+            assert data["classified_intent"] == "code"  # still classified and recorded
+            assert data["routed_to"] == "jarvis"  # the lead hands code to cody itself
             assert data["task_status"] == "queued"
             assert "task_id" in data
 
