@@ -237,7 +237,65 @@ async def test_findings(root: Path, meta: dict[str, Any]) -> list[Finding]:
 UNTESTED_MIN_LINES = 6
 UNTESTED_MAX_LINES = 40
 MAX_UNTESTED_FINDINGS = 30
+# Decision points a function needs before it is worth a test task. The first
+# nightly batches picked shortest-first and got thin wrappers and dict
+# builders, whose only possible test restates the code (#96 asserted a
+# description string; #99 copied each field back). Functions with real
+# branches got real tests (#97 redaction, #98 date formats), 2026-10-20.
+UNTESTED_MIN_LOGIC = 2
 _TEST_DIRS = ("tests", "test")
+
+
+def _logic_shape(node) -> dict[str, Any]:
+    """What a function decides, from its AST: decision points, whether it
+    raises, filters by tenant, or builds a dict to return."""
+    import ast
+
+    decisions = (
+        ast.If,
+        ast.IfExp,
+        ast.For,
+        ast.AsyncFor,
+        ast.While,
+        ast.ExceptHandler,
+        ast.match_case,
+    )
+    score = 0
+    raises = tenant = returns_dict = False
+    for sub in ast.walk(node):
+        if isinstance(sub, decisions):
+            score += 1
+        elif isinstance(sub, ast.BoolOp):
+            score += len(sub.values) - 1
+        elif isinstance(sub, ast.comprehension):
+            score += len(sub.ifs)
+        elif isinstance(sub, ast.Raise):
+            score += 1
+            raises = True
+        elif isinstance(sub, ast.Attribute) and sub.attr == "tenant_id":
+            tenant = True
+        elif isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict):
+            returns_dict = True
+    return {"score": score, "raises": raises, "tenant": tenant, "returns_dict": returns_dict}
+
+
+def _untested_hints(shape: dict[str, Any]) -> str:
+    """The cases that matter for a function of this shape."""
+    hints = [f"It has {shape['score']} decision points: give each branch a test."]
+    if shape["raises"]:
+        hints.append("Test the errors it raises (pytest.raises), not only the happy path.")
+    if shape["tenant"]:
+        hints.append(
+            "It is tenant-scoped: assert that the query filters by the tenant "
+            "(e.g. the tenant id appears in sql(session.statements[0]))."
+        )
+    if shape["returns_dict"]:
+        hints.append("It builds a dict: check which fields are in it and which are left out.")
+    hints.append(
+        "Assert behaviour, never constants or strings copied from the function, "
+        "and do not write two tests for the same case."
+    )
+    return " ".join(hints)
 
 
 def _test_corpus(root: Path) -> str:
@@ -258,12 +316,18 @@ def _test_corpus(root: Path) -> str:
 
 
 def untested_findings(root: Path, paths: list[str] | None = None) -> list[Finding]:
-    """Short public Python functions no test file names (no execution).
+    """Short public Python functions with real logic that no test file names
+    (no execution).
 
-    Opt-in per project (``nightly_untested``). Shortest first: the dev agent is
-    reliable on small, scoped test tasks (seven of seven, 2026-10-19), not on
-    large ones. A function that takes a ``session`` gets pointed at the
-    project's shared fakes when it has ``tests/unit/fakes.py``.
+    Opt-in per project (``nightly_untested``). Size is capped because the dev
+    agent is reliable on small, scoped test tasks (seven of seven,
+    2026-10-19), not on large ones; within that, most logic first, then
+    shortest. Functions with fewer than :data:`UNTESTED_MIN_LOGIC` decision
+    points (pass-through wrappers, dict builders) are skipped: their only test
+    restates the code. The instruction names the cases that matter for the
+    function's shape (:func:`_untested_hints`). A function that takes a
+    ``session`` gets pointed at the project's shared fakes when it has
+    ``tests/unit/fakes.py``.
     """
     import ast
 
@@ -271,7 +335,7 @@ def untested_findings(root: Path, paths: list[str] | None = None) -> list[Findin
     if not corpus:
         return []  # no test suite to add to
     has_fakes = (root / "tests" / "unit" / "fakes.py").is_file()
-    candidates: list[tuple[int, str, str, bool]] = []
+    candidates: list[tuple[int, int, str, str, bool, dict[str, Any]]] = []
     bases = [root / p for p in paths] if paths else [root]
     for base in bases:
         files = [base] if base.is_file() else sorted(base.rglob("*.py")) if base.is_dir() else []
@@ -300,11 +364,14 @@ def untested_findings(root: Path, paths: list[str] | None = None) -> list[Findin
                     continue
                 if re.search(rf"\b{re.escape(node.name)}\b", corpus):
                     continue
+                shape = _logic_shape(node)
+                if shape["score"] < UNTESTED_MIN_LOGIC:
+                    continue
                 takes_session = any(a.arg == "session" for a in node.args.args)
-                candidates.append((length, rel, node.name, takes_session))
-    candidates.sort()
+                candidates.append((-shape["score"], length, rel, node.name, takes_session, shape))
+    candidates.sort(key=lambda c: c[:4])
     found = []
-    for _length, rel, name, takes_session in candidates[:MAX_UNTESTED_FINDINGS]:
+    for _score, _length, rel, name, takes_session, shape in candidates[:MAX_UNTESTED_FINDINGS]:
         test_file = f"tests/unit/test_{Path(rel).stem}_{name}.py"
         db = (
             " It queries the database: use the shared fakes in tests/unit/fakes.py as "
@@ -322,8 +389,8 @@ def untested_findings(root: Path, paths: list[str] | None = None) -> list[Findin
                     f"Write unit tests, in a new file {test_file}, for `{name}` in {rel}, "
                     "which has none. Read the function first, then cover its main cases "
                     "and an edge case; each test must call the function and assert on "
-                    f"what it returns or does.{db} Put every import at the top of the "
-                    "test file. Change no other file."
+                    f"what it returns or does. {_untested_hints(shape)}{db} Put every "
+                    "import at the top of the test file. Change no other file."
                 ),
             )
         )
