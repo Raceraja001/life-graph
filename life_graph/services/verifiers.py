@@ -149,6 +149,7 @@ class VerifierChain:
         self.register("no_vulnerable_deps_in_diff", _verify_no_vulnerable_deps_in_diff)
         self.register("diff_within_scope", _verify_diff_within_scope)
         self.register("tests_exercise_code", _verify_tests_exercise_code)
+        self.register("no_test_weakening", _verify_no_test_weakening)
         self.register("citations_present", _verify_citations_present)
         self.register("style_conforms", _verify_style_conforms)
         self.register("claims_evidenced", _verify_claims_evidenced)
@@ -1092,6 +1093,124 @@ async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dic
             "needs them, say why in your summary instead of changing them."
         )
     return not out_of_scope, evidence
+
+
+_ASSERTION_RE = re.compile(
+    r"^\s*(?:assert\b|self\.assert\w*\(|(?:with\s+)?pytest\.raises\(|expect\()"
+)
+_TEST_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+test\w*\(|^\s*(?:it|test)\(['\"]")
+_SKIP_RE = re.compile(
+    r"pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.(?:skip|xfail)\(|unittest\.skip|"
+    r"\.(?:skip|only)\(|\bxit\(|\bxdescribe\("
+)
+# An instruction that asks for tests to be removed or skipped may do so.
+_TEST_REMOVAL_ASKED = re.compile(
+    r"\b(?:remove|delete|drop|skip|rewrite|replace|xfail)\b[^.\n]{0,60}\btests?\b"
+    r"|\btests?\b[^.\n]{0,60}\b(?:remove|delete|drop|skip|rewrite|replace)",
+    re.IGNORECASE,
+)
+
+
+def _held_tests(workdir: Path, rel: str) -> bool:
+    """Whether the file at HEAD had any test or assertion in it."""
+    try:
+        text = subprocess.run(
+            [*_HARDENED_GIT, "show", f"HEAD:{rel}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(workdir),
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return True  # unknown: count it
+    return any(_TEST_DEF_RE.search(ln) or _ASSERTION_RE.search(ln) for ln in text.splitlines())
+
+
+def _tracked_test_diff(workdir: Path) -> tuple[list[str], str]:
+    """(deleted test files, unified diff of changed tracked test files) vs HEAD."""
+    try:
+        status = subprocess.run(
+            [*_HARDENED_GIT, "diff", "--name-status", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(workdir),
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return [], ""
+    deleted, modified = [], []
+    for line in status.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2 or not _is_test_path(parts[-1]):
+            continue
+        if parts[0].startswith("D"):
+            # Only a file that held tests: deleting an empty one tests nothing less.
+            if _held_tests(workdir, parts[-1]):
+                deleted.append(parts[-1])
+        else:
+            modified.append(parts[-1])
+    if not modified:
+        return deleted, ""
+    try:
+        diff = subprocess.run(
+            [*_HARDENED_GIT, "diff", "--no-color", "-U0", "HEAD", "--", *modified],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(workdir),
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        diff = ""
+    return deleted, diff
+
+
+async def _verify_no_test_weakening(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+    """Existing tests may not be made weaker: no deleted test files, no fewer
+    tests or assertions, no new skip/xfail -- unless the task asked for it.
+
+    A failing test is the code telling the agent something. gpt-oss:20b once
+    edited production code to make its own broken test import (2026-10-17);
+    the cheaper way out, deleting the assert or skipping the test, passes
+    every other check. New test files cannot weaken anything and are not
+    looked at.
+    """
+    deleted, diff = _tracked_test_diff(workdir)
+    if not deleted and not diff:
+        return True, {"note": "no existing test changed"}
+    if _TEST_REMOVAL_ASKED.search(ctx.get("scope_instruction") or ""):
+        return True, {"note": "the task asks to remove or rewrite tests", "deleted": deleted}
+    removed = {"assertions": 0, "tests": 0}
+    added = {"assertions": 0, "tests": 0}
+    skips: list[str] = []
+    for line in diff.splitlines():
+        if line.startswith(("+++", "---")):
+            continue
+        sign, body = line[:1], line[1:]
+        if sign not in "+-" or not body.strip():
+            continue
+        side = added if sign == "+" else removed
+        if _ASSERTION_RE.search(body):
+            side["assertions"] += 1
+        if _TEST_DEF_RE.search(body):
+            side["tests"] += 1
+        if sign == "+" and _SKIP_RE.search(body):
+            skips.append(body.strip()[:120])
+    problems = []
+    if deleted:
+        problems.append(f"deleted test files: {', '.join(deleted)}")
+    if removed["tests"] > added["tests"]:
+        problems.append(f"{removed['tests'] - added['tests']} fewer test(s)")
+    if removed["assertions"] > added["assertions"]:
+        problems.append(f"{removed['assertions'] - added['assertions']} fewer assertion(s)")
+    if skips:
+        problems.append(f"new skip/xfail: {skips[0]}")
+    evidence: dict = {"removed": removed, "added": added, "problems": problems}
+    if problems:
+        evidence["hint"] = (
+            "Do not weaken existing tests to make them pass. If a test fails, fix the "
+            "code, or say in your summary why the test itself is wrong."
+        )
+    return not problems, evidence
 
 
 async def _verify_citations_present(workdir: Path, ctx: dict) -> tuple[bool, dict]:

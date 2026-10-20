@@ -74,14 +74,23 @@ async def record_outcome(
     if payload.get("outcome") in FINAL:
         return False
 
+    from life_graph.services.change_policy import trust_key
+
     tenant_id = pr_approval.tenant_id
     driver = payload.get("driver") or "unknown"
     project_id = payload.get("project_id")
     trust = TrustScoreService(session)
-    if outcome == "merged":
-        await trust.record_success(tenant_id, driver, ACTION_TYPE, project_id)
-    else:
-        await trust.record_failure(tenant_id, driver, ACTION_TYPE, project_id)
+    # The driver's overall record (driver selection reads it) and, when the
+    # change was described at landing, the record for that kind of change,
+    # which is what unattended open/merge reads (services/change_policy.py).
+    kind = (payload.get("change") or {}).get("kind")
+    agents = [driver, *([trust_key(driver, kind)] if kind else [])]
+    for agent in agents:
+        if outcome == "merged":
+            await trust.record_success(tenant_id, agent, ACTION_TYPE, project_id)
+        else:
+            await trust.record_failure(tenant_id, agent, ACTION_TYPE, project_id)
+    if outcome != "merged":
         await CaptureService(session).record_correction(
             tenant_id,
             kind="reject",

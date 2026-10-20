@@ -49,7 +49,12 @@ logger = logging.getLogger(__name__)
 #   nightly_untested      also queue tests for short public Python functions no test
 #                          names (opt-in; services/dev_suggestions.py untested_findings)
 #   nightly_untested_paths  paths that scan covers (default: the whole repo)
-#   smoke_command         run after a successful deploy; failing it runs rollback_command
+#   protected_paths       globs an agent change may touch only with a person's review —
+#                          never auto-opened or auto-merged (on top of the defaults in
+#                          services/change_policy.py: CI, migrations, dependencies, ...)
+#   auto_merge_max_lines  most changed lines an agent change may land with unattended (150)
+#   auto_merge_max_files  most changed files an agent change may land with unattended (3)
+#   smoke_command        run after a successful deploy; failing it runs rollback_command
 #                          (if set) and queues a fix task (services/production_findings.py)
 #   rollback_command      undo a deploy whose smoke check failed
 #   fix_persona           persona that works production fix tasks (default code-fixer-local)
@@ -84,6 +89,9 @@ _USER_META_KEYS = frozenset(
         "nightly_lint_paths",
         "nightly_untested",
         "nightly_untested_paths",
+        "protected_paths",
+        "auto_merge_max_lines",
+        "auto_merge_max_files",
         "deploy_command",
         "deploy_on_merge",
         "base_branch",

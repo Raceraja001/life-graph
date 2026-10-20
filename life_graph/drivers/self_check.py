@@ -60,7 +60,7 @@ async def changed_tests(workdir: Path) -> list[str]:
 # (2026-10-17) passed everything but one unused variable, and the bounce, a
 # fresh run, re-read the task, found it done and fixed nothing; in-session
 # the agent still has the context to fix a lint error in one edit.
-CHEAP_CHECKS = ("lint_clean_diff", "diff_within_scope", "tests_exercise_code")
+CHEAP_CHECKS = ("lint_clean_diff", "diff_within_scope", "tests_exercise_code", "no_test_weakening")
 
 
 def task_of(instruction: str | None) -> str:
