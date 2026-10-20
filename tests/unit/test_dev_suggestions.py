@@ -151,19 +151,27 @@ def _body(n: int) -> str:
     return "".join(f"    x{i} = {i}\n" for i in range(n - 2)) + "    return x0\n"
 
 
+def _logic(n, branches):
+    """A function body of n lines with `branches` if-statements."""
+    ifs = "".join(f"    if x == {i}:\n        return {i}\n" for i in range(branches))
+    pad = max(n - 2 - 2 * branches, 0)
+    return ifs + "".join(f"    y{i} = {i}\n" for i in range(pad)) + "    return None\n"
+
+
 def _untested_project(tmp_path, *, fakes=True):
     pkg = tmp_path / "app"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("")
     (pkg / "svc.py").write_text(
         "import functools\n\n\n"
-        f"def tested_fn():\n{_body(6)}\n\n"
-        f"async def query_rows(session, tenant_id):\n{_body(7)}\n\n"
-        f"def plain_helper(text):\n{_body(10)}\n\n"
-        f"def too_short():\n{_body(3)}\n\n"
-        f"def too_long():\n{_body(45)}\n\n"
-        f"def _private():\n{_body(8)}\n\n"
-        f"@functools.cache\ndef decorated():\n{_body(8)}\n"
+        f"def tested_fn():\n{_logic(6, 2)}\n\n"
+        f"async def query_rows(session, tenant_id):\n{_logic(7, 2)}\n\n"
+        f"def plain_helper(x):\n{_logic(10, 3)}\n\n"
+        f"def thin_wrapper(text):\n{_body(8)}\n\n"
+        f"def too_short():\n{_logic(3, 1)}\n\n"
+        f"def too_long():\n{_logic(45, 3)}\n\n"
+        f"def _private():\n{_logic(8, 2)}\n\n"
+        f"@functools.cache\ndef decorated():\n{_logic(8, 2)}\n"
     )
     (tmp_path / "tests" / "unit").mkdir(parents=True)
     (tmp_path / "tests" / "unit" / "test_svc.py").write_text(
@@ -177,16 +185,18 @@ def _untested_project(tmp_path, *, fakes=True):
 def test_untested_findings_are_short_public_undecorated_functions(tmp_path):
     root = _untested_project(tmp_path)
     found = ds.untested_findings(root)
-    # Shortest first; tested, too short/long, private and decorated are skipped.
+    # Most logic first; tested, logic-free, too short/long, private and
+    # decorated are skipped.
     assert [f.title for f in found] == [
-        "Add tests for query_rows in app/svc.py",
         "Add tests for plain_helper in app/svc.py",
+        "Add tests for query_rows in app/svc.py",
     ]
-    rows, helper = found
+    helper, rows = found
+    assert "3 decision points" in helper.instruction
     assert rows.kind == "untested" and "tests/unit/test_svc_query_rows.py" in rows.instruction
     assert "tests/unit/fakes.py" in rows.instruction  # takes a session
     assert "fakes.py" not in helper.instruction
-    assert rows.key == ds.untested_findings(root)[0].key  # stable across scans
+    assert rows.key == ds.untested_findings(root)[1].key  # stable across scans
 
 
 def test_untested_findings_without_the_fakes_or_any_tests(tmp_path):
@@ -194,13 +204,66 @@ def test_untested_findings_without_the_fakes_or_any_tests(tmp_path):
     assert all("fakes.py" not in f.instruction for f in ds.untested_findings(root))
     bare = tmp_path / "bare"
     (bare / "app").mkdir(parents=True)
-    (bare / "app" / "m.py").write_text(f"def f():\n{_body(8)}\n")
+    (bare / "app" / "m.py").write_text(f"def f():\n{_logic(8, 2)}\n")
     assert ds.untested_findings(bare) == []  # no test suite to add to
 
 
 def test_untested_findings_respect_paths(tmp_path):
     root = _untested_project(tmp_path)
     (root / "other").mkdir()
-    (root / "other" / "x.py").write_text(f"def elsewhere():\n{_body(8)}\n")
+    (root / "other" / "x.py").write_text(f"def elsewhere(x):\n{_logic(8, 2)}\n")
     assert all(f.title.endswith("app/svc.py") for f in ds.untested_findings(root, ["app"]))
     assert any("elsewhere" in f.title for f in ds.untested_findings(root))
+
+
+def _shape_of(source):
+    import ast
+
+    return ds._logic_shape(ast.parse(source).body[0])
+
+
+def test_logic_shape_counts_decisions_and_spots_what_to_test():
+    shape = _shape_of(
+        "async def f(session, tenant, rows):\n"
+        "    if not rows or tenant is None:\n"
+        "        raise ValueError('no rows')\n"
+        "    for r in rows:\n"
+        "        try:\n"
+        "            r.x = 1\n"
+        "        except KeyError:\n"
+        "            continue\n"
+        "    q = [r for r in rows if r.tenant_id == tenant]\n"
+        "    return {'n': len(q)}\n"
+    )
+    # if, or, raise, for, except, comprehension-if
+    assert shape == {"score": 6, "raises": True, "tenant": True, "returns_dict": True}
+    assert _shape_of("def g(x):\n    return h(x)\n")["score"] == 0
+
+
+def test_untested_hints_follow_the_shape():
+    shape = {"score": 4, "raises": True, "tenant": True, "returns_dict": True}
+    hints = ds._untested_hints(shape)
+    assert "4 decision points" in hints
+    assert "pytest.raises" in hints
+    assert "filters by the tenant" in hints
+    assert "left out" in hints
+    assert "never constants or strings copied" in hints
+    plain = ds._untested_hints(
+        {"score": 2, "raises": False, "tenant": False, "returns_dict": False}
+    )
+    assert "pytest.raises" not in plain and "tenant" not in plain and "left out" not in plain
+
+
+def test_wrappers_and_dict_builders_without_logic_are_not_picked(tmp_path):
+    root = _untested_project(tmp_path)
+    (root / "app" / "views.py").write_text(
+        "def to_dict(card):\n"
+        "    return {\n"
+        "        'id': str(card.id),\n"
+        "        'front': card.front,\n"
+        "        'back': card.back,\n"
+        "        'due': card.due_on.isoformat(),\n"
+        "    }\n"
+    )
+    titles = [f.title for f in ds.untested_findings(root)]
+    assert not any("to_dict" in t or "thin_wrapper" in t for t in titles)

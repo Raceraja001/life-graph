@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from life_graph.services.memory_links import delete_link
-from tests.unit.fakes import FakeResult, FakeSession
+from tests.unit.fakes import FakeResult, FakeSession, sql
 
 
 @pytest.mark.asyncio
@@ -52,22 +52,20 @@ async def test_delete_link_not_found():
 
 
 @pytest.mark.asyncio
-async def test_delete_link_wrong_tenant():
-    """Test that delete_link correctly filters by tenant."""
-    # Mock the tenant ID
+async def test_delete_link_filters_by_link_and_tenant():
+    """The DELETE is scoped to this link AND the current tenant: without the
+    tenant filter one tenant could delete another's links by id."""
     with patch("life_graph.services.memory_links.get_current_tenant_id") as mock_tenant:
         mock_tenant.return_value = "test_tenant"
+        session = FakeSession(FakeResult(rowcount=1))
 
-        # Create a fake session that will return rowcount=0 when execute is called
-        # (since the filter by tenant should prevent deletion)
-        session = FakeSession(FakeResult(rowcount=0))
-
-        # Patch the async_session to return our fake session
         with patch("life_graph.services.memory_links.async_session", return_value=session):
-            # Call the function
             link_id = uuid.uuid4()
-            result = await delete_link(link_id)
+            assert await delete_link(link_id) is True
 
-            # Verify result - should be False since no rows match tenant filter
-            assert result is False
-            assert len(session.statements) == 1
+    (stmt,) = session.statements
+    text = sql(stmt)
+    assert text.startswith("DELETE FROM memory_links")
+    assert "'test_tenant'" in text
+    assert link_id.hex in text.replace("-", "")
+    assert session.commits == 1
