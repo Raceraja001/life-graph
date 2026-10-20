@@ -496,6 +496,26 @@ class Settings(BaseSettings):
     # Requests per provider per UTC day before the router skips it (JSON).
     # OpenRouter's free tier allows ~1000/day with credit on the account.
     provider_daily_limits: str = '{"openrouter": 900, "nvidia_nim": 1000}'
+    # Jobs 6 and 10 (services/web_research.py, docs/specs/research-and-tech-watch.md).
+    research_max_pages: int = 5  # result pages read for one question
+    research_page_chars: int = 8_000  # text kept per page (all go to one worker)
+    # Free cloud models to try first for research workers (comma-separated);
+    # only reorders the free cloud list (services/workers.envelope_models).
+    research_models: str = ""
+    # Tech watch: tenants it runs for (comma-separated; empty = off) and the
+    # topics, as JSON: topic name -> list of search queries ("{month}" becomes
+    # e.g. "October 2026", see services/web_research.dated_queries).
+    tech_watch_tenants: str = ""
+    tech_watch_topics: str = (
+        '{"Open models that fit 16 GB": ['
+        '"new open weight model Ollama {month}", '
+        '"new small open source LLM release {month}"], '
+        '"AI coding agents": ['
+        '"AI coding agent new release {month}", '
+        '"coding agent CLI new version {month}"]}'
+    )
+    tech_watch_max_pages: int = 6  # new pages read per topic per day
+    tech_watch_digest_per_topic: int = 6  # findings per topic in the Monday brief
     # Per-step content cap for recorded agent runs (services/trajectories.py).
     # One whole-file read can be megabytes; the real length is kept alongside.
     trajectory_step_max_chars: int = 16_000
@@ -730,6 +750,31 @@ class Settings(BaseSettings):
         try:
             raw = json.loads(self.provider_daily_limits or "{}")
             return {str(k): int(v) for k, v in raw.items()}
+        except (ValueError, TypeError, AttributeError):
+            return {}
+
+    @property
+    def research_models_list(self) -> list[str]:
+        """Parse the research workers' preferred free models."""
+        return [m.strip() for m in self.research_models.split(",") if m.strip()]
+
+    @property
+    def tech_watch_tenants_list(self) -> list[str]:
+        """Parse the tenants the tech watch runs for."""
+        return [t.strip() for t in self.tech_watch_tenants.split(",") if t.strip()]
+
+    @property
+    def tech_watch_topics_map(self) -> dict[str, list[str]]:
+        """Parse the tech-watch topics (name -> queries); a bad value means none."""
+        import json
+
+        try:
+            raw = json.loads(self.tech_watch_topics or "{}")
+            return {
+                str(name).strip()[:120]: [str(q).strip() for q in queries if str(q).strip()]
+                for name, queries in raw.items()
+                if str(name).strip() and isinstance(queries, list)
+            }
         except (ValueError, TypeError, AttributeError):
             return {}
 

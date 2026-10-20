@@ -1,6 +1,6 @@
 # Jobs 6 and 10 — Research on Demand, Tech Watch: Feature Spec
 
-> **Status: Spec'd, building** (2026-10-20). Jobs 6 and 10 of
+> **Status: Built** (2026-10-20). Jobs 6 and 10 of
 > [Jarvis and its workers](../design/11_persona_roster_plan.md). Both reuse Job 1's research
 > pieces ([free-llm-offers.md](free-llm-offers.md)): search and fetch in plain code, a worker in
 > the research envelope that only reads what it is handed, validated output.
@@ -18,8 +18,8 @@ and gets a short answer in which **every claim cites a page fetched in that run*
   "I could not find this in the pages I read" with the pages listed. *(test)*
 - **AC-6.3** The question passes the scrub before it leaves the machine (personal details
   hidden). *(test)*
-- **AC-6.4** `POST /api/v1/research {question}` → `{answer, sources: [{url, title}], claims: [{text,
-  sources}], pages_read, model}`. *(integration test)*
+- **AC-6.4** `POST /api/v1/research {question}` → `{question, answer, sources: [{url, title}],
+  claims: [{text, sources}], pages_read: [{url, title}], model}`. *(integration test)*
 - **AC-6.5** Eval: 6 questions over frozen pages with known facts; pass = every claim's source is
   a page that states it, ≥ 5/6 questions answered. *(eval script)*
 
@@ -29,12 +29,14 @@ A weekly digest of what is genuinely new on the owner's topics, each item with i
 First topics: **open models that fit 16 GB** (Ollama-ready), **AI coding agents** (new tools and
 releases).
 
-- **AC-10.1** Topics are settings: `tech_watch_topics` (JSON: name → queries). *(test)*
+- **AC-10.1** Topics are settings: `tech_watch_topics` (JSON: name → queries; `{month}` in a
+  query becomes the current month). Runs for `tech_watch_tenants`. *(test)*
 - **AC-10.2** Daily, per topic: SearXNG queries → unread result pages (seen set per topic) → the
-  `topic_reader` worker returns findings `{title, summary, source, published_on?}` that are about
-  the topic and new; findings without a fetched source are dropped. *(test)*
-- **AC-10.3** Findings are stored once per normalised source URL per topic (`topic_findings`).
-  *(integration test)*
+  `topic_reader` worker returns findings `{title, summary, source, published_on}` that are about
+  the topic and new; findings without a fetched source, or without a date in the last 45 days,
+  are dropped. *(test)*
+- **AC-10.3** Findings are stored once per item (normalised source URL + title) per topic
+  (`topic_findings`). *(integration test)*
 - **AC-10.4** Weekly (Monday's brief) a "Tech watch" section lists up to 6 findings per topic not
   yet sent, with their source; they are then marked sent. Nothing new → no section. *(test)*
 - **AC-10.5** `GET /api/v1/tech-watch?topic=` lists findings. *(integration test)*
@@ -46,7 +48,7 @@ CREATE TABLE topic_findings (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id   TEXT NOT NULL,
     topic       TEXT NOT NULL,
-    dedup_key   TEXT NOT NULL,         -- normalised source URL
+    dedup_key   TEXT NOT NULL,         -- normalised source URL + '#' + title slug
     title       TEXT NOT NULL,
     summary     TEXT,
     source_url  TEXT NOT NULL,
@@ -57,21 +59,43 @@ CREATE TABLE topic_findings (
 );
 ```
 
-## Design
+## Design (as built)
 
-- `services/research.py`: `research(question, tenant_id)` for Job 6; `scan_topic(...)`,
-  `digest_lines(...)` for Job 10. Shares `llm_offers.read_pages` (moved to a common
-  `services/web_pages.py`: search → unread URLs → fetched text).
-- Templates in `worker_templates.py`: `researcher` (answer + claims JSON) and `topic_reader`
-  (findings JSON), both `reasoning=False`, both validated like `offer_reader`.
+- `services/web_pages.py`: `candidates(queries, limit, skip)` → `Hit(url, title)`, `read(urls)`,
+  `seen`/`mark_seen` (Redis sets), `as_inputs`. Job 1's `candidate_pages`/`read_pages` now use it.
+- `services/web_research.py`: `research(question, tenant_id)` for Job 6; `scan_topic`,
+  `tech_watch`, `digest_lines`, `dated_queries`, `finding_key` for Job 10.
+- Templates in `worker_templates.py`: `RESEARCHER` (claims JSON, `validate_claims`) and
+  `topic_reader(topic, today)` (findings JSON, `validate_finding`), both `reasoning=False`.
+- `api/web_research.py`: `POST /research`, `GET /tech-watch` (the preference research engine
+  keeps `/research/runs` and `/research/trigger` in `api/research.py`).
 - ARQ: `run_tech_watch` daily 22:00 UTC; the digest is built in the brief on Mondays.
 - Migration 051.
+- Eval: `evals/research/` (6 made-up pages, 6 questions) and `scripts/eval_researcher.py`.
 
-## Tasks
+## Changed while building
 
-1. `services/web_pages.py` (search → candidates → read), used by Job 1 too. S
-2. `researcher` template + `research()` + citation validation; eval with frozen pages. M
-3. `POST /research`. S
-4. Migration 051 `topic_findings`; `topic_reader` template; `scan_topic`; ARQ job. M
-5. Monday digest section; `GET /tech-watch`. S
-6. Tests; live run; STATE.md. S
+- **Seen sets never matched in Job 1.** `candidate_pages` compared a normalised key against
+  the raw URLs stored in the seen set, so pages already read were read again. `web_pages`
+  normalises both sides.
+- **A preferred model for reading.** The free cloud list is ordered for coding; on the researcher
+  eval cohere/north-mini-code scored 4/6 → 5/6 after brief fixes (it cited an off-topic page, and
+  concluded "won't fit 16 GB" from the 16-bit figure alone), Nemotron 3 Super 6/6.
+  `research_models` reorders the research envelope's models (it can only reorder the free list,
+  never add to it); set to Nemotron 3 Super.
+- **One row per item, not per page.** A blog index holds many releases (16 valid on
+  ollama.com/blog in the first live scan); keyed by page alone, 11 were lost.
+- **Undated means not news.** The first live scan's undated findings were model-library
+  listings ("Qwen3.5 released"). A finding now needs a date within 45 days; the reader is told
+  today's date and the cut-off.
+- **`{month}` in queries.** Undated queries returned evergreen "best of" lists whose items were
+  months old (all dropped by the date rule).
+
+## Known gaps
+
+- The reader still sometimes reports an item from a guide or comparison dated by the page
+  rather than by its release (live: Cline, Gemini CLI listed as new), and models above the
+  topic's size limit (Reflection's Beam, 501B, under "fits 16 GB").
+- The same release found on two pages is two rows (titles differ).
+- A blog index is skipped for 30 days once read, though it is the page that changes.
+- Next: a frozen-page eval for `topic_reader` like the researcher's, then tune against it.

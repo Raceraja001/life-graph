@@ -1,0 +1,7 @@
+Kestrel AI blog — Welcome credits for developers (posted 14 October 2026)
+
+Starting today, every new Kestrel AI account receives $25 in free credits. The credits can be spent on any
+hosted model, including Kestrel-7B and Kestrel-70B, and expire 60 days after the account is created.
+
+A phone number is needed to claim the credits; no card is needed. After the credits run out, usage is
+billed at standard rates. Existing accounts are not eligible.

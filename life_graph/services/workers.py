@@ -82,11 +82,17 @@ _in_worker: contextvars.ContextVar[bool] = contextvars.ContextVar("in_worker", d
 
 def envelope_models(envelope: Envelope) -> list[str]:
     """The models a worker in *envelope* may run on, in failover order."""
+    from life_graph.config import settings
     from life_graph.services.compute_router import cloud_models
 
     # Research is public information: the free cloud models only. Personal
     # envelopes (local model only) arrive with the jobs that need them.
-    return cloud_models()
+    models = cloud_models()
+    # The list is ordered for coding; reading pages ranks differently (the
+    # researcher eval, 2026-10-20). research_models only reorders the free
+    # list, so it can never add a model we would pay for.
+    first = [m for m in settings.research_models_list if m in models]
+    return first + [m for m in models if m not in first]
 
 
 def envelope_tools(envelope: Envelope, requested: list[str] | tuple[str, ...]) -> list[dict]:

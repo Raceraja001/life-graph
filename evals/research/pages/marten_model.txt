@@ -1,0 +1,10 @@
+Marten 12B — model card
+
+Marten 12B is an open-weights language model released under the Apache 2.0 licence.
+
+- Parameters: 12 billion
+- Context length: 32,768 tokens
+- Memory: about 9 GB of VRAM at 4-bit quantisation (Q4_K_M); about 25 GB at 16-bit
+- Available on Hugging Face and in the Ollama library as marten:12b
+
+Marten 12B is tuned for coding and tool use. It is not recommended for languages other than English.

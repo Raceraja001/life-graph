@@ -1,0 +1,38 @@
+[
+  {
+    "question": "What does Zephyr Inference's free plan allow?",
+    "pages": ["zephyr_free.txt", "cooking.txt"],
+    "expect": [["40"], ["200,000", "200000", "200k"]],
+    "sources": ["zephyr_free.txt"]
+  },
+  {
+    "question": "How much free credit does Kestrel AI give new accounts, and for how long?",
+    "pages": ["kestrel_credits.txt", "heron_pricing.txt"],
+    "expect": [["25"], ["60"]],
+    "sources": ["kestrel_credits.txt"]
+  },
+  {
+    "question": "What is new in Oriole Coder 2.0?",
+    "pages": ["oriole_release.txt", "marten_model.txt"],
+    "expect": [["plan mode", "plan"], ["ollama"]],
+    "sources": ["oriole_release.txt"]
+  },
+  {
+    "question": "Can Marten 12B run on a 16 GB GPU, and what is its licence?",
+    "pages": ["marten_model.txt", "cooking.txt"],
+    "expect": [["9 gb", "9gb"], ["apache"]],
+    "sources": ["marten_model.txt"]
+  },
+  {
+    "question": "Compare the free offers of Zephyr Inference and Kestrel AI.",
+    "pages": ["zephyr_free.txt", "kestrel_credits.txt"],
+    "expect": [["40", "200,000", "200000"], ["25"]],
+    "sources": ["zephyr_free.txt", "kestrel_credits.txt"]
+  },
+  {
+    "question": "What is the rate limit of Pelican API's free tier?",
+    "pages": ["heron_pricing.txt", "cooking.txt"],
+    "expect": [],
+    "sources": []
+  }
+]

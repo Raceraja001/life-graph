@@ -286,3 +286,31 @@ class LlmCatalogSnapshot(Base):
     model_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     __table_args__ = (Index("ix_llm_catalog_snapshots_provider", "provider", "taken_at"),)
+
+
+class TopicFinding(Base):
+    """Something new on a tech-watch topic, with its source (services/web_research.py).
+
+    One row per item per source page per topic (``dedup_key``); ``sent_at``
+    is set when it goes out in the Monday digest, so each is sent once.
+    """
+
+    __tablename__ = "topic_findings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    topic: Mapped[str] = mapped_column(String(120), nullable=False)
+    dedup_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    published_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    found_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("uq_topic_findings_key", "tenant_id", "topic", "dedup_key", unique=True),
+        Index("ix_topic_findings_tenant_found", "tenant_id", "found_at"),
+    )

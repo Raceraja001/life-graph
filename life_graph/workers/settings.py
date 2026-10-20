@@ -124,6 +124,8 @@ class WorkerSettings:
         "life_graph.workers.llm_offers.run_llm_catalog_diff",
         "life_graph.workers.llm_offers.run_llm_offer_news",
         "life_graph.workers.llm_offers.run_llm_offer_evals",
+        # Job 10, tech watch (also scheduled below).
+        "life_graph.workers.web_research.run_tech_watch",
         "life_graph.workers.tasks.run_tenant_consolidation",
         "life_graph.workers.tasks.run_all_consolidations",
         "life_graph.workers.tasks.run_tenant_merge_suggestions",
@@ -383,6 +385,14 @@ class WorkerSettings:
             minute=45,
             run_at_startup=False,
             timeout=3600,  # one coding benchmark: six tasks, up to ~15 min each
+        ),
+        # ── Job 10, tech watch (services/web_research.py) ──
+        cron(
+            "life_graph.workers.web_research.run_tech_watch",
+            hour=22,
+            minute=0,
+            run_at_startup=False,
+            timeout=1800,  # two topics, a few reader calls each
         ),
         # ── Telegram bridge: sweep expired pairing codes ──
         cron(

@@ -1,0 +1,8 @@
+Heron Cloud — Model pricing
+
+All prices are per million tokens.
+
+heron-small   $0.10 input   $0.40 output
+heron-large   $0.80 input   $2.40 output
+
+Billing is monthly. Heron Cloud has no free tier and no trial credits; a card is required to create an API key.

@@ -691,6 +691,10 @@ from life_graph.api import llm_offers as llm_offers_api
 
 v1_router.include_router(llm_offers_api.router)
 
+from life_graph.api import web_research as web_research_api
+
+v1_router.include_router(web_research_api.router)
+
 app.include_router(v1_router)
 
 

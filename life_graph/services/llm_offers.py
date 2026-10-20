@@ -220,66 +220,33 @@ async def _upsert(session: AsyncSession, tenant_id: str, *, dedup_key: str, **fi
 
 
 async def _seen(tenant_id: str) -> tuple[Any, set[str]]:
-    from life_graph.storage.redis import get_redis
+    from life_graph.services import web_pages
 
-    redis = get_redis()
-    if redis is None:
-        return None, set()
-    try:
-        return redis, set(await redis.smembers(_SEEN_KEY.format(tenant_id=tenant_id)))
-    except Exception:  # noqa: BLE001
-        return None, set()
+    return await web_pages.seen(_SEEN_KEY.format(tenant_id=tenant_id))
 
 
 async def _mark_seen(redis: Any, tenant_id: str, urls: list[str]) -> None:
-    if redis is None or not urls:
-        return
-    key = _SEEN_KEY.format(tenant_id=tenant_id)
-    try:
-        await redis.sadd(key, *urls)
-        await redis.expire(key, _SEEN_TTL)
-    except Exception:  # noqa: BLE001
-        logger.debug("could not record seen offer pages", exc_info=True)
+    from life_graph.services import web_pages
+
+    await web_pages.mark_seen(redis, _SEEN_KEY.format(tenant_id=tenant_id), urls, _SEEN_TTL)
 
 
 async def candidate_pages(tenant_id: str) -> list[str]:
     """New result URLs for the news queries, capped at offers_max_pages."""
-    from life_graph.services.sources import normalise
-    from life_graph.tools.web_search import search
+    from life_graph.services import web_pages
 
     _, seen = await _seen(tenant_id)
-    picked: list[str] = []
-    keys: set[str] = set()
-    for query in settings.offers_news_queries_list:
-        found = await search(query)
-        for result in found.get("results") or []:
-            url = str(result.get("url") or "").strip()
-            key = normalise(url) if url else ""
-            if not url.startswith("http") or key in keys or key in seen:
-                continue
-            keys.add(key)
-            picked.append(url)
-            if len(picked) >= settings.offers_max_pages:
-                return picked
-    return picked
+    hits = await web_pages.candidates(
+        settings.offers_news_queries_list, limit=settings.offers_max_pages, skip=seen
+    )
+    return [h.url for h in hits]
 
 
 async def read_pages(urls: list[str]) -> dict[str, str]:
     """The readable text of each page that could be fetched (url -> text)."""
-    from life_graph.services import safe_fetch
-    from life_graph.tools.browser import page_text
+    from life_graph.services import web_pages
 
-    pages: dict[str, str] = {}
-    for url in urls:
-        try:
-            page = await safe_fetch.fetch(url)
-        except Exception as exc:  # noqa: BLE001 - one unreadable page skips that page
-            logger.info("offer page %s skipped: %s", url, exc)
-            continue
-        text = page_text(page.text)[:_PAGE_CHARS]
-        if text.strip():
-            pages[url] = text
-    return pages
+    return await web_pages.read(urls, _PAGE_CHARS)
 
 
 # Names the same provider goes by on different pages (normalised form -> key).
@@ -328,6 +295,7 @@ def _known_provider(provider: str) -> str | None:
 
 async def news_scan(session_factory: async_sessionmaker[AsyncSession], tenant_id: str) -> dict:
     """Search, read new pages with the offer_reader worker, record offers."""
+    from life_graph.services import web_pages
     from life_graph.services.compute_router import _has_key
     from life_graph.services.worker_templates import OFFER_READER, validate_offer
     from life_graph.services.workers import WorkerError, json_array, run_worker
@@ -339,7 +307,7 @@ async def news_scan(session_factory: async_sessionmaker[AsyncSession], tenant_id
     batch = list(pages.items())
     for i in range(0, len(batch), _PAGES_PER_WORKER):
         chunk = batch[i : i + _PAGES_PER_WORKER]
-        inputs = "\n\n".join(f"SOURCE: {url}\n{text}" for url, text in chunk)
+        inputs = web_pages.as_inputs(chunk)
         try:
             result = await run_worker(
                 OFFER_READER.envelope,
