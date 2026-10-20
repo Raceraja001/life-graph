@@ -19,6 +19,10 @@ from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
 
+# Watchers whose IMPORTANT events are pushed to the phone at once rather than
+# queued: an app down, a certificate about to lapse, a failing backup (Job 7).
+URGENT_WATCHERS: frozenset[str] = frozenset({"app_uptime", "server_health"})
+
 
 def _as_text(value: Any) -> str:
     """Render an event's ``details`` for a text column.
@@ -110,10 +114,51 @@ class NotificationEngine:
 
         if severity == "critical":
             await self._send_critical(tenant_id, event)
+        elif severity == "important" and event.get("watcher_name") in URGENT_WATCHERS:
+            # An app down or a backup failing cannot wait for a queue that
+            # nothing drains: it goes to the phone now (Job 7).
+            sent = await self._send_urgent(tenant_id, event)
+            await self._queue_event(tenant_id, event, status="sent" if sent else "queued")
         elif severity == "important":
             await self._queue_event(tenant_id, event, status="queued")
         else:
             await self._queue_event(tenant_id, event, status="digest_pending")
+
+    async def _send_urgent(self, tenant_id: str, event: dict[str, Any]) -> bool:
+        """Web Push and Telegram, as approvals are (services/approval_notifications.py).
+        True when at least one reached a device or chat."""
+        from life_graph.services.webpush import PushService
+        from life_graph.watchers.channels.telegram_channel import TelegramChannel
+
+        title = str(event.get("title") or "Alert")
+        details = event.get("details")
+        detail = (
+            str(details.get("url") or "") if isinstance(details, dict) else _as_text(details)
+        )[:500]
+        sent = False
+        try:
+            sent = (
+                await PushService(self._session_factory).send_to_tenant(
+                    tenant_id, title, detail, "/m"
+                )
+            ) > 0
+        except Exception:
+            logger.warning("Push of urgent event %r failed", title, exc_info=True)
+        try:
+            ok = await TelegramChannel(session_factory=self._session_factory).send(
+                config={},
+                tenant_id=tenant_id,
+                severity="important",
+                title=title,
+                details=detail,
+                watcher_name=event.get("watcher_name"),
+            )
+            sent = sent or bool(ok)
+        except Exception:
+            logger.warning("Telegram of urgent event %r failed", title, exc_info=True)
+        if not sent:
+            logger.warning("Urgent event %r reached no device or chat (none paired?)", title)
+        return sent
 
     async def _send_critical(self, tenant_id: str, event: dict[str, Any]) -> None:
         """Send critical events via ALL enabled channels immediately."""

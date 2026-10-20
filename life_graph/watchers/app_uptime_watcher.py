@@ -4,8 +4,10 @@ Phase E of docs/specs/assistant-capabilities.md. For every project with a
 ``health_url``, each hourly run records the HTTP status and latency and, for
 HTTPS, how many days are left on the certificate.
 
-- **Down**: two failed checks in a row (one blip is not an outage) raise an
-  important event and queue a fix task through
+- **Down**: two failed checks in a row (one blip is not an outage; the second
+  is made RECHECK_SECONDS after the first, in the same run) raise an
+  important event, pushed to the phone at once (watchers/notification_engine
+  URGENT_WATCHERS), and queue a fix task through
   services/production_findings.py, which de-duplicates an outage that lasts
   for hours. Recovery raises one info event.
 - **Certificate**: alerts at 14, 7, 3 and 1 days left, once each.
@@ -36,6 +38,7 @@ from sqlalchemy import select, update
 from life_graph.watchers.base import BaseWatcher, Severity
 
 DOWN_AFTER = 2
+RECHECK_SECONDS = 30  # the wait before the confirming check in the same run
 CERT_ALERT_DAYS = (14, 7, 3, 1)
 BACKUP_EVERY = timedelta(hours=20)
 BACKUP_TIMEOUT = 300
@@ -163,6 +166,13 @@ class AppUptimeWatcher(BaseWatcher):
         self, project: dict[str, Any], url: str, state: dict[str, Any], now: datetime
     ) -> dict[str, Any]:
         probe = await probe_http(url)
+        if not probe["ok"] and int(state.get("failures", 0)) + 1 < DOWN_AFTER:
+            # One failure is a blip until a second check agrees. Making that
+            # second check now, not at the next hourly run, is what gets an
+            # outage to the user within the hour (Job 7).
+            state, _ = next_state(state, probe)
+            await asyncio.sleep(RECHECK_SECONDS)
+            probe = await probe_http(url)
         state, change = next_state(state, probe)
         details = {"project_id": project["id"], "url": url, **probe}
         if change == "down":

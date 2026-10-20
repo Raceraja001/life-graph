@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-20 09:06 UTC` from `feat/jarvis-lead` @ `b26a12a`
+Generated `2026-10-20 13:35 UTC` from `feat/money-checkin-app-health` @ `9dec79b`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-10-20 09:06 UTC` from `feat/jarvis-lead` @ `b26a12a`
 
 | | |
 |---|---|
-| HTTP operations | **330** across 283 paths, 41 tags |
+| HTTP operations | **332** across 285 paths, 41 tags |
 | Database tables | **80** |
 | Migrations | **51** (head: `051_topic_findings`) |
 | Event types | **79** |
@@ -24,20 +24,21 @@ Generated `2026-10-20 09:06 UTC` from `feat/jarvis-lead` @ `b26a12a`
 | Agent tools | **14** |
 | Scheduled jobs | **25** |
 | Config settings | **246** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3103** in 334 files |
+| Test functions | **3111** in 336 files |
 | Dashboard pages | **18** |
-| Python | 379 files, 97,928 lines |
+| Python | 381 files, 98,383 lines |
 
 ---
 
 ## HTTP API
 
-330 operations, grouped by OpenAPI tag.
+332 operations, grouped by OpenAPI tag.
 
-### `assistant` — 32
+### `assistant` — 34
 
 | Method | Path | Summary |
 |---|---|---|
+| GET | `/api/v1/apps/health` | Apps Health |
 | GET | `/api/v1/documents` | List Documents |
 | POST | `/api/v1/documents` | Add Document |
 | GET | `/api/v1/documents/expiring` | Expiring Documents |
@@ -56,6 +57,7 @@ Generated `2026-10-20 09:06 UTC` from `feat/jarvis-lead` @ `b26a12a`
 | DELETE | `/api/v1/money/budgets/{category}` | Delete Budget |
 | PUT | `/api/v1/money/budgets/{category}` | Put Budget |
 | GET | `/api/v1/money/categories` | Money Categories |
+| GET | `/api/v1/money/checkin` | Money Checkin |
 | POST | `/api/v1/money/import` | Import Statement |
 | GET | `/api/v1/money/summary` | Money Summary |
 | GET | `/api/v1/money/transactions` | List Transactions |
@@ -765,7 +767,7 @@ Generated `2026-10-20 09:06 UTC` from `feat/jarvis-lead` @ `b26a12a`
 | ~~assistant~~ (retired) — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
 | **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
 | ~~swe-lead~~ (retired) — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 36 |
+| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 38 |
 
 ---
 
@@ -883,6 +885,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `judgment-engine` | Built | `life_graph/services/judgment.py` |
 | `llm-trace-viewer` | Built | `life_graph/api/model_health.py` |
 | `mcp-tool-server` | Built | `life_graph/mcp_server.py` |
+| `money-checkin-and-app-health` | Unclassified | — |
 | `natural-language-queries` | Built | `life_graph/api/search.py` |
 | `night-shift-report` | Unclassified | — |
 | `os-kernel` | Built | `life_graph/kernel/process_manager.py` |
@@ -912,10 +915,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 259 | 2437 |
-| `tests/integration/` | 74 | 654 |
+| `tests/unit/` | 260 | 2444 |
+| `tests/integration/` | 75 | 655 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **334** | **3103** |
+| **total** | **336** | **3111** |
 
 ---
 

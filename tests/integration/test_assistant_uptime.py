@@ -46,13 +46,14 @@ async def test_down_after_two_failures_files_one_fix_task_and_recovers(monkeypat
         assert cfg.enabled
 
     answers = iter(
-        [{"ok": False, "status": 502}] * 3 + [{"ok": True, "status": 200, "latency_ms": 5}]
+        [{"ok": False, "status": 502}] * 3 + [{"ok": True, "status": 200, "latency_ms": 5}] * 2
     )
 
     async def probe(url, client=None):
         return next(answers)
 
     monkeypatch.setattr(up, "probe_http", probe)
+    monkeypatch.setattr(up, "RECHECK_SECONDS", 0)
     watcher = up.AppUptimeWatcher(tenant_id=tenant, session_factory=async_session)
     results = [await watcher.run() for _ in range(4)]
     assert all(r["status"] == "success" for r in results), results
