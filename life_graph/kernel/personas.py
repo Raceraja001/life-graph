@@ -32,6 +32,16 @@ logger = logging.getLogger(__name__)
 
 # ── Built-in Persona Definitions ──────────────────────────────
 
+# What the change_explained check asks of a production-code change
+# (services/proof_checks.py); asked up front so it costs no bounce.
+_UNDERSTANDING_ASK = (
+    " If you changed anything other than tests or docs, end your reply with a"
+    " '## Understanding' section with three lines: 'Current behaviour:' (what"
+    " the code did before), 'Change:' (what you changed and why) and 'Risk:'"
+    " (what could break, and which test shows it does not), naming every"
+    " function or class you changed."
+)
+
 _BUILTIN_PERSONAS: list[dict[str, Any]] = [
     {
         "name": "chief",
@@ -231,7 +241,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " surrounding code before editing. Do not refactor, reformat or"
             " touch files the task does not need. Do not commit — your"
             " change is verified and committed for you. Finish with a short"
-            " summary of what you changed and why."
+            " summary of what you changed and why." + _UNDERSTANDING_ASK
         ),
         "intent_tags": ["code", "fix", "refactor"],
         "temperature": 0.2,
@@ -264,7 +274,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " test, run it with run_tests and fix it until it passes. Never"
             " rewrite a whole file to change part of it. Do not refactor or"
             " touch unrelated files. Finish with a short summary of what you"
-            " changed and why."
+            " changed and why." + _UNDERSTANDING_ASK
         ),
         "intent_tags": ["code", "fix", "local"],
         "temperature": 0.2,
@@ -296,7 +306,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " the task asks, in the project's existing style. Read the relevant"
             " code first, edit it in place, and re-read what you changed. Do not"
             " refactor or touch unrelated files. Finish with a short summary of"
-            " what you changed and why."
+            " what you changed and why." + _UNDERSTANDING_ASK
         ),
         "intent_tags": ["code", "fix", "local"],
         "temperature": 0.2,
@@ -333,7 +343,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " test, run it with run_tests and fix it until it passes. Never"
             " rewrite a whole file to change part of it. Do not refactor or"
             " touch unrelated files. Finish with a short summary of what you"
-            " changed and why."
+            " changed and why." + _UNDERSTANDING_ASK
         ),
         "intent_tags": ["code", "fix", "cloud"],
         "temperature": 0.2,
@@ -365,7 +375,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " code_edit (copy `old` exactly, without line-number prefixes), then"
             " re-read the changed lines. Never rewrite a whole file to change"
             " part of it. Do not refactor or touch unrelated files. Finish with"
-            " a short summary of what you changed and why."
+            " a short summary of what you changed and why." + _UNDERSTANDING_ASK
         ),
         "intent_tags": ["code", "fix"],
         "temperature": 0.2,

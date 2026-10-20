@@ -10,7 +10,9 @@ FROM ghcr.io/astral-sh/uv:0.12.14 AS uv
 
 FROM python:3.12-slim
 COPY --from=uv /uv /usr/local/bin/uv
-RUN pip install --no-cache-dir "pytest==9.1.1" "ruff==0.16.1"
+# mypy: the types_clean_diff check (life_graph/services/proof_checks.py),
+# run against the project's own venv via --python-executable.
+RUN pip install --no-cache-dir "pytest==9.1.1" "ruff==0.16.1" "mypy==1.15.0"
 # Test suites commonly create throwaway repositories (git init in tmp dirs).
 # No network in the check phase, so this git cannot fetch or push anything.
 RUN apt-get update \

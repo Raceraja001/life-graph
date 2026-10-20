@@ -128,12 +128,16 @@ async def test_code_needs_its_own_larger_record(monkeypatch):
     assert (await cp.kind_record(FakeSession(), "raja", "local", "code", "p"))["established"]
 
 
-def _payload(kind="tests", reasons=()):
+def _payload(kind="tests", reasons=(), checks=()):
     return {
         "driver": "local",
         "project_id": "p",
+        "checks": list(checks),
         "change": {"files": ["x"], "lines": 1, "kind": kind, "review_reasons": list(reasons)},
     }
+
+
+PROOF = ["build_ok_diff", *cp.CODE_PROOF_CHECKS]
 
 
 async def test_auto_gate(monkeypatch):
@@ -141,8 +145,22 @@ async def test_auto_gate(monkeypatch):
     ok, why, _ = await cp.auto_gate(FakeSession(), "raja", _payload("tests"))
     assert ok and "8/9 tests PRs merged" in why
 
-    ok, why, _ = await cp.auto_gate(FakeSession(), "raja", _payload("code"))
+    ok, why, _ = await cp.auto_gate(FakeSession(), "raja", _payload("code", checks=PROOF))
     assert not ok and why.startswith("not yet trusted for code changes")
+
+    _records(monkeypatch, {"local:code": (6, 0)})
+    ok, why, _ = await cp.auto_gate(FakeSession(), "raja", _payload("code", checks=PROOF))
+    assert ok and "6/6 code PRs merged" in why
+
+
+async def test_code_without_proof_checks_never_lands_unattended(monkeypatch):
+    _records(monkeypatch, {"local:code": (9, 0)})
+    ok, why, _ = await cp.auto_gate(
+        FakeSession(), "raja", _payload("code", checks=["build_ok_diff", "diff_coverage"])
+    )
+    assert (
+        not ok and why == "needs review: no proof checks ran for this code change: change_explained"
+    )
 
     ok, why, _ = await cp.auto_gate(FakeSession(), "raja", _payload("tests", ["touches uv.lock"]))
     assert not ok and why == "needs review: touches uv.lock"
@@ -164,3 +182,51 @@ async def test_auto_gate_describes_an_old_payload_from_git(monkeypatch):
     )
     assert seen["args"] == ("/r", "b", "h")
     assert not ok and "code" in why
+
+
+def _llm(monkeypatch, reply=None, error=None):
+    from life_graph.api import dependencies
+
+    seen = {}
+
+    class LLM:
+        async def chat(self, messages, **kw):
+            seen.update(kw, prompt=messages[0]["content"])
+            if error:
+                raise error
+            return reply
+
+    monkeypatch.setattr(dependencies, "get_resilient_llm", lambda: LLM())
+    return seen
+
+
+@pytest.mark.parametrize(
+    ("reply", "ok", "note"),
+    [
+        (
+            '{"verdict": "ok", "reason": "matches the task"}',
+            True,
+            "second opinion: ok (matches the task)",
+        ),
+        (
+            'Sure: {"verdict": "block", "reason": "drops the tenant filter"}',
+            False,
+            "second opinion: drops the tenant filter",
+        ),
+        ("looks fine to me", False, "second-opinion review gave no readable verdict"),
+    ],
+)
+async def test_second_opinion_verdicts(monkeypatch, reply, ok, note):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "change_review_model", "openrouter/x:free")
+    seen = _llm(monkeypatch, reply)
+    assert await cp.second_opinion("Fix the bug", "diff --git a/x b/x") == (ok, note)
+    assert seen["model"] == "openrouter/x:free" and seen["temperature"] == 0
+    assert "Fix the bug" in seen["prompt"] and "diff --git a/x b/x" in seen["prompt"]
+
+
+async def test_second_opinion_fails_closed(monkeypatch):
+    _llm(monkeypatch, error=RuntimeError("all models exhausted"))
+    ok, note = await cp.second_opinion("t", "d")
+    assert not ok and note == "second-opinion review unavailable (RuntimeError)"

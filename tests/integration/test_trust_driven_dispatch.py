@@ -150,6 +150,14 @@ async def landing(monkeypatch):
         return change
 
     monkeypatch.setattr(dispatcher, "describe_change", fake_change)
+    state.review = (True, "second opinion: ok")
+    state.reviewed = []
+
+    async def fake_second_opinion(instruction, diff):
+        state.reviewed.append(instruction)
+        return state.review
+
+    monkeypatch.setattr(dispatcher, "second_opinion", fake_second_opinion)
     opened, merged = [], []
 
     async def fake_open(payload):
@@ -165,7 +173,9 @@ async def landing(monkeypatch):
     return SimpleNamespace(opened=opened, merged=merged, state=state)
 
 
-async def _land(driver_name, project_id, auto_open_pr, auto_merge=False, verified=True):
+async def _land(
+    driver_name, project_id, auto_open_pr, auto_merge=False, verified=True, checks=None
+):
     from life_graph.core.events import event_bus
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
@@ -186,7 +196,7 @@ async def _land(driver_name, project_id, auto_open_pr, auto_merge=False, verifie
             result=DriverResult(success=True, output="done"),
             branch=f"lg/task-{task_id[:8]}",
             repo_path="/mnt/h/DevTools/Projects/demo",
-            checks=["build_ok_diff"],
+            checks=checks or ["build_ok_diff"],
             project_id=project_id,
             session=s,
             verified=verified,
@@ -267,6 +277,8 @@ async def test_auto_merge_fires_after_an_auto_opened_pr(landing):
 
 # ── change_policy: trust per kind of change, protected paths, size ──
 
+PROOF_CHECKS = ["build_ok_diff", "diff_coverage", "change_explained"]
+
 
 @pytest.mark.asyncio
 @skip_on_db_error
@@ -289,10 +301,31 @@ async def test_code_trust_is_earned_separately(landing):
     project = uuid.uuid4()
     await _record("trusted:code", project, merged=5, failed=0)
     landing.state.change = {"files": ["app/svc.py"], "lines": 12, "kind": "code", "protected": []}
-    approvals = await _land("trusted", project, auto_open_pr=True, auto_merge=True)
+    approvals = await _land(
+        "trusted", project, auto_open_pr=True, auto_merge=True, checks=PROOF_CHECKS
+    )
     assert approvals["driver_pr"].status == "approved"
     assert approvals["driver_merge"].status == "approved"
     assert "5/5 code PRs merged" in approvals["driver_merge"].resolution_note
+    assert landing.state.reviewed == ["Small fix"]  # the second opinion was asked
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_code_without_proof_checks_or_against_a_second_opinion_waits(landing):
+    project = uuid.uuid4()
+    await _record("trusted:code", project, merged=9, failed=0)
+    landing.state.change = {"files": ["app/svc.py"], "lines": 12, "kind": "code", "protected": []}
+    approvals = await _land("trusted", project, auto_open_pr=True, auto_merge=True)
+    assert approvals["driver_pr"].status == "pending"  # build_ok_diff alone proves nothing
+
+    landing.state.review = (False, "second opinion: drops the tenant filter")
+    approvals = await _land(
+        "trusted", project, auto_open_pr=True, auto_merge=True, checks=PROOF_CHECKS
+    )
+    pr = approvals["driver_pr"]
+    assert pr.status == "pending" and landing.opened == []
+    assert "drops the tenant filter" in pr.detail
 
 
 @pytest.mark.asyncio
@@ -973,3 +1006,68 @@ async def test_disabled_description_never_calls_a_model(landing, monkeypatch):
     monkeypatch.setattr(llm_client, "get_resilient_llm", _boom)
     approvals = await _land("drv-nodesc", uuid.uuid4(), auto_open_pr=False)
     assert approvals["driver_pr"].payload["pr_description"] is None
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_reverted_merge_counts_against_the_driver_and_its_kind(tmp_path):
+    """Merged counted as a success when it landed; reverting it later is a failure."""
+    import subprocess
+    from datetime import UTC, datetime
+
+    from life_graph.models.db import Approval
+    from life_graph.services.dev_outcomes import record_reverts, track_record
+    from life_graph.storage.database import async_session
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(tmp_path), *args], check=True, capture_output=True, text=True
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    (tmp_path / "a.py").write_text("x = 2\n")
+    git("commit", "-qam", "agent change")
+    merged = git("rev-parse", "HEAD")
+    (tmp_path / "b.py").write_text("y = 1\n")
+    git("add", "-A")
+    git("commit", "-qm", "kept change")
+    kept = git("rev-parse", "HEAD")
+    git("revert", "--no-edit", merged)
+
+    project = str(uuid.uuid4())
+    driver = f"rv-{uuid.uuid4().hex[:6]}"
+    async with async_session() as s:
+        for sha in (merged, kept):
+            s.add(
+                Approval(
+                    tenant_id=TENANT,
+                    kind="driver_merge",
+                    title="Merge",
+                    status="approved",
+                    source="driver",
+                    resolved_at=datetime.now(UTC),
+                    payload={
+                        "driver": driver,
+                        "project_id": project,
+                        "repo_path": str(tmp_path),
+                        "merge_commit": sha,
+                        "change": {"kind": "tests"},
+                    },
+                )
+            )
+        await s.commit()
+
+    reports = await record_reverts(async_session)
+    assert {"reverted": merged[:8], "driver": driver, "kind": "tests"} in reports
+    assert not any(r.get("reverted") == kept[:8] for r in reports)
+    async with async_session() as s:
+        assert (await track_record(s, TENANT, driver, project))["failed"] == 1
+        assert (await track_record(s, TENANT, f"{driver}:tests", project))["failed"] == 1
+    assert await record_reverts(async_session) == [] or all(
+        r.get("driver") != driver for r in await record_reverts(async_session)
+    )  # counted once

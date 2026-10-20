@@ -42,7 +42,11 @@ from life_graph.drivers.workdir import (
     resolve_workdir,
     worktree_intact,
 )
-from life_graph.services.change_policy import describe_change, policy_from_project
+from life_graph.services.change_policy import (
+    describe_change,
+    policy_from_project,
+    second_opinion,
+)
 from life_graph.services.governor import governor
 from life_graph.services.verifiers import (  # noqa: F401  (failure_text: re-exported)
     BOUNCE_TASK_MARKER,
@@ -122,6 +126,9 @@ SANDBOX_SETTINGS: tuple[str, ...] = (
     "sandbox_app_port",
     "sandbox_e2e_command",
     "sandbox_e2e_timeout",
+    # Thresholds for the proof checks (services/proof_checks.py).
+    "diff_coverage_min",
+    "mutation_min_kill",
 )
 
 
@@ -1646,6 +1653,22 @@ class TaskDispatcher:
             change = await describe_change(
                 repo_path, landing.get("base_commit"), landing.get("head_commit"), change_policy
             )
+            if (
+                change["kind"] == "code"
+                and verified
+                and (auto_open_pr or auto_merge)
+                and not change["review_reasons"]
+            ):
+                # Only for code that could otherwise land without a person.
+                from life_graph.services.github_pr import landed_diff
+
+                diff = await landed_diff(
+                    repo_path, landing.get("base_commit", ""), landing.get("head_commit", "")
+                )
+                ok, note = await second_opinion(instruction, diff)
+                change["second_opinion"] = note
+                if not ok:
+                    change["review_reasons"].append(note)
             payload = {
                 "task_id": task_id,
                 "driver": driver_name,
