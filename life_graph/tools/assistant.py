@@ -23,6 +23,8 @@ READ_ONLY_TOOLS = frozenset(
     {
         "documents_expiring",
         "spending_summary",
+        "money_checkin",
+        "app_health",
         "list_page_monitors",
         "study_cards_due",
         "invoices_status",
@@ -108,6 +110,50 @@ async def spending_summary(month: str | None = None) -> str:
     except ValueError:
         return json.dumps({"error": "month must be YYYY-MM"})
     return _out(data if current_audience() == LOCAL else money.cloud_view(data))
+
+
+@tool(
+    name="money_checkin",
+    description=(
+        "The user's money check-in: spending this month so far against the same days"
+        " last month, categories over or near budget, the biggest changes and top"
+        " merchants. Cloud models see categories and percentages only."
+    ),
+    parameters_schema={"type": "object", "properties": {}},
+)
+async def money_checkin() -> str:
+    from life_graph.services import money_checkin as mc
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    async with async_session() as session:
+        data = await mc.checkin(session, tenant, _today())
+    local = current_audience() == LOCAL
+    return _out({"lines": mc.lines(data, amounts=local), **({"checkin": data} if local else {})})
+
+
+@tool(
+    name="app_health",
+    description=(
+        "Whether the user's apps are up: each watched app's last health check, TLS"
+        " certificate days left and backup check, from the hourly uptime watcher."
+    ),
+    parameters_schema={"type": "object", "properties": {}},
+)
+async def app_health() -> str:
+    from life_graph.services import app_health as svc
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    async with async_session() as session:
+        apps = await svc.report(session, tenant)
+    if not apps:
+        return _out({"apps": [], "note": "No app has a health URL or backup check set."})
+    return _out({"apps": apps, "lines": svc.lines(apps)})
 
 
 @tool(

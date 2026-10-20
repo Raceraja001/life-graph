@@ -47,6 +47,8 @@ PERSONAL_TOOLS = frozenset(
         "tasks_due",
         "documents_expiring",
         "spending_summary",
+        "money_checkin",
+        "app_health",
         "watch_page",
         "list_page_monitors",
         "make_study_cards",

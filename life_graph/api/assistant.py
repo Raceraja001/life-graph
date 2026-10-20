@@ -233,6 +233,26 @@ async def money_summary(month: str | None = None) -> dict[str, Any]:
     return success_response(data)
 
 
+@router.get("/money/checkin")
+async def money_checkin() -> dict[str, Any]:
+    """Job 5: the month so far against the same days last month, with budgets."""
+    from life_graph.services import money_checkin as mc
+
+    async with async_session() as session:
+        data = await mc.checkin(session, get_current_tenant_id(), _today())
+    return success_response({**data, "lines": mc.lines(data, amounts=True)})
+
+
+@router.get("/apps/health")
+async def apps_health() -> dict[str, Any]:
+    """Job 7: each watched app's last check, certificate and backup state."""
+    from life_graph.services import app_health
+
+    async with async_session() as session:
+        apps = await app_health.report(session, get_current_tenant_id())
+    return success_response({"apps": apps, "lines": app_health.lines(apps)})
+
+
 @router.get("/money/categories")
 async def money_categories() -> dict[str, Any]:
     from life_graph.services import money

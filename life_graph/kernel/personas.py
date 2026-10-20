@@ -641,6 +641,8 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "make_study_cards",
             "study_cards_due",
             "invoices_status",
+            "money_checkin",
+            "app_health",
             "research_web",
             "delegate_to_persona",
         ],

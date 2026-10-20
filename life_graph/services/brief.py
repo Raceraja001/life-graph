@@ -76,7 +76,9 @@ class BriefComposer:
         connector_sections = await self._connector_sections(tenant_id, now)
         assistant_lines = await self._assistant_lines(tenant_id)
         night_shift = await self._night_shift_lines(tenant_id, since)
-        tech_watch = await self._tech_watch_lines(tenant_id) if now.weekday() == 0 else []
+        monday = now.weekday() == 0
+        tech_watch = await self._tech_watch_lines(tenant_id) if monday else []
+        money_week = await self._money_checkin_lines(tenant_id, now) if monday else []
 
         if not (
             held
@@ -88,6 +90,7 @@ class BriefComposer:
             or assistant_lines
             or night_shift
             or tech_watch
+            or money_week
         ):
             logger.info("No brief content for tenant %s — staying silent", tenant_id)
             return None
@@ -95,6 +98,11 @@ class BriefComposer:
         body = self._format_body(
             held, question_data, capture_summary, watcher_summary, big_decisions
         )
+        if money_week:
+            # Categories and percentages only: this body leaves the machine.
+            body = "\n".join(
+                ["## Money this week", *[f"- {x}" for x in money_week], "", body]
+            ).strip()
         if tech_watch:
             # Public pages about public releases: fine to leave the machine.
             body = "\n".join(["## Tech watch", *tech_watch, "", body]).strip()
@@ -316,6 +324,20 @@ class BriefComposer:
                 return night_shift.lines(await night_shift.report(session, tenant_id, since))
         except Exception:
             logger.warning("Night shift lines failed for %s", tenant_id, exc_info=True)
+            return []
+
+    async def _money_checkin_lines(self, tenant_id: str, now: datetime) -> list[str]:
+        """Monday's money check-in, cloud-safe (services/money_checkin.py, Job 5)."""
+        try:
+            from life_graph.connectors.tools import user_tz
+            from life_graph.services import money_checkin
+
+            today = now.astimezone(user_tz()).date()
+            async with self._session_factory() as session:
+                data = await money_checkin.checkin(session, tenant_id, today)
+            return money_checkin.lines(data, amounts=False)
+        except Exception:
+            logger.warning("Money check-in lines failed for %s", tenant_id, exc_info=True)
             return []
 
     async def _tech_watch_lines(self, tenant_id: str) -> list[str]:
