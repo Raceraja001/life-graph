@@ -503,16 +503,18 @@ class Settings(BaseSettings):
     # only reorders the free cloud list (services/workers.envelope_models).
     research_models: str = ""
     # Tech watch: tenants it runs for (comma-separated; empty = off) and the
-    # topics, as JSON: topic name -> list of search queries ("{month}" becomes
+    # topics, as JSON: topic name -> list of search queries, or -> {"queries":
+    # [...], "kind": "model" | "tool", "max_memory_gb": N} to have findings of
+    # another kind, or needing more memory, dropped in code ("{month}" becomes
     # e.g. "October 2026", see services/web_research.dated_queries).
     tech_watch_tenants: str = ""
     tech_watch_topics: str = (
-        '{"Open models that fit 16 GB": ['
+        '{"Open models that fit 16 GB": {"kind": "model", "max_memory_gb": 16, "queries": ['
         '"new open weight model Ollama {month}", '
-        '"new small open source LLM release {month}"], '
-        '"AI coding agents": ['
+        '"new small open source LLM release {month}"]}, '
+        '"AI coding agents": {"kind": "tool", "queries": ['
         '"AI coding agent new release {month}", '
-        '"coding agent CLI new version {month}"]}'
+        '"coding agent CLI new version {month}"]}}'
     )
     tech_watch_max_pages: int = 6  # new pages read per topic per day
     tech_watch_digest_per_topic: int = 6  # findings per topic in the Monday brief
@@ -770,17 +772,36 @@ class Settings(BaseSettings):
     @property
     def tech_watch_topics_map(self) -> dict[str, list[str]]:
         """Parse the tech-watch topics (name -> queries); a bad value means none."""
+        return {name: spec["queries"] for name, spec in self.tech_watch_topic_specs.items()}
+
+    @property
+    def tech_watch_topic_specs(self) -> dict[str, dict]:
+        """Each topic's queries and rules: {"queries", "kind", "max_memory_gb"}."""
         import json
 
         try:
             raw = json.loads(self.tech_watch_topics or "{}")
-            return {
-                str(name).strip()[:120]: [str(q).strip() for q in queries if str(q).strip()]
-                for name, queries in raw.items()
-                if str(name).strip() and isinstance(queries, list)
-            }
-        except (ValueError, TypeError, AttributeError):
+        except ValueError:
             return {}
+        if not isinstance(raw, dict):
+            return {}
+        out: dict[str, dict] = {}
+        for name, value in raw.items():
+            spec = value if isinstance(value, dict) else {"queries": value}
+            queries = spec.get("queries")
+            if not str(name).strip() or not isinstance(queries, list):
+                continue
+            kind = spec.get("kind") if spec.get("kind") in ("model", "tool") else None
+            try:
+                limit = float(spec["max_memory_gb"]) if spec.get("max_memory_gb") else None
+            except (TypeError, ValueError):
+                limit = None
+            out[str(name).strip()[:120]] = {
+                "queries": [str(q).strip() for q in queries if str(q).strip()],
+                "kind": kind,
+                "max_memory_gb": limit,
+            }
+        return out
 
     @property
     def speech_models_list(self) -> list[str]:

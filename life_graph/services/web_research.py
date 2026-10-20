@@ -119,6 +119,9 @@ async def scan_topic(
     tenant_id: str,
     topic: str,
     queries: list[str],
+    *,
+    kind: str | None = None,
+    max_memory_gb: float | None = None,
 ) -> dict[str, int]:
     """Read the topic's new pages and store what is new on it (AC-10.2/10.3)."""
     from sqlalchemy.dialects.postgresql import insert
@@ -156,8 +159,25 @@ async def scan_topic(
             logger.info("topic reader on %s: %s", [u for u, _ in chunk], result.error or "empty")
         sources = {u for u, _ in chunk}
         findings += [
-            f for f in (validate_finding(x, sources) for x in json_array(result.text)) if f
+            f
+            for f in (
+                validate_finding(x, sources, kind=kind, max_memory_gb=max_memory_gb)
+                for x in json_array(result.text)
+            )
+            if f
         ]
+
+    # The same release under the same title on two pages of one run is one
+    # finding (the eval: "Wren 9B released" from the blog and from a guide).
+    # Different wordings still make two; see the spec's known gaps.
+    seen_titles: set[str] = set()
+    unique = []
+    for f in findings:
+        slug = _topic_slug(f["title"])
+        if slug not in seen_titles:
+            seen_titles.add(slug)
+            unique.append(f)
+    findings = unique
 
     stored = 0
     async with session_factory() as session:
@@ -188,9 +208,16 @@ async def tech_watch(
 ) -> dict[str, Any]:
     """Every configured topic, one after the other; one failing skips that one."""
     out: dict[str, Any] = {}
-    for topic, queries in settings.tech_watch_topics_map.items():
+    for topic, spec in settings.tech_watch_topic_specs.items():
         try:
-            out[topic] = await scan_topic(session_factory, tenant_id, topic, queries)
+            out[topic] = await scan_topic(
+                session_factory,
+                tenant_id,
+                topic,
+                spec["queries"],
+                kind=spec["kind"],
+                max_memory_gb=spec["max_memory_gb"],
+            )
         except Exception as exc:  # noqa: BLE001 - the next topic still runs
             logger.warning("tech watch on %r failed", topic, exc_info=True)
             out[topic] = {"error": str(exc)[:300]}

@@ -1,0 +1,4 @@
+How to set up Kite CLI with your own API key (19 October 2026)
+
+Step 1: install Kite with npm. Step 2: run kite login and paste your key. Step 3: open a repository and
+type kite to start. Tip: keep your tests fast so the agent can run them often.

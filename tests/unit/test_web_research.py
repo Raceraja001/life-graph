@@ -90,11 +90,50 @@ def test_findings_key_per_item_and_dated_queries():
 def test_tech_watch_topics_setting(monkeypatch):
     from life_graph.config import settings
 
-    assert len(settings.tech_watch_topics_map) == 2  # the defaults parse
-    monkeypatch.setattr(settings, "tech_watch_topics", '{"Agents": ["a", " ", "b"], "bad": "x"}')
-    assert settings.tech_watch_topics_map == {"Agents": ["a", "b"]}
+    specs = settings.tech_watch_topic_specs  # the defaults parse, with their rules
+    assert specs["Open models that fit 16 GB"]["kind"] == "model"
+    assert specs["Open models that fit 16 GB"]["max_memory_gb"] == 16
+    assert specs["AI coding agents"]["kind"] == "tool"
+    monkeypatch.setattr(
+        settings,
+        "tech_watch_topics",
+        '{"Agents": ["a", " ", "b"], "bad": "x",'
+        ' "Models": {"queries": ["m"], "kind": "weird", "max_memory_gb": "8"}}',
+    )
+    assert settings.tech_watch_topics_map == {"Agents": ["a", "b"], "Models": ["m"]}
+    assert settings.tech_watch_topic_specs["Models"] == {
+        "queries": ["m"],
+        "kind": None,  # only "model" or "tool"
+        "max_memory_gb": 8.0,
+    }
     monkeypatch.setattr(settings, "tech_watch_topics", "not json")
     assert settings.tech_watch_topics_map == {}
+
+
+def test_topic_rules_are_applied_in_code():
+    from life_graph.services.worker_templates import estimated_memory_gb
+
+    today = date(2026, 10, 20)
+
+    def check(**item):
+        return validate_finding(
+            {"source": A, "published_on": "2026-10-15", **item},
+            {A},
+            today=today,
+            kind="model",
+            max_memory_gb=16,
+        )
+
+    assert check(title="Wren 9B released", kind="model", memory_gb=6)
+    assert check(title="Runtime 0.40", kind="tool") is None  # another kind
+    assert check(title="Heron released", kind="model", memory_gb=250) is None
+    # No figure on the page: estimated from the parameter count in the name.
+    assert check(title="Heron 480B on the cloud", kind="model", memory_gb=None) is None
+    assert check(title="Finch 14B released", kind="model", memory_gb=None)
+    assert check(title="Mystery model", kind="model", memory_gb="lots")  # unknown is kept
+    assert estimated_memory_gb("Qwen3.6-35B-A3B") == 21.0  # the total, not the active
+    assert estimated_memory_gb("gpt-oss:20b") == 12.0
+    assert estimated_memory_gb("Kite CLI 2.0") is None
 
 
 @pytest.mark.asyncio
