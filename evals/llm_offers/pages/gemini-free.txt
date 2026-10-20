@@ -1,0 +1,6 @@
+Gemini API pricing — free tier
+Gemini 2.5 Flash is available on the free tier in Google AI Studio: 10 requests
+per minute and 250 requests per day, free of charge. On the free tier, content
+you submit is used to improve Google products. Paid tier prompts are not used to
+improve products. A Google account is required to get an API key. Commercial use
+is permitted under the API terms.

@@ -50,7 +50,7 @@ class CloudDriver(LocalDriver):
     ) -> DriverResult:
         """Run the local agent loop on the persona's free cloud model."""
         from life_graph.services.compute_router import cloud_models, is_free_cloud_model
-        from life_graph.services.resilient_llm import only_models
+        from life_graph.services.resilient_llm import _allowed_fallbacks, only_models
 
         if not is_free_cloud_model(packet.persona_model):
             return DriverResult(
@@ -64,7 +64,11 @@ class CloudDriver(LocalDriver):
         packet.preferences = []
         packet.procedures = []
         packet.memories = []
-        with only_models(cloud_models()):
+        # A caller that already narrowed the chain (the model evaluation runs
+        # one model only, services/model_eval.py) keeps its narrower list.
+        outer = _allowed_fallbacks.get()
+        models = [m for m in outer if is_free_cloud_model(m)] if outer is not None else None
+        with only_models(models if models is not None else cloud_models()):
             return await super().dispatch(packet, workdir, timeout)
 
     def capabilities(self) -> list[str]:

@@ -67,9 +67,23 @@ def _has_key(model: str) -> bool:
     return False
 
 
+# Models adopted through a model_adoption approval (services/llm_offers.py),
+# in score order; appended after the configured ones. Loaded at startup and
+# refreshed whenever an adoption is approved or an adopted model goes away.
+_adopted: list[str] = []
+
+
+def set_adopted(models: list[str]) -> None:
+    """Replace the adopted-models list (free models only are kept)."""
+    global _adopted
+    _adopted = [m for m in dict.fromkeys(models) if is_free_cloud_model(m)]
+
+
 def cloud_models() -> list[str]:
-    """The configured free cloud coding models whose provider has a key."""
-    return [m for m in settings.dev_cloud_models_list if is_free_cloud_model(m) and _has_key(m)]
+    """The free cloud coding models whose provider has a key: the configured
+    ones first, then those adopted through an approval."""
+    candidates = [*settings.dev_cloud_models_list, *_adopted]
+    return [m for m in dict.fromkeys(candidates) if is_free_cloud_model(m) and _has_key(m)]
 
 
 def in_local_hours(hour: int, spec: str) -> bool:

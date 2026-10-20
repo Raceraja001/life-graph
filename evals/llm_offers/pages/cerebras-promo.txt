@@ -1,0 +1,5 @@
+Cerebras Inference — limited-time developer promotion
+For a limited time, new developers get 1 million free tokens every day on
+Llama 3.3 70B and Qwen3 Coder 480B. The promotion runs until 2026-12-31.
+Sign up with an email address; no payment method is needed. Promotional usage
+is for evaluation and prototyping; contact sales for production deployments.

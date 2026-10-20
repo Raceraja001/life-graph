@@ -40,6 +40,85 @@ _allowed_fallbacks: contextvars.ContextVar[tuple[str, ...] | None] = contextvars
 )
 
 
+_reasoning_off: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "resilient_llm_reasoning_off", default=False
+)
+
+
+@contextmanager
+def reasoning_off():
+    """Within this block, ask OpenRouter models not to reason before answering.
+
+    Free reasoning models given a dense page to extract from spent the whole
+    output budget thinking and returned no content at all (8,000 of 8,000
+    tokens, finish=length, 2026-10-20); with reasoning off the same models
+    returned 14-17 offers in 40-50 s. For extraction, not for agents that
+    plan. Applied per attempt, so a fallback to another provider never gets
+    a parameter it does not know.
+    """
+    token = _reasoning_off.set(True)
+    try:
+        yield
+    finally:
+        _reasoning_off.reset(token)
+
+
+def _reasoning_kwargs(model: str) -> dict[str, Any]:
+    if _reasoning_off.get() and model.startswith("openrouter/"):
+        return {"extra_body": {"reasoning": {"enabled": False}}}
+    return {}
+
+
+def provider_of(model: str) -> str:
+    """``openrouter`` for ``openrouter/x/y:free``; '' for a bare model id."""
+    return model.split("/", 1)[0].lower() if "/" in model else ""
+
+
+def _quota_key(provider: str) -> str:
+    from datetime import UTC, datetime
+
+    return f"lg:quota:{provider}:{datetime.now(UTC):%Y%m%d}"
+
+
+async def provider_usage(provider: str) -> tuple[int, int | None]:
+    """(requests made today, daily limit) for a provider; limit None = unlimited.
+
+    Free tiers cap requests per day (OpenRouter ~1000 with credit); counting
+    our own requests lets the router spread load before the provider starts
+    refusing, and lets the evaluation job hold off near the limit.
+    """
+    from life_graph.storage.redis import get_redis
+
+    limit = settings.provider_daily_limits_map.get(provider)
+    redis = get_redis()
+    if not limit or redis is None:
+        return 0, limit
+    try:
+        return int(await redis.get(_quota_key(provider)) or 0), limit
+    except Exception:  # noqa: BLE001 - quota tracking never blocks a call
+        return 0, limit
+
+
+async def _over_quota(model: str) -> bool:
+    used, limit = await provider_usage(provider_of(model))
+    return bool(limit) and used >= limit
+
+
+async def _count_request(model: str) -> None:
+    from life_graph.storage.redis import get_redis
+
+    provider = provider_of(model)
+    redis = get_redis()
+    if redis is None or not settings.provider_daily_limits_map.get(provider):
+        return
+    try:
+        key = _quota_key(provider)
+        await redis.incr(key)
+        await redis.expire(key, 2 * 86_400)
+    except Exception:  # noqa: BLE001
+        logger.debug("quota count failed for %s", provider, exc_info=True)
+
+
 @contextmanager
 def only_models(models: list[str]):
     """Within this block, completions fail over only to *models*.
@@ -217,7 +296,7 @@ class ResilientLLM:
         t0 = time.monotonic()
         # Per attempt, not per call: the chain can start on a local model and
         # fail over to a hosted one, and these options mean nothing there.
-        kwargs = {**kwargs, **_local_model_kwargs(model)}
+        kwargs = {**kwargs, **_local_model_kwargs(model), **_reasoning_kwargs(model)}
         if model == settings.omniroute_model:
             # api_base/api_key passed per-call, not bridged into OPENAI_API_KEY
             # env — that var is also OpenAI's own, and clobbering it would
@@ -254,6 +333,12 @@ class ResilientLLM:
             self._append_last_resorts(chain)
         skipped: list[str] = []
         for m in chain:
+            # A provider at its daily limit is skipped outright, and is not a
+            # candidate for the forced retry below either: that limit is the
+            # provider's rule, not a transient cooldown.
+            if await _over_quota(m):
+                logger.info("Skipping %s: %s is at its daily limit", m, provider_of(m))
+                continue
             if await self._health.in_cooldown(m):
                 skipped.append(m)
                 continue
@@ -261,6 +346,7 @@ class ResilientLLM:
                 logger.warning("Falling back to paid model %s", m)
             elif m == settings.omniroute_model and settings.omniroute_api_key:
                 logger.warning("Falling back to OmniRoute (%s)", settings.omniroute_url)
+            await _count_request(m)
             try:
                 return await self._attempt(m, messages, kwargs)
             except Exception as exc:  # noqa: BLE001 - classify + fail over
@@ -286,6 +372,7 @@ class ResilientLLM:
         if skipped:
             cooldowns = {mm: await _safe_cooldown(self._health, mm) for mm in skipped}
             forced = min(cooldowns, key=cooldowns.get)
+            await _count_request(forced)
             try:
                 return await self._attempt(forced, messages, kwargs)
             except Exception as exc:  # noqa: BLE001

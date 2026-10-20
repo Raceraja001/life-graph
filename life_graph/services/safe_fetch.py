@@ -56,6 +56,9 @@ def _allowed_hosts() -> set[str]:
     return {h.strip().lower() for h in settings.fetch_allow_hosts.split(",") if h.strip()}
 
 
+_NAT64_WELL_KNOWN = ipaddress.IPv6Network("64:ff9b::/96")
+
+
 def _is_public(addr: str) -> bool:
     try:
         ip = ipaddress.ip_address(addr.split("%", 1)[0])
@@ -63,6 +66,14 @@ def _is_public(addr: str) -> bool:
         return False  # fail closed on anything that is not an address
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
+    elif isinstance(ip, ipaddress.IPv6Address) and ip in _NAT64_WELL_KNOWN:
+        # DNS64 resolvers (this WSL host's among them) answer with the IPv4
+        # address embedded in 64:ff9b::/96 (RFC 6052). Python counts the whole
+        # prefix as non-global, which blocked github.com, reddit.com and most
+        # of the web (found 2026-10-20). The connection really goes to the
+        # embedded IPv4, so that is what is judged — a NAT64 address cannot
+        # reach a private network either.
+        ip = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
     return not (
         ip.is_private
         or ip.is_loopback

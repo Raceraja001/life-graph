@@ -1,0 +1,4 @@
+Lumen API pricing
+Starter: $29 per month, 2 million tokens. Growth: $199 per month, 20 million
+tokens, priority support. Enterprise: custom. All plans billed monthly; annual
+billing saves 15%. Overage is charged at $0.002 per 1,000 tokens.
