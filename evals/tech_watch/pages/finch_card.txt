@@ -1,0 +1,5 @@
+Finch 14B — model card (published 8 October 2026)
+
+Finch 14B is an open-weights coding and reasoning model released by Pinecrest AI on 8 October 2026 under
+the MIT licence. Memory: about 10 GB at Q4_K_M, 28 GB at 16-bit. Context: 64k tokens. Available on
+Hugging Face and as finch:14b in Ollama.

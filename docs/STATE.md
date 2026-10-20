@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-20 13:35 UTC` from `feat/money-checkin-app-health` @ `9dec79b`
+Generated `2026-10-20 17:38 UTC` from `feat/tech-watch-eval` @ `5f2a1a8`
 
 ---
 
@@ -24,9 +24,9 @@ Generated `2026-10-20 13:35 UTC` from `feat/money-checkin-app-health` @ `9dec79b
 | Agent tools | **14** |
 | Scheduled jobs | **25** |
 | Config settings | **246** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3111** in 336 files |
+| Test functions | **3112** in 336 files |
 | Dashboard pages | **18** |
-| Python | 381 files, 98,383 lines |
+| Python | 381 files, 98,474 lines |
 
 ---
 
@@ -915,10 +915,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 260 | 2444 |
+| `tests/unit/` | 260 | 2445 |
 | `tests/integration/` | 75 | 655 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **336** | **3111** |
+| **total** | **336** | **3112** |
 
 ---
 
@@ -1125,7 +1125,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_RESEARCH_PAGE_CHARS` | `8000` |
 | `LIFE_GRAPH_RESEARCH_MODELS` | `''` |
 | `LIFE_GRAPH_TECH_WATCH_TENANTS` | `''` |
-| `LIFE_GRAPH_TECH_WATCH_TOPICS` | `'{"Open models that fit 16 GB": ["new open weight model O…` |
+| `LIFE_GRAPH_TECH_WATCH_TOPICS` | `'{"Open models that fit 16 GB": {"kind": "model", "max_me…` |
 | `LIFE_GRAPH_TECH_WATCH_MAX_PAGES` | `6` |
 | `LIFE_GRAPH_TECH_WATCH_DIGEST_PER_TOPIC` | `6` |
 | `LIFE_GRAPH_TRAJECTORY_STEP_MAX_CHARS` | `16000` |

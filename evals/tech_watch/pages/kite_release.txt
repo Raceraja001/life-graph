@@ -1,0 +1,5 @@
+Kite CLI 2.0 release notes — 14 October 2026
+
+Kite CLI, the open-source terminal coding agent, reaches 2.0: a planning mode that waits for approval
+before editing files, sub-agents that run in parallel, and support for local models. MIT licensed.
+Install: npm install -g kite-cli@2

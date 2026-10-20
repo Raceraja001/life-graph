@@ -1,0 +1,15 @@
+Driftwood Labs blog
+
+Wren 9B is here — 15 October 2026
+Wren 9B, our new open-weights model, is out today under Apache 2.0. At 4-bit quantisation it needs about
+6 GB of memory, so it runs on most laptops. Available now: ollama pull wren:9b
+
+Heron 480B on Driftwood Cloud — 12 October 2026
+Heron 480B, a mixture-of-experts model, is available on Driftwood Cloud. Running it yourself needs about
+250 GB of GPU memory.
+
+Driftwood Runtime 0.40 — 10 October 2026
+The runtime gets faster prompt processing on Apple Silicon and a new scheduler.
+
+Lark 7B — 2 March 2026
+Lark 7B brings fast multilingual chat in 5 GB of memory.

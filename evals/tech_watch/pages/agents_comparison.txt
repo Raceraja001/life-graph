@@ -1,0 +1,9 @@
+Best AI coding agents compared (17 October 2026)
+
+We tried the coding agents developers ask us about most.
+
+- Kite CLI — a terminal agent, now at version 2.0.
+- Gull — an IDE agent that launched in November 2025; strong at refactors.
+- Tern — a new cloud agent, released on 5 October 2026, that opens pull requests from issue descriptions.
+
+Our verdict: pick the one that fits how you already work.

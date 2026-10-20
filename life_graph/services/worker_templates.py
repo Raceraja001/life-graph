@@ -221,10 +221,14 @@ def topic_reader(topic: str, today: date | None = None) -> Template:
             '  "summary": one or two sentences on what it is and why it matters,\n'
             '  "published_on": the release date the page gives for the thing itself;'
             " the page's own date only when the thing has none, as YYYY-MM-DD,\n"
+            '  "kind": "model" for a language model, "tool" for software (an agent, app,'
+            ' runtime, library, CLI), else "other",\n'
+            '  "memory_gb": for a model, the memory in GB the page says it needs to run'
+            " (e.g. 6 for '6 GB at 4-bit', 250 for 'needs about 250 GB'; the smallest"
+            " figure if it gives several), else null,\n"
             '  "source": the SOURCE url of the page it came from.\n'
             "Rules:\n"
-            "- Only findings that fit the topic as named, including any limit in it: if"
-            " the topic names a memory size, skip models that need more than that.\n"
+            "- Only findings that fit the topic as named.\n"
             "- A guide, comparison, cheat sheet, benchmark or 'best of' article is not"
             " news itself: report only the new releases it describes, never the article.\n"
             "- Skip general news, opinion, tutorials, job posts and adverts.\n"
@@ -239,11 +243,39 @@ def topic_reader(topic: str, today: date | None = None) -> Template:
     )
 
 
-def validate_finding(item: dict, sources: set[str], *, today: date | None = None) -> dict | None:
+# About what a model needs per billion parameters at 4-bit, with its context.
+_GB_PER_BILLION_Q4 = 0.6
+_PARAMS = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s?[bB]\b")
+
+
+def estimated_memory_gb(title: str) -> float | None:
+    """A model's memory at 4-bit, from the parameter count in its name ("Heron
+    480B" -> ~288), when the page gave none (the eval's free model reported
+    null for "needs about 250 GB"). For a mixture of experts ("35B-A3B") the
+    total counts, as all of it must be loaded. None when no count is named."""
+    counts = [float(m) for m in _PARAMS.findall(title or "")]
+    return round(max(counts) * _GB_PER_BILLION_Q4, 1) if counts else None
+
+
+def validate_finding(
+    item: dict,
+    sources: set[str],
+    *,
+    today: date | None = None,
+    kind: str | None = None,
+    max_memory_gb: float | None = None,
+) -> dict | None:
     """A topic reader's finding, normalised — or None: no title, a source not
     read in this run, or no date within the last FINDING_MAX_AGE_DAYS (an
     undated item cannot be shown to be news; the first live scan's undated
-    rows were model-library listings, 2026-10-20)."""
+    rows were model-library listings, 2026-10-20).
+
+    A topic's rules are applied here, not left to the model (the eval found
+    both free models keeping a 250 GB model under "fits 16 GB" and a runtime
+    under a models topic, whatever the brief said): a finding of another
+    *kind*, or stated to need more than *max_memory_gb*, is dropped. Unknown
+    memory is kept.
+    """
     from datetime import timedelta
 
     from life_graph.services.sources import normalise
@@ -263,6 +295,17 @@ def validate_finding(item: dict, sources: set[str], *, today: date | None = None
         <= date.fromisoformat(published)
         <= today + timedelta(days=1)
     ):
+        return None
+    found_kind = str(item.get("kind") or "").strip().lower()
+    if kind and found_kind != kind:
+        return None
+    try:
+        memory = float(item["memory_gb"]) if item.get("memory_gb") not in (None, "") else None
+    except (TypeError, ValueError):
+        memory = None
+    if memory is None and max_memory_gb is not None:
+        memory = estimated_memory_gb(title)
+    if max_memory_gb is not None and memory is not None and memory > max_memory_gb:
         return None
     return {
         "title": title,

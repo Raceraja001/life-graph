@@ -91,11 +91,26 @@ CREATE TABLE topic_findings (
 - **`{month}` in queries.** Undated queries returned evergreen "best of" lists whose items were
   months old (all dropped by the date rule).
 
+- **Topic rules in code** (after the reader eval, below). Both free models kept a 250 GB model
+  under "fits 16 GB" and a runtime release under a models topic whatever the brief said. A
+  topic may now declare `kind` ("model" / "tool") and `max_memory_gb`; the reader reports each
+  finding's kind and stated memory, and `validate_finding` drops what breaks the rules. When a
+  page gives no memory figure, it is estimated from the parameter count in the name (0.6 GB
+  per billion at 4-bit; the reader reported null for "needs about 250 GB").
+
+## Reader eval
+
+`scripts/eval_topic_reader.py` over `evals/tech_watch/` (six made-up pages: a blog index, a
+model card, a "best of" guide, release notes, a comparison, a tutorial; today fixed at
+2026-10-20; the topics' real rules from settings). Pass = every new release found, nothing
+forbidden kept (old releases, oversize models, off-kind items, the guides themselves). Before
+the rules: both models FAIL (kept Heron 480B and a runtime). After: Nemotron 3 Super and
+cohere north-mini PASS, twice each.
+
 ## Known gaps
 
-- The reader still sometimes reports an item from a guide or comparison dated by the page
-  rather than by its release (live: Cline, Gemini CLI listed as new), and models above the
-  topic's size limit (Reflection's Beam, 501B, under "fits 16 GB").
-- The same release found on two pages is two rows (titles differ).
+- Live pages are messier than the eval: an item from a guide may still be dated by the page
+  rather than its release.
+- The same release under different titles on two pages is two rows (same title in one run is
+  one).
 - A blog index is skipped for 30 days once read, though it is the page that changes.
-- Next: a frozen-page eval for `topic_reader` like the researcher's, then tune against it.

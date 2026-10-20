@@ -1,0 +1,15 @@
+{
+  "today": "2026-10-20",
+  "topics": {
+    "Open models that fit 16 GB": {
+      "pages": ["models_blog.txt", "finch_card.txt", "local_models_guide.txt"],
+      "expect": ["wren", "finch"],
+      "forbid": ["heron", "runtime", "lark", "sparrow", "osprey", "best local models", "guide"]
+    },
+    "AI coding agents": {
+      "pages": ["kite_release.txt", "agents_comparison.txt", "kite_tutorial.txt"],
+      "expect": ["kite", "tern"],
+      "forbid": ["gull", "best ai coding", "compared", "tutorial", "set up", "how to"]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+The best local models to run in 2026 (updated 18 October 2026)
+
+Our guide to models you can run at home, revised every month.
+
+1. Wren 9B — released this month (15 October 2026), the new pick for 8–16 GB machines.
+2. Sparrow 8B — released in January 2026, still a solid all-rounder at 5 GB.
+3. Osprey 32B — released in May 2026; needs 20 GB at Q4, so it wants a 24 GB card.
+
+How to choose: start with the largest model that fits your memory with room for context.
