@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-20 07:28 UTC` from `feat/free-llm-offers` @ `caaec29`
+Generated `2026-10-20 07:49 UTC` from `feat/night-shift-report` @ `fbc20a2`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-10-20 07:28 UTC` from `feat/free-llm-offers` @ `caaec29`
 
 | | |
 |---|---|
-| HTTP operations | **327** across 280 paths, 41 tags |
+| HTTP operations | **328** across 281 paths, 41 tags |
 | Database tables | **79** |
 | Migrations | **50** (head: `050_llm_offers`) |
 | Event types | **79** |
@@ -24,15 +24,15 @@ Generated `2026-10-20 07:28 UTC` from `feat/free-llm-offers` @ `caaec29`
 | Agent tools | **13** |
 | Scheduled jobs | **24** |
 | Config settings | **238** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3076** in 328 files |
+| Test functions | **3081** in 330 files |
 | Dashboard pages | **18** |
-| Python | 373 files, 96,824 lines |
+| Python | 374 files, 96,990 lines |
 
 ---
 
 ## HTTP API
 
-327 operations, grouped by OpenAPI tag.
+328 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 32
 
@@ -167,7 +167,7 @@ Generated `2026-10-20 07:28 UTC` from `feat/free-llm-offers` @ `caaec29`
 | POST | `/api/v1/self-improving/prompt-versions/{version_id}/rollback` | Rollback to a previous prompt version |
 | GET | `/api/v1/self-improving/status` | How much the loop has to learn from |
 
-### `drivers` — 21
+### `drivers` — 22
 
 | Method | Path | Summary |
 |---|---|---|
@@ -176,6 +176,7 @@ Generated `2026-10-20 07:28 UTC` from `feat/free-llm-offers` @ `caaec29`
 | PUT | `/api/v1/kernel/drivers/compute/presence` | Set the active/away switch (auto clears it) |
 | POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
 | GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
+| GET | `/api/v1/kernel/drivers/night-shift` | What the coding engines did: merged, waiting for you and why, failed and why |
 | GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
 | GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
 | POST | `/api/v1/kernel/drivers/projects/bootstrap` | Idea to app: scaffold, version, register and optionally plan a new app |
@@ -878,12 +879,14 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `llm-trace-viewer` | Built | `life_graph/api/model_health.py` |
 | `mcp-tool-server` | Built | `life_graph/mcp_server.py` |
 | `natural-language-queries` | Built | `life_graph/api/search.py` |
+| `night-shift-report` | Unclassified | — |
 | `os-kernel` | Built | `life_graph/kernel/process_manager.py` |
 | `personal-model-tuning` | Spec'd, not built | — |
 | `personal-roles` | Built | `life_graph/kernel/ambient.py` |
 | `prompt-registry` | Built | `life_graph/self_improving/prompt_version_service.py` |
 | `pwa-mobile` | Built | `dashboard/app/(mobile)/m/page.tsx` |
 | `razorpay-upi` | Not this product | — |
+| `research-and-tech-watch` | Unclassified | — |
 | `telegram-bridge` | Built | `life_graph/api/integrations_telegram.py` |
 | `template-gallery` | Not this product | — |
 | `whatsapp-bot` | Not this product | — |
@@ -904,10 +907,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 256 | 2414 |
-| `tests/integration/` | 71 | 650 |
+| `tests/unit/` | 257 | 2418 |
+| `tests/integration/` | 72 | 651 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **328** | **3076** |
+| **total** | **330** | **3081** |
 
 ---
 
