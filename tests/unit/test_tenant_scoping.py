@@ -42,6 +42,10 @@ _ROOT = pathlib.Path(life_graph.models.db.__file__).resolve().parents[1]
 
 # (module suffix, function name) -> why it is legitimately cross-tenant
 _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
+    ("services/llm_offers.py", "refresh_adopted"): (
+        "the free cloud model list is the instance's, not a tenant's: adopted "
+        "models (free public models, no tenant data) from any tenant join it"
+    ),
     ("workers/tasks.py", "run_all_consolidations"): "tenant discovery — selects distinct tenant_id",
     ("workers/tasks.py", "run_all_merge_suggestions"): "tenant discovery",
     ("workers/tasks.py", "run_all_research"): "tenant discovery",

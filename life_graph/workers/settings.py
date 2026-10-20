@@ -120,6 +120,10 @@ class WorkerSettings:
 
     # Import task functions lazily to avoid circular imports
     functions = [
+        # Job 1, free LLM offers (also scheduled below).
+        "life_graph.workers.llm_offers.run_llm_catalog_diff",
+        "life_graph.workers.llm_offers.run_llm_offer_news",
+        "life_graph.workers.llm_offers.run_llm_offer_evals",
         "life_graph.workers.tasks.run_tenant_consolidation",
         "life_graph.workers.tasks.run_all_consolidations",
         "life_graph.workers.tasks.run_tenant_merge_suggestions",
@@ -360,6 +364,25 @@ class WorkerSettings:
             "life_graph.workers.tasks.tick_scheduled_jobs",
             minute=set(range(60)),
             run_at_startup=False,
+        ),
+        # ── Job 1, free LLM offers (services/llm_offers.py) ──
+        cron(
+            "life_graph.workers.llm_offers.run_llm_catalog_diff",
+            hour=21,
+            minute=30,
+            run_at_startup=False,
+        ),
+        cron(
+            "life_graph.workers.llm_offers.run_llm_offer_news",
+            hour={0, 6, 12, 18},
+            minute=15,
+            run_at_startup=False,
+        ),
+        cron(
+            "life_graph.workers.llm_offers.run_llm_offer_evals",
+            minute=45,
+            run_at_startup=False,
+            timeout=3600,  # one coding benchmark: six tasks, up to ~15 min each
         ),
         # ── Telegram bridge: sweep expired pairing codes ──
         cron(

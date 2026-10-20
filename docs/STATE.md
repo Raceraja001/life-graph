@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-20 04:22 UTC` from `feat/proof-checks` @ `09dab19`
+Generated `2026-10-20 07:28 UTC` from `feat/free-llm-offers` @ `caaec29`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-10-20 04:22 UTC` from `feat/proof-checks` @ `09dab19`
 
 | | |
 |---|---|
-| HTTP operations | **325** across 278 paths, 40 tags |
-| Database tables | **77** |
-| Migrations | **49** (head: `049_invoices`) |
+| HTTP operations | **327** across 280 paths, 41 tags |
+| Database tables | **79** |
+| Migrations | **50** (head: `050_llm_offers`) |
 | Event types | **79** |
 | Built-in personas | **20** |
 | Agent tools | **13** |
-| Scheduled jobs | **21** |
-| Config settings | **233** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3044** in 326 files |
+| Scheduled jobs | **24** |
+| Config settings | **238** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3076** in 328 files |
 | Dashboard pages | **18** |
-| Python | 366 files, 95,258 lines |
+| Python | 373 files, 96,824 lines |
 
 ---
 
 ## HTTP API
 
-325 operations, grouped by OpenAPI tag.
+327 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 32
 
@@ -541,6 +541,13 @@ Generated `2026-10-20 04:22 UTC` from `feat/proof-checks` @ `09dab19`
 | POST | `/api/v1/brief/compose` | Compose today's brief now |
 | GET | `/api/v1/brief/today` | Latest composed daily brief |
 
+### `llm-offers` — 2
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/llm-offers` | Free LLM models, tiers and credits found, with their evaluation |
+| POST | `/api/v1/llm-offers/{offer_id}/evaluate` | Queue an offer for evaluation |
+
 ### `health` — 1
 
 | Method | Path | Summary |
@@ -563,7 +570,7 @@ Generated `2026-10-20 04:22 UTC` from `feat/proof-checks` @ `09dab19`
 
 ## Database tables
 
-77 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+79 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -606,6 +613,8 @@ Generated `2026-10-20 04:22 UTC` from `feat/proof-checks` @ `09dab19`
 | `life_graph.interview_questions` | 12 | ✓ | `—` |
 | `life_graph.predictions` | 15 | ✓ | `—` |
 | `life_graph.verification_runs` | 7 | ✓ | `—` |
+| `llm_catalog_snapshots` | 4 | — | `050_llm_offers` |
+| `llm_offers` | 16 | ✓ | `050_llm_offers` |
 | `memories` | 34 | ✓ | `001_initial_schema` |
 | `memory_links` | 8 | ✓ | `—` |
 | `memory_sessions` | 5 | — | `001_initial_schema` |
@@ -780,7 +789,7 @@ Generated `2026-10-20 04:22 UTC` from `feat/proof-checks` @ `09dab19`
 
 ## Scheduled jobs
 
-21 ARQ cron jobs (times are UTC).
+24 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -797,6 +806,9 @@ Generated `2026-10-20 04:22 UTC` from `feat/proof-checks` @ `09dab19`
 | `run_assistant_daily` | daily at (settings.brief_hour_utc - 1) % 24:30 | `life_graph.workers.tasks.run_assistant_daily` |
 | `run_daily_brief` | daily at settings.brief_hour_utc:00 | `life_graph.workers.tasks.run_daily_brief` |
 | `run_daily_digest` | 08:00 | `life_graph.workers.tasks.run_daily_digest` |
+| `run_llm_catalog_diff` | 21:30 | `life_graph.workers.llm_offers.run_llm_catalog_diff` |
+| `run_llm_offer_evals` | hourly at :45 | `life_graph.workers.llm_offers.run_llm_offer_evals` |
+| `run_llm_offer_news` | every 6h at :15 | `life_graph.workers.llm_offers.run_llm_offer_news` |
 | `run_nightly_calibration` | 04:15 | `life_graph.workers.tasks.run_nightly_calibration` |
 | `run_nightly_dev_suggestions` | 21:00 | `life_graph.workers.tasks.run_nightly_dev_suggestions` |
 | `run_nightly_self_heal` | 03:30 | `life_graph.workers.tasks.run_nightly_self_heal` |
@@ -861,6 +873,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `era8-autonomous-ai` | Built | `life_graph/autonomy/router.py` |
 | `era8-autonomy-reconciliation` | Built | `life_graph/autonomy/kill_switch.py` |
 | `eval-harness` | Built | `life_graph/self_improving/eval_service.py` |
+| `free-llm-offers` | Unclassified | — |
 | `judgment-engine` | Built | `life_graph/services/judgment.py` |
 | `llm-trace-viewer` | Built | `life_graph/api/model_health.py` |
 | `mcp-tool-server` | Built | `life_graph/mcp_server.py` |
@@ -879,9 +892,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-49 revisions, head `049_invoices`.
+50 revisions, head `050_llm_offers`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers`
 
 ---
 
@@ -891,16 +904,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 255 | 2391 |
-| `tests/integration/` | 70 | 641 |
+| `tests/unit/` | 256 | 2414 |
+| `tests/integration/` | 71 | 650 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **326** | **3044** |
+| **total** | **328** | **3076** |
 
 ---
 
 ## Configuration
 
-233 settings, all overridable by environment variable.
+238 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1092,6 +1105,11 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_OPENCODE_MIN_FREE_GB` | `12.0` |
 | `LIFE_GRAPH_CLOUD_RATE_LIMIT_COOLDOWN_SECONDS` | `3600` |
 | `LIFE_GRAPH_NVIDIA_NIM_API_KEY` | `''` |
+| `LIFE_GRAPH_OFFERS_TENANTS` | `''` |
+| `LIFE_GRAPH_OFFERS_NEWS_QUERIES` | `'free LLM API tier\nfree LLM API credits developers\nnew …` |
+| `LIFE_GRAPH_OFFERS_MAX_PAGES` | `8` |
+| `LIFE_GRAPH_OFFERS_MAX_EVALS_PER_DAY` | `2` |
+| `LIFE_GRAPH_PROVIDER_DAILY_LIMITS` | `'{"openrouter": 900, "nvidia_nim": 1000}'` |
 | `LIFE_GRAPH_TRAJECTORY_STEP_MAX_CHARS` | `16000` |
 | `LIFE_GRAPH_TRAJECTORY_OPT_OUT_TENANTS` | `''` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |

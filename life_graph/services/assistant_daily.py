@@ -102,6 +102,12 @@ async def brief_lines(session_factory, tenant_id: str, today: date | None = None
     except Exception:
         logger.warning("brief: study line failed for %s", tenant_id, exc_info=True)
     try:
+        from life_graph.services import llm_offers
+
+        lines += await llm_offers.brief_lines(session_factory, tenant_id)
+    except Exception:
+        logger.warning("brief: free LLM offers line failed for %s", tenant_id, exc_info=True)
+    try:
         from life_graph.services import invoices
 
         async with session_factory() as session:

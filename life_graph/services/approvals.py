@@ -210,6 +210,12 @@ class ApprovalService:
             await self._apply_driver_deploy(appr, approve)
         elif appr.kind == "driver_plan":
             await self._apply_driver_plan(tenant_id, appr, approve)
+        elif appr.kind == "model_adoption":
+            # A free model that passed evaluation (services/llm_offers.py):
+            # approving adds it to the cloud model list at once.
+            from life_graph.services.llm_offers import apply_adoption
+
+            await apply_adoption(self.session, appr, approve)
 
         await self.session.flush()
         return self._serialize(appr)

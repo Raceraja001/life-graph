@@ -481,6 +481,21 @@ class Settings(BaseSettings):
     cloud_rate_limit_cooldown_seconds: int = 3600
     # NVIDIA build.nvidia.com free API (LiteLLM's nvidia_nim/ provider).
     nvidia_nim_api_key: str = ""
+    # Job 1, free LLM offers (services/llm_offers.py, docs/specs/free-llm-offers.md).
+    # Tenants it runs for (comma-separated); empty = off.
+    offers_tenants: str = ""
+    # News searches for new free tiers, credits and promotions (one per line).
+    offers_news_queries: str = (
+        "free LLM API tier\n"
+        "free LLM API credits developers\n"
+        "new free model OpenRouter\n"
+        "free AI inference API promotion"
+    )
+    offers_max_pages: int = 8  # new pages read per news scan
+    offers_max_evals_per_day: int = 2  # coding benchmarks per day
+    # Requests per provider per UTC day before the router skips it (JSON).
+    # OpenRouter's free tier allows ~1000/day with credit on the account.
+    provider_daily_limits: str = '{"openrouter": 900, "nvidia_nim": 1000}'
     # Per-step content cap for recorded agent runs (services/trajectories.py).
     # One whole-file read can be megabytes; the real length is kept alongside.
     trajectory_step_max_chars: int = 16_000
@@ -696,6 +711,27 @@ class Settings(BaseSettings):
     def dev_cloud_models_list(self) -> list[str]:
         """Parse the comma-separated free cloud coding models."""
         return [m.strip() for m in self.dev_cloud_models.split(",") if m.strip()]
+
+    @property
+    def offers_tenants_list(self) -> list[str]:
+        """Parse the tenants the free-LLM-offers job runs for."""
+        return [t.strip() for t in self.offers_tenants.split(",") if t.strip()]
+
+    @property
+    def offers_news_queries_list(self) -> list[str]:
+        """Parse the news queries, one per line."""
+        return [q.strip() for q in self.offers_news_queries.splitlines() if q.strip()]
+
+    @property
+    def provider_daily_limits_map(self) -> dict[str, int]:
+        """Parse the per-provider daily request limits; a bad value means none."""
+        import json
+
+        try:
+            raw = json.loads(self.provider_daily_limits or "{}")
+            return {str(k): int(v) for k, v in raw.items()}
+        except (ValueError, TypeError, AttributeError):
+            return {}
 
     @property
     def speech_models_list(self) -> list[str]:

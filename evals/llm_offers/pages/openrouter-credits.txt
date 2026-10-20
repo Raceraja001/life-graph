@@ -1,0 +1,7 @@
+OpenRouter announcement: free models and launch credits
+We now list more than 50 models at $0 under the :free variant. Free variants are
+limited to 20 requests per minute and 50 requests per day, raised to 1,000
+requests per day once your account has bought at least $10 of credits.
+Some free endpoints are provided by partners who may log prompts and use them to
+improve their models; check each provider's page before sending sensitive data.
+Sign up to create a key.

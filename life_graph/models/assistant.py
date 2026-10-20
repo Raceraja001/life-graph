@@ -226,3 +226,63 @@ class Invoice(Base):
         Index("uq_invoices_number", "tenant_id", "number", unique=True),
         Index("ix_invoices_tenant_status", "tenant_id", "status", "due_on"),
     )
+
+
+class LlmOffer(Base):
+    """A free LLM model, tier, credit or promotion found (services/llm_offers.py).
+
+    ``terms`` holds what the reader found out (limits, expires_on, needs_signup,
+    needs_card, trains_on_prompts, commercial_use; each may be "unknown");
+    ``evaluation`` the smoke test and benchmark result. Status moves
+    new -> evaluating -> passed | failed, then adopted | rejected via the
+    ``model_adoption`` approval; needs_signup when no key reaches it; gone when
+    a catalog no longer lists it.
+    """
+
+    __tablename__ = "llm_offers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    dedup_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    terms: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="new")
+    evaluation: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )
+
+    __table_args__ = (
+        Index("uq_llm_offers_key", "tenant_id", "dedup_key", unique=True),
+        Index("ix_llm_offers_tenant_status", "tenant_id", "status"),
+    )
+
+
+class LlmCatalogSnapshot(Base):
+    """One provider's free-model ids on one day: the catalog diff's memory.
+
+    A public catalog, not tenant data, so there is no tenant column.
+    """
+
+    __tablename__ = "llm_catalog_snapshots"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    taken_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    model_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+    __table_args__ = (Index("ix_llm_catalog_snapshots_provider", "provider", "taken_at"),)

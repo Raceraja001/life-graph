@@ -1,0 +1,6 @@
+Groq Developer Console — Plans
+Start building for free. The Free plan gives every developer access to all
+hosted open models, including Llama 4 Scout and Qwen3 32B, with rate limits of
+30 requests per minute and 14,400 requests per day per model. Create an account
+with your email or GitHub to get an API key; no credit card is required.
+Upgrade to the Developer plan for higher limits and batch processing.

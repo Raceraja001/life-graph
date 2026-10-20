@@ -381,6 +381,17 @@ async def lifespan(app: FastAPI):
         driver_registry.register(CloudDriver())
         logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
 
+    # Free models adopted through a model_adoption approval join the cloud
+    # model list (services/llm_offers.py, compute_router.set_adopted).
+    with startup_step(report, "adopted_models"):
+        from life_graph.services.llm_offers import refresh_adopted
+        from life_graph.storage.database import async_session as _session
+
+        async with _session() as session:
+            adopted = await refresh_adopted(session)
+        if adopted:
+            logger.info("Adopted free models: %s", adopted)
+
     # Only the process holding the runner lock recovers and runs dev tasks, so
     # a second instance on the same database (a preview from another worktree)
     # can neither claim queued tasks nor fail the real runner's in-flight one.
@@ -675,6 +686,10 @@ v1_router.include_router(telegram_api.router)
 from life_graph.api import assistant as assistant_api
 
 v1_router.include_router(assistant_api.router)
+
+from life_graph.api import llm_offers as llm_offers_api
+
+v1_router.include_router(llm_offers_api.router)
 
 app.include_router(v1_router)
 

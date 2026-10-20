@@ -1,0 +1,10 @@
+{
+  "groq-free-tier.txt": [{"provider": "groq", "kind": ["free_tier"], "terms": {"needs_signup": true, "needs_card": false}}],
+  "openrouter-credits.txt": [{"provider": "openrouter", "kind": ["free_model", "free_tier", "credits"], "terms": {"needs_signup": true}}],
+  "gemini-free.txt": [{"provider": "google", "kind": ["free_tier"], "terms": {"trains_on_prompts": true, "commercial_use": true, "needs_signup": true}}],
+  "cerebras-promo.txt": [{"provider": "cerebras", "kind": ["promo", "free_tier", "credits"], "terms": {"expires_on": "2026-12-31", "needs_card": false, "needs_signup": true}}],
+  "marketing-ai-platform.txt": [],
+  "marketing-paid-plans.txt": [],
+  "unrelated-recipe.txt": [],
+  "unrelated-gpu-news.txt": []
+}
