@@ -1,0 +1,9 @@
+Oriole Coder 2.0 is out — release notes (1 October 2026)
+
+Oriole Coder is an open source AI coding agent that runs in your terminal. Version 2.0 brings:
+
+- Plan mode: Oriole writes a step-by-step plan and waits for your approval before editing any file.
+- Local models through Ollama, alongside the hosted providers it already supported.
+- A new sandbox that runs shell commands in a container by default.
+
+Oriole Coder stays MIT licensed. Upgrade with: npm install -g oriole-coder@2

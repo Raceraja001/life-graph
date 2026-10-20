@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-20 07:49 UTC` from `feat/night-shift-report` @ `fbc20a2`
+Generated `2026-10-20 08:28 UTC` from `feat/research-tech-watch` @ `3269745`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-10-20 07:49 UTC` from `feat/night-shift-report` @ `fbc20a2`
 
 | | |
 |---|---|
-| HTTP operations | **328** across 281 paths, 41 tags |
-| Database tables | **79** |
-| Migrations | **50** (head: `050_llm_offers`) |
+| HTTP operations | **330** across 283 paths, 41 tags |
+| Database tables | **80** |
+| Migrations | **51** (head: `051_topic_findings`) |
 | Event types | **79** |
 | Built-in personas | **20** |
 | Agent tools | **13** |
-| Scheduled jobs | **24** |
-| Config settings | **238** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3081** in 330 files |
+| Scheduled jobs | **25** |
+| Config settings | **245** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3093** in 332 files |
 | Dashboard pages | **18** |
-| Python | 374 files, 96,990 lines |
+| Python | 378 files, 97,635 lines |
 
 ---
 
 ## HTTP API
 
-328 operations, grouped by OpenAPI tag.
+330 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 32
 
@@ -389,6 +389,16 @@ Generated `2026-10-20 07:49 UTC` from `feat/night-shift-report` @ `fbc20a2`
 | PATCH | `/api/v1/intentions/{intention_id}/complete` | Mark an intention as completed |
 | PATCH | `/api/v1/intentions/{intention_id}/dismiss` | Dismiss an intention |
 
+### `research` — 5
+
+| Method | Path | Summary |
+|---|---|---|
+| POST | `/api/v1/research` | Answer a question from web pages read now, with sources |
+| GET | `/api/v1/research/runs` | List research runs |
+| GET | `/api/v1/research/runs/{run_id}` | Get research run detail |
+| POST | `/api/v1/research/trigger` | Trigger a research cycle |
+| GET | `/api/v1/tech-watch` | What the tech watch found new on your topics |
+
 ### `sessions` — 5
 
 | Method | Path | Summary |
@@ -505,14 +515,6 @@ Generated `2026-10-20 07:49 UTC` from `feat/night-shift-report` @ `fbc20a2`
 | POST | `/api/v1/interview/{question_id}/answer` | Answer an interview question |
 | POST | `/api/v1/interview/{question_id}/skip` | Skip an interview question |
 
-### `research` — 3
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/research/runs` | List research runs |
-| GET | `/api/v1/research/runs/{run_id}` | Get research run detail |
-| POST | `/api/v1/research/trigger` | Trigger a research cycle |
-
 ### `shared-context` — 3
 
 | Method | Path | Summary |
@@ -571,7 +573,7 @@ Generated `2026-10-20 07:49 UTC` from `feat/night-shift-report` @ `fbc20a2`
 
 ## Database tables
 
-79 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+80 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -645,6 +647,7 @@ Generated `2026-10-20 07:49 UTC` from `feat/night-shift-report` @ `fbc20a2`
 | `tenant_configs` | 8 | ✓ | `004_webhooks_tenants_dedup` |
 | `tenant_usage` | 7 | ✓ | `003_multi_tenancy` |
 | `tenant_webhooks` | 9 | ✓ | `004_webhooks_tenants_dedup` |
+| `topic_findings` | 10 | ✓ | `051_topic_findings` |
 | `trust_scores` | 22 | ✓ | `018_autonomous_ai` |
 | `watch_configs` | 13 | ✓ | `016_ambient_ai` |
 | `watch_events` | 11 | ✓ | `016_ambient_ai` |
@@ -790,7 +793,7 @@ Generated `2026-10-20 07:49 UTC` from `feat/night-shift-report` @ `fbc20a2`
 
 ## Scheduled jobs
 
-24 ARQ cron jobs (times are UTC).
+25 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -813,6 +816,7 @@ Generated `2026-10-20 07:49 UTC` from `feat/night-shift-report` @ `fbc20a2`
 | `run_nightly_calibration` | 04:15 | `life_graph.workers.tasks.run_nightly_calibration` |
 | `run_nightly_dev_suggestions` | 21:00 | `life_graph.workers.tasks.run_nightly_dev_suggestions` |
 | `run_nightly_self_heal` | 03:30 | `life_graph.workers.tasks.run_nightly_self_heal` |
+| `run_tech_watch` | 22:00 | `life_graph.workers.web_research.run_tech_watch` |
 | `run_watchers` | hourly at :00 | `life_graph.workers.tasks.run_watchers` |
 | `send_approval_escalations` | every 30 min | `life_graph.workers.tasks.send_approval_escalations` |
 | `sync_connectors` | every 5 min | `life_graph.workers.tasks.sync_connectors` |
@@ -895,9 +899,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-50 revisions, head `050_llm_offers`.
+51 revisions, head `051_topic_findings`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings`
 
 ---
 
@@ -907,16 +911,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 257 | 2418 |
-| `tests/integration/` | 72 | 651 |
+| `tests/unit/` | 258 | 2428 |
+| `tests/integration/` | 73 | 653 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **330** | **3081** |
+| **total** | **332** | **3093** |
 
 ---
 
 ## Configuration
 
-238 settings, all overridable by environment variable.
+245 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1113,6 +1117,13 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_OFFERS_MAX_PAGES` | `8` |
 | `LIFE_GRAPH_OFFERS_MAX_EVALS_PER_DAY` | `2` |
 | `LIFE_GRAPH_PROVIDER_DAILY_LIMITS` | `'{"openrouter": 900, "nvidia_nim": 1000}'` |
+| `LIFE_GRAPH_RESEARCH_MAX_PAGES` | `5` |
+| `LIFE_GRAPH_RESEARCH_PAGE_CHARS` | `8000` |
+| `LIFE_GRAPH_RESEARCH_MODELS` | `''` |
+| `LIFE_GRAPH_TECH_WATCH_TENANTS` | `''` |
+| `LIFE_GRAPH_TECH_WATCH_TOPICS` | `'{"Open models that fit 16 GB": ["new open weight model O…` |
+| `LIFE_GRAPH_TECH_WATCH_MAX_PAGES` | `6` |
+| `LIFE_GRAPH_TECH_WATCH_DIGEST_PER_TOPIC` | `6` |
 | `LIFE_GRAPH_TRAJECTORY_STEP_MAX_CHARS` | `16000` |
 | `LIFE_GRAPH_TRAJECTORY_OPT_OUT_TENANTS` | `''` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |

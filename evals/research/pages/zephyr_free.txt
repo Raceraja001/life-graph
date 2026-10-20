@@ -1,0 +1,15 @@
+Zephyr Inference — Pricing
+
+Zephyr Inference launched its public API on 2 September 2026. Every account starts on the Free plan.
+
+Free plan
+- 40 requests per minute
+- 200,000 tokens per day across all models
+- No credit card required to sign up
+- Models: zephyr-mini, zephyr-chat-32b
+
+Pro plan
+- $0.30 per million input tokens, $0.90 per million output tokens
+- 600 requests per minute
+
+Prompts sent on the Free plan may be used to improve our models. Pro plan prompts are never used for training.

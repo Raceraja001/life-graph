@@ -76,6 +76,7 @@ class BriefComposer:
         connector_sections = await self._connector_sections(tenant_id, now)
         assistant_lines = await self._assistant_lines(tenant_id)
         night_shift = await self._night_shift_lines(tenant_id, since)
+        tech_watch = await self._tech_watch_lines(tenant_id) if now.weekday() == 0 else []
 
         if not (
             held
@@ -86,6 +87,7 @@ class BriefComposer:
             or connector_sections
             or assistant_lines
             or night_shift
+            or tech_watch
         ):
             logger.info("No brief content for tenant %s — staying silent", tenant_id)
             return None
@@ -93,6 +95,9 @@ class BriefComposer:
         body = self._format_body(
             held, question_data, capture_summary, watcher_summary, big_decisions
         )
+        if tech_watch:
+            # Public pages about public releases: fine to leave the machine.
+            body = "\n".join(["## Tech watch", *tech_watch, "", body]).strip()
         if night_shift:
             # Code work, not personal data: fine to leave the machine.
             shift = [
@@ -311,6 +316,17 @@ class BriefComposer:
                 return night_shift.lines(await night_shift.report(session, tenant_id, since))
         except Exception:
             logger.warning("Night shift lines failed for %s", tenant_id, exc_info=True)
+            return []
+
+    async def _tech_watch_lines(self, tenant_id: str) -> list[str]:
+        """Monday's tech-watch digest (services/web_research.py, Job 10)."""
+        try:
+            from life_graph.services.web_research import digest_lines
+
+            async with self._session_factory() as session:
+                return await digest_lines(session, tenant_id)
+        except Exception:
+            logger.warning("Tech watch lines failed for %s", tenant_id, exc_info=True)
             return []
 
     async def _assistant_lines(self, tenant_id: str) -> list[str]:
