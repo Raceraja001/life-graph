@@ -133,6 +133,14 @@ pieces are built the first time a job needs them, and only as much as it needs.
 2. **Job 2, night shift report** — plain code over dev tasks and approvals; Jarvis words it.
 3. **Jobs 6 and 10** — reuse job 1's research pieces; heavy mode for important questions.
 4. **Jarvis as the lead + retirements** — once the workers it leads exist and are measured.
+   *Built 2026-10-20:* every route and Telegram go to Jarvis (`kernel/chief_router.py`,
+   `telegram_assistant_persona`); its model is chosen per request (`services/lead.py`:
+   personal → local model pinned local, else its configured model without the personal tools,
+   scrubbed, `personal:` / `cloud:` to switch); `RETIRED_PERSONAS` are seeded and reconciled
+   switched off; `server_health` goes to ops in propose mode; Jarvis gained `research_web`
+   (Job 6). Not yet: scout, admin, tutor, cody and ops are still personas (their scheduled
+   runs depend on it) rather than `worker_templates` entries; that move comes with the jobs
+   that use them.
 5. **Jobs 3, 4, 8, 9** (after the Telegram token) — the personal envelope, the local model,
    Jarvis's per-request model choice.
 6. **Jobs 5 and 7**, then templates promoted from what proved useful.

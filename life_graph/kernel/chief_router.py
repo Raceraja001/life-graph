@@ -145,16 +145,13 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ),
 ]
 
-# Default intent → persona mapping
+# Jarvis is the only lead (docs/design/11_persona_roster_plan.md): every
+# intent goes to it, and it hands work to its workers itself. The intent is
+# still classified and recorded on the session.
+LEAD_PERSONA = "jarvis"
 DEFAULT_ROUTING: dict[str, str] = {
-    "code": "cody",
-    "research": "rex",
-    "deploy": "ops",
-    "monitor": "ops",
-    "data": "penny",
-    "docs": "scribe",
-    "question": "chief",
-    "general": "chief",
+    intent: LEAD_PERSONA
+    for intent in ("code", "research", "deploy", "monitor", "data", "docs", "question", "general")
 }
 
 
@@ -385,9 +382,15 @@ class ChiefRouter:
             intent: Classified intent string.
 
         Returns:
-            Persona name (e.g., 'cody', 'rex').
+            Persona name: the lead whenever it is active.
         """
-        # Try DB-configured personas first
+        try:
+            if await self._persona_service.get_by_name(tenant_id, LEAD_PERSONA) is not None:
+                return LEAD_PERSONA
+        except Exception:
+            logger.warning("Failed to look up the lead persona", exc_info=True)
+
+        # The lead switched off: the old intent mapping, then the defaults.
         try:
             persona = await self._persona_service.get_by_intent(
                 tenant_id,
@@ -403,7 +406,7 @@ class ChiefRouter:
             )
 
         # Fall back to default routing map
-        return DEFAULT_ROUTING.get(intent, "chief")
+        return DEFAULT_ROUTING.get(intent, LEAD_PERSONA)
 
     # ── Session Tracking ──────────────────────────────────
 

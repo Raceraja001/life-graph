@@ -21,7 +21,7 @@ class TestSpawnDelegationTree:
         pm = get_process_manager()
         result = await pm.spawn(
             tenant_id=TENANT_ID,
-            agent_name="chief",
+            agent_name="scout",
             input_data={"message": "hello"},
         )
         task = await pm.get_task(TENANT_ID, result["task_id"])
@@ -35,7 +35,7 @@ class TestSpawnDelegationTree:
         pm = get_process_manager()
         root = await pm.spawn(
             tenant_id=TENANT_ID,
-            agent_name="chief",
+            agent_name="scout",
             input_data={"message": "root task"},
         )
         root_id = uuid.UUID(root["task_id"])
@@ -131,7 +131,7 @@ class TestAllowedToolsEnforcement:
         ):
             await pm._run_agent(
                 "test_tenant",
-                "chief",
+                "scout",
                 {"message": "hi"},
                 persona,
             )
@@ -153,7 +153,7 @@ class TestDelegateToPersonaTool:
         pm = get_process_manager()
         root = await pm.spawn(
             tenant_id=TENANT_ID,
-            agent_name="chief",
+            agent_name="scout",
             input_data={"message": "root"},
         )
         root_id = root["task_id"]
@@ -162,7 +162,7 @@ class TestDelegateToPersonaTool:
         result_json = await tool_registry.execute(
             "delegate_to_persona",
             {
-                "persona": "chief",
+                "persona": "scout",
                 "subtask": "say hello",
                 "wait": True,
                 "timeout_seconds": 5,
@@ -175,7 +175,7 @@ class TestDelegateToPersonaTool:
         assert result["status"] in ("completed", "failed", "still_running")
 
         # Whatever the outcome, the child task must be correctly linked.
-        tasks, _total, _has_more = await pm.list_tasks(TENANT_ID, agent_name="chief")
+        tasks, _total, _has_more = await pm.list_tasks(TENANT_ID, agent_name="scout")
         child = next(
             (t for t in tasks if str(t.parent_task_id) == root_id),
             None,
@@ -190,7 +190,7 @@ class TestDelegateToPersonaTool:
         pm = get_process_manager()
         root = await pm.spawn(
             tenant_id=TENANT_ID,
-            agent_name="chief",
+            agent_name="scout",
             input_data={"message": "root"},
         )
         set_task_context(
@@ -216,7 +216,7 @@ class TestDelegateToPersonaTool:
         try:
             result_json = await tool_registry.execute(
                 "delegate_to_persona",
-                {"persona": "chief", "subtask": "do it"},
+                {"persona": "scout", "subtask": "do it"},
             )
             import json
 
@@ -232,7 +232,7 @@ class TestDelegateToPersonaTool:
         pm = get_process_manager()
         root = await pm.spawn(
             tenant_id=TENANT_ID,
-            agent_name="chief",
+            agent_name="scout",
             input_data={"message": "root"},
             depth=ProcessManager.MAX_DELEGATION_DEPTH,
         )
@@ -243,7 +243,7 @@ class TestDelegateToPersonaTool:
 
         result_json = await tool_registry.execute(
             "delegate_to_persona",
-            {"persona": "chief", "subtask": "one too deep"},
+            {"persona": "scout", "subtask": "one too deep"},
         )
         import json
 

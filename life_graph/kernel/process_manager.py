@@ -531,7 +531,20 @@ class ProcessManager:
         from life_graph.agents.orchestrator import (
             AgentOrchestrator,
         )
+        from life_graph.services import lead
         from life_graph.tools.registry import registry as tool_registry
+
+        # Jarvis's model is chosen per request: personal work stays local,
+        # the rest may go to its cloud model without the personal tools.
+        lead_route = lead.route(persona, input_data) if agent_name == lead.LEAD else None
+        if lead_route is not None:
+            persona = {**persona, "model": lead_route.model, "allowed_tools": lead_route.tools}
+            input_data = {
+                **input_data,
+                "message": lead_route.message,
+                "history": lead_route.history,
+            }
+        general_cloud = lead_route is not None and lead_route.kind == "general"
 
         orchestrator = AgentOrchestrator(
             model=persona.get("model"),
@@ -550,7 +563,14 @@ class ProcessManager:
             {"role": "user", "content": input_data.get("message", str(input_data))},
         ]
         system_prompt = persona.get("system_prompt")
-        if orchestrator.model == "claude-cli":
+        from life_graph.connectors.locality import run_is_local
+
+        # general on a local model needs no note: nothing was taken away.
+        general_cloud = general_cloud and not run_is_local(orchestrator.model)
+        if general_cloud:
+            system_prompt = f"{system_prompt or ''}\n\n{lead.GENERAL_NOTE}".strip()
+        # Connector data inline is personal data: never on a general cloud run.
+        if orchestrator.model == "claude-cli" and not general_cloud:
             # No tools on this path, so schedule/mail questions get connector
             # data inline — rendered for a cloud audience (connectors/exposure).
             try:
@@ -563,6 +583,14 @@ class ProcessManager:
                 logger.warning("Connector chat context failed", exc_info=True)
 
         allow = tool_override if tool_override is not None else persona.get("allowed_tools")
+        if general_cloud:
+            # An override never brings the personal tools back to a cloud run;
+            # neither does "all tools" (None).
+            allow = [
+                t
+                for t in (allow if allow is not None else tool_registry.tool_names)
+                if t not in lead.PERSONAL_TOOLS
+            ]
         if allow is not None:
             allowed_set = set(allow)
             tools = [t for t in tool_registry.get_tools() if t["function"]["name"] in allowed_set]
@@ -621,7 +649,15 @@ class ProcessManager:
         held_done: dict | None = None
         token_count = 0
 
-        with confinement:
+        from life_graph.services.resilient_llm import only_models
+
+        # A personal request may fail over only to local models.
+        pin: Any = (
+            only_models(lead_route.pinned)
+            if lead_route is not None and lead_route.pinned
+            else nullcontext()
+        )
+        with confinement, pin:
             async for event_str in orchestrator.run(
                 messages, system_prompt=system_prompt, tools=tools
             ):
@@ -646,6 +682,8 @@ class ProcessManager:
 
         response = "".join(response_parts)
         out: dict[str, Any] = {"response": response, "token_count": token_count}
+        if lead_route is not None:
+            out["route"] = lead_route.as_record()
 
         if check_sources:
             out["response"], out["sources"] = sources.apply(response, tool_results)

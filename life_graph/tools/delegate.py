@@ -2,7 +2,7 @@
 to another persona and (by default) wait for its result.
 
 Only usable by personas whose allowed_tools includes
-"delegate_to_persona" (swe-lead, jarvis) — enforced by the
+"delegate_to_persona" (jarvis, the lead) — enforced by the
 allowed_tools filtering added to ProcessManager._run_agent.
 Delegation only works when running inside a kernel AgentTask
 (i.e. spawned via ProcessManager), because it needs to know its
@@ -38,8 +38,7 @@ _TERMINAL_STATUSES = {"completed", "failed", "timeout", "cancelled"}
             "persona": {
                 "type": "string",
                 "description": (
-                    "Name of the persona to delegate to (e.g. 'cody',"
-                    " 'rex', 'ops', 'tutor', 'scout', 'admin')."
+                    "The worker to delegate to: 'scout', 'admin', 'tutor', 'cody' or 'ops'."
                 ),
             },
             "subtask": {

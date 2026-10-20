@@ -609,7 +609,11 @@ class Settings(BaseSettings):
     # irreversible. /pending stays available regardless — reading is not deciding.
     telegram_allow_approvals: bool = False
     # Conversation from Telegram (/ask, /chat — services/assistant_chat.py).
-    telegram_assistant_persona: str = "assistant"
+    # Jarvis, the lead (services/lead.py); "assistant" is retired.
+    telegram_assistant_persona: str = "jarvis"
+    # The local model Jarvis runs personal requests on (services/lead.py).
+    # Empty = agent_llm_model when that is local, else ollama_chat/qwen3:14b.
+    lead_local_model: str = ""
     telegram_ask_timeout_seconds: int = 240
     # Spoken replies: an OpenAI-compatible /v1/audio/speech server (speaches
     # on :8010 locally). Empty = text replies only.

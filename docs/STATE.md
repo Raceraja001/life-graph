@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-20 08:28 UTC` from `feat/research-tech-watch` @ `3269745`
+Generated `2026-10-20 09:06 UTC` from `feat/jarvis-lead` @ `b26a12a`
 
 ---
 
@@ -20,13 +20,13 @@ Generated `2026-10-20 08:28 UTC` from `feat/research-tech-watch` @ `3269745`
 | Database tables | **80** |
 | Migrations | **51** (head: `051_topic_findings`) |
 | Event types | **79** |
-| Built-in personas | **20** |
-| Agent tools | **13** |
+| Built-in personas | **13** |
+| Agent tools | **14** |
 | Scheduled jobs | **25** |
-| Config settings | **245** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3093** in 332 files |
+| Config settings | **246** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3103** in 334 files |
 | Dashboard pages | **18** |
-| Python | 378 files, 97,635 lines |
+| Python | 379 files, 97,928 lines |
 
 ---
 
@@ -742,17 +742,17 @@ Generated `2026-10-20 08:28 UTC` from `feat/research-tech-watch` @ `3269745`
 
 ## Built-in personas
 
-20 personas seeded at startup.
+13 active personas seeded at startup, plus 7 retired (seeded switched off; docs/design/11_persona_roster_plan.md).
 
 | Persona | Driver | Task types | Verifiers | Tools |
 |---|---|---|---|---:|
-| **chief** — Classifies user intent and routes to the best specialist agent. | `—` | — | — | 0 |
+| ~~chief~~ (retired) — Classifies user intent and routes to the best specialist agent. | `—` | — | — | 0 |
 | **cody** — Writes, reviews, debugs, and refactors code. | `—` | — | — | 7 |
-| **rex** — Researches topics, answers questions, and synthesizes information. | `—` | — | — | 2 |
+| ~~rex~~ (retired) — Researches topics, answers questions, and synthesizes information. | `—` | — | — | 2 |
 | **ops** — Manages deployments, infrastructure, and monitoring. | `—` | — | — | 1 |
-| **penny** — Analyzes data, queries databases, and builds analytics. | `—` | — | — | 3 |
-| **scribe** — Writes and maintains documentation, READMEs, and guides. | `—` | — | — | 3 |
-| **uzhavu-ops** — Operates the Uzhavu platform — deploy checks, incident diagnosis, and fixes. | `claude_code` | `deploy_check`, `incident_fix` | `build_ok_diff`, `tests_pass` | 6 |
+| ~~penny~~ (retired) — Analyzes data, queries databases, and builds analytics. | `—` | — | — | 3 |
+| ~~scribe~~ (retired) — Writes and maintains documentation, READMEs, and guides. | `—` | — | — | 3 |
+| ~~uzhavu-ops~~ (retired) — Operates the Uzhavu platform — deploy checks, incident diagnosis, and fixes. | `claude_code` | `deploy_check`, `incident_fix` | `build_ok_diff`, `tests_pass` | 6 |
 | **dependency-updater** — Turns dependency-watcher findings into safe upgrade PRs, running project tests before landing. | `claude_code` | `dependency_update` | `tests_pass`, `diff_within_scope` | 7 |
 | **code-fixer** — Makes small, focused code changes in a registered project. File tools only — no shell — and every change is verified and offered as a PR for approval. | `claude_code` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 2 |
 | **code-fixer-local** — Code Fixer on a local model: the code never leaves the machine. Set its model to a local model that fits the GPU: ollama_chat/gpt-oss:20b scored best on the driver benchmark (evals/driver_bench/README.md). Same verification and PR approval as Code Fixer. | `local` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
@@ -762,16 +762,16 @@ Generated `2026-10-20 08:28 UTC` from `feat/research-tech-watch` @ `3269745`
 | **tutor** — Tracks what you're learning, guides you, and checks understanding. | `—` | — | — | 3 |
 | **scout** — Ambiently researches topics useful to the user and surfaces findings. | `—` | — | — | 4 |
 | **admin** — Surfaces work/life admin items (bills, follow-ups, meeting prep) for review. | `—` | — | — | 13 |
-| **assistant** — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
+| ~~assistant~~ (retired) — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
 | **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
-| **swe-lead** — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — Explicitly-invoked orchestrator for requests that span multiple roles. | `—` | — | — | 35 |
+| ~~swe-lead~~ (retired) — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
+| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 36 |
 
 ---
 
 ## Agent tools
 
-13 tools registered via the `@tool` decorator.
+14 tools registered via the `@tool` decorator.
 
 | Tool | Description |
 |---|---|
@@ -786,6 +786,7 @@ Generated `2026-10-20 08:28 UTC` from `feat/research-tech-watch` @ `3269745`
 | `git_log` | Get recent git commit history. Returns commit hash, author, date, and message for the last N commits. |
 | `git_status` | Get the current git status of a repository. Shows modified, staged, and untracked files. |
 | `inspect_system` | Read-only system inspection. `check` must be one of: disk, docker_logs, docker_ps, git_status, memory, systemctl_status, uptime. Optional `target` names a container/service where relevant. Cannot modify anything. |
+| `research_web` | Research a question on the web: reads several result pages and returns an answer in short claims, each citing the pages that state it. Slower than web_search; use it for questions that need more than one page (comparisons, 'what is the latest on'). Do not put personal details in the question. |
 | `run_command` | Execute a shell command on the host system and return the output. Use for: checking system status, running scripts, git operations, docker commands, file listing, etc. Commands time out after 30 seconds. DANGEROUS: Only use when explicitly asked by the user. |
 | `web_search` | Search the web for current information. Returns titles, URLs and snippets; cite the URLs you rely on. |
 
@@ -911,16 +912,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 258 | 2428 |
-| `tests/integration/` | 73 | 653 |
+| `tests/unit/` | 259 | 2437 |
+| `tests/integration/` | 74 | 654 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **332** | **3093** |
+| **total** | **334** | **3103** |
 
 ---
 
 ## Configuration
 
-245 settings, all overridable by environment variable.
+246 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1159,7 +1160,8 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_TELEGRAM_POLL_TIMEOUT` | `25` |
 | `LIFE_GRAPH_TELEGRAM_RATE_LIMIT_PER_MIN` | `20` |
 | `LIFE_GRAPH_TELEGRAM_ALLOW_APPROVALS` | `False` |
-| `LIFE_GRAPH_TELEGRAM_ASSISTANT_PERSONA` | `'assistant'` |
+| `LIFE_GRAPH_TELEGRAM_ASSISTANT_PERSONA` | `'jarvis'` |
+| `LIFE_GRAPH_LEAD_LOCAL_MODEL` | `''` |
 | `LIFE_GRAPH_TELEGRAM_ASK_TIMEOUT_SECONDS` | `240` |
 | `LIFE_GRAPH_TTS_BASE_URL` | `''` |
 | `LIFE_GRAPH_TTS_MODEL` | `'speaches-ai/Kokoro-82M-v1.0-ONNX'` |

@@ -494,7 +494,8 @@ class TestSeedBuiltinsIdempotency:
             svc.seed_builtins(tenant),
         )
 
-        personas, total = await svc.list_all(tenant)
+        # Retired built-ins are seeded switched off; count them too.
+        personas, total = await svc.list_all(tenant, include_inactive=True)
         seeded_names = {p["name"] for p in personas}
         expected_names = {defn["name"] for defn in personas_module._BUILTIN_PERSONAS}
 
@@ -623,9 +624,11 @@ class TestNewPersonalRolesPersonas:
         tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
         await svc.seed_builtins(tenant)
 
-        for name in ("tutor", "scout", "admin", "swe-lead", "jarvis"):
+        for name in ("tutor", "scout", "admin", "jarvis"):
             persona = await svc.get_by_name(tenant, name)
             assert persona is not None, f"{name} was not seeded"
+        # swe-lead is retired: seeded, but switched off.
+        assert await svc.get_by_name(tenant, "swe-lead") is None
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -658,10 +661,10 @@ class TestNewPersonalRolesPersonas:
         tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
         await svc.seed_builtins(tenant)
 
-        for name in ("swe-lead", "jarvis"):
-            persona = await svc.get_by_name(tenant, name)
-            assert persona is not None
-            assert "delegate_to_persona" in (persona["allowed_tools"] or [])
+        # Jarvis is the one lead that delegates; swe-lead is retired.
+        persona = await svc.get_by_name(tenant, "jarvis")
+        assert persona is not None
+        assert "delegate_to_persona" in (persona["allowed_tools"] or [])
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -675,6 +678,8 @@ class TestNewPersonalRolesPersonas:
         tenant = f"test_roles_{uuid.uuid4().hex[:6]}"
         await svc.seed_builtins(tenant)
 
-        persona = await svc.get_by_name(tenant, "swe-lead")
-        assert persona is not None
+        # Retired, but its row (and so its conversations) is kept intact.
+        personas, _ = await svc.list_all(tenant, include_inactive=True)
+        (persona,) = [p for p in personas if p["name"] == "swe-lead"]
+        assert persona["is_active"] is False
         assert persona["verifier_chain"] == ["tests_pass", "diff_within_scope"]
