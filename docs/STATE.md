@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-20 03:08 UTC` from `feat/change-policy` @ `2dbb229`
+Generated `2026-10-20 04:22 UTC` from `feat/proof-checks` @ `09dab19`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-10-20 03:08 UTC` from `feat/change-policy` @ `2dbb229`
 | Built-in personas | **20** |
 | Agent tools | **13** |
 | Scheduled jobs | **21** |
-| Config settings | **232** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3023** in 325 files |
+| Config settings | **233** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3044** in 326 files |
 | Dashboard pages | **18** |
-| Python | 365 files, 94,362 lines |
+| Python | 366 files, 95,258 lines |
 
 ---
 
@@ -891,16 +891,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 254 | 2372 |
-| `tests/integration/` | 70 | 639 |
+| `tests/unit/` | 255 | 2391 |
+| `tests/integration/` | 70 | 641 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **325** | **3023** |
+| **total** | **326** | **3044** |
 
 ---
 
 ## Configuration
 
-232 settings, all overridable by environment variable.
+233 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1096,6 +1096,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_TRAJECTORY_OPT_OUT_TENANTS` | `''` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_MODEL` | `—` |
+| `LIFE_GRAPH_CHANGE_REVIEW_MODEL` | `''` |
 | `LIFE_GRAPH_DRIVER_PR_AGENT_BIN` | `'pr-agent'` |
 | `LIFE_GRAPH_DRIVER_PR_DESCRIPTION_ENABLED` | `True` |
 | `LIFE_GRAPH_DRIVER_CODE_CONTEXT_ENABLED` | `True` |

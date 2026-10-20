@@ -150,6 +150,11 @@ class VerifierChain:
         self.register("diff_within_scope", _verify_diff_within_scope)
         self.register("tests_exercise_code", _verify_tests_exercise_code)
         self.register("no_test_weakening", _verify_no_test_weakening)
+        # Proof checks (services/proof_checks.py), imported when they run.
+        self.register("diff_coverage", _proof("diff_coverage"))
+        self.register("tests_catch_mutants", _proof("tests_catch_mutants"))
+        self.register("change_explained", _proof("change_explained"))
+        self.register("types_clean_diff", _proof("types_clean_diff"))
         self.register("citations_present", _verify_citations_present)
         self.register("style_conforms", _verify_style_conforms)
         self.register("claims_evidenced", _verify_claims_evidenced)
@@ -1093,6 +1098,19 @@ async def _verify_diff_within_scope(workdir: Path, ctx: dict) -> tuple[bool, dic
             "needs them, say why in your summary instead of changing them."
         )
     return not out_of_scope, evidence
+
+
+def _proof(name: str):
+    """A verifier that runs ``proof_checks.<name>`` (imported lazily: that
+    module imports this one)."""
+
+    async def run(workdir: Path, ctx: dict):
+        from life_graph.services import proof_checks
+
+        return await getattr(proof_checks, name)(workdir, ctx)
+
+    run.__name__ = f"_verify_{name}"
+    return run
 
 
 _ASSERTION_RE = re.compile(

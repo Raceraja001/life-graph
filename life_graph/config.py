@@ -491,6 +491,10 @@ class Settings(BaseSettings):
     # Off by default — pure LLM overhead until agents run unattended.
     driver_second_opinion_enabled: bool = False
     driver_second_opinion_model: str | None = None  # None = agent_llm_model
+    # The second-opinion review before a code change lands unattended
+    # (services/change_policy.py). Empty = the free cloud models, else the
+    # local agent model; never a paid fallback. Code only leaves the machine.
+    change_review_model: str = ""
     driver_pr_agent_bin: str = "pr-agent"  # the PR-Agent CLI backing the reviewer above
     # Draft the PR description from the landed diff (one model call per landed
     # task, best-effort -- falls back to the instruction + agent summary).

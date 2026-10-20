@@ -1249,6 +1249,8 @@ class ProjectRegister(_ProjectOpsSettings):
     )
     auto_merge_max_lines: int | None = Field(None, ge=1, le=5000)
     auto_merge_max_files: int | None = Field(None, ge=1, le=200)
+    diff_coverage_min: float | None = Field(None, ge=0, le=1)
+    mutation_min_kill: float | None = Field(None, ge=0, le=1)
 
     @field_validator("required_checks")
     @classmethod
@@ -1296,6 +1298,8 @@ class ProjectUpdate(_ProjectOpsSettings):
     )
     auto_merge_max_lines: int | None = Field(None, ge=1, le=5000)
     auto_merge_max_files: int | None = Field(None, ge=1, le=200)
+    diff_coverage_min: float | None = Field(None, ge=0, le=1)
+    mutation_min_kill: float | None = Field(None, ge=0, le=1)
 
     @field_validator("required_checks")
     @classmethod

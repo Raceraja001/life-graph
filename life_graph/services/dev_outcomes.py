@@ -446,7 +446,89 @@ async def sync_all(session_factory) -> dict[str, Any]:
                 )
                 reports.append({"approval": str(approval_id), "error": str(exc)[:200]})
 
+    try:
+        reports.extend(await record_reverts(session_factory))
+    except Exception as exc:
+        logger.warning("revert tracking failed", exc_info=True)
+        reports.append({"reverts": "error", "error": str(exc)[:200]})
+
     return {"synced": len(reports), "reports": reports}
+
+
+REVERT_WINDOW_DAYS = 30
+_REVERTS_RE = re.compile(r"This reverts commit ([0-9a-f]{7,40})")
+
+
+async def record_reverts(session_factory) -> list[dict[str, Any]]:
+    """An agent's merged change that was later reverted counts against it.
+
+    A merge counts as a success when it lands; if anyone reverts it on any
+    branch within :data:`REVERT_WINDOW_DAYS` (``git revert`` writes "This
+    reverts commit <sha>"), that is recorded as a failure for the driver and
+    for the kind of change (services/change_policy.py) — once per merge. The
+    post-merge CI revert is caught the same way once it merges. Reads the
+    project's local clone, which every dev task fetches.
+    """
+    from datetime import timedelta
+
+    from life_graph.autonomy.trust.service import TrustScoreService
+    from life_graph.services.change_policy import trust_key
+    from life_graph.services.github_pr import _git
+
+    since = datetime.now(UTC) - timedelta(days=REVERT_WINDOW_DAYS)
+    reports: list[dict[str, Any]] = []
+    async with session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Approval).where(
+                        Approval.kind == "driver_merge",
+                        Approval.status == "approved",
+                        Approval.payload["merge_commit"].astext.isnot(None),
+                        Approval.payload["reverted"].astext.is_(None),
+                        Approval.resolved_at >= since,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_repo: dict[str, list[Approval]] = {}
+        for appr in rows:
+            repo = str((appr.payload or {}).get("repo_path") or "")
+            if repo:
+                by_repo.setdefault(repo, []).append(appr)
+        for repo, merges in by_repo.items():
+            code, out, _ = await _git(
+                repo,
+                "log",
+                "--all",
+                f"--since={REVERT_WINDOW_DAYS} days ago",
+                "--grep=This reverts commit",
+                "--format=%B",
+            )
+            if code != 0:
+                continue
+            reverted = set(_REVERTS_RE.findall(out))
+            for appr in merges:
+                payload = appr.payload or {}
+                sha = str(payload.get("merge_commit"))
+                if not any(sha.startswith(r) or r.startswith(sha) for r in reverted):
+                    continue
+                driver = payload.get("driver") or "unknown"
+                kind = (payload.get("change") or {}).get("kind")
+                trust = TrustScoreService(session)
+                for agent in [driver, *([trust_key(driver, kind)] if kind else [])]:
+                    await trust.record_failure(
+                        appr.tenant_id, agent, ACTION_TYPE, payload.get("project_id")
+                    )
+                appr.payload = {**payload, "reverted": True}
+                reports.append({"reverted": sha[:8], "driver": driver, "kind": kind})
+                logger.warning(
+                    "Merged agent change %s was reverted; counted against %s", sha[:8], driver
+                )
+        await session.commit()
+    return reports
 
 
 async def check_post_merge_ci(session: AsyncSession, merge_approval: Approval) -> dict[str, Any]:

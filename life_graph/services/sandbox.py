@@ -505,8 +505,14 @@ async def run(
     venv: Path | None = None,
     node_deps: Path | None = None,
     timeout: int = 120,
+    extra_ro: dict[Path, str] | None = None,
+    tmp_size: str | None = None,
 ) -> SandboxResult:
     """Run *argv* in the check-phase sandbox with *workdir* mounted at ``/work``.
+
+    *extra_ro* mounts more host directories read-only (host path -> container
+    path), e.g. the generated mutants of the mutation check; *tmp_size* raises
+    the /tmp tmpfs for a check that copies the project there.
 
     Arguments that are paths must be relative to *workdir* (or under ``/work``):
     host paths do not exist inside the container. With *node_deps* (from
@@ -522,7 +528,10 @@ async def run(
     if venv is not None:
         mounts += ["-v", f"{venv}:{VENV}:ro"]
         path = f"{VENV}/bin:{path}"
-    entry, args, tmp_size = argv[0], argv[1:], "512m"
+    for host, inside in (extra_ro or {}).items():
+        mounts += ["-v", f"{host}:{inside}:ro"]
+    entry, args = argv[0], argv[1:]
+    tmp_size = tmp_size or "512m"
     if node_deps is not None:
         mounts += ["-v", f"{node_deps / 'node_modules'}:{NODE_DEPS}:ro"]
         path = f"{NODE_DEPS}/.bin:{path}"

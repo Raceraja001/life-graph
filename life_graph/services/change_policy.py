@@ -41,6 +41,10 @@ AUTO_MAX_LINES = 150
 AUTO_MAX_FILES = 3
 # Code trust is earned separately and needs more than the general bar of 3.
 CODE_MIN_OUTCOMES = 5
+# A code change lands unattended only if these ran (and passed: a landing
+# with a failed or inconclusive check is never verified).
+CODE_PROOF_CHECKS = ("diff_coverage", "change_explained")
+_REVIEW_DIFF_MAX = 30_000
 
 # Paths no agent change lands on unattended, in any project (fnmatch globs,
 # where * also crosses "/").
@@ -218,6 +222,13 @@ async def auto_gate(
             payload.get("head_commit"),
         )
     reasons = list(change.get("review_reasons") or [])
+    if change.get("kind", "code") == "code":
+        # Production code lands unattended only with proof it is covered and
+        # understood (services/proof_checks.py), never on "tests pass" alone.
+        checks = set(payload.get("checks") or [])
+        missing = [c for c in CODE_PROOF_CHECKS if c not in checks]
+        if missing:
+            reasons.append(f"no proof checks ran for this code change: {', '.join(missing)}")
     if reasons:
         return False, "needs review: " + "; ".join(reasons), {}
     driver = payload.get("driver") or "unknown"
@@ -229,3 +240,70 @@ async def auto_gate(
     if not (record["established"] and rate >= AUTO_PR_MERGE_RATE):
         return False, f"not yet trusted for {record['kind']} changes: {label}", record
     return True, label, record
+
+
+_REVIEW_PROMPT = """You review a code change an AI agent made, before it may be merged \
+without a person looking at it. You can stop it; you cannot approve it on your own.
+
+The task the agent was given:
+{instruction}
+
+The change (unified diff):
+{diff}
+
+Block it if any of these is true:
+- it does more than, or something other than, what the task asks;
+- it changes behaviour the task did not ask to change;
+- it removes or weakens a check, validation, test, tenant filter or error handling;
+- it could expose one tenant's or user's data to another;
+- it is hard to follow, or looks wrong.
+
+Answer with JSON only: {{"verdict": "ok" or "block", "reason": "one sentence"}}"""
+
+
+async def second_opinion(instruction: str, diff: str) -> tuple[bool, str]:
+    """An independent model's read of a code change that is about to land
+    unattended. Advisory in one direction only (CHARTER invariant 1): "block"
+    sends it to a person, "ok" adds nothing to the trust it already needed.
+
+    Runs on the configured ``change_review_model``, else the free cloud
+    models, else the local agent model, never a paid fallback. Fails closed:
+    if no model answers, or the answer cannot be read, the change waits.
+    """
+    from life_graph.api.dependencies import get_resilient_llm
+    from life_graph.config import settings
+    from life_graph.services.compute_router import cloud_models
+    from life_graph.services.resilient_llm import only_models
+
+    models = [m for m in (settings.change_review_model, *cloud_models()) if m] or [
+        settings.agent_llm_model
+    ]
+    prompt = _REVIEW_PROMPT.format(
+        instruction=(instruction or "")[:4000], diff=(diff or "")[:_REVIEW_DIFF_MAX]
+    )
+    try:
+        with only_models(models):
+            text = await get_resilient_llm().chat(
+                [{"role": "user", "content": prompt}],
+                model=models[0],
+                temperature=0,
+                max_tokens=300,
+            )
+    except Exception as exc:  # noqa: BLE001 - any failure means "a person decides"
+        logger.warning("Second-opinion review unavailable: %s", exc)
+        return False, f"second-opinion review unavailable ({type(exc).__name__})"
+    import json
+    import re
+
+    match = re.search(r"\{.*\}", text or "", re.DOTALL)
+    try:
+        answer = json.loads(match.group(0)) if match else {}
+    except json.JSONDecodeError:
+        answer = {}
+    verdict = str(answer.get("verdict") or "").lower()
+    reason = str(answer.get("reason") or "").strip()[:300]
+    if verdict == "ok":
+        return True, f"second opinion: ok ({reason})" if reason else "second opinion: ok"
+    if verdict == "block":
+        return False, f"second opinion: {reason or 'blocked'}"
+    return False, "second-opinion review gave no readable verdict"

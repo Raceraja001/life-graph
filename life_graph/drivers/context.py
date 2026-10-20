@@ -178,6 +178,8 @@ class ContextPacketBuilder:
                         "protected_paths",
                         "auto_merge_max_lines",
                         "auto_merge_max_files",
+                        "diff_coverage_min",
+                        "mutation_min_kill",
                     )
                 },
             }

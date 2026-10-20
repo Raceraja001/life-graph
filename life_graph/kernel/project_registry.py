@@ -54,6 +54,8 @@ logger = logging.getLogger(__name__)
 #                          services/change_policy.py: CI, migrations, dependencies, ...)
 #   auto_merge_max_lines  most changed lines an agent change may land with unattended (150)
 #   auto_merge_max_files  most changed files an agent change may land with unattended (3)
+#   diff_coverage_min     share of changed production lines tests must run (0.8; diff_coverage)
+#   mutation_min_kill     share of mutants a changed test must catch (0.6; tests_catch_mutants)
 #   smoke_command        run after a successful deploy; failing it runs rollback_command
 #                          (if set) and queues a fix task (services/production_findings.py)
 #   rollback_command      undo a deploy whose smoke check failed
@@ -92,6 +94,8 @@ _USER_META_KEYS = frozenset(
         "protected_paths",
         "auto_merge_max_lines",
         "auto_merge_max_files",
+        "diff_coverage_min",
+        "mutation_min_kill",
         "deploy_command",
         "deploy_on_merge",
         "base_branch",
