@@ -42,6 +42,7 @@ from life_graph.drivers.workdir import (
     resolve_workdir,
     worktree_intact,
 )
+from life_graph.services.change_policy import describe_change, policy_from_project
 from life_graph.services.governor import governor
 from life_graph.services.verifiers import (  # noqa: F401  (failure_text: re-exported)
     BOUNCE_TASK_MARKER,
@@ -284,7 +285,9 @@ def _coerce_project_uuid(project_id: str | uuid.UUID | None) -> uuid.UUID | None
 # no_vulnerable_deps_in_diff self-gates (a real pass, not a no-op) unless
 # the diff touches a dependency manifest, so it costs nothing on the
 # overwhelming majority of dispatches that never touch one.
-_ALWAYS_ON_CHECKS = ("no_secrets_in_diff", "no_vulnerable_deps_in_diff")
+#
+# no_test_weakening likewise passes at once unless an existing test changed.
+_ALWAYS_ON_CHECKS = ("no_secrets_in_diff", "no_vulnerable_deps_in_diff", "no_test_weakening")
 
 
 _LOCAL_MODEL_PREFIXES = ("ollama/", "ollama_chat/")
@@ -902,6 +905,7 @@ class TaskDispatcher:
                         auto_open_pr=bool(packet.project_context.get("auto_open_pr")),
                         auto_merge=bool(packet.project_context.get("auto_merge")),
                         base_branch=packet.project_context.get("base_branch") or None,
+                        change_policy=policy_from_project(packet.project_context),
                     )
 
             # Step 7: Record stats + emit result
@@ -1609,6 +1613,7 @@ class TaskDispatcher:
         auto_open_pr: bool = False,
         auto_merge: bool = False,
         base_branch: str | None = None,
+        change_policy: dict | None = None,
     ) -> None:
         """File a ``driver_pr`` approval for a landed branch.
 
@@ -1636,6 +1641,11 @@ class TaskDispatcher:
             landing = await describe_landing(repo_path, branch, base_branch=base_branch)
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else branch
             pr_description = await self._draft_pr_description(repo_path, landing, instruction)
+            # What the change is (kind, size, protected paths), fixed now:
+            # every unattended open/merge is gated on it (change_policy.auto_gate).
+            change = await describe_change(
+                repo_path, landing.get("base_commit"), landing.get("head_commit"), change_policy
+            )
             payload = {
                 "task_id": task_id,
                 "driver": driver_name,
@@ -1650,6 +1660,7 @@ class TaskDispatcher:
                 "auto_merge": auto_merge,
                 "verified": verified,
                 "pr_description": pr_description,
+                "change": change,
                 **landing,
             }
             title_prefix = "Open PR" if verified else "Open PR (UNVERIFIED)"
@@ -1672,6 +1683,12 @@ class TaskDispatcher:
                     + " Review the diff by hand before approving; this will not "
                     "auto-open or auto-merge regardless of trust."
                 )
+            detail += (
+                f"\n\nChange: {change['kind']}, {len(change['files'])} file(s), "
+                f"{change['lines']} line(s)."
+            )
+            if change["review_reasons"]:
+                detail += " Needs your review: " + "; ".join(change["review_reasons"]) + "."
             if pr_description:
                 # Shown before approving, since `detail` is all an approvals
                 # surface renders: the reviewer sees what the PR will say.
@@ -1728,17 +1745,12 @@ class TaskDispatcher:
         approval pending, exactly as if auto-open were off.
         """
         from life_graph.services.approvals import ApprovalService
-        from life_graph.services.dev_outcomes import track_record
+        from life_graph.services.change_policy import auto_gate
         from life_graph.services.github_pr import PullRequestError, open_pull_request
 
-        record = await track_record(session, appr.tenant_id, driver_name, project_id)
-        if not (record["established"] and record["merge_rate"] >= AUTO_PR_MERGE_RATE):
-            logger.info(
-                "Auto-open PR skipped: %s has %d/%d merged on this project",
-                driver_name,
-                record["merged"],
-                record["total"],
-            )
+        allowed, why, _record = await auto_gate(session, appr.tenant_id, appr.payload or {})
+        if not allowed:
+            logger.info("Auto-open PR skipped for %s: %s", driver_name, why)
             return
         try:
             outcome = await open_pull_request(appr.payload or {})
@@ -1750,8 +1762,7 @@ class TaskDispatcher:
         appr.resolved_at = datetime.now(UTC)
         appr.resolved_by = "auto: trusted driver"
         appr.resolution_note = (
-            f"Opened automatically: {driver_name} has {record['merged']}/{record['total']} "
-            f"merged on this project. PR: {outcome['pr_url']}"
+            f"Opened automatically: {why} on this project. PR: {outcome['pr_url']}"
         )
         appr.payload = {**(appr.payload or {}), "pr_url": outcome["pr_url"], "auto_opened": True}
         approvals = ApprovalService(session)

@@ -133,6 +133,23 @@ async def landing(monkeypatch):
         return {"head_commit": "a" * 40, "base_commit": "b" * 40, "base_branch": "master"}
 
     monkeypatch.setattr(github_pr, "describe_landing", fake_describe)
+    from life_graph.drivers import dispatcher
+    from life_graph.services import change_policy
+
+    # The landed diff, as change_policy would describe it (the commits above
+    # are fake, so git cannot). Tests set .change to land other kinds.
+    state = SimpleNamespace(
+        change={"files": ["tests/unit/test_x.py"], "lines": 20, "kind": "tests", "protected": []}
+    )
+
+    async def fake_change(repo_path, base, head, policy=None):
+        change = dict(state.change)
+        change["review_reasons"] = change_policy.review_reasons(
+            change, policy or change_policy.policy_from_project(None)
+        )
+        return change
+
+    monkeypatch.setattr(dispatcher, "describe_change", fake_change)
     opened, merged = [], []
 
     async def fake_open(payload):
@@ -145,7 +162,7 @@ async def landing(monkeypatch):
 
     monkeypatch.setattr(github_pr, "open_pull_request", fake_open)
     monkeypatch.setattr(github_pr, "merge_pull_request", fake_merge)
-    return SimpleNamespace(opened=opened, merged=merged)
+    return SimpleNamespace(opened=opened, merged=merged, state=state)
 
 
 async def _land(driver_name, project_id, auto_open_pr, auto_merge=False, verified=True):
@@ -246,6 +263,87 @@ async def test_auto_merge_fires_after_an_auto_opened_pr(landing):
     assert merge.payload["merge_commit"] == "c" * 40
     assert landing.opened == [pr.payload["branch"]]
     assert landing.merged == ["https://github.com/me/r/pull/77"]
+
+
+# ── change_policy: trust per kind of change, protected paths, size ──
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_trust_earned_on_tests_does_not_land_production_code(landing):
+    """The driver's record (here 4/4, earned on test PRs) is not trust for
+    code: a code change waits for a person until code PRs earn their own."""
+    project = uuid.uuid4()
+    await _record("trusted", project, merged=4, failed=0)
+    landing.state.change = {"files": ["app/svc.py"], "lines": 12, "kind": "code", "protected": []}
+    approvals = await _land("trusted", project, auto_open_pr=True, auto_merge=True)
+    assert approvals["driver_pr"].status == "pending"
+    assert landing.opened == [] and landing.merged == []
+    assert approvals["driver_pr"].payload["change"]["kind"] == "code"
+    assert "Change: code, 1 file(s), 12 line(s)." in approvals["driver_pr"].detail
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_code_trust_is_earned_separately(landing):
+    project = uuid.uuid4()
+    await _record("trusted:code", project, merged=5, failed=0)
+    landing.state.change = {"files": ["app/svc.py"], "lines": 12, "kind": "code", "protected": []}
+    approvals = await _land("trusted", project, auto_open_pr=True, auto_merge=True)
+    assert approvals["driver_pr"].status == "approved"
+    assert approvals["driver_merge"].status == "approved"
+    assert "5/5 code PRs merged" in approvals["driver_merge"].resolution_note
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+@pytest.mark.parametrize(
+    "change",
+    [
+        {
+            "files": ["alembic/versions/050_x.py"],
+            "lines": 30,
+            "kind": "code",
+            "protected": ["alembic/versions/050_x.py"],
+        },
+        {"files": ["tests/unit/test_big.py"], "lines": 400, "kind": "tests", "protected": []},
+        {
+            "files": [f"tests/unit/test_{i}.py" for i in range(5)],
+            "lines": 50,
+            "kind": "tests",
+            "protected": [],
+        },
+    ],
+    ids=["protected-path", "too-many-lines", "too-many-files"],
+)
+async def test_protected_or_large_changes_always_wait_for_a_person(landing, change):
+    project = uuid.uuid4()
+    await _record("trusted", project, merged=9, failed=0)
+    await _record("trusted:code", project, merged=9, failed=0)
+    landing.state.change = change
+    approvals = await _land("trusted", project, auto_open_pr=True, auto_merge=True)
+    pr = approvals["driver_pr"]
+    assert pr.status == "pending" and landing.opened == []
+    assert "Needs your review:" in pr.detail
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_merged_pr_counts_for_its_kind_and_the_driver(landing):
+    from life_graph.models.db import Approval
+    from life_graph.services.dev_outcomes import record_outcome, track_record
+    from life_graph.storage.database import async_session
+
+    project = uuid.uuid4()
+    approvals = await _land("fresh", project, auto_open_pr=False)
+    async with async_session() as s:
+        pr = await s.get(Approval, approvals["driver_pr"].id)
+        await record_outcome(s, pr, "merged", source="test")
+        await s.commit()
+        overall = await track_record(s, TENANT, "fresh", str(project))
+        tests_kind = await track_record(s, TENANT, "fresh:tests", str(project))
+        code_kind = await track_record(s, TENANT, "fresh:code", str(project))
+    assert (overall["merged"], tests_kind["merged"], code_kind["merged"]) == (1, 1, 0)
 
 
 @pytest.mark.asyncio

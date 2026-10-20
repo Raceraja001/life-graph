@@ -287,17 +287,17 @@ class ApprovalService:
         if (merge_appr.payload or {}).get("verified") is False:
             logger.info("Auto-merge skipped: branch was landed off an unverified diff")
             return
-        from life_graph.drivers.dispatcher import AUTO_PR_MERGE_RATE
-        from life_graph.services.dev_outcomes import track_record
+        from life_graph.services.change_policy import auto_gate
 
-        record = await track_record(self.session, merge_appr.tenant_id, driver_name, project_id)
-        if not (record["established"] and record["merge_rate"] >= AUTO_PR_MERGE_RATE):
-            logger.info(
-                "Auto-merge skipped: %s has %d/%d merged on this project",
-                driver_name,
-                record["merged"],
-                record["total"],
-            )
+        # Trust per kind of change, protected paths and size: change_policy.
+        gate_payload = {
+            "driver": driver_name,
+            "project_id": project_id,
+            **(merge_appr.payload or {}),
+        }
+        allowed, why, _record = await auto_gate(self.session, merge_appr.tenant_id, gate_payload)
+        if not allowed:
+            logger.info("Auto-merge skipped for %s: %s", driver_name, why)
             return
         try:
             await self._apply_driver_merge(merge_appr, True)
@@ -307,10 +307,7 @@ class ApprovalService:
         merge_appr.status = "approved"
         merge_appr.resolved_at = datetime.now(UTC)
         merge_appr.resolved_by = "auto: trusted driver"
-        note = (
-            f"Merged automatically: {driver_name} has {record['merged']}/{record['total']} "
-            f"merged on this project."
-        )
+        note = f"Merged automatically: {why} on this project."
         merge_appr.resolution_note = (
             f"{merge_appr.resolution_note}\n{note}" if merge_appr.resolution_note else note
         )

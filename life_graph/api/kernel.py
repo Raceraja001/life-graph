@@ -1244,6 +1244,11 @@ class ProjectRegister(_ProjectOpsSettings):
         description="Also queue unit tests for short public Python functions no test names",
     )
     nightly_untested_paths: list[str] | None = None
+    protected_paths: list[str] | None = Field(
+        None, description="Globs agent changes may touch only with a person's review"
+    )
+    auto_merge_max_lines: int | None = Field(None, ge=1, le=5000)
+    auto_merge_max_files: int | None = Field(None, ge=1, le=200)
 
     @field_validator("required_checks")
     @classmethod
@@ -1286,6 +1291,11 @@ class ProjectUpdate(_ProjectOpsSettings):
         description="Also queue unit tests for short public Python functions no test names",
     )
     nightly_untested_paths: list[str] | None = None
+    protected_paths: list[str] | None = Field(
+        None, description="Globs agent changes may touch only with a person's review"
+    )
+    auto_merge_max_lines: int | None = Field(None, ge=1, le=5000)
+    auto_merge_max_files: int | None = Field(None, ge=1, le=200)
 
     @field_validator("required_checks")
     @classmethod

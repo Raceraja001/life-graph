@@ -78,6 +78,7 @@ def test_required_checks_are_appended_once_in_order():
         "tests_pass",
         "no_secrets_in_diff",
         "no_vulnerable_deps_in_diff",
+        "no_test_weakening",
     ]
 
 
@@ -87,10 +88,12 @@ def test_always_on_checks_are_appended_even_with_no_required_checks():
         "build_ok_diff",
         "no_secrets_in_diff",
         "no_vulnerable_deps_in_diff",
+        "no_test_weakening",
     ]
     assert _with_required_checks(["no_secrets_in_diff", "no_vulnerable_deps_in_diff"], {}) == [
         "no_secrets_in_diff",
         "no_vulnerable_deps_in_diff",
+        "no_test_weakening",
     ]
 
 
