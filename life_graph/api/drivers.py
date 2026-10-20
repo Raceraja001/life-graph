@@ -426,6 +426,24 @@ async def get_compute_status():
     return success_response(data=await _compute_status(get_current_tenant_id()))
 
 
+@router.get(
+    "/night-shift",
+    summary="What the coding engines did: merged, waiting for you and why, failed and why",
+)
+async def get_night_shift(hours: int = Query(24, ge=1, le=24 * 14)):
+    """The night shift report (services/night_shift.py, Job 2) — the same data
+    as the daily brief's Night shift section."""
+    from datetime import UTC, timedelta
+    from datetime import datetime as _dt
+
+    from life_graph.services import night_shift
+
+    since = _dt.now(UTC) - timedelta(hours=hours)
+    async with async_session() as session:
+        rep = await night_shift.report(session, get_current_tenant_id(), since)
+    return success_response(data={**rep, "lines": night_shift.lines(rep)})
+
+
 @router.put("/compute/presence", summary="Set the active/away switch (auto clears it)")
 async def put_presence(body: PresenceUpdate):
     """Mode "active" keeps queued coding work off the GPU; "away" lets it run

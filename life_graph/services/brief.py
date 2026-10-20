@@ -75,6 +75,7 @@ class BriefComposer:
         big_decisions = await self._big_decisions(tenant_id, since)
         connector_sections = await self._connector_sections(tenant_id, now)
         assistant_lines = await self._assistant_lines(tenant_id)
+        night_shift = await self._night_shift_lines(tenant_id, since)
 
         if not (
             held
@@ -84,6 +85,7 @@ class BriefComposer:
             or big_decisions
             or connector_sections
             or assistant_lines
+            or night_shift
         ):
             logger.info("No brief content for tenant %s — staying silent", tenant_id)
             return None
@@ -91,6 +93,14 @@ class BriefComposer:
         body = self._format_body(
             held, question_data, capture_summary, watcher_summary, big_decisions
         )
+        if night_shift:
+            # Code work, not personal data: fine to leave the machine.
+            shift = [
+                "## Night shift",
+                f"- {night_shift[0]}",
+                *[f"  - {x}" for x in night_shift[1:]],
+            ]
+            body = "\n".join([*shift, "", body]).strip()
         if assistant_lines:
             # Kinds, dates and percentages only: this body leaves the machine.
             coming = ["## Coming up", *[f"- {line}" for line in assistant_lines], ""]
@@ -291,6 +301,17 @@ class BriefComposer:
                 .group_by(WatchEvent.watcher_name)
             )
             return {name or "unknown": count for name, count in result.all()}
+
+    async def _night_shift_lines(self, tenant_id: str, since: datetime) -> list[str]:
+        """What the coding engines did (services/night_shift.py, Job 2)."""
+        try:
+            from life_graph.services import night_shift
+
+            async with self._session_factory() as session:
+                return night_shift.lines(await night_shift.report(session, tenant_id, since))
+        except Exception:
+            logger.warning("Night shift lines failed for %s", tenant_id, exc_info=True)
+            return []
 
     async def _assistant_lines(self, tenant_id: str) -> list[str]:
         """Documents, budgets, study cards, invoices (services/assistant_daily.py)."""
