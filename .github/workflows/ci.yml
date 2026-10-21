@@ -48,17 +48,31 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # The installed packages themselves, not just pip's downloads: the
+      # install took ~90 s a job even with the download cache. Keyed on
+      # pyproject.toml, so any dependency change installs afresh.
+      - uses: actions/cache@v4
+        id: site-packages
+        with:
+          path: ${{ env.pythonLocation }}
+          key: site-packages-${{ runner.os }}-py312-${{ hashFiles('pyproject.toml') }}
+
       - name: Install dependencies
         run: |
-          # torch from the CPU index first: sentence-transformers would
-          # otherwise drag in the ~3.4 GB CUDA build, which no runner uses.
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          # local-nlp carries spaCy and sentence-transformers. They left the
-          # core dependency set when the base install was cut from 5.4 GB to
-          # 369 MB, but CI still needs them: the spaCy model download below
-          # and the API server's embedding-backend startup check both fail
-          # without them.
-          pip install -e ".[dev,local-nlp]"
+          if [ "${{ steps.site-packages.outputs.cache-hit }}" != "true" ]; then
+            # torch from the CPU index first: sentence-transformers would
+            # otherwise drag in the ~3.4 GB CUDA build, which no runner uses.
+            pip install torch --index-url https://download.pytorch.org/whl/cpu
+            # local-nlp carries spaCy and sentence-transformers. They left the
+            # core dependency set when the base install was cut from 5.4 GB to
+            # 369 MB, but CI still needs them: the spaCy model download below
+            # and the API server's embedding-backend startup check both fail
+            # without them.
+            pip install -e ".[dev,local-nlp]"
+          else
+            # Packages restored; only this checkout's editable install is new.
+            pip install --no-deps -e .
+          fi
 
       - name: Download spaCy model
         run: python -m spacy download en_core_web_sm
@@ -68,7 +82,10 @@ jobs:
 
   integration-tests:
     runs-on: ubuntu-latest
-    needs: unit-tests
+    # Not after unit-tests: the two are independent, and running them side
+    # by side makes CI as long as the slower one, not the sum. Both must
+    # still pass to merge.
+    needs: lint
 
     # Postgres is NOT a service container here. Life Graph needs pgvector *and*
     # Apache AGE in the same server, and no published image carries both — AGE
@@ -169,17 +186,31 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # The installed packages themselves, not just pip's downloads: the
+      # install took ~90 s a job even with the download cache. Keyed on
+      # pyproject.toml, so any dependency change installs afresh.
+      - uses: actions/cache@v4
+        id: site-packages
+        with:
+          path: ${{ env.pythonLocation }}
+          key: site-packages-${{ runner.os }}-py312-${{ hashFiles('pyproject.toml') }}
+
       - name: Install dependencies
         run: |
-          # torch from the CPU index first: sentence-transformers would
-          # otherwise drag in the ~3.4 GB CUDA build, which no runner uses.
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          # local-nlp carries spaCy and sentence-transformers. They left the
-          # core dependency set when the base install was cut from 5.4 GB to
-          # 369 MB, but CI still needs them: the spaCy model download below
-          # and the API server's embedding-backend startup check both fail
-          # without them.
-          pip install -e ".[dev,local-nlp]"
+          if [ "${{ steps.site-packages.outputs.cache-hit }}" != "true" ]; then
+            # torch from the CPU index first: sentence-transformers would
+            # otherwise drag in the ~3.4 GB CUDA build, which no runner uses.
+            pip install torch --index-url https://download.pytorch.org/whl/cpu
+            # local-nlp carries spaCy and sentence-transformers. They left the
+            # core dependency set when the base install was cut from 5.4 GB to
+            # 369 MB, but CI still needs them: the spaCy model download below
+            # and the API server's embedding-backend startup check both fail
+            # without them.
+            pip install -e ".[dev,local-nlp]"
+          else
+            # Packages restored; only this checkout's editable install is new.
+            pip install --no-deps -e .
+          fi
 
       - name: Download spaCy model
         run: python -m spacy download en_core_web_sm
