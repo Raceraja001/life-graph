@@ -104,6 +104,76 @@ def node_toolchain(ctx: dict) -> bool:
     return (ctx.get("sandbox_toolchain") or "").strip().lower() == "node"
 
 
+# ── JVM toolchain (Gradle: Kotlin, Java, Android) ────────────
+#
+# A project whose registry sets ``sandbox_toolchain: jvm`` is checked in the
+# JVM image. Setup (network on) runs the project's Gradle wrapper on a copy of
+# the worktree with a cached Gradle home: the wrapper downloads Gradle, an init
+# script of ours resolves every configuration, and the build files are
+# compiled. It never runs the tests — test code never sees the network. Checks
+# (network off) mount that home read-only, read dependencies through
+# GRADLE_RO_DEP_CACHE, and run Gradle from the cached distribution, offline, on
+# a copy of the worktree under /tmp (Gradle writes build/ next to the code).
+GRADLE_RO = "/gradle-ro"
+_GRADLE_MANIFESTS: tuple[str, ...] = (
+    "settings.gradle.kts",
+    "settings.gradle",
+    "build.gradle.kts",
+    "build.gradle",
+    "app/build.gradle.kts",
+    "app/build.gradle",
+    "gradle.properties",
+    "gradle/libs.versions.toml",
+    "gradle/wrapper/gradle-wrapper.properties",
+)
+# Resolves every resolvable configuration of every project, so the offline
+# check finds each dependency in the cache. Ours, not the worktree's.
+_GRADLE_RESOLVE_ALL = """\
+allprojects {
+    tasks.register("lgResolveAll") {
+        doLast {
+            configurations.findAll { it.canBeResolved }.each { c ->
+                try { c.resolve() } catch (Exception ignored) { }
+            }
+        }
+    }
+}
+"""
+# Bump when the setup recipe below changes (it is part of the cache key).
+_GRADLE_SETUP_VERSION = "3"
+# Kotlin's compiler daemon is a separate process the sandbox cannot keep.
+_GRADLE_FLAGS = "--no-daemon --console=plain -Pkotlin.compiler.execution.strategy=in-process"
+_GRADLE_JVMARGS = "-Dorg.gradle.jvmargs=-Xmx2g"
+# The Android plugin writes ~/.android and Java reads user.home from the
+# image's passwd (/home/ubuntu, read-only here): both go to the writable /tmp.
+_JVM_HOME_ENV = (
+    "-e",
+    "ANDROID_USER_HOME=/tmp/.android",
+    "-e",
+    "JAVA_TOOL_OPTIONS=-Duser.home=/tmp",
+)
+# What runs `gradle` in a check: the distribution the setup downloaded.
+_GRADLE_BIN = f"$(ls -d {GRADLE_RO}/wrapper/dists/*/*/gradle-*/bin/gradle | head -1)"
+
+
+def jvm_toolchain(ctx: dict) -> bool:
+    """Whether the project registry put this project on the JVM (Gradle) toolchain."""
+    return (ctx.get("sandbox_toolchain") or "").strip().lower() == "jvm"
+
+
+def _is_android(workdir: Path) -> bool:
+    """An Android build: the plugin by id, or through the version catalogue
+    (``alias(libs.plugins.android.application)``, which names no id)."""
+    markers = ("com.android", "plugins.android.", "plugins.android.application")
+    for name in ("app/build.gradle.kts", "app/build.gradle", "build.gradle.kts", "build.gradle"):
+        f = workdir / name
+        if f.is_file() and not f.is_symlink():
+            text = f.read_text(errors="replace")
+            if any(m in text for m in markers):
+                return True
+    return False
+
+
 class SandboxUnavailableError(Exception):
     """The sandbox could not run the check. The message explains why."""
 
@@ -372,6 +442,117 @@ async def prepare_node_env(workdir: Path, setup: str | None = None) -> Path:
     return ready
 
 
+async def _jvm_image_id() -> str:
+    image = settings.verifier_sandbox_jvm_image
+    res = await _exec(["docker", "image", "inspect", "--format", "{{.Id}}", image], timeout=30)
+    if res.returncode != 0:
+        raise SandboxUnavailableError(
+            f"jvm sandbox image {image!r} not available — build it with "
+            f"`docker build -t {image} docker/verifier-jvm`"
+        )
+    return res.stdout.strip()
+
+
+async def prepare_gradle_env(workdir: Path, setup: str | None = None) -> Path:
+    """Return a host directory holding a Gradle home with the project's
+    distribution and dependencies, filling it if needed.
+
+    Two Gradle runs: first our init script resolves every configuration (on
+    its own, so nothing else can stop it: Gradle rejects a whole command line
+    for one unknown task name); then *setup* — the registry's
+    ``sandbox_setup``, by default the unit tests' compile
+    (``compileDebugUnitTestKotlin`` for Android, ``testClasses`` otherwise) —
+    which fetches what resolving alone does not (aapt2). A failing compile
+    does not fail setup — the check reports it — but a wrapper that
+    downloaded nothing does.
+
+    Raises:
+        SandboxUnavailableError: docker or the image is missing, no Gradle
+            wrapper, or the wrapper could not fetch Gradle.
+    """
+    wrapper = workdir / "gradlew"
+    if not wrapper.is_file() or wrapper.is_symlink():
+        raise SandboxUnavailableError("jvm toolchain, but the project has no gradlew wrapper")
+    image_id = await _jvm_image_id()
+    tasks = setup or ("compileDebugUnitTestKotlin" if _is_android(workdir) else "testClasses")
+    # The recipe version is in the key: a changed recipe never reuses a home
+    # an older one filled (the first one reused an empty, failed setup).
+    key = "jvm-" + _env_key(
+        workdir, image_id, f"{_GRADLE_SETUP_VERSION}\0{tasks}", _GRADLE_MANIFESTS
+    )
+    root = _cache_root()
+    ready = root / key
+
+    lock = _setup_locks.setdefault(key, asyncio.Lock())
+    async with lock:
+        if (ready / "wrapper" / "dists").is_dir():
+            return ready
+        root.mkdir(parents=True, exist_ok=True)
+        partial = root / f"{key}.partial-{uuid.uuid4().hex[:8]}"
+        partial.mkdir()
+        (partial / "lg-resolve.gradle").write_text(_GRADLE_RESOLVE_ALL)
+        container = f"lg-verify-jvm-setup-{uuid.uuid4().hex[:12]}"
+        gradle = f"./gradlew {_GRADLE_FLAGS} {_GRADLE_JVMARGS}"
+        script = (
+            f"cp -a {WORK}/. /tmp/work/ && cd /tmp/work && rm -f local.properties && chmod +x gradlew && "
+            f"{gradle} -I /gradle/lg-resolve.gradle lgResolveAll; "
+            f"{gradle} --continue {tasks}; "
+            "ls -d /gradle/wrapper/dists/*/*/gradle-* >/dev/null"
+        )
+        argv = [
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            container,
+            *_limits(
+                memory=settings.verifier_sandbox_jvm_memory, cpus=settings.verifier_sandbox_cpus
+            ),
+            "--tmpfs",
+            "/tmp:rw,exec,size=4g",
+            "-e",
+            "HOME=/tmp",
+            "-e",
+            "GRADLE_USER_HOME=/gradle",
+            *_JVM_HOME_ENV,
+            "-v",
+            f"{workdir}:{WORK}:ro",
+            "-v",
+            f"{partial}:/gradle",
+            "--entrypoint",
+            "sh",
+            settings.verifier_sandbox_jvm_image,
+            "-c",
+            script,
+        ]
+        try:
+            res = await _exec(argv, timeout=SETUP_TIMEOUT, container=container)
+            if res.returncode != 0 or not (partial / "wrapper" / "dists").is_dir():
+                raise SandboxUnavailableError(
+                    f"jvm sandbox setup failed (exit {res.returncode}): "
+                    f"{(res.stderr or res.stdout)[-800:]}"
+                )
+            try:
+                partial.rename(ready)
+            except OSError:
+                shutil.rmtree(partial, ignore_errors=True)
+        except BaseException:
+            shutil.rmtree(partial, ignore_errors=True)
+            raise
+    return ready
+
+
+def gradle_tasks(command: str | None, default: str = "test") -> list[str]:
+    """The Gradle arguments of a registry test command: "./gradlew test" and
+    "gradle test" both mean ``["test"]`` (the check runs Gradle itself)."""
+    import shlex
+
+    argv = shlex.split(command) if command else []
+    if argv and argv[0] in ("./gradlew", "gradlew", "gradle"):
+        argv = argv[1:]
+    return argv or [default]
+
+
 async def _driver_image_id() -> str:
     image = settings.driver_claude_sandbox_image
     res = await _exec(["docker", "image", "inspect", "--format", "{{.Id}}", image], timeout=30)
@@ -504,6 +685,7 @@ async def run(
     *,
     venv: Path | None = None,
     node_deps: Path | None = None,
+    gradle_home: Path | None = None,
     timeout: int = 120,
     extra_ro: dict[Path, str] | None = None,
     tmp_size: str | None = None,
@@ -517,7 +699,10 @@ async def run(
     Arguments that are paths must be relative to *workdir* (or under ``/work``):
     host paths do not exist inside the container. With *node_deps* (from
     :func:`prepare_node_env`) the Node image runs instead, with those
-    dependencies at /node_modules and their binaries on PATH.
+    dependencies at /node_modules and their binaries on PATH. With
+    *gradle_home* (from :func:`prepare_gradle_env`) the JVM image runs and
+    *argv* is Gradle's arguments (e.g. ``["test"]``): Gradle runs offline from
+    the cached distribution, reading dependencies read-only.
 
     Raises:
         SandboxUnavailableError: the container could not run or timed out.
@@ -545,6 +730,32 @@ async def run(
             ["-c", 'cp -a /work/. /tmp/work/ && cd /tmp/work && exec "$@"', "sh", *argv],
             "2g",
         )
+    env: list[str] = []
+    memory = settings.verifier_sandbox_memory
+    if gradle_home is not None:
+        mounts += ["-v", f"{gradle_home}:{GRADLE_RO}:ro"]
+        image = settings.verifier_sandbox_jvm_image
+        memory = settings.verifier_sandbox_jvm_memory
+        # A writable Gradle home of its own; dependencies come read-only from
+        # the setup's cache, so a test run cannot poison it for the next one.
+        env = [
+            "-e",
+            "GRADLE_USER_HOME=/tmp/gradle",
+            "-e",
+            f"GRADLE_RO_DEP_CACHE={GRADLE_RO}/caches",
+            *_JVM_HOME_ENV,
+        ]
+        entry, args, tmp_size = (
+            "sh",
+            [
+                "-c",
+                "cp -a /work/. /tmp/work/ && cd /tmp/work && rm -f local.properties && "
+                f'exec {_GRADLE_BIN} --offline {_GRADLE_FLAGS} {_GRADLE_JVMARGS} "$@"',
+                "sh",
+                *argv,
+            ],
+            "3g",
+        )
     container = f"lg-verify-{uuid.uuid4().hex[:12]}"
     docker_argv = [
         "docker",
@@ -557,9 +768,10 @@ async def run(
         "--read-only",
         "--tmpfs",
         f"/tmp:rw,exec,size={tmp_size}",
-        *_limits(memory=settings.verifier_sandbox_memory, cpus=settings.verifier_sandbox_cpus),
+        *_limits(memory=memory, cpus=settings.verifier_sandbox_cpus),
         "-e",
         "HOME=/tmp",
+        *env,
         "-e",
         f"PATH={path}",
         "-e",
