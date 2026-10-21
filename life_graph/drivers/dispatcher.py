@@ -1686,13 +1686,23 @@ class TaskDispatcher:
                 "change": change,
                 **landing,
             }
-            title_prefix = "Open PR" if verified else "Open PR (UNVERIFIED)"
+            from life_graph.services.local_merge import pr_mode
+
+            # In local mode approving is the merge (services/approvals.py), so say that.
+            local = await pr_mode(session, project_id) == "local"
+            action = "Merge" if local else "Open PR"
+            title_prefix = action if verified else f"{action} (UNVERIFIED)"
+            base = landing.get("base_branch") or "(unknown base)"
             if verified:
                 detail = (
                     f"Branch {branch} passed "
                     f"{', '.join(checks) if checks else 'no checks'} on driver "
-                    f"'{driver_name}'. Approve to push it and open a pull request "
-                    f"against {landing.get('base_branch') or '(unknown base)'}."
+                    f"'{driver_name}'. "
+                    + (
+                        f"Approve to merge it into {base} locally."
+                        if local
+                        else f"Approve to push it and open a pull request against {base}."
+                    )
                 )
             else:
                 names = unverifiable_checks or checks
