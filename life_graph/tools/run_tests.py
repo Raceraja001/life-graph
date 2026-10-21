@@ -81,9 +81,11 @@ def _clean(paths: list[str]) -> list[str] | str:
 @tool(
     name="run_tests",
     description=(
-        "Run pytest on specific test files or test ids (e.g. tests/unit/test_x.py or"
-        " tests/unit/test_x.py::test_name) in the project's sandbox, and see why they"
-        " fail. Use it to check a test you wrote before you finish."
+        "Run specific test files in the project's sandbox and see why they fail:"
+        " pytest files or ids for a Python project (tests/unit/test_x.py,"
+        " tests/unit/test_x.py::test_name), test source files for a Kotlin/Java"
+        " project (app/src/test/java/com/x/FooTest.kt). Use it to check a test you"
+        " wrote before you finish."
     ),
     parameters_schema={
         "type": "object",
@@ -109,14 +111,17 @@ async def run_tests(paths: list[str] | str) -> str:
         return json.dumps({"error": "run_tests works only inside a dev task's worktree"})
     if not sandbox.enabled():
         return json.dumps({"error": "tests run only in the sandbox, which is off here"})
-    if (ctx.get("sandbox_toolchain") or "python") != "python":
-        return json.dumps({"error": "run_tests supports Python projects only"})
+    toolchain = (ctx.get("sandbox_toolchain") or "python").strip().lower()
+    if toolchain not in ("python", "jvm"):
+        return json.dumps({"error": "run_tests supports Python and Kotlin/Java projects only"})
     cleaned = _clean(as_paths(paths))
     if isinstance(cleaned, str):
         return json.dumps({"error": cleaned})
     if not cleaned:
         return json.dumps({"error": "Name at least one test file"})
     workdir = roots[0]
+    if toolchain == "jvm":
+        return await _run_gradle_tests(workdir, ctx, cleaned)
     try:
         venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
         result = await sandbox.run(
@@ -132,5 +137,42 @@ async def run_tests(paths: list[str] | str) -> str:
             "passed": result.returncode == 0,
             "returncode": result.returncode,
             "output": _test_evidence(result.stdout + result.stderr),
+        }
+    )
+
+
+def gradle_filters(paths: list[str]) -> list[str]:
+    """``--tests`` filters for test source files: app/src/test/java/com/x/FooTest.kt
+    -> ``--tests *.FooTest`` (and a bare class name works too)."""
+    out: list[str] = []
+    for path in paths:
+        stem = PurePosixPath(path.split("::", 1)[0]).stem
+        if stem and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", stem):
+            out += ["--tests", f"*{stem}"]
+    return out
+
+
+async def _run_gradle_tests(workdir, ctx: dict, paths: list[str]) -> str:
+    from life_graph.services import sandbox
+    from life_graph.services.verifiers import _gradle_evidence
+
+    filters = gradle_filters(paths)
+    if not filters:
+        return json.dumps({"error": "Name a test source file, e.g. app/src/test/java/x/FooTest.kt"})
+    try:
+        tasks = sandbox.gradle_tasks(ctx.get("sandbox_test_command"))
+        home = await sandbox.prepare_gradle_env(workdir, ctx.get("sandbox_setup"))
+        result = await sandbox.run(
+            [*tasks, *filters], workdir, gradle_home=home, timeout=RUN_TIMEOUT
+        )
+    except ValueError as exc:
+        return json.dumps({"error": f"sandbox_test_command does not parse: {exc}"})
+    except sandbox.SandboxUnavailableError as exc:
+        return json.dumps({"error": f"sandbox unavailable: {exc}"})
+    return json.dumps(
+        {
+            "passed": result.returncode == 0,
+            "returncode": result.returncode,
+            "output": _gradle_evidence(result.stdout + result.stderr),
         }
     )

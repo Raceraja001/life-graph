@@ -34,6 +34,7 @@ async def run_tests(paths: list[str] | str) -> str:
     ctx = {
         "sandbox_setup": os.environ.get("LG_RUN_TESTS_SETUP") or None,
         "sandbox_toolchain": os.environ.get("LG_RUN_TESTS_TOOLCHAIN") or "python",
+        "sandbox_test_command": os.environ.get("LG_RUN_TESTS_COMMAND") or None,
     }
     with confine_to(workdir), project_settings(ctx):
         return await run(paths)

@@ -552,6 +552,11 @@ class Settings(BaseSettings):
     # Projects whose registry sets sandbox_toolchain=node are checked here
     # instead (docker build -t life-graph-verifier:node22 docker/verifier-node).
     verifier_sandbox_node_image: str = "life-graph-verifier:node22"
+    # Projects whose registry sets sandbox_toolchain=jvm (Kotlin, Java, Android
+    # with Gradle) are checked here (docker build -t life-graph-verifier:jvm17
+    # docker/verifier-jvm). Gradle and the Kotlin compiler need more memory.
+    verifier_sandbox_jvm_image: str = "life-graph-verifier:jvm17"
+    verifier_sandbox_jvm_memory: str = "6g"
     verifier_sandbox_cache_dir: str = ""  # cached project venvs; "" = ~/.cache/life-graph/...
     verifier_sandbox_memory: str = "4g"
     verifier_sandbox_cpus: str = "4"

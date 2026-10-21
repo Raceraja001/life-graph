@@ -301,6 +301,24 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
     # which made tests_pass unusable for such projects. Never read from the
     # worktree: the agent controls it.
     command = ctx.get("sandbox_test_command")
+    timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
+    if sandbox.jvm_toolchain(ctx):
+        # Gradle's own arguments ("test", or "testDebugUnitTest"): the
+        # sandbox runs Gradle from the cached distribution, offline.
+        try:
+            tasks = sandbox.gradle_tasks(command)
+            home = await sandbox.prepare_gradle_env(workdir, ctx.get("sandbox_setup"))
+            result = await sandbox.run(tasks, workdir, gradle_home=home, timeout=timeout)
+        except ValueError as exc:
+            return None, {"note": f"sandbox_test_command does not parse: {exc}"}
+        except sandbox.SandboxUnavailableError as exc:
+            return None, {"note": str(exc), "sandbox": "docker", "toolchain": "jvm"}
+        return result.returncode == 0, {
+            "stdout": _gradle_evidence(result.stdout + result.stderr),
+            "returncode": result.returncode,
+            "sandbox": "docker",
+            "command": ["gradle", *tasks],
+        }
     node = sandbox.node_toolchain(ctx)
     default = _DEFAULT_NODE_TEST_ARGV if node else _DEFAULT_TEST_ARGV
     try:
@@ -309,7 +327,6 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
         return None, {"note": f"sandbox_test_command does not parse: {exc}"}
     if not argv:
         argv = default
-    timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
     try:
         if node:
             deps = await sandbox.prepare_node_env(workdir, ctx.get("sandbox_setup"))
@@ -327,6 +344,26 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
         "sandbox": "docker",
         "command": argv,
     }
+
+
+def _gradle_evidence(output: str, limit: int = 2500) -> str:
+    """Why a Gradle build failed: compiler errors ("e: file.kt:12:5 ...") and
+    failed tests ("FooTest > bar FAILED" with the assertion under it), then
+    Gradle's own "What went wrong" — not the last lines, which are the
+    "BUILD FAILED" footer and help text."""
+    lines = output.splitlines()
+    keep: list[str] = []
+    for i, line in enumerate(lines):
+        if line.startswith("e: "):
+            keep.append(line)
+        elif " FAILED" in line:
+            keep += lines[i : i + 4]  # the test, then its assertion
+    wrong = output.find("* What went wrong:")
+    if wrong >= 0:
+        end = output.find("* Try:", wrong)
+        keep.append(output[wrong : end if end >= 0 else None].strip())
+    text = "\n".join(dict.fromkeys(keep)) if keep else output[-800:]
+    return text if len(text) <= limit else text[:limit] + "\n…"
 
 
 def _ruff_issues(stdout: str, limit: int = 2000) -> str:

@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-20 17:38 UTC` from `feat/tech-watch-eval` @ `5f2a1a8`
+Generated `2026-10-21 06:01 UTC` from `feat/jvm-toolchain` @ `bf0e781`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-10-20 17:38 UTC` from `feat/tech-watch-eval` @ `5f2a1a8`
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **25** |
-| Config settings | **246** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3112** in 336 files |
+| Config settings | **248** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3134** in 339 files |
 | Dashboard pages | **18** |
-| Python | 381 files, 98,474 lines |
+| Python | 382 files, 98,942 lines |
 
 ---
 
@@ -915,16 +915,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 260 | 2445 |
+| `tests/unit/` | 263 | 2467 |
 | `tests/integration/` | 75 | 655 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **336** | **3112** |
+| **total** | **339** | **3134** |
 
 ---
 
 ## Configuration
 
-246 settings, all overridable by environment variable.
+248 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1141,6 +1141,8 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_VERIFIER_SANDBOX` | `'none'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_IMAGE` | `'life-graph-verifier:py3.12'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_NODE_IMAGE` | `'life-graph-verifier:node22'` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX_JVM_IMAGE` | `'life-graph-verifier:jvm17'` |
+| `LIFE_GRAPH_VERIFIER_SANDBOX_JVM_MEMORY` | `'6g'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_CACHE_DIR` | `''` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_MEMORY` | `'4g'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_CPUS` | `'4'` |

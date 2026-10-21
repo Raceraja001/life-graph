@@ -58,7 +58,7 @@ _WRITE_TOOLS = frozenset({"file_write", "code_edit"})
 
 
 def _can_run_tests(packet: ContextPacket) -> bool:
-    """A Python project, with the sandbox on and run_tests in the persona's tools."""
+    """A Python or JVM project, with the sandbox on and run_tests in the persona's tools."""
     from life_graph.services import sandbox
 
     allowed = packet.allowed_tools
@@ -66,7 +66,7 @@ def _can_run_tests(packet: ContextPacket) -> bool:
     return (
         (allowed is None or "run_tests" in allowed)
         and sandbox.enabled()
-        and (ctx.get("sandbox_toolchain") or "python") == "python"
+        and (ctx.get("sandbox_toolchain") or "python").strip().lower() in ("python", "jvm")
     )
 
 
@@ -81,8 +81,12 @@ def _run_tests_server(packet: ContextPacket, workdir: Path) -> dict | None:
     env = {
         "LG_RUN_TESTS_WORKDIR": str(workdir),
         "LG_RUN_TESTS_SETUP": ctx.get("sandbox_setup") or "",
+        "LG_RUN_TESTS_TOOLCHAIN": ctx.get("sandbox_toolchain") or "python",
+        "LG_RUN_TESTS_COMMAND": ctx.get("sandbox_test_command") or "",
         "LIFE_GRAPH_VERIFIER_SANDBOX": settings.verifier_sandbox,
         "LIFE_GRAPH_VERIFIER_SANDBOX_IMAGE": settings.verifier_sandbox_image,
+        "LIFE_GRAPH_VERIFIER_SANDBOX_JVM_IMAGE": settings.verifier_sandbox_jvm_image,
+        "LIFE_GRAPH_VERIFIER_SANDBOX_JVM_MEMORY": str(settings.verifier_sandbox_jvm_memory),
         "LIFE_GRAPH_VERIFIER_SANDBOX_CACHE_DIR": str(settings.verifier_sandbox_cache_dir),
         "LIFE_GRAPH_VERIFIER_SANDBOX_CPUS": str(settings.verifier_sandbox_cpus),
         "LIFE_GRAPH_VERIFIER_SANDBOX_MEMORY": str(settings.verifier_sandbox_memory),

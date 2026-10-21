@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 #   sandbox_setup         dependency install command for the verifier sandbox
 #   sandbox_test_command  what tests_pass runs, e.g. "python -m pytest -q tests/unit"
 #   sandbox_test_timeout  seconds tests_pass may take
-#   sandbox_toolchain     "python" (default) or "node": which verifier image checks run in
+#   sandbox_toolchain     "python" (default), "node" or "jvm" (Gradle): which verifier image checks run in
 #   sandbox_js_test_runner  "vitest" (default) or "jest", for JS/TS acceptance tests
 #   sandbox_start_command, sandbox_app_port, sandbox_e2e_command, sandbox_e2e_timeout
 #                          app_e2e_pass: start the app in the sandbox, then drive it
@@ -64,6 +64,8 @@ logger = logging.getLogger(__name__)
 #   backup_check_command  run daily by the same watcher; non-zero exit = backups are failing
 #   auto_approve_plans    let a small, gap-free, non-sensitive plan from a trusted driver
 #                          approve itself (services/plan_policy.py); off by default
+#   pr_mode               "github" (default) or "local": a repo with no GitHub remote; approving
+#                          a task's PR merges it into the local base branch (services/local_merge.py)
 #   base_branch           branch every dev task is cut from (fetched from origin) and PRs
 #                          target; unset = whatever the local checkout is on
 #   deploy_command        shell command to run after a merge, in the project's repo path
@@ -99,6 +101,7 @@ _USER_META_KEYS = frozenset(
         "deploy_command",
         "deploy_on_merge",
         "base_branch",
+        "pr_mode",
         "auto_approve_plans",
         "smoke_command",
         "rollback_command",
@@ -164,6 +167,8 @@ _LANG_MARKERS: dict[str, tuple[str, str | None]] = {
     "go.mod": ("go", "go.mod"),
     "pom.xml": ("java", "pom.xml"),
     "build.gradle": ("java", "build.gradle"),
+    "build.gradle.kts": ("kotlin", "build.gradle.kts"),
+    "settings.gradle.kts": ("kotlin", "settings.gradle.kts"),
     "Gemfile": ("ruby", "Gemfile"),
     "mix.exs": ("elixir", "mix.exs"),
 }

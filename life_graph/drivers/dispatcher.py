@@ -1770,7 +1770,14 @@ class TaskDispatcher:
         from life_graph.services.approvals import ApprovalService
         from life_graph.services.change_policy import auto_gate
         from life_graph.services.github_pr import PullRequestError, open_pull_request
+        from life_graph.services.local_merge import pr_mode
 
+        if await pr_mode(session, project_id) == "local":
+            # In local mode, approving driver_pr merges: never unattended.
+            logger.info(
+                "Auto-open PR skipped for %s: local mode merges only on approval", driver_name
+            )
+            return
         allowed, why, _record = await auto_gate(session, appr.tenant_id, appr.payload or {})
         if not allowed:
             logger.info("Auto-open PR skipped for %s: %s", driver_name, why)

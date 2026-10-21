@@ -232,6 +232,28 @@ class ApprovalService:
         if not approve:
             return
         from life_graph.services.github_pr import PullRequestError, open_pull_request
+        from life_graph.services.local_merge import merge_locally, pr_mode
+
+        if await pr_mode(self.session, (appr.payload or {}).get("project_id")) == "local":
+            # No remote to open a PR on: this approval is the merge, into the
+            # local base branch (services/local_merge.py). One decision, made
+            # by the user — local mode never merges on its own.
+            try:
+                merged = await merge_locally(appr.payload or {})
+            except PullRequestError as exc:
+                raise ApprovalActionError(str(exc)) from exc
+            appr.payload = {
+                **(appr.payload or {}),
+                "merge_commit": merged["merge_commit"],
+                "merged_locally": True,
+            }
+            note = f"Merged locally into {merged['base_branch']} as {merged['merge_commit'][:8]}"
+            if merged.get("existing"):
+                note += " (was already merged)"
+            appr.resolution_note = (
+                f"{appr.resolution_note}\n{note}" if appr.resolution_note else note
+            )
+            return
 
         try:
             outcome = await open_pull_request(appr.payload or {})
