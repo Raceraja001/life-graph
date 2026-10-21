@@ -64,6 +64,27 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# The only paths a device token opens (api/jarvis.py).
+DEVICE_PATH_PREFIX = "/api/v1/jarvis/"
+
+
+async def _device_for(request: Request) -> tuple[str, str] | None:
+    """(tenant_id, device_id) when the request is a paired device calling a
+    Jarvis endpoint with its own bearer token; None otherwise."""
+    if not request.url.path.startswith(DEVICE_PATH_PREFIX):
+        return None
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None
+    from life_graph.services.devices import authenticate
+
+    try:
+        return await authenticate(header[7:].strip())
+    except Exception:  # noqa: BLE001 - a lookup failure is a refusal, never a pass
+        logger.warning("device token lookup failed", exc_info=True)
+        return None
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     """Verify service-to-service API key.
 
@@ -75,6 +96,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         try:
             verify_service_key(request)
         except Exception as e:
+            # A paired phone's own token (services/devices.py) — accepted on
+            # the Jarvis endpoints only, never as a key to anything else.
+            device = await _device_for(request)
+            if device is not None:
+                request.state.device_tenant, request.state.device_id = device
+                return await call_next(request)
             return JSONResponse(
                 status_code=401,
                 content={
@@ -105,6 +132,10 @@ class TenantMiddleware(BaseHTTPMiddleware):
 
         tenant_id = request.headers.get("X-Tenant-ID", "")
         user_id = request.headers.get("X-User-ID", "")
+        device_tenant = getattr(request.state, "device_tenant", None)
+        if device_tenant:
+            # A device is the tenant that paired it, whatever headers it sends.
+            tenant_id, user_id = device_tenant, f"device:{request.state.device_id}"
 
         if not tenant_id:
             if settings.is_development:

@@ -49,6 +49,14 @@ Phone (app) ──Tailscale──> PC: tailscale serve (HTTPS, tailnet only) ─
 
 ### Phase 1 — the API side (life-graph PR)
 
+*Built 2026-10-21* (`api/devices.py`, `api/jarvis.py`, `services/devices.py`, migration 052).
+Device tokens are checked in `api/middleware.py` only on `/api/v1/jarvis/`, and set the
+tenant from the device row. `POST /devices/pair` is open but capped at 5 failed attempts per
+client and 20 overall per 10 minutes. Jarvis publishes its route as the first stream event,
+so `done` carries it. Phase 0 is done too: the JDK and SDK are in WSL, the API is on
+`https://race-home-pc.tailcdbd87.ts.net:10443` (tailnet only), and the pipeline has a JVM
+toolchain and `pr_mode: local` (#114).
+
 - **AC-1.1 Pairing:** the dashboard shows a one-time 6-digit code (10 minutes);
   `POST /api/v1/devices/pair {code, name}` returns a device token. Tokens are stored hashed,
   listed and revocable (`GET/DELETE /api/v1/devices`). *(integration test)*

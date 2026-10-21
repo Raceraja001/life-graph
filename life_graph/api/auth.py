@@ -30,7 +30,11 @@ AUTH_EXEMPT_PREFIXES = (
 )
 # The Google OAuth callback: the browser arrives from Google without an API
 # key; the one-time state it carries is the credential (api/connectors.py).
-AUTH_EXEMPT_EXACT = frozenset({"/", "/openapi.json", "/api/v1/connectors/oauth/callback"})
+# Pairing a phone: it has no credential yet; the one-time code is it, and
+# api/devices.py caps failed attempts (services/devices.PairingLimiter).
+AUTH_EXEMPT_EXACT = frozenset(
+    {"/", "/openapi.json", "/api/v1/connectors/oauth/callback", "/api/v1/devices/pair"}
+)
 
 
 def is_exempt_path(path: str) -> bool:

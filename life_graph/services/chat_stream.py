@@ -151,6 +151,10 @@ def map_bus_event(raw: dict, seen_children: set[str]) -> dict | None:
             return {"type": "assistant_delta", "text": event.get("content", "")}
         if etype == "done":
             return {"type": "done"}
+        if etype == "route":
+            # Jarvis's per-request choice (services/lead.py): personal work on
+            # the local model, the rest on its cloud model.
+            return {"type": "route", "kind": event.get("kind"), "model": event.get("model")}
         # What the persona did, for clients that show it (the Agents console's
         # test run). Clients that don't know these types skip them. Results
         # are redacted and trimmed: a tool result can be a whole file.

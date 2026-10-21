@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-21 06:01 UTC` from `feat/jvm-toolchain` @ `bf0e781`
+Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-10-21 06:01 UTC` from `feat/jvm-toolchain` @ `bf0e781`
 
 | | |
 |---|---|
-| HTTP operations | **332** across 285 paths, 41 tags |
-| Database tables | **80** |
-| Migrations | **51** (head: `051_topic_findings`) |
+| HTTP operations | **340** across 293 paths, 43 tags |
+| Database tables | **82** |
+| Migrations | **52** (head: `052_devices`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **25** |
 | Config settings | **248** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3134** in 339 files |
+| Test functions | **3140** in 340 files |
 | Dashboard pages | **18** |
-| Python | 382 files, 98,942 lines |
+| Python | 385 files, 99,591 lines |
 
 ---
 
 ## HTTP API
 
-332 operations, grouped by OpenAPI tag.
+340 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 34
 
@@ -429,6 +429,15 @@ Generated `2026-10-21 06:01 UTC` from `feat/jvm-toolchain` @ `bf0e781`
 | GET | `/api/v1/advisor/sessions/{session_id}` | Get an advisor session by ID |
 | POST | `/api/v1/advisor/sessions/{session_id}/choose` | Record which model's recommendation was chosen |
 
+### `devices` — 4
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/devices` | Paired phones |
+| POST | `/api/v1/devices/codes` | A one-time code to pair a phone |
+| POST | `/api/v1/devices/pair` | Pair a phone with a one-time code (no API key) |
+| DELETE | `/api/v1/devices/{device_id}` | Revoke a phone: its token stops working at once |
+
 ### `identity` — 4
 
 | Method | Path | Summary |
@@ -437,6 +446,15 @@ Generated `2026-10-21 06:01 UTC` from `feat/jvm-toolchain` @ `bf0e781`
 | POST | `/api/v1/identity/challenge` | Challenge a belief |
 | GET | `/api/v1/identity/stale` | Find stale beliefs |
 | GET | `/api/v1/identity/timeline` | Get identity timeline |
+
+### `jarvis` — 4
+
+| Method | Path | Summary |
+|---|---|---|
+| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
+| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
+| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
+| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
 
 ### `memory-links` — 4
 
@@ -575,7 +593,7 @@ Generated `2026-10-21 06:01 UTC` from `feat/jvm-toolchain` @ `bf0e781`
 
 ## Database tables
 
-80 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+82 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -597,6 +615,8 @@ Generated `2026-10-21 06:01 UTC` from `feat/jvm-toolchain` @ `bf0e781`
 | `conversation_messages` | 8 | ✓ | `027_conversations` |
 | `conversations` | 6 | ✓ | `027_conversations` |
 | `cross_system_syncs` | 20 | ✓ | `017_agent_networks` |
+| `device_pairing_codes` | 5 | ✓ | `052_devices` |
+| `devices` | 7 | ✓ | `052_devices` |
 | `documents` | 15 | ✓ | `045_documents` |
 | `eval_cases` | 10 | — | `015_self_improving` |
 | `eval_results` | 14 | — | `015_self_improving` |
@@ -903,9 +923,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-51 revisions, head `051_topic_findings`.
+52 revisions, head `052_devices`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices`
 
 ---
 
@@ -915,10 +935,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 263 | 2467 |
-| `tests/integration/` | 75 | 655 |
+| `tests/unit/` | 263 | 2468 |
+| `tests/integration/` | 76 | 660 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **339** | **3134** |
+| **total** | **340** | **3140** |
 
 ---
 

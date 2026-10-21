@@ -213,3 +213,25 @@ async def test_refuses_what_was_not_verified_or_would_lose_work(repo):
     with pytest.raises(PullRequestError, match="conflicts"):
         await merge_locally(payload)
     assert _git(r, "log", "-1", "--format=%s") == "conflicting"  # nothing moved
+
+
+def test_scope_knows_kotlin_paths_and_test_source_sets():
+    from life_graph.services.verifiers import _is_test_path, named_paths
+
+    instruction = (
+        "Create app/src/main/java/com/x/net/FriendlyError.kt and its tests in "
+        "app/src/test/java/com/x/net/FriendlyErrorTest.kt; read docs/PLAN.md first."
+    )
+    assert named_paths(instruction) == [
+        "app/src/main/java/com/x/net/FriendlyError.kt",
+        "app/src/test/java/com/x/net/FriendlyErrorTest.kt",
+        "docs/PLAN.md",
+    ]
+    assert named_paths("edit app/build.gradle.kts and gradle/libs.versions.toml") == [
+        "app/build.gradle.kts",
+        "gradle/libs.versions.toml",
+    ]
+    assert _is_test_path("app/src/test/java/com/x/FooTest.kt")
+    assert _is_test_path("app/src/androidTest/java/com/x/FooTest.kt")
+    assert not _is_test_path("app/src/main/java/com/x/Foo.kt")
+    assert not _is_test_path("app/src/main/java/com/x/test/Helper.py")  # not a JVM test

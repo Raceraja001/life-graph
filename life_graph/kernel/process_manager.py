@@ -639,6 +639,10 @@ class ProcessManager:
             if ctx
             else None
         )
+        if lead_route is not None and stream_key is not None:
+            # Where Jarvis runs, known before the first token: a chat client
+            # labels the reply with it (the phone app shows "on your PC").
+            bus.publish(stream_key, {**meta, "event": {"type": "route", **lead_route.as_record()}})
 
         # Collect streamed output
         from life_graph.services import sources
