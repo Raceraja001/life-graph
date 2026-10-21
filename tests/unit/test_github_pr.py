@@ -329,6 +329,37 @@ async def test_landed_task_files_driver_pr_approval_with_pinned_commits(setup):
     assert out["pr_url"].endswith("/pull/7")
 
 
+async def test_a_local_mode_approval_says_it_merges(setup):
+    import uuid
+    from types import SimpleNamespace
+
+    from life_graph.drivers.base import DriverResult
+    from life_graph.drivers.dispatcher import TaskDispatcher
+
+    class _LocalProjectSession(_NestedSession):
+        async def get(self, model, key):
+            return SimpleNamespace(scan_metadata={"pr_mode": "local"})
+
+    session = _LocalProjectSession()
+    dispatcher = TaskDispatcher.__new__(TaskDispatcher)
+    await dispatcher._create_pr_approval(
+        tenant_id="raja",
+        task_id="abcd1234-0000-0000-0000-000000000000",
+        driver_name="opencode",
+        instruction="Add a helper",
+        result=DriverResult(success=True, output="did it"),
+        branch=setup.branch,
+        repo_path=str(setup.repo),
+        checks=["tests_pass"],
+        project_id=str(uuid.uuid4()),
+        session=session,
+    )
+    (appr,) = session.added
+    assert appr.title == "Merge: Add a helper"
+    assert "Approve to merge it into master locally." in appr.detail
+    assert "pull request" not in appr.detail.split("\n\n")[0]
+
+
 # ── Merge ────────────────────────────────────────────────────
 
 

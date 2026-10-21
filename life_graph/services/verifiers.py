@@ -1055,6 +1055,27 @@ def _test_smells(source: str, local: set[str]) -> list[str]:
     return smells
 
 
+# A JVM test that opens a source file to look at it, as the Python one above did.
+_JVM_READS_SOURCE_RE = re.compile(
+    r"""File\(\s*"[^"]*\.(?:kt|java)"\s*\)|\.(?:kt|java)"\s*\)\s*\.read"""
+)
+# Anywhere on a line: `val e = assertThrows(...)` asserts too.
+_JVM_ASSERT_ANYWHERE_RE = re.compile(r"\bassert(?:[A-Z]\w*)?\s*[(<{]|\.should\w*\(|\bverify\s*[({]")
+
+
+def _jvm_test_smells(source: str) -> list[str]:
+    """What makes a Kotlin/Java test file unable to fail. Textual: no compiler here."""
+    lines = source.splitlines()
+    smells = []
+    if not any(_TEST_DEF_RE.search(ln) for ln in lines):
+        smells.append("has no @Test function")
+    if not _JVM_ASSERT_ANYWHERE_RE.search(source):
+        smells.append("asserts nothing")
+    if _JVM_READS_SOURCE_RE.search(source):
+        smells.append("reads a source file instead of running the code")
+    return smells
+
+
 async def _verify_tests_exercise_code(workdir: Path, ctx: dict) -> tuple[bool, dict]:
     """A test the agent added or changed must run the code, not read it.
 
@@ -1064,7 +1085,9 @@ async def _verify_tests_exercise_code(workdir: Path, ctx: dict) -> tuple[bool, d
     in behaviour. Static and cheap: an AST look at changed test files only.
     """
     tests = [
-        f for f in _changed_python_files(workdir) if _is_test_path(str(f.relative_to(workdir)))
+        f
+        for f in _changed_files(workdir)
+        if f.suffix in (".py", ".kt", ".java") and _is_test_path(str(f.relative_to(workdir)))
     ]
     if not tests:
         return True, {"note": "no changed test files"}
@@ -1072,9 +1095,10 @@ async def _verify_tests_exercise_code(workdir: Path, ctx: dict) -> tuple[bool, d
     found = {}
     for f in tests:
         try:
-            smells = _test_smells(f.read_text(encoding="utf-8", errors="replace"), local)
+            text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        smells = _test_smells(text, local) if f.suffix == ".py" else _jvm_test_smells(text)
         if smells:
             found[str(f.relative_to(workdir))] = smells
     evidence: dict = {"checked": [str(f.relative_to(workdir)) for f in tests], "problems": found}
@@ -1158,13 +1182,21 @@ def _proof(name: str):
     return run
 
 
+# Python, JS and JUnit (Kotlin/Java) forms. Without the JUnit ones a Kotlin
+# test could lose its assertEquals lines and this still counted "0 removed"
+# (the Android app's tasks, 2026-10-21).
 _ASSERTION_RE = re.compile(
-    r"^\s*(?:assert\b|self\.assert\w*\(|(?:with\s+)?pytest\.raises\(|expect\()"
+    r"^\s*(?:assert\b|self\.assert\w*\(|(?:with\s+)?pytest\.raises\(|expect\("
+    r"|(?:(?:Assert|Assertions)\.)?assert[A-Z]\w*\s*[(<])"
 )
-_TEST_DEF_RE = re.compile(r"^\s*(?:async\s+)?def\s+test\w*\(|^\s*(?:it|test)\(['\"]")
+_TEST_DEF_RE = re.compile(
+    r"^\s*(?:async\s+)?def\s+test\w*\(|^\s*(?:it|test)\(['\"]"
+    r"|^\s*@(?:org\.junit\.(?:jupiter\.api\.)?)?Test\b"
+)
 _SKIP_RE = re.compile(
     r"pytest\.mark\.(?:skip|skipif|xfail)\b|pytest\.(?:skip|xfail)\(|unittest\.skip|"
-    r"\.(?:skip|only)\(|\bxit\(|\bxdescribe\("
+    r"\.(?:skip|only)\(|\bxit\(|\bxdescribe\(|"
+    r"@(?:org\.junit\.)?Ignore\b|@Disabled\b|\bAssume\.assume\w*\(|\bassume(?:True|That)\("
 )
 # An instruction that asks for tests to be removed or skipped may do so.
 _TEST_REMOVAL_ASKED = re.compile(
