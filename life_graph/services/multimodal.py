@@ -406,18 +406,24 @@ class MultiModalService:
         logger.info("Transcribed %s: %d characters", filename, len(transcript))
         return transcript
 
-    async def _transcribe(self, audio_bytes: bytes, filename: str) -> str:
+    async def _transcribe(
+        self, audio_bytes: bytes, filename: str, *, local_only: bool = False
+    ) -> str:
         """Transcribe audio via the configured backend, in priority order.
 
         Groq when configured (fastest), else Cloudflare Workers AI (better
-        Tamil/English code-switching), else local faster-whisper.
+        Tamil/English code-switching), else local faster-whisper. With
+        *local_only* always local: the owner's voice on the phone app never
+        leaves the machine, whatever keys are configured (CHARTER invariant 7).
 
         Raises:
             ValueError: If transcription produces no text.
         """
         from life_graph.config import settings
 
-        if settings.groq_api_key:
+        if local_only:
+            transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
+        elif settings.groq_api_key:
             transcript = await self._transcribe_groq(audio_bytes, filename)
         elif settings.cf_account_id and settings.cf_ai_token:
             transcript = await self._transcribe_cloudflare(audio_bytes, filename)
@@ -427,7 +433,9 @@ class MultiModalService:
             raise ValueError("Transcription produced no text — nothing to remember")
         return transcript
 
-    async def transcribe_only(self, audio_bytes: bytes, filename: str) -> dict[str, Any]:
+    async def transcribe_only(
+        self, audio_bytes: bytes, filename: str, *, local_only: bool = False
+    ) -> dict[str, Any]:
         """Transcribe audio without storing it or queuing memory ingestion.
 
         Used by live chat voice input (push-to-talk), which needs the text
@@ -437,7 +445,7 @@ class MultiModalService:
         Raises:
             ValueError: If transcription produces no text.
         """
-        transcript = await self._transcribe(audio_bytes, filename)
+        transcript = await self._transcribe(audio_bytes, filename, local_only=local_only)
         return {"transcript": transcript}
 
     # ── Image ─────────────────────────────────────────────────

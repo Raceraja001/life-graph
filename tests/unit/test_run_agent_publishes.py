@@ -31,5 +31,7 @@ async def test_run_agent_publishes_events_to_bus():
     assert result["response"] == "hello"
     published = list(get_chat_stream_bus()._buffers[str(root)])
     types = [p["event"]["type"] for p in published]
-    assert types == ["token", "token", "done"]
+    # Jarvis says where it runs first (services/lead.py), then streams.
+    assert types == ["route", "token", "token", "done"]
+    assert published[0]["event"]["kind"] in ("personal", "general")
     assert all(p["agent_name"] == "jarvis" and p["depth"] == 0 for p in published)

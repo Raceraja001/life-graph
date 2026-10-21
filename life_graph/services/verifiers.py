@@ -1087,8 +1087,14 @@ async def _verify_tests_exercise_code(workdir: Path, ctx: dict) -> tuple[bool, d
     return not found, evidence
 
 
+# Kotlin, Java, Gradle and Android resources too: on the Android app's first
+# task (2026-10-21) the scope held only docs/PLAN.md, the two .kt files the
+# task asked for were "out of scope", and the bounce made the engine delete
+# its correct, passing work. With no recognised path at all a task had no
+# scope constraint — so this tightens the check for those languages.
 _NAMED_PATH = re.compile(
-    r"(?<![\w/.-])((?:[\w.-]+/)*[\w.-]+\.(?:py|pyi|ts|tsx|js|jsx|mjs|md|toml|ya?ml|json|sql|sh|cfg|ini|txt|html|css))(?![\w/-])"
+    r"(?<![\w/.-])((?:[\w.-]+/)*[\w.-]+\.(?:py|pyi|ts|tsx|js|jsx|mjs|md|toml|ya?ml|json|sql|sh|cfg|ini|txt|html|css"
+    r"|kt|kts|java|gradle|xml|properties))(?![\w/-])"
 )
 
 
@@ -1104,6 +1110,8 @@ def _is_test_path(rel: str) -> bool:
         (p.parts and p.parts[0] in ("tests", "test", "__tests__"))
         or (name.startswith("test_") and name.endswith(".py"))
         or name.endswith(("_test.py", ".test.ts", ".test.tsx", ".test.js", ".spec.ts", ".spec.js"))
+        # Gradle's test source sets: app/src/test/..., app/src/androidTest/...
+        or (name.endswith((".kt", ".java")) and ("test" in p.parts or "androidTest" in p.parts))
     )
 
 

@@ -695,6 +695,14 @@ from life_graph.api import web_research as web_research_api
 
 v1_router.include_router(web_research_api.router)
 
+# The phone app (docs/design/12_android_app_plan.md): pairing, and the only
+# endpoints a device token opens.
+from life_graph.api import devices as devices_api
+from life_graph.api import jarvis as jarvis_api
+
+v1_router.include_router(devices_api.router)
+v1_router.include_router(jarvis_api.router)
+
 app.include_router(v1_router)
 
 

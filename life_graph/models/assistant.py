@@ -314,3 +314,41 @@ class TopicFinding(Base):
         Index("uq_topic_findings_key", "tenant_id", "topic", "dedup_key", unique=True),
         Index("ix_topic_findings_tenant_found", "tenant_id", "found_at"),
     )
+
+
+class Device(Base):
+    """A phone paired with Jarvis (services/devices.py). Only the token's
+    SHA-256 is kept; ``revoked_at`` set means it no longer signs in."""
+
+    __tablename__ = "devices"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("uq_devices_token_hash", "token_hash", unique=True),
+        Index("ix_devices_tenant", "tenant_id"),
+    )
+
+
+class DevicePairingCode(Base):
+    """A one-time six-digit code that pairs a phone (ten minutes, spent once)."""
+
+    __tablename__ = "device_pairing_codes"
+
+    code: Mapped[str] = mapped_column(String(16), primary_key=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (Index("ix_device_pairing_codes_expires", "expires_at"),)
