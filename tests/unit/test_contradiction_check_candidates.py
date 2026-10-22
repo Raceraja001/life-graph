@@ -14,7 +14,12 @@ import pytest
 from life_graph.services.contradiction import ContradictionDetector
 
 
-def _memory(content: str, embedding=None, status="active", properties=None):
+_EMB = [0.1, 0.2, 0.3]
+
+
+def _memory(content: str, embedding=_EMB, status="active", properties=None):
+    # Same vector as the new content's by default: a candidate with no
+    # embedding is skipped since 2026-10-22 (it used to count as 0.8).
     return SimpleNamespace(
         id="existing-1",
         content=content,
@@ -54,9 +59,7 @@ async def test_check_candidates_no_contradiction_for_unrelated_content():
 async def test_check_candidates_empty_list_returns_empty():
     detector = ContradictionDetector(store=None)
 
-    contradictions = await detector.check_candidates(
-        "anything", [], new_embedding=[0.1, 0.2, 0.3]
-    )
+    contradictions = await detector.check_candidates("anything", [], new_embedding=[0.1, 0.2, 0.3])
 
     assert contradictions == []
 

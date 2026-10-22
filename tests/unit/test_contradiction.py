@@ -166,12 +166,14 @@ class TestEntitySwap:
         assert result is not None
         assert "PostgreSQL" in result or "MongoDB" in result
 
-    def test_detects_use_swap(self) -> None:
+    def test_plain_use_swap_is_not_a_contradiction(self) -> None:
+        # Review 2026-10-22: people use several things at once. Plain "use"
+        # on both sides used to count as a swap and supersede the old memory.
         result = _check_entity_swap(
             "I use FastAPI",
             "I use Django",
         )
-        assert result is not None
+        assert result is None
 
     def test_no_swap_same_entity(self) -> None:
         result = _check_entity_swap(
@@ -257,14 +259,16 @@ class TestDetermineResolution:
 
         assert _determine_resolution("scope", FakeMemory()) == "scope"
 
-    def test_unknown_type_asks_user(self) -> None:
+    def test_unknown_type_keeps_both(self) -> None:
+        # ask_user was never produced nor handled; removed 2026-10-22. An
+        # unknown conflict type must not supersede anything.
         class FakeMemory:
             properties = {}
 
-        assert _determine_resolution("ambiguous", FakeMemory()) == "ask_user"
+        assert _determine_resolution("ambiguous", FakeMemory()) == "scope"
 
-    def test_unexpected_type_asks_user(self) -> None:
+    def test_unexpected_type_keeps_both(self) -> None:
         class FakeMemory:
             properties = {}
 
-        assert _determine_resolution("something_else", FakeMemory()) == "ask_user"
+        assert _determine_resolution("something_else", FakeMemory()) == "scope"

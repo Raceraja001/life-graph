@@ -5,7 +5,8 @@ Full ingestion pipeline:
   2. Score importance for each fact
   3. Generate embeddings (placeholder for sentence-transformers)
   4. Check for contradictions
-  5. Handle contradictions: auto-supersede or flag for user
+  5. Handle contradictions: queue a contradiction approval; supersede at
+     once only for an already-active memory, else when the owner approves
   6. Store memories
   7. Return stored memories
 
@@ -23,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryUpdate
+from life_graph.services.contradiction import differs_by_negation
 
 if TYPE_CHECKING:
     from life_graph.extraction.pipeline import ExtractionPipeline
@@ -321,7 +323,16 @@ class MemoryManager:
         # Near-match dedup — only when an embedding produced candidates,
         # i.e. no exact hash match short-circuited above.
         if settings.dedup_enabled and not skip_dedup and candidates:
-            similar = [(m, s) for m, s in candidates if s >= settings.dedup_threshold][:5]
+            # A negation barely moves the embedding, so "I don't use X" can
+            # score as a near-duplicate of "I use X" and used to be merged
+            # into it, losing the "not" (review 2026-10-22). Such a pair goes
+            # to the contradiction check below instead.
+            similar = [
+                (m, s)
+                for m, s in candidates
+                if s >= settings.dedup_threshold
+                and not differs_by_negation(fact.content, m.content)
+            ][:5]
             if similar:
                 existing_memory, score = similar[0]  # highest similarity
                 logger.info(
@@ -372,6 +383,7 @@ class MemoryManager:
                 fact.content,
                 active_candidates,
                 embedding,
+                new_properties=context or {},
             )
 
         # Step 5: Handle contradictions
@@ -412,11 +424,12 @@ class MemoryManager:
             source_type=source or "inferred",
         )
 
+        active_now = _auto_approved(fact, trust_tier)
         stored = await self._store.store(
             memory_create,
             embedding=embedding,
             trust_tier=trust_tier,
-            status="active" if _auto_approved(fact, trust_tier) else "pending",
+            status="active" if active_now else "pending",
             # Provenance: which tier produced this fact, how sure it was, and
             # which capture event it came from (the capture spine puts that id
             # in context/properties).
@@ -425,11 +438,21 @@ class MemoryManager:
             capture_event_id=properties.get("capture_event_id"),
         )
 
-        # Step 5b: Execute auto-supersessions, queuing an approval for each so
-        # the user can confirm or undo it (additive — the supersede still happens).
+        # Step 5b: Queue a contradiction approval for each supersede target.
+        # Only a memory that is already active (the owner's explicit "remember
+        # this") supersedes at once, undoable by rejecting the approval. A
+        # pending memory supersedes nothing yet: the supersede is applied when
+        # the owner approves the new memory or the approval
+        # (ApprovalService.on_memory_approved / _apply_contradiction). Until
+        # 2026-10-22 it was applied here for pending memories too, so an
+        # unreviewed extraction could retire an active memory, and rejecting
+        # the new memory never brought the old one back.
         for old_id, reason in auto_supersede_targets:
-            await self.supersede(old_id, str(stored.id), reason)
-            await self._queue_contradiction_approval(old_id, str(stored.id), reason)
+            if active_now:
+                await self.supersede(old_id, str(stored.id), reason)
+            await self._queue_contradiction_approval(
+                old_id, str(stored.id), reason, applied=active_now
+            )
 
         return stored
 
@@ -438,8 +461,14 @@ class MemoryManager:
         old_id: str,
         new_id: str,
         reason: str,
+        *,
+        applied: bool = True,
     ) -> None:
-        """Record an auto-supersede as a contradiction approval (confirm/undo).
+        """Record a supersede as a contradiction approval.
+
+        ``applied`` says whether the supersede already happened (approve
+        confirms, reject undoes) or is only suspected (approve applies it,
+        reject leaves the old memory as it is).
 
         Additive and non-blocking: any failure here is logged, never raised,
         so contradiction handling can't break ingestion.
@@ -471,9 +500,17 @@ class MemoryManager:
                         kind="contradiction",
                         source="judgment",
                         source_ref=ref,
-                        title="Review a resolved contradiction",
+                        title=(
+                            "Review a resolved contradiction"
+                            if applied
+                            else "Review a suspected contradiction"
+                        ),
                         detail=reason,
-                        payload={"memory_id_old": str(old_id), "memory_id_new": str(new_id)},
+                        payload={
+                            "memory_id_old": str(old_id),
+                            "memory_id_new": str(new_id),
+                            "applied": applied,
+                        },
                     )
                 )
                 await session.commit()
@@ -488,10 +525,11 @@ class MemoryManager:
         self,
         contradictions: list[Contradiction],
     ) -> list[tuple[str, str]]:
-        """Determine which contradictions to auto-resolve via supersession.
+        """Determine which contradictions are supersede candidates.
 
         Returns:
-            List of (old_memory_id, reason) tuples for memories to supersede.
+            List of (old_memory_id, reason) tuples for memories to supersede
+            (at once or on approval — see _process_fact Step 5b).
         """
         supersede_targets: list[tuple[str, str]] = []
 
@@ -504,15 +542,8 @@ class MemoryManager:
                     )
                 )
                 logger.info(
-                    "Auto-superseding memory %s: %s",
+                    "Supersede candidate %s: %s",
                     contradiction.existing_memory_id[:8],
-                    contradiction.reason,
-                )
-            elif contradiction.resolution == "ask_user":
-                logger.warning(
-                    "Contradiction requires user input: %s vs %s — %s",
-                    contradiction.new_content[:40],
-                    contradiction.existing_content[:40],
                     contradiction.reason,
                 )
             elif contradiction.resolution == "scope":

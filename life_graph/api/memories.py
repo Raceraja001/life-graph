@@ -200,6 +200,32 @@ class BulkApprovalBody(BaseModel):
     reject: list[uuid.UUID] = []
 
 
+async def _settle_contradictions(memory_id: uuid.UUID, *, approved: bool) -> None:
+    """Apply (approve) or close (reject) the memory's deferred supersedes.
+
+    A pending memory that contradicts an active one supersedes nothing until
+    the owner approves it (review 2026-10-22: the old one used to be marked
+    superseded at ingest, and rejecting the new memory never restored it).
+    Logged, never raised: the approve/reject itself has already happened,
+    and an unapplied supersede stays on the contradiction approval for the
+    owner to apply there.
+    """
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    try:
+        async with async_session() as session:
+            service = ApprovalService(session)
+            tenant_id = get_current_tenant_id()
+            if approved:
+                await service.on_memory_approved(tenant_id, str(memory_id))
+            else:
+                await service.on_memory_rejected(tenant_id, str(memory_id))
+            await session.commit()
+    except Exception:
+        logger.warning("Failed to settle contradictions for %s", memory_id, exc_info=True)
+
+
 async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemoryStore) -> Memory:
     """Move a memory between pending/rejected/active, emitting the matching event.
 
@@ -215,6 +241,7 @@ async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemorySt
         if row.status not in ("pending", "rejected"):
             raise HTTPException(status_code=409, detail=f"Cannot approve a {row.status} memory")
         updated = await store.update(memory_id, MemoryUpdate(status="active"))
+        await _settle_contradictions(memory_id, approved=True)
         try:
             await event_bus.emit(
                 EventType.MEMORY_APPROVED,
@@ -230,6 +257,7 @@ async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemorySt
     if row.status != "pending":
         raise HTTPException(status_code=409, detail=f"Cannot reject a {row.status} memory")
     updated = await store.update(memory_id, MemoryUpdate(status="rejected"))
+    await _settle_contradictions(memory_id, approved=False)
     try:
         await event_bus.emit(
             EventType.MEMORY_REJECTED,

@@ -460,6 +460,7 @@ class ConsolidationPipeline:
                 contradictions = await detector.check(
                     new_content=mem.content,
                     new_embedding=mem.embedding,
+                    new_properties=mem.properties,
                 )
                 for c in contradictions:
                     found.append(
