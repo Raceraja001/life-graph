@@ -159,6 +159,13 @@ class Settings(BaseSettings):
 
     # ── Multi-Modal (Voice / Whisper) ──────────────────
     whisper_model: str = "small"
+    # Local speech-to-text over an OpenAI-compatible /v1/audio/transcriptions
+    # server (speaches on :8010, the same one that speaks replies). When set,
+    # local transcription goes there instead of loading faster-whisper into
+    # this process. Must be on this machine or the private network: the phone
+    # app's voice is transcribed "locally only" (services/multimodal.py).
+    stt_base_url: str = ""  # LIFE_GRAPH_STT_BASE_URL, e.g. http://localhost:8010
+    stt_model: str = "deepdml/faster-whisper-large-v3-turbo-ct2"
     # Cloudflare Workers AI transcription — preferred when BOTH are set
     # (handles Tamil/English code-switching via whisper-large-v3-turbo);
     # otherwise falls back to local faster-whisper. Token needs only the
