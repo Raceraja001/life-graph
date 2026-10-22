@@ -141,3 +141,70 @@ async def memory_search(query: str, limit: int = DEFAULT_LIMIT) -> str:
 
     logger.info("memory_search returned %d memories", len(results))
     return json.dumps({"query": query, "count": len(results), "results": results})
+
+
+@tool(
+    name="memory_forget",
+    description=(
+        "Forget one of the user's remembered facts when they say it is wrong,"
+        " out of date, or ask you to forget it. Pass the id from memory_search."
+        " The memory is archived (the user can restore it from the dashboard),"
+        " never deleted. Tell the user what you forgot."
+    ),
+    parameters_schema={
+        "type": "object",
+        "properties": {
+            "memory_id": {"type": "string", "description": "The id from memory_search."},
+            "reason": {
+                "type": "string",
+                "description": "In a few words, why: 'user said it is wrong', 'out of date'.",
+            },
+        },
+        "required": ["memory_id"],
+    },
+)
+async def memory_forget(memory_id: str, reason: str = "") -> str:
+    """Archive one active memory of the current tenant. Never raises."""
+    import uuid
+    from datetime import UTC, datetime
+
+    from sqlalchemy import text
+
+    from life_graph.core.task_context import get_current_task_context
+    from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
+    from life_graph.storage.database import async_session
+
+    if has_tenant_context():
+        tenant_id = get_current_tenant_id()
+    else:
+        ctx = get_current_task_context()
+        if ctx is None:
+            return json.dumps({"error": "memory_forget has no tenant context."})
+        tenant_id = ctx.tenant_id
+    try:
+        mid = uuid.UUID(str(memory_id))
+    except ValueError:
+        return json.dumps({"error": "That is not a memory id; use one from memory_search."})
+    note = json.dumps(
+        {"forgotten": {"at": datetime.now(UTC).isoformat(), "reason": (reason or "")[:200]}}
+    )
+    try:
+        async with async_session() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "UPDATE memories SET status = 'archived', updated_at = NOW(),"
+                        " properties = COALESCE(properties, '{}'::jsonb) || CAST(:note AS jsonb)"
+                        " WHERE id = :id AND tenant_id = :tenant AND status = 'active'"
+                        " RETURNING content"
+                    ),
+                    {"id": mid, "tenant": tenant_id, "note": note},
+                )
+            ).first()
+            await session.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_forget failed: %s", exc)
+        return json.dumps({"error": f"Could not forget it: {exc}"})
+    if row is None:
+        return json.dumps({"error": "No active memory with that id."})
+    return json.dumps({"forgotten": True, "content": row[0]})

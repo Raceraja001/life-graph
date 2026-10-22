@@ -83,6 +83,9 @@ _SURFACE_TIER: dict[str, TrustTier] = {
     # Telegram router passes TrustTier.EXTERNAL explicitly for forwards
     # instead of letting this default apply.
     "telegram": TrustTier.SELF,
+    # The owner talking to Jarvis in the phone app: a phone they paired with
+    # a one-time code, authenticated by its own device token (api/jarvis.py).
+    "jarvis_app": TrustTier.SELF,
     # Content authored by other people.
     "whatsapp": TrustTier.HOSTILE_POSSIBLE,
     # ── memories.source_type vocabulary ──────────────────────────────────

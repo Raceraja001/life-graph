@@ -59,6 +59,9 @@ _ADDED_AFTER_036 = {
     # their own — migration 043 relabels the capture events, and both surfaces
     # are VERIFIED, so no row's tier changes and 036's work still holds.
     "assistant_message",
+    # The phone app (api/jarvis.py), 2026-10-22. No rows predate it: nothing
+    # captured on this surface before that change.
+    "jarvis_app",
 }
 
 

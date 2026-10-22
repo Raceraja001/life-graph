@@ -631,6 +631,19 @@ class ProcessManager:
                         system_prompt = f"{system_prompt or ''}\n\n{block}".strip()
                 except Exception:
                     logger.warning("Project context for %s failed", agent_name, exc_info=True)
+        if (
+            lead_route is not None
+            and lead_route.kind == "personal"
+            and (lead_route.pinned or run_is_local(orchestrator.model))
+        ):
+            # The owner's memories, on a local run only (services/memory_context.py):
+            # a personal route is pinned to local models (only_models below), or
+            # its model and every fallback are local.
+            from life_graph.services.memory_context import memory_block
+
+            remembered = await memory_block(tenant_id, messages[-1]["content"], history)
+            if remembered:
+                system_prompt = f"{system_prompt or ''}\n\n{remembered}".strip()
 
         bus = get_chat_stream_bus()
         stream_key = str(ctx.root_task_id or ctx.task_id) if ctx else None
