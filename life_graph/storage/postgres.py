@@ -94,6 +94,7 @@ class PostgresMemoryStore:
         extraction_tier: str | None = None,
         extraction_confidence: float | None = None,
         capture_event_id: uuid.UUID | str | None = None,
+        importance_tier: str | None = None,
     ) -> Memory:
         """Persist a new memory from a creation payload.
 
@@ -110,9 +111,13 @@ class PostgresMemoryStore:
         by recall and the capture spine, but nothing ever wrote them: every
         memory claimed unknown provenance, so "which tier produced this, and
         from which capture?" was unanswerable.
-        """
-        from life_graph.config import settings
 
+        ``importance_tier`` is the tier the ingest scorer computed alongside
+        ``importance``. It used to reach only the tags, so every row was stored
+        "normal" and the decay sweep's 'critical' exemption never applied
+        until the nightly consolidation happened to rescore it (code review,
+        2026-10-22). ``None`` keeps the column default.
+        """
         content_hash = hashlib.sha256(memory.content.strip().lower().encode()).hexdigest()
 
         row = Memory(
@@ -130,11 +135,13 @@ class PostgresMemoryStore:
             extraction_confidence=extraction_confidence,
             capture_event_id=_as_uuid(capture_event_id),
         )
+        if importance_tier:
+            row.importance_tier = importance_tier
         if embedding:
+            from life_graph.services.embeddings import current_embedding_model
+
             row.embedding = embedding
-            row.embedding_model = (
-                settings.lm_embedding_model if settings.use_local_llm else settings.embedding_model
-            )
+            row.embedding_model = current_embedding_model()
         async with async_session() as session:
             session.add(row)
             await session.commit()
