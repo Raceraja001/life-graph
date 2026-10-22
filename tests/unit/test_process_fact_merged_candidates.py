@@ -68,7 +68,7 @@ def _make_manager(monkeypatch, *, candidates, exact_duplicate=None):
 
     check_candidates_calls = []
 
-    async def fake_check_candidates(content, active_candidates, embedding):
+    async def fake_check_candidates(content, active_candidates, embedding, new_properties=None):
         check_candidates_calls.append(list(active_candidates))
         return []
 

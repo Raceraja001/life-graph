@@ -1,12 +1,20 @@
 """Contradiction detector for memory consistency (T-026).
 
 Detects contradictions between new content and existing memories using:
-  1. Semantic similarity via pgvector (cosine > 0.75 threshold)
+  1. Semantic similarity via pgvector (``settings.contradiction_similarity_threshold``)
   2. Negation flip detection via regex
-  3. Entity swap detection (same structure, different object)
-  4. Scope difference detection (different project/module = both valid)
+  3. Entity swap detection — an exclusive verb ("prefer", "switched to",
+     "favourite … is") with a different object
+  4. Scope difference detection (either memory scoped to a different
+     project/module = both valid)
 
-85% rule-based — only truly ambiguous cases get flagged for user review.
+A detection is only a suspicion: MemoryManager records it and the supersede
+waits for the owner (see MemoryManager._process_fact).
+
+Review 2026-10-22: plain "use/like" with different objects used to count as
+a swap, so "I use Python for scripts" superseded "I use VS Code"; the scope
+check looked only at the old memory; and a candidate with no embedding was
+assumed similar (0.8). All three are fixed below.
 """
 
 from __future__ import annotations
@@ -14,16 +22,13 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from life_graph.models.db import Memory
     from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
-
-# Similarity threshold for contradiction candidates
-_SIMILARITY_THRESHOLD: float = 0.75
 
 # Maximum candidates to check for contradictions
 _MAX_CANDIDATES: int = 10
@@ -60,9 +65,9 @@ class Contradiction:
     existing_memory_id: str
     existing_content: str
     new_content: str
-    conflict_type: str  # 'negation', 'preference_change', 'scope', 'ambiguous'
+    conflict_type: str  # 'negation', 'preference_change', 'scope'
     similarity: float
-    resolution: str  # 'supersede', 'scope', 'ask_user'
+    resolution: str  # 'supersede' (newer wins, once the owner agrees), 'scope' (keep both)
     reason: str
 
 
@@ -101,22 +106,61 @@ _NEGATION_PAIRS: list[tuple[re.Pattern[str], re.Pattern[str], str]] = [
         re.compile(r"\b(?:use|prefer)\s+(.+?)(?:[.,;!?\n]|$)", re.IGNORECASE),
         "preference_change",
     ),
+    # "no longer use X" vs "use X" (added 2026-10-22: an explicit change of
+    # mind, which the swap rule no longer infers from plain "use")
+    (
+        re.compile(
+            r"\bno\s+longer\s+(?:use|using|like|prefer)?\s*(.+?)(?:[.,;!?\n]|$)", re.IGNORECASE
+        ),
+        re.compile(r"\b(?:use|prefer|like)\s+(.+?)(?:[.,;!?\n]|$)", re.IGNORECASE),
+        "preference_change",
+    ),
+    # "X instead of Y" vs "use Y" (added 2026-10-22)
+    (
+        re.compile(r"\binstead\s+of\s+(.+?)(?:[.,;!?\n]|$)", re.IGNORECASE),
+        re.compile(r"\b(?:use|prefer|like)\s+(.+?)(?:\s+instead\b|[.,;!?\n]|$)", re.IGNORECASE),
+        "preference_change",
+    ),
 ]
 
-# Preference verbs for entity swap detection
+_OBJECT_END = r"(?:\s+(?:over|instead|for|because|when|in)\b|[.,;!?\n]|$)"
+
+# Any preference/usage verb. On its own this does not make a contradiction —
+# people use and like many things at once — it only marks the other side of
+# an exclusive statement below.
 _PREFERENCE_RE = re.compile(
-    r"\b(?:prefer|use|like|choose|pick|go\s+with|switched?\s+to)\s+(.+?)(?:\s+(?:over|instead|for|because)\b|[.,;!?\n]|$)",
+    r"\b(?:prefer(?:s|red)?|use[sd]?|using|like[sd]?|choose|chose|pick(?:ed)?|go\s+with"
+    r"|switched?\s+to|moved\s+to|migrated\s+to)\s+(.+?)" + _OBJECT_END,
     re.IGNORECASE,
 )
+
+# Verbs that claim one thing *over* the others, so a different object is a
+# change of mind rather than a second, compatible fact (2026-10-22).
+_EXCLUSIVE_RE = re.compile(
+    r"\b(?:prefer(?:s|red)?|switched?\s+to|moved\s+to|migrated\s+to)\s+(.+?)" + _OBJECT_END,
+    re.IGNORECASE,
+)
+
+# "my favourite editor is X": exclusive within its slot ("editor"), so only
+# another favourite for the same slot conflicts with it.
+_FAVOURITE_RE = re.compile(
+    r"\bfavou?rite\s+(\w+(?:\s+\w+)?)\s+(?:is|are)\s+(.+?)" + _OBJECT_END,
+    re.IGNORECASE,
+)
+
+# "for scripts", "for analytics": the purpose a tool is used for. Two
+# statements with different purposes can both be true.
+_PURPOSE_RE = re.compile(r"\bfor\s+(.+?)(?:[.,;!?\n]|$)", re.IGNORECASE)
 
 
 class ContradictionDetector:
     """Detects contradictions between new content and existing memories.
 
     Uses a multi-step rule-based approach:
-        1. Find semantically similar active memories (cosine > 0.75)
+        1. Find semantically similar active memories
+           (cosine >= ``settings.contradiction_similarity_threshold``)
         2. Run negation flip detection (regex patterns)
-        3. Run entity swap detection (same structure, different object)
+        3. Run entity swap detection (exclusive verb, different object)
         4. Check scope differences (different context = both valid)
 
     Usage::
@@ -135,12 +179,15 @@ class ContradictionDetector:
         self,
         new_content: str,
         new_embedding: list[float],
+        new_properties: dict[str, Any] | None = None,
     ) -> list[Contradiction]:
         """Check new content against existing memories for contradictions.
 
         Args:
             new_content: The new text to check.
             new_embedding: Pre-computed embedding vector for the new content.
+            new_properties: The new memory's properties (its ``project`` /
+                ``module`` scope), for the scope check.
 
         Returns:
             List of detected Contradiction objects, sorted by severity.
@@ -155,13 +202,14 @@ class ContradictionDetector:
             filters={"status": "active"},
         )
 
-        return self._check_candidates(new_content, similar_memories, new_embedding)
+        return self._check_candidates(new_content, similar_memories, new_embedding, new_properties)
 
     async def check_candidates(
         self,
         new_content: str,
         candidates: list[Memory],
         new_embedding: list[float],
+        new_properties: dict[str, Any] | None = None,
     ) -> list[Contradiction]:
         """Like check(), but skips the DB lookup — for callers that already
         fetched candidate memories (e.g. MemoryManager._process_fact(), which
@@ -173,87 +221,69 @@ class ContradictionDetector:
             candidates: Pre-fetched candidate memories (should be status
                 "active" — this does no further status filtering).
             new_embedding: Pre-computed embedding vector for the new content.
+            new_properties: The new memory's properties, for the scope check.
 
         Returns:
             List of detected Contradiction objects, sorted by severity.
         """
         if not new_content.strip():
             return []
-        return self._check_candidates(new_content, candidates, new_embedding)
+        return self._check_candidates(new_content, candidates, new_embedding, new_properties)
 
     def _check_candidates(
         self,
         new_content: str,
         similar_memories: list[Memory],
         new_embedding: list[float],
+        new_properties: dict[str, Any] | None = None,
     ) -> list[Contradiction]:
         if not similar_memories:
             return []
+
+        from life_graph.config import settings
+
+        threshold = settings.contradiction_similarity_threshold
 
         # Stage 2: Run contradiction checks on each candidate
         contradictions: list[Contradiction] = []
         for memory in similar_memories:
             similarity = _compute_similarity_from_memory(memory, new_embedding)
 
-            # Skip if below threshold
-            if similarity < _SIMILARITY_THRESHOLD:
+            # Skip if unknown (no embedding to compare) or below threshold
+            if similarity is None or similarity < threshold:
                 continue
 
-            # Check for negation flips
-            negation = _check_negation_flip(new_content, memory.content)
-            if negation:
-                conflict_type, reason = negation
-                resolution = _determine_resolution(conflict_type, memory)
-                contradictions.append(
-                    Contradiction(
-                        existing_memory_id=str(memory.id),
-                        existing_content=memory.content,
-                        new_content=new_content,
-                        conflict_type=conflict_type,
-                        similarity=similarity,
-                        resolution=resolution,
-                        reason=reason,
-                    )
+            # Check for negation flips, then entity swaps (exclusive verb,
+            # different object)
+            found = _check_negation_flip(new_content, memory.content)
+            if not found:
+                swap = _check_entity_swap(new_content, memory.content)
+                found = ("preference_change", swap) if swap else None
+            if not found:
+                continue
+            conflict_type, reason = found
+
+            # Either memory scoped to a different project/module: both valid
+            scope_diff = _check_scope_difference(memory, new_properties)
+            if scope_diff:
+                conflict_type = "scope"
+                reason = f"Both valid in different contexts: {scope_diff}"
+
+            contradictions.append(
+                Contradiction(
+                    existing_memory_id=str(memory.id),
+                    existing_content=memory.content,
+                    new_content=new_content,
+                    conflict_type=conflict_type,
+                    similarity=similarity,
+                    resolution=_determine_resolution(conflict_type, memory),
+                    reason=reason,
                 )
-                continue
+            )
 
-            # Check for entity swaps (same verb pattern, different object)
-            entity_swap = _check_entity_swap(new_content, memory.content)
-            if entity_swap:
-                reason = entity_swap
-                # Check if scope difference makes both valid
-                scope_diff = _check_scope_difference(memory)
-                if scope_diff:
-                    contradictions.append(
-                        Contradiction(
-                            existing_memory_id=str(memory.id),
-                            existing_content=memory.content,
-                            new_content=new_content,
-                            conflict_type="scope",
-                            similarity=similarity,
-                            resolution="scope",
-                            reason=f"Both valid in different contexts: {scope_diff}",
-                        )
-                    )
-                else:
-                    contradictions.append(
-                        Contradiction(
-                            existing_memory_id=str(memory.id),
-                            existing_content=memory.content,
-                            new_content=new_content,
-                            conflict_type="preference_change",
-                            similarity=similarity,
-                            resolution="supersede",
-                            reason=reason,
-                        )
-                    )
-
-        # Sort: auto-resolvable first, then by similarity
+        # Sort: supersede suggestions first, then by similarity
         contradictions.sort(
-            key=lambda c: (
-                0 if c.resolution == "supersede" else 1 if c.resolution == "scope" else 2,
-                -c.similarity,
-            ),
+            key=lambda c: (0 if c.resolution == "supersede" else 1, -c.similarity),
         )
 
         logger.info(
@@ -308,56 +338,90 @@ def _check_negation_flip(
     return None
 
 
-def _check_entity_swap(new_text: str, existing_text: str) -> str | None:
-    """Check if two texts use the same preference verb but different objects.
+def differs_by_negation(text_a: str, text_b: str) -> bool:
+    """Whether one text negates the other ("I use X" vs "I don't use X").
 
-    E.g. "I prefer PostgreSQL" vs "I prefer MongoDB" — same structure,
-    different entity = preference change.
+    MemoryManager asks this before its near-duplicate merge: a negation
+    barely moves an embedding, so the two can score above dedup_threshold
+    and used to be merged as one memory, losing the "not" (2026-10-22).
+    """
+    return _check_negation_flip(text_a, text_b) is not None
+
+
+def _check_entity_swap(new_text: str, existing_text: str) -> str | None:
+    """Check if one text exclusively prefers a different object than the other.
+
+    E.g. "I prefer PostgreSQL" vs "I prefer MongoDB", or "I switched to
+    FastAPI" vs "I use Django". At least one side must use an exclusive verb
+    (``_EXCLUSIVE_RE``) and the other any preference verb, or both must name a
+    favourite for the same slot. Plain "use/like" on both sides is not a
+    swap: "I use Python for scripts" and "I use VS Code" are both true, and
+    until 2026-10-22 the first silently superseded the second. Different
+    stated purposes ("for scripts" vs "for analytics") are not a swap either.
 
     Returns:
         Explanation string if entity swap detected, else None.
     """
-    new_matches = _PREFERENCE_RE.findall(new_text)
-    existing_matches = _PREFERENCE_RE.findall(existing_text)
-
-    if not new_matches or not existing_matches:
+    if _purposes_differ(new_text, existing_text):
         return None
 
-    for new_entity in new_matches:
-        new_entity_clean = new_entity.strip().lower()
-        for existing_entity in existing_matches:
-            existing_entity_clean = existing_entity.strip().lower()
-            # Same verb pattern but different entity
-            if (
-                new_entity_clean
-                and existing_entity_clean
-                and new_entity_clean != existing_entity_clean
-                and not _entities_overlap(new_entity_clean, existing_entity_clean)
-            ):
-                return f"Entity swap: '{existing_entity.strip()}' → '{new_entity.strip()}'"
+    pairs: list[tuple[str, str]] = []
+    new_excl = _EXCLUSIVE_RE.findall(new_text)
+    existing_excl = _EXCLUSIVE_RE.findall(existing_text)
+    if new_excl:
+        pairs += [(e, n) for n in new_excl for e in _PREFERENCE_RE.findall(existing_text)]
+    if existing_excl:
+        pairs += [(e, n) for e in existing_excl for n in _PREFERENCE_RE.findall(new_text)]
+    for new_slot, new_obj in _FAVOURITE_RE.findall(new_text):
+        for old_slot, old_obj in _FAVOURITE_RE.findall(existing_text):
+            if _entities_overlap(new_slot.lower(), old_slot.lower()):
+                pairs.append((old_obj, new_obj))
+
+    for existing_entity, new_entity in pairs:
+        new_clean = new_entity.strip().lower()
+        existing_clean = existing_entity.strip().lower()
+        if (
+            new_clean
+            and existing_clean
+            and new_clean != existing_clean
+            and not _entities_overlap(new_clean, existing_clean)
+        ):
+            return f"Entity swap: '{existing_entity.strip()}' → '{new_entity.strip()}'"
 
     return None
 
 
-def _check_scope_difference(memory: Memory) -> str | None:
-    """Check if a memory has project/module scope that limits its validity.
+def _purposes_differ(text_a: str, text_b: str) -> bool:
+    """Both texts state a purpose ("for X") and the purposes differ."""
+    a = _PURPOSE_RE.search(text_a)
+    b = _PURPOSE_RE.search(text_b)
+    if not a or not b:
+        return False
+    return not _entities_overlap(a.group(1).strip().lower(), b.group(1).strip().lower())
 
-    If the memory is scoped to a specific project or module, a
-    contradiction might actually be valid in a different scope.
+
+def _check_scope_difference(
+    memory: Memory,
+    new_properties: dict[str, Any] | None = None,
+) -> str | None:
+    """Check whether the two memories are scoped to different contexts.
+
+    If either memory is scoped to a project or module the other does not
+    share, both statements can be true at once. Symmetric since 2026-10-22:
+    it used to look only at the old memory, so a new project-scoped
+    statement superseded a general one.
 
     Returns:
-        Scope description string if scoped, else None.
+        Scope description string if the scopes differ, else None.
     """
-    props = memory.properties or {}
+    old_props = memory.properties or {}
+    new_props = new_properties or {}
     scopes: list[str] = []
 
-    project = props.get("project")
-    if project:
-        scopes.append(f"project={project}")
-
-    module = props.get("module")
-    if module:
-        scopes.append(f"module={module}")
+    for key in ("project", "module"):
+        old_val, new_val = old_props.get(key), new_props.get(key)
+        if (old_val or new_val) and old_val != new_val:
+            scopes.append(f"{key}={old_val or '-'} vs {new_val or '-'}")
 
     return ", ".join(scopes) if scopes else None
 
@@ -399,36 +463,39 @@ def _determine_resolution(conflict_type: str, memory: Memory) -> str:
     """Determine the best resolution strategy for a contradiction.
 
     Rules:
-        - negation / preference_change: supersede (newer wins)
-        - scope: keep both (different contexts)
-        - ambiguous: ask user
+        - negation / preference_change: supersede (newer wins — applied only
+          once the owner approves, see MemoryManager._process_fact)
+        - anything else: keep both
+
+    There used to be a third answer, ``ask_user``, but nothing produced it
+    and its handler only logged (review 2026-10-22). It was removed rather
+    than built: every supersede now goes to the owner as a contradiction
+    approval anyway, which is the asking.
 
     Args:
         conflict_type: Type of conflict detected.
         memory: The existing memory being contradicted.
 
     Returns:
-        Resolution strategy string.
+        Resolution strategy string: ``supersede`` or ``scope``.
     """
     if conflict_type in ("negation", "preference_change"):
         return "supersede"
-    if conflict_type == "scope":
-        return "scope"
-    return "ask_user"
+    return "scope"
 
 
 def _compute_similarity_from_memory(
     memory: Memory,
-    new_embedding: list[float],
-) -> float:
+    new_embedding: list[float] | None,
+) -> float | None:
     """Compute cosine similarity between a memory's embedding and a new vector.
 
-    Falls back to 0.8 if the memory has no embedding (was retrieved
-    by pgvector so it's above threshold by definition).
+    Returns None when either vector is missing: an unknown similarity is not
+    a high one. It used to default to 0.8, so any candidate without an
+    embedding counted as similar enough to be superseded (2026-10-22).
     """
-    if memory.embedding is None:
-        # If retrieved by pgvector, it's similar enough
-        return 0.8
+    if memory.embedding is None or new_embedding is None or len(new_embedding) == 0:
+        return None
 
     # Compute cosine similarity
     dot_product = sum(a * b for a, b in zip(memory.embedding, new_embedding, strict=False))

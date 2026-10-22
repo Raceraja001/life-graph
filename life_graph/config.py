@@ -139,6 +139,10 @@ class Settings(BaseSettings):
     # ── Deduplication ──────────────────────────────────
     dedup_enabled: bool = True
     dedup_threshold: float = 0.92  # cosine similarity threshold for near-duplicate detection
+    # Contradiction check (services/contradiction.py): only active memories at
+    # or above this cosine similarity to a new fact are compared with it. Was a
+    # hard-coded 0.75 in the module until 2026-10-22.
+    contradiction_similarity_threshold: float = 0.75
 
     # Merge suggestions: nightly, additive. Active pairs whose similarity lands in
     # [merge_review_low, dedup_threshold) coexist today (below the auto-merge line);
