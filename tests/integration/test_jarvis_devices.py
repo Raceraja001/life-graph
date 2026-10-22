@@ -180,6 +180,26 @@ async def test_voice_is_transcribed_locally_and_spoken_back(client, monkeypatch)
     assert data["route"] == "personal" and data["audio_base64"] == "SUQzbXAz"
 
 
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_the_app_can_warm_the_local_model(client, monkeypatch):
+    from life_graph.services import local_runtime
+
+    _, token = await _pair(client)
+    warmed = []
+
+    async def fake_warm(chat_model, embedding_model):
+        warmed.append((chat_model, embedding_model))
+
+    monkeypatch.setattr(local_runtime, "warm", fake_warm)
+    resp = await client.post("/api/v1/jarvis/warm", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 202 and resp.json()["data"] == {"warming": True}
+    import asyncio
+
+    await asyncio.sleep(0)  # let the background task run
+    assert len(warmed) == 1
+
+
 def test_chat_events_in_the_apps_shape():
     from life_graph.api.jarvis import _app_event
 

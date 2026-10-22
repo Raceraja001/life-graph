@@ -528,11 +528,18 @@ class ProcessManager:
         Returns:
             Dict with 'response' text and 'token_count'.
         """
+        import time
+
         from life_graph.agents.orchestrator import (
             AgentOrchestrator,
         )
         from life_graph.services import lead
         from life_graph.tools.registry import registry as tool_registry
+
+        # Seconds per stage of this run, kept on the result: what a phone
+        # question actually costs, measured where it happens.
+        run_started = time.monotonic()
+        timing: dict[str, float] = {}
 
         # Jarvis's model is chosen per request: personal work stays local,
         # the rest may go to its cloud model without the personal tools.
@@ -618,10 +625,17 @@ class ProcessManager:
             confinement = confine_to(*roots)
             listing = "\n".join(f"- `{r}`" for r in roots) or "- (none: no project was given)"
             system_prompt = f"{system_prompt or ''}\n\n## Documentation you may read\n{listing}"
+        # What changes from one request to the next goes in a note just before
+        # the user's message, never in the system prompt: Ollama reuses the
+        # cached start of a prompt (a 7,500-token prompt read in 0.05 s instead
+        # of 2.2 s, measured 2026-10-22), and the time to the minute or this
+        # question's memories at the top threw that away on every request,
+        # tool descriptions included.
+        volatile: list[str] = []
         if orchestrator.model != "claude-cli":
             # A local model has no idea what day it is: asked for "the latest
             # release", it called a two-week-old one "a future date".
-            system_prompt = f"{system_prompt or ''}\n\n{persona_context.today_line()}".strip()
+            volatile.append(persona_context.today_line())
             if agent_name not in persona_context.DOCS_ONLY_PERSONAS and (
                 persona_context.needs_projects(allow)
             ):
@@ -641,9 +655,13 @@ class ProcessManager:
             # its model and every fallback are local.
             from life_graph.services.memory_context import memory_block
 
+            started = time.monotonic()
             remembered = await memory_block(tenant_id, messages[-1]["content"], history)
+            timing["memory_s"] = round(time.monotonic() - started, 2)
             if remembered:
-                system_prompt = f"{system_prompt or ''}\n\n{remembered}".strip()
+                volatile.append(remembered)
+        if volatile:
+            messages.insert(len(messages) - 1, {"role": "system", "content": "\n\n".join(volatile)})
 
         bus = get_chat_stream_bus()
         stream_key = str(ctx.root_task_id or ctx.task_id) if ctx else None
@@ -674,10 +692,13 @@ class ProcessManager:
             if lead_route is not None and lead_route.pinned
             else nullcontext()
         )
+        timing["prepare_s"] = round(time.monotonic() - run_started, 2)
         with confinement, pin:
             async for event_str in orchestrator.run(
                 messages, system_prompt=system_prompt, tools=tools
             ):
+                if "first_token_s" not in timing and '"token"' in event_str:
+                    timing["first_token_s"] = round(time.monotonic() - run_started, 2)
                 # Each event is an SSE string; extract content
                 try:
                     data = _json.loads(event_str.removeprefix("data: ").strip())
@@ -698,9 +719,12 @@ class ProcessManager:
                     tool_results.append(str(data.get("result") or ""))
 
         response = "".join(response_parts)
-        out: dict[str, Any] = {"response": response, "token_count": token_count}
+        timing["total_s"] = round(time.monotonic() - run_started, 2)
+        out: dict[str, Any] = {"response": response, "token_count": token_count, "timing": timing}
         if lead_route is not None:
             out["route"] = lead_route.as_record()
+            # No content: stage times and where it ran only.
+            logger.info("Jarvis run (%s, %s): %s", lead_route.kind, orchestrator.model, timing)
 
         if check_sources:
             out["response"], out["sources"] = sources.apply(response, tool_results)

@@ -11,6 +11,7 @@ docs/PLAN.md):
 * ``GET /jarvis/conversations`` and ``.../{id}/messages``.
 * ``POST /jarvis/voice``: audio in, transcribed on this machine only, answered
   by Jarvis in the same conversation, the reply spoken back as mp3.
+* ``POST /jarvis/warm``: the app opened; load the local model in the background.
 
 Where Jarvis ran (``route``: personal = this PC's model, general = a cloud
 model without the personal tools) comes from services/lead.py.
@@ -139,6 +140,28 @@ async def chat(body: ChatRequest):
                     yield f"data: {json.dumps(out)}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers=dict(inner.headers))
+
+
+_warming: set = set()  # keeps the background tasks referenced until they finish
+
+
+@router.post(
+    "/warm", status_code=status.HTTP_202_ACCEPTED, summary="Get Jarvis's local model ready"
+)
+async def warm():
+    """The app opened: load the local model now, so the first question is not a cold start.
+
+    Returns at once; the load (~15 s on this machine) runs in the background.
+    """
+    import asyncio
+
+    from life_graph.config import settings
+    from life_graph.services import lead, local_runtime
+
+    task = asyncio.create_task(local_runtime.warm(lead.local_model(), settings.lm_embedding_model))
+    _warming.add(task)
+    task.add_done_callback(_warming.discard)
+    return success_response(data={"warming": True})
 
 
 @router.get("/conversations", summary="Your conversations with Jarvis, newest first")

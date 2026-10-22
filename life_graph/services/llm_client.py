@@ -159,8 +159,12 @@ class LMStudioClient:
         max_tokens: int,
         response_format: dict | None,
     ) -> str:
-        """Chat via LM Studio (local)."""
+        """Chat via the local runtime (Ollama's native API, or LM Studio's /v1)."""
         model = model or settings.lm_synthesis_model
+        if self._is_ollama:
+            return await self._ollama_chat(
+                messages, model, temperature, max_tokens, response_format
+            )
         client = self._get_async_client()
 
         kwargs: dict[str, Any] = {
@@ -185,8 +189,87 @@ class LMStudioClient:
             logger.exception("LM Studio chat request failed (model=%s)", model)
             return ""
 
+    # ── Ollama's native API ───────────────────────────────────
+    #
+    # Ollama's OpenAI-style /v1 ignores num_ctx and keep_alive (measured
+    # 2026-10-22): a /v1 call loaded qwen3:14b at the shared 32k context
+    # (14.4 GB) beside Jarvis's 16k copy, and let it go after 5 minutes. The
+    # native API takes both (services/local_runtime.py).
+
+    @property
+    def _is_ollama(self) -> bool:
+        from life_graph.services.local_runtime import is_ollama
+
+        return is_ollama(self._base_url)
+
+    async def _ollama_post(self, path: str, body: dict[str, Any], timeout: float) -> dict:
+        import httpx
+
+        from life_graph.services.local_runtime import ollama_base
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(f"{ollama_base()}{path}", json=body)
+            resp.raise_for_status()
+            return resp.json()
+
+    async def _ollama_chat(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        response_format: dict | None,
+    ) -> str:
+        from life_graph.services import local_runtime
+
+        body: dict[str, Any] = {
+            "model": model.removeprefix("ollama_chat/").removeprefix("ollama/"),
+            "messages": messages,
+            "stream": False,
+            "keep_alive": local_runtime.keep_alive(),
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+                "num_ctx": local_runtime.num_ctx(),
+            },
+        }
+        if settings.lm_reasoning_effort in ("none", "off", "false"):
+            body["think"] = False
+        if response_format:
+            if response_format.get("type") == "json_schema":
+                body["format"] = (response_format.get("json_schema") or {}).get("schema") or "json"
+            elif response_format.get("type") == "json_object":
+                body["format"] = "json"
+        try:
+            data = await self._ollama_post("/api/chat", body, timeout=300.0)
+            return (data.get("message") or {}).get("content") or ""
+        except Exception:
+            logger.exception("Ollama chat request failed (model=%s)", model)
+            return ""
+
+    async def _ollama_embed(self, texts: list[str]) -> list[list[float]]:
+        from life_graph.services import local_runtime
+
+        data = await self._ollama_post(
+            "/api/embed",
+            {
+                "model": settings.lm_embedding_model,
+                "input": texts,
+                "keep_alive": local_runtime.keep_alive(),
+            },
+            timeout=120.0,
+        )
+        return list(data.get("embeddings") or [])
+
     async def embed(self, text: str) -> list[float]:
         """Generate embedding for a single text string (always local)."""
+        if self._is_ollama:
+            try:
+                vectors = await self._ollama_embed([text])
+                return vectors[0] if vectors else []
+            except Exception:
+                logger.exception("Ollama embedding failed (model=%s)", settings.lm_embedding_model)
+                return []
         client = self._get_async_client()
         model = settings.lm_embedding_model
 
@@ -204,6 +287,19 @@ class LMStudioClient:
         """Generate embeddings for multiple texts (always local)."""
         if not texts:
             return []
+        if self._is_ollama:
+            try:
+                vectors = await self._ollama_embed(texts)
+                if len(vectors) == len(texts):
+                    return vectors
+                logger.warning(
+                    "Ollama returned %d embeddings for %d texts", len(vectors), len(texts)
+                )
+            except Exception:
+                logger.exception(
+                    "Ollama batch embedding failed (model=%s)", settings.lm_embedding_model
+                )
+            return [[] for _ in texts]
 
         client = self._get_async_client()
         model = settings.lm_embedding_model
