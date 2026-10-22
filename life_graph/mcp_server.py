@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -112,6 +113,7 @@ async def remember(
     source_type: str = "mcp",
     tags: list[str] | None = None,
     importance: float | None = None,
+    session_id: str | None = None,
     tenant_id: str | None = None,
 ) -> ToolResult:
     """Store a new memory. The system automatically:
@@ -125,6 +127,8 @@ async def remember(
         source_type: Origin of this memory (mcp, manual, conversation, agent)
         tags: Optional categorization tags
         importance: Override importance score (0.0-1.0). Auto-scored if omitted.
+        session_id: Session from `start_session` this memory was made in.
+            Links it to the session so it is consolidated when the session ends.
         tenant_id: Tenant scope (defaults to LIFE_GRAPH_DEFAULT_TENANT)
     """
     body: dict[str, Any] = {"content": content, "source_type": source_type}
@@ -132,6 +136,9 @@ async def remember(
         body["tags"] = tags
     if importance is not None:
         body["importance"] = importance
+    if session_id:
+        # The store links a memory to the session named in its properties.
+        body["properties"] = {"session_id": session_id}
 
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post("/api/v1/memories/", json=body, headers=_headers(tenant_id))
@@ -189,6 +196,7 @@ async def search(
 async def recall(
     context: dict[str, Any],
     index_only: bool = INDEX_ONLY_DEFAULT,
+    session_id: str | None = None,
     tenant_id: str | None = None,
 ) -> ToolResult:
     """Proactive recall — retrieves the most relevant memories for the current context.
@@ -209,12 +217,18 @@ async def recall(
             about a tenth of the tokens. On by default; nothing is marked as
             surfaced until you expand an id with `get_memories`. Pass false to
             get the four populated buckets directly.
+        session_id: Session from `start_session`. Memories delivered to you are
+            recorded as recalled in it, so `end_session(outcome=...)` can learn
+            which ones helped. In index mode pass it to `get_memories` too.
         tenant_id: Tenant scope
     """
+    body: dict[str, Any] = {"context": context, "index_only": index_only}
+    if session_id:
+        body["session_id"] = session_id
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post(
             "/api/v1/search/recall",
-            json={"context": context, "index_only": index_only},
+            json=body,
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
@@ -248,6 +262,7 @@ async def ask(
 @mcp.tool()
 async def get_memories(
     ids: list[str],
+    session_id: str | None = None,
     tenant_id: str | None = None,
 ) -> ToolResult:
     """Expand memory ids to their full content — step 2 of progressive disclosure.
@@ -262,12 +277,17 @@ async def get_memories(
 
     Args:
         ids: Memory UUIDs to expand (1-50)
+        session_id: Session from `start_session`; the expanded memories are
+            recorded as recalled in it.
         tenant_id: Tenant scope
     """
+    body: dict[str, Any] = {"ids": ids}
+    if session_id:
+        body["session_id"] = session_id
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post(
             "/api/v1/memories/batch",
-            json={"ids": ids},
+            json=body,
             headers=_headers(tenant_id),
         )
         resp.raise_for_status()
@@ -421,18 +441,23 @@ async def start_session(
 async def end_session(
     session_id: str,
     summary: str | None = None,
+    outcome: str | None = None,
     tenant_id: str | None = None,
 ) -> ToolResult:
     """End a conversation session. Generates an LLM summary and links memories.
 
     Args:
         session_id: UUID of the session to end
-        summary: Optional manual summary (auto-generated if omitted)
+        summary: Optional manual summary, stored as given (auto-generated if omitted)
+        outcome: How the session went — "success", "failure" or "neutral".
+            Memories recalled in the session are scored on it.
         tenant_id: Tenant scope
     """
     body: dict[str, Any] = {}
     if summary:
         body["summary"] = summary
+    if outcome:
+        body["outcome"] = outcome
 
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post(
@@ -452,29 +477,73 @@ async def set_intention(
     content: str,
     trigger_type: str = "context",
     trigger_condition: str | None = None,
+    trigger_time: str | None = None,
+    context_match: dict[str, Any] | None = None,
     tenant_id: str | None = None,
 ) -> ToolResult:
     """Create a prospective memory (future intention / reminder).
 
-    The system will surface this when the trigger condition is met.
+    The system will surface this when the trigger is met. What fires it
+    depends on the type — free text alone never does:
+    - "time": fires once `trigger_time` has passed. Required.
+    - "context" / "event": fires when a recall context satisfies
+      `context_match` (e.g. {"project": "my-app"}, {"topics": ["deploy"]},
+      {"files_pattern": "migrations/"}). Required.
 
     Args:
         content: What to remember to do (e.g. "Run migrations before deploying")
         trigger_type: When to trigger — "time", "event", or "context" (default)
-        trigger_condition: The trigger (e.g. "2026-07-10" or "when deploying")
+        trigger_condition: Free-text description of the trigger, kept for
+            humans (e.g. "when deploying"). It is not parsed or matched.
+        trigger_time: ISO-8601 datetime with a UTC offset, e.g.
+            "2026-07-10T09:00:00+05:30". For trigger_type "time".
+        context_match: Keys a recall context must match. For "context"/"event".
         tenant_id: Tenant scope
     """
+    # 2026-10-22: this tool sent only trigger_condition, which nothing
+    # matches on — time triggers need trigger_time and context triggers
+    # context_match, so every intention made here was inert. Parsed here
+    # rather than with a natural-language date parser: a model can write
+    # ISO-8601, and a guessed date is worse than a clear error.
+    parsed_time = None
+    if trigger_time:
+        try:
+            parsed_time = datetime.fromisoformat(trigger_time)
+        except ValueError as exc:
+            raise ValueError(
+                f"trigger_time must be ISO-8601, e.g. 2026-07-10T09:00:00+05:30; got {trigger_time!r}"
+            ) from exc
+        if parsed_time.tzinfo is None:
+            raise ValueError(
+                f"trigger_time needs a UTC offset (e.g. +05:30 or Z); got {trigger_time!r}"
+            )
+    # A missing trigger is reported, not rejected: callers that relied on the
+    # old free-text-only shape keep working, but are told plainly that the
+    # intention is stored and will not fire on its own.
+    warning = None
+    if trigger_type == "time" and parsed_time is None:
+        warning = 'trigger_type "time" without trigger_time will never fire'
+    elif trigger_type in ("context", "event") and not context_match:
+        warning = f'trigger_type "{trigger_type}" without context_match will never fire'
+
     body: dict[str, Any] = {
         "content": content,
         "trigger_type": trigger_type,
     }
     if trigger_condition:
         body["trigger_condition"] = trigger_condition
+    if parsed_time is not None:
+        body["trigger_time"] = parsed_time.isoformat()
+    if context_match:
+        body["context_match"] = context_match
 
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post("/api/v1/intentions/", json=body, headers=_headers(tenant_id))
         resp.raise_for_status()
-        return _result(_extract_data(resp.json()))
+        data = _extract_data(resp.json())
+        if warning and isinstance(data, dict):
+            data = {**data, "warning": warning}
+        return _result(data)
 
 
 # ── Graph Tools ──────────────────────────────────────────────────────────────

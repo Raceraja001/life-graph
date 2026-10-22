@@ -44,11 +44,67 @@ class HeartbeatRequest(BaseModel):
 
 
 class EndSessionRequest(BaseModel):
-    """Optional body for ending a session."""
+    """Optional body for ending a session.
+
+    ``summary`` was added 2026-10-22: the MCP ``end_session`` tool has always
+    sent one, but this model only declared ``outcome``, so pydantic dropped
+    the caller's summary without a word and the LLM summary replaced it.
+    """
 
     outcome: str | None = Field(
         None,
         description="Session outcome: 'success', 'failure', or 'neutral'",
+    )
+    summary: str | None = Field(
+        None,
+        description=(
+            "Caller-written summary. When given it is stored as-is and the "
+            "LLM summary is skipped; omit it to have one generated."
+        ),
+    )
+
+
+# Link rows whose memory was written in the session, as opposed to ones the
+# session merely recalled. ``memories_created`` counts only these.
+_CREATED_ROLE = "created"
+
+
+async def _own_session_or_404(db: Any, session_id: uuid.UUID) -> Session:
+    """Load *session_id* if it belongs to the current tenant, else 404.
+
+    end/get/heartbeat used ``db.get(Session, id)``, which is a primary-key
+    lookup with no tenant in it: any tenant that knew (or guessed) a session
+    id could read, end or rewrite another tenant's session (review finding,
+    2026-10-22). Another tenant's session is reported as missing, not
+    forbidden, so its existence is not disclosed.
+    """
+    sess = await db.scalar(
+        select(Session).where(
+            Session.id == session_id,
+            Session.tenant_id == get_current_tenant_id(),
+        )
+    )
+    if sess is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found",
+        )
+    return sess
+
+
+def _created_count_stmt(session_id: uuid.UUID) -> Any:
+    """Count of memories *created* in a session (recalled links excluded).
+
+    Recall now writes ``role='recalled'`` links into the same table, so a
+    plain count of link rows would report recalled memories as created.
+    """
+    return (
+        select(func.count())
+        .select_from(MemorySession)
+        .where(
+            MemorySession.session_id == session_id,
+            MemorySession.role == _CREATED_ROLE,
+        )
     )
 
 
@@ -65,9 +121,15 @@ async def start_session(body: SessionCreate):
 
     Creates a Session row with the provided context and returns
     the freshly created session.
+
+    The tenant is set explicitly. It was not before 2026-10-22, so every
+    session landed in the column's ``"legacy"`` default: invisible to the
+    caller's own ``GET /sessions`` and unreachable by anything tenant-scoped
+    (micro-consolidation, impact scoring, memory links).
     """
     new_session = Session(
         context=body.context,
+        tenant_id=get_current_tenant_id(),
     )
 
     async with async_session() as db:
@@ -93,15 +155,11 @@ async def end_session(
     LLM for a two-sentence summary, and sets ``ended_at``.  Falls
     back to a rule-based summary if the LLM call fails.
 
-    Optionally accepts an ``outcome`` for impact scoring.
+    Optionally accepts an ``outcome`` for impact scoring and a caller-written
+    ``summary``, which is kept verbatim instead of generating one.
     """
     async with async_session() as db:
-        sess = await db.get(Session, session_id)
-        if sess is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {session_id} not found",
-            )
+        sess = await _own_session_or_404(db, session_id)
 
         if sess.ended_at is not None:
             raise HTTPException(
@@ -109,16 +167,10 @@ async def end_session(
                 detail=f"Session {session_id} already ended",
             )
 
-        # Count memories linked to this session
-        count_stmt = (
-            select(func.count())
-            .select_from(MemorySession)
-            .where(MemorySession.session_id == session_id)
-        )
-        memory_count = await db.scalar(count_stmt) or 0
+        memory_count = await db.scalar(_created_count_stmt(session_id)) or 0
 
-        # Generate summary via LLM
-        summary = await _generate_summary(sess, memory_count)
+        given = (body.summary or "").strip() if body else ""
+        summary = given or await _generate_summary(sess, memory_count)
 
         sess.ended_at = datetime.now(UTC)
         sess.summary = summary
@@ -174,20 +226,10 @@ async def _run_micro_consolidation(session_id: uuid.UUID) -> None:
 async def get_session(session_id: uuid.UUID):
     """Retrieve a single session with its linked memory count."""
     async with async_session() as db:
-        sess = await db.get(Session, session_id)
-        if sess is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {session_id} not found",
-            )
+        sess = await _own_session_or_404(db, session_id)
 
         # Populate memories_created from the link table if session is still active
-        count_stmt = (
-            select(func.count())
-            .select_from(MemorySession)
-            .where(MemorySession.session_id == session_id)
-        )
-        linked_count = await db.scalar(count_stmt) or 0
+        linked_count = await db.scalar(_created_count_stmt(session_id)) or 0
         sess.memories_created = linked_count
 
     return success_response(data=SessionResponse.model_validate(sess))
@@ -239,7 +281,13 @@ async def list_sessions(
     # Optional total count
     total = None
     if include_total:
-        count_stmt = select(func.count()).select_from(Session)
+        # Scoped like the page itself: unscoped, this reported every
+        # tenant's session count (2026-10-22).
+        count_stmt = (
+            select(func.count())
+            .select_from(Session)
+            .where(Session.tenant_id == get_current_tenant_id())
+        )
         async with async_session() as db:
             total = await db.scalar(count_stmt)
 
@@ -266,12 +314,7 @@ async def heartbeat(
     preserving keys that are not overwritten.
     """
     async with async_session() as db:
-        sess = await db.get(Session, session_id)
-        if sess is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {session_id} not found",
-            )
+        sess = await _own_session_or_404(db, session_id)
 
         if sess.ended_at is not None:
             raise HTTPException(
@@ -280,9 +323,10 @@ async def heartbeat(
             )
 
         # Merge context (shallow)
-        existing = sess.context or {}
-        existing.update(body.context)
-        sess.context = existing
+        # A new dict, not the loaded one mutated in place: the column is
+        # plain JSONB (no MutableDict), so re-assigning the same object
+        # need not register as a change.
+        sess.context = {**(sess.context or {}), **body.context}
 
         await db.commit()
         await db.refresh(sess)

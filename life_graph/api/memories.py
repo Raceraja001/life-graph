@@ -147,6 +147,15 @@ class MemoryBatchRequest(BaseModel):
             "(dashboards, admin tooling)."
         ),
     )
+    session_id: uuid.UUID | None = Field(
+        None,
+        description=(
+            "Optional session this expand belongs to. With record_access on, "
+            "the returned memories are linked to it as 'recalled' — the "
+            "index-mode counterpart of passing session_id to recall, since "
+            "here is where an index-mode disclosure happens."
+        ),
+    )
 
 
 @router.post(
@@ -181,7 +190,7 @@ async def batch_get_memories(
         # A pull, not a push: it must not consume the session surface cap,
         # or a caller reading its own memories would lock itself out of
         # proactive recall.
-        await engine.record_disclosure([m.id for m in memories])
+        await engine.record_disclosure([m.id for m in memories], session_id=body.session_id)
 
     return success_response(
         data=memories,
