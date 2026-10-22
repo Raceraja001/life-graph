@@ -445,10 +445,12 @@ async def ask_brain(
             source_count=0,
         )
 
-    # Search for relevant memories
+    # Search for relevant memories. Active only: unfiltered, this answered
+    # from unreviewed, rejected and superseded memories too.
     rows = await store.search_similar(
         embedding=embedding,
         limit=body.limit,
+        filters={"status": "active"},
         include_embedding=False,  # MemoryResponse never serializes it
     )
 

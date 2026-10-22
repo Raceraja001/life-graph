@@ -127,7 +127,13 @@ class ExtractionPipeline:
                     "LLM capture extraction failed; falling back to rules/nlp",
                     exc_info=True,
                 )
-                llm_facts = []
+                llm_facts = None
+            if llm_facts is not None and not llm_facts:
+                # The LLM ran and judged nothing worth keeping: that is the
+                # answer. Falling through to the regex tier here turned
+                # "nothing" into fragments like "They → the same code"
+                # (929 of the pending memories on 2026-10-22).
+                return ExtractionResult(llm_invoked=True)
             if llm_facts:
                 _stamp_tier(llm_facts, "llm")
                 merged = _deduplicate(llm_facts)

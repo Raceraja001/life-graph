@@ -220,6 +220,12 @@ class RecallEngine:
         fingerprint = self._context_builder.build(context)
         logger.info("Session start recall — fingerprint: %s", fingerprint.as_dict())
 
+        # A new session gets a fresh surfacing budget. The engine is one
+        # process-wide instance (api/dependencies.py), and this counter was
+        # never reset: after ~2 session starts in a process, recall returned
+        # nothing until a restart. The 7-day cooldown still applies.
+        self._session_surface_count = 0
+
         # Stage 1: Retrieve candidates
         candidates = await self._retrieve_candidates(fingerprint, limit=50)
         if not candidates:
@@ -228,14 +234,13 @@ class RecallEngine:
         # Stage 2: Rank
         ranked = self._ranker.rank(candidates, current_context=context)
 
-        # Stage 3: Rerank (max 5)
-        reranked = self._ranker.rerank(
-            ranked,
-            max_results=settings.recall_max_session_start,
-        )
+        # Stage 3: Rerank, keeping spares: cooled-down items are filtered out
+        # next, and with exactly max results each repeat recall came back shorter.
+        max_results = settings.recall_max_session_start
+        reranked = self._ranker.rerank(ranked, max_results=max_results * 3)
 
         # Filter through anti-annoyance
-        filtered = await self._apply_anti_annoyance(reranked)
+        filtered = (await self._apply_anti_annoyance(reranked))[:max_results]
 
         # Check intentions (cheap, and useful in both modes)
         triggered_intentions = await self._check_intentions(fingerprint)

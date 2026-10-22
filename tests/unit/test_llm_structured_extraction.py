@@ -32,7 +32,9 @@ class _FakeClient:
         self._responses = list(responses)
         self.calls: list[dict] = []
 
-    async def chat(self, **kwargs) -> str:
+    # Only the local-only method: the extractor must never use chat(), which
+    # routes to the cloud chain in hybrid mode.
+    async def chat_local_only(self, **kwargs) -> str:
         self.calls.append(kwargs)
         return self._responses.pop(0) if self._responses else ""
 
