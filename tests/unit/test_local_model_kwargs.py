@@ -1,22 +1,34 @@
 """Options that belong only to a locally served model.
 
-Two costs this covers, both measured on qwen3:14b: Ollama evicts a model after
-five idle minutes and takes ~4s to load it again, and a thinking model spends
-141 tokens reasoning about "hi" before writing 12 of greeting.
+Costs this covers, measured on qwen3:14b: Ollama evicts a model after five idle
+minutes and takes 11-17 s to load it again; a request with a different context
+size loads a second copy; and a thinking model spends 141 tokens reasoning
+about "hi" before writing 12 of greeting.
 """
 
 import pytest
 
 from life_graph.config import settings
-from life_graph.services.resilient_llm import LOCAL_KEEP_ALIVE, _local_model_kwargs
+from life_graph.services import local_runtime
+from life_graph.services.resilient_llm import _local_model_kwargs
 
 
 @pytest.mark.parametrize(
     "model",
     ["ollama_chat/qwen3:14b", "ollama/qwen3-coder:30b", "lm_studio/whatever"],
 )
-def test_a_local_model_is_kept_resident(model):
-    assert _local_model_kwargs(model)["keep_alive"] == LOCAL_KEEP_ALIVE
+def test_a_local_model_gets_life_graphs_keep_alive(model):
+    assert _local_model_kwargs(model)["keep_alive"] == local_runtime.keep_alive()
+
+
+@pytest.mark.parametrize("model", ["ollama_chat/qwen3:14b", "ollama/qwen3-coder:30b"])
+def test_an_ollama_model_gets_the_one_context_size(model, monkeypatch):
+    monkeypatch.setattr(settings, "local_llm_num_ctx", 16384)
+    assert _local_model_kwargs(model)["num_ctx"] == 16384
+
+
+def test_lm_studio_gets_no_ollama_option():
+    assert "num_ctx" not in _local_model_kwargs("lm_studio/whatever")
 
 
 @pytest.mark.parametrize(
@@ -49,4 +61,3 @@ def test_nothing_is_sent_when_not_configured(monkeypatch):
     extra = _local_model_kwargs("ollama_chat/qwen3:14b")
 
     assert "extra_body" not in extra
-    assert extra["keep_alive"] == LOCAL_KEEP_ALIVE

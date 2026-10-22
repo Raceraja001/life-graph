@@ -141,14 +141,8 @@ def only_models(models: list[str]):
 # model that must not be handed an Ollama-only option.
 LOCAL_PROVIDERS = ("ollama/", "ollama_chat/", "lm_studio/")
 
-# How long Ollama holds a model in VRAM after a request.
-#
-# Its default is five minutes; after that the weights are evicted and the next
-# message pays to load them again — measured at ~4s for qwen3:14b here, which is
-# why a chat picked back up after a break takes several seconds to say "hi". The
-# cost lands entirely on interactive use: a scheduled job does not notice, a
-# person waiting for a greeting does.
-LOCAL_KEEP_ALIVE = "30m"
+# How long Ollama holds a model after a request, and with what context size:
+# services/local_runtime.py (waking hours: until they end; night: a few minutes).
 
 
 def _local_model_kwargs(model: str) -> dict[str, Any]:
@@ -160,7 +154,13 @@ def _local_model_kwargs(model: str) -> dict[str, Any]:
     if not model.startswith(LOCAL_PROVIDERS):
         return {}
 
-    extra: dict[str, Any] = {"keep_alive": LOCAL_KEEP_ALIVE}
+    from life_graph.services import local_runtime
+
+    extra: dict[str, Any] = {"keep_alive": local_runtime.keep_alive()}
+    if model.startswith(("ollama/", "ollama_chat/")):
+        # The same context size as every other Life Graph request: a different
+        # one makes Ollama load a second copy (services/local_runtime.py).
+        extra["num_ctx"] = local_runtime.num_ctx()
     if settings.lm_reasoning_effort:
         # A thinking model answers "hi" with 141 tokens of hidden reasoning and
         # 12 of greeting: 1.9s against 0.19s with thinking off, and far worse on

@@ -126,8 +126,11 @@ class Settings(BaseSettings):
     # (reversible: approve brings one back). 0 = keep waiting forever.
     pending_memory_expiry_days: int = 14
     # The local model that decides which searched memories answer a question
-    # (services/memory_retrieval.py). Small is enough for "does this note help",
-    # and it shares the GPU with speech. Empty = lm_extraction_model.
+    # (services/memory_retrieval.py). Empty = lm_extraction_model, which is
+    # also Jarvis's local model here: a separate small judge meant a third
+    # model on a 16 GB GPU that holds two, so every personal question
+    # reloaded one (~15 s, measured 2026-10-22). The same model, already
+    # loaded, judges in ~0.3 s.
     memory_judge_model: str = ""
     """Most archive proposals one decay sweep may queue for a tenant.
 
@@ -491,6 +494,13 @@ class Settings(BaseSettings):
     # Ollama model-name fragments that mean speech is in use (comma-separated).
     speech_models: str = "gemma3"
     ollama_api_base: str = "http://localhost:11434"
+    # How Life Graph asks Ollama to hold its local models (services/local_runtime.py).
+    # One context size for every Life Graph request, or Ollama loads a second copy.
+    local_llm_num_ctx: int = 16384
+    # Hours of user_timezone ("7-23") in which the model stays loaded until the
+    # window ends; outside them, released after local_llm_idle_keep_alive.
+    local_llm_warm_hours: str = "7-23"
+    local_llm_idle_keep_alive: str = "5m"
     # Local coding only in these hours of user_timezone, e.g. "23-7"; empty
     # means whenever the user is away.
     dev_local_hours: str = ""
