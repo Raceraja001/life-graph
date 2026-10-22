@@ -125,6 +125,10 @@ class Settings(BaseSettings):
     # Unreviewed memories older than this are rejected by the nightly decay job
     # (reversible: approve brings one back). 0 = keep waiting forever.
     pending_memory_expiry_days: int = 14
+    # The local model that decides which searched memories answer a question
+    # (services/memory_retrieval.py). Small is enough for "does this note help",
+    # and it shares the GPU with speech. Empty = lm_extraction_model.
+    memory_judge_model: str = ""
     """Most archive proposals one decay sweep may queue for a tenant.
 
     Decay proposes rather than archives, so an unbounded first sweep over a

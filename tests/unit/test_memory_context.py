@@ -6,7 +6,14 @@ import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from life_graph.services.memory_context import HEADER, memory_block, render, search_text
+from life_graph.services import memory_retrieval
+from life_graph.services.memory_context import (
+    HEADER,
+    NOTHING_FOUND,
+    memory_block,
+    render,
+    search_text,
+)
 
 
 def test_a_short_follow_up_is_searched_with_the_previous_question():
@@ -33,51 +40,46 @@ def test_render_dates_and_trims():
 
 
 class _Store:
-    def __init__(self, hits):
-        self.hits, self.touched, self.kwargs = hits, None, None
-
-    async def hybrid_search(self, **kw):
-        self.kwargs = kw
-        return self.hits
+    touched = None
 
     async def touch_many(self, ids):
-        self.touched = ids
+        _Store.touched = ids
 
 
-def _wire(monkeypatch, store, embedding=(0.1,)):
-    class _Manager:
-        async def generate_embedding(self, text):
-            return list(embedding) if embedding else None
-
+def _wire(monkeypatch, found):
     import life_graph.api.dependencies as deps
 
-    monkeypatch.setattr(deps, "get_store", lambda: store)
-    monkeypatch.setattr(deps, "get_memory_manager", lambda: _Manager())
+    async def fake_retrieve(question, limit=6):
+        if isinstance(found, Exception):
+            raise found
+        return found
+
+    _Store.touched = None
+    monkeypatch.setattr(deps, "get_store", lambda: _Store())
+    monkeypatch.setattr(memory_retrieval, "retrieve", fake_retrieve)
 
 
-async def test_memory_block_searches_active_memories_and_counts_the_read(monkeypatch):
+async def test_matching_memories_are_shown_and_counted_as_read(monkeypatch):
     mem = SimpleNamespace(
         id=uuid.uuid4(), content="My car insurance renews in March.", created_at=None
     )
-    store = _Store([(mem, 0.8)])
-    _wire(monkeypatch, store)
+    _wire(monkeypatch, [mem])
     out = await memory_block("raja", "When does my car insurance renew?")
     assert "My car insurance renews in March." in out
-    assert store.kwargs["statuses"] == ("active",)
-    assert store.touched == [mem.id]
+    assert _Store.touched == [mem.id]
 
 
-async def test_no_embedding_means_no_block(monkeypatch):
-    store = _Store([])
-    _wire(monkeypatch, store, embedding=None)
+async def test_nothing_relevant_is_said_not_left_out(monkeypatch):
+    _wire(monkeypatch, [])
+    assert await memory_block("raja", "What is my blood group?") == NOTHING_FOUND
+    assert _Store.touched is None
+
+
+async def test_memory_that_could_not_be_searched_says_nothing(monkeypatch):
+    _wire(monkeypatch, None)  # no embedding
     assert await memory_block("raja", "anything at all here please") == ""
-    assert store.kwargs is None
 
 
 async def test_a_failure_is_never_a_failed_answer(monkeypatch):
-    class _Broken(_Store):
-        async def hybrid_search(self, **kw):
-            raise RuntimeError("db down")
-
-    _wire(monkeypatch, _Broken([]))
+    _wire(monkeypatch, RuntimeError("db down"))
     assert await memory_block("raja", "When does my car insurance renew?") == ""

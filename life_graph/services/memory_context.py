@@ -6,9 +6,9 @@ memory layer, Life Graph's core, reached almost no answer. Now a personal
 request (which runs on this machine's model, services/lead.py) starts with
 the owner's memories that match it. Never on a cloud run: these are personal.
 
-There is no relevance score that separates a real match from the nearest
-unrelated memory yet (evals/score-separability.md), so the block says so and
-tells the model to use only what applies.
+Search alone always returns its nearest memories, related or not, so the
+candidates pass through the local relevance judge first
+(services/memory_retrieval.py); when none help, the block says so.
 """
 
 from __future__ import annotations
@@ -26,9 +26,14 @@ FOLLOW_UP_WORDS = 8
 
 HEADER = (
     "## What you remember about the owner\n"
-    "Notes kept from earlier conversations, found by searching for this message. "
-    "Some may not be relevant: use only those that are, and don't mention the rest. "
-    "If they don't answer the question, say you don't know rather than guess."
+    "Notes kept from earlier conversations that match this message. Use what "
+    "answers it; if they don't fully answer it, say what you don't know rather "
+    "than guess."
+)
+NOTHING_FOUND = (
+    "## What you remember about the owner\n"
+    "Nothing you remember matches this message. If it asks about the owner's own"
+    " life and your tools can't find it either, say you don't know."
 )
 
 
@@ -59,31 +64,30 @@ def render(rows: list[tuple[str, Any]]) -> str:
 
 
 async def memory_block(tenant_id: str, message: str, history: list[dict] | None = None) -> str:
-    """The block for the system prompt, or "" (no match, no embedding, any error)."""
-    from life_graph.api.dependencies import get_memory_manager, get_store
+    """The block for the system prompt: the matching memories, a "nothing matches"
+    note, or "" when memory could not be searched at all (no embedding, any error)."""
+    from life_graph.api.dependencies import get_store
     from life_graph.core.tenant import tenant_scope
 
     query = search_text(message, history)
     if not query:
         return ""
+    from life_graph.services.memory_retrieval import retrieve
+
     try:
         with tenant_scope(tenant_id):
-            embedding = await get_memory_manager().generate_embedding(query)
-            if not embedding:
-                return ""
-            store = get_store()
-            hits = await store.hybrid_search(
-                embedding=embedding,
-                query_text=query,
-                limit=MAX_MEMORIES,
-                statuses=("active",),
-            )
-            if hits:
+            found = await retrieve(query, limit=MAX_MEMORIES)
+            if found:
                 # Being put in front of the model is being read: it counts for
                 # ranking and decay, like any other recall.
-                await store.touch_many([m.id for m, _ in hits])
+                await get_store().touch_many([m.id for m in found])
     except Exception as exc:  # noqa: BLE001 — memory is a bonus, never a failed answer
         # Never the message text in the log: it is personal.
         logger.warning("Memory context failed (%d chars): %s", len(query), exc)
         return ""
-    return render([(m.content, m.created_at) for m, _ in hits])
+    if found is None:
+        return ""  # memory could not be searched: say nothing rather than "nothing found"
+    if not found:
+        # Said, not left out: without it the model fills the gap with a guess.
+        return NOTHING_FOUND
+    return render([(m.content, m.created_at) for m in found])
