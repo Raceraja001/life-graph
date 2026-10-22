@@ -40,6 +40,41 @@ def _as_uuid(value: uuid.UUID | str | None) -> uuid.UUID | None:
         return None
 
 
+def _raw_filter_sql(filters: dict | None) -> tuple[str, dict]:
+    """The raw-SQL twin of ``PostgresMemoryStore._apply_filters`` (minus status,
+    which the caller folds into its ``statuses``): ``(" AND …", params)``.
+
+    hybrid_search, the default search mode, took ``filters`` and never used
+    them, so tags, dates, importance and source_type sent to search were
+    silently ignored.
+    """
+    import json
+
+    if not filters:
+        return "", {}
+    clauses: list[str] = []
+    params: dict = {}
+    if filters.get("tags"):
+        clauses.append("tags && CAST(:f_tags AS varchar[])")
+        params["f_tags"] = list(filters["tags"])
+    if "properties" in filters:
+        clauses.append("properties @> CAST(:f_properties AS jsonb)")
+        params["f_properties"] = json.dumps(filters["properties"])
+    if "created_after" in filters:
+        clauses.append("created_at >= :f_created_after")
+        params["f_created_after"] = filters["created_after"]
+    if "created_before" in filters:
+        clauses.append("created_at <= :f_created_before")
+        params["f_created_before"] = filters["created_before"]
+    if "min_importance" in filters:
+        clauses.append("importance >= :f_min_importance")
+        params["f_min_importance"] = filters["min_importance"]
+    if "source_type" in filters:
+        clauses.append("source_type = :f_source_type")
+        params["f_source_type"] = filters["source_type"]
+    return "".join(f"\n                  AND {c}" for c in clauses), params
+
+
 class PostgresMemoryStore:
     """Async PostgreSQL-backed memory store.
 
@@ -286,20 +321,25 @@ class PostgresMemoryStore:
         from sqlalchemy import text
 
         tenant_id = get_current_tenant_id()
+        if filters and "status" in filters:
+            statuses = (filters["status"],)
+        if filters and "statuses" in filters:
+            statuses = tuple(filters["statuses"])
+        extra, extra_params = _raw_filter_sql(filters)
 
         # Subquery: get vector scores (top 100 candidates by cosine)
         # Then left-join with BM25 scores and fuse
         #
         # We use raw SQL for the tsvector column since it's a GENERATED column
         # not mapped in the ORM.
-        raw_sql = text("""
+        raw_sql = text(f"""
             WITH vector_candidates AS (
                 SELECT id,
                        1.0 - (embedding <=> :query_embedding) AS v_score
                 FROM memories
                 WHERE embedding IS NOT NULL
                   AND tenant_id = :tenant_id
-                  AND status = ANY(:statuses)
+                  AND status = ANY(:statuses){extra}
                 ORDER BY embedding <=> :query_embedding
                 LIMIT 100
             ),
@@ -308,7 +348,7 @@ class PostgresMemoryStore:
                        ts_rank(content_tsv, plainto_tsquery('english', :query_text)) AS b_score
                 FROM memories
                 WHERE tenant_id = :tenant_id
-                  AND status = ANY(:statuses)
+                  AND status = ANY(:statuses){extra}
                   AND content_tsv @@ plainto_tsquery('english', :query_text)
             )
             SELECT
@@ -348,6 +388,7 @@ class PostgresMemoryStore:
                     "bw": bm25_weight,
                     "result_limit": limit,
                     "statuses": list(statuses),
+                    **extra_params,
                 },
             )
             scored_ids = [(row[0], float(row[1])) for row in result.fetchall()]

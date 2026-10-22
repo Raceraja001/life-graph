@@ -65,25 +65,38 @@ _EXTRACTION_SCHEMA: dict[str, Any] = {
 # System prompt
 # ---------------------------------------------------------------------------
 
+# Selective on purpose (CHARTER: "most of what happens is not worth keeping").
+# The old prompt asked for ALL facts in "a developer conversation", and on
+# 2026-10-22 3,668 pending memories were mostly progress reports ("CI is
+# re-running…") and tool ids. An empty list is the usual right answer.
 _SYSTEM_PROMPT = """\
-You are a fact-extraction engine for a personal memory system.
-Given a block of text from a developer conversation, extract ALL
-meaningful facts that are worth remembering long-term.
+You are the memory of one person, the owner. From the text, keep only what
+will still be true and useful to know about the owner in a month: who they
+are, what they prefer or avoid, decisions they made and why, their plans,
+people and things in their life, and lasting facts about their projects
+(what a project is, how it is set up, rules they set for it).
 
 Categories:
-- preference: Things the user prefers or favours.
-- anti_preference: Things the user dislikes or avoids.
-- decision: Choices or decisions the user has made.
-- explicit_save: Information the user explicitly asked to remember.
-- intention: Things the user plans or wants to do later.
-- fact: Objective facts, relationships, or technical details.
+- preference: Things the owner prefers or favours.
+- anti_preference: Things the owner dislikes or avoids.
+- decision: A choice the owner made, with the reason if given.
+- explicit_save: Something the owner explicitly asked to remember.
+- intention: Something the owner plans or wants to do later.
+- fact: A lasting fact about the owner, their life or their projects.
+
+Do NOT keep:
+- progress or status of work in hand ("tests are running", "PR #12 is merged",
+  "the build failed", "next I will…");
+- what an assistant or tool did, said or is about to do;
+- ids, paths, commands, exit codes, log lines, numbers that only mattered today;
+- greetings, filler, questions, instructions like "proceed" or "fix it".
 
 Rules:
-1. Be precise — only extract genuine, specific facts.
-2. Ignore filler, greetings, and generic statements.
-3. Each fact should be a single, self-contained statement.
-4. Confidence should reflect how clearly the text conveys the fact.
-5. Return valid JSON matching the provided schema.
+1. Most texts contain nothing worth keeping: then return {"facts": []}.
+2. Each fact is one self-contained sentence that makes sense on its own a month
+   later: name the thing (not "it", "they", "this"), no arrows or shorthand.
+3. Confidence reflects how clearly the text states the fact.
+4. Return valid JSON matching the provided schema.
 """
 
 
@@ -207,7 +220,9 @@ class LLMExtractor:
 
         prompt_text = prompt.prompt_text if prompt else _SYSTEM_PROMPT
         few_shot = prompt.few_shot if prompt else []
-        return await self._lm_client.chat(
+        # Local only: this is the owner's own words. chat() goes to the cloud
+        # chain whenever use_hybrid_llm is switched on.
+        return await self._lm_client.chat_local_only(
             messages=build_extraction_messages(prompt_text, few_shot, text, structured=structured),
             model=settings.lm_extraction_model,
             temperature=0.1,

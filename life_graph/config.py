@@ -122,6 +122,9 @@ class Settings(BaseSettings):
     ranking demotes stale memories on its own recency curve."""
 
     decay_proposal_limit: int = 50
+    # Unreviewed memories older than this are rejected by the nightly decay job
+    # (reversible: approve brings one back). 0 = keep waiting forever.
+    pending_memory_expiry_days: int = 14
     """Most archive proposals one decay sweep may queue for a tenant.
 
     Decay proposes rather than archives, so an unbounded first sweep over a
@@ -152,7 +155,10 @@ class Settings(BaseSettings):
     # are skipped. Without this, every tool call became several LLM-written
     # "facts" about shell commands, which drowned real memories in the review
     # queue and in recall. Comma-separated; empty string extracts everything.
-    capture_no_extract_surfaces: str = "tool_exhaust"
+    # assistant_message too: the assistant's own replies narrate work in hand
+    # and produced 3,502 of 3,668 pending memories (2026-10-22). The owner's
+    # memory is learnt from the owner's words; the replies stay in the trail.
+    capture_no_extract_surfaces: str = "tool_exhaust,assistant_message"
 
     # ── Cold Start ─────────────────────────────────────
     cold_start_min_memories: int = 50

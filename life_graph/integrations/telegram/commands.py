@@ -102,7 +102,10 @@ async def _recall(chat_id: int, query: str, reply) -> None:  # noqa: ANN001
     except Exception:
         logger.warning("telegram: hybrid search failed, falling back to vector", exc_info=True)
         rows = await store.search_similar(
-            embedding=embedding, limit=RECALL_LIMIT, include_embedding=False
+            embedding=embedding,
+            limit=RECALL_LIMIT,
+            filters={"status": "active"},  # as the hybrid path: never unreviewed ones
+            include_embedding=False,
         )
         hits = [(row, 0.0) for row in rows]
 

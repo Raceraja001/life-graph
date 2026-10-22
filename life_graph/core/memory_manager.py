@@ -416,6 +416,7 @@ class MemoryManager:
             memory_create,
             embedding=embedding,
             trust_tier=trust_tier,
+            status="active" if _auto_approved(fact, trust_tier) else "pending",
             # Provenance: which tier produced this fact, how sure it was, and
             # which capture event it came from (the capture spine puts that id
             # in context/properties).
@@ -566,6 +567,24 @@ class MemoryManager:
         except Exception as exc:
             logger.warning("Embedding generation failed: %s", exc)
             return None
+
+
+#: How sure the extractor must be that the owner asked to remember it.
+AUTO_APPROVE_MIN_CONFIDENCE = 0.8
+
+
+def _auto_approved(fact: ExtractedFact, trust_tier: str | None) -> bool:
+    """Whether a new memory skips the review queue.
+
+    Only what the owner, in their own words (trust tier ``self``), explicitly
+    asked to be remembered. Everything else still waits for approval; the
+    queue jammed at 3,668 when that was every memory (2026-10-22).
+    """
+    return (
+        trust_tier == "self"
+        and fact.fact_type == "explicit_save"
+        and fact.confidence >= AUTO_APPROVE_MIN_CONFIDENCE
+    )
 
 
 def _infer_tags(fact: ExtractedFact, importance_tier: str) -> list[str]:

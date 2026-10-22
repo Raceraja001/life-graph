@@ -88,7 +88,7 @@ class _Client:
     def __init__(self):
         self.messages = None
 
-    async def chat(self, **kwargs):
+    async def chat_local_only(self, **kwargs):
         self.messages = kwargs["messages"]
         return _GOOD
 
