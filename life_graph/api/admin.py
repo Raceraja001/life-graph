@@ -7,6 +7,8 @@ webhook CRUD, tenant lifecycle management, and bulk memory operations.
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -44,6 +46,8 @@ from life_graph.models.schemas import MemoryResponse
 from life_graph.services.metamemory import MetamemoryTracker
 from life_graph.storage.database import async_session
 from life_graph.storage.postgres import PostgresMemoryStore
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -717,8 +721,16 @@ async def bulk_import(body: BulkImportRequest):
         memory_ids = []
         for item in body.memories:
             memory = Memory(
+                # Explicit id: the column default only fires at flush, so
+                # reading memory.id before commit gave None and the embedding
+                # job was enqueued with a list of "None" ids (code review,
+                # 2026-10-22).
+                id=uuid.uuid4(),
                 tenant_id=tenant_id,
                 content=item.content,
+                # Same normalisation as PostgresMemoryStore.store(), so a later
+                # ingest of the same text dedups against the imported row.
+                content_hash=hashlib.sha256(item.content.strip().lower().encode()).hexdigest(),
                 tags=item.tags,
                 importance=item.importance or 0.5,
                 source_type=item.source_type or "bulk_import",
@@ -732,25 +744,47 @@ async def bulk_import(body: BulkImportRequest):
 
         await session.commit()
 
-    # Optionally enqueue embedding generation
-    searchable = not body.generate_embeddings
-    if body.generate_embeddings:
+    # Optionally enqueue embedding generation.
+    #
+    # ``searchable`` says whether semantic search will find these memories once
+    # the queued job has run. It was ``not body.generate_embeddings`` — true
+    # exactly when no embeddings were requested — and an enqueue failure was
+    # swallowed with ``pass`` while still reporting the import as searchable
+    # (code review, 2026-10-22). It is now true only when the job was actually
+    # enqueued, and a failure is logged; the rows stay ``embedding IS NULL``,
+    # so the re-embed job (``life-graph reembed``) can fill them in later.
+    searchable = False
+    if body.generate_embeddings and memory_ids:
         try:
             from arq import create_pool
 
             from life_graph.workers.settings import parse_redis_settings
 
             pool = await create_pool(parse_redis_settings())
-            job = await pool.enqueue_job(
-                "life_graph.workers.embeddings.generate_embeddings_batch",
-                [str(mid) for mid in memory_ids],
+            try:
+                job = await pool.enqueue_job(
+                    "life_graph.workers.embeddings.generate_embeddings_batch",
+                    [str(mid) for mid in memory_ids],
+                    tenant_id,
+                )
+            finally:
+                await pool.close()
+            if job is not None:
+                embedding_job_id = job.job_id
+                searchable = True
+            else:
+                logger.warning(
+                    "Bulk import: embedding job for %d memories was not enqueued "
+                    "(duplicate job id?); run the re-embed job to embed them",
+                    len(memory_ids),
+                )
+        except Exception:
+            logger.exception(
+                "Bulk import: failed to enqueue embedding job for %d memories "
+                "(tenant %s); they stay unembedded until the re-embed job runs",
+                len(memory_ids),
                 tenant_id,
             )
-            embedding_job_id = job.job_id
-            await pool.close()
-        except Exception:
-            # Embeddings will need to be generated later
-            pass
 
     return success_response(
         data={
@@ -770,6 +804,7 @@ class ConsolidationResponse(BaseModel):
     gathered: int = 0
     clusters_found: int = 0
     duplicates_removed: int = 0
+    merge_suggestions_queued: int = 0
     principles_created: int = 0
     memories_archived: int = 0
     contradictions_found: int = 0
@@ -795,6 +830,7 @@ async def run_consolidation():
             gathered=report.gathered,
             clusters_found=report.clusters_found,
             duplicates_removed=report.duplicates_removed,
+            merge_suggestions_queued=report.merge_suggestions_queued,
             principles_created=report.principles_created,
             memories_archived=report.memories_archived,
             contradictions_found=report.contradictions_found,

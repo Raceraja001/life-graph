@@ -204,10 +204,11 @@ def cmd_reembed(args):
     import asyncio
 
     from life_graph.config import settings
+    from life_graph.services.embeddings import current_embedding_model
     from life_graph.workers.reembed import reembed_all
 
     print(
-        f"[*] Re-embedding corpus with: {settings.embedding_model} "
+        f"[*] Re-embedding corpus with: {current_embedding_model()} "
         f"(dim={settings.embedding_dimension})"
     )
     result = asyncio.run(reembed_all(batch_size=args.batch_size))

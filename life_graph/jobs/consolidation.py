@@ -21,12 +21,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
+from life_graph.models.schemas import MemoryCreate
 from life_graph.scoring.decay import DecayCalculator
-from life_graph.scoring.importance import ImportanceTagger
+from life_graph.scoring.importance import ImportanceTagger, _importance_tier
 from life_graph.services.contradiction import ContradictionDetector
 from life_graph.storage.postgres import PostgresMemoryStore
 
@@ -49,7 +50,11 @@ class ConsolidationReport:
 
     gathered: int = 0
     clusters_found: int = 0
+    # Near-identical memories found. Nothing is removed: each pair is queued
+    # as a 'merge' approval (see merge_suggestions_queued). The name is kept
+    # for the JobRun result / API shape.
     duplicates_removed: int = 0
+    merge_suggestions_queued: int = 0
     principles_created: int = 0
     memories_archived: int = 0
     contradictions_found: int = 0
@@ -73,6 +78,25 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
     return dot / (norm_a * norm_b)
+
+
+_TIER_RANK: dict[str, int] = {"low": 0, "normal": 1, "high": 2, "critical": 3}
+
+
+def _higher_tier(a: str | None, b: str | None) -> str:
+    """The more important of two importance tiers (unknown ranks as 'normal')."""
+    a, b = a or "normal", b or "normal"
+    return a if _TIER_RANK.get(a, 1) >= _TIER_RANK.get(b, 1) else b
+
+
+def _is_distilled(memory: Memory) -> bool:
+    """A principle produced by this pipeline's distill step.
+
+    New principles carry ``properties.distilled``; older ones (stored before
+    2026-10-22) only had ``source_type='consolidation'`` and the tag.
+    """
+    props = memory.properties or {}
+    return bool(props.get("distilled")) or memory.source_type == "consolidation"
 
 
 def _tenant() -> str:
@@ -134,16 +158,22 @@ class ConsolidationPipeline:
             logger.info("Consolidation: no recent memories — skipping")
             return report
 
-        # Step 2 — Cluster
-        clusters = self._cluster(recent)
+        # Step 2 — Cluster. Principles this pipeline distilled are left out:
+        # an approved principle sits right next to its sources in embedding
+        # space, so clustering it would re-distill the same cluster (a
+        # principle of a principle) on the next run.
+        distilled = [m for m in recent if _is_distilled(m)]
+        clusters = self._cluster([m for m in recent if not _is_distilled(m)])
         report.clusters_found = len(clusters)
 
-        # Step 3 — Dedup
+        # Step 3 — Dedup. Duplicates are proposed as merges, never deleted.
         deduped_clusters: list[list[Memory]] = []
+        dup_pairs: list[tuple[Memory, Memory, float]] = []
         for cluster in clusters:
-            deduped = self._dedup_cluster(cluster)
+            deduped = self._dedup_cluster(cluster, pairs=dup_pairs)
             report.duplicates_removed += len(cluster) - len(deduped)
             deduped_clusters.append(deduped)
+        report.merge_suggestions_queued = await self._queue_merge_suggestions(dup_pairs)
 
         # Flatten for scoring
         all_deduped = [m for c in deduped_clusters for m in c]
@@ -163,16 +193,18 @@ class ConsolidationPipeline:
         report.memories_archived = archived
 
         # Step 7 — Audit
-        contradictions = await self._audit_contradictions(all_deduped)
+        contradictions = await self._audit_contradictions(all_deduped + distilled)
         report.contradictions_found = len(contradictions)
 
         report.duration_seconds = time.monotonic() - t0
         logger.info(
             "Consolidation complete: %d gathered, %d clusters, "
-            "%d deduped, %d principles, %d archived, %d contradictions (%.2fs)",
+            "%d duplicates (%d merge suggestions queued), %d principles, "
+            "%d archived, %d contradictions (%.2fs)",
             report.gathered,
             report.clusters_found,
             report.duplicates_removed,
+            report.merge_suggestions_queued,
             report.principles_created,
             report.memories_archived,
             report.contradictions_found,
@@ -236,11 +268,21 @@ class ConsolidationPipeline:
 
     # ── Step 3: Dedup ─────────────────────────────────────────
 
-    def _dedup_cluster(self, cluster: list[Memory]) -> list[Memory]:
-        """Remove near-identical memories (cosine > 0.95) from a cluster.
+    def _dedup_cluster(
+        self,
+        cluster: list[Memory],
+        pairs: list[tuple[Memory, Memory, float]] | None = None,
+    ) -> list[Memory]:
+        """Drop near-identical memories (cosine > 0.95) from this run's view.
 
-        Keeps the most detailed (longest content) version when a
-        duplicate pair is found.
+        Keeps the most detailed (longest content) version when a duplicate
+        pair is found, so the score / distill / audit steps see each fact
+        once. This only filters the in-memory list: the duplicates stay in
+        the database. ``removed_ids`` used to be computed and then thrown
+        away while the report claimed "duplicates removed" (code review,
+        2026-10-22). Each (kept, duplicate, similarity) pair is appended to
+        *pairs* so :meth:`_queue_merge_suggestions` can propose the merge for
+        approval — consolidation never deletes on its own.
         """
         if len(cluster) <= 1:
             return cluster
@@ -262,12 +304,85 @@ class ConsolidationPipeline:
                     sim = _cosine_similarity(mem.embedding, other.embedding)
                     if sim > self._DEDUP_THRESHOLD:
                         removed_ids.add(other.id)
+                        if pairs is not None:
+                            pairs.append((mem, other, sim))
 
             kept.append(mem)
 
         if removed_ids:
-            logger.debug("Deduped cluster: kept %d, removed %d", len(kept), len(removed_ids))
+            logger.debug(
+                "Deduped cluster: kept %d, %d duplicates left for merge review",
+                len(kept),
+                len(removed_ids),
+            )
         return kept
+
+    async def _queue_merge_suggestions(self, pairs: list[tuple[Memory, Memory, float]]) -> int:
+        """Queue each duplicate pair as a ``kind='merge'`` approval.
+
+        Same shape and key as ``services/merge_suggestions.py`` (source
+        'curator', order-independent pair key), so ``ApprovalService.
+        _apply_merge`` handles the approval and a pair the curator already
+        queued — or the user already resolved — is not queued twice.
+        Returns the number of approvals queued.
+        """
+        if not pairs:
+            return 0
+
+        from life_graph.models.db import Approval
+        from life_graph.services.merge_suggestions import _pair_key
+
+        tenant_id = _tenant()
+        by_ref: dict[str, tuple[Memory, Memory, float]] = {}
+        for kept, dup, sim in pairs:
+            by_ref.setdefault(_pair_key(str(kept.id), str(dup.id)), (kept, dup, sim))
+
+        try:
+            async with self._session_factory() as session:
+                existing = set(
+                    (
+                        await session.execute(
+                            select(Approval.source_ref).where(
+                                Approval.tenant_id == tenant_id,
+                                Approval.source == "curator",
+                                Approval.source_ref.in_(list(by_ref)),
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                queued = 0
+                for ref, (kept, dup, sim) in by_ref.items():
+                    if ref in existing:
+                        continue
+                    session.add(
+                        Approval(
+                            tenant_id=tenant_id,
+                            kind="merge",
+                            source="curator",
+                            source_ref=ref,
+                            title="Merge 2 near-duplicate memories",
+                            detail=(
+                                f"consolidation · {round(sim * 100)}% similar · "
+                                f"“{(kept.content or '')[:60]}” ~ “{(dup.content or '')[:60]}”"
+                            ),
+                            payload={
+                                "memory_id_a": str(kept.id),
+                                "memory_id_b": str(dup.id),
+                                "similarity": round(float(sim), 4),
+                            },
+                        )
+                    )
+                    queued += 1
+                if queued:
+                    await session.commit()
+        except Exception:
+            logger.exception("Failed to queue %d consolidation merge suggestions", len(by_ref))
+            return 0
+        if queued:
+            logger.info("Consolidation: queued %d merge suggestions for approval", queued)
+        return queued
 
     # ── Step 4: Score ─────────────────────────────────────────
 
@@ -283,19 +398,49 @@ class ConsolidationPipeline:
         return results
 
     async def _persist_scores(self, scored: list[tuple[Memory, float, str]]) -> None:
-        """Write updated importance scores back to the database."""
+        """Raise stored importance where the rescore is higher; never lower it.
+
+        The rescore is the context-free keyword ``ImportanceTagger`` score. It
+        used to overwrite ``importance`` outright, which destroyed a value the
+        user set by hand, the ingest-time score (computed *with* context) and
+        the "higher importance wins" result of an ingest dedup merge (code
+        review, 2026-10-22).
+
+        Two fixes were possible: rescore only memories whose importance was
+        never set explicitly, or only ever raise. Nothing on the row records
+        whether importance was set explicitly (0.5 is both the default and a
+        legitimate choice), so the first would rest on a guess. Raising only
+        is safe without that knowledge: every existing value is kept unless
+        the keyword rules find more importance in the text. The tier follows
+        the same rule. ``GREATEST`` in SQL keeps a concurrent edit that raised
+        it in the meantime. Rows where nothing would rise are not touched.
+        """
         if not scored:
             return
+        updates = 0
         async with self._session_factory() as session:
             for mem, score, tier in scored:
+                old = mem.importance if mem.importance is not None else 0.0
+                # Tier of the resulting importance, but never below the stored
+                # tier (rows from before 2026-10-22 were all stored 'normal').
+                new_tier = _higher_tier(
+                    mem.importance_tier, _higher_tier(tier, _importance_tier(max(old, score)))
+                )
+                if score <= old and new_tier == (mem.importance_tier or "normal"):
+                    continue
                 await session.execute(
                     update(Memory)
                     .where(Memory.id == mem.id)
                     .where(Memory.tenant_id == _tenant())
-                    .values(importance=score, importance_tier=tier)
+                    .values(
+                        importance=func.greatest(Memory.importance, score),
+                        importance_tier=new_tier,
+                    )
                 )
-            await session.commit()
-        logger.debug("Persisted importance scores for %d memories", len(scored))
+                updates += 1
+            if updates:
+                await session.commit()
+        logger.debug("Raised importance on %d of %d scored memories", updates, len(scored))
 
     # ── Step 5: Distill ───────────────────────────────────────
 
@@ -305,8 +450,23 @@ class ConsolidationPipeline:
         Only clusters with >= 3 memories are distilled. Uses litellm
         with the cheap model to minimise cost. Returns a list of dicts
         describing each newly created principle.
+
+        Memories already named as a source of an existing principle are
+        dropped from their cluster first, so a second run over the same
+        24-hour window (the manual /admin/consolidate, or tomorrow night for
+        memories near the cutoff) does not distill the same cluster again.
         """
-        large_clusters = [c for c in clusters if len(c) >= self._DISTILL_MIN_CLUSTER_SIZE]
+        candidates = [c for c in clusters if len(c) >= self._DISTILL_MIN_CLUSTER_SIZE]
+        if not candidates:
+            return []
+
+        already = await self._already_distilled_sources()
+        large_clusters = [
+            kept
+            for c in candidates
+            if len(kept := [m for m in c if str(m.id) not in already])
+            >= self._DISTILL_MIN_CLUSTER_SIZE
+        ]
         if not large_clusters:
             return []
 
@@ -335,31 +495,40 @@ class ConsolidationPipeline:
                 principle_text = response.choices[0].message.content.strip()
                 cost = response._hidden_params.get("response_cost", 0.0) or 0.0
 
-                # Store as new memory
-                new_memory = Memory(
-                    tenant_id=_tenant(),
-                    content=principle_text,
-                    reasoning=f"Distilled from {len(cluster)} related memories",
-                    tags=["principle", "distilled"],
-                    properties={
-                        "source_memories": [str(m.id) for m in cluster],
-                        "distilled_at": datetime.now(UTC).isoformat(),
-                    },
-                    importance=0.8,
+                if not principle_text:
+                    logger.warning("Distill returned no text for a cluster of %d", len(cluster))
+                    continue
+
+                # Embed through the async path. The sync embed() returns []
+                # inside the event loop in local-LLM mode, so principles were
+                # stored with no vector and never surfaced in semantic search
+                # (code review, 2026-10-22).
+                emb = await self._embedding.embed_async(principle_text)
+
+                # Through the normal store path, as a *pending* memory: an
+                # LLM-written generalisation is exactly what the approval gate
+                # is for. It was inserted 'active' directly, with no
+                # content_hash (exact dedup could not see it), the default
+                # trust tier and no embedding (code review, 2026-10-22).
+                new_memory = await self._store.store(
+                    MemoryCreate(
+                        content=principle_text,
+                        reasoning=f"Distilled from {len(cluster)} related memories",
+                        tags=["principle", "distilled"],
+                        properties={
+                            "distilled": True,
+                            "source_memories": [str(m.id) for m in cluster],
+                            "distilled_at": datetime.now(UTC).isoformat(),
+                        },
+                        importance=0.8,
+                        source_type="consolidation",
+                    ),
+                    embedding=emb or None,
+                    trust_tier="verified",
+                    status="pending",
+                    extraction_tier="llm",
                     importance_tier="high",
-                    source_type="consolidation",
-                    confidence=0.7,
                 )
-
-                # Generate embedding for the new principle
-                emb = self._embedding.embed(principle_text)
-                if emb:
-                    new_memory.embedding = emb
-
-                async with self._session_factory() as session:
-                    session.add(new_memory)
-                    await session.commit()
-                    await session.refresh(new_memory)
 
                 principles.append(
                     {
@@ -379,6 +548,29 @@ class ConsolidationPipeline:
                 logger.exception("Failed to distill cluster of %d memories", len(cluster))
 
         return principles
+
+    async def _already_distilled_sources(self) -> set[str]:
+        """Ids of memories that a recent principle was distilled from.
+
+        Any status counts: a rejected principle is the user saying "not this",
+        and distilling the same cluster again would only re-ask. Bounded to
+        principles from the last 48 h — sources are gathered from the last
+        24 h, so an older principle cannot name one.
+        """
+        cutoff = datetime.now(UTC) - timedelta(hours=48)
+        stmt = (
+            select(Memory.properties)
+            .where(Memory.tenant_id == _tenant())
+            .where(Memory.created_at > cutoff)
+            .where(Memory.source_type == "consolidation")
+        )
+        async with self._session_factory() as session:
+            rows = (await session.execute(stmt)).scalars().all()
+        ids: set[str] = set()
+        for props in rows:
+            if isinstance(props, dict):
+                ids.update(str(i) for i in props.get("source_memories") or [])
+        return ids
 
     # ── Step 6: Decay ─────────────────────────────────────────
 

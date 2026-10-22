@@ -436,6 +436,10 @@ class MemoryManager:
             extraction_tier=fact.tier or None,
             extraction_confidence=fact.confidence,
             capture_event_id=properties.get("capture_event_id"),
+            # The tier scored in Step 2 belongs on the row, not only in the
+            # tags: decay exempts importance_tier='critical', and without this
+            # every new memory was stored 'normal' (code review, 2026-10-22).
+            importance_tier=tier,
         )
 
         # Step 5b: Queue a contradiction approval for each supersede target.

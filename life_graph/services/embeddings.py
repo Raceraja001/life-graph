@@ -10,10 +10,27 @@ working — so ``main.py`` refuses to start in it unless
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def current_embedding_model() -> str:
+    """Name stamped on (and compared against) ``embedding_model`` columns.
+
+    The one notion of "the embedder in use now". In local-LLM mode vectors come
+    from the LM client (``lm_embedding_model``); otherwise from the in-process
+    sentence-transformers model (``embedding_model``). Ingest stamped the first
+    while the re-embed job compared against the second, so every locally
+    embedded memory looked stale and was re-embedded on every run (code review,
+    2026-10-22). Everything that writes or checks ``embedding_model`` must go
+    through here.
+    """
+    from life_graph.config import settings
+
+    return settings.lm_embedding_model if settings.use_local_llm else settings.embedding_model
 
 
 class EmbeddingService:
@@ -93,19 +110,24 @@ class EmbeddingService:
 
         Returns an empty list if sentence-transformers is unavailable
         or the model fails to load.
+
+        Sync callers only. In local-LLM mode the vector comes from an async
+        client, which cannot be driven from inside a running event loop, so
+        there this returns ``[]`` — async code must ``await`` :meth:`embed_async`
+        instead. That empty return used to be silent, and consolidation's
+        distilled principles and the bulk-import worker both lost their
+        vectors to it (code review, 2026-10-22); it now logs a warning.
         """
         if self._use_local():
-            import asyncio
-
             try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # We're inside an async context, can't use run()
-                    # Return empty and let async callers use embed_async
-                    return []
+                asyncio.get_running_loop()
             except RuntimeError:
-                pass
-            return asyncio.run(self._lm_client.embed(text))
+                return asyncio.run(self._lm_client.embed(text))
+            logger.warning(
+                "EmbeddingService.embed() called inside a running event loop in "
+                "local-LLM mode; returning no vector. Await embed_async() instead."
+            )
+            return []
 
         if not self._available:
             return []
@@ -122,16 +144,23 @@ class EmbeddingService:
             return []
 
     async def embed_async(self, text: str) -> list[float]:
-        """Async embed using LM Studio. Falls back to sync embed."""
+        """The embed path for async code.
+
+        Local-LLM mode awaits the LM client. Otherwise the sentence-transformers
+        ``encode`` (and, on first use, the multi-gigabyte model load) runs in a
+        worker thread: calling it directly blocked the whole event loop —
+        every request on the server — for the length of the encode (code
+        review, 2026-10-22).
+        """
         if self._use_local():
             return await self._lm_client.embed(text)
-        return self.embed(text)
+        return await asyncio.to_thread(self.embed, text)
 
-    async def embed_batch_async(self, texts: list[str]) -> list[list[float]]:
-        """Async batch embed using LM Studio. Falls back to sync embed_batch."""
+    async def embed_batch_async(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
+        """Async batch embed; off the event loop like :meth:`embed_async`."""
         if self._use_local():
             return await self._lm_client.embed_batch(texts)
-        return self.embed_batch(texts)
+        return await asyncio.to_thread(self.embed_batch, texts, batch_size)
 
     def embed_batch(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
         """Embed a list of texts in batches.

@@ -18,8 +18,8 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
-from life_graph.config import settings
 from life_graph.models.db import JobRun, Memory
+from life_graph.services.embeddings import current_embedding_model
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -77,20 +77,30 @@ async def generate_embeddings_batch(
             chunk_ids = memory_ids[i : i + BATCH_SIZE]
 
             async with async_session() as session:
-                result = await session.execute(select(Memory).where(Memory.id.in_(chunk_ids)))
+                result = await session.execute(
+                    select(Memory).where(
+                        Memory.id.in_(chunk_ids),
+                        Memory.tenant_id == tenant_id,
+                    )
+                )
                 memories = result.scalars().all()
 
                 for memory in memories:
                     try:
-                        embedding = await embedding_service.embed(memory.content)
+                        # embed_async, not embed: embed() is synchronous, so
+                        # awaiting it raised TypeError on every row — caught
+                        # below, so no bulk-imported memory ever got a vector
+                        # while the job reported success (code review,
+                        # 2026-10-22).
+                        embedding = await embedding_service.embed_async(memory.content)
+                        if not embedding:
+                            # Backend down or empty text. Leave the row
+                            # unembedded so the re-embed job picks it up,
+                            # rather than counting it as done.
+                            failed += 1
+                            continue
                         memory.embedding = embedding
-
-                        # Use the correct model name based on configuration
-                        if settings.use_local_llm:
-                            memory.embedding_model = settings.lm_embedding_model
-                        else:
-                            memory.embedding_model = settings.embedding_model
-
+                        memory.embedding_model = current_embedding_model()
                         processed += 1
                     except Exception as exc:
                         logger.warning(

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -112,11 +112,27 @@ def _make_memory(content="hello world", *, embedding=None, tenant_id="acme", **k
     )
 
 
+class _FakeStore:
+    """Records PostgresMemoryStore.store() calls; returns a Memory-like row."""
+
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    async def store(self, memory, **kwargs):
+        from life_graph.core.tenant import get_current_tenant_id
+
+        self.calls.append((memory, kwargs))
+        return Memory(id=uuid.uuid4(), content=memory.content, tenant_id=get_current_tenant_id())
+
+
 def _pipeline(rows=()):
     factory, recorder = _factory(rows)
     embedding = MagicMock()
     embedding.embed.return_value = [0.1] * 8
-    return ConsolidationPipeline(session_factory=factory, embedding_service=embedding), recorder
+    embedding.embed_async = AsyncMock(return_value=[0.1] * 8)
+    pipeline = ConsolidationPipeline(session_factory=factory, embedding_service=embedding)
+    pipeline._store = _FakeStore()
+    return pipeline, recorder
 
 
 # ── _cosine_similarity ────────────────────────────────────────────────
@@ -318,8 +334,120 @@ async def test_distilled_principle_carries_current_tenant(monkeypatch):
     assert principles[0]["source_count"] == 3
     assert principles[0]["cost_usd"] == pytest.approx(0.0002)
 
-    assert recorder["added"], "principle was never added to a session"
-    assert recorder["added"][0].tenant_id == "acme"
+    # Stored through PostgresMemoryStore.store(), which stamps the tenant
+    # from the context — so the principle cannot land in 'legacy'.
+    assert pipeline._store.calls, "principle was never stored"
+    assert recorder["added"] == [], "principle bypassed the store path"
+
+
+def _fake_llm(monkeypatch, text="Prefer boring technology."):
+    fake_response = MagicMock()
+    fake_response.choices = [MagicMock()]
+    fake_response.choices[0].message.content = text
+    fake_response._hidden_params = {"response_cost": 0.0}
+
+    async def _acompletion(**kwargs):
+        return fake_response
+
+    fake_llm = MagicMock()
+    fake_llm.acompletion = _acompletion
+    monkeypatch.setattr(
+        "life_graph.api.dependencies.get_resilient_llm", lambda: fake_llm, raising=False
+    )
+
+
+@pytest.mark.asyncio
+async def test_distilled_principle_goes_through_approval_gate(monkeypatch):
+    """Code review 2026-10-22: principles were inserted 'active' with no
+    content_hash, trust tier or vector. They must be stored pending, verified,
+    embedded via the async path and marked as distilled with their sources."""
+    set_tenant_context("acme", "system")
+    pipeline, _ = _pipeline()
+    _fake_llm(monkeypatch)
+    cluster = [_make_memory(f"memory {i}", embedding=[1.0, 0.0]) for i in range(3)]
+
+    await pipeline._distill([cluster])
+
+    ((memory_create, kwargs),) = pipeline._store.calls
+    assert kwargs["status"] == "pending"
+    assert kwargs["trust_tier"] == "verified"
+    assert kwargs["importance_tier"] == "high"
+    assert kwargs["embedding"] == [0.1] * 8
+    pipeline._embedding.embed_async.assert_awaited_once_with("Prefer boring technology.")
+    pipeline._embedding.embed.assert_not_called()  # the sync path returns [] in the loop
+    assert memory_create.properties["distilled"] is True
+    assert memory_create.properties["source_memories"] == [str(m.id) for m in cluster]
+    assert memory_create.source_type == "consolidation"
+
+
+@pytest.mark.asyncio
+async def test_distill_skips_sources_of_an_existing_principle(monkeypatch):
+    """A second run over the same window must not distill the same cluster."""
+    set_tenant_context("acme", "system")
+    pipeline, _ = _pipeline()
+    _fake_llm(monkeypatch)
+    cluster = [_make_memory(f"memory {i}", embedding=[1.0, 0.0]) for i in range(3)]
+
+    async def _already():
+        return {str(cluster[0].id)}
+
+    pipeline._already_distilled_sources = _already
+
+    assert await pipeline._distill([cluster]) == []  # 2 left < minimum of 3
+    assert pipeline._store.calls == []
+
+
+@pytest.mark.asyncio
+async def test_already_distilled_sources_reads_principle_properties():
+    set_tenant_context("acme", "system")
+    a, b = str(uuid.uuid4()), str(uuid.uuid4())
+    pipeline, recorder = _pipeline(rows=[{"distilled": True, "source_memories": [a, b]}, None])
+
+    assert await pipeline._already_distilled_sources() == {a, b}
+    assert "tenant_id" in _where(recorder["statements"][0])
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_cluster_distilled_principles(monkeypatch):
+    """An approved principle sits next to its sources; clustering it would
+    distill a principle of a principle on the next run."""
+    set_tenant_context("acme", "system")
+    pipeline, _ = _pipeline()
+    sources = [_make_memory(f"fact {i}", embedding=[1.0, 0.0]) for i in range(2)]
+    principle = _make_memory(
+        "the principle",
+        embedding=[1.0, 0.0],
+        properties={"distilled": True, "source_memories": []},
+        source_type="consolidation",
+    )
+
+    async def _gather():
+        return [*sources, principle]
+
+    seen: dict = {}
+
+    def _cluster(memories):
+        seen["clustered"] = list(memories)
+        return [list(memories)]
+
+    async def _noop(*_a, **_k):
+        return []
+
+    async def _zero(*_a, **_k):
+        return 0
+
+    pipeline._gather_recent = _gather
+    pipeline._cluster = _cluster
+    pipeline._distill = _noop
+    pipeline._audit_contradictions = _noop
+    pipeline._persist_scores = _noop
+    pipeline._update_decay_scores = _zero
+    pipeline._queue_merge_suggestions = _zero
+
+    await pipeline.run()
+
+    assert principle not in seen["clustered"]
+    assert set(seen["clustered"]) == set(sources)
 
 
 @pytest.mark.asyncio
@@ -329,6 +457,116 @@ async def test_distill_skips_clusters_below_minimum():
 
     assert await pipeline._distill([small]) == []
     assert recorder["added"] == []
+    assert pipeline._store.calls == []
+
+
+# ── Score: only ever raise ────────────────────────────────────────────
+
+
+def _update_values(stmt) -> dict:
+    return {col.key: val for col, val in stmt._values.items()}
+
+
+@pytest.mark.asyncio
+async def test_persist_scores_never_lowers_importance():
+    """Code review 2026-10-22: the keyword rescore overwrote user-set
+    importance and the dedup max-merge. A lower rescore must touch nothing."""
+    set_tenant_context("acme", "system")
+    pipeline, recorder = _pipeline()
+    mem = _make_memory("plain fact", importance=0.9, importance_tier="critical")
+
+    await pipeline._persist_scores([(mem, 0.5, "normal")])
+
+    assert recorder["statements"] == []
+    assert recorder["commits"] == 0
+
+
+@pytest.mark.asyncio
+async def test_persist_scores_raises_with_greatest():
+    set_tenant_context("acme", "system")
+    pipeline, recorder = _pipeline()
+    mem = _make_memory("important", importance=0.3, importance_tier="low")
+
+    await pipeline._persist_scores([(mem, 0.9, "critical")])
+
+    (stmt,) = recorder["statements"]
+    sql = str(stmt.compile())
+    assert "greatest(memories.importance" in sql.lower()
+    values = _update_values(stmt)
+    assert values["importance_tier"].value == "critical"
+
+
+@pytest.mark.asyncio
+async def test_persist_scores_lifts_stale_tier_to_match_stored_importance():
+    """Rows stored before 2026-10-22 all say 'normal' whatever their importance."""
+    set_tenant_context("acme", "system")
+    pipeline, recorder = _pipeline()
+    mem = _make_memory("user said this matters", importance=0.9, importance_tier="normal")
+
+    await pipeline._persist_scores([(mem, 0.5, "normal")])
+
+    (stmt,) = recorder["statements"]
+    assert _update_values(stmt)["importance_tier"].value == "critical"
+
+
+# ── Dedup → merge suggestions ─────────────────────────────────────────
+
+
+def test_dedup_reports_pairs_for_merge_review():
+    pipeline, _ = _pipeline()
+    short = _make_memory("short", embedding=[1.0, 0.0])
+    detailed = _make_memory("a much more detailed version", embedding=[1.0, 0.001])
+    pairs: list = []
+
+    pipeline._dedup_cluster([short, detailed], pairs=pairs)
+
+    assert len(pairs) == 1
+    kept, dup, sim = pairs[0]
+    assert (kept, dup) == (detailed, short)
+    assert sim > 0.95
+
+
+@pytest.mark.asyncio
+async def test_queue_merge_suggestions_adds_merge_approvals():
+    """Code review 2026-10-22: dedup computed removed_ids and dropped them.
+    They become kind='merge' approvals keyed like the curator's, never deletes."""
+    from life_graph.models.db import Approval
+    from life_graph.services.merge_suggestions import _pair_key
+
+    set_tenant_context("acme", "system")
+    pipeline, recorder = _pipeline(rows=[])  # no existing approvals
+    a = _make_memory("a much more detailed version", embedding=[1.0, 0.0])
+    b = _make_memory("short", embedding=[1.0, 0.0])
+
+    queued = await pipeline._queue_merge_suggestions([(a, b, 0.99), (b, a, 0.99)])
+
+    assert queued == 1  # same pair either way round
+    (appr,) = recorder["added"]
+    assert isinstance(appr, Approval)
+    assert appr.kind == "merge"
+    assert appr.source == "curator"
+    assert appr.source_ref == _pair_key(str(a.id), str(b.id))
+    assert appr.tenant_id == "acme"
+    assert appr.payload == {
+        "memory_id_a": str(a.id),
+        "memory_id_b": str(b.id),
+        "similarity": 0.99,
+    }
+    assert not [s for s in recorder["statements"] if "DELETE" in _sql(s).upper()]
+
+
+@pytest.mark.asyncio
+async def test_queue_merge_suggestions_skips_known_pairs():
+    from life_graph.services.merge_suggestions import _pair_key
+
+    set_tenant_context("acme", "system")
+    a = _make_memory("aaaa", embedding=[1.0, 0.0])
+    b = _make_memory("aaa", embedding=[1.0, 0.0])
+    pipeline, recorder = _pipeline(rows=[_pair_key(str(a.id), str(b.id))])
+
+    assert await pipeline._queue_merge_suggestions([(a, b, 0.99)]) == 0
+    assert recorder["added"] == []
+    assert recorder["commits"] == 0
 
 
 @pytest.mark.asyncio
