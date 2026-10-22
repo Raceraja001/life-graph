@@ -140,6 +140,8 @@ class PostgresMemoryStore:
             await session.commit()
             await session.refresh(row)
 
+        await self._link_to_source_session(row)
+
         if status == "pending":
             try:
                 from life_graph.core.events import EventType, event_bus
@@ -157,6 +159,34 @@ class PostgresMemoryStore:
             except Exception:  # pragma: no cover - events must never break writes
                 logger.warning("MEMORY_PENDING emit failed", exc_info=True)
         return row
+
+    async def _link_to_source_session(self, row: Memory) -> None:
+        """Link a just-stored memory to the session named in its properties.
+
+        ``POST /memories`` passes ``properties`` through as the ingest
+        context, and ingest copies the context onto every extracted memory,
+        so a caller that puts ``session_id`` there marks the memory as
+        created in that session. Nothing read it until 2026-10-22, which is
+        part of why ``memory_sessions`` stayed empty.
+
+        Best-effort: an unparseable id, another tenant's session or an ended
+        one links nothing, and a failed link never costs the caller the
+        memory it just stored.
+        """
+        raw = (row.properties or {}).get("session_id")
+        if raw is None:
+            return
+        try:
+            session_id = uuid.UUID(str(raw))
+        except (ValueError, AttributeError, TypeError):
+            logger.debug("Ignoring unparseable session_id %r on memory %s", raw, row.id)
+            return
+        try:
+            await self._link_session_memories(session_id, [row.id], role="created")
+        except Exception:
+            logger.warning(
+                "Could not link memory %s to session %s", row.id, session_id, exc_info=True
+            )
 
     # ── Retrieve ──────────────────────────────────────────────
 
@@ -742,37 +772,110 @@ class PostgresMemoryStore:
         self,
         memory_id: uuid.UUID,
         session_id: uuid.UUID,
-    ) -> None:
-        """Create a MemorySession link and bump session counters."""
+    ) -> bool:
+        """Link a memory *created* in a session (role='created').
+
+        Returns True when a new link was written. See
+        :meth:`_link_session_memories` for the tenant and liveness rules.
+        """
+        return await self._link_session_memories(session_id, [memory_id], role="created") > 0
+
+    async def _link_session_memories(
+        self,
+        session_id: uuid.UUID,
+        memory_ids: list[uuid.UUID],
+        *,
+        role: str,
+    ) -> int:
+        """Write ``memory_sessions`` rows for *memory_ids*; return how many are new.
+
+        Neither link writer had a caller before 2026-10-22, so the table was
+        empty and both of its readers — micro-consolidation (role-agnostic)
+        and ImpactScorer (``role='recalled'``) — always saw nothing.
+
+        ``MemorySession`` has no ``tenant_id`` of its own (both ends carry
+        one), so tenancy is enforced here instead: the session and every
+        memory must belong to the current tenant, or nothing is linked. A
+        link is only written into a session that has not ended — after the
+        end, impact scoring and micro-consolidation have already run, so a
+        late link would only be counted by nothing.
+
+        ``ON CONFLICT DO NOTHING`` keeps the first role: a memory created in
+        a session and then recalled in it stays ``'created'``. The plain
+        ``session.add`` this replaced raised IntegrityError on a repeat.
+        Counters move by the number of rows actually inserted.
+        """
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        unique_ids = list(dict.fromkeys(m for m in memory_ids if m is not None))
+        if not unique_ids:
+            return 0
         tenant_id = get_current_tenant_id()
+
         async with async_session() as session:
-            # MemorySession is the memory<->session association row and has
-            # no tenant_id of its own; both sides already carry one. Passing
-            # it raised TypeError on every link write. The tenant is still
-            # needed to scope the Session counter update below.
-            link = MemorySession(
-                memory_id=memory_id,
-                session_id=session_id,
-            )
-            session.add(link)
-            await session.execute(
-                update(Session)
-                .where(
+            live = await session.scalar(
+                select(Session.id).where(
                     Session.id == session_id,
                     Session.tenant_id == tenant_id,
+                    Session.ended_at.is_(None),
                 )
-                .values(memories_created=Session.memories_created + 1)
             )
+            if live is None:
+                return 0
+
+            owned = (
+                (
+                    await session.execute(
+                        select(Memory.id).where(
+                            Memory.id.in_(unique_ids),
+                            Memory.tenant_id == tenant_id,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not owned:
+                return 0
+
+            result = await session.execute(
+                pg_insert(MemorySession)
+                .values([{"memory_id": m, "session_id": session_id, "role": role} for m in owned])
+                .on_conflict_do_nothing(index_elements=["memory_id", "session_id"])
+                .returning(MemorySession.memory_id)
+            )
+            inserted = len(result.all())
+
+            if inserted:
+                counter = (
+                    {"memories_created": Session.memories_created + inserted}
+                    if role == "created"
+                    else {"memories_accessed": Session.memories_accessed + inserted}
+                )
+                await session.execute(
+                    update(Session)
+                    .where(Session.id == session_id, Session.tenant_id == tenant_id)
+                    .values(**counter)
+                )
             await session.commit()
+            return inserted
 
     async def count_session_memories(self, session_id: uuid.UUID) -> int:
-        """Count memories linked to a session."""
+        """Count memories linked to a session.
+
+        Filtered on ``MemorySession.tenant_id`` until 2026-10-22, a column
+        the association table does not have — the query raised
+        AttributeError on every call. Tenancy is checked through the session
+        row instead.
+        """
         tenant_id = get_current_tenant_id()
         async with async_session() as session:
             result = await session.scalar(
-                select(func.count(MemorySession.memory_id)).where(
+                select(func.count(MemorySession.memory_id))
+                .join(Session, Session.id == MemorySession.session_id)
+                .where(
                     MemorySession.session_id == session_id,
-                    MemorySession.tenant_id == tenant_id,
+                    Session.tenant_id == tenant_id,
                 )
             )
             return result or 0
@@ -1113,37 +1216,45 @@ class PostgresMemoryStore:
         self,
         memory_id: uuid.UUID,
         session_id: uuid.UUID,
-    ) -> None:
+    ) -> bool:
         """Link a recalled memory to a session with role='recalled'.
 
-        Uses INSERT ... ON CONFLICT DO NOTHING to handle the case where
-        the memory was already linked (e.g., if it was created in the
-        same session).
+        A memory already linked (e.g. created in the same session) keeps its
+        existing role. Returns True when a new link was written.
         """
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        return await self.link_recalls_to_session([memory_id], session_id) > 0
 
-        async with async_session() as session:
-            stmt = (
-                pg_insert(MemorySession)
-                .values(
-                    memory_id=memory_id,
-                    session_id=session_id,
-                    role="recalled",
-                )
-                .on_conflict_do_nothing(index_elements=["memory_id", "session_id"])
-            )
-            await session.execute(stmt)
-            await session.commit()
+    async def link_recalls_to_session(
+        self,
+        memory_ids: list[uuid.UUID],
+        session_id: uuid.UUID,
+    ) -> int:
+        """Batch form of :meth:`link_recall_to_session`: one round trip per recall.
+
+        Returns the number of new links. Tenant and liveness rules are those
+        of :meth:`_link_session_memories`.
+        """
+        return await self._link_session_memories(session_id, memory_ids, role="recalled")
 
     async def get_recalled_memory_ids(
         self,
         session_id: uuid.UUID,
     ) -> list[uuid.UUID]:
-        """Get IDs of all memories recalled (not created) in a session."""
+        """Get IDs of all memories recalled (not created) in a session.
+
+        Scoped through the session row (2026-10-22): the association table
+        has no tenant of its own, so unscoped this answered for any
+        tenant's session id.
+        """
         async with async_session() as session:
-            stmt = select(MemorySession.memory_id).where(
-                MemorySession.session_id == session_id,
-                MemorySession.role == "recalled",
+            stmt = (
+                select(MemorySession.memory_id)
+                .join(Session, Session.id == MemorySession.session_id)
+                .where(
+                    MemorySession.session_id == session_id,
+                    MemorySession.role == "recalled",
+                    Session.tenant_id == get_current_tenant_id(),
+                )
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]

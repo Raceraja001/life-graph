@@ -172,6 +172,7 @@ class RecallEngine:
         context: dict[str, Any],
         *,
         index_only: bool = False,
+        session_id: uuid.UUID | None = None,
     ) -> RecallContext:
         """Proactively recall memories at session start.
 
@@ -189,13 +190,18 @@ class RecallEngine:
                 objects. Nothing is recorded in this mode — no cooldown, no
                 access — because nothing has been disclosed yet; see the
                 module docstring.
+            session_id: Session to link the delivered memories to as
+                ``'recalled'``. Like the cooldown, the link is written only
+                when content is delivered — at the expand step in index mode.
 
         Returns:
             RecallContext with identity, decisions, intentions, warnings —
             or, when *index_only*, with ``index`` populated and the four
             buckets empty.
         """
-        payload, _ = await self.session_start_recall_measured(context, index_only=index_only)
+        payload, _ = await self.session_start_recall_measured(
+            context, index_only=index_only, session_id=session_id
+        )
         return payload
 
     async def session_start_recall_measured(
@@ -203,6 +209,7 @@ class RecallEngine:
         context: dict[str, Any],
         *,
         index_only: bool = False,
+        session_id: uuid.UUID | None = None,
     ) -> tuple[RecallContext, RecallContext | None]:
         """:meth:`session_start_recall`, plus the payload index mode replaced.
 
@@ -265,7 +272,7 @@ class RecallEngine:
 
         # Full content is going out in this response — that is the
         # disclosure, so record it.
-        await self._record_surfacing(filtered)
+        await self._record_surfacing(filtered, session_id)
 
         logger.info(
             "Session recall: %d identity, %d decisions, %d intentions, %d warnings",
@@ -299,6 +306,7 @@ class RecallEngine:
         event: str,
         *,
         index_only: bool = False,
+        session_id: uuid.UUID | None = None,
     ) -> list[MemoryResponse] | list[dict[str, Any]]:
         """Lighter recall for mid-session events.
 
@@ -339,7 +347,7 @@ class RecallEngine:
             return to_index(capped)
 
         results, surfaced = self._as_responses(capped)
-        await self._record_surfacing(surfaced)
+        await self._record_surfacing(surfaced, session_id)
         return results
 
     async def mid_session_recall_measured(
@@ -348,6 +356,7 @@ class RecallEngine:
         event: str,
         *,
         index_only: bool = False,
+        session_id: uuid.UUID | None = None,
     ) -> tuple[list[MemoryResponse] | list[dict[str, Any]], list[MemoryResponse] | None]:
         """:meth:`mid_session_recall`, plus the payload index mode replaced.
 
@@ -357,7 +366,7 @@ class RecallEngine:
         comparison costs no extra query and records no surfacing.
         """
         if not index_only:
-            return await self.mid_session_recall(context, event), None
+            return await self.mid_session_recall(context, event, session_id=session_id), None
 
         if self._session_surface_count >= _MAX_SESSION_SURFACES:
             logger.debug("Session surface cap reached, skipping mid-session recall")
@@ -420,6 +429,7 @@ class RecallEngine:
         memory_ids: list[uuid.UUID] | list[str],
         *,
         count_toward_session_cap: bool = False,
+        session_id: uuid.UUID | None = None,
     ) -> None:
         """Record that these memories' full content reached a caller.
 
@@ -439,6 +449,11 @@ class RecallEngine:
                 a pull the caller asked for: rate-limiting it would let a
                 caller lock itself out of proactive recall by reading its
                 own memories.
+            session_id: The session the caller is in, when it said. The
+                delivered memories are linked to it with ``role='recalled'``,
+                which is what ImpactScorer reads when the session ends with
+                an outcome. Before 2026-10-22 nothing wrote those links, so
+                impact scoring updated nothing, ever.
 
         Best-effort throughout: bookkeeping must never cost the caller its
         result.
@@ -455,10 +470,28 @@ class RecallEngine:
 
         await self._remember_surfaced([str(m) for m in ids])
         await self._record_access(ids)
+        if session_id is not None:
+            await self._link_recalled(ids, session_id)
+
+    async def _link_recalled(self, memory_ids: list[uuid.UUID], session_id: uuid.UUID) -> None:
+        """Link delivered memories to *session_id* as recalled. Best-effort."""
+        try:
+            await self._store.link_recalls_to_session(memory_ids, session_id)
+        except Exception:
+            logger.warning(
+                "Failed to link %d recalled memories to session %s",
+                len(memory_ids),
+                session_id,
+                exc_info=True,
+            )
 
     # ── Internal Helpers ──────────────────────────────────────
 
-    async def _record_surfacing(self, surfaced: list[dict[str, Any]]) -> None:
+    async def _record_surfacing(
+        self,
+        surfaced: list[dict[str, Any]],
+        session_id: uuid.UUID | None = None,
+    ) -> None:
         """Record a *full-content* surfacing of these candidate dicts.
 
         The dict-shaped front door to :meth:`record_disclosure`, used by the
@@ -467,6 +500,7 @@ class RecallEngine:
         await self.record_disclosure(
             [str(mem.get("id", "")) for mem in surfaced if mem.get("id")],
             count_toward_session_cap=True,
+            session_id=session_id,
         )
 
     async def _record_access(self, memory_ids: list[uuid.UUID]) -> None:

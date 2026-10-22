@@ -154,13 +154,20 @@ class MicroConsolidator:
         self,
         session_id: uuid.UUID,
     ) -> list[Memory]:
-        """Collect all active memories linked to this session."""
+        """Collect the active memories *created* in this session.
+
+        Recall writes ``role='recalled'`` links into the same table since
+        2026-10-22. Those are old memories the session only read: deduping
+        them "against existing" would supersede long-standing memories as if
+        they were new, and re-scoring them is the nightly pipeline's job.
+        """
         stmt = (
             select(Memory)
             .join(MemorySession, Memory.id == MemorySession.memory_id)
             .where(
                 Memory.tenant_id == get_current_tenant_id(),
                 MemorySession.session_id == session_id,
+                MemorySession.role == "created",
                 Memory.status == "active",
             )
             .order_by(Memory.created_at.desc())

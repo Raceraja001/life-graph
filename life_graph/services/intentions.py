@@ -64,8 +64,14 @@ class IntentionService:
 
         Returns:
             The newly created Intention ORM instance.
+
+        The tenant is set explicitly. Before 2026-10-22 it was not, so every
+        intention made through the API or MCP took the column's ``"legacy"``
+        default while every read here and in ``TriggerMatcher`` filters by
+        the current tenant: the caller could never list it and it never fired.
         """
         intention = Intention(
+            tenant_id=get_current_tenant_id(),
             content=content,
             trigger_type=trigger_type,
             trigger_condition=trigger_condition,

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -53,6 +54,14 @@ _INDEX_ONLY_DESCRIPTION = (
     "is also where the recall cooldown and access count are recorded."
 )
 
+_SESSION_ID_DESCRIPTION = (
+    "Optional: the session (from POST /api/v1/sessions/start) this recall "
+    "belongs to. Delivered memories are linked to it as 'recalled', which is "
+    "what outcome-based impact scoring reads when the session ends. Falls "
+    "back to context['session_id']. In index mode the link is written at the "
+    "expand step, like the cooldown."
+)
+
 
 class RecallRequest(BaseModel):
     """Body for session-start proactive recall."""
@@ -61,6 +70,7 @@ class RecallRequest(BaseModel):
         ..., description="Session context (project, tools, files, etc.)"
     )
     index_only: bool = Field(False, description=_INDEX_ONLY_DESCRIPTION)
+    session_id: uuid.UUID | None = Field(None, description=_SESSION_ID_DESCRIPTION)
 
 
 class MidSessionRecallRequest(BaseModel):
@@ -69,6 +79,26 @@ class MidSessionRecallRequest(BaseModel):
     context: dict[str, Any] = Field(..., description="Current session context")
     event: str = Field(..., min_length=1, description="Event that triggered the recall")
     index_only: bool = Field(False, description=_INDEX_ONLY_DESCRIPTION)
+    session_id: uuid.UUID | None = Field(None, description=_SESSION_ID_DESCRIPTION)
+
+
+def _recall_session_id(body: RecallRequest | MidSessionRecallRequest) -> uuid.UUID | None:
+    """The session a recall belongs to: the field, else ``context["session_id"]``.
+
+    The context fallback exists because clients already carry the id from
+    ``POST /sessions/start`` around in their context dict. An unparseable
+    context value is ignored rather than rejected — it is a hint, and a
+    malformed hint must not cost the caller its recall.
+    """
+    if body.session_id is not None:
+        return body.session_id
+    raw = body.context.get("session_id") if isinstance(body.context, dict) else None
+    if raw is None:
+        return None
+    try:
+        return uuid.UUID(str(raw))
+    except (ValueError, AttributeError, TypeError):
+        return None
 
 
 class AskRequest(BaseModel):
@@ -386,7 +416,9 @@ async def session_start_recall(
     that bookkeeping then happens.
     """
     payload, full = await engine.session_start_recall_measured(
-        body.context, index_only=body.index_only
+        body.context,
+        index_only=body.index_only,
+        session_id=_recall_session_id(body),
     )
     return success_response(data=payload, meta=token_meta(payload, full))
 
@@ -408,7 +440,10 @@ async def mid_session_recall(
     no surfacing recorded until the caller expands.
     """
     results, full = await engine.mid_session_recall_measured(
-        body.context, body.event, index_only=body.index_only
+        body.context,
+        body.event,
+        index_only=body.index_only,
+        session_id=_recall_session_id(body),
     )
     return success_response(
         data=results,
