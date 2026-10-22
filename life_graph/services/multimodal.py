@@ -56,6 +56,22 @@ _OCR_LANGUAGES = "eng+tam"
 INGEST_CAPTURE_JOB_NAME = "life_graph.workers.ingest_capture.ingest_capture_text"
 
 
+def _is_local_url(url: str) -> bool:
+    """Whether ``url`` points at this machine or a private (LAN/tailnet) address."""
+    import ipaddress
+    from urllib.parse import urlparse
+
+    host = (urlparse(url).hostname or "").lower()
+    if host in ("localhost", "host.docker.internal") or host.endswith(".ts.net"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    # 100.64.0.0/10 is Tailscale's (carrier-grade NAT) range.
+    return ip.is_loopback or ip.is_private or ip in ipaddress.ip_network("100.64.0.0/10")
+
+
 async def ingest_or_fallback(manager: MemoryManager, text: str, source: str) -> list[Any]:
     """Run text through the ingestion pipeline; if nothing was extracted,
     persist the raw text directly so it isn't silently dropped.
@@ -406,6 +422,34 @@ class MultiModalService:
         logger.info("Transcribed %s: %d characters", filename, len(transcript))
         return transcript
 
+    async def _transcribe_local(self, audio_bytes: bytes, filename: str) -> str:
+        """On this machine: the speech server when ``stt_base_url`` is set, else
+        faster-whisper in this process.
+
+        The phone app's first voice question (2026-10-21) failed with a 500:
+        faster-whisper is not installed in the API's environment, while
+        speaches, already running for spoken replies, transcribes too.
+        """
+        from life_graph.config import settings
+
+        if not settings.stt_base_url:
+            return await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
+        if not _is_local_url(settings.stt_base_url):
+            # Local-only voice must not leave the machine through a misconfiguration.
+            raise RuntimeError("stt_base_url must point at this machine or the private network")
+        import httpx
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                settings.stt_base_url.rstrip("/") + "/v1/audio/transcriptions",
+                files={"file": (filename, audio_bytes)},
+                data={"model": settings.stt_model},
+            )
+        response.raise_for_status()
+        text = str(response.json().get("text", ""))
+        logger.info("Local speech server transcribed %s: %d characters", filename, len(text))
+        return text.strip()
+
     async def _transcribe(
         self, audio_bytes: bytes, filename: str, *, local_only: bool = False
     ) -> str:
@@ -422,13 +466,13 @@ class MultiModalService:
         from life_graph.config import settings
 
         if local_only:
-            transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
+            transcript = await self._transcribe_local(audio_bytes, filename)
         elif settings.groq_api_key:
             transcript = await self._transcribe_groq(audio_bytes, filename)
         elif settings.cf_account_id and settings.cf_ai_token:
             transcript = await self._transcribe_cloudflare(audio_bytes, filename)
         else:
-            transcript = await asyncio.to_thread(self._transcribe_audio, audio_bytes, filename)
+            transcript = await self._transcribe_local(audio_bytes, filename)
         if not transcript.strip():
             raise ValueError("Transcription produced no text — nothing to remember")
         return transcript
