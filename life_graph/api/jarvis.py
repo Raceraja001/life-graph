@@ -77,6 +77,35 @@ def _app_event(event: dict, state: dict) -> dict | None:
     return None  # tool calls, delegations: not shown on the phone
 
 
+async def _capture(tenant_id: str, text: str, kind: str, conversation_id: uuid.UUID | None) -> None:
+    """The owner's own words to Jarvis, to the capture spine: memory is learnt from them.
+
+    Extraction (services/capture_processors.py) keeps only lasting facts, on
+    the local model; "remember that…" becomes an active memory at once.
+    Best-effort: a failed capture never fails the conversation.
+    """
+    import logging
+
+    from life_graph.core.events import event_bus
+    from life_graph.services.capture import CaptureService
+
+    try:
+        async with async_session() as session:
+            await CaptureService(session, event_bus).ingest(
+                tenant_id=tenant_id,
+                surface="jarvis_app",
+                content=text[:8000],
+                properties={
+                    "input": kind,
+                    "conversation_id": str(conversation_id) if conversation_id else None,
+                },
+            )
+            await session.commit()
+    except Exception as exc:  # noqa: BLE001
+        # Never the text: it is personal.
+        logging.getLogger(__name__).warning("Jarvis capture failed: %s", exc)
+
+
 @router.post("/chat", summary="Talk to Jarvis; the reply streams back (SSE)")
 async def chat(body: ChatRequest):
     from life_graph.api.dependencies import get_persona_service, get_process_manager
@@ -84,6 +113,7 @@ async def chat(body: ChatRequest):
 
     tenant_id = get_current_tenant_id()
     await _own_conversation(tenant_id, body.conversation_id)
+    await _capture(tenant_id, body.message, "text", body.conversation_id)
     inner = await chat_stream(
         ChatStreamRequest(message=body.message, target_agent=LEAD, session_id=body.conversation_id),
         pm=get_process_manager(),
@@ -249,6 +279,7 @@ async def voice(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "I couldn't hear anything."
         ) from None
+    await _capture(tenant_id, heard["transcript"], "voice", conv)
     turn = await _answer(tenant_id, heard["transcript"], conv)
     spoken = await speak(turn["reply"]) if turn["reply"] else None
     return success_response(
