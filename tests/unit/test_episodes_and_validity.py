@@ -82,3 +82,32 @@ def test_filler_sentences_are_dropped():
     assert clean(text) == (
         "They proposed building an Android app. They decided to sell school management first."
     )
+
+
+def test_a_fresh_start_hides_the_days_before_it(monkeypatch):
+    from life_graph.config import settings
+    from life_graph.services.episodes import _day_bounds
+
+    monkeypatch.setattr(settings, "user_timezone", "Asia/Kolkata")
+    monkeypatch.setattr(settings, "memory_start_at", "2026-10-23T12:00:00+05:30")
+    floor = datetime(2026, 10, 23, 6, 30, tzinfo=UTC)
+    before = _day_bounds(date(2026, 10, 22))
+    assert before[0] == before[1]  # nothing to read
+    assert _day_bounds(date(2026, 10, 23))[0] == floor  # cut short
+    assert _day_bounds(date(2026, 10, 24))[0] == datetime(2026, 10, 23, 18, 30, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("", None),
+        ("soon", None),
+        ("2026-10-23T12:00:00+05:30", datetime(2026, 10, 23, 6, 30, tzinfo=UTC)),
+        ("2026-10-23T06:30:00", datetime(2026, 10, 23, 6, 30, tzinfo=UTC)),
+    ],
+)
+def test_memory_start_is_read(monkeypatch, raw, expected):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "memory_start_at", raw)
+    assert settings.memory_start() == expected

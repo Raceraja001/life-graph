@@ -68,9 +68,18 @@ def _tz():
 
 
 def _day_bounds(day: date) -> tuple[datetime, datetime]:
+    """The day in UTC; it starts no earlier than ``memory_start_at`` (a fresh
+    start), so a day before it is empty and one it falls in is cut short."""
+    from life_graph.config import settings
+
     tz = _tz()
     start = datetime.combine(day, time.min, tzinfo=tz)
-    return start.astimezone(UTC), (start + timedelta(days=1)).astimezone(UTC)
+    end = (start + timedelta(days=1)).astimezone(UTC)
+    start = start.astimezone(UTC)
+    floor = settings.memory_start()
+    if floor is not None:
+        start = min(max(start, floor), end)
+    return start, end
 
 
 async def _jarvis_turns(tenant_id: str, day: date) -> tuple[list[str], list[str]]:

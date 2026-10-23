@@ -33,6 +33,7 @@ MAX_ATTEMPTS = 3
 async def sweep_stuck_captures(ctx: dict | None = None, tenant_id: str | None = None) -> dict:
     """Process up to BATCH stale ``received`` captures (one tenant, or all);
     mark repeat failures ``failed``."""
+    from life_graph.config import settings
     from life_graph.core.events import Event, EventType
     from life_graph.services.capture_processors import capture_processors
 
@@ -40,6 +41,10 @@ async def sweep_stuck_captures(ctx: dict | None = None, tenant_id: str | None = 
     query = select(CaptureEvent).where(
         CaptureEvent.status == "received", CaptureEvent.created_at < cutoff
     )
+    floor = settings.memory_start()
+    if floor is not None:
+        # A fresh start: captures from before it are not extracted again.
+        query = query.where(CaptureEvent.created_at >= floor)
     if tenant_id is not None:
         query = query.where(CaptureEvent.tenant_id == tenant_id)
     async with async_session() as session:
