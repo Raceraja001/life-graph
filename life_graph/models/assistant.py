@@ -11,7 +11,18 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, Float, Index, Integer, Numeric, String, Text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -352,3 +363,43 @@ class DevicePairingCode(Base):
     )
 
     __table_args__ = (Index("ix_device_pairing_codes_expires", "expires_at"),)
+
+
+class Entity(Base):
+    """A person, project or thing the owner's memories mention (services/entities.py).
+
+    ``key`` is the normalised name ("life graph" for "Life-Graph" and "life
+    graph"), unique per tenant; ``name`` is how it is usually written.
+    """
+
+    __tablename__ = "entities"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    key: Mapped[str] = mapped_column(String(200), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    mentions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (Index("uq_entities_tenant_key", "tenant_id", "key", unique=True),)
+
+
+class MemoryEntity(Base):
+    """One memory mentions one entity."""
+
+    __tablename__ = "memory_entities"
+
+    memory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("memories.id", ondelete="CASCADE"), primary_key=True
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (Index("ix_memory_entities_entity", "entity_id"),)

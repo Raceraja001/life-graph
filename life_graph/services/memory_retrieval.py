@@ -15,11 +15,20 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 CANDIDATES = 10
+#: Memories linked to an entity the question names, added to the judge's candidates.
+ENTITY_CANDIDATES = 8
+#: A question asking what is known about one thing, rather than a specific question.
+ABOUT = re.compile(
+    r"\b(everything|all you know|what (do|did) (you|i) (know|remember|say|tell you)|"
+    r"tell me|remind me)( \w+){0,3} about\b|^\s*(what|who) (is|are|was) \S+( \S+)?\s*\??\s*$",
+    re.IGNORECASE,
+)
 
 PROMPT = """\
 A person asked their assistant a question. Below are numbered notes from the
@@ -98,13 +107,41 @@ async def retrieve(question: str, limit: int = 6) -> list[Any] | None:
     hits = await get_store().hybrid_search(
         embedding=embedding, query_text=question, limit=CANDIDATES, statuses=("active",)
     )
+    candidates = [m for m, _ in hits]
+    # A question that names a known person, project or thing also gets the
+    # memories linked to it (services/entities.py): search finds what is worded
+    # like the question, the link finds what is about the same thing. The
+    # judge below still decides which of them answer it.
+    from life_graph.services import entities
+
+    linked: list[Any] = []
+    try:
+        named = await entities.known_in_text(get_current_tenant_id(), question)
+        if named:
+            linked = await entities.memories_for(
+                get_current_tenant_id(), [eid for eid, _ in named], limit=ENTITY_CANDIDATES
+            )
+            known_ids = {m.id for m in candidates}
+            candidates += [m for m in linked if m.id not in known_ids]
+    except Exception:  # noqa: BLE001 — the index is a bonus; search alone still answers
+        logger.warning("Entity candidates failed; using search only", exc_info=True)
+    if linked and ABOUT.search(question):
+        # "Tell me everything about Dify": the memories linked to Dify are about
+        # Dify by construction, and the judge dropped the one that mattered
+        # ("Life Graph does NOT use … Dify", 2026-10-23). They go first, unjudged.
+        now_ = datetime.now(UTC)
+        current = [
+            m for m in linked if getattr(m, "valid_until", None) is None or m.valid_until > now_
+        ]
+        return (dated + current)[:limit]
+
     now = datetime.now(UTC)
     seen = {m.id for m in dated}
     # A fact with an end date that has passed is no longer true ("in Chennai
     # until Friday"); it stays stored, but it does not answer questions.
     memories = [
         m
-        for m, _ in hits
+        for m in candidates
         if m.id not in seen
         and (getattr(m, "valid_until", None) is None or m.valid_until > now)
         # Asked about a time: other days' summaries only blur the answer.

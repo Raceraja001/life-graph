@@ -11,6 +11,21 @@ import pytest
 from life_graph.services.memory_retrieval import judge, retrieve
 
 
+@pytest.fixture(autouse=True)
+def _no_entity_index(monkeypatch):
+    """No database here: the question names no known entity."""
+    from life_graph.core.tenant import tenant_scope
+    from life_graph.services import entities
+
+    async def none(tenant_id, text_):
+        return []
+
+    monkeypatch.setattr(entities, "known_in_text", none)
+    # Scoped, not set: a tenant left behind leaks into every later test.
+    with tenant_scope("t1"):
+        yield
+
+
 class _Client:
     def __init__(self, reply):
         self.reply, self.calls = reply, []
@@ -84,3 +99,62 @@ async def test_a_judge_outage_falls_back_to_the_search_order(monkeypatch):
 async def test_no_embedding_is_not_nothing_found(monkeypatch):
     _wire(monkeypatch, "{}", embedding=None)
     assert await retrieve("q") is None
+
+
+async def test_a_named_entity_adds_its_memories_to_the_judges_candidates(monkeypatch):
+    from life_graph.services import entities
+
+    searched = _mem("frontend port is 3006")
+    linked = _mem("Murugan runs the grocery shop")
+    eid = uuid.uuid4()
+
+    async def known(tenant_id, text_):
+        return [(eid, "Murugan")] if "murugan" in text_.lower() else []
+
+    async def memories_for(tenant_id, ids, limit=20):
+        assert ids == [eid]
+        return [linked, searched]  # one already found by search: not listed twice
+
+    monkeypatch.setattr(entities, "known_in_text", known)
+    monkeypatch.setattr(entities, "memories_for", memories_for)
+    client = _wire(monkeypatch, '{"relevant": [2]}', hits=[(searched, 0.9)])
+    assert await retrieve("What does Murugan do?") == [linked]
+    listing = client.calls[0][0][1]["content"]
+    assert "1. frontend port is 3006" in listing and "2. Murugan runs the grocery shop" in listing
+
+
+@pytest.mark.parametrize(
+    ("question", "about"),
+    [
+        ("tell me everything you know about Dify", True),
+        ("what do you know about Murugan?", True),
+        ("remind me about the school app", True),
+        ("what is Scout?", True),
+        ("who is Priya", True),
+        ("which port does the frontend run on?", False),
+        ("when does my car insurance renew?", False),
+    ],
+)
+def test_about_questions(question, about):
+    from life_graph.services.memory_retrieval import ABOUT
+
+    assert bool(ABOUT.search(question)) is about
+
+
+async def test_an_about_question_gets_the_entitys_memories_unjudged(monkeypatch):
+    from life_graph.services import entities
+
+    decision = _mem("Life Graph does NOT use n8n or Dify.")
+    eid = uuid.uuid4()
+
+    async def known(tenant_id, text_):
+        return [(eid, "Dify")]
+
+    async def memories_for(tenant_id, ids, limit=20):
+        return [decision]
+
+    monkeypatch.setattr(entities, "known_in_text", known)
+    monkeypatch.setattr(entities, "memories_for", memories_for)
+    client = _wire(monkeypatch, '{"relevant": []}', hits=[])
+    assert await retrieve("tell me everything you know about Dify") == [decision]
+    assert client.calls == []  # the judge was not asked

@@ -208,3 +208,54 @@ async def memory_forget(memory_id: str, reason: str = "") -> str:
     if row is None:
         return json.dumps({"error": "No active memory with that id."})
     return json.dumps({"forgotten": True, "content": row[0]})
+
+
+@tool(
+    name="memory_about",
+    description=(
+        "Everything remembered about one person, project or thing the user has"
+        " mentioned (e.g. 'Murugan', 'the school app', 'Life Graph'), newest"
+        " first, with what it is most often mentioned with. Read-only."
+    ),
+    parameters_schema={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "The person, project or thing."},
+            "limit": {
+                "type": "integer",
+                "description": "Maximum memories (default 15).",
+                "default": 15,
+            },
+        },
+        "required": ["name"],
+    },
+)
+async def memory_about(name: str, limit: int = 15) -> str:
+    """The entity's active memories and related entities, as JSON. Never raises."""
+    from life_graph.core.task_context import get_current_task_context
+    from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
+    from life_graph.services import entities
+
+    if has_tenant_context():
+        tenant_id = get_current_tenant_id()
+    else:
+        ctx = get_current_task_context()
+        if ctx is None:
+            return json.dumps({"error": "memory_about has no tenant context."})
+        tenant_id = ctx.tenant_id
+    try:
+        found = await entities.about(tenant_id, name, limit=max(1, min(int(limit), 40)))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_about failed: %s", exc)
+        return json.dumps({"error": f"Could not look that up: {exc}"})
+    if found is None:
+        return json.dumps({"name": name, "known": False, "memories": []})
+    return json.dumps(
+        {
+            "name": name,
+            "known": True,
+            "also_called": found["names"],
+            "memories": [_to_row(m) for m in found["memories"]],
+            "often_mentioned_with": found["related"],
+        }
+    )
