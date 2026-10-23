@@ -160,9 +160,16 @@ class WorkerSettings:
         "life_graph.workers.tasks.tick_scheduled_jobs",
         "life_graph.workers.telegram.purge_telegram_pairing_codes",
         "life_graph.workers.capture_sweep.sweep_stuck_captures",
+        "life_graph.workers.episodes.write_daily_episodes",
     ]
 
     cron_jobs = [
+        # Yesterday's conversation summaries (services/episodes.py); idempotent.
+        cron(
+            "life_graph.workers.episodes.write_daily_episodes",
+            minute=41,
+            run_at_startup=False,
+        ),
         # Captures left "received" (written outside the API process, or whose
         # handler died) are processed here, at most 3 tries each.
         cron(

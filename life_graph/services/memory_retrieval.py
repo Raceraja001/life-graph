@@ -77,19 +77,43 @@ async def retrieve(question: str, limit: int = 6) -> list[Any] | None:
     remembered". Falls back to the plain search order when the judge cannot
     answer, so a model outage costs precision, never the memories themselves.
     """
+    from datetime import UTC, datetime
+
     from life_graph.api.dependencies import get_memory_manager, get_store
+    from life_graph.core.tenant import get_current_tenant_id
+    from life_graph.services import episodes
 
     embedding = await get_memory_manager().generate_embedding(question)
     if not embedding:
         return None
+
+    # "What did we talk about yesterday?": that period's day summaries,
+    # fetched by date, first (services/episodes.py). Search cannot tell which
+    # days "last week" means.
+    dated: list[Any] = []
+    window = episodes.time_window(question, datetime.now(episodes._tz()).date())
+    if window is not None:
+        dated = await episodes.episodes_between(get_current_tenant_id(), *window, limit=limit)
+
     hits = await get_store().hybrid_search(
         embedding=embedding, query_text=question, limit=CANDIDATES, statuses=("active",)
     )
-    memories = [m for m, _ in hits]
+    now = datetime.now(UTC)
+    seen = {m.id for m in dated}
+    # A fact with an end date that has passed is no longer true ("in Chennai
+    # until Friday"); it stays stored, but it does not answer questions.
+    memories = [
+        m
+        for m, _ in hits
+        if m.id not in seen
+        and (getattr(m, "valid_until", None) is None or m.valid_until > now)
+        # Asked about a time: other days' summaries only blur the answer.
+        and not (window is not None and (m.properties or {}).get("kind") == episodes.KIND)
+    ]
     if not memories:
-        return []
+        return dated[:limit]
     keep = await judge(question, [m.content or "" for m in memories])
     if keep is None:
         logger.warning("Memory relevance judge gave no answer; using the search order")
-        return memories[:limit]
-    return [memories[i] for i in keep][:limit]
+        return (dated + memories)[:limit]
+    return (dated + [memories[i] for i in keep])[:limit]

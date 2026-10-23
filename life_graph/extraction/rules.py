@@ -31,6 +31,11 @@ class ExtractedFact:
     that call's output. Stored in the memory's properties so its review can be
     read back as a training label."""
     trace_index: int = -1
+    changes_over_time: bool = False
+    """A state that may change (where the owner lives, their job, the current
+    plan): shown "as of" the day it was noted (services/memory_context.py)."""
+    valid_until: str | None = None
+    """YYYY-MM-DD after which it stops being true, when the text said so."""
 
 
 # ---------------------------------------------------------------------------

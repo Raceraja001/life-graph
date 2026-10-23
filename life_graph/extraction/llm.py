@@ -53,6 +53,20 @@ _EXTRACTION_SCHEMA: dict[str, Any] = {
                         "items": {"type": "string"},
                         "description": "Key entities or subjects mentioned.",
                     },
+                    "changes_over_time": {
+                        "type": "boolean",
+                        "description": (
+                            "True for a state that may change: where the owner lives or"
+                            " works, their job, the current plan, a tool they use now."
+                        ),
+                    },
+                    "valid_until": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "YYYY-MM-DD after which the fact stops being true, only if the"
+                            " text says so ('in Chennai until Friday'); otherwise null."
+                        ),
+                    },
                 },
                 "required": ["content", "fact_type", "confidence", "entities"],
             },
@@ -118,7 +132,16 @@ def _user_message(text: str, *, schema_in_prompt: bool) -> str:
     """The extraction request. The schema is pasted in only when the runtime is
     not enforcing it — with constrained decoding it is redundant, and it is
     exactly what small models copy back instead of answering."""
-    message = f"Extract facts from the following text:\n\n---\n{text}\n---\n\n"
+    # Today's date, so "until Friday" or "next month" can become a valid_until.
+    from datetime import datetime
+
+    from life_graph.connectors.tools import user_tz
+
+    today = datetime.now(user_tz())
+    message = (
+        f"Today is {today:%A %Y-%m-%d}. Extract facts from the following text:"
+        f"\n\n---\n{text}\n---\n\n"
+    )
     if schema_in_prompt:
         return (
             message
@@ -325,6 +348,7 @@ class LLMExtractor:
                     confidence=confidence,
                     entities=entities,
                     source_text=text[:500],
+                    **_validity(item),
                 )
             )
 
@@ -432,6 +456,7 @@ class LLMExtractor:
                     confidence=confidence,
                     entities=entities,
                     source_text=source_text[:500],
+                    **_validity(item),
                 )
             )
 
@@ -446,6 +471,21 @@ class LLMExtractor:
             "total_completion_tokens": self.total_completion_tokens,
             "total_cost_usd": round(self.total_cost_usd, 6),
         }
+
+
+def _validity(item: dict) -> dict[str, Any]:
+    """``changes_over_time`` and ``valid_until`` from one extracted item, checked.
+
+    A date that is not YYYY-MM-DD is dropped rather than guessed at.
+    """
+    from datetime import date
+
+    until = item.get("valid_until")
+    try:
+        until = date.fromisoformat(str(until)).isoformat() if until else None
+    except ValueError:
+        until = None
+    return {"changes_over_time": bool(item.get("changes_over_time")), "valid_until": until}
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:

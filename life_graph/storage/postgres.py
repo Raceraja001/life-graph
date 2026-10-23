@@ -95,6 +95,7 @@ class PostgresMemoryStore:
         extraction_confidence: float | None = None,
         capture_event_id: uuid.UUID | str | None = None,
         importance_tier: str | None = None,
+        valid_until: datetime | None = None,
     ) -> Memory:
         """Persist a new memory from a creation payload.
 
@@ -117,6 +118,9 @@ class PostgresMemoryStore:
         "normal" and the decay sweep's 'critical' exemption never applied
         until the nightly consolidation happened to rescore it (code review,
         2026-10-22). ``None`` keeps the column default.
+
+        ``valid_until``: when the fact stops being true, if the text said so
+        ("in Chennai until Friday"); retrieval leaves it out after that.
         """
         content_hash = hashlib.sha256(memory.content.strip().lower().encode()).hexdigest()
 
@@ -137,6 +141,8 @@ class PostgresMemoryStore:
         )
         if importance_tier:
             row.importance_tier = importance_tier
+        if valid_until is not None:
+            row.valid_until = valid_until
         if embedding:
             from life_graph.services.embeddings import current_embedding_model
 
