@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import UTC, datetime
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -125,6 +126,11 @@ class Settings(BaseSettings):
     # Unreviewed memories older than this are rejected by the nightly decay job
     # (reversible: approve brings one back). 0 = keep waiting forever.
     pending_memory_expiry_days: int = 14
+    # A fresh start (ISO timestamp, e.g. 2026-10-23T12:00:00+05:30): day
+    # summaries and the capture retry job never read anything older, so
+    # archived memories are not written again from old conversations.
+    # Empty = no limit.
+    memory_start_at: str = ""
     # The local model that decides which searched memories answer a question
     # (services/memory_retrieval.py). Empty = lm_extraction_model, which is
     # also Jarvis's local model here: a separate small judge meant a third
@@ -742,6 +748,16 @@ class Settings(BaseSettings):
         """Roots the file_* tools may touch. Defaults to the home directory."""
         roots = [r.strip() for r in self.tool_fs_roots.split(",") if r.strip()]
         return roots or [os.path.expanduser("~")]
+
+    def memory_start(self) -> datetime | None:
+        """``memory_start_at`` as an aware UTC datetime, or None (unset or unreadable)."""
+        if not self.memory_start_at.strip():
+            return None
+        try:
+            at = datetime.fromisoformat(self.memory_start_at.strip())
+        except ValueError:
+            return None
+        return (at if at.tzinfo else at.replace(tzinfo=UTC)).astimezone(UTC)
 
     @property
     def capture_no_extract_surfaces_list(self) -> list[str]:

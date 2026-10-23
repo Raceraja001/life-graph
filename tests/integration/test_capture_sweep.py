@@ -46,7 +46,11 @@ async def _row(cid):
 @pytest.fixture
 def processor(monkeypatch):
     """The real processor's contract, without an LLM: mark the capture processed."""
+    from life_graph.config import settings
     from life_graph.services import capture_processors as cp
+
+    # No fresh-start floor from the local .env unless a test sets one.
+    monkeypatch.setattr(settings, "memory_start_at", "")
 
     seen = []
 
@@ -100,3 +104,20 @@ async def test_a_capture_that_keeps_failing_is_marked_failed_after_three_tries(p
     await sweep_stuck_captures(tenant_id=TENANT)
     row = await _row(bad)
     assert row.status == "failed" and row.properties["sweep_attempts"] == MAX_ATTEMPTS
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_captures_from_before_a_fresh_start_are_left_alone(processor, monkeypatch):
+    from life_graph.config import settings
+    from life_graph.workers.capture_sweep import sweep_stuck_captures
+
+    old = await _capture("I used to like tea.", age_min=120)
+    new = await _capture("I like coffee now.", age_min=30)
+    start = datetime.now(UTC) - timedelta(minutes=60)
+    monkeypatch.setattr(settings, "memory_start_at", start.isoformat())
+
+    await sweep_stuck_captures(tenant_id=TENANT)
+
+    assert (await _row(old)).status == "received"
+    assert (await _row(new)).status == "processed"
