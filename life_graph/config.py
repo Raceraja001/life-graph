@@ -176,6 +176,9 @@ class Settings(BaseSettings):
     # and produced 3,502 of 3,668 pending memories (2026-10-22). The owner's
     # memory is learnt from the owner's words; the replies stay in the trail.
     capture_no_extract_surfaces: str = "tool_exhaust,assistant_message"
+    # Surfaces whose assistant saves explicit "remember that…" requests itself
+    # (Jarvis's memory_save): the extractor skips those facts there.
+    capture_saved_by_tool_surfaces: str = "jarvis_app"
 
     # ── Cold Start ─────────────────────────────────────
     cold_start_min_memories: int = 50
@@ -763,6 +766,11 @@ class Settings(BaseSettings):
     def capture_no_extract_surfaces_list(self) -> list[str]:
         """Surfaces that are logged as capture events but never extracted."""
         return [s.strip() for s in self.capture_no_extract_surfaces.split(",") if s.strip()]
+
+    @property
+    def capture_saved_by_tool_surfaces_list(self) -> list[str]:
+        """Surfaces whose explicit-save facts are left to the assistant's own tool."""
+        return [s.strip() for s in self.capture_saved_by_tool_surfaces.split(",") if s.strip()]
 
     def context_tokens_for(self, model: str | None) -> int:
         """The context window to budget a run against (agent_context_tokens_by_model)."""
