@@ -20,3 +20,20 @@ def test_is_personal_carries_personal_detail_returns_carries():
     text = "Contact me at test@example.com"
     result = is_personal(text)
     assert result == "carries a personal detail"
+
+
+def test_a_question_about_the_owners_own_anything_is_personal():
+    # Went to the cloud model, which cannot see memories (2026-10-23).
+    for text in (
+        "What is my test locker code?",
+        "what's my wifi name",
+        "Where is my spare key?",
+        "When was my last service?",
+        "my home address please",
+    ):
+        assert is_personal(text), text
+
+
+def test_general_questions_stay_general():
+    for text in ("What is the capital of France?", "how do I reverse a list in Python"):
+        assert is_personal(text) is None, text

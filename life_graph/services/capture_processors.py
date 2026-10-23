@@ -162,6 +162,12 @@ class CaptureProcessors:
                         "Extraction pipeline failed for %s", capture_event_id, exc_info=True
                     )
 
+                if surface in settings.capture_saved_by_tool_surfaces_list:
+                    # Jarvis saves "remember that…" itself (memory_save); kept
+                    # here too it was stored twice in different words
+                    # ("The owner's code is…" next to "My code is…", 2026-10-23).
+                    facts = [f for f in facts if f.fact_type != "explicit_save"]
+
                 # ── 1b. Persist those facts as memories ─────────────
                 # Extraction alone yields nothing durable — the facts have to
                 # go through MemoryManager (embed → dedup → score → pending

@@ -73,12 +73,16 @@ _DOMAIN = (
     r"|family|wife|husband|son|daughter|kids?|children|mother|father|mom|dad|amma|appa"
     r"|notes?|memor(?:y|ies)|tasks?|todos?|invoices?|clients?|contacts?|subscriptions?"
     r"|study|flash ?cards|exams?"
+    r"|codes?|passwords?|pins?|lockers?|address|birthday|anniversary|car|bike|house|home"
 )
 _PERSONAL = re.compile(
     rf"\b(?:my|our|mine)\s+(?:\w+\s+)?(?:{_DOMAIN})\b"
     r"|\b(?:calendar|inbox|bills?|spending|study cards|flash ?cards|invoices?"
     r"|appointments?|reminders?)\b"
-    r"|\b(?:remember|recall|remind me|what did i|did i|have i|i told you|about me)\b",
+    r"|\b(?:remember|recall|remind me|what did i|did i|have i|i told you|about me)\b"
+    # "what's my locker code?": a question about the owner's own anything
+    # (went to the cloud model, which cannot see memories, 2026-10-23).
+    r"|\b(?:what|where|when|which|who|how)(?:'s|\s+is|\s+are|\s+was|\s+were|\s+do)\s+my\b",
     re.IGNORECASE,
 )
 _SWITCH = re.compile(r"^\s*(personal|private|local|cloud)\s*:\s*", re.IGNORECASE)

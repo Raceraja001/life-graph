@@ -359,10 +359,41 @@ class TestActivityTrailSurfaces:
         """So the trail can be re-enabled, or another surface silenced, from .env."""
         monkeypatch.setattr(
             "life_graph.services.capture_processors.settings",
-            SimpleNamespace(capture_no_extract_surfaces_list=[]),
+            SimpleNamespace(
+                capture_no_extract_surfaces_list=[], capture_saved_by_tool_surfaces_list=[]
+            ),
         )
         harness.capture_evt.surface = "tool_exhaust"
 
         await harness.run()
 
         harness.manager.store_facts.assert_awaited_once()
+
+
+class TestSavedByJarvisItself:
+    """On the phone app Jarvis saves "remember that…" with memory_save; the
+    extractor kept it too, so it was stored twice in different words."""
+
+    @pytest.mark.asyncio
+    async def test_explicit_saves_are_left_to_jarvis_other_facts_still_kept(self, harness):
+        harness.capture_evt.surface = "jarvis_app"
+        harness.facts.append(
+            ExtractedFact(content="Locker code is 4417", fact_type="explicit_save", confidence=0.95)
+        )
+
+        await harness.run()
+
+        stored = harness.manager.store_facts.await_args.args[0]
+        assert [f.content for f in stored] == ["Uses PostgreSQL"]
+
+    @pytest.mark.asyncio
+    async def test_other_surfaces_keep_explicit_saves(self, harness):
+        harness.capture_evt.surface = "cli"
+        harness.facts.append(
+            ExtractedFact(content="Locker code is 4417", fact_type="explicit_save", confidence=0.95)
+        )
+
+        await harness.run()
+
+        stored = harness.manager.store_facts.await_args.args[0]
+        assert [f.fact_type for f in stored] == ["fact", "explicit_save"]
