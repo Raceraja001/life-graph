@@ -75,7 +75,7 @@ class SharedContextService:
         content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
         # Generate embedding
-        embedding = self._embedding_service.embed(content)
+        embedding = await self._embedding_service.embed_async(content)
 
         async with self._session_factory() as session:
             # Exact hash dedup — fast path
@@ -201,7 +201,7 @@ class SharedContextService:
                 return [self._entry_to_dict(e, similarity=None) for e in entries]
 
         # Generate query embedding
-        query_embedding = self._embedding_service.embed(query)
+        query_embedding = await self._embedding_service.embed_async(query)
         if not query_embedding or len(query_embedding) == 0:
             logger.warning("Empty query embedding — falling back to recent entries")
             return await self.search(tenant_id, project_id, "", limit, min_similarity)

@@ -47,7 +47,7 @@ class PreferenceStore:
         embed_text = f"{data['topic']}: {data['choice']}"
         if data.get("reason"):
             embed_text += f" — {data['reason']}"
-        embedding = self._embedding.embed(embed_text)
+        embedding = await self._embedding.embed_async(embed_text)
 
         # Cap confidence at 0.7 for inferred sources
         confidence = data.get("confidence", 0.5)
@@ -188,7 +188,7 @@ class PreferenceStore:
                 embed_text = f"{pref.topic}: {pref.choice}"
                 if pref.reason:
                     embed_text += f" — {pref.reason}"
-                pref.embedding = self._embedding.embed(embed_text) or None
+                pref.embedding = await self._embedding.embed_async(embed_text) or None
 
             pref.updated_at = datetime.now(UTC)
             await session.commit()
@@ -235,7 +235,7 @@ class PreferenceStore:
         min_similarity: float = 0.3,
     ) -> list[dict[str, Any]]:
         """Search preferences using pgvector cosine similarity."""
-        query_embedding = self._embedding.embed(query)
+        query_embedding = await self._embedding.embed_async(query)
         if not query_embedding:
             return []
 

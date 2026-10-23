@@ -607,7 +607,9 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " own; when they say 'remember that…', confirm in a few words. When"
             " they say something you remember is wrong or ask you to forget it,"
             " find it with memory_search and archive it with memory_forget, then"
-            " say what you forgot."
+            " say what you forgot. Answer from what you remember in plain"
+            " sentences: never copy the notes, their ids or any tags or markup"
+            " into your reply."
         ),
         "intent_tags": [],
         "temperature": 0.4,

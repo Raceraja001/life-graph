@@ -159,9 +159,17 @@ class WorkerSettings:
         "life_graph.workers.distill_transcript.distill_transcript",
         "life_graph.workers.tasks.tick_scheduled_jobs",
         "life_graph.workers.telegram.purge_telegram_pairing_codes",
+        "life_graph.workers.capture_sweep.sweep_stuck_captures",
     ]
 
     cron_jobs = [
+        # Captures left "received" (written outside the API process, or whose
+        # handler died) are processed here, at most 3 tries each.
+        cron(
+            "life_graph.workers.capture_sweep.sweep_stuck_captures",
+            minute={7, 22, 37, 52},
+            run_at_startup=False,
+        ),
         cron(
             "life_graph.workers.tasks.run_all_consolidations",
             hour=3,
