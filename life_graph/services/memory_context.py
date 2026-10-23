@@ -28,7 +28,8 @@ HEADER = (
     "## What you remember about the owner\n"
     "Notes kept from earlier conversations that match this message. Use what "
     "answers it; if they don't fully answer it, say what you don't know rather "
-    "than guess."
+    'than guess. A note marked "as of" a date may have changed since: say so '
+    "when it matters."
 )
 NOTHING_FOUND = (
     "## What you remember about the owner\n"
@@ -49,16 +50,34 @@ def search_text(message: str, history: list[dict[str, Any]] | None) -> str:
     return f"{previous.strip()}\n{message}".strip()
 
 
-def render(rows: list[tuple[str, Any]]) -> str:
-    """rows: (content, created_at). Empty string when there is nothing to show."""
+#: A day's conversation summary (services/episodes.py) is a paragraph, not a note.
+MAX_EPISODE_CHARS = 900
+
+
+def render(rows: list[tuple]) -> str:
+    """rows: (content, created_at[, properties]). Empty string when there is nothing to show.
+
+    A fact that changes over time (where the owner lives, their job, the
+    current plan) is shown "as of" the day it was noted, so it is not read as
+    true today; a day summary carries its own date.
+    """
     if not rows:
         return ""
     lines = [HEADER]
-    for content, created_at in rows[:MAX_MEMORIES]:
+    for row in rows[:MAX_MEMORIES]:
+        content, created_at = row[0], row[1]
+        props = (row[2] if len(row) > 2 else None) or {}
+        episode = props.get("kind") == "episode"
+        limit = MAX_EPISODE_CHARS if episode else MAX_CHARS
         text = " ".join((content or "").split())
-        if len(text) > MAX_CHARS:
-            text = text[: MAX_CHARS - 1] + "…"
-        when = f"({created_at:%Y-%m-%d}) " if created_at else ""
+        if len(text) > limit:
+            text = text[: limit - 1] + "…"
+        if episode or not created_at:
+            when = ""
+        elif props.get("changes_over_time"):
+            when = f"(as of {created_at:%Y-%m-%d}) "
+        else:
+            when = f"({created_at:%Y-%m-%d}) "
         lines.append(f"- {when}{text}")
     return "\n".join(lines)
 
@@ -90,4 +109,4 @@ async def memory_block(tenant_id: str, message: str, history: list[dict] | None 
     if not found:
         # Said, not left out: without it the model fills the gap with a guess.
         return NOTHING_FOUND
-    return render([(m.content, m.created_at) for m in found])
+    return render([(m.content, m.created_at, getattr(m, "properties", None)) for m in found])

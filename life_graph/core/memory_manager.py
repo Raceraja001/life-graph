@@ -397,6 +397,8 @@ class MemoryManager:
         properties["extraction_confidence"] = fact.confidence
         if fact.entities:
             properties["entities"] = fact.entities
+        if fact.changes_over_time:
+            properties["changes_over_time"] = True
         if fact.trace_id:
             # How the user resolves this memory is the self-improvement label
             # for that extraction call (self_improving/suite_builder.py).
@@ -440,6 +442,7 @@ class MemoryManager:
             # tags: decay exempts importance_tier='critical', and without this
             # every new memory was stored 'normal' (code review, 2026-10-22).
             importance_tier=tier,
+            valid_until=_end_of_day(fact.valid_until),
         )
 
         # Step 5b: Queue a contradiction approval for each supersede target.
@@ -602,6 +605,23 @@ class MemoryManager:
         except Exception as exc:
             logger.warning("Embedding generation failed: %s", exc)
             return None
+
+
+def _end_of_day(day: str | None):
+    """End of *day* (YYYY-MM-DD) in the owner's timezone, as an aware datetime, or None.
+
+    A fact "true until Friday" is still true all of Friday.
+    """
+    if not day:
+        return None
+    from datetime import date, datetime, time
+
+    from life_graph.connectors.tools import user_tz
+
+    try:
+        return datetime.combine(date.fromisoformat(day), time.max, tzinfo=user_tz())
+    except ValueError:
+        return None
 
 
 #: How sure the extractor must be that the owner asked to remember it.
