@@ -219,7 +219,7 @@ async def write_day(tenant_id: str, day: date) -> list[str]:
         content = f"{LABEL[source]} on {day:%A %d %B %Y}: {summary}"
         with tenant_scope(tenant_id):
             embedding = await get_memory_manager().generate_embedding(content)
-            await get_store().store(
+            row = await get_store().store(
                 MemoryCreate(
                     content=content,
                     tags=["episode", source],
@@ -239,6 +239,15 @@ async def write_day(tenant_id: str, day: date) -> list[str]:
                 # it does not wait in the review queue.
                 status="active",
             )
+        # Linked to the people and projects it names, so "everything about X"
+        # includes the days X came up (services/entities.py).
+        try:
+            from life_graph.services import entities
+
+            named = await entities.known_in_text(tenant_id, summary)
+            await entities.link(tenant_id, row.id, [name for _, name in named])
+        except Exception:
+            logger.warning("Entity linking failed for episode %s", key, exc_info=True)
         written.append(key)
     return written
 

@@ -610,7 +610,8 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " say what you forgot. Your notes include a summary of each day's"
             " conversations and work: for 'what did I do / discuss on <day>',"
             " answer from those first, then check the calendar if it is about"
-            " events. Answer from what you remember in plain"
+            " events. For 'everything about <a person or project>', use"
+            " memory_about. Answer from what you remember in plain"
             " sentences: never copy the notes, their ids or any tags or markup"
             " into your reply."
         ),
@@ -621,6 +622,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "browse_web",
             "memory_search",
             "memory_forget",
+            "memory_about",
             "get_current_datetime",
             "calculator",
             "git_status",

@@ -445,6 +445,16 @@ class MemoryManager:
             valid_until=_end_of_day(fact.valid_until),
         )
 
+        # The people, projects and things it mentions (services/entities.py).
+        # Best-effort: a failed link never costs the memory.
+        if fact.entities:
+            try:
+                from life_graph.services import entities
+
+                await entities.link(stored.tenant_id, stored.id, fact.entities)
+            except Exception:
+                logger.warning("Entity linking failed for memory %s", stored.id, exc_info=True)
+
         # Step 5b: Queue a contradiction approval for each supersede target.
         # Only a memory that is already active (the owner's explicit "remember
         # this") supersedes at once, undoable by rejecting the approval. A
