@@ -75,7 +75,25 @@ def _app_event(event: dict, state: dict) -> dict | None:
         }
     if kind == "error":
         return {"type": "error", "message": event.get("message") or "Something went wrong."}
-    return None  # tool calls, delegations: not shown on the phone
+    if kind == "tool_result" and event.get("name") == "memory_save":
+        # What Jarvis just remembered, so the app can show it with an Undo.
+        return _saved_event(event.get("result"))
+    return None  # other tool calls, delegations: not shown on the phone
+
+
+def _saved_event(result: object) -> dict | None:
+    try:
+        out = json.loads(str(result or ""))
+    except ValueError:
+        return None
+    if not isinstance(out, dict) or out.get("saved") is not True or not out.get("id"):
+        return None
+    return {
+        "type": "saved",
+        "id": str(out["id"]),
+        "content": str(out.get("content") or ""),
+        "pending": "status" in out,
+    }
 
 
 async def _capture(tenant_id: str, text: str, kind: str, conversation_id: uuid.UUID | None) -> None:
@@ -270,7 +288,31 @@ async def _answer(tenant_id: str, question: str, conversation_id: uuid.UUID | No
         "reply": str(result.get("response") or "").strip(),
         "conversation_id": str(conversation_id),
         "route": (result.get("route") or {}).get("kind"),
+        "saved": await _saved_in(tenant_id, spawn["task_id"]),
     }
+
+
+async def _saved_in(tenant_id: str, task_id: object) -> list[dict]:
+    """What memory_save stored during one Jarvis run (tools/memory_search.py tags it)."""
+    from life_graph.models.db import Memory
+
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Memory)
+                    .where(
+                        Memory.tenant_id == tenant_id,
+                        Memory.properties["task_id"].astext == str(task_id),
+                    )
+                    .order_by(Memory.created_at)
+                    .limit(10)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return [{"id": str(m.id), "content": m.content, "pending": m.status == "pending"} for m in rows]
 
 
 @router.post("/voice", summary="Speak to Jarvis: audio in, spoken reply out")
@@ -311,4 +353,190 @@ async def voice(
             **turn,
             "audio_base64": base64.b64encode(spoken).decode() if spoken else None,
         }
+    )
+
+
+# ── v2: review memories, undo a save, read an image, notifications ──────────
+
+#: Where a memory came from, in the owner's words (the app shows it).
+_SOURCE_LABEL = {
+    "cli": "Claude Code",
+    "jarvis_app": "Jarvis",
+    "explicit": "Jarvis",
+    "voice": "voice",
+    "telegram": "Telegram",
+    "dashboard": "dashboard",
+    "manual": "dashboard",
+    "image": "an image",
+    "interview_answer": "interview",
+}
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def _source(m) -> str:
+    props = m.properties or {}
+    for key in (props.get("surface"), m.source_type):
+        if key in _SOURCE_LABEL:
+            return _SOURCE_LABEL[key]
+    return "Life Graph"
+
+
+@router.get("/memories/pending", summary="Memories waiting for your review, newest first")
+async def pending_memories(limit: int = 50):
+    from life_graph.models.db import Memory
+
+    tenant_id = get_current_tenant_id()
+    where = (Memory.tenant_id == tenant_id, Memory.status == "pending")
+    async with async_session() as session:
+        total = await session.scalar(select(func.count()).select_from(Memory).where(*where))
+        rows = (
+            (
+                await session.execute(
+                    select(Memory)
+                    .where(*where)
+                    .order_by(Memory.created_at.desc())
+                    .limit(max(1, min(limit, 200)))
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return success_response(
+        data={
+            "memories": [
+                {
+                    "id": str(m.id),
+                    "content": m.content,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                    "source": _source(m),
+                }
+                for m in rows
+            ],
+            "total": int(total or 0),
+        }
+    )
+
+
+async def _review(memory_id: uuid.UUID, action: str) -> dict:
+    """Approve or reject through the dashboard's own transition (events, contradictions)."""
+    from life_graph.api.dependencies import get_store
+    from life_graph.api.memories import _transition
+
+    row = await _transition(memory_id, action, get_store())
+    return {"id": str(row.id), "status": row.status}
+
+
+@router.post("/memories/{memory_id}/approve", summary="Keep a memory")
+async def approve_memory(memory_id: uuid.UUID):
+    return success_response(data=await _review(memory_id, "approve"))
+
+
+@router.post("/memories/{memory_id}/reject", summary="Drop a memory")
+async def reject_memory(memory_id: uuid.UUID):
+    return success_response(data=await _review(memory_id, "reject"))
+
+
+@router.post("/memories/{memory_id}/undo", summary="Take back a memory Jarvis just saved")
+async def undo_save(memory_id: uuid.UUID):
+    """Archives (never deletes) one memory Jarvis saved with memory_save."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import text
+
+    tenant_id = get_current_tenant_id()
+    note = json.dumps({"undone": {"at": datetime.now(UTC).isoformat(), "by": "owner"}})
+    async with async_session() as session:
+        row = (
+            await session.execute(
+                text(
+                    "UPDATE memories SET status = 'archived', updated_at = NOW(),"
+                    " properties = COALESCE(properties, '{}'::jsonb) || CAST(:note AS jsonb)"
+                    " WHERE id = :id AND tenant_id = :t AND status IN ('active', 'pending')"
+                    " AND properties->>'saved_by' = 'jarvis' RETURNING id"
+                ),
+                {"id": memory_id, "t": tenant_id, "note": note},
+            )
+        ).first()
+        await session.commit()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Nothing to undo.")
+    return success_response(data={"id": str(memory_id), "status": "archived"})
+
+
+@router.post("/read-image", summary="The words in an image, read on this PC; nothing is stored")
+async def read_image(image: UploadFile = File(...)):
+    import asyncio
+
+    from life_graph.services.multimodal import MultiModalService
+
+    if (image.content_type or "").lower() not in _IMAGE_TYPES:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Send a JPEG, PNG or WebP.")
+    data = await image.read(MAX_IMAGE_BYTES + 1)
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No image received.")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "That image is too big.")
+    try:
+        words = await asyncio.to_thread(MultiModalService._ocr_image, data)
+    except ImportError:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Reading images is not set up on the PC."
+        ) from None
+    except Exception:  # noqa: BLE001 - a corrupt or unreadable file
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "I couldn't read that image."
+        ) from None
+    words = (words or "").strip()
+    if not words:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "No words found in that image.")
+    return success_response(data={"text": words})
+
+
+_PRIORITY = {
+    "urgent": "urgent",
+    "critical": "urgent",
+    "important": "important",
+    "high": "important",
+}
+
+
+@router.get("/notifications", summary="What Jarvis has to tell you, oldest first")
+async def notifications(after: str | None = None, limit: int = 20):
+    """Notifications newer than *after* (ISO-8601), for the phone to post."""
+    from datetime import UTC, datetime
+
+    from life_graph.models.db import Notification
+
+    tenant_id = get_current_tenant_id()
+    query = select(Notification).where(Notification.tenant_id == tenant_id)
+    if after:
+        try:
+            since = datetime.fromisoformat(after.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "after is not a date.") from None
+        if since.tzinfo is None:
+            since = since.replace(tzinfo=UTC)
+        query = query.where(Notification.created_at > since)
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    query.order_by(Notification.created_at).limit(max(1, min(limit, 50)))
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return success_response(
+        data=[
+            {
+                "id": str(n.id),
+                "title": n.title,
+                "body": (n.body or "")[:2000],
+                "priority": _PRIORITY.get((n.priority or "").lower(), "info"),
+                "created_at": n.created_at.isoformat() if n.created_at else None,
+            }
+            for n in rows
+        ]
     )
