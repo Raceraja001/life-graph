@@ -138,6 +138,8 @@ class _HybridSearchSession:
         return False
 
     async def execute(self, stmt, params=None):
+        if str(stmt).lstrip().upper().startswith("SET "):
+            return None  # SET LOCAL hnsw.ef_search: a session setting, not a query
         self.executed.append(stmt)
         if len(self.executed) == 1:
             return SimpleNamespace(fetchall=lambda: self._scored_ids)
