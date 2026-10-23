@@ -384,7 +384,15 @@ async def memory_save(
                         tags=["explicit_save"],
                         source_type="explicit",
                         importance=0.7,
-                        properties={"saved_by": "jarvis"},
+                        properties={
+                            "saved_by": "jarvis",
+                            # The run it was said in: the phone's voice reply lists it.
+                            **(
+                                {"task_id": str(ctx.root_task_id or ctx.task_id)}
+                                if ctx is not None
+                                else {}
+                            ),
+                        },
                     ),
                     embedding=embedding or None,
                     trust_tier="self",
