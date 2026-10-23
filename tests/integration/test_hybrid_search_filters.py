@@ -103,3 +103,20 @@ async def test_ask_answers_from_active_memories_only(monkeypatch):
     if "filters" not in seen:
         pytest.skip(f"ask did not reach the search (embedding unavailable): {resp.status_code}")
     assert seen["filters"] == {"status": "active"}
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_question_finds_a_note_by_any_of_its_words():
+    """plainto_tsquery needed EVERY word to match, so a natural question found
+    nothing by keyword; now any content word of it counts (RRF fusion)."""
+    rare = f"quokka{uuid.uuid4().hex[:5]}"
+    await _seed(f"The {rare} module runs on port 3006.", tags=["work"])
+    from life_graph.storage.postgres import PostgresMemoryStore
+
+    set_tenant_context(TENANT)
+    hits = await PostgresMemoryStore().hybrid_search(
+        embedding=[0.0] * 1024, query_text=f"which port does the {rare} thing use?", limit=5
+    )
+    assert hits and rare in hits[0][0].content
+    assert 0.0 < hits[0][1] <= 1.0  # normalised: tri_search adds a graph boost on this scale

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -38,6 +39,29 @@ def _as_uuid(value: uuid.UUID | str | None) -> uuid.UUID | None:
     except (ValueError, AttributeError, TypeError):
         logger.debug("Ignoring unparseable capture_event_id %r", value)
         return None
+
+
+#: Reciprocal rank fusion constant (the usual 60) and the candidates taken from
+#: each leg before fusing.
+RRF_K = 60
+RRF_POOL = 100
+
+_WORD = re.compile(r"\w+", re.UNICODE)
+
+
+def _or_tsquery(text_: str) -> str:
+    """A to_tsquery() expression matching ANY word of *text_*: "a | b | c".
+
+    Only word characters reach to_tsquery, so its operators (& | ! : ( ))
+    cannot be smuggled in; English stop words are dropped by the 'english'
+    configuration itself. Empty when there are no words.
+    """
+    words = []
+    for w in _WORD.findall(text_ or ""):
+        w = w.lower()
+        if w and w not in words:
+            words.append(w)
+    return " | ".join(words[:32])
 
 
 def _raw_filter_sql(filters: dict | None) -> tuple[str, dict]:
@@ -334,8 +358,8 @@ class PostgresMemoryStore:
         query_text: str,
         limit: int = 10,
         filters: dict | None = None,
-        vector_weight: float = 0.6,
-        bm25_weight: float = 0.4,
+        vector_weight: float = 1.0,
+        bm25_weight: float = 0.5,
         statuses: tuple[str, ...] = ("active",),
     ) -> list[tuple[Memory, float]]:
         """Hybrid search combining vector similarity with BM25 keyword matching.
@@ -352,8 +376,10 @@ class PostgresMemoryStore:
             query_text: Original query text for BM25 matching.
             limit: Maximum results to return.
             filters: Optional filter criteria (same as search_similar).
-            vector_weight: Weight for cosine similarity score (0-1).
-            bm25_weight: Weight for BM25 keyword score (0-1).
+            vector_weight: Weight of the meaning (vector) ranking in the fusion.
+            bm25_weight: Weight of the keyword ranking. 1.0 / 0.5 measured 2026-10-23 on
+                the owner's memories: name-style lookups top-5 77% -> 97%, paraphrased
+                questions 99% -> 97% (the relevance judge reorders after).
             statuses: Memory statuses to include. Defaults to active-only for
                 automation callers; the dashboard search route widens this to
                 include ``"pending"`` so the user can see and approve new memories.
@@ -370,65 +396,65 @@ class PostgresMemoryStore:
             statuses = tuple(filters["statuses"])
         extra, extra_params = _raw_filter_sql(filters)
 
-        # Subquery: get vector scores (top 100 candidates by cosine)
-        # Then left-join with BM25 scores and fuse
+        # Reciprocal rank fusion of the two lists (2026-10-23). The old query
+        # added 0.6 x cosine (~0.3-0.8) to 0.4 x ts_rank (~0.01-0.1), so the
+        # keyword leg barely moved anything (evals/score-separability.md), and
+        # plainto_tsquery required EVERY word of a question to match, so a
+        # natural question almost never had keyword hits at all. Now each leg
+        # contributes by rank, keywords match ANY content word (_or_tsquery),
+        # and the score is normalised to 0-1 (1 = first in both lists) because
+        # tri_search adds a fixed graph boost on that scale.
         #
-        # We use raw SQL for the tsvector column since it's a GENERATED column
-        # not mapped in the ORM.
+        # Raw SQL for the tsvector column: it is GENERATED, not mapped in the ORM.
         raw_sql = text(f"""
             WITH vector_candidates AS (
-                SELECT id,
-                       1.0 - (embedding <=> :query_embedding) AS v_score
+                SELECT id, row_number() OVER (ORDER BY embedding <=> :query_embedding) AS rk
                 FROM memories
                 WHERE embedding IS NOT NULL
                   AND tenant_id = :tenant_id
                   AND status = ANY(:statuses){extra}
                 ORDER BY embedding <=> :query_embedding
-                LIMIT 100
+                LIMIT :pool
             ),
             bm25_matches AS (
-                SELECT id,
-                       ts_rank(content_tsv, plainto_tsquery('english', :query_text)) AS b_score
+                SELECT id, row_number() OVER (
+                           ORDER BY ts_rank_cd(content_tsv, to_tsquery('english', :tsquery), 32) DESC
+                       ) AS rk
                 FROM memories
                 WHERE tenant_id = :tenant_id
                   AND status = ANY(:statuses){extra}
-                  AND content_tsv @@ plainto_tsquery('english', :query_text)
+                  AND :tsquery <> ''
+                  AND content_tsv @@ to_tsquery('english', :tsquery)
+                ORDER BY ts_rank_cd(content_tsv, to_tsquery('english', :tsquery), 32) DESC
+                LIMIT :pool
             )
-            SELECT
-                v.id,
-                (
-                    :vw * COALESCE(v.v_score, 0) +
-                    :bw * COALESCE(b.b_score, 0)
-                ) AS hybrid_score
+            SELECT COALESCE(v.id, b.id) AS id,
+                   -- Typed explicitly: an untyped parameter next to the integer
+                   -- row_number() is inferred as bigint, and 0.6 becomes 0.
+                   (COALESCE(CAST(:vw AS float8) / (CAST(:k AS float8) + v.rk), 0)
+                    + COALESCE(CAST(:bw AS float8) / (CAST(:k AS float8) + b.rk), 0))
+                       / ((CAST(:vw AS float8) + CAST(:bw AS float8)) / (CAST(:k AS float8) + 1))
+                       AS hybrid_score
             FROM vector_candidates v
-            LEFT JOIN bm25_matches b ON v.id = b.id
-
-            UNION
-
-            SELECT
-                b2.id,
-                (
-                    :vw * COALESCE(v2.v_score, 0) +
-                    :bw * COALESCE(b2.b_score, 0)
-                ) AS hybrid_score
-            FROM bm25_matches b2
-            LEFT JOIN vector_candidates v2 ON b2.id = v2.id
-            WHERE v2.id IS NULL
-
+            FULL OUTER JOIN bm25_matches b ON v.id = b.id
             ORDER BY hybrid_score DESC
             LIMIT :result_limit
         """)
 
         async with async_session() as session:
-            # Execute the hybrid query to get scored IDs
+            # HNSW returns at most ef_search rows (pgvector default 40), so the
+            # vector pool of 100 asked for above was silently 40.
+            await session.execute(text(f"SET LOCAL hnsw.ef_search = {int(RRF_POOL)}"))
             result = await session.execute(
                 raw_sql,
                 {
                     "query_embedding": str(embedding),
-                    "query_text": query_text,
+                    "tsquery": _or_tsquery(query_text),
                     "tenant_id": tenant_id,
-                    "vw": vector_weight,
-                    "bw": bm25_weight,
+                    "vw": float(vector_weight),
+                    "bw": float(bm25_weight),
+                    "k": RRF_K,
+                    "pool": RRF_POOL,
                     "result_limit": limit,
                     "statuses": list(statuses),
                     **extra_params,

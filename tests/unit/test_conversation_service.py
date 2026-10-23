@@ -87,6 +87,18 @@ class _FakeSession:
             self._store.remove(obj)
 
 
+def _retriever(memories):
+    """A stand-in for the judged retrieval: records (question, history)."""
+    calls = []
+
+    async def retrieve(question, history):
+        calls.append((question, history))
+        return memories
+
+    retrieve.calls = calls
+    return retrieve
+
+
 @pytest.mark.asyncio
 async def test_ask_retrieves_active_only_and_persists(monkeypatch):
     store = []
@@ -99,26 +111,23 @@ async def test_ask_retrieves_active_only_and_persists(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    engine = AsyncMock()
-    engine.tri_search.return_value = {
-        "memories": [{"id": "m1", "content": "insurance due Friday"}]
-    }
+    retriever = _retriever([{"id": "m1", "content": "insurance due Friday"}])
     synthesis = AsyncMock()
     synthesis.synthesize.return_value = {
-        "answer": "Friday [Memory 1].", "source_count": 1,
-        "model": "test", "citations": ["m1"],
+        "answer": "Friday [Memory 1].",
+        "source_count": 1,
+        "model": "test",
+        "citations": ["m1"],
     }
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
-    svc = ConversationService(session_factory, engine, synthesis)
+    svc = ConversationService(session_factory, AsyncMock(), synthesis, retriever=retriever)
     result = await svc.ask(conv_id, "when is insurance due?")
 
-    # retrieval was approved-only
-    _, kwargs = engine.tri_search.call_args
-    assert kwargs.get("statuses") == ("active",)
+    # the question (and the conversation so far) went to the judged retrieval,
+    # which searches active memories only (tests/unit/test_memory_retrieval.py)
+    assert retriever.calls == [("when is insurance due?", [])]
     # assistant turn returned with citations
     assert result["message"].role == "assistant"
     assert result["message"].cited_memory_ids == ["m1"]
@@ -145,19 +154,18 @@ async def test_ask_persists_citations_from_synthesis_verbatim(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    engine = AsyncMock()
-    engine.tri_search.return_value = {"memories": [{"id": "m1", "content": "insurance due Friday"}]}
+    retriever = _retriever([{"id": "m1", "content": "insurance due Friday"}])
     synthesis = AsyncMock()
     synthesis.synthesize.return_value = {
-        "answer": "Answer [Memory 1].", "source_count": 1,
-        "model": "test", "citations": ["m1"],
+        "answer": "Answer [Memory 1].",
+        "source_count": 1,
+        "model": "test",
+        "citations": ["m1"],
     }
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
-    svc = ConversationService(session_factory, engine, synthesis)
+    svc = ConversationService(session_factory, AsyncMock(), synthesis, retriever=retriever)
     result = await svc.ask(conv_id, "question?")
 
     assert result["message"].cited_memory_ids == ["m1"]
@@ -171,9 +179,7 @@ async def test_create_returns_conversation_with_tenant_set(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
     svc = ConversationService(session_factory, AsyncMock(), AsyncMock())
     conv = await svc.create()
@@ -191,9 +197,7 @@ async def test_list_recent_filters_by_tenant(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
     svc = ConversationService(session_factory, AsyncMock(), AsyncMock())
     result = await svc.list_recent()
@@ -210,9 +214,7 @@ async def test_get_thread_returns_none_for_foreign_tenant(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
     svc = ConversationService(session_factory, AsyncMock(), AsyncMock())
     result = await svc.get_thread(conv_id)
@@ -231,9 +233,7 @@ async def test_delete_false_for_foreign_tenant_true_for_own(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
     svc = ConversationService(session_factory, AsyncMock(), AsyncMock())
 
@@ -253,9 +253,7 @@ async def test_ask_raises_for_foreign_or_missing_conversation(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
     svc = ConversationService(session_factory, AsyncMock(), AsyncMock())
 
@@ -275,19 +273,17 @@ async def test_ask_ownership_check_precedes_retrieval(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    engine = AsyncMock()
+    retriever = _retriever([])
     synthesis = AsyncMock()
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
-    svc = ConversationService(session_factory, engine, synthesis)
+    svc = ConversationService(session_factory, AsyncMock(), synthesis, retriever=retriever)
 
     with pytest.raises(ConversationNotFoundError):
         await svc.ask(uuid.uuid4(), "question?")
 
-    engine.tri_search.assert_not_called()
+    assert retriever.calls == []
     synthesis.synthesize.assert_not_called()
 
 
@@ -305,18 +301,18 @@ async def test_ask_bumps_updated_at_on_later_turns(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    engine = AsyncMock()
-    engine.tri_search.return_value = {"memories": [{"id": "m1", "content": "x"}]}
+    retriever = _retriever([{"id": "m1", "content": "x"}])
     synthesis = AsyncMock()
     synthesis.synthesize.return_value = {
-        "answer": "ok.", "source_count": 1, "model": "test", "citations": [],
+        "answer": "ok.",
+        "source_count": 1,
+        "model": "test",
+        "citations": [],
     }
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
-    svc = ConversationService(session_factory, engine, synthesis)
+    svc = ConversationService(session_factory, AsyncMock(), synthesis, retriever=retriever)
     await svc.ask(conv_id, "second question")
 
     assert conv.title == "already titled"  # title untouched on later turns
@@ -332,12 +328,21 @@ async def test_ask_passes_prior_turns_as_history_excluding_current_question(monk
 
     t0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
     turn1 = ConversationMessage(
-        id=uuid.uuid4(), conversation_id=conv_id, tenant_id="t1",
-        role="user", content="first question", cited_memory_ids=[], created_at=t0,
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        tenant_id="t1",
+        role="user",
+        content="first question",
+        cited_memory_ids=[],
+        created_at=t0,
     )
     turn2 = ConversationMessage(
-        id=uuid.uuid4(), conversation_id=conv_id, tenant_id="t1",
-        role="assistant", content="first answer", cited_memory_ids=[],
+        id=uuid.uuid4(),
+        conversation_id=conv_id,
+        tenant_id="t1",
+        role="assistant",
+        content="first answer",
+        cited_memory_ids=[],
         created_at=t0 + timedelta(seconds=1),
     )
     store.extend([turn1, turn2])
@@ -345,18 +350,18 @@ async def test_ask_passes_prior_turns_as_history_excluding_current_question(monk
     def session_factory():
         return _FakeSession(store)
 
-    engine = AsyncMock()
-    engine.tri_search.return_value = {"memories": [{"id": "m1", "content": "x"}]}
+    retriever = _retriever([{"id": "m1", "content": "x"}])
     synthesis = AsyncMock()
     synthesis.synthesize.return_value = {
-        "answer": "ok.", "source_count": 1, "model": "test", "citations": [],
+        "answer": "ok.",
+        "source_count": 1,
+        "model": "test",
+        "citations": [],
     }
 
-    monkeypatch.setattr(
-        "life_graph.services.conversation.get_current_tenant_id", lambda: "t1"
-    )
+    monkeypatch.setattr("life_graph.services.conversation.get_current_tenant_id", lambda: "t1")
 
-    svc = ConversationService(session_factory, engine, synthesis)
+    svc = ConversationService(session_factory, AsyncMock(), synthesis, retriever=retriever)
     await svc.ask(conv_id, "second question")
 
     assert synthesis.synthesize.await_count == 1
@@ -367,3 +372,40 @@ async def test_ask_passes_prior_turns_as_history_excluding_current_question(monk
         {"role": "assistant", "content": "first answer"},
     ]
     assert all(h["content"] != "second question" for h in history)
+
+
+@pytest.mark.asyncio
+async def test_the_default_retrieval_uses_the_judged_search_with_follow_ups(monkeypatch):
+    from types import SimpleNamespace
+
+    from life_graph.services import conversation, memory_retrieval
+
+    seen = {}
+    mem = SimpleNamespace(
+        id=uuid.uuid4(),
+        content="Car insurance renews in March.",
+        tags=None,
+        importance=0.7,
+        created_at=datetime(2026, 10, 3, tzinfo=timezone.utc),
+    )
+
+    async def fake_retrieve(question, limit=6):
+        seen["question"], seen["limit"] = question, limit
+        return [mem]
+
+    monkeypatch.setattr(memory_retrieval, "retrieve", fake_retrieve)
+    history = [
+        {"role": "user", "content": "When does my car insurance renew?"},
+        {"role": "assistant", "content": "In March."},
+    ]
+    out = await conversation._judged_retrieve("and the house?", history)
+    assert seen["question"] == "When does my car insurance renew?\nand the house?"
+    assert out == [
+        {
+            "id": str(mem.id),
+            "content": "Car insurance renews in March.",
+            "tags": [],
+            "importance": 0.7,
+            "created_at": "2026-10-03T00:00:00+00:00",
+        }
+    ]

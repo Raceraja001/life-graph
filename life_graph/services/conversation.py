@@ -19,6 +19,25 @@ _HISTORY_TURNS = 6
 _RETRIEVE_LIMIT = 8
 
 
+async def _judged_retrieve(question: str, history: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """Active memories that answer *question* (a short follow-up searched with the
+    previous question), via services/memory_retrieval.py, as synthesis dicts."""
+    from life_graph.services.memory_context import search_text
+    from life_graph.services.memory_retrieval import retrieve
+
+    found = await retrieve(search_text(question, history), limit=_RETRIEVE_LIMIT) or []
+    return [
+        {
+            "id": str(m.id),
+            "content": m.content,
+            "tags": m.tags or [],
+            "importance": m.importance,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+        }
+        for m in found
+    ]
+
+
 class ConversationNotFoundError(Exception):
     """Raised when a conversation doesn't exist or belongs to another tenant."""
 
@@ -26,10 +45,15 @@ class ConversationNotFoundError(Exception):
 class ConversationService:
     """Retrieve → synthesize → persist a chat turn, all approved-only."""
 
-    def __init__(self, session_factory, hybrid_engine, synthesis) -> None:
+    def __init__(self, session_factory, hybrid_engine, synthesis, retriever=None) -> None:
         self._session_factory = session_factory
         self._engine = hybrid_engine
         self._synthesis = synthesis
+        # (question, history) -> memory dicts. Jarvis's retrieval by default
+        # (2026-10-23): this chat used tri_search, whose graph leg almost never
+        # matched, with no relevance check and no follow-up handling, so it
+        # always answered from the nearest memories, related or not.
+        self._retrieve = retriever or _judged_retrieve
 
     async def create(self) -> Conversation:
         tenant_id = get_current_tenant_id()
@@ -86,12 +110,6 @@ class ConversationService:
             if conv is None or conv.tenant_id != tenant_id:
                 raise ConversationNotFoundError("Conversation not found")
 
-            # 1. retrieve approved-only
-            retrieval = await self._engine.tri_search(
-                question, limit=_RETRIEVE_LIMIT, statuses=("active",)
-            )
-            memories = retrieval.get("memories", [])
-
             # prior turns → history for the LLM (most recent _HISTORY_TURNS,
             # restored to chronological order)
             prior = await session.execute(
@@ -103,6 +121,9 @@ class ConversationService:
             history = [
                 {"role": m.role, "content": m.content} for m in reversed(prior.scalars().all())
             ]
+
+            # 1. retrieve: active memories that answer the question, or none
+            memories = await self._retrieve(question, history)
 
             # 2. synthesize — synthesis.py filters memories with empty/missing
             # ids BEFORE numbering, so the citations it returns are already
