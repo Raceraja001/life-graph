@@ -36,6 +36,7 @@ LEAD = "jarvis"
 PERSONAL_TOOLS = frozenset(
     {
         "memory_search",
+        "memory_save",
         "memory_forget",
         "memory_about",
         "calendar_events",
