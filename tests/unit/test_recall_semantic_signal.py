@@ -163,3 +163,29 @@ class TestCosine:
             math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
         )
         assert _cosine(a, b) == pytest.approx(expected)
+
+
+class TestTheTopicWidensThePool:
+    @pytest.mark.asyncio
+    async def test_a_topical_memory_outside_the_base_pool_is_a_candidate(self, fingerprint):
+        """The base pool is chosen by importance/recency/use; a memory about
+        exactly the current topic but of modest importance could never come up."""
+        important = _memory("about billing", [0.0, 1.0])
+        topical = _memory("about memory recall", [1.0, 0.0])
+        topical.id = "00000000-0000-0000-0000-00000000000b"  # _memory() reuses one id
+        store = SimpleNamespace(
+            list_recall_candidates=AsyncMock(return_value=[important]),
+            search_similar=AsyncMock(return_value=[topical, important]),
+        )
+        embedder = SimpleNamespace(embed_async=AsyncMock(return_value=[1.0, 0.0]))
+        engine = RecallEngine(
+            store, SimpleNamespace(), SimpleNamespace(), embedding_service=embedder
+        )
+
+        candidates = await engine._retrieve_candidates(fingerprint)
+
+        assert [c["content"] for c in candidates] == ["about billing", "about memory recall"]
+        assert candidates[1]["semantic_score"] == pytest.approx(1.0)
+        kwargs = store.search_similar.await_args.kwargs
+        assert kwargs["filters"] == {"status": "active"} and kwargs["embedding"] == [1.0, 0.0]
+        assert embedder.embed_async.await_count == 1  # one embedding serves both steps

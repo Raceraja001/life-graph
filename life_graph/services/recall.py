@@ -75,6 +75,8 @@ def _cosine(a: list[float], b: list[float]) -> float | None:
 # Cooldown: minimum seconds before resurfacing the same memory
 _COOLDOWN_SECONDS: int = settings.recall_cooldown_days * 86400
 _MAX_SESSION_SURFACES: int = 10
+#: Memories nearest the current context added to the recall candidate pool.
+TOPICAL_POOL: int = 20
 
 
 class RecallEngine:
@@ -546,10 +548,20 @@ class RecallEngine:
         # by created_at. list_memories() orders newest-first, which made the
         # pool "the newest N memories" and put everything older permanently
         # out of reach of proactive recall.
-        memories = await self._store.list_recall_candidates(
-            filters=filters,
-            limit=limit,
+        memories = list(
+            await self._store.list_recall_candidates(
+                filters=filters,
+                limit=limit,
+            )
         )
+        # Plus the memories closest to the current topic. The pool above is
+        # chosen by importance, recency and use alone, and the topic only
+        # re-orders it, so a memory about exactly what the owner is working on
+        # but of modest importance could never come up (2026-10-22 review).
+        query = await self._fingerprint_vector(fingerprint)
+        if query:
+            known = {m.id for m in memories}
+            memories += [m for m in await self._topical(query) if m.id not in known]
 
         # Convert ORM objects to dicts for the ranker
         candidates: list[dict[str, Any]] = []
@@ -599,14 +611,37 @@ class RecallEngine:
             }
             candidates.append(cand)
 
-        await self._score_semantic(fingerprint, memories, candidates)
+        await self._score_semantic(fingerprint, memories, candidates, query=query)
         return candidates
+
+    async def _fingerprint_vector(self, fingerprint: ContextFingerprint) -> list[float] | None:
+        """One embedding of the context fingerprint, or None (no service, empty, failure)."""
+        if not self._embeddings or fingerprint.is_empty:
+            return None
+        try:
+            return await self._embeddings.embed_async(fingerprint.as_text()) or None
+        except Exception:
+            logger.warning("Fingerprint embedding failed; semantic signal stays neutral")
+            return None
+
+    async def _topical(self, query: list[float]) -> list[Any]:
+        """The active memories nearest the context, for the candidate pool. Fails open."""
+        try:
+            return list(
+                await self._store.search_similar(
+                    embedding=query, limit=TOPICAL_POOL, filters={"status": "active"}
+                )
+            )
+        except Exception:
+            logger.warning("Topical recall candidates failed; using the base pool", exc_info=True)
+            return []
 
     async def _score_semantic(
         self,
         fingerprint: ContextFingerprint,
         memories: list[Any],
         candidates: list[dict[str, Any]],
+        query: list[float] | None = None,
     ) -> None:
         """Set each candidate's semantic score from the context fingerprint.
 
@@ -621,13 +656,10 @@ class RecallEngine:
         recall that raises because the embedding backend is down is a broken
         one, and this runs inside a hook with a 10-second budget.
         """
-        if not self._embeddings or not candidates or fingerprint.is_empty:
+        if not candidates:
             return
-        try:
-            query = await self._embeddings.embed_async(fingerprint.as_text())
-        except Exception:
-            logger.warning("Fingerprint embedding failed; semantic signal stays neutral")
-            return
+        if query is None:
+            query = await self._fingerprint_vector(fingerprint)
         if not query:
             return
 
