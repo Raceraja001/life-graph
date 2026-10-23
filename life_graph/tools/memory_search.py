@@ -25,8 +25,10 @@ tenant to search, and the tool says so instead of guessing.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import re
 from contextlib import nullcontext
 from typing import Any
 
@@ -259,3 +261,198 @@ async def memory_about(name: str, limit: int = 15) -> str:
             "often_mentioned_with": found["related"],
         }
     )
+
+
+#: The owner asking for something to be kept, in their own message. Jarvis also
+#: reads email and web pages; text in those cannot save itself as the owner's
+#: own words by telling Jarvis to "remember" it (review 2026-10-23).
+SAVE_INTENT = re.compile(
+    r"\b(remember|save|note (this|that|it|down)|make a note|keep in mind|"
+    r"don'?t forget|do not forget|never forget|jot|write (this|that|it) down)\b",
+    re.IGNORECASE,
+)
+MAX_SAVE_CHARS = 1000
+
+
+async def _owner_message(ctx: Any) -> str:
+    """The owner's message for the run this tool call belongs to, or ""."""
+    from life_graph.models.db import AgentTask
+    from life_graph.storage.database import async_session
+
+    if ctx is None:
+        return ""
+    try:
+        async with async_session() as session:
+            task = await session.get(AgentTask, ctx.root_task_id or ctx.task_id)
+    except Exception:  # noqa: BLE001
+        logger.warning("memory_save could not read its task", exc_info=True)
+        return ""
+    if task is None or task.tenant_id != ctx.tenant_id:
+        return ""
+    return str((task.input or {}).get("message") or "")
+
+
+@tool(
+    name="memory_save",
+    description=(
+        "Remember something when the user asks you to ('remember that…', 'save"
+        " this', 'note that…', 'don't forget…'). Write it as one short sentence"
+        " about the user, in their own terms, with any date in full. When it"
+        " corrects something you remember, pass that memory's id from"
+        " memory_search as replaces_id. Tell the user in a few words what you"
+        " saved."
+    ),
+    parameters_schema={
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "The fact, e.g. 'My car insurance renews on 5 March 2027.'",
+            },
+            "about": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "People, projects or things it is about, e.g. ['Murugan'].",
+            },
+            "replaces_id": {
+                "type": "string",
+                "description": "Id of a remembered fact this corrects (from memory_search).",
+            },
+        },
+        "required": ["content"],
+    },
+)
+async def memory_save(
+    content: str, about: list[str] | None = None, replaces_id: str | None = None
+) -> str:
+    """Store one memory in the owner's words. Never raises.
+
+    Active at once only when the owner's own message for this run asks to
+    remember something; otherwise it waits in the review queue like any other
+    memory the system picks up.
+    """
+    import uuid
+
+    from life_graph.api.dependencies import get_memory_manager, get_store
+    from life_graph.core.task_context import get_current_task_context
+    from life_graph.core.tenant import get_current_tenant_id, has_tenant_context, tenant_scope
+    from life_graph.models.schemas import MemoryCreate
+
+    ctx = get_current_task_context()
+    if has_tenant_context():
+        tenant_id = get_current_tenant_id()
+    elif ctx is not None:
+        tenant_id = ctx.tenant_id
+    else:
+        return json.dumps({"error": "memory_save has no tenant context."})
+    text_ = " ".join(str(content or "").split())
+    if len(text_) < 3:
+        return json.dumps({"error": "Nothing to save."})
+    if len(text_) > MAX_SAVE_CHARS:
+        return json.dumps({"error": f"Too long: keep it under {MAX_SAVE_CHARS} characters."})
+    old_id = None
+    if replaces_id:
+        try:
+            old_id = uuid.UUID(str(replaces_id))
+        except ValueError:
+            return json.dumps(
+                {"error": "replaces_id is not a memory id; use one from memory_search."}
+            )
+
+    asked = bool(SAVE_INTENT.search(await _owner_message(ctx)))
+    content_hash = hashlib.sha256(text_.lower().encode()).hexdigest()
+    try:
+        with tenant_scope(tenant_id):
+            store = get_store()
+            same = await store.find_exact_duplicate(content_hash)
+            if same is not None and same.status == "active":
+                return json.dumps({"saved": False, "already_remembered": same.content})
+            embedding = await get_memory_manager().generate_embedding(text_)
+            if same is None and embedding:
+                for near, _score in await store.find_similar(embedding, threshold=0.95, limit=3):
+                    if near.status == "active" and near.id != old_id:
+                        return json.dumps({"saved": False, "already_remembered": near.content})
+            if same is not None:
+                # The same words were waiting for review: the owner asking settles it.
+                row = same
+                if asked:
+                    await _activate(tenant_id, same.id)
+            else:
+                row = await store.store(
+                    MemoryCreate(
+                        content=text_,
+                        tags=["explicit_save"],
+                        source_type="explicit",
+                        importance=0.7,
+                        properties={"saved_by": "jarvis"},
+                    ),
+                    embedding=embedding or None,
+                    trust_tier="self",
+                    status="active" if asked else "pending",
+                    extraction_tier="explicit",
+                )
+            replaced = None
+            if old_id is not None and asked:
+                replaced = await _supersede(tenant_id, old_id, row.id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("memory_save failed (%d chars): %s", len(text_), exc)
+        return json.dumps({"error": f"Could not save it: {exc}"})
+
+    try:
+        from life_graph.services import entities
+
+        names = [n for n in (about or []) if isinstance(n, str)]
+        names += [name for _, name in await entities.known_in_text(tenant_id, text_)]
+        await entities.link(tenant_id, row.id, names)
+    except Exception:  # noqa: BLE001
+        logger.warning("Entity linking failed for saved memory %s", row.id, exc_info=True)
+
+    out: dict[str, Any] = {"saved": True, "id": str(row.id), "content": row.content}
+    if not asked:
+        out["status"] = "waiting for the user's review"
+    if replaced:
+        out["replaced"] = replaced
+    return json.dumps(out)
+
+
+async def _activate(tenant_id: str, memory_id: Any) -> None:
+    from sqlalchemy import text
+
+    from life_graph.storage.database import async_session
+
+    async with async_session() as session:
+        await session.execute(
+            text(
+                "UPDATE memories SET status = 'active', updated_at = NOW()"
+                " WHERE id = :id AND tenant_id = :t AND status = 'pending'"
+            ),
+            {"id": memory_id, "t": tenant_id},
+        )
+        await session.commit()
+
+
+async def _supersede(tenant_id: str, old_id: Any, new_id: Any) -> str | None:
+    """Mark the owner's active memory *old_id* replaced by *new_id*; its content, or None."""
+    from sqlalchemy import text
+
+    from life_graph.storage.database import async_session
+
+    async with async_session() as session:
+        old = (
+            await session.execute(
+                text(
+                    "UPDATE memories SET status = 'superseded', superseded_by = :new,"
+                    " updated_at = NOW()"
+                    " WHERE id = :old AND tenant_id = :t AND status = 'active' AND id <> :new"
+                    " RETURNING content"
+                ),
+                {"old": old_id, "new": new_id, "t": tenant_id},
+            )
+        ).first()
+        if old is not None:
+            await session.execute(
+                text("UPDATE memories SET supersedes = :old WHERE id = :new AND tenant_id = :t"),
+                {"old": old_id, "new": new_id, "t": tenant_id},
+            )
+        await session.commit()
+    return old[0] if old else None
