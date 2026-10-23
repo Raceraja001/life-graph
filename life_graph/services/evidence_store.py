@@ -86,7 +86,7 @@ class EvidenceStore:
         embed_text = data["summary"]
         if data.get("source_title"):
             embed_text = f"{data['source_title']}: {embed_text}"
-        embedding = self._embedding.embed(embed_text)
+        embedding = await self._embedding.embed_async(embed_text)
 
         # Apply credibility multiplier
         source_type = data["source_type"]
@@ -200,7 +200,7 @@ class EvidenceStore:
         limit: int = 10,
     ) -> list[dict[str, Any]]:
         """Cross-preference semantic search over all evidence."""
-        query_embedding = self._embedding.embed(query)
+        query_embedding = await self._embedding.embed_async(query)
         if not query_embedding:
             return []
 

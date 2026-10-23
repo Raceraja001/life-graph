@@ -376,7 +376,7 @@ class TranscriptExtractor:
         """Check if a semantically similar preference exists (cosine ≥ 0.90)."""
         try:
             pref_text = f"{pref.topic}: {pref.choice}"
-            embedding = self._embedding_service.embed(pref_text)
+            embedding = await self._embedding_service.embed_async(pref_text)
             if not embedding:
                 return None
         except Exception:
@@ -483,7 +483,7 @@ class TranscriptExtractor:
         embedding = None
         try:
             pref_text = f"{pref.topic}: {pref.choice}"
-            embedding = self._embedding_service.embed(pref_text)
+            embedding = await self._embedding_service.embed_async(pref_text)
             if not embedding:
                 embedding = None
         except Exception:

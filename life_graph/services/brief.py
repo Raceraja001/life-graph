@@ -79,6 +79,7 @@ class BriefComposer:
         monday = now.weekday() == 0
         tech_watch = await self._tech_watch_lines(tenant_id) if monday else []
         money_week = await self._money_checkin_lines(tenant_id, now) if monday else []
+        memory_review = await self._memory_review_line(tenant_id, since)
 
         if not (
             held
@@ -91,6 +92,7 @@ class BriefComposer:
             or night_shift
             or tech_watch
             or money_week
+            or memory_review
         ):
             logger.info("No brief content for tenant %s — staying silent", tenant_id)
             return None
@@ -114,6 +116,9 @@ class BriefComposer:
                 *[f"  - {x}" for x in night_shift[1:]],
             ]
             body = "\n".join([*shift, "", body]).strip()
+        if memory_review:
+            # A count only: this body leaves the machine.
+            body = "\n".join(["## Memory", f"- {memory_review}", "", body]).strip()
         if assistant_lines:
             # Kinds, dates and percentages only: this body leaves the machine.
             coming = ["## Coming up", *[f"- {line}" for line in assistant_lines], ""]
@@ -325,6 +330,30 @@ class BriefComposer:
         except Exception:
             logger.warning("Night shift lines failed for %s", tenant_id, exc_info=True)
             return []
+
+    async def _memory_review_line(self, tenant_id: str, since: datetime) -> str | None:
+        """How many new memories wait for the owner's review. Counts only: this body
+        leaves the machine (Telegram, Web Push), the memories themselves do not.
+
+        A review queue nobody opens is not a gate: on 2026-10-22, 3,668 memories
+        had waited nine days. One line a day keeps it small.
+        """
+        try:
+            async with self._session_factory() as session:
+                pending = Memory.tenant_id == tenant_id, Memory.status == "pending"
+                new = await session.scalar(
+                    select(func.count()).where(*pending, Memory.created_at >= since)
+                )
+                total = await session.scalar(select(func.count()).where(*pending))
+        except Exception:
+            logger.warning("Memory review line failed for %s", tenant_id, exc_info=True)
+            return None
+        if not new:
+            return None
+        days = settings.pending_memory_expiry_days
+        expiry = f" Unreviewed ones are dropped after {days} days." if days > 0 else ""
+        word = "memory" if new == 1 else "memories"
+        return f"{new} new {word} to review ({total} waiting in all).{expiry}"
 
     async def _money_checkin_lines(self, tenant_id: str, now: datetime) -> list[str]:
         """Monday's money check-in, cloud-safe (services/money_checkin.py, Job 5)."""

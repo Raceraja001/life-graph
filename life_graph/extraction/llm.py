@@ -84,12 +84,26 @@ Categories:
 - intention: Something the owner plans or wants to do later.
 - fact: A lasting fact about the owner, their life or their projects.
 
+The owner often states a goal, plan or decision as a question or a "we can…"
+suggestion. Keep what it reveals about what they want:
+- "we can build our connectors" -> intention: The owner wants to build their own connectors.
+- "life-graph can be evolve into full ai assistant that can do everything for us?"
+  -> intention: The owner wants Life Graph to become a full AI assistant.
+- "I need to sell school management as a product first" -> decision: The owner
+  wants to sell school management as their first product.
+- "whatever needs third party details, build with stub and ask me at end"
+  -> preference: The owner wants third-party details stubbed and asked for at the end.
+
 Do NOT keep:
+- a question that only asks for information or an opinion ("what else can we
+  improve?", "is the app running?", "how much time for that?");
+- instructions about the work in hand ("proceed", "fix it", "check now",
+  "merge done", "show me a QR");
 - progress or status of work in hand ("tests are running", "PR #12 is merged",
   "the build failed", "next I will…");
 - what an assistant or tool did, said or is about to do;
 - ids, paths, commands, exit codes, log lines, numbers that only mattered today;
-- greetings, filler, questions, instructions like "proceed" or "fix it".
+- greetings and filler.
 
 Rules:
 1. Most texts contain nothing worth keeping: then return {"facts": []}.

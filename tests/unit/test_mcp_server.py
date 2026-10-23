@@ -255,3 +255,27 @@ async def test_the_recall_docstring_names_every_signal_the_ranker_uses():
     assert f"{len(ranking._SIGNAL_WEIGHTS)}-signal" in description
     missing = [s for s in ranking._SIGNAL_WEIGHTS if s not in description]
     assert not missing, f"recall's docstring does not mention {missing}, which the ranker weights"
+
+
+# ── Trust: a caller cannot file its input as the owner's own words ───
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("asked", "sent"),
+    [("manual", "mcp"), ("cli", "mcp"), ("dashboard", "mcp"), ("mcp", "mcp"), ("agent", "agent")],
+)
+async def test_remember_never_sends_a_self_tier_source(asked, sent):
+    ctxs, calls = _patched({"data": {"id": "m1"}})
+    for c in ctxs:
+        c.start()
+    try:
+        async with Client(mcp_server.mcp) as client:
+            await client.call_tool("remember", {"content": "x", "source_type": asked})
+    finally:
+        for c in ctxs:
+            c.stop()
+    body = calls[0][2]["json"]
+    assert body["source_type"] == sent
+    if asked != sent:
+        assert body["properties"]["requested_source_type"] == asked

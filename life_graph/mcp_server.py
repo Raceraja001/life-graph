@@ -131,6 +131,16 @@ async def remember(
             Links it to the session so it is consolidated when the session ends.
         tenant_id: Tenant scope (defaults to LIFE_GRAPH_DEFAULT_TENANT)
     """
+    from life_graph.core.trust import TrustTier, classify_surface
+
+    properties: dict[str, Any] = {}
+    if classify_surface(source_type) is TrustTier.SELF:
+        # The model calling this tool names the source itself, and "manual" or
+        # "cli" would file whatever it passes (a web page, an email) as the
+        # owner's own words (review 2026-10-22). Over MCP the tier stays
+        # external; the label it asked for is kept for reference.
+        properties["requested_source_type"] = source_type
+        source_type = "mcp"
     body: dict[str, Any] = {"content": content, "source_type": source_type}
     if tags:
         body["tags"] = tags
@@ -138,7 +148,9 @@ async def remember(
         body["importance"] = importance
     if session_id:
         # The store links a memory to the session named in its properties.
-        body["properties"] = {"session_id": session_id}
+        properties["session_id"] = session_id
+    if properties:
+        body["properties"] = properties
 
     async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
         resp = await client.post("/api/v1/memories/", json=body, headers=_headers(tenant_id))

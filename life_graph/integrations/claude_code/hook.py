@@ -62,6 +62,10 @@ MACHINE_PROMPT_TAGS = (
     "<command-name>",
     "<command-message>",
     "<agent-message",
+    # Another Claude Code session writing into this one (2026-10-23: one
+    # was extracted into five "facts" about the owner's git branches).
+    "<cross-session-message",
+    "<system-reminder>",
 )
 
 
