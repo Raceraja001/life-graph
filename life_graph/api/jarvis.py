@@ -238,6 +238,7 @@ async def messages(conversation_id: uuid.UUID):
             .scalars()
             .all()
         )
+    saved = await _saved_by_task(tenant_id, [t.id for t in tasks])
     out = []
     for t in tasks:
         when = t.created_at.isoformat() if t.created_at else None
@@ -247,8 +248,47 @@ async def messages(conversation_id: uuid.UUID):
         answered = (t.result or {}).get("response")
         if answered:
             done = t.completed_at.isoformat() if getattr(t, "completed_at", None) else when
-            out.append({"role": "assistant", "content": answered, "created_at": done})
+            out.append(
+                {
+                    "role": "assistant",
+                    "content": answered,
+                    "created_at": done,
+                    # What Jarvis saved in that turn, for the app's Saved lines (still undoable).
+                    "saved": saved.get(str(t.id), []),
+                }
+            )
     return success_response(data=out)
+
+
+async def _saved_by_task(tenant_id: str, task_ids: list) -> dict[str, list[dict]]:
+    """Memories memory_save stored in each of these runs and not since taken back, by task id."""
+    from life_graph.models.db import Memory
+
+    if not task_ids:
+        return {}
+    key = Memory.properties["task_id"].astext
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Memory)
+                    .where(
+                        Memory.tenant_id == tenant_id,
+                        key.in_([str(i) for i in task_ids]),
+                        Memory.status.in_(("active", "pending")),
+                    )
+                    .order_by(Memory.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    out: dict[str, list[dict]] = {}
+    for m in rows:
+        out.setdefault(str((m.properties or {}).get("task_id")), []).append(
+            {"id": str(m.id), "content": m.content, "pending": m.status == "pending"}
+        )
+    return out
 
 
 async def _answer(tenant_id: str, question: str, conversation_id: uuid.UUID | None) -> dict:
