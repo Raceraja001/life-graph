@@ -161,6 +161,7 @@ class WorkerSettings:
         "life_graph.workers.telegram.purge_telegram_pairing_codes",
         "life_graph.workers.capture_sweep.sweep_stuck_captures",
         "life_graph.workers.episodes.write_daily_episodes",
+        "life_graph.workers.due_notifications.write_due_notifications",
     ]
 
     cron_jobs = [
@@ -168,6 +169,13 @@ class WorkerSettings:
         cron(
             "life_graph.workers.episodes.write_daily_episodes",
             minute=41,
+            run_at_startup=False,
+        ),
+        # Bills, to-dos, expiring documents and timed reminders as phone
+        # notifications (services/due_notifications.py); idempotent per item.
+        cron(
+            "life_graph.workers.due_notifications.write_due_notifications",
+            minute={4, 19, 34, 49},
             run_at_startup=False,
         ),
         # Captures left "received" (written outside the API process, or whose
