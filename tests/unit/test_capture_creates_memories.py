@@ -397,3 +397,132 @@ class TestSavedByJarvisItself:
 
         stored = harness.manager.store_facts.await_args.args[0]
         assert [f.fact_type for f in stored] == ["fact", "explicit_save"]
+
+
+class TestClaudeCodeSessions:
+    """A Claude Code capture's memories carry its session and are linked to a
+    memory session for it (services/claude_code_sessions.py)."""
+
+    MEMORY_SESSION = uuid.UUID("00000000-0000-0000-0000-0000000000aa")
+
+    @pytest.fixture
+    def sessions(self, monkeypatch, harness):
+        from life_graph.services import claude_code_sessions
+
+        ensure = AsyncMock(return_value=self.MEMORY_SESSION)
+        request_end = AsyncMock(return_value=True)
+        monkeypatch.setattr(claude_code_sessions, "ensure_session", ensure)
+        monkeypatch.setattr(claude_code_sessions, "request_end", request_end)
+        harness.capture_evt.surface = "cli"
+        harness.capture_evt.properties = {
+            "integration": "claude_code",
+            "hook_event": "UserPromptSubmit",
+            "claude_code_session_id": "cc-1",
+            "cwd": "/mnt/h/DevTools/Projects/life-graph",
+            "project": "life-graph",
+        }
+        return SimpleNamespace(ensure=ensure, request_end=request_end)
+
+    @pytest.mark.asyncio
+    async def test_memories_carry_both_session_ids(self, harness, sessions):
+        await harness.run()
+
+        context = harness.manager.store_facts.await_args.kwargs["context"]
+        assert context["claude_code_session_id"] == "cc-1"
+        # The key the store links a new memory to its session by.
+        assert context["session_id"] == str(self.MEMORY_SESSION)
+        assert context["project"] == "life-graph"
+
+    @pytest.mark.asyncio
+    async def test_the_memory_session_is_made_for_the_tenant_and_project(self, harness, sessions):
+        await harness.run()
+
+        sessions.ensure.assert_awaited_once_with(
+            "acme", "cc-1", project="life-graph", cwd="/mnt/h/DevTools/Projects/life-graph"
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_older_hook_spelling_is_still_read(self, harness, sessions):
+        """Spooled captures from before the rename carry it as session_id."""
+        props = harness.capture_evt.properties
+        props["session_id"] = props.pop("claude_code_session_id")
+
+        await harness.run()
+
+        context = harness.manager.store_facts.await_args.kwargs["context"]
+        assert context["claude_code_session_id"] == "cc-1"
+        assert context["session_id"] == str(self.MEMORY_SESSION)
+
+    @pytest.mark.asyncio
+    async def test_a_session_failure_costs_the_link_not_the_memories(self, harness, sessions):
+        sessions.ensure.side_effect = RuntimeError("db down")
+
+        await harness.run()
+
+        context = harness.manager.store_facts.await_args.kwargs["context"]
+        assert context["claude_code_session_id"] == "cc-1"
+        assert "session_id" not in context
+
+    @pytest.mark.asyncio
+    async def test_no_facts_no_session(self, harness, sessions):
+        harness.facts.clear()
+
+        await harness.run()
+
+        sessions.ensure.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_other_integrations_get_no_session(self, harness, sessions):
+        """``session_id`` on anything else is not a Claude Code id."""
+        harness.capture_evt.properties = {"session_id": "whatever", "project": "x"}
+
+        await harness.run()
+
+        sessions.ensure.assert_not_awaited()
+        context = harness.manager.store_facts.await_args.kwargs["context"]
+        assert "session_id" not in context
+        assert "claude_code_session_id" not in context
+
+    @pytest.mark.asyncio
+    async def test_the_session_end_marker_asks_for_the_end_and_is_not_extracted(
+        self, harness, sessions
+    ):
+        harness.capture_evt.surface = "tool_exhaust"
+        harness.capture_evt.properties.update(
+            {"hook_event": "SessionEnd", "kind": "session_end", "reason": "clear"}
+        )
+
+        await harness.run()
+
+        sessions.request_end.assert_awaited_once_with("acme", "cc-1", "clear")
+        harness.manager.store_facts.assert_not_awaited()
+        assert harness.pipeline.capture_flags == []
+        assert harness.capture_evt.status == "processed"
+        assert harness.session.committed
+
+    @pytest.mark.asyncio
+    async def test_the_marker_is_never_extracted_even_if_the_surface_would_be(
+        self, harness, sessions, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "life_graph.services.capture_processors.settings",
+            SimpleNamespace(
+                capture_no_extract_surfaces_list=[], capture_saved_by_tool_surfaces_list=[]
+            ),
+        )
+        harness.capture_evt.surface = "tool_exhaust"
+        harness.capture_evt.properties.update({"kind": "session_end", "reason": "clear"})
+
+        await harness.run()
+
+        assert harness.pipeline.capture_flags == []
+        sessions.request_end.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_end_request_still_marks_the_capture_processed(self, harness, sessions):
+        sessions.request_end.side_effect = RuntimeError("db down")
+        harness.capture_evt.properties.update({"kind": "session_end", "reason": "clear"})
+
+        await harness.run()
+
+        assert harness.capture_evt.status == "processed"

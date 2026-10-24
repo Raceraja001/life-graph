@@ -121,13 +121,20 @@ async def _jarvis_turns(tenant_id: str, day: date) -> tuple[list[str], list[str]
 
 
 async def _work_prompts(tenant_id: str, day: date) -> tuple[list[str], list[str]]:
+    """The day's prompts, grouped by Claude Code session when there are several.
+
+    Interleaved sessions (two terminals on two projects) read as one muddled
+    stream otherwise; under a heading each, the model can tell the threads
+    apart. One session, or prompts with no session id, stay a flat list.
+    """
     from life_graph.models.db import CaptureEvent
+    from life_graph.services.claude_code_sessions import claude_code_session_of
 
     start, end = _day_bounds(day)
     async with async_session() as session:
         rows = (
             await session.execute(
-                select(CaptureEvent.id, CaptureEvent.content)
+                select(CaptureEvent.id, CaptureEvent.content, CaptureEvent.properties)
                 .where(
                     CaptureEvent.tenant_id == tenant_id,
                     CaptureEvent.surface == "cli",
@@ -138,15 +145,29 @@ async def _work_prompts(tenant_id: str, day: date) -> tuple[list[str], list[str]
                 .limit(MAX_PROMPTS * 2)
             )
         ).all()
-    lines, ids = [], []
-    for cid, content in rows:
+    # Session key -> (project, prompts), in the order sessions first appear.
+    groups: dict[str | None, tuple[str | None, list[tuple[str, str]]]] = {}
+    kept = 0
+    for cid, content, props in rows:
         body = (content or "").strip()
         if not body or body.startswith(MACHINE_PREFIXES):
             continue
-        lines.append(f"- {' '.join(body.split())[:MAX_TURN_CHARS]}")
-        ids.append(str(cid))
-        if len(lines) >= MAX_PROMPTS:
+        props = props or {}
+        key = claude_code_session_of(props)
+        project = props.get("project")
+        groups.setdefault(key, (str(project) if project else None, []))[1].append(
+            (f"- {' '.join(body.split())[:MAX_TURN_CHARS]}", str(cid))
+        )
+        kept += 1
+        if kept >= MAX_PROMPTS:
             break
+    lines, ids = [], []
+    for n, (project, prompts) in enumerate(groups.values(), start=1):
+        if len(groups) > 1:
+            lines.append(f"Session {n}" + (f" ({project}):" if project else ":"))
+        for line, cid in prompts:
+            lines.append(line)
+            ids.append(cid)
     return lines, ids
 
 

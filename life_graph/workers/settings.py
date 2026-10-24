@@ -161,6 +161,7 @@ class WorkerSettings:
         "life_graph.workers.telegram.purge_telegram_pairing_codes",
         "life_graph.workers.capture_sweep.sweep_stuck_captures",
         "life_graph.workers.episodes.write_daily_episodes",
+        "life_graph.workers.claude_code_sessions.close_claude_code_sessions",
         "life_graph.workers.due_notifications.write_due_notifications",
     ]
 
@@ -183,6 +184,13 @@ class WorkerSettings:
         cron(
             "life_graph.workers.capture_sweep.sweep_stuck_captures",
             minute={7, 22, 37, 52},
+            run_at_startup=False,
+        ),
+        # Ended or idle Claude Code sessions are summarised and consolidated
+        # (services/claude_code_sessions.py).
+        cron(
+            "life_graph.workers.claude_code_sessions.close_claude_code_sessions",
+            minute={4, 14, 24, 34, 44, 54},
             run_at_startup=False,
         ),
         cron(

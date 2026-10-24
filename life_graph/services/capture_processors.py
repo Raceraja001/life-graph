@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from life_graph.config import settings
 from life_graph.core.events import Event, EventBus, EventType, event_bus
+from life_graph.services import claude_code_sessions
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -116,6 +117,16 @@ class CaptureProcessors:
                     return
 
                 surface = capture_evt.surface
+                properties = getattr(capture_evt, "properties", None) or {}
+                if claude_code_sessions.is_session_end(properties):
+                    # The hook's SessionEnd marker: never content, whatever
+                    # the no-extract list says. It asks for the session's
+                    # memory session to be closed and consolidated.
+                    await self._request_session_end(properties, capture_evt, tenant_id)
+                    capture_evt.status = "processed"
+                    await session.commit()
+                    return
+
                 if surface in settings.capture_no_extract_surfaces_list:
                     # An activity trail, not content. The event row stays (that
                     # is the trail), but running extraction over it turned every
@@ -281,6 +292,7 @@ class CaptureProcessors:
                     # signal is dead weight for every capture-derived memory,
                     # which is most of them.
                     **({"project": project} if (project := _project_of(capture_evt)) else {}),
+                    **await self._session_context(capture_evt, tenant_id),
                 },
                 source="capture",
                 trust_tier=tier.value,
@@ -298,6 +310,58 @@ class CaptureProcessors:
                 "Memory persistence failed for capture %s", capture_evt.id, exc_info=True
             )
             return 0
+
+    @staticmethod
+    async def _session_context(capture_evt: CaptureEvent, tenant_id: str | None) -> dict[str, str]:
+        """Memory properties tying a Claude Code capture's memories to its session.
+
+        ``claude_code_session_id`` groups them by the Claude Code session;
+        ``session_id`` is that session's memory session, which the store
+        links each new memory to (the convention MCP ``remember`` uses). Empty
+        for captures from anything else. A failure to find or make the memory
+        session costs only the link, never the memories.
+        """
+        properties = getattr(capture_evt, "properties", None) or {}
+        claude_code_id = claude_code_sessions.claude_code_session_of(properties)
+        owner = tenant_id or getattr(capture_evt, "tenant_id", None)
+        if not claude_code_id or not owner:
+            return {}
+        context = {"claude_code_session_id": claude_code_id}
+        try:
+            session_id = await claude_code_sessions.ensure_session(
+                owner,
+                claude_code_id,
+                project=_project_of(capture_evt),
+                cwd=properties.get("cwd") or None,
+            )
+        except Exception:
+            logger.warning(
+                "No memory session for capture %s; memories stay unlinked",
+                capture_evt.id,
+                exc_info=True,
+            )
+            return context
+        if session_id is not None:
+            context["session_id"] = str(session_id)
+        return context
+
+    @staticmethod
+    async def _request_session_end(
+        properties: dict[str, Any], capture_evt: CaptureEvent, tenant_id: str | None
+    ) -> None:
+        """Ask for a Claude Code session's memory session to be closed. Best-effort."""
+        owner = tenant_id or getattr(capture_evt, "tenant_id", None)
+        claude_code_id = claude_code_sessions.claude_code_session_of(properties)
+        if not owner or not claude_code_id:
+            return
+        try:
+            await claude_code_sessions.request_end(
+                owner, claude_code_id, str(properties.get("reason") or "") or None
+            )
+        except Exception:
+            logger.warning(
+                "Could not mark the session of capture %s ended", capture_evt.id, exc_info=True
+            )
 
     async def _suggest_predictions(
         self,

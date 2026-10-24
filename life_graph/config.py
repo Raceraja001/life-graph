@@ -179,6 +179,12 @@ class Settings(BaseSettings):
     # Surfaces whose assistant saves explicit "remember that…" requests itself
     # (Jarvis's memory_save): the extractor skips those facts there.
     capture_saved_by_tool_surfaces: str = "jarvis_app"
+    # Claude Code sessions (services/claude_code_sessions.py): a session whose
+    # SessionEnd marker arrived is closed this long after it, so prompts still
+    # being extracted are linked first; one that never sent it (terminal
+    # killed, crash) is closed after this long without a new memory.
+    claude_code_session_end_grace_minutes: int = 5
+    claude_code_session_idle_minutes: int = 240
 
     # ── Cold Start ─────────────────────────────────────
     cold_start_min_memories: int = 50
