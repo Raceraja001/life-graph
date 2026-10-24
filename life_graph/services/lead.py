@@ -80,6 +80,11 @@ _PERSONAL = re.compile(
     r"|\b(?:calendar|inbox|bills?|spending|study cards|flash ?cards|invoices?"
     r"|appointments?|reminders?)\b"
     r"|\b(?:remember|recall|remind me|what did i|did i|have i|i told you|about me)\b"
+    # Asking for something to be kept: memory_save is a personal tool, and the
+    # phone's extractor leaves these to it (capture_saved_by_tool_surfaces), so
+    # one routed to the cloud model was not saved by anything (review 2026-10-24).
+    r"|\b(?:don'?t forget|do not forget|never forget|keep in mind|make a note"
+    r"|note (?:this|that|it|down)|jot\b|write (?:this|that|it) down|save (?:this|that|it))\b"
     # "what's my locker code?": a question about the owner's own anything
     # (went to the cloud model, which cannot see memories, 2026-10-23).
     r"|\b(?:what|where|when|which|who|how)(?:'s|\s+is|\s+are|\s+was|\s+were|\s+do)\s+my\b",
