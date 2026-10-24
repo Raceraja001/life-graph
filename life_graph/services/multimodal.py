@@ -44,6 +44,10 @@ _IMAGE_BUCKET = "images"
 _DOCUMENT_BUCKET = "documents"
 _MAX_CHUNK_WORDS = 500
 _OCR_LANGUAGES = "eng+tam"
+# A 12 MP phone photo is 12M pixels; 40M leaves room and stops a decompression
+# bomb well below Pillow's own 89M warning (security review 2026-10-24, M3).
+MAX_OCR_PIXELS = 40_000_000
+OCR_TIMEOUT_SECONDS = 45
 
 # ARQ registers ``WorkerSettings.functions`` entries (import strings) under
 # their FULL dotted path, not the bare function name — enqueue_job() must
@@ -545,7 +549,15 @@ class MultiModalService:
 
     @staticmethod
     def _ocr_image(image_bytes: bytes) -> str:
-        """Synchronous OCR helper (runs in a thread)."""
+        """Synchronous OCR helper (runs in a thread).
+
+        Raises:
+            ValueError: the image is over :data:`MAX_OCR_PIXELS` (a few KB of
+                compressed pixels can decode to gigabytes).
+            RuntimeError: tesseract ran past :data:`OCR_TIMEOUT_SECONDS` and
+                was killed (pytesseract's own timeout, so no process is left
+                running behind the caller).
+        """
         try:
             import pytesseract
             from PIL import Image
@@ -558,7 +570,10 @@ class MultiModalService:
         import io
 
         image = Image.open(io.BytesIO(image_bytes))
-        text = pytesseract.image_to_string(image, lang=_OCR_LANGUAGES)
+        # Checked on the header, before any pixel is decoded.
+        if image.width * image.height > MAX_OCR_PIXELS:
+            raise ValueError(f"image too large to read ({image.width}x{image.height})")
+        text = pytesseract.image_to_string(image, lang=_OCR_LANGUAGES, timeout=OCR_TIMEOUT_SECONDS)
         return text.strip()
 
     # ── Document ──────────────────────────────────────────────

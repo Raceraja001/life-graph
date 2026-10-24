@@ -523,11 +523,41 @@ async def undo_save(memory_id: uuid.UUID):
     return success_response(data={"id": str(memory_id), "status": "archived"})
 
 
-@router.post("/read-image", summary="The words in an image, read on this PC; nothing is stored")
-async def read_image(image: UploadFile = File(...)):
-    import asyncio
+def _image_format(data: bytes) -> str | None:
+    """JPEG, PNG or WEBP by the file's own first bytes, whatever it claims to be."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "JPEG"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "PNG"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "WEBP"
+    return None
+
+
+def _read_words(data: bytes, fmt: str) -> str:
+    """Open *data* as *fmt* only (no other Pillow decoder is reachable), then OCR it.
+
+    MultiModalService._ocr_image caps the pixel count before decoding.
+    """
+    import io
+
+    from PIL import Image
 
     from life_graph.services.multimodal import MultiModalService
+
+    with Image.open(io.BytesIO(data), formats=[fmt]):
+        pass  # raises unless the bytes really are that format
+    return MultiModalService._ocr_image(data)
+
+
+@router.post("/read-image", summary="The words in an image, read on this PC; nothing is stored")
+async def read_image(image: UploadFile = File(...)):
+    """Security review 2026-10-24 (M3): the bytes must be a JPEG, PNG or WebP by
+    their magic bytes and open as that format only; over 40M pixels is refused
+    before decoding; OCR stops after OCR_TIMEOUT_SECONDS."""
+    import asyncio
+
+    from life_graph.services.multimodal import OCR_TIMEOUT_SECONDS
 
     if (image.content_type or "").lower() not in _IMAGE_TYPES:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Send a JPEG, PNG or WebP.")
@@ -536,13 +566,31 @@ async def read_image(image: UploadFile = File(...)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No image received.")
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "That image is too big.")
+    fmt = _image_format(data)
+    if fmt is None:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Send a JPEG, PNG or WebP.")
     try:
-        words = await asyncio.to_thread(MultiModalService._ocr_image, data)
+        # A backstop over tesseract's own timeout (which also kills it).
+        words = await asyncio.wait_for(
+            asyncio.to_thread(_read_words, data, fmt), timeout=OCR_TIMEOUT_SECONDS + 5
+        )
     except ImportError:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "Reading images is not set up on the PC."
         ) from None
-    except Exception:  # noqa: BLE001 - a corrupt or unreadable file
+    except TimeoutError:
+        raise HTTPException(
+            status.HTTP_504_GATEWAY_TIMEOUT, "Reading that image took too long."
+        ) from None
+    except RuntimeError as exc:
+        if "timeout" in str(exc).lower():  # pytesseract: "Tesseract process timeout"
+            raise HTTPException(
+                status.HTTP_504_GATEWAY_TIMEOUT, "Reading that image took too long."
+            ) from None
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "I couldn't read that image."
+        ) from None
+    except Exception:  # noqa: BLE001 - corrupt, too many pixels, or not what it claims
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "I couldn't read that image."
         ) from None

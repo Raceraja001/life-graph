@@ -144,20 +144,25 @@ async def test_undoing_a_correction_brings_the_old_fact_back(client):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_an_image_is_read_on_the_pc_and_not_stored(client, monkeypatch):
-    from life_graph.services.multimodal import MultiModalService
+    from life_graph.api import jarvis
 
     phone = await _phone(client)
-    monkeypatch.setattr(
-        MultiModalService, "_ocr_image", staticmethod(lambda data: " Fees due Friday \n")
-    )
-    png = {"image": ("shot.png", b"\x89PNG" + b"\x00" * 100, "image/png")}
+    # _read_words opens the image (Pillow) and OCRs it: faked, as Pillow is an
+    # optional extra; tests/unit/test_read_image_limits.py covers it.
+    monkeypatch.setattr(jarvis, "_read_words", lambda data, fmt: " Fees due Friday \n")
+    png = {"image": ("shot.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 100, "image/png")}
     resp = await client.post("/api/v1/jarvis/read-image", headers=phone, files=png)
     assert resp.status_code == 200 and resp.json()["data"] == {"text": "Fees due Friday"}
 
     gif = {"image": ("a.gif", b"GIF89a", "image/gif")}
     wrong = await client.post("/api/v1/jarvis/read-image", headers=phone, files=gif)
     assert wrong.status_code == 415
-    monkeypatch.setattr(MultiModalService, "_ocr_image", staticmethod(lambda data: "  "))
+    # A GIF sent as image/png is refused by its own first bytes (review M3).
+    posing = {"image": ("a.png", b"GIF89a" + b"\x00" * 100, "image/png")}
+    assert (
+        await client.post("/api/v1/jarvis/read-image", headers=phone, files=posing)
+    ).status_code == 415
+    monkeypatch.setattr(jarvis, "_read_words", lambda data, fmt: "  ")
     blank = await client.post("/api/v1/jarvis/read-image", headers=phone, files=png)
     assert blank.status_code == 422 and "No words" in blank.text
 
