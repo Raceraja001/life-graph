@@ -327,6 +327,60 @@ async def close_paid(
     return None
 
 
+async def mark_paid(
+    session: AsyncSession, tenant_id: str, item_id: str, paid_at: datetime
+) -> int | None:
+    """The owner says the bill on ``item_id`` is paid (the phone's "Paid" button).
+
+    Marks it ``paid``, as the dashboard's bill action does, and with it every
+    other open email about the same bill (same payee and due date): bills_due
+    lists those as one, so one left open would keep the bill due. Returns how
+    many were marked, or None when ``item_id`` holds no bill of this tenant's.
+    """
+    import uuid
+
+    try:
+        ident = uuid.UUID(str(item_id))
+    except ValueError:
+        return None
+    item = (
+        await session.execute(
+            select(ConnectorItem).where(
+                ConnectorItem.tenant_id == tenant_id, ConnectorItem.id == ident
+            )
+        )
+    ).scalar_one_or_none()
+    bill = ((item.flags or {}).get("bill") if item is not None else None) or {}
+    if item is None or bill.get("kind") not in ("bill", "renewal"):
+        return None
+    same = [item]
+    if bill.get("due"):
+        rows = (
+            await session.execute(
+                select(ConnectorItem).where(
+                    ConnectorItem.tenant_id == tenant_id,
+                    ConnectorItem.kind == KIND_EMAIL,
+                    ConnectorItem.id != item.id,
+                    ConnectorItem.flags["bill"]["kind"].astext.in_(["bill", "renewal"]),
+                    ConnectorItem.flags["bill"]["state"].astext.in_(OPEN_STATES),
+                    ConnectorItem.flags["bill"]["due"].astext == bill["due"],
+                )
+            )
+        ).scalars()
+        same += [
+            r
+            for r in rows
+            if same_payee(((r.flags or {}).get("bill") or {}).get("payee"), bill.get("payee"))
+        ]
+    for row in same:
+        old = (row.flags or {}).get("bill") or {}
+        row.flags = {
+            **(row.flags or {}),
+            "bill": {**old, "state": "paid", "paid_at": paid_at.isoformat()},
+        }
+    return len(same)
+
+
 async def paid_since(
     session: AsyncSession, tenant_id: str, payee: str, issued_at: datetime
 ) -> datetime | None:

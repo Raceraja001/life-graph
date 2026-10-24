@@ -17,6 +17,13 @@ often as it likes. Documents also share ``Document.reminders_sent`` with the
 daily sweep (services/documents.sweep_reminders), so the two never post the
 same threshold twice.
 
+The metadata also names the item (``item``: bill / task / document /
+reminder, and ``item_id``), so the phone's buttons (api/jarvis.py, services/
+notification_actions.py) can act on it: mark a bill paid, a reminder done, or
+"Tomorrow". Snoozing a bill or to-do frees its notification's dedup key and
+holds back that item until the snooze ends (``snooze_metadata``,
+``drop_snoozed``); then whatever lead it has reached is posted again.
+
 Nothing is sent from here: no Telegram, no web push. Rows are written already
 marked delivered, so the next daily brief does not re-post them with "due
 tomorrow" wording a day late; the brief lists bills and tasks itself.
@@ -391,6 +398,9 @@ async def write_new(
                 extra_metadata={
                     "kind": SOURCE_TYPE,
                     "item": item.kind,
+                    # What the phone's buttons act on: a bill's email row, a
+                    # to-do's row, the Document, the Intention.
+                    "item_id": item.source_id,
                     "lead": item.lead,
                     "due": item.due,
                     "dedup_key": item.key,
@@ -417,6 +427,51 @@ def _uuid_or_none(value: str | None) -> uuid.UUID | None:
         return None
 
 
+# ── Snoozing ("Tomorrow" on a bill or to-do) ─────────────────────────
+
+
+def item_prefix(key: str) -> str:
+    """A dedup key without its lead: ``bill:<payee>:<due>``, the same for every lead."""
+    return key.rsplit(":", 1)[0]
+
+
+def snooze_metadata(meta: dict[str, Any], until: datetime, notification_id: Any) -> dict[str, Any]:
+    """The metadata of a notification snoozed until *until*.
+
+    Its dedup key is renamed, so once the snooze ends the item's current lead
+    can be posted again (an overdue bill has one "overdue" key for the whole
+    week); ``snooze_prefix`` holds the item back until then.
+    """
+    key = str(meta.get("dedup_key") or "")
+    return {
+        **meta,
+        "dedup_key": f"{key}:snoozed:{notification_id}",
+        "snoozed_key": key,
+        "snooze_prefix": item_prefix(key),
+        # UTC ISO text, compared as text in active_snoozes.
+        "snoozed_until": until.astimezone(UTC).replace(microsecond=0).isoformat(),
+    }
+
+
+async def active_snoozes(session: AsyncSession, tenant_id: str, now: datetime) -> set[str]:
+    """The item prefixes snoozed past *now*."""
+    meta = Notification.extra_metadata
+    rows = (
+        await session.execute(
+            select(meta["snooze_prefix"].astext).where(
+                Notification.tenant_id == tenant_id,
+                Notification.source_type == SOURCE_TYPE,
+                meta["snoozed_until"].astext > now.astimezone(UTC).isoformat(),
+            )
+        )
+    ).scalars()
+    return {p for p in rows if p}
+
+
+def drop_snoozed(items: list[DueItem], prefixes: set[str]) -> list[DueItem]:
+    return [i for i in items if item_prefix(i.key) not in prefixes]
+
+
 async def run_for_tenant(
     tenant_id: str, now: datetime | None = None, session_factory=None
 ) -> list[str]:
@@ -428,6 +483,8 @@ async def run_for_tenant(
     now = now or datetime.now(UTC)
     async with session_factory() as session:
         items = await collect(session, tenant_id, now)
+        if items:
+            items = drop_snoozed(items, await active_snoozes(session, tenant_id, now))
         written = await write_new(session, tenant_id, items, now)
         await session.commit()
     return written
