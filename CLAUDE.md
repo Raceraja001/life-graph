@@ -111,7 +111,7 @@ services directly.
 ## Conventions
 
 - Async everywhere (FastAPI + SQLAlchemy 2.0 `mapped_column` style); type hints and docstrings on public APIs.
-- Adding a model: edit `models/db.py` **and** create an Alembic migration; always include `tenant_id`.
+- Adding a model: put it in the domain module under `models/` (`memory.py`, `tenancy.py`, `agents.py`, `judgment.py`, `assistant.py`), add it to the re-exports in `models/db.py`, **and** create an Alembic migration; always include `tenant_id`.
 - New memories should flow through the dedup pipeline (SHA-256 exact + pgvector cosine ≥ 0.92, threshold `LIFE_GRAPH_DEDUP_THRESHOLD`).
 - Test pattern: `httpx.AsyncClient` + `ASGITransport` (in-process, no running server) with
   `@pytest_asyncio.fixture` and tenant headers. Tests are defensive — they accept 500 when the DB is
