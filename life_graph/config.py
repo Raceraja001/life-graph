@@ -642,9 +642,11 @@ class Settings(BaseSettings):
     # docstrings used to claim a "personal tenant only" restriction that no
     # code implemented.
     tool_shell_enabled: bool = True  # master switch for run_command
-    # full = an arbitrary shell string (denylist only); allowlist = read-only
-    # programs run without a shell (tools/shell_allowlist.py).
-    tool_shell_mode: str = "full"
+    # allowlist = read-only programs run without a shell
+    # (tools/shell_allowlist.py); full = an arbitrary shell string, denylist
+    # only. The code default is the safe one (CHARTER invariant 5: a missing
+    # setting asks, it does not act); a deployment opts into "full" in .env.
+    tool_shell_mode: str = "allowlist"
     # Tenants permitted to use host tools. Empty string = every tenant,
     # which is only sane for a single-tenant personal deployment.
     tool_privileged_tenants: str = "default"
