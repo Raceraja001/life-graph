@@ -93,9 +93,9 @@ class ConnectionManager:
             self._connections.pop(tenant_id, None)
 
     async def broadcast(self, message: dict[str, Any]) -> None:
-        """Send a JSON message to all connected clients.
+        """Send a JSON message to all connected clients, of every tenant.
 
-        Failed sends are logged and the dead connection is removed,
+        Only for what belongs to no tenant (``GLOBAL_EVENT_TYPES``). Failed sends are logged and the dead connection is removed,
         but never prevent delivery to other clients.
         """
         dead: list[tuple[str, WebSocket]] = []
@@ -186,11 +186,38 @@ async def start_subscriber() -> None:
 # ── Event handler ────────────────────────────────────────────
 
 
+#: Event types that carry nothing of any tenant's and may go to every socket.
+#: Empty: every EventType today is about one tenant's memories, tasks,
+#: projects, approvals or runs. Add one here only if it is truly global.
+GLOBAL_EVENT_TYPES: frozenset[str] = frozenset()
+
+
+def _event_tenant(event: Event) -> str | None:
+    """The tenant an event belongs to, or None when that cannot be told.
+
+    The payload's ``tenant_id`` (most emitters put one there) or the tenant
+    context the event was emitted in. Should the two disagree, it is neither's.
+    """
+    payload = event.payload if isinstance(event.payload, dict) else {}
+    named = payload.get("tenant_id")
+    named = str(named) if named else None
+    context: str | None = None
+    if has_tenant_context():
+        with contextlib.suppress(RuntimeError):
+            context = get_current_tenant_id() or None
+    if named and context and named != context:
+        return None
+    return named or context
+
+
 async def ws_event_handler(event: Event) -> None:
-    """Convert an EventBus event to JSON and broadcast to all clients.
+    """Convert an EventBus event to JSON and send it to its tenant's clients.
 
     Subscribed to the global event_bus via ``event_bus.subscribe_all()``.
-    Silently skips if no clients are connected.
+    Silently skips if no clients are connected. An event whose tenant cannot
+    be told is dropped: it used to be broadcast to every socket, so one
+    tenant saw another's events from background jobs, which run with no
+    tenant context.
     """
     if ws_manager.active_count == 0:
         return
@@ -202,16 +229,13 @@ async def ws_event_handler(event: Event) -> None:
         "source": event.source,
     }
 
-    # Determine tenant_id from context or fall back to broadcast
-    tenant_id: str | None = None
-    if has_tenant_context():
-        with contextlib.suppress(RuntimeError):
-            tenant_id = get_current_tenant_id()
-
+    tenant_id = _event_tenant(event)
     if tenant_id:
         await publish_event(tenant_id, message)
-    else:
+    elif event.type.value in GLOBAL_EVENT_TYPES:
         await ws_manager.broadcast(message)
+    else:
+        logger.debug("WebSocket: %s has no tenant; not sent", event.type.value)
 
 
 # ── WebSocket route ──────────────────────────────────────────

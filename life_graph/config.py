@@ -180,8 +180,12 @@ class Settings(BaseSettings):
     # memory is learnt from the owner's words; the replies stay in the trail.
     capture_no_extract_surfaces: str = "tool_exhaust,assistant_message"
     # Surfaces whose assistant saves explicit "remember that…" requests itself
-    # (Jarvis's memory_save): the extractor skips those facts there.
+    # (Jarvis's memory_save): there the extractor drops the facts that the run
+    # for the same message already saved (services/saved_by_tool.py).
     capture_saved_by_tool_surfaces: str = "jarvis_app"
+    # How long the extractor waits, off the request path, for that run to
+    # finish before leaving the capture to the capture sweep.
+    capture_saved_by_tool_wait_seconds: int = 90
     # Claude Code sessions (services/claude_code_sessions.py): a session whose
     # SessionEnd marker arrived is closed this long after it, so prompts still
     # being extracted are linked first; one that never sent it (terminal
