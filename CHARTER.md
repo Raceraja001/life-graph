@@ -240,11 +240,14 @@ than trusting any prose, including this paragraph.
       and amounts parsed by code, confirmations close bills, amounts never leave.
       Google Tasks too (`plugins/tasks`, read-only, spec `docs/specs/connector-tasks.md`):
       overdue / today / this week in the brief; promises already on the list say so.
-- [ ] **Messaging channels** — WhatsApp/Telegram as an interaction surface. Specs exist,
-      no code.
-- [ ] **Text-to-speech coverage and quality** — replies are spoken only for voice-originated
-      turns, so typed turns stay silent. It uses the browser's native `speechSynthesis`
-      rather than a higher-quality voice.
+- [x] **Telegram** — built end to end (spec `docs/specs/telegram-bridge.md`, runtime
+      `life_graph/integrations/telegram/`): pairing, text/photo/voice capture, `/ask`,
+      `/chat`, approvals, the brief and alerts delivered to the phone. It runs only
+      when `LIFE_GRAPH_TELEGRAM_BOT_TOKEN` is set.
+- [ ] **WhatsApp** — not started. (`docs/specs/whatsapp-bot.md` is a separate commercial
+      spec, not this product.)
+- [x] **Text-to-speech** — local, through a speaches server (`LIFE_GRAPH_TTS_BASE_URL`,
+      Kokoro voices); speech-to-text is local too. Still open: typed turns stay silent.
 - [ ] **Raising autonomy trust (L0 → L1)** — a policy decision to make once shadow mode has
       graduated real personas, not a build task. The system currently defaults to asking
       about everything.

@@ -707,12 +707,14 @@ async def check_approval_timeouts(ctx: dict) -> dict:
     logger.info("Checking approval timeouts")
 
     from life_graph.api.dependencies import get_approval_service
+    from life_graph.config import settings
 
     try:
         approval_service = get_approval_service()
         expired = await approval_service.check_expirations()
-        logger.info("Approval timeout check: %d expired", expired)
-        return {"expired_count": expired}
+        stale = await approval_service.expire_stale(settings.autonomy_approval_stale_days)
+        logger.info("Approval timeout check: %d expired, %d stale", expired, stale)
+        return {"expired_count": expired, "stale_count": stale}
     except Exception:
         logger.exception("Approval timeout check failed")
         return {"status": "error"}
