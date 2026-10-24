@@ -116,6 +116,33 @@ async def test_undo_takes_back_only_what_jarvis_saved(client):
 
 @pytest.mark.asyncio
 @skip_on_db_error
+async def test_undoing_a_correction_brings_the_old_fact_back(client):
+    """memory_save(replaces_id=…) superseded the old fact; undoing the
+    correction must not leave the owner with neither of them."""
+    from life_graph.models.db import Memory
+    from life_graph.storage.database import async_session
+
+    phone = await _phone(client)
+    new = await _seed("My dentist is Dr. Mehta.", status="active", props={"saved_by": "jarvis"})
+    old = await _seed("My dentist is Dr. Rao.", status="superseded")
+    theirs = await _seed("Their dentist is Dr. Rao.", tenant="other_" + TENANT, status="superseded")
+    async with async_session() as s:
+        for mid in (old, theirs):
+            (await s.get(Memory, mid)).superseded_by = new
+        (await s.get(Memory, new)).supersedes = old
+        await s.commit()
+
+    ok = await client.post(f"/api/v1/jarvis/memories/{new}/undo", headers=phone)
+    assert ok.status_code == 200 and await _status(new) == "archived"
+    async with async_session() as s:
+        back = await s.get(Memory, old)
+        other = await s.get(Memory, theirs)
+    assert (back.status, back.superseded_by) == ("active", None)
+    assert other.status == "superseded"  # another tenant's row is never touched
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
 async def test_an_image_is_read_on_the_pc_and_not_stored(client, monkeypatch):
     from life_graph.services.multimodal import MultiModalService
 
@@ -199,3 +226,36 @@ def test_a_save_reaches_the_app_as_a_saved_event():
         assert event(result) is None
     other = {"type": "tool_result", "name": "bills_due", "result": '{"saved": true, "id": "x"}'}
     assert _app_event(other, {}) is None
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_reopened_conversation_shows_what_was_saved_and_not_undone(client):
+    from life_graph.models.db import AgentSession, AgentTask
+    from life_graph.storage.database import async_session
+
+    phone = await _phone(client)
+    async with async_session() as s:
+        conv = AgentSession(tenant_id=TENANT, user_message="remember my locker", routed_to="jarvis")
+        s.add(conv)
+        await s.flush()
+        task = AgentTask(
+            tenant_id=TENANT,
+            agent_name="jarvis",
+            task_name="chat:jarvis",
+            session_id=conv.id,
+            status="completed",
+            input={"message": "Remember my locker is 82"},
+            result={"response": "Saved."},
+        )
+        s.add(task)
+        await s.commit()
+        conv_id, task_id = str(conv.id), str(task.id)
+    kept = await _seed("My locker is 82.", status="active", props={"task_id": task_id})
+    await _seed("Undone one.", status="archived", props={"task_id": task_id})
+
+    msgs = (
+        await client.get(f"/api/v1/jarvis/conversations/{conv_id}/messages", headers=phone)
+    ).json()["data"]
+    assert "saved" not in msgs[0]
+    assert msgs[1]["saved"] == [{"id": str(kept), "content": "My locker is 82.", "pending": False}]

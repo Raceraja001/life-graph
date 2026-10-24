@@ -35,5 +35,24 @@ def test_a_question_about_the_owners_own_anything_is_personal():
 
 
 def test_general_questions_stay_general():
-    for text in ("What is the capital of France?", "how do I reverse a list in Python"):
+    for text in (
+        "What is the capital of France?",
+        "how do I reverse a list in Python",
+        "how do I save a dataframe to csv",
+    ):
         assert is_personal(text) is None, text
+
+
+def test_asking_jarvis_to_keep_something_runs_locally():
+    # memory_save is never offered to a cloud model and the phone's extractor
+    # skips explicit saves, so one of these routed "general" was saved by nothing.
+    for text in (
+        "note that the school fees are due Friday",
+        "Don't forget the school fees are due Friday",
+        "keep in mind I prefer morning meetings",
+        "make a note: the gate opens at six",
+        "save this: the gate opens at six",
+        "jot down that the gate opens at six",
+        "write this down, the gate opens at six",
+    ):
+        assert is_personal(text), text
