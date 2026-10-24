@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-24 17:37 UTC` from `master` @ `5a47ad9`
+Generated `2026-10-24 20:13 UTC` from `master` @ `2b337d4`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-10-24 17:37 UTC` from `master` @ `5a47ad9`
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **29** |
-| Config settings | **263** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3493** in 388 files |
+| Config settings | **264** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3525** in 390 files |
 | Dashboard pages | **18** |
-| Python | 398 files, 104,663 lines |
+| Python | 399 files, 104,926 lines |
 
 ---
 
@@ -948,16 +948,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 297 | 2757 |
+| `tests/unit/` | 299 | 2789 |
 | `tests/integration/` | 90 | 724 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **388** | **3493** |
+| **total** | **390** | **3525** |
 
 ---
 
 ## Configuration
 
-263 settings, all overridable by environment variable.
+264 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1008,6 +1008,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_EXTRACTION_LLM_CONFIDENCE_THRESHOLD` | `0.5` |
 | `LIFE_GRAPH_CAPTURE_NO_EXTRACT_SURFACES` | `'tool_exhaust,assistant_message'` |
 | `LIFE_GRAPH_CAPTURE_SAVED_BY_TOOL_SURFACES` | `'jarvis_app'` |
+| `LIFE_GRAPH_CAPTURE_SAVED_BY_TOOL_WAIT_SECONDS` | `90` |
 | `LIFE_GRAPH_CLAUDE_CODE_SESSION_END_GRACE_MINUTES` | `5` |
 | `LIFE_GRAPH_CLAUDE_CODE_SESSION_IDLE_MINUTES` | `240` |
 | `LIFE_GRAPH_COLD_START_MIN_MEMORIES` | `50` |
