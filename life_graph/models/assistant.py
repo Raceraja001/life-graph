@@ -1,8 +1,9 @@
 """Tables for the assistant's non-development work (docs/specs/assistant-capabilities.md).
 
-Documents, money, page monitors, study cards and invoices. Kept apart from
-models/db.py, which is already 2,500 lines; every table is tenant-scoped like
-the rest. Migrations 045 onward create them.
+Documents, money, page monitors, study cards and invoices. A domain module like
+models/memory.py and the others (models/db.py re-exports those, not this one;
+import from here). Every table is tenant-scoped like the rest. Migrations 045
+onward create them.
 """
 
 from __future__ import annotations

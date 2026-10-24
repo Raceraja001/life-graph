@@ -57,7 +57,9 @@ The build loop:
    Tasks (the checklist you will work through).
 2. **Create the migration** — `python -m alembic revision --autogenerate -m "add <feature> tables"`,
    run from the repo root with the venv active.
-3. **Create the models** — `life_graph/models/db.py`, SQLAlchemy 2.0 `mapped_column` style.
+3. **Create the models** — the domain module under `life_graph/models/` (`memory.py`,
+   `tenancy.py`, `agents.py`, `judgment.py`, `assistant.py`), SQLAlchemy 2.0
+   `mapped_column` style, and add the class to the re-export list in `models/db.py`.
    Always include `tenant_id`.
 4. **Create the service** — `life_graph/services/`, injected via `Depends()`, async
    throughout, firing events on the EventBus rather than calling other services.
@@ -108,7 +110,7 @@ patterns are how memory is expected to behave.
 |----------------|-----------|
 | Add an endpoint | `life_graph/api/` — follow `memories.py`, register in `main.py` |
 | Add a service | `life_graph/services/` — inject via FastAPI `Depends()` |
-| Add a model | `life_graph/models/db.py` + a new Alembic migration |
+| Add a model | the domain module in `life_graph/models/` (re-exported from `models/db.py`) + a new Alembic migration |
 | Add a kernel service | `life_graph/kernel/` — follow the `scheduler.py` pattern |
 | Add a tool | `life_graph/tools/` — use the `@tool` decorator, see `calculator.py` |
 | Add an agent | `life_graph/agents/` — see `orchestrator.py` |
