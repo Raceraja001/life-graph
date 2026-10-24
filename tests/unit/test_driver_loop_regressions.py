@@ -29,7 +29,13 @@ from life_graph.autonomy.safety.classifier import RiskLevel
 from life_graph.drivers.workdir import preserve_verified_work
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-DISPATCHER_PY = ROOT / "life_graph" / "drivers" / "dispatcher.py"
+# The approval-filing methods moved out of dispatcher.py into the
+# ApprovalFilingMixin (2026-10-25); both files are scanned so the guard
+# keeps watching wherever a dispatch writes an approval_queue row.
+DISPATCHER_PY = (
+    ROOT / "life_graph" / "drivers" / "dispatcher.py",
+    ROOT / "life_graph" / "drivers" / "dispatch_approvals.py",
+)
 MIGRATION_018 = ROOT / "alembic" / "versions" / "018_autonomous_ai.py"
 
 
@@ -59,10 +65,10 @@ def _allowed_risk_levels() -> set[str]:
 
 
 def _risk_levels_written_by_dispatcher() -> set[str]:
-    """Values the dispatcher assigns to risk_level=."""
-    tree = ast.parse(DISPATCHER_PY.read_text())
+    """Values the dispatcher (and its approval mixin) assign to risk_level=."""
+    nodes = [n for path in DISPATCHER_PY for n in ast.walk(ast.parse(path.read_text()))]
     found: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.keyword) or node.arg != "risk_level":
             continue
         v = node.value
