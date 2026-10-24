@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
+Generated `2026-10-24 17:37 UTC` from `master` @ `5a47ad9`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 
 | | |
 |---|---|
-| HTTP operations | **340** across 293 paths, 43 tags |
-| Database tables | **82** |
-| Migrations | **52** (head: `052_devices`) |
+| HTTP operations | **347** across 300 paths, 43 tags |
+| Database tables | **84** |
+| Migrations | **53** (head: `053_entities`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
-| Scheduled jobs | **25** |
-| Config settings | **248** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3140** in 340 files |
+| Scheduled jobs | **29** |
+| Config settings | **263** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3493** in 388 files |
 | Dashboard pages | **18** |
-| Python | 385 files, 99,591 lines |
+| Python | 398 files, 104,663 lines |
 
 ---
 
 ## HTTP API
 
-340 operations, grouped by OpenAPI tag.
+347 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 34
 
@@ -297,6 +297,22 @@ Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
 
+### `jarvis` — 11
+
+| Method | Path | Summary |
+|---|---|---|
+| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
+| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
+| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
+| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
+| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
+| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
+| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
+| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
+| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
+
 ### `procedures` — 7
 
 | Method | Path | Summary |
@@ -447,15 +463,6 @@ Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 | GET | `/api/v1/identity/stale` | Find stale beliefs |
 | GET | `/api/v1/identity/timeline` | Get identity timeline |
 
-### `jarvis` — 4
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
-| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
-| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
-| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
-
 ### `memory-links` — 4
 
 | Method | Path | Summary |
@@ -593,7 +600,7 @@ Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 
 ## Database tables
 
-82 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+84 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -618,6 +625,7 @@ Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 | `device_pairing_codes` | 5 | ✓ | `052_devices` |
 | `devices` | 7 | ✓ | `052_devices` |
 | `documents` | 15 | ✓ | `045_documents` |
+| `entities` | 7 | ✓ | `053_entities` |
 | `eval_cases` | 10 | — | `015_self_improving` |
 | `eval_results` | 14 | — | `015_self_improving` |
 | `eval_runs` | 18 | — | `015_self_improving` |
@@ -641,6 +649,7 @@ Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 | `llm_catalog_snapshots` | 4 | — | `050_llm_offers` |
 | `llm_offers` | 16 | ✓ | `050_llm_offers` |
 | `memories` | 34 | ✓ | `001_initial_schema` |
+| `memory_entities` | 3 | ✓ | `053_entities` |
 | `memory_links` | 8 | ✓ | `—` |
 | `memory_sessions` | 5 | — | `001_initial_schema` |
 | `money_budgets` | 7 | ✓ | `046_money` |
@@ -787,7 +796,7 @@ Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 | ~~assistant~~ (retired) — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
 | **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
 | ~~swe-lead~~ (retired) — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 38 |
+| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 28 |
 
 ---
 
@@ -816,11 +825,12 @@ Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 
 ## Scheduled jobs
 
-25 ARQ cron jobs (times are UTC).
+29 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
 | `check_approval_timeouts` | every 5 min | `life_graph.workers.tasks.check_approval_timeouts` |
+| `close_claude_code_sessions` | hourly at :04,:14,:24,:34,:44,:54 | `life_graph.workers.claude_code_sessions.close_claude_code_sessions` |
 | `decay_trust_scores` | 05:00 | `life_graph.workers.tasks.decay_trust_scores` |
 | `distill_idle_conversations` | every 15 min | `life_graph.workers.distill.distill_idle_conversations` |
 | `failure_pattern_mining` | 02:30 | `life_graph.workers.tasks.failure_pattern_mining` |
@@ -842,9 +852,12 @@ Generated `2026-10-21 07:46 UTC` from `feat/jarvis-devices` @ `67916ea`
 | `run_tech_watch` | 22:00 | `life_graph.workers.web_research.run_tech_watch` |
 | `run_watchers` | hourly at :00 | `life_graph.workers.tasks.run_watchers` |
 | `send_approval_escalations` | every 30 min | `life_graph.workers.tasks.send_approval_escalations` |
+| `sweep_stuck_captures` | hourly at :07,:22,:37,:52 | `life_graph.workers.capture_sweep.sweep_stuck_captures` |
 | `sync_connectors` | every 5 min | `life_graph.workers.tasks.sync_connectors` |
 | `sync_dev_task_prs` | every 15 min | `life_graph.workers.tasks.sync_dev_task_prs` |
 | `tick_scheduled_jobs` | every minute | `life_graph.workers.tasks.tick_scheduled_jobs` |
+| `write_daily_episodes` | hourly at :41 | `life_graph.workers.episodes.write_daily_episodes` |
+| `write_due_notifications` | hourly at :04,:19,:34,:49 | `life_graph.workers.due_notifications.write_due_notifications` |
 
 ---
 
@@ -923,9 +936,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-52 revisions, head `052_devices`.
+53 revisions, head `053_entities`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities`
 
 ---
 
@@ -935,16 +948,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 263 | 2468 |
-| `tests/integration/` | 76 | 660 |
+| `tests/unit/` | 297 | 2757 |
+| `tests/integration/` | 90 | 724 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **340** | **3140** |
+| **total** | **388** | **3493** |
 
 ---
 
 ## Configuration
 
-248 settings, all overridable by environment variable.
+263 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -956,6 +969,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_LOG_FORMAT` | `'text'` |
 | `LIFE_GRAPH_API_KEY` | `—` |
 | `LIFE_GRAPH_SERVICE_API_KEYS` | `''` |
+| `LIFE_GRAPH_DEVICE_TOKEN_IDLE_DAYS` | `60` |
 | `LIFE_GRAPH_DATABASE_URL` | `'postgresql+asyncpg://life_graph:life_graph@localhost:543…` |
 | `LIFE_GRAPH_DATABASE_URL_SYNC` | `'postgresql://life_graph:life_graph@localhost:5432/life_g…` |
 | `LIFE_GRAPH_DATABASE_POOL_SIZE` | `10` |
@@ -977,9 +991,13 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_LAND_VERIFIED_WORK` | `True` |
 | `LIFE_GRAPH_DECAY_ARCHIVE_THRESHOLD` | `0.01` |
 | `LIFE_GRAPH_DECAY_PROPOSAL_LIMIT` | `50` |
+| `LIFE_GRAPH_PENDING_MEMORY_EXPIRY_DAYS` | `14` |
+| `LIFE_GRAPH_MEMORY_START_AT` | `''` |
+| `LIFE_GRAPH_MEMORY_JUDGE_MODEL` | `''` |
 | `LIFE_GRAPH_DECAY_DEFAULT_LAMBDA` | `0.1` |
 | `LIFE_GRAPH_DEDUP_ENABLED` | `True` |
 | `LIFE_GRAPH_DEDUP_THRESHOLD` | `0.92` |
+| `LIFE_GRAPH_CONTRADICTION_SIMILARITY_THRESHOLD` | `0.75` |
 | `LIFE_GRAPH_MERGE_REVIEW_LOW` | `0.85` |
 | `LIFE_GRAPH_MERGE_SUGGEST_SCAN_LIMIT` | `200` |
 | `LIFE_GRAPH_CAPTURE_LLM_CLEAN` | `True` |
@@ -988,9 +1006,14 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_EXTRACTION_MIN_CONFIDENCE` | `0.45` |
 | `LIFE_GRAPH_EXTRACTION_LLM_MIN_WORDS` | `20` |
 | `LIFE_GRAPH_EXTRACTION_LLM_CONFIDENCE_THRESHOLD` | `0.5` |
-| `LIFE_GRAPH_CAPTURE_NO_EXTRACT_SURFACES` | `'tool_exhaust'` |
+| `LIFE_GRAPH_CAPTURE_NO_EXTRACT_SURFACES` | `'tool_exhaust,assistant_message'` |
+| `LIFE_GRAPH_CAPTURE_SAVED_BY_TOOL_SURFACES` | `'jarvis_app'` |
+| `LIFE_GRAPH_CLAUDE_CODE_SESSION_END_GRACE_MINUTES` | `5` |
+| `LIFE_GRAPH_CLAUDE_CODE_SESSION_IDLE_MINUTES` | `240` |
 | `LIFE_GRAPH_COLD_START_MIN_MEMORIES` | `50` |
 | `LIFE_GRAPH_WHISPER_MODEL` | `'small'` |
+| `LIFE_GRAPH_STT_BASE_URL` | `''` |
+| `LIFE_GRAPH_STT_MODEL` | `'deepdml/faster-whisper-large-v3-turbo-ct2'` |
 | `LIFE_GRAPH_CF_ACCOUNT_ID` | `''` |
 | `LIFE_GRAPH_CF_AI_TOKEN` | `''` |
 | `LIFE_GRAPH_GROQ_API_KEY` | `''` |
@@ -1110,6 +1133,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_AUTONOMY_TRUST_FAILURE_PENALTY` | `0.5` |
 | `LIFE_GRAPH_AUTONOMY_TRUST_SUCCESS_BOOST` | `0.02` |
 | `LIFE_GRAPH_AUTONOMY_APPROVAL_TIMEOUT_HOURS` | `24` |
+| `LIFE_GRAPH_AUTONOMY_APPROVAL_STALE_DAYS` | `14` |
 | `LIFE_GRAPH_AUTONOMY_MAX_AUTO_ACTIONS_PER_HOUR` | `10` |
 | `LIFE_GRAPH_AUTONOMY_MAX_BLAST_RADIUS` | `3` |
 | `LIFE_GRAPH_AUTONOMY_DEFAULT_LEVEL` | `'L0'` |
@@ -1132,6 +1156,9 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_USER_ACTIVE_MINUTES` | `30` |
 | `LIFE_GRAPH_SPEECH_MODELS` | `'gemma3'` |
 | `LIFE_GRAPH_OLLAMA_API_BASE` | `'http://localhost:11434'` |
+| `LIFE_GRAPH_LOCAL_LLM_NUM_CTX` | `16384` |
+| `LIFE_GRAPH_LOCAL_LLM_WARM_HOURS` | `'7-23'` |
+| `LIFE_GRAPH_LOCAL_LLM_IDLE_KEEP_ALIVE` | `'5m'` |
 | `LIFE_GRAPH_DEV_LOCAL_HOURS` | `''` |
 | `LIFE_GRAPH_OPENCODE_MIN_FREE_GB` | `12.0` |
 | `LIFE_GRAPH_CLOUD_RATE_LIMIT_COOLDOWN_SECONDS` | `3600` |
@@ -1178,6 +1205,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_INTERVIEW_MAX_QUESTIONS_PER_DAY` | `3` |
 | `LIFE_GRAPH_INTERVIEW_QUESTION_TTL_DAYS` | `7` |
 | `LIFE_GRAPH_BRIEF_HOUR_UTC` | `2` |
+| `LIFE_GRAPH_PHONE_DUE_NOTIFICATIONS` | `True` |
 | `LIFE_GRAPH_VAPID_PUBLIC_KEY` | `''` |
 | `LIFE_GRAPH_VAPID_PRIVATE_KEY` | `''` |
 | `LIFE_GRAPH_VAPID_SUBJECT` | `'mailto:tolokanathan@gmail.com'` |
