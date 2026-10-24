@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-24 20:23 UTC` from `master` @ `612b03b`
+Generated `2026-10-24 20:45 UTC` from `master` @ `9dc2ddf`
 
 ---
 
@@ -26,7 +26,7 @@ Generated `2026-10-24 20:23 UTC` from `master` @ `612b03b`
 | Config settings | **264** (prefix `LIFE_GRAPH_`) |
 | Test functions | **3526** in 391 files |
 | Dashboard pages | **18** |
-| Python | 399 files, 104,933 lines |
+| Python | 399 files, 104,935 lines |
 
 ---
 
@@ -1200,7 +1200,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_CPUS` | `'4'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_CREDS_PATH` | `'~/.claude/.credentials.json'` |
 | `LIFE_GRAPH_TOOL_SHELL_ENABLED` | `True` |
-| `LIFE_GRAPH_TOOL_SHELL_MODE` | `'full'` |
+| `LIFE_GRAPH_TOOL_SHELL_MODE` | `'allowlist'` |
 | `LIFE_GRAPH_TOOL_PRIVILEGED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_TOOL_FS_ROOTS` | `''` |
 | `LIFE_GRAPH_INTERVIEW_MAX_QUESTIONS_PER_DAY` | `3` |
