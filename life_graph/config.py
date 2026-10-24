@@ -454,6 +454,10 @@ class Settings(BaseSettings):
     autonomy_trust_failure_penalty: float = 0.5  # Multiply trust by this on failure
     autonomy_trust_success_boost: float = 0.02  # Add this on success
     autonomy_approval_timeout_hours: int = 24  # Auto-expire unapproved actions
+    # A pending approval nobody answered for this long is marked stale (never
+    # approved): on 2026-10-24, 20 command approvals had waited since 4 Oct.
+    # 0 = keep waiting forever.
+    autonomy_approval_stale_days: int = 14
     autonomy_max_auto_actions_per_hour: int = 10  # Rate limit for safe actions
     autonomy_max_blast_radius: int = 3  # Max files/services affected per auto-action
     autonomy_default_level: str = "L0"  # L0=ask everything, L1=safe auto, L2=moderate auto, L3=full

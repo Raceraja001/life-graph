@@ -304,6 +304,56 @@ class ApprovalService:
         logger.info("Checked approval expirations: %d auto-approved", expired_count)
         return expired_count
 
+    async def expire_stale(self, max_age_days: int) -> int:
+        """Mark pending entries older than *max_age_days* ``stale``. Returns count.
+
+        A queue nobody clears is not a gate: an entry that waited two weeks
+        was never going to be approved, and it buries the ones that might be.
+        Stale is a refusal, never an approval — the linked ``AutoAction`` is
+        skipped, as on reject. Asking again files a fresh entry.
+
+        Intentionally cross-tenant, like :meth:`check_expirations`: a system
+        cron with no tenant context (see tests/unit/test_tenant_scoping.py).
+        """
+        from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
+
+        if max_age_days <= 0:
+            return 0
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(days=max_age_days)
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ApprovalQueueEntry.id, ApprovalQueueEntry.tenant_id).where(
+                    ApprovalQueueEntry.status == "pending",
+                    ApprovalQueueEntry.created_at <= cutoff,
+                )
+            )
+            stale = result.all()
+            for entry_id, tenant_id in stale:
+                await session.execute(
+                    update(ApprovalQueueEntry)
+                    .where(ApprovalQueueEntry.id == entry_id)
+                    .values(
+                        status="stale",
+                        resolved_by="system",
+                        resolved_at=now,
+                        resolution_note=(
+                            f"No decision in {max_age_days} days; ask again if still wanted"
+                        ),
+                    )
+                )
+                await session.execute(
+                    update(AutoAction)
+                    .where(AutoAction.approval_id == entry_id, AutoAction.tenant_id == tenant_id)
+                    .values(status="skipped")
+                )
+            await session.commit()
+
+        if stale:
+            logger.info("Marked %d approval(s) stale after %d days", len(stale), max_age_days)
+        return len(stale)
+
     async def send_escalations(self) -> int:
         """Escalate long-pending approvals at 1h/4h/12h.
 

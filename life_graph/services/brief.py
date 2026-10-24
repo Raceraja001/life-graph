@@ -22,7 +22,8 @@ from sqlalchemy import func, select
 
 from life_graph.config import settings
 from life_graph.core.events import EventBus, EventType
-from life_graph.models.db import CaptureEvent, Decision, Memory, Notification
+from life_graph.models.db import Approval, CaptureEvent, Decision, Memory, Notification
+from life_graph.services import memory_yield
 from life_graph.services.interview import InterviewService
 
 if TYPE_CHECKING:
@@ -80,6 +81,10 @@ class BriefComposer:
         tech_watch = await self._tech_watch_lines(tenant_id) if monday else []
         money_week = await self._money_checkin_lines(tenant_id, now) if monday else []
         memory_review = await self._memory_review_line(tenant_id, since)
+        memory_lines = await self._memory_yield_lines(tenant_id, since)
+        if memory_review:
+            memory_lines.append(memory_review)
+        approvals_line = await self._approvals_line(tenant_id, now)
 
         if not (
             held
@@ -92,7 +97,8 @@ class BriefComposer:
             or night_shift
             or tech_watch
             or money_week
-            or memory_review
+            or memory_lines
+            or approvals_line
         ):
             logger.info("No brief content for tenant %s — staying silent", tenant_id)
             return None
@@ -116,13 +122,17 @@ class BriefComposer:
                 *[f"  - {x}" for x in night_shift[1:]],
             ]
             body = "\n".join([*shift, "", body]).strip()
-        if memory_review:
-            # A count only: this body leaves the machine.
-            body = "\n".join(["## Memory", f"- {memory_review}", "", body]).strip()
+        if memory_lines:
+            # Counts only (yield per surface, review queue): this body leaves
+            # the machine.
+            body = "\n".join(["## Memory", *[f"- {x}" for x in memory_lines], "", body]).strip()
         if assistant_lines:
             # Kinds, dates and percentages only: this body leaves the machine.
             coming = ["## Coming up", *[f"- {line}" for line in assistant_lines], ""]
             body = "\n".join([*coming, body]).strip()
+        if approvals_line:
+            # Kinds, counts and an age only: this body leaves the machine.
+            body = "\n".join(["## Waiting for you", f"- {approvals_line}", "", body]).strip()
         if connector_sections and connector_sections["external"]["text"]:
             # The stored body is what Telegram and Web Push send off the
             # machine, so it carries the cloud rendering; the dashboard reads
@@ -354,6 +364,84 @@ class BriefComposer:
         expiry = f" Unreviewed ones are dropped after {days} days." if days > 0 else ""
         word = "memory" if new == 1 else "memories"
         return f"{new} new {word} to review ({total} waiting in all).{expiry}"
+
+    async def _memory_yield_lines(self, tenant_id: str, since: datetime) -> list[str]:
+        """What the capture spine kept in the window (services/memory_yield.py).
+
+        Counts only. The line that says "935 captures → 2 kept" is the one
+        nobody had on 2026-10-24.
+        """
+        try:
+            async with self._session_factory() as session:
+                return memory_yield.lines(await memory_yield.report(session, tenant_id, since))
+        except Exception:
+            logger.warning("Memory yield lines failed for %s", tenant_id, exc_info=True)
+            return []
+
+    async def _approvals_line(self, tenant_id: str, now: datetime) -> str | None:
+        """How many approvals wait, by kind, and how old the oldest is.
+
+        Both queues: autonomy's ``approval_queue`` (commands, agent tasks) and
+        the memory/driver ``Approval`` rows. A queue nobody opens is not a
+        gate — on 2026-10-24, 20 command approvals had waited since 4 Oct —
+        and per-item pings were what trained the owner to ignore it. One
+        line a day instead; the stale sweep closes what nobody answers.
+        """
+        from life_graph.autonomy.models import ApprovalQueueEntry
+
+        try:
+            async with self._session_factory() as session:
+                rows = list(
+                    (
+                        await session.execute(
+                            select(
+                                ApprovalQueueEntry.kind,
+                                func.count(),
+                                func.min(ApprovalQueueEntry.created_at),
+                            )
+                            .where(
+                                ApprovalQueueEntry.tenant_id == tenant_id,
+                                ApprovalQueueEntry.status == "pending",
+                            )
+                            .group_by(ApprovalQueueEntry.kind)
+                        )
+                    ).all()
+                )
+                rows += list(
+                    (
+                        await session.execute(
+                            select(Approval.kind, func.count(), func.min(Approval.created_at))
+                            .where(Approval.tenant_id == tenant_id, Approval.status == "pending")
+                            .group_by(Approval.kind)
+                        )
+                    ).all()
+                )
+        except Exception:
+            logger.warning("Approvals line failed for %s", tenant_id, exc_info=True)
+            return None
+        return self.format_approvals_line(rows, now)
+
+    @staticmethod
+    def format_approvals_line(rows: list[tuple], now: datetime) -> str | None:
+        """``(kind, count, oldest_created_at)`` rows → one line, or None when empty."""
+        by_kind: dict[str, int] = {}
+        oldest: datetime | None = None
+        for kind, count, first in rows:
+            if not count:
+                continue
+            by_kind[kind or "other"] = by_kind.get(kind or "other", 0) + int(count)
+            if first is not None and (oldest is None or first < oldest):
+                oldest = first
+        total = sum(by_kind.values())
+        if not total:
+            return None
+        age = ""
+        if oldest is not None:
+            days = max(0, (now - oldest).days)
+            age = f" (oldest {days} day{'s' if days != 1 else ''})"
+        kinds = ", ".join(f"{k} {n}" for k, n in sorted(by_kind.items(), key=lambda i: -i[1]))
+        word = "approval" if total == 1 else "approvals"
+        return f"{total} {word} waiting{age}: {kinds}."
 
     async def _money_checkin_lines(self, tenant_id: str, now: datetime) -> list[str]:
         """Monday's money check-in, cloud-safe (services/money_checkin.py, Job 5)."""

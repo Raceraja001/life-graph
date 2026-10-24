@@ -17,6 +17,7 @@ leaving them "running" forever (which would also hold a WIP slot).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -39,6 +40,17 @@ logger = logging.getLogger(__name__)
 KIND = "dev_task"
 AGENT_NAME = "dev_task"
 QUEUE_MODE = "queue"
+# A task in one of these is still to run; the same instruction for the same
+# project again is a duplicate, not a second job. (A script that re-posted
+# its backlog on every run queued 979 copies on 2026-10-19.)
+OPEN_STATUSES = ("queued", "running")
+
+
+def instruction_key(instruction: str) -> str:
+    """A short key for "the same instruction": whitespace and case folded."""
+    folded = " ".join(instruction.split()).lower()
+    return hashlib.sha256(folded.encode()).hexdigest()[:16]
+
 
 # Strong references: asyncio keeps only weak ones to running tasks.
 _background: set[asyncio.Task] = set()
@@ -76,7 +88,31 @@ async def create_dev_task(
     """
     task_id = uuid.uuid4()
     title = instruction.strip().splitlines()[0][:200] if instruction.strip() else "Dev task"
+    key = instruction_key(instruction)
     async with session_factory() as session:
+        existing = (
+            await session.execute(
+                select(AgentTask)
+                .where(
+                    AgentTask.tenant_id == tenant_id,
+                    AgentTask.project_id == uuid.UUID(project["id"]),
+                    _kind_filter(),
+                    AgentTask.properties["instruction_key"].astext == key,
+                    AgentTask.status.in_(OPEN_STATUSES),
+                )
+                .order_by(AgentTask.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            logger.info(
+                "Dev task not created: %s already %s with the same instruction",
+                existing.id,
+                existing.status,
+            )
+            data = serialize(existing, [])
+            data["duplicate_of"] = str(existing.id)
+            return data
         task = AgentTask(
             id=task_id,
             tenant_id=tenant_id,
@@ -92,6 +128,7 @@ async def create_dev_task(
             properties={
                 **(properties or {}),
                 "kind": KIND,
+                "instruction_key": key,
                 "project_name": project["name"],
                 **({} if start else {"run_mode": QUEUE_MODE}),
                 # A task started now was asked for by someone, so the Governor

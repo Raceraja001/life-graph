@@ -90,6 +90,9 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     ("autonomy/approvals/service.py", "send_escalations"): (
         "system cron with no tenant context; sweeps every tenant in one pass"
     ),
+    ("autonomy/approvals/service.py", "expire_stale"): (
+        "system cron with no tenant context; sweeps every tenant in one pass"
+    ),
     # A Telegram update arrives with a chat id and nothing else. These lookups are
     # what *establish* the tenant, so they cannot filter by one — the binding row
     # is the answer, not the query key. The chat id is the scope: a partial unique
