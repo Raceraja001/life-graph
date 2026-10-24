@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-24 20:59 UTC` from `master` @ `460ce5f`
+Generated `2026-10-24 21:02 UTC` from `master` @ `32715b9`
 
 ---
 
@@ -26,7 +26,7 @@ Generated `2026-10-24 20:59 UTC` from `master` @ `460ce5f`
 | Config settings | **264** (prefix `LIFE_GRAPH_`) |
 | Test functions | **3557** in 393 files |
 | Dashboard pages | **18** |
-| Python | 402 files, 105,774 lines |
+| Python | 407 files, 105,865 lines |
 
 ---
 
