@@ -582,7 +582,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " preamble.\n\n"
             "Do the work yourself with your tools whenever you can: the user's own"
             " data (calendar, mail, bills, tasks, documents, spending, memories,"
-            " study cards, invoices), the web, the code. Never answer from memory"
+            " study cards, invoices) and the web. Never answer from memory"
             " what a tool could check live, never guess or fabricate a"
             " plausible-looking answer, and say plainly when you could not find"
             " something. When you use the web, name the source; for a question"
@@ -595,7 +595,9 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " delegate_to_persona: scout (research a topic in depth), admin (a sweep"
             " of the user's life admin), tutor (study), cody (review or change code,"
             " with its tests), ops (system health; it only proposes commands)."
-            " First decide the MINIMUM set of workers needed, always including any"
+            " You have no file, code or shell tools of your own: reading or"
+            " changing code, and anything that runs a command, goes to cody or"
+            " ops. First decide the MINIMUM set of workers needed, always including any"
             " role the user named; delegate to each AT MOST ONCE with a clear,"
             " self-contained brief; then give one answer. Never fan out"
             " redundantly.\n\n"
@@ -621,6 +623,11 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         ),
         "intent_tags": [],
         "temperature": 0.4,
+        # No HOST_TOOLS (security review 2026-10-24): Jarvis reads email and web
+        # pages and answers a phone token, so text in either could have it write
+        # .claude/settings.json hooks or a workflow in any repo under the tool
+        # roots, or read a file and leak it in a browse_web URL. Code and
+        # system work goes to cody / ops through delegate_to_persona.
         "allowed_tools": [
             "web_search",
             "browse_web",
@@ -630,19 +637,6 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "memory_about",
             "get_current_datetime",
             "calculator",
-            "git_status",
-            "git_log",
-            "git_diff",
-            "git_branch",
-            "run_command",
-            "file_read",
-            "file_write",
-            "code_read",
-            "code_search",
-            "code_list",
-            "code_edit",
-            "run_tests",
-            "inspect_system",
             "calendar_events",
             "calendar_next",
             "email_waiting",
@@ -672,6 +666,26 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
 # stay readable; seeding keeps them off (seed_builtins, _reconcile_builtin).
 RETIRED_PERSONAS: frozenset[str] = frozenset(
     {"assistant", "chief", "penny", "swe-lead", "rex", "scribe", "uzhavu-ops"}
+)
+
+# Tools that read or change files, run commands or inspect the host. Jarvis
+# holds none of them (see its allowed_tools); the workers it delegates to do.
+HOST_TOOLS: frozenset[str] = frozenset(
+    {
+        "file_read",
+        "file_write",
+        "code_read",
+        "code_search",
+        "code_list",
+        "code_edit",
+        "run_command",
+        "run_tests",
+        "git_status",
+        "git_log",
+        "git_diff",
+        "git_branch",
+        "inspect_system",
+    }
 )
 
 

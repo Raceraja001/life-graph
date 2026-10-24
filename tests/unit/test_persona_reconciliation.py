@@ -117,6 +117,19 @@ def test_an_already_correct_row_issues_no_update():
     assert _reconcile(defn, row) == {}
 
 
+def test_a_seeded_jarvis_loses_its_host_tools_on_the_next_start():
+    """Jarvis held file/code/shell tools until the 2026-10-24 review; the live
+    row must drop them on restart, not keep them because it was seeded first."""
+    from life_graph.kernel.personas import HOST_TOOLS
+
+    defn = _defn("jarvis")
+    old = [*defn["allowed_tools"], "file_write", "run_command", "code_edit", "file_read"]
+    row = _Row(system_prompt=defn["system_prompt"], allowed_tools=old)
+    values = _reconcile(defn, row)
+    assert values["allowed_tools"] == defn["allowed_tools"]
+    assert not set(values["allowed_tools"]) & HOST_TOOLS
+
+
 def test_user_owned_personas_are_left_alone():
     defn = _defn("dependency-updater")
     row = _Row(is_builtin=False)
