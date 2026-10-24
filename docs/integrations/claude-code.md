@@ -75,7 +75,24 @@ rather than `~/.life-graph/`.
 | `Stop` | `assistant_message` | **VERIFIED** | The assistant's closing message |
 | `SubagentStop` | `assistant_message` | **VERIFIED** | The subagent's closing message |
 | `SessionStart` | — | — | *reads* — injects recall, captures nothing |
-| `SessionEnd` | — | — | flushes the offline spool |
+| `SessionEnd` | `tool_exhaust` | **VERIFIED** | `Claude Code session <id> ended (<reason>)` (`kind: session_end`), then flushes the offline spool |
+
+### Memory sessions
+
+Every capture carries the Claude Code session id as `properties.claude_code_session_id`
+(captures from hooks older than that carry it as `session_id`; the backend reads both).
+Memories extracted from a session's prompts are linked to one memory session (`sessions`
+row, `context.source = "claude_code"`) created on first sight, with an id derived from the
+tenant and the Claude Code session id (`life_graph/services/claude_code_sessions.py`). The
+memory carries both ids: `claude_code_session_id`, and `session_id` — the memory session,
+the same link the MCP `remember(session_id=…)` path writes.
+
+The `SessionEnd` marker asks for that session to be closed. A worker cron
+(`life_graph.workers.claude_code_sessions`) closes it a few minutes later
+(`claude_code_session_end_grace_minutes`), so prompts still being extracted are linked
+first, or after `claude_code_session_idle_minutes` without a new memory when no
+`SessionEnd` ever arrived. Closing is the `POST /sessions/{id}/end` path: summary,
+`memories_created`, then micro-consolidation.
 
 ### Trail versus content
 
@@ -168,7 +185,7 @@ backend service directly, so the two cannot drift.
 **What leaves the machine** — only the rows in the table above, addressed to
 `LIFE_GRAPH_API_URL` (default `http://localhost:8080`, i.e. nothing leaves the machine at
 all in the default self-hosted setup). Each payload carries `surface`, `content`,
-`modality: "text"`, and a `properties` bag with `session_id`, `cwd`, project name,
+`modality: "text"`, and a `properties` bag with `claude_code_session_id`, `cwd`, project name,
 `hook_event`, and the optional `prompt_id` / `permission_mode` / `agent_id` / `agent_type`.
 
 **What does not leave** — file contents, tool *results*, the transcript, environment
@@ -198,7 +215,7 @@ A dead or slow Life Graph must never break Claude Code. Concretely:
 - Every path is wrapped; the process **always exits 0**. Exit 2 would *block* the
   developer's action and is never used anywhere in this code.
 - Hard timeouts: **2 s** on captures, **5 s** on the session-start recall, 0.5 s on the git
-  branch lookup, 3 s total on the `SessionEnd` spool flush.
+  branch lookup, 3 s total on the `SessionEnd` end marker plus spool flush.
 - Nothing is written to stdout except deliberate hook JSON — stray output corrupts the
   contract. Debug output goes to a file, never stdout.
 - `UserPromptSubmit` never sets `updatedPrompt`. Rewriting the developer's prompt is not

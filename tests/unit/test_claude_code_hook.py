@@ -91,8 +91,18 @@ def test_user_prompt_submit_captures_with_cli_surface(cfg):
     assert body["content"] == "add a retry to the worker"
     # Only "text" is processed into memory; "structured" is store-only.
     assert body["modality"] == "text"
-    assert body["properties"]["session_id"] == "sess-1"
+    assert body["properties"]["claude_code_session_id"] == "sess-1"
     assert body["properties"]["project"] == "life-graph"
+    assert body["properties"]["cwd"] == "/home/dev/projects/life-graph"
+
+
+def test_claude_code_session_id_is_not_sent_as_session_id(cfg):
+    """On a memory, ``properties.session_id`` is a Life Graph memory session
+    and links the memory to it. A Claude Code id under that key would name a
+    session that does not exist; the backend maps one onto the other."""
+    client = FakeClient()
+    hook.dispatch(_base("UserPromptSubmit", prompt="add a retry to the worker"), cfg, client=client)
+    assert "session_id" not in client.calls[0]["json"]["properties"]
 
 
 def test_user_prompt_submit_surface_is_self_tier():
@@ -404,7 +414,41 @@ def test_transient_failure_spools_and_session_end_flushes(cfg):
     alive = FakeClient()
     hook.dispatch(_base("SessionEnd", reason="clear"), cfg, client=alive)
     assert transport.CaptureQueue(cfg.spool_path).pending_count() == 0
-    assert alive.calls[0]["json"]["content"] == "spool me please"
+    # The end marker goes first, then the spool drains.
+    assert [c["json"]["content"] for c in alive.calls][1:] == ["spool me please"]
+
+
+class TestSessionEndMarker:
+    def test_session_end_sends_a_marker_capture(self, cfg):
+        client = FakeClient()
+        hook.dispatch(_base("SessionEnd", reason="prompt_input_exit"), cfg, client=client)
+
+        body = client.calls[0]["json"]
+        # An activity-trail surface: never extracted into memories.
+        assert body["surface"] == hook_config.SURFACE_TOOL_EXHAUST
+        assert body["content"] == "Claude Code session sess-1 ended (prompt_input_exit)"
+        props = body["properties"]
+        assert props["kind"] == hook.SESSION_END_KIND == "session_end"
+        assert props["reason"] == "prompt_input_exit"
+        assert props["hook_event"] == "SessionEnd"
+        assert props["claude_code_session_id"] == "sess-1"
+
+    def test_a_missing_reason_is_other(self, cfg):
+        client = FakeClient()
+        hook.dispatch(_base("SessionEnd"), cfg, client=client)
+        assert client.calls[0]["json"]["properties"]["reason"] == "other"
+
+    def test_no_session_id_no_marker(self, cfg):
+        client = FakeClient()
+        payload = _base("SessionEnd", reason="clear")
+        del payload["session_id"]
+        hook.dispatch(payload, cfg, client=client)
+        assert client.calls == []
+
+    def test_an_unreachable_backend_spools_the_marker(self, cfg):
+        dead = FakeClient(raises=ConnectionError("refused"))
+        hook.dispatch(_base("SessionEnd", reason="clear"), cfg, client=dead)
+        assert transport.CaptureQueue(cfg.spool_path).pending_count() == 1
 
 
 def test_auth_and_bad_are_not_spooled(cfg):

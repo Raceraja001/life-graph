@@ -321,3 +321,36 @@ def test_a_save_reaches_the_app_as_a_saved_event():
         assert event(result) is None
     other = {"type": "tool_result", "name": "bills_due", "result": '{"saved": true, "id": "x"}'}
     assert _app_event(other, {}) is None
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_reopened_conversation_shows_what_was_saved_and_not_undone(client):
+    from life_graph.models.db import AgentSession, AgentTask
+    from life_graph.storage.database import async_session
+
+    phone = await _phone(client)
+    async with async_session() as s:
+        conv = AgentSession(tenant_id=TENANT, user_message="remember my locker", routed_to="jarvis")
+        s.add(conv)
+        await s.flush()
+        task = AgentTask(
+            tenant_id=TENANT,
+            agent_name="jarvis",
+            task_name="chat:jarvis",
+            session_id=conv.id,
+            status="completed",
+            input={"message": "Remember my locker is 82"},
+            result={"response": "Saved."},
+        )
+        s.add(task)
+        await s.commit()
+        conv_id, task_id = str(conv.id), str(task.id)
+    kept = await _seed("My locker is 82.", status="active", props={"task_id": task_id})
+    await _seed("Undone one.", status="archived", props={"task_id": task_id})
+
+    msgs = (
+        await client.get(f"/api/v1/jarvis/conversations/{conv_id}/messages", headers=phone)
+    ).json()["data"]
+    assert "saved" not in msgs[0]
+    assert msgs[1]["saved"] == [{"id": str(kept), "content": "My locker is 82.", "pending": False}]

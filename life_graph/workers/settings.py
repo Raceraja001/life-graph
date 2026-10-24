@@ -161,6 +161,8 @@ class WorkerSettings:
         "life_graph.workers.telegram.purge_telegram_pairing_codes",
         "life_graph.workers.capture_sweep.sweep_stuck_captures",
         "life_graph.workers.episodes.write_daily_episodes",
+        "life_graph.workers.claude_code_sessions.close_claude_code_sessions",
+        "life_graph.workers.due_notifications.write_due_notifications",
     ]
 
     cron_jobs = [
@@ -170,11 +172,25 @@ class WorkerSettings:
             minute=41,
             run_at_startup=False,
         ),
+        # Bills, to-dos, expiring documents and timed reminders as phone
+        # notifications (services/due_notifications.py); idempotent per item.
+        cron(
+            "life_graph.workers.due_notifications.write_due_notifications",
+            minute={4, 19, 34, 49},
+            run_at_startup=False,
+        ),
         # Captures left "received" (written outside the API process, or whose
         # handler died) are processed here, at most 3 tries each.
         cron(
             "life_graph.workers.capture_sweep.sweep_stuck_captures",
             minute={7, 22, 37, 52},
+            run_at_startup=False,
+        ),
+        # Ended or idle Claude Code sessions are summarised and consolidated
+        # (services/claude_code_sessions.py).
+        cron(
+            "life_graph.workers.claude_code_sessions.close_claude_code_sessions",
+            minute={4, 14, 24, 34, 44, 54},
             run_at_startup=False,
         ),
         cron(

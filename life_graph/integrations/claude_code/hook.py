@@ -78,19 +78,31 @@ def is_machine_prompt(prompt: str) -> bool:
     return prompt.lstrip().startswith(MACHINE_PROMPT_TAGS)
 
 
-#: Upper bound on the SessionEnd spool flush, so quitting never hangs.
+#: Upper bound on the SessionEnd work (end marker + spool flush), so quitting
+#: never hangs; the flush always gets at least the minimum.
 FLUSH_BUDGET_SECONDS = 3.0
+MIN_FLUSH_SECONDS = 0.5
+
+#: ``properties.kind`` of the capture that marks a session's end. The backend
+#: matches on it (``life_graph.services.claude_code_sessions``).
+SESSION_END_KIND = "session_end"
 
 
 # ── Payload helpers ──────────────────────────────────────────────────────
 
 
 def _base_properties(payload: dict[str, Any]) -> dict[str, Any]:
-    """Provenance every capture from this integration carries."""
+    """Provenance every capture from this integration carries.
+
+    The Claude Code session id goes under ``claude_code_session_id``, not
+    ``session_id``: on a memory, ``properties.session_id`` names a Life Graph
+    memory session (``sessions`` row) and links the memory to it, and the
+    capture processor maps one onto the other (services/claude_code_sessions.py).
+    """
     props = {
         "integration": "claude_code",
         "hook_event": payload.get("hook_event_name"),
-        "session_id": payload.get("session_id"),
+        "claude_code_session_id": payload.get("session_id"),
         "cwd": payload.get("cwd"),
     }
     for optional in ("prompt_id", "permission_mode", "agent_id", "agent_type"):
@@ -290,11 +302,35 @@ def handle_stop(payload: dict[str, Any], cfg: HookConfig, *, client=None) -> dic
 def handle_session_end(
     payload: dict[str, Any], cfg: HookConfig, *, client=None
 ) -> dict[str, Any] | None:
-    """Flush the offline spool on the way out, within a hard time budget."""
+    """Tell the backend the session ended, then flush the offline spool.
+
+    The end marker is a ``tool_exhaust`` capture (an activity-trail surface,
+    never extracted) with ``kind = "session_end"``; the backend closes and
+    consolidates the matching memory session a few minutes later, so prompts
+    still being extracted are linked first. It goes before the flush so a
+    slow spool cannot use up the hook's timeout ahead of it; the flush gets
+    what is left of the budget.
+    """
+    import time
+
     from life_graph.integrations.claude_code.transport import flush_spool
 
-    sent = flush_spool(cfg, client=client, limit_seconds=FLUSH_BUDGET_SECONDS)
-    _log(cfg, "session_end", reason=payload.get("reason"), flushed=sent)
+    started = time.monotonic()
+    reason = payload.get("reason") or "other"
+    if payload.get("session_id"):
+        _capture(
+            payload,
+            cfg,
+            surface=SURFACE_TOOL_EXHAUST,
+            # The id is in the text so two sessions ending alike within the
+            # spine's 10-minute dedup window are not collapsed into one.
+            content=f"Claude Code session {payload['session_id']} ended ({reason})",
+            properties={"kind": SESSION_END_KIND, "reason": reason},
+            client=client,
+        )
+    budget = max(MIN_FLUSH_SECONDS, FLUSH_BUDGET_SECONDS - (time.monotonic() - started))
+    sent = flush_spool(cfg, client=client, limit_seconds=budget)
+    _log(cfg, "session_end", reason=reason, flushed=sent)
     return None
 
 
