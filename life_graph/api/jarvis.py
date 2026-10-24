@@ -7,7 +7,10 @@ docs/PLAN.md):
 * ``POST /jarvis/chat`` streams ``{type: token, content}`` events, then
   ``{type: done, conversation_id, route}`` or ``{type: error, message}``.
   It is the dashboard's chat stream (api/kernel.py) with Jarvis as the persona,
-  in the app's simpler event shapes.
+  in the app's simpler event shapes. The body is ``{message, shared?,
+  conversation_id?}``: ``message`` is what the owner typed, ``shared`` text
+  they shared from another app, which Jarvis treats as someone else's words.
+  Memory events: ``{type: saved, id, content, pending}``.
 * ``GET /jarvis/conversations`` and ``.../{id}/messages``.
 * ``POST /jarvis/voice``: audio in, transcribed on this machine only, answered
   by Jarvis in the same conversation, the reply spoken back as mp3.
@@ -42,6 +45,11 @@ _TERMINAL = {"completed", "failed", "timeout", "cancelled"}
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
     conversation_id: uuid.UUID | None = None
+    # Text the owner shared into the chat from another app (the share sheet, or
+    # /jarvis/read-image's words). Someone else wrote it: Jarvis sees it fenced
+    # as information (core/trust.py with_shared), it is captured as EXTERNAL,
+    # and only `message` counts as the owner asking for anything.
+    shared: str | None = Field(None, max_length=8000)
 
 
 async def _own_conversation(tenant_id: str, conversation_id: uuid.UUID | None) -> None:
@@ -96,11 +104,20 @@ def _saved_event(result: object) -> dict | None:
     }
 
 
-async def _capture(tenant_id: str, text: str, kind: str, conversation_id: uuid.UUID | None) -> None:
+async def _capture(
+    tenant_id: str,
+    text: str,
+    kind: str,
+    conversation_id: uuid.UUID | None,
+    *,
+    trust_tier: str | None = None,
+) -> None:
     """The owner's own words to Jarvis, to the capture spine: memory is learnt from them.
 
     Extraction (services/capture_processors.py) keeps only lasting facts, on
     the local model; "remember that…" becomes an active memory at once.
+    Text the owner shared from elsewhere passes ``trust_tier="external"``: what
+    is learnt from it is marked untrusted and waits for review.
     Best-effort: a failed capture never fails the conversation.
     """
     import logging
@@ -118,6 +135,7 @@ async def _capture(tenant_id: str, text: str, kind: str, conversation_id: uuid.U
                     "input": kind,
                     "conversation_id": str(conversation_id) if conversation_id else None,
                 },
+                trust_tier=trust_tier,
             )
             await session.commit()
     except Exception as exc:  # noqa: BLE001
@@ -132,9 +150,20 @@ async def chat(body: ChatRequest):
 
     tenant_id = get_current_tenant_id()
     await _own_conversation(tenant_id, body.conversation_id)
+    from life_graph.core.trust import TrustTier
+
     await _capture(tenant_id, body.message, "text", body.conversation_id)
+    if body.shared and body.shared.strip():
+        await _capture(
+            tenant_id, body.shared, "shared", body.conversation_id, trust_tier=TrustTier.EXTERNAL
+        )
     inner = await chat_stream(
-        ChatStreamRequest(message=body.message, target_agent=LEAD, session_id=body.conversation_id),
+        ChatStreamRequest(
+            message=body.message,
+            target_agent=LEAD,
+            session_id=body.conversation_id,
+            shared=body.shared,
+        ),
         pm=get_process_manager(),
         personas=get_persona_service(),
     )
@@ -241,9 +270,14 @@ async def messages(conversation_id: uuid.UUID):
     out = []
     for t in tasks:
         when = t.created_at.isoformat() if t.created_at else None
-        asked = (t.input or {}).get("message")
+        inp = t.input or {}
+        # A turn with shared text: the owner's typed words, and what they shared.
+        asked = inp.get("owner_message", inp.get("message"))
         if asked:
-            out.append({"role": "user", "content": asked, "created_at": when})
+            turn = {"role": "user", "content": asked, "created_at": when}
+            if inp.get("shared"):
+                turn["shared"] = inp["shared"]
+            out.append(turn)
         answered = (t.result or {}).get("response")
         if answered:
             done = t.completed_at.isoformat() if getattr(t, "completed_at", None) else when

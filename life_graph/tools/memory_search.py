@@ -292,7 +292,10 @@ async def _owner_message(ctx: Any) -> str:
         return ""
     if task is None or task.tenant_id != ctx.tenant_id:
         return ""
-    return str((task.input or {}).get("message") or "")
+    inp = task.input or {}
+    # A turn with shared text keeps the owner's typed words apart (api/kernel.py
+    # chat_stream): a "remember this" inside what they shared is not theirs.
+    return str(inp.get("owner_message", inp.get("message")) or "")
 
 
 @tool(
