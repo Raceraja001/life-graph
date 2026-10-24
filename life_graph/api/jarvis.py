@@ -10,7 +10,8 @@ docs/PLAN.md):
   in the app's simpler event shapes. The body is ``{message, shared?,
   conversation_id?}``: ``message`` is what the owner typed, ``shared`` text
   they shared from another app, which Jarvis treats as someone else's words.
-  Memory events: ``{type: saved, id, content, pending}``.
+  Memory events: ``{type: saved, id, content, pending}`` and
+  ``{type: forgotten, id, content}``.
 * ``GET /jarvis/conversations`` and ``.../{id}/messages``.
 * ``POST /jarvis/voice``: audio in, transcribed on this machine only, answered
   by Jarvis in the same conversation, the reply spoken back as mp3.
@@ -86,7 +87,20 @@ def _app_event(event: dict, state: dict) -> dict | None:
     if kind == "tool_result" and event.get("name") == "memory_save":
         # What Jarvis just remembered, so the app can show it with an Undo.
         return _saved_event(event.get("result"))
+    if kind == "tool_result" and event.get("name") == "memory_forget":
+        # What Jarvis just forgot, so a wrong forget does not go unnoticed.
+        return _forgotten_event(event.get("result"))
     return None  # other tool calls, delegations: not shown on the phone
+
+
+def _forgotten_event(result: object) -> dict | None:
+    try:
+        out = json.loads(str(result or ""))
+    except ValueError:
+        return None
+    if not isinstance(out, dict) or out.get("forgotten") is not True or not out.get("id"):
+        return None
+    return {"type": "forgotten", "id": str(out["id"]), "content": str(out.get("content") or "")}
 
 
 def _saved_event(result: object) -> dict | None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from contextlib import contextmanager
 
 import pytest
 
@@ -56,9 +57,9 @@ async def test_memory_forget_archives_one_active_memory_of_this_tenant():
     pending = await _seed("Unreviewed thing.", status="pending")
     theirs = await _seed("Someone else's fact.", tenant="other_" + TENANT)
 
-    with tenant_scope(TENANT):
+    with tenant_scope(TENANT), _in_run(await _run("That's wrong, forget my dentist")):
         out = json.loads(await memory_forget(str(mine), "user said it is wrong"))
-        assert out == {"forgotten": True, "content": "My dentist is Dr. Rao."}
+        assert out == {"forgotten": True, "id": str(mine), "content": "My dentist is Dr. Rao."}
         status, props = await _status(mine)
         assert status == "archived" and props["forgotten"]["reason"] == "user said it is wrong"
 
@@ -68,6 +69,47 @@ async def test_memory_forget_archives_one_active_memory_of_this_tenant():
         assert "error" in json.loads(await memory_forget("not-an-id"))
     assert (await _status(pending))[0] == "pending"
     assert (await _status(theirs))[0] == "active"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_memory_forget_needs_the_owner_to_ask():
+    """Review 2026-10-24 (H3): a forget the owner's own message did not ask for
+    is refused, and the memory stays."""
+    from life_graph.tools.memory_search import memory_forget
+
+    mine = await _seed(f"My locker is 82 ({uuid.uuid4().hex[:6]}).")
+    with tenant_scope(TENANT), _in_run(await _run("what's my locker code?")):
+        out = json.loads(await memory_forget(str(mine), "user said it is wrong"))
+    assert "did not ask to forget" in out["error"]
+    assert (await _status(mine))[0] == "active"
+    with tenant_scope(TENANT):  # no run at all: no owner message, no forget
+        assert "error" in json.loads(await memory_forget(str(mine)))
+    assert (await _status(mine))[0] == "active"
+
+
+async def _run(message: str) -> uuid.UUID:
+    from life_graph.models.db import AgentTask
+    from life_graph.storage.database import async_session
+
+    async with async_session() as s:
+        task = AgentTask(
+            tenant_id=TENANT, agent_name="jarvis", input={"message": message}, status="running"
+        )
+        s.add(task)
+        await s.commit()
+        return task.id
+
+
+@contextmanager
+def _in_run(task_id: uuid.UUID):
+    from life_graph.core.task_context import TaskContext, _task_context_var
+
+    token = _task_context_var.set(TaskContext(task_id=task_id, tenant_id=TENANT))
+    try:
+        yield
+    finally:
+        _task_context_var.reset(token)
 
 
 @pytest.mark.asyncio
