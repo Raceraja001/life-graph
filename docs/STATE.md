@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-24 20:45 UTC` from `master` @ `9dc2ddf`
+Generated `2026-10-24 20:59 UTC` from `master` @ `460ce5f`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-10-24 20:45 UTC` from `master` @ `9dc2ddf`
 
 | | |
 |---|---|
-| HTTP operations | **347** across 300 paths, 43 tags |
+| HTTP operations | **351** across 304 paths, 43 tags |
 | Database tables | **84** |
 | Migrations | **53** (head: `053_entities`) |
 | Event types | **79** |
@@ -24,15 +24,15 @@ Generated `2026-10-24 20:45 UTC` from `master` @ `9dc2ddf`
 | Agent tools | **14** |
 | Scheduled jobs | **29** |
 | Config settings | **264** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3526** in 391 files |
+| Test functions | **3557** in 393 files |
 | Dashboard pages | **18** |
-| Python | 399 files, 104,935 lines |
+| Python | 402 files, 105,774 lines |
 
 ---
 
 ## HTTP API
 
-347 operations, grouped by OpenAPI tag.
+351 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 34
 
@@ -241,6 +241,26 @@ Generated `2026-10-24 20:45 UTC` from `master` @ `9dc2ddf`
 | GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
 | GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
 
+### `jarvis` — 15
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/jarvis/brief/latest` | The newest daily brief, with its audio |
+| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
+| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
+| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
+| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
+| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
+| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
+| POST | `/api/v1/jarvis/notifications/{notification_id}/action` | Tap a notification's button |
+| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
+| GET | `/api/v1/jarvis/reminders` | Your pending reminders, soonest first |
+| POST | `/api/v1/jarvis/reminders/{reminder_id}/cancel` | Cancel a reminder |
+| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
+| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
+
 ### `judgment-engine` — 14
 
 | Method | Path | Summary |
@@ -296,22 +316,6 @@ Generated `2026-10-24 20:45 UTC` from `master` @ `9dc2ddf`
 | POST | `/api/v1/memories/{memory_id}/reinforce` | Reinforce a memory — confirm it is still accurate |
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
-
-### `jarvis` — 11
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
-| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
-| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
-| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
-| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
-| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
-| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
-| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
-| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
 
 ### `procedures` — 7
 
@@ -796,7 +800,7 @@ Generated `2026-10-24 20:45 UTC` from `master` @ `9dc2ddf`
 | ~~assistant~~ (retired) — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
 | **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
 | ~~swe-lead~~ (retired) — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 28 |
+| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 29 |
 
 ---
 
@@ -948,10 +952,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 300 | 2790 |
-| `tests/integration/` | 90 | 724 |
+| `tests/unit/` | 301 | 2816 |
+| `tests/integration/` | 91 | 729 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **391** | **3526** |
+| **total** | **393** | **3557** |
 
 ---
 
