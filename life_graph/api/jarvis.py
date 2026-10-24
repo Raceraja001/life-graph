@@ -458,6 +458,17 @@ async def undo_save(memory_id: uuid.UUID):
                 {"id": memory_id, "t": tenant_id, "note": note},
             )
         ).first()
+        if row is not None:
+            # A correction (memory_save replaces_id) superseded the old fact;
+            # taking the correction back must not leave neither of them active.
+            await session.execute(
+                text(
+                    "UPDATE memories SET status = 'active', superseded_by = NULL,"
+                    " updated_at = NOW()"
+                    " WHERE tenant_id = :t AND superseded_by = :id AND status = 'superseded'"
+                ),
+                {"id": memory_id, "t": tenant_id},
+            )
         await session.commit()
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Nothing to undo.")
