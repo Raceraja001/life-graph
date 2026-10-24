@@ -608,15 +608,31 @@ _PRIORITY = {
 }
 
 
+#: How far before *after* GET /notifications looks again. created_at is stamped
+#: when a row is built, not when its transaction commits, so a row committed a
+#: moment late can carry a time the phone's cursor has already passed; without
+#: the overlap it was never delivered (security review 2026-10-24, finding 7).
+#: The app drops ids it has already shown, so the repeats are harmless.
+NOTIFICATION_OVERLAP_SECONDS = 30
+
+
 @router.get("/notifications", summary="What Jarvis has to tell you, oldest first")
 async def notifications(after: str | None = None, limit: int = 20):
-    """Notifications newer than *after* (ISO-8601), for the phone to post."""
-    from datetime import UTC, datetime
+    """Notifications from *after* (ISO-8601) on, for the phone to post.
+
+    The reply also repeats what was created in the NOTIFICATION_OVERLAP_SECONDS
+    before *after*, so it can hold notifications the phone already has: the
+    app de-duplicates by id. Those repeats come on top of *limit*, so a burst
+    inside the overlap can never fill the page and stop the cursor moving.
+    """
+    from datetime import UTC, datetime, timedelta
 
     from life_graph.models.db import Notification
 
     tenant_id = get_current_tenant_id()
     query = select(Notification).where(Notification.tenant_id == tenant_id)
+    page = max(1, min(limit, 50))
+    overlap = None
     if after:
         try:
             since = datetime.fromisoformat(after.replace("Z", "+00:00"))
@@ -624,14 +640,21 @@ async def notifications(after: str | None = None, limit: int = 20):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "after is not a date.") from None
         if since.tzinfo is None:
             since = since.replace(tzinfo=UTC)
+        overlap = query.where(
+            Notification.created_at > since - timedelta(seconds=NOTIFICATION_OVERLAP_SECONDS),
+            Notification.created_at <= since,
+        )
         query = query.where(Notification.created_at > since)
     async with async_session() as session:
-        rows = (
-            (
-                await session.execute(
-                    query.order_by(Notification.created_at).limit(max(1, min(limit, 50)))
-                )
+        rows = []
+        if overlap is not None:
+            rows = list(
+                (await session.execute(overlap.order_by(Notification.created_at).limit(50)))
+                .scalars()
+                .all()
             )
+        rows += (
+            (await session.execute(query.order_by(Notification.created_at).limit(page)))
             .scalars()
             .all()
         )

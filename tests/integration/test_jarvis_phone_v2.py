@@ -198,6 +198,14 @@ async def test_notifications_newer_than_the_last_seen(client):
     bad = await client.get("/api/v1/jarvis/notifications", headers=phone, params={"after": "soon"})
     assert bad.status_code == 400
 
+    # A row stamped just before the cursor (committed late) still arrives,
+    # alongside what is new (review 2026-10-24, finding 7).
+    cursor = now - timedelta(minutes=5, seconds=-5)  # 5 s after "Alert"
+    late = await client.get(
+        "/api/v1/jarvis/notifications", headers=phone, params={"after": cursor.isoformat()}
+    )
+    assert [n["title"] for n in late.json()["data"]] == ["Alert"]
+
 
 @pytest.mark.asyncio
 @skip_on_db_error
