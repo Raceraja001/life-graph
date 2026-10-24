@@ -4,6 +4,12 @@
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_PORT="${LIFE_GRAPH_API_PORT:-8080}"
+# Where uvicorn listens. Loopback only by default: on 0.0.0.0 the API answered
+# on the WSL VM's tailnet address and to every Docker container on the bridge,
+# around Tailscale Serve. Windows still reaches it through WSL's localhost
+# forwarding. LIFE_GRAPH_BIND_HOST=0.0.0.0 opts back in (e.g. for a container
+# that calls the API through host.docker.internal).
+BIND_HOST="${LIFE_GRAPH_BIND_HOST:-127.0.0.1}"
 DASH_PORT="${LIFE_GRAPH_DASH_PORT:-3000}"
 # Postgres/Redis ports are read from the app's own settings below, NOT
 # assumed to be 5432/6379. docker-compose.override.yml maps them to
