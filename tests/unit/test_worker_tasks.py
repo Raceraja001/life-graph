@@ -348,9 +348,13 @@ async def test_trust_decay_isolates_tenant_failures(fake_session, monkeypatch):
 async def test_check_approval_timeouts_success(monkeypatch):
     svc = MagicMock()
     svc.check_expirations = AsyncMock(return_value=3)
+    svc.expire_stale = AsyncMock(return_value=2)
     monkeypatch.setattr("life_graph.api.dependencies.get_approval_service", lambda: svc)
 
-    assert await tasks.check_approval_timeouts({}) == {"expired_count": 3}
+    assert await tasks.check_approval_timeouts({}) == {"expired_count": 3, "stale_count": 2}
+    from life_graph.config import settings
+
+    svc.expire_stale.assert_awaited_once_with(settings.autonomy_approval_stale_days)
 
 
 @pytest.mark.asyncio
