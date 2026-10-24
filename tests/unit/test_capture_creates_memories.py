@@ -20,6 +20,7 @@ import pytest
 from life_graph.core.events import Event, EventType
 from life_graph.core.trust import TrustTier
 from life_graph.extraction.rules import ExtractedFact
+from life_graph.services import saved_by_tool
 from life_graph.services.capture_processors import CaptureProcessors
 
 
@@ -372,19 +373,69 @@ class TestActivityTrailSurfaces:
 
 class TestSavedByJarvisItself:
     """On the phone app Jarvis saves "remember that…" with memory_save; the
-    extractor kept it too, so it was stored twice in different words."""
+    extractor kept it too, so it was stored twice in different words. What
+    the run for the message saved decides (services/saved_by_tool.py)."""
 
-    @pytest.mark.asyncio
-    async def test_explicit_saves_are_left_to_jarvis_other_facts_still_kept(self, harness):
+    @pytest.fixture
+    def jarvis(self, monkeypatch, harness):
         harness.capture_evt.surface = "jarvis_app"
         harness.facts.append(
             ExtractedFact(content="Locker code is 4417", fact_type="explicit_save", confidence=0.95)
         )
+        run_saves = AsyncMock(return_value=[])
+        monkeypatch.setattr(saved_by_tool, "run_saves", run_saves)
+        vectors = {"Uses PostgreSQL": [0.0, 1.0], "Locker code is 4417": [1.0, 0.0]}
+        harness.manager.generate_embedding = AsyncMock(side_effect=lambda t: vectors.get(t))
+        return run_saves
+
+    @pytest.mark.asyncio
+    async def test_what_the_run_saved_is_not_stored_again(self, harness, jarvis):
+        jarvis.return_value = [
+            saved_by_tool.SavedMemory(uuid.uuid4(), "My locker code is 4417.", [0.99, 0.05])
+        ]
 
         await harness.run()
 
         stored = harness.manager.store_facts.await_args.args[0]
         assert [f.content for f in stored] == ["Uses PostgreSQL"]
+
+    @pytest.mark.asyncio
+    async def test_a_relabelled_copy_is_dropped_too(self, harness, jarvis):
+        """The extractor called it a plain fact (2026-10-24); the label is not the test."""
+        harness.facts[-1].fact_type = "fact"
+        jarvis.return_value = [
+            saved_by_tool.SavedMemory(uuid.uuid4(), "My locker code is 4417.", [0.99, 0.05])
+        ]
+
+        await harness.run()
+
+        stored = harness.manager.store_facts.await_args.args[0]
+        assert [f.content for f in stored] == ["Uses PostgreSQL"]
+
+    @pytest.mark.asyncio
+    async def test_when_the_run_saved_nothing_the_explicit_save_is_kept(self, harness, jarvis):
+        await harness.run()
+
+        stored = harness.manager.store_facts.await_args.args[0]
+        assert [f.fact_type for f in stored] == ["fact", "explicit_save"]
+
+    @pytest.mark.asyncio
+    async def test_a_run_still_going_leaves_the_capture_for_the_sweep(self, harness, jarvis):
+        jarvis.return_value = None
+
+        await harness.run()
+
+        harness.manager.store_facts.assert_not_awaited()
+        assert harness.capture_evt.status == "received"
+
+    @pytest.mark.asyncio
+    async def test_no_facts_no_wait(self, harness, jarvis):
+        harness.facts.clear()
+
+        await harness.run()
+
+        jarvis.assert_not_awaited()
+        assert harness.capture_evt.status == "processed"
 
     @pytest.mark.asyncio
     async def test_other_surfaces_keep_explicit_saves(self, harness):
