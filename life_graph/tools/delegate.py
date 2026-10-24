@@ -17,7 +17,7 @@ import json
 import logging
 import uuid
 
-from life_graph.core.run_taint import TAINTED_REFUSAL, outside_content_seen
+from life_graph.core.run_taint import TAINT_INPUT_KEY, TAINTED_REFUSAL, outside_content_seen
 from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
@@ -117,7 +117,8 @@ async def delegate_to_persona(
             }
         )
 
-    if outside_content_seen() and await _holds_host_tools(ctx.tenant_id, persona):
+    tainted = outside_content_seen()
+    if tainted and await _holds_host_tools(ctx.tenant_id, persona):
         # An email or page read in this run must not be able to reach a shell
         # through a worker (core/run_taint.py, review 2026-10-24).
         return json.dumps({"error": f"{persona}: {TAINTED_REFUSAL}"})
@@ -150,7 +151,9 @@ async def delegate_to_persona(
         spawn_result = await pm.spawn(
             tenant_id=ctx.tenant_id,
             agent_name=persona,
-            input_data={"message": subtask},
+            # A tainted run's child starts tainted: its brief came after the
+            # outside text (core/run_taint.py TAINT_INPUT_KEY).
+            input_data={"message": subtask, **({TAINT_INPUT_KEY: True} if tainted else {})},
             task_name=f"delegated:{persona}",
             parent_task_id=ctx.task_id,
             root_task_id=child_root_task_id,

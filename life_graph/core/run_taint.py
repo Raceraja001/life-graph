@@ -46,6 +46,13 @@ OUTSIDE_CONTENT_TOOLS: frozenset[str] = frozenset(
     }
 )
 
+#: ``AgentTask.input`` key that starts a run tainted. ``delegate_to_persona``
+#: sets it on a child spawned from a tainted run: the child's brief was written
+#: after the outside text, and the child reads the root's owner message
+#: (memory_save's gate), so a clean child was a way round every rule above:
+#: Jarvis delegating to itself, then on to cody (review 2026-10-25).
+TAINT_INPUT_KEY = "outside_content_seen"
+
 _outside_seen: ContextVar[bool] = ContextVar("run_outside_content_seen", default=False)
 
 

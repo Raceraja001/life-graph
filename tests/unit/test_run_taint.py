@@ -3,6 +3,7 @@ trusting it (core/run_taint.py, security review 2026-10-24 C1c)."""
 
 from __future__ import annotations
 
+import contextlib
 import json
 import uuid
 from types import SimpleNamespace
@@ -54,7 +55,7 @@ def _llm(turns):
     return _LLM()
 
 
-async def _run(monkeypatch, turns):
+async def _run(monkeypatch, turns, **run_kwargs):
     from life_graph.agents import orchestrator as orch_mod
     from life_graph.api import dependencies
 
@@ -72,9 +73,16 @@ async def _run(monkeypatch, turns):
     orch = orch_mod.AgentOrchestrator(model="ollama_chat/test")
     orch.condense = False
     orch.detect_stuck = False
-    async for _ in orch.run([{"role": "user", "content": "hi"}], tools=tools):
+    async for _ in orch.run([{"role": "user", "content": "hi"}], tools=tools, **run_kwargs):
         pass
     return seen
+
+
+@pytest.mark.asyncio
+async def test_a_run_started_tainted_is_tainted_from_its_first_tool(monkeypatch):
+    seen = await _run(monkeypatch, [["memory_save"]], outside_content_seen=True)
+    assert seen == [("memory_save", True)]
+    assert outside_content_seen() is False
 
 
 @pytest.mark.asyncio
@@ -224,3 +232,38 @@ async def test_clean_run_delegates_to_cody(delegation):
 
     out = json.loads(await delegate_to_persona("cody", "fix the test", wait=False))
     assert out == {"task_id": "child", "status": "queued"}
+    assert "outside_content_seen" not in delegation.spawn.await_args.kwargs["input_data"]
+
+
+@pytest.mark.asyncio
+async def test_a_tainted_runs_child_starts_tainted(delegation):
+    """Jarvis -> jarvis -> cody, or a child saving to memory, must not wash the taint off."""
+    from life_graph.tools.delegate import delegate_to_persona
+
+    with tool_call_scope(True):
+        await delegate_to_persona("scout", "look it up", wait=False)
+    data = delegation.spawn.await_args.kwargs["input_data"]
+    assert data == {"message": "look it up", "outside_content_seen": True}
+
+
+@pytest.mark.asyncio
+async def test_the_kernel_starts_a_marked_child_tainted(monkeypatch):
+    """ProcessManager._run_agent hands the input's mark to the orchestrator."""
+    from life_graph.agents import orchestrator as orch_mod
+    from life_graph.kernel.process_manager import ProcessManager
+
+    started: list[bool] = []
+
+    async def fake_run(self, messages, system_prompt=None, tools=None, **kw):
+        started.append(kw.get("outside_content_seen", False))
+        yield 'data: {"type": "done"}\n\n'
+
+    monkeypatch.setattr(orch_mod.AgentOrchestrator, "run", fake_run)
+    pm = ProcessManager.__new__(ProcessManager)
+    persona = {"name": "scout", "allowed_tools": ["web_search"], "system_prompt": "s"}
+    for marked in (True, False):
+        data = {"message": "m", **({"outside_content_seen": True} if marked else {})}
+        # Only the hand-off is under test; what the run does after it may fail here.
+        with contextlib.suppress(Exception):
+            await pm._run_agent("t_taint", "scout", data, persona)
+    assert started == [True, False]

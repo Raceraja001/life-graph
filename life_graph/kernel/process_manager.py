@@ -533,6 +533,7 @@ class ProcessManager:
         from life_graph.agents.orchestrator import (
             AgentOrchestrator,
         )
+        from life_graph.core.run_taint import TAINT_INPUT_KEY
         from life_graph.services import lead
         from life_graph.tools.registry import registry as tool_registry
 
@@ -695,7 +696,11 @@ class ProcessManager:
         timing["prepare_s"] = round(time.monotonic() - run_started, 2)
         with confinement, pin:
             async for event_str in orchestrator.run(
-                messages, system_prompt=system_prompt, tools=tools
+                messages,
+                system_prompt=system_prompt,
+                tools=tools,
+                # Set by delegate_to_persona on a tainted run's child.
+                **({"outside_content_seen": True} if input_data.get(TAINT_INPUT_KEY) else {}),
             ):
                 if "first_token_s" not in timing and '"token"' in event_str:
                     timing["first_token_s"] = round(time.monotonic() - run_started, 2)
