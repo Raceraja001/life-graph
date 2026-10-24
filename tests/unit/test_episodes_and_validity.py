@@ -111,3 +111,70 @@ def test_memory_start_is_read(monkeypatch, raw, expected):
 
     monkeypatch.setattr(settings, "memory_start_at", raw)
     assert settings.memory_start() == expected
+
+
+class _Rows:
+    """``async_session()`` stand-in returning fixed (id, content, properties) rows."""
+
+    def __init__(self, rows) -> None:
+        self._rows = rows
+
+    def __call__(self):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc) -> bool:
+        return False
+
+    async def execute(self, _stmt):
+        rows = self._rows
+        return type("R", (), {"all": lambda self: rows})()
+
+
+def _cc(session: str, project: str) -> dict:
+    return {"integration": "claude_code", "claude_code_session_id": session, "project": project}
+
+
+async def _prompts(monkeypatch, rows):
+    from life_graph.services import episodes
+
+    monkeypatch.setattr(episodes, "async_session", _Rows(rows))
+    bounds = (datetime(2026, 10, 22, tzinfo=UTC), datetime(2026, 10, 23, tzinfo=UTC))
+    monkeypatch.setattr(episodes, "_day_bounds", lambda day: bounds)
+    return await episodes._work_prompts("acme", THU)
+
+
+@pytest.mark.asyncio
+async def test_work_prompts_are_grouped_by_session(monkeypatch):
+    lines, ids = await _prompts(
+        monkeypatch,
+        [
+            ("1", "fix the recall ranking", _cc("a", "life-graph")),
+            ("2", "add school fees report", _cc("b", "uzhavu")),
+            ("3", "and a test for it", _cc("a", "life-graph")),
+            ("4", "<task-notification>done", _cc("a", "life-graph")),
+        ],
+    )
+    assert lines == [
+        "Session 1 (life-graph):",
+        "- fix the recall ranking",
+        "- and a test for it",
+        "Session 2 (uzhavu):",
+        "- add school fees report",
+    ]
+    assert ids == ["1", "3", "2"]
+
+
+@pytest.mark.asyncio
+async def test_prompts_without_a_session_are_their_own_group(monkeypatch):
+    lines, _ = await _prompts(
+        monkeypatch,
+        [("1", "one", _cc("a", "x")), ("2", "two", {"session_id": "older", "integration": "y"})],
+    )
+    # The second has no Claude Code session: two groups, the second unnamed.
+    assert lines == ["Session 1 (x):", "- one", "Session 2:", "- two"]
+
+    lines, _ = await _prompts(monkeypatch, [("1", "one", None), ("2", "two", {})])
+    assert lines == ["- one", "- two"]

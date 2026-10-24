@@ -420,7 +420,10 @@ async def memory_save(
         out["status"] = "waiting for the user's review"
     if replaced:
         out["replaced"] = replaced
-    return json.dumps(out)
+    # Not ASCII-escaped: the chat stream trims a tool result to 2,000 characters
+    # before the phone's "saved" event is read from it, and a Tamil sentence
+    # escaped as \uXXXX is six times longer, so a long one lost its Undo.
+    return json.dumps(out, ensure_ascii=False)
 
 
 async def _activate(tenant_id: str, memory_id: Any) -> None:

@@ -158,31 +158,9 @@ async def end_session(
     Optionally accepts an ``outcome`` for impact scoring and a caller-written
     ``summary``, which is kept verbatim instead of generating one.
     """
-    async with async_session() as db:
-        sess = await _own_session_or_404(db, session_id)
-
-        if sess.ended_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Session {session_id} already ended",
-            )
-
-        memory_count = await db.scalar(_created_count_stmt(session_id)) or 0
-
-        given = (body.summary or "").strip() if body else ""
-        summary = given or await _generate_summary(sess, memory_count)
-
-        sess.ended_at = datetime.now(UTC)
-        sess.summary = summary
-        sess.memories_created = memory_count
-
-        # Record outcome for impact scoring
-        outcome = body.outcome if body else None
-        if outcome and outcome in ("success", "failure", "neutral"):
-            sess.outcome = outcome
-
-        await db.commit()
-        await db.refresh(sess)
+    outcome = body.outcome if body else None
+    sess = await close_session(session_id, outcome=outcome, summary=body.summary if body else None)
+    memory_count = sess.memories_created
 
     # Update impact scores for recalled memories
     if outcome and outcome in ("success", "failure", "neutral"):
@@ -199,6 +177,45 @@ async def end_session(
 
     logger.info("Ended session %s (memories=%d)", session_id, memory_count)
     return success_response(data=SessionResponse.model_validate(sess))
+
+
+async def close_session(
+    session_id: uuid.UUID,
+    *,
+    outcome: str | None = None,
+    summary: str | None = None,
+) -> Session:
+    """Mark a current-tenant session ended: count, summarise, set ``ended_at``.
+
+    The body of ``POST /sessions/{id}/end``, shared with the Claude Code
+    session closer (services/claude_code_sessions.py) so a session ended by a
+    hook is ended exactly like one ended over the API. Impact scoring and
+    micro-consolidation are left to the caller. Raises the route's 404 for a
+    missing or other-tenant session and 409 for one already ended.
+    """
+    async with async_session() as db:
+        sess = await _own_session_or_404(db, session_id)
+
+        if sess.ended_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Session {session_id} already ended",
+            )
+
+        memory_count = await db.scalar(_created_count_stmt(session_id)) or 0
+
+        given = (summary or "").strip()
+        sess.summary = given or await _generate_summary(sess, memory_count)
+        sess.ended_at = datetime.now(UTC)
+        sess.memories_created = memory_count
+
+        # Record outcome for impact scoring
+        if outcome and outcome in ("success", "failure", "neutral"):
+            sess.outcome = outcome
+
+        await db.commit()
+        await db.refresh(sess)
+    return sess
 
 
 async def _run_micro_consolidation(session_id: uuid.UUID) -> None:

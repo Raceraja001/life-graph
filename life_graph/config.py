@@ -179,6 +179,12 @@ class Settings(BaseSettings):
     # Surfaces whose assistant saves explicit "remember that…" requests itself
     # (Jarvis's memory_save): the extractor skips those facts there.
     capture_saved_by_tool_surfaces: str = "jarvis_app"
+    # Claude Code sessions (services/claude_code_sessions.py): a session whose
+    # SessionEnd marker arrived is closed this long after it, so prompts still
+    # being extracted are linked first; one that never sent it (terminal
+    # killed, crash) is closed after this long without a new memory.
+    claude_code_session_end_grace_minutes: int = 5
+    claude_code_session_idle_minutes: int = 240
 
     # ── Cold Start ─────────────────────────────────────
     cold_start_min_memories: int = 50
@@ -639,6 +645,10 @@ class Settings(BaseSettings):
     interview_max_questions_per_day: int = 3  # Hard daily budget — never nag
     interview_question_ttl_days: int = 7  # Unanswered questions expire after this
     brief_hour_utc: int = 2  # Daily brief composition hour (02:00 UTC ≈ 07:30 IST)
+    # Bills, to-dos, expiring documents and timed reminders written as
+    # notifications for the phone to post (services/due_notifications.py).
+    # False keeps the phone quiet about them; the brief still lists them.
+    phone_due_notifications: bool = True
 
     # ── Web Push Notifications ──────────────────────────
     vapid_public_key: str = ""  # Set LIFE_GRAPH_VAPID_PUBLIC_KEY
