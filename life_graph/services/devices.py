@@ -16,6 +16,7 @@ Pairing happens before the phone has any credential, so its endpoint is open;
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import secrets
@@ -24,7 +25,7 @@ from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,9 +51,19 @@ def hash_token(token: str) -> str:
 
 
 async def issue_code(session: AsyncSession, tenant_id: str) -> Any:
-    """A fresh six-digit code for *tenant_id*; the caller commits."""
+    """A fresh six-digit code for *tenant_id*; the caller commits.
+
+    The tenant's earlier unused codes stop working: only the code on screen
+    pairs, so asking for codes repeatedly does not multiply what a guesser can
+    hit (security review 2026-10-24, M1).
+    """
     from life_graph.models.assistant import DevicePairingCode
 
+    await session.execute(
+        delete(DevicePairingCode).where(
+            DevicePairingCode.tenant_id == tenant_id, DevicePairingCode.used_at.is_(None)
+        )
+    )
     now = datetime.now(UTC)
     for _ in range(10):
         code = "".join(secrets.choice("0123456789") for _ in range(CODE_DIGITS))
@@ -178,6 +189,13 @@ class PairingLimiter:
     and ``total`` overall in ``window`` seconds means a guesser gets a few dozen
     tries at a code that lives ten minutes. In memory, per process: the API
     runs as one.
+
+    Every attempt is counted as a failure *before* the code is looked up
+    (:meth:`allowed` reserves a slot) and given back only when it pairs
+    (:meth:`succeeded`). Counting after the lookup let concurrent guesses all
+    pass the check while the first ones were still awaiting the database
+    (security review 2026-10-24, M1). The check and the reservation run with
+    no await between them, so on one event loop they cannot interleave.
     """
 
     def __init__(self, per_client: int = 5, total: int = 20, window: float = 600.0) -> None:
@@ -190,16 +208,24 @@ class PairingLimiter:
             q.popleft()
 
     def allowed(self, client: str) -> bool:
+        """Reserve one attempt for *client*; False (nothing reserved) when over the cap."""
         now = time.monotonic()
         self._trim(self._all, now)
         q = self._fails.setdefault(client, deque())
         self._trim(q, now)
-        return len(q) < self.per_client and len(self._all) < self.total
-
-    def failed(self, client: str) -> None:
-        now = time.monotonic()
-        self._fails.setdefault(client, deque()).append(now)
+        if len(q) >= self.per_client or len(self._all) >= self.total:
+            return False
+        q.append(now)
         self._all.append(now)
+        return True
+
+    def succeeded(self, client: str) -> None:
+        """The reserved attempt paired a device: it does not count against anyone."""
+        q = self._fails.get(client)
+        if q:
+            stamp = q.pop()
+            with contextlib.suppress(ValueError):
+                self._all.remove(stamp)
 
 
 pairing_limiter = PairingLimiter()

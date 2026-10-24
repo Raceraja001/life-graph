@@ -41,6 +41,8 @@ async def pair(body: PairRequest, request: Request):
     from life_graph.services import devices
 
     client = request.client.host if request.client else "unknown"
+    # Counted as a failure before the lookup, given back only on success: a
+    # burst of concurrent guesses cannot all slip past the cap (review M1).
     if not devices.pairing_limiter.allowed(client):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts. Wait ten minutes and try again."
@@ -49,9 +51,9 @@ async def pair(body: PairRequest, request: Request):
         try:
             device, token = await devices.redeem(session, body.code, body.name)
         except devices.PairingError as exc:
-            devices.pairing_limiter.failed(client)
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
         await session.commit()
+        devices.pairing_limiter.succeeded(client)
         return success_response(data={"device_id": str(device.id), "token": token})
 
 
