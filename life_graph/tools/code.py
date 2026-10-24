@@ -30,6 +30,7 @@ from life_graph.tools._guards import (
     _task_roots,
     check_tenant,
     check_writable,
+    is_sensitive,
     resolve_in_roots,
 )
 from life_graph.tools.registry import tool
@@ -320,7 +321,8 @@ async def code_search(pattern: str, directory: str = ".", glob: str | None = Non
         for f in _walk(root):
             if glob and not f.match(glob):
                 continue
-            if f.stat().st_size > MAX_SEARCH_FILE_BYTES:
+            # code_read refuses .env and keys; a search must not print them line by line.
+            if is_sensitive(f) or f.stat().st_size > MAX_SEARCH_FILE_BYTES:
                 continue
             try:
                 for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
