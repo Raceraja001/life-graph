@@ -32,6 +32,7 @@ import re
 from contextlib import nullcontext
 from typing import Any
 
+from life_graph.core.run_taint import TAINTED_REFUSAL, outside_content_seen
 from life_graph.scoring.ranking import INDEX_CONTENT_CHARS
 from life_graph.tools.registry import tool
 
@@ -176,17 +177,27 @@ async def memory_forget(memory_id: str, reason: str = "") -> str:
     from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
     from life_graph.storage.database import async_session
 
+    ctx = get_current_task_context()
     if has_tenant_context():
         tenant_id = get_current_tenant_id()
-    else:
-        ctx = get_current_task_context()
-        if ctx is None:
-            return json.dumps({"error": "memory_forget has no tenant context."})
+    elif ctx is not None:
         tenant_id = ctx.tenant_id
+    else:
+        return json.dumps({"error": "memory_forget has no tenant context."})
+    if outside_content_seen():
+        return json.dumps({"error": TAINTED_REFUSAL})
     try:
         mid = uuid.UUID(str(memory_id))
     except ValueError:
         return json.dumps({"error": "That is not a memory id; use one from memory_search."})
+    # Only the owner's own words can make Jarvis forget (review 2026-10-24, H3).
+    if not asks_to_forget(await _owner_message(ctx)):
+        return json.dumps(
+            {
+                "error": "The user did not ask to forget anything in this message, so nothing"
+                " was forgotten. Ask them whether they want it forgotten."
+            }
+        )
     note = json.dumps(
         {"forgotten": {"at": datetime.now(UTC).isoformat(), "reason": (reason or "")[:200]}}
     )
@@ -209,7 +220,9 @@ async def memory_forget(memory_id: str, reason: str = "") -> str:
         return json.dumps({"error": f"Could not forget it: {exc}"})
     if row is None:
         return json.dumps({"error": "No active memory with that id."})
-    return json.dumps({"forgotten": True, "content": row[0]})
+    # The id lets the phone show it ("forgotten" event, api/jarvis.py); not
+    # ASCII-escaped for the same reason as memory_save's result.
+    return json.dumps({"forgotten": True, "id": str(mid), "content": row[0]}, ensure_ascii=False)
 
 
 @tool(
@@ -271,7 +284,43 @@ SAVE_INTENT = re.compile(
     r"don'?t forget|do not forget|never forget|jot|write (this|that|it) down)\b",
     re.IGNORECASE,
 )
+#: Asking what Jarvis remembers is not asking it to remember: "do you remember
+#: my locker code?" activated whatever the model then chose to save (review
+#: 2026-10-24, H3).
+RECALL_QUESTION = re.compile(
+    r"\b(?:do|did|does|would) (?:you|u) (?:still |even )?(?:remember|recall)\b"
+    r"|\bwhat (?:else )?(?:do|did|does) (?:you|u) (?:remember|recall|know|have)\b"
+    r"|\b(?:did|have|had) i (?:ever |already )?(?:tell|told|ask|asked) (?:you|u) to\b"
+    r"|\bwhat did i (?:tell|ask) (?:you|u) to\b"
+    r"|^\s*remember (?:when|the time)\b[^.!]*\?",
+    re.IGNORECASE,
+)
+#: The owner saying something remembered is wrong or should go.
+FORGET_INTENT = re.compile(
+    r"\b(?:forget|delete|remove|erase|archive|wrong|incorrect|not true|untrue|isn'?t true"
+    r"|isn'?t right|not right|out of date|outdated|no longer|not any ?more|anymore)\b",
+    re.IGNORECASE,
+)
+# "Don't forget…" asks to remember, not to forget.
+_KEEP_PHRASE = re.compile(r"\b(?:don'?t|do not|never) forget\b", re.IGNORECASE)
+_SENTENCE = re.compile(r"(?<=[.!?\n])\s+")
 MAX_SAVE_CHARS = 1000
+
+
+def asks_to_save(text: str) -> bool:
+    """Whether the owner's message asks for something to be kept: some sentence
+    says so and is not a question about what is already remembered."""
+    return any(
+        SAVE_INTENT.search(s) and not RECALL_QUESTION.search(s) for s in _SENTENCE.split(text or "")
+    )
+
+
+def asks_to_forget(text: str) -> bool:
+    """Whether the owner's message says something remembered is wrong or should go."""
+    return any(
+        FORGET_INTENT.search(_KEEP_PHRASE.sub(" ", s)) and not RECALL_QUESTION.search(s)
+        for s in _SENTENCE.split(text or "")
+    )
 
 
 async def _owner_message(ctx: Any) -> str:
@@ -289,7 +338,10 @@ async def _owner_message(ctx: Any) -> str:
         return ""
     if task is None or task.tenant_id != ctx.tenant_id:
         return ""
-    return str((task.input or {}).get("message") or "")
+    inp = task.input or {}
+    # A turn with shared text keeps the owner's typed words apart (api/kernel.py
+    # chat_stream): a "remember this" inside what they shared is not theirs.
+    return str(inp.get("owner_message", inp.get("message")) or "")
 
 
 @tool(
@@ -359,7 +411,15 @@ async def memory_save(
                 {"error": "replaces_id is not a memory id; use one from memory_search."}
             )
 
-    asked = bool(SAVE_INTENT.search(await _owner_message(ctx)))
+    # After an email or web page in this run, the owner asking is no proof the
+    # owner chose these words (core/run_taint.py): review it, replace nothing.
+    tainted = outside_content_seen()
+    asked = not tainted and asks_to_save(await _owner_message(ctx))
+    saved_props: dict[str, Any] = {
+        "saved_by": "jarvis",
+        # The run it was said in: the phone's voice reply lists it.
+        **({"task_id": str(ctx.root_task_id or ctx.task_id)} if ctx is not None else {}),
+    }
     content_hash = hashlib.sha256(text_.lower().encode()).hexdigest()
     try:
         with tenant_scope(tenant_id):
@@ -376,7 +436,9 @@ async def memory_save(
                 # The same words were waiting for review: the owner asking settles it.
                 row = same
                 if asked:
-                    await _activate(tenant_id, same.id)
+                    # Marked as Jarvis's save too, so Undo and the voice reply's
+                    # saved list find it (review 2026-10-24, H3).
+                    await _activate(tenant_id, same.id, saved_props)
             else:
                 row = await store.store(
                     MemoryCreate(
@@ -384,15 +446,7 @@ async def memory_save(
                         tags=["explicit_save"],
                         source_type="explicit",
                         importance=0.7,
-                        properties={
-                            "saved_by": "jarvis",
-                            # The run it was said in: the phone's voice reply lists it.
-                            **(
-                                {"task_id": str(ctx.root_task_id or ctx.task_id)}
-                                if ctx is not None
-                                else {}
-                            ),
-                        },
+                        properties=saved_props,
                     ),
                     embedding=embedding or None,
                     trust_tier="self",
@@ -418,6 +472,10 @@ async def memory_save(
     out: dict[str, Any] = {"saved": True, "id": str(row.id), "content": row.content}
     if not asked:
         out["status"] = "waiting for the user's review"
+    if tainted:
+        out["note"] = "This turn read outside content, so it waits for the user's review" + (
+            " and replaces nothing." if old_id is not None else "."
+        )
     if replaced:
         out["replaced"] = replaced
     # Not ASCII-escaped: the chat stream trims a tool result to 2,000 characters
@@ -426,7 +484,7 @@ async def memory_save(
     return json.dumps(out, ensure_ascii=False)
 
 
-async def _activate(tenant_id: str, memory_id: Any) -> None:
+async def _activate(tenant_id: str, memory_id: Any, props: dict[str, Any]) -> None:
     from sqlalchemy import text
 
     from life_graph.storage.database import async_session
@@ -434,10 +492,11 @@ async def _activate(tenant_id: str, memory_id: Any) -> None:
     async with async_session() as session:
         await session.execute(
             text(
-                "UPDATE memories SET status = 'active', updated_at = NOW()"
+                "UPDATE memories SET status = 'active', updated_at = NOW(),"
+                " properties = COALESCE(properties, '{}'::jsonb) || CAST(:props AS jsonb)"
                 " WHERE id = :id AND tenant_id = :t AND status = 'pending'"
             ),
-            {"id": memory_id, "t": tenant_id},
+            {"id": memory_id, "t": tenant_id, "props": json.dumps(props)},
         )
         await session.commit()
 

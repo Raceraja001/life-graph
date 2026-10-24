@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import json
 import logging
 from typing import TYPE_CHECKING, Any
@@ -216,6 +217,29 @@ async def ws_event_handler(event: Event) -> None:
 # ── WebSocket route ──────────────────────────────────────────
 
 
+async def _authenticate(
+    websocket: WebSocket, key: str | None, tenant_param: str | None
+) -> str | None:
+    """The tenant this handshake may listen to, or None to refuse it."""
+    named = tenant_param or websocket.headers.get("x-tenant-id") or "default"
+    valid = settings.service_api_keys_list + ([settings.api_key] if settings.api_key else [])
+    if not valid:
+        # verify_service_key's rule: no keys at all is open in development only.
+        return named if settings.is_development else None
+    if not key:
+        return None
+    if any(hmac.compare_digest(key.encode(), k.encode()) for k in valid):
+        return named
+    from life_graph.services.devices import authenticate
+
+    try:
+        device = await authenticate(key)
+    except Exception:  # noqa: BLE001 - a lookup failure is a refusal, never a pass
+        logger.warning("WebSocket device token lookup failed", exc_info=True)
+        return None
+    return device[0] if device is not None else None
+
+
 async def websocket_endpoint(
     websocket: WebSocket,
     api_key: str | None = Query(None, alias="api_key"),
@@ -224,8 +248,7 @@ async def websocket_endpoint(
     """WebSocket endpoint for real-time event streaming.
 
     Authenticates via, in order: an ``Authorization: Bearer`` header, an
-    ``X-API-Key`` header, or an ``api_key`` query parameter (compared
-    against ``settings.api_key``) — the same precedence as the HTTP auth
+    ``X-API-Key`` header, or an ``api_key`` query parameter — the same precedence as the HTTP auth
     path (``api/auth.py``'s ``verify_service_key``). The header sources
     matter here specifically: a browser's native WebSocket API can't set
     custom headers on its own outgoing handshake, but Caddy injects
@@ -236,17 +259,25 @@ async def websocket_endpoint(
     once connected, receives JSON-encoded events from the EventBus
     broadcast.
 
+    The key is checked against ``service_api_keys`` plus the legacy
+    ``api_key``, as ``verify_service_key`` does; a paired phone's device token
+    is accepted too. Only a service key may name its tenant (``tenant_id``
+    query parameter or ``X-Tenant-ID``); a device is the tenant that paired
+    it. Anything else is closed with 4401. It used to compare against
+    ``settings.api_key`` alone, which this deployment leaves unset, so the
+    socket was open to anyone, for any tenant named in the query string
+    (security review 2026-10-24, H1).
+
     The connection stays alive listening for client messages
     (pings / keepalives) until the client disconnects.
     """
-    # ── Auth check ────────────────────────────────────────
-    resolved_key = extract_api_key(websocket.headers, websocket.query_params) or api_key
-    if settings.api_key and resolved_key != settings.api_key:
-        await websocket.close(code=4001, reason="Invalid API key")
+    # ── Auth check + tenant ───────────────────────────────
+    resolved_tenant_id = await _authenticate(
+        websocket, extract_api_key(websocket.headers, websocket.query_params) or api_key, tenant_id
+    )
+    if resolved_tenant_id is None:
+        await websocket.close(code=4401, reason="Invalid API key")
         return
-
-    # ── Resolve tenant_id ─────────────────────────────────
-    resolved_tenant_id = tenant_id or websocket.headers.get("x-tenant-id", "default")
 
     await ws_manager.connect(websocket, resolved_tenant_id)
 

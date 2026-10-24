@@ -34,7 +34,7 @@ pip install -e ".[dev,local-nlp]"    # local-nlp = spaCy + sentence-transformers
                                      # other extras: multimodal, cold-start, all
 python -m alembic upgrade head       # apply migrations (21 revisions in alembic/versions/)
 python -m alembic revision --autogenerate -m "add <feature> tables"
-python -m uvicorn life_graph.main:app --host 0.0.0.0 --port 8080 --reload --reload-dir life_graph
+python -m uvicorn life_graph.main:app --host 127.0.0.1 --port 8080 --reload --reload-dir life_graph
 ruff check life_graph/               # lint (line-length 100, double quotes)
 ruff format life_graph/              # format
 pytest tests/ -v                     # all tests

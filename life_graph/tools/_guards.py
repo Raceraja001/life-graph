@@ -60,8 +60,24 @@ _SENSITIVE_FILE_NAMES = frozenset(
         "id_ed25519",
         "credentials",
         ".credentials.json",  # Claude Code's OAuth token (~/.claude/)
+        # Android signing and SDK settings: store and key passwords live here.
+        "local.properties",
+        "keystore.properties",
     }
 )
+# Key and keystore files, by extension.
+_SENSITIVE_SUFFIXES = frozenset({".pem", ".key", ".jks", ".keystore"})
+# .env, .env.local, .env.production, .envrc …: all carry secrets, except the
+# committed templates that exist to be read.
+_ENV_TEMPLATES = frozenset({".env.example", ".env.sample", ".env.template"})
+
+# Writable nowhere, even inside an allowed root: each holds files that run
+# code without anyone asking — git hooks and config, Claude Code hooks
+# (.claude/settings.json), editor tasks (.vscode/tasks.json, .idea run
+# configurations), CI workflows (.github/workflows), and direnv's .envrc,
+# which the shell sources on cd. Security review 2026-10-24 (C1b).
+_WRITE_PROTECTED_DIRS = frozenset({".git", ".claude", ".vscode", ".github", ".idea"})
+_WRITE_PROTECTED_FILES = frozenset({".envrc"})
 
 # Obvious destructive/privilege-escalating shapes. See layer 3 above: this is
 # a mistake-catcher, not a security boundary.
@@ -134,12 +150,24 @@ def _allowed_roots() -> list[Path]:
 
 def _is_sensitive(resolved: Path) -> str | None:
     parts = set(resolved.parts)
+    posix = resolved.as_posix() + "/"
     for name in _SENSITIVE_DIR_NAMES:
-        if name in parts:
+        # ".config/gcloud" is two parts, never one; match it as a path segment.
+        if name in parts or ("/" in name and f"/{name}/" in posix):
             return name
-    if resolved.name in _SENSITIVE_FILE_NAMES:
-        return resolved.name
+    name = resolved.name
+    if name in _SENSITIVE_FILE_NAMES:
+        return name
+    if name.startswith(".env") and name.lower() not in _ENV_TEMPLATES:
+        return name
+    if resolved.suffix.lower() in _SENSITIVE_SUFFIXES:
+        return name
     return None
+
+
+def is_sensitive(path: Path) -> bool:
+    """True when *path* (already resolved) names credential material."""
+    return _is_sensitive(path) is not None
 
 
 def resolve_in_roots(path: str, *, tool_name: str) -> Path:
@@ -173,18 +201,23 @@ def resolve_in_roots(path: str, *, tool_name: str) -> Path:
 
 
 def check_writable(resolved: Path, *, tool_name: str) -> None:
-    """Refuse writes into a repository's ``.git`` directory.
+    """Refuse writes to files that execute code (``_WRITE_PROTECTED_*``).
 
     ``.git/config`` and ``.git/hooks`` are code-execution surfaces: a
     ``core.fsmonitor`` or hook written there runs on the next ``git_status``
-    or commit. Allowing ``file_write`` into them would hand a persona that
-    holds only file tools a shell. Reads stay allowed.
+    or commit. ``.claude/``, ``.vscode/``, ``.idea/``, ``.github/`` and
+    ``.envrc`` are the same thing for Claude Code, the editors, CI and direnv.
+    Allowing a write into any of them would hand a persona that holds only
+    file tools a shell. Reads stay allowed.
     """
-    if ".git" in resolved.parts:
-        logger.warning("%s denied write inside .git: %s", tool_name, resolved)
+    hit = next((d for d in _WRITE_PROTECTED_DIRS if d in resolved.parts), None)
+    if hit is None and resolved.name in _WRITE_PROTECTED_FILES:
+        hit = resolved.name
+    if hit is not None:
+        logger.warning("%s denied write inside %s: %s", tool_name, hit, resolved)
+        where = f"inside a {hit} directory" if hit in _WRITE_PROTECTED_DIRS else f"to {hit}"
         raise ToolDeniedError(
-            f"{tool_name} may not write inside a .git directory — its config "
-            f"and hooks execute code."
+            f"{tool_name} may not write {where} — it holds config and hooks that execute code."
         )
 
 

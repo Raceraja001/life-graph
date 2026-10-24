@@ -33,6 +33,7 @@ from life_graph.api.dependencies import (
 from life_graph.api.responses import paginated_response, success_response
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.core.trust import with_shared
 from life_graph.services.chat_stream import get_chat_stream_bus, map_bus_event
 from life_graph.services.model_catalog import get_model_catalog
 
@@ -663,6 +664,15 @@ class ChatStreamRequest(BaseModel):
             "sees what was already said."
         ),
     )
+    shared: str | None = Field(
+        default=None,
+        max_length=8000,
+        description=(
+            "Text the user shared from another app (a share sheet, words read from an "
+            "image). Someone else wrote it: the persona sees it fenced as information, "
+            "and only `message` counts as the user's own words."
+        ),
+    )
 
 
 # How many earlier turns a persona is given. Each turn is a user message and a
@@ -794,10 +804,20 @@ async def chat_stream(
             else:
                 history = await _load_chat_history(tenant_id, session_id)
 
+            input_data: dict[str, Any] = {"message": body.message, "history": history}
+            if body.shared and body.shared.strip():
+                # The model reads both; the owner's typed words stay apart, so
+                # memory_save's "did the owner ask" reads only them
+                # (tools/memory_search.py _owner_message).
+                input_data.update(
+                    message=with_shared(body.message, body.shared),
+                    owner_message=body.message,
+                    shared=body.shared,
+                )
             spawn = await pm.spawn(
                 tenant_id=tenant_id,
                 agent_name=body.target_agent,
-                input_data={"message": body.message, "history": history},
+                input_data=input_data,
                 task_name=f"chat:{body.target_agent}",
                 session_id=session_id,
                 project_id=body.project_id,

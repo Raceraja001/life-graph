@@ -23,6 +23,8 @@ param(
 $ErrorActionPreference = "Continue"
 $ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
 $API_PORT = 8080
+# Loopback only unless LIFE_GRAPH_BIND_HOST says otherwise (scripts/_lib.sh has the why).
+$BIND_HOST = if ($env:LIFE_GRAPH_BIND_HOST) { $env:LIFE_GRAPH_BIND_HOST } else { "127.0.0.1" }
 
 Write-Host ""
 Write-Host "  Life Graph - Starting..." -ForegroundColor Cyan
@@ -99,7 +101,7 @@ if ($Backend -or $startBoth -or $All) {
     Write-Host "[backend] Starting uvicorn on :$API_PORT..." -ForegroundColor Yellow
     Start-Process powershell -ArgumentList @(
         "-NoProfile", "-Command",
-        "Set-Location '$ROOT'; python -m uvicorn life_graph.main:app --host 0.0.0.0 --port $API_PORT --reload --reload-dir life_graph"
+        "Set-Location '$ROOT'; python -m uvicorn life_graph.main:app --host $BIND_HOST --port $API_PORT --reload --reload-dir life_graph"
     ) -WindowStyle Minimized
     Pop-Location
 

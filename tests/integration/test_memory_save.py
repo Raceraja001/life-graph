@@ -120,9 +120,24 @@ async def test_asking_settles_the_same_fact_already_waiting_for_review():
 
     fact = f"I am allergic to peanuts ({uuid.uuid4().hex[:6]})."
     waiting = await _seed(fact, status="pending")
-    with _in_run(await _run("please save this: I'm allergic to peanuts")):
+    run = await _run("please save this: I'm allergic to peanuts")
+    with _in_run(run):
         out = json.loads(await memory_save(fact))
-    assert out["id"] == str(waiting) and (await _row(waiting)).status == "active"
+    row = await _row(waiting)
+    assert out["id"] == str(waiting) and row.status == "active"
+    # Marked as Jarvis's save, so Undo and the voice reply find it (review H3).
+    assert row.properties["saved_by"] == "jarvis" and row.properties["task_id"] == str(run)
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_question_about_memory_does_not_activate_a_save():
+    from life_graph.tools.memory_search import memory_save
+
+    with _in_run(await _run("do you remember my locker code?")):
+        out = json.loads(await memory_save(f"My locker code is 82 ({uuid.uuid4().hex[:6]})."))
+    assert out["status"] == "waiting for the user's review"
+    assert (await _row(out["id"])).status == "pending"
 
 
 @pytest.mark.asyncio

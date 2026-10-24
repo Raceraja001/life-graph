@@ -98,6 +98,39 @@ async def test_a_code_works_once_and_guessing_is_capped(client):
 
 @pytest.mark.asyncio
 @skip_on_db_error
+async def test_a_token_unused_for_too_long_stops_working(client):
+    """Review 2026-10-24 (M5): device_token_idle_days since last_seen_at."""
+    from datetime import UTC, datetime, timedelta
+
+    from life_graph.models.assistant import Device
+    from life_graph.services import devices
+    from life_graph.storage.database import async_session
+
+    device_id, token = await _pair(client)
+    phone = {"Authorization": f"Bearer {token}"}
+    async with async_session() as s:
+        row = await s.get(Device, uuid.UUID(device_id))
+        row.last_seen_at = datetime.now(UTC) - timedelta(days=61)
+        await s.commit()
+    devices._cache.clear()
+    assert (await client.get("/api/v1/jarvis/conversations", headers=phone)).status_code == 401
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_new_code_retires_the_earlier_unused_one(client):
+    """Review 2026-10-24 (M1): only the code on screen pairs."""
+    first = (await client.post("/api/v1/devices/codes", headers=OWNER)).json()["data"]["code"]
+    second = (await client.post("/api/v1/devices/codes", headers=OWNER)).json()["data"]["code"]
+    if first == second:  # one in a million: the new code reused the number
+        pytest.skip("the two codes collided")
+    old = await client.post("/api/v1/devices/pair", json={"code": first})
+    assert old.status_code == 400
+    assert (await client.post("/api/v1/devices/pair", json={"code": second})).status_code == 200
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
 async def test_conversations_and_messages_are_the_devices_own(client):
     from life_graph.models.db import AgentSession, AgentTask
     from life_graph.storage.database import async_session

@@ -78,6 +78,84 @@ def test_dotenv_denied_even_inside_root(roots):
         resolve_in_roots(str(env), tool_name="file_read")
 
 
+@pytest.mark.parametrize(
+    "rel",
+    [
+        ".env.local",
+        ".env.production",
+        ".envrc",
+        "certs/server.pem",
+        "certs/server.KEY",
+        "android/app/release.jks",
+        "android/upload.keystore",
+        "android/local.properties",
+        "android/keystore.properties",
+        ".config/gcloud/application_default_credentials.json",
+    ],
+)
+def test_more_credential_files_denied(roots, rel):
+    """Review 2026-10-24 (C1b): .env variants, keys, keystores and Android
+    signing settings are credential material too."""
+    with pytest.raises(ToolDeniedError, match="credential material"):
+        resolve_in_roots(str(roots / rel), tool_name="file_read")
+
+
+@pytest.mark.parametrize("rel", [".env.example", ".env.sample", "src/keys.py", "notes.md"])
+def test_templates_and_ordinary_files_stay_readable(roots, rel):
+    assert resolve_in_roots(str(roots / rel), tool_name="file_read") == (roots / rel).resolve()
+
+
+# ── Writes that would execute code ────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        ".claude/settings.json",
+        ".claude/settings.local.json",
+        ".vscode/tasks.json",
+        ".github/workflows/ci.yml",
+        ".idea/workspace.xml",
+        "sub/project/.github/workflows/x.yml",
+        ".git/hooks/pre-commit",
+    ],
+)
+async def test_writes_into_code_running_config_are_refused(roots, rel):
+    target = roots / rel
+    out = json.loads(await fs.file_write(str(target), "x"))
+    assert "may not write" in out.get("error", ""), out
+    assert not target.exists()
+
+
+async def test_writing_an_envrc_is_refused(roots):
+    out = json.loads(await fs.file_write(str(roots / ".envrc"), "export X=1"))
+    assert "error" in out and not (roots / ".envrc").exists()
+
+
+def test_check_writable_names_envrc(roots):
+    from life_graph.tools._guards import check_writable
+
+    with pytest.raises(ToolDeniedError, match="may not write to .envrc"):
+        check_writable(roots / "proj" / ".envrc", tool_name="code_edit")
+
+
+async def test_code_edit_cannot_create_a_claude_hook(roots):
+    from life_graph.tools import code
+
+    target = roots / "repo" / ".claude" / "settings.json"
+    out = json.loads(await code.code_edit(str(target), "", '{"hooks": {}}'))
+    assert "may not write" in out.get("error", "") and not target.exists()
+
+
+async def test_code_search_skips_credential_files(roots):
+    from life_graph.tools import code
+
+    (roots / ".env.local").write_text("API_TOKEN=sekret\n")
+    (roots / "app.py").write_text("API_TOKEN = None\n")
+    out = json.loads(await code.code_search("API_TOKEN", str(roots)))
+    assert out["matches"] == ["app.py:1: API_TOKEN = None"]
+
+
 # ── The tools return the denial rather than raising ───────────
 
 

@@ -112,6 +112,74 @@ async def test_authenticate_seen_recent(fake_session, patch_async_session, monke
     assert fake_session.commits == 0
 
 
+# Review 2026-10-24 (M5): a token unused for device_token_idle_days stops working
+@pytest.mark.asyncio
+async def test_authenticate_refuses_a_long_idle_device(fake_session, patch_async_session):
+    token = "idle"
+    device = DummyDevice("tenant", "device", last_seen_at=datetime.now(UTC) - timedelta(days=61))
+    fake_session._results = [FakeResult([device])]
+    assert await authenticate(token) is None
+    assert hash_token(token) not in _cache
+    assert fake_session.commits == 0  # last_seen_at is not refreshed by a refused try
+
+
+@pytest.mark.asyncio
+async def test_idle_expiry_can_be_switched_off(fake_session, patch_async_session, monkeypatch):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "device_token_idle_days", 0)
+    device = DummyDevice("tenant", "device", last_seen_at=datetime.now(UTC) - timedelta(days=400))
+    fake_session._results = [FakeResult([device])]
+    assert await authenticate("idle-but-allowed") == ("tenant", "device")
+    _cache.pop(hash_token("idle-but-allowed"), None)
+
+
+@pytest.mark.asyncio
+async def test_revoke_leaves_the_cache_until_the_commit():
+    """The cache is dropped after the revocation commits, not before: a request
+    between the two would re-read the unrevoked row and cache it again."""
+    import uuid
+
+    from life_graph.models.assistant import Device
+    from life_graph.services.devices import forget_cached, revoke
+
+    dev_id = uuid.uuid4()
+    row = DummyDevice("tenant", dev_id)
+    session = FakeSession(objects={(Device, dev_id): row})
+    _cache["h-revoke"] = (time.monotonic() + 60, "tenant", str(dev_id))
+    assert await revoke(session, "tenant", dev_id) is True
+    assert row.revoked_at is not None and "h-revoke" in _cache
+    forget_cached(dev_id)
+    assert "h-revoke" not in _cache
+    assert await revoke(session, "someone-else", dev_id) is False
+
+
+@pytest.mark.asyncio
+async def test_the_revoke_route_drops_the_cache_after_committing(monkeypatch):
+    import uuid
+
+    from life_graph.api import devices as api
+    from life_graph.core.tenant import tenant_scope
+    from life_graph.services import devices
+
+    order = []
+
+    class _Session(FakeSession):
+        async def commit(self):
+            order.append("commit")
+
+    async def fake_revoke(session, tenant_id, device_id):
+        order.append("revoke")
+        return True
+
+    monkeypatch.setattr(api, "async_session", session_factory(_Session()))
+    monkeypatch.setattr(devices, "revoke", fake_revoke)
+    monkeypatch.setattr(devices, "forget_cached", lambda d: order.append("forget"))
+    with tenant_scope("tenant"):
+        await api.revoke_device(str(uuid.uuid4()))
+    assert order == ["revoke", "commit", "forget"]
+
+
 # Test that a successful authentication sets cache correctly
 @pytest.mark.asyncio
 async def test_authenticate_cache_set(fake_session, patch_async_session, monkeypatch):

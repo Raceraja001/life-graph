@@ -52,6 +52,26 @@ def _app() -> FastAPI:
     return app
 
 
+@pytest.fixture(autouse=True)
+def _keys(monkeypatch):
+    """No keys unless a test sets them; development unless a test says otherwise."""
+    monkeypatch.setattr(settings, "api_key", "")
+    monkeypatch.setattr(settings, "service_api_keys", "")
+    monkeypatch.setattr(settings, "environment", "development")
+
+
+def _tenants() -> set[str]:
+    from life_graph.api.websocket import ws_manager
+
+    return {t for t, conns in ws_manager._connections.items() if conns}
+
+
+def _refused(client, url, **kw) -> int:
+    with pytest.raises(WebSocketDisconnect) as exc, client.websocket_connect(url, **kw) as ws:
+        ws.receive_text()
+    return exc.value.code
+
+
 def test_websocket_accepts_caddy_injected_header(monkeypatch):
     monkeypatch.setattr(settings, "api_key", "real-secret")
     client = TestClient(_app())
@@ -63,14 +83,65 @@ def test_websocket_accepts_caddy_injected_header(monkeypatch):
 def test_websocket_rejects_placeholder_query_param_alone(monkeypatch):
     monkeypatch.setattr(settings, "api_key", "real-secret")
     client = TestClient(_app())
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect("/ws?api_key=dev") as ws:
-            ws.receive_text()
+    assert _refused(client, "/ws?api_key=dev") == 4401
 
 
-def test_websocket_open_when_no_api_key_configured(monkeypatch):
-    monkeypatch.setattr(settings, "api_key", "")
+def test_websocket_open_when_no_key_configured_in_development():
     client = TestClient(_app())
     with client.websocket_connect("/ws") as ws:
         ws.send_text("ping")
         assert ws.receive_json() == {"type": "pong"}
+
+
+def test_websocket_closed_when_no_key_configured_outside_development(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "production")
+    assert _refused(TestClient(_app()), "/ws?tenant_id=victim") == 4401
+
+
+# ── Security review 2026-10-24 (H1): service_api_keys, not just api_key ──
+
+
+def test_service_keys_are_checked_not_only_the_legacy_key(monkeypatch):
+    """The deployment sets service_api_keys and leaves api_key empty; the
+    socket used to be open to anyone then, for whatever tenant they named."""
+    monkeypatch.setattr(settings, "service_api_keys", "svc-1,svc-2")
+    client = TestClient(_app())
+    assert _refused(client, "/ws?tenant_id=victim") == 4401
+    assert _refused(client, "/ws?api_key=guess&tenant_id=victim") == 4401
+
+
+def test_dashboard_style_query_key_names_its_tenant(monkeypatch):
+    # dashboard/lib/use-websocket.ts: /ws?api_key=<key>&tenant_id=<tenant>
+    monkeypatch.setattr(settings, "service_api_keys", "svc-1,svc-2")
+    client = TestClient(_app())
+    with client.websocket_connect("/ws?api_key=svc-2&tenant_id=t_dash") as ws:
+        ws.send_text("ping")
+        assert ws.receive_json() == {"type": "pong"}
+        assert "t_dash" in _tenants()
+
+
+def test_bearer_key_with_tenant_header(monkeypatch):
+    monkeypatch.setattr(settings, "service_api_keys", "svc-1")
+    client = TestClient(_app())
+    headers = {"Authorization": "Bearer svc-1", "X-Tenant-ID": "t_hdr"}
+    with client.websocket_connect("/ws", headers=headers) as ws:
+        ws.send_text("ping")
+        assert ws.receive_json() == {"type": "pong"}
+        assert "t_hdr" in _tenants()
+
+
+def test_a_device_token_listens_as_its_own_tenant_only(monkeypatch):
+    from life_graph.services import devices
+
+    async def fake_auth(token):
+        return ("t_phone", "dev-1") if token == "phone-token" else None
+
+    monkeypatch.setattr(settings, "service_api_keys", "svc-1")
+    monkeypatch.setattr(devices, "authenticate", fake_auth)
+    client = TestClient(_app())
+    url = "/ws?tenant_id=someone-else"
+    with client.websocket_connect(url, headers={"Authorization": "Bearer phone-token"}) as ws:
+        ws.send_text("ping")
+        assert ws.receive_json() == {"type": "pong"}
+        assert "t_phone" in _tenants() and "someone-else" not in _tenants()
+    assert _refused(client, url, headers={"Authorization": "Bearer other"}) == 4401

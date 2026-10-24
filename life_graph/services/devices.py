@@ -16,6 +16,7 @@ Pairing happens before the phone has any credential, so its endpoint is open;
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import secrets
@@ -24,7 +25,7 @@ from collections import deque
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,9 +51,19 @@ def hash_token(token: str) -> str:
 
 
 async def issue_code(session: AsyncSession, tenant_id: str) -> Any:
-    """A fresh six-digit code for *tenant_id*; the caller commits."""
+    """A fresh six-digit code for *tenant_id*; the caller commits.
+
+    The tenant's earlier unused codes stop working: only the code on screen
+    pairs, so asking for codes repeatedly does not multiply what a guesser can
+    hit (security review 2026-10-24, M1).
+    """
     from life_graph.models.assistant import DevicePairingCode
 
+    await session.execute(
+        delete(DevicePairingCode).where(
+            DevicePairingCode.tenant_id == tenant_id, DevicePairingCode.used_at.is_(None)
+        )
+    )
     now = datetime.now(UTC)
     for _ in range(10):
         code = "".join(secrets.choice("0123456789") for _ in range(CODE_DIGITS))
@@ -100,8 +111,16 @@ async def redeem(session: AsyncSession, code: str, name: str) -> tuple[Any, str]
 
 
 # token hash -> (expires, tenant_id, device_id); a miss is not cached, so a
-# fresh pairing works at once, and revoke() drops the entry.
+# fresh pairing works at once, and forget_cached() drops the entry once a
+# revocation is committed.
 _cache: dict[str, tuple[float, str, str]] = {}
+
+
+def _idle_too_long(last_seen_at: datetime | None, now: datetime) -> bool:
+    from life_graph.config import settings
+
+    days = settings.device_token_idle_days
+    return bool(days) and last_seen_at is not None and now - last_seen_at > timedelta(days=days)
 
 
 async def authenticate(token: str) -> tuple[str, str] | None:
@@ -124,6 +143,12 @@ async def authenticate(token: str) -> tuple[str, str] | None:
             _cache.pop(digest, None)
             return None
         seen = datetime.now(UTC)
+        if _idle_too_long(device.last_seen_at, seen):
+            # A token left unused this long (a lost or sold phone) no longer
+            # signs in (security review 2026-10-24, M5).
+            _cache.pop(digest, None)
+            logger.info("Device %s token expired: unused since %s", device.id, device.last_seen_at)
+            return None
         if device.last_seen_at is None or seen - device.last_seen_at > _SEEN_EVERY:
             device.last_seen_at = seen
             await session.commit()
@@ -148,7 +173,13 @@ async def list_devices(session: AsyncSession, tenant_id: str) -> list[Any]:
 
 
 async def revoke(session: AsyncSession, tenant_id: str, device_id: Any) -> bool:
-    """Stop the device's token working, at once. False if not this tenant's."""
+    """Mark the device revoked. False if not this tenant's.
+
+    The caller commits, THEN calls :func:`forget_cached`. Dropping the cache
+    here, before the commit, left a window in which a request re-read the
+    still-unrevoked row and cached the token for another minute (security
+    review 2026-10-24, M5).
+    """
     from life_graph.models.assistant import Device
 
     device = await session.get(Device, device_id)
@@ -156,9 +187,13 @@ async def revoke(session: AsyncSession, tenant_id: str, device_id: Any) -> bool:
         return False
     if device.revoked_at is None:
         device.revoked_at = datetime.now(UTC)
-    for digest in [d for d, v in _cache.items() if v[2] == str(device.id)]:
-        _cache.pop(digest, None)
     return True
+
+
+def forget_cached(device_id: Any) -> None:
+    """Drop the device's cached sign-in; call after its revocation is committed."""
+    for digest in [d for d, v in _cache.items() if v[2] == str(device_id)]:
+        _cache.pop(digest, None)
 
 
 def to_dict(device: Any) -> dict[str, Any]:
@@ -178,6 +213,13 @@ class PairingLimiter:
     and ``total`` overall in ``window`` seconds means a guesser gets a few dozen
     tries at a code that lives ten minutes. In memory, per process: the API
     runs as one.
+
+    Every attempt is counted as a failure *before* the code is looked up
+    (:meth:`allowed` reserves a slot) and given back only when it pairs
+    (:meth:`succeeded`). Counting after the lookup let concurrent guesses all
+    pass the check while the first ones were still awaiting the database
+    (security review 2026-10-24, M1). The check and the reservation run with
+    no await between them, so on one event loop they cannot interleave.
     """
 
     def __init__(self, per_client: int = 5, total: int = 20, window: float = 600.0) -> None:
@@ -190,16 +232,24 @@ class PairingLimiter:
             q.popleft()
 
     def allowed(self, client: str) -> bool:
+        """Reserve one attempt for *client*; False (nothing reserved) when over the cap."""
         now = time.monotonic()
         self._trim(self._all, now)
         q = self._fails.setdefault(client, deque())
         self._trim(q, now)
-        return len(q) < self.per_client and len(self._all) < self.total
-
-    def failed(self, client: str) -> None:
-        now = time.monotonic()
-        self._fails.setdefault(client, deque()).append(now)
+        if len(q) >= self.per_client or len(self._all) >= self.total:
+            return False
+        q.append(now)
         self._all.append(now)
+        return True
+
+    def succeeded(self, client: str) -> None:
+        """The reserved attempt paired a device: it does not count against anyone."""
+        q = self._fails.get(client)
+        if q:
+            stamp = q.pop()
+            with contextlib.suppress(ValueError):
+                self._all.remove(stamp)
 
 
 pairing_limiter = PairingLimiter()

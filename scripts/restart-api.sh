@@ -68,10 +68,11 @@ if [ "${DEV_RELOAD:-0}" = "1" ]; then
     reload_args=(--reload --reload-dir life_graph)
 fi
 mkdir -p "$RUN_DIR" "$LOG_DIR"
-step "[api] starting on :$API_PORT${reload_args:+ (reload on)}"
+step "[api] starting on $BIND_HOST:$API_PORT${reload_args:+ (reload on)}"
 # exec: the subshell BECOMES uvicorn, so $! is uvicorn's own pid (not a
-# wrapper that outlives this script holding its stdout open).
-(cd "$ROOT" && exec nohup "$PY" -m uvicorn life_graph.main:app --host 0.0.0.0 --port "$API_PORT" \
+# wrapper that outlives this script holding its stdout open). BIND_HOST:
+# scripts/_lib.sh (loopback unless LIFE_GRAPH_BIND_HOST says otherwise).
+(cd "$ROOT" && exec nohup "$PY" -m uvicorn life_graph.main:app --host "$BIND_HOST" --port "$API_PORT" \
     "${reload_args[@]}" >"$LOG_DIR/uvicorn.log" 2>&1 </dev/null) &
 echo $! >"$PIDFILE"
 wait_for_http "http://localhost:$API_PORT/health" 40 "API" || { warn "see logs/uvicorn.log"; exit 1; }

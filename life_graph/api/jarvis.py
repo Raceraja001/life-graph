@@ -7,7 +7,11 @@ docs/PLAN.md):
 * ``POST /jarvis/chat`` streams ``{type: token, content}`` events, then
   ``{type: done, conversation_id, route}`` or ``{type: error, message}``.
   It is the dashboard's chat stream (api/kernel.py) with Jarvis as the persona,
-  in the app's simpler event shapes.
+  in the app's simpler event shapes. The body is ``{message, shared?,
+  conversation_id?}``: ``message`` is what the owner typed, ``shared`` text
+  they shared from another app, which Jarvis treats as someone else's words.
+  Memory events: ``{type: saved, id, content, pending}`` and
+  ``{type: forgotten, id, content}``.
 * ``GET /jarvis/conversations`` and ``.../{id}/messages``.
 * ``POST /jarvis/voice``: audio in, transcribed on this machine only, answered
   by Jarvis in the same conversation, the reply spoken back as mp3.
@@ -42,6 +46,11 @@ _TERMINAL = {"completed", "failed", "timeout", "cancelled"}
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
     conversation_id: uuid.UUID | None = None
+    # Text the owner shared into the chat from another app (the share sheet, or
+    # /jarvis/read-image's words). Someone else wrote it: Jarvis sees it fenced
+    # as information (core/trust.py with_shared), it is captured as EXTERNAL,
+    # and only `message` counts as the owner asking for anything.
+    shared: str | None = Field(None, max_length=8000)
 
 
 async def _own_conversation(tenant_id: str, conversation_id: uuid.UUID | None) -> None:
@@ -78,7 +87,20 @@ def _app_event(event: dict, state: dict) -> dict | None:
     if kind == "tool_result" and event.get("name") == "memory_save":
         # What Jarvis just remembered, so the app can show it with an Undo.
         return _saved_event(event.get("result"))
+    if kind == "tool_result" and event.get("name") == "memory_forget":
+        # What Jarvis just forgot, so a wrong forget does not go unnoticed.
+        return _forgotten_event(event.get("result"))
     return None  # other tool calls, delegations: not shown on the phone
+
+
+def _forgotten_event(result: object) -> dict | None:
+    try:
+        out = json.loads(str(result or ""))
+    except ValueError:
+        return None
+    if not isinstance(out, dict) or out.get("forgotten") is not True or not out.get("id"):
+        return None
+    return {"type": "forgotten", "id": str(out["id"]), "content": str(out.get("content") or "")}
 
 
 def _saved_event(result: object) -> dict | None:
@@ -96,11 +118,20 @@ def _saved_event(result: object) -> dict | None:
     }
 
 
-async def _capture(tenant_id: str, text: str, kind: str, conversation_id: uuid.UUID | None) -> None:
+async def _capture(
+    tenant_id: str,
+    text: str,
+    kind: str,
+    conversation_id: uuid.UUID | None,
+    *,
+    trust_tier: str | None = None,
+) -> None:
     """The owner's own words to Jarvis, to the capture spine: memory is learnt from them.
 
     Extraction (services/capture_processors.py) keeps only lasting facts, on
     the local model; "remember that…" becomes an active memory at once.
+    Text the owner shared from elsewhere passes ``trust_tier="external"``: what
+    is learnt from it is marked untrusted and waits for review.
     Best-effort: a failed capture never fails the conversation.
     """
     import logging
@@ -118,6 +149,7 @@ async def _capture(tenant_id: str, text: str, kind: str, conversation_id: uuid.U
                     "input": kind,
                     "conversation_id": str(conversation_id) if conversation_id else None,
                 },
+                trust_tier=trust_tier,
             )
             await session.commit()
     except Exception as exc:  # noqa: BLE001
@@ -132,9 +164,20 @@ async def chat(body: ChatRequest):
 
     tenant_id = get_current_tenant_id()
     await _own_conversation(tenant_id, body.conversation_id)
+    from life_graph.core.trust import TrustTier
+
     await _capture(tenant_id, body.message, "text", body.conversation_id)
+    if body.shared and body.shared.strip():
+        await _capture(
+            tenant_id, body.shared, "shared", body.conversation_id, trust_tier=TrustTier.EXTERNAL
+        )
     inner = await chat_stream(
-        ChatStreamRequest(message=body.message, target_agent=LEAD, session_id=body.conversation_id),
+        ChatStreamRequest(
+            message=body.message,
+            target_agent=LEAD,
+            session_id=body.conversation_id,
+            shared=body.shared,
+        ),
         pm=get_process_manager(),
         personas=get_persona_service(),
     )
@@ -242,9 +285,14 @@ async def messages(conversation_id: uuid.UUID):
     out = []
     for t in tasks:
         when = t.created_at.isoformat() if t.created_at else None
-        asked = (t.input or {}).get("message")
+        inp = t.input or {}
+        # A turn with shared text: the owner's typed words, and what they shared.
+        asked = inp.get("owner_message", inp.get("message"))
         if asked:
-            out.append({"role": "user", "content": asked, "created_at": when})
+            turn = {"role": "user", "content": asked, "created_at": when}
+            if inp.get("shared"):
+                turn["shared"] = inp["shared"]
+            out.append(turn)
         answered = (t.result or {}).get("response")
         if answered:
             done = t.completed_at.isoformat() if getattr(t, "completed_at", None) else when
@@ -515,11 +563,41 @@ async def undo_save(memory_id: uuid.UUID):
     return success_response(data={"id": str(memory_id), "status": "archived"})
 
 
-@router.post("/read-image", summary="The words in an image, read on this PC; nothing is stored")
-async def read_image(image: UploadFile = File(...)):
-    import asyncio
+def _image_format(data: bytes) -> str | None:
+    """JPEG, PNG or WEBP by the file's own first bytes, whatever it claims to be."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "JPEG"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "PNG"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "WEBP"
+    return None
+
+
+def _read_words(data: bytes, fmt: str) -> str:
+    """Open *data* as *fmt* only (no other Pillow decoder is reachable), then OCR it.
+
+    MultiModalService._ocr_image caps the pixel count before decoding.
+    """
+    import io
+
+    from PIL import Image
 
     from life_graph.services.multimodal import MultiModalService
+
+    with Image.open(io.BytesIO(data), formats=[fmt]):
+        pass  # raises unless the bytes really are that format
+    return MultiModalService._ocr_image(data)
+
+
+@router.post("/read-image", summary="The words in an image, read on this PC; nothing is stored")
+async def read_image(image: UploadFile = File(...)):
+    """Security review 2026-10-24 (M3): the bytes must be a JPEG, PNG or WebP by
+    their magic bytes and open as that format only; over 40M pixels is refused
+    before decoding; OCR stops after OCR_TIMEOUT_SECONDS."""
+    import asyncio
+
+    from life_graph.services.multimodal import OCR_TIMEOUT_SECONDS
 
     if (image.content_type or "").lower() not in _IMAGE_TYPES:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Send a JPEG, PNG or WebP.")
@@ -528,13 +606,31 @@ async def read_image(image: UploadFile = File(...)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No image received.")
     if len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "That image is too big.")
+    fmt = _image_format(data)
+    if fmt is None:
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Send a JPEG, PNG or WebP.")
     try:
-        words = await asyncio.to_thread(MultiModalService._ocr_image, data)
+        # A backstop over tesseract's own timeout (which also kills it).
+        words = await asyncio.wait_for(
+            asyncio.to_thread(_read_words, data, fmt), timeout=OCR_TIMEOUT_SECONDS + 5
+        )
     except ImportError:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "Reading images is not set up on the PC."
         ) from None
-    except Exception:  # noqa: BLE001 - a corrupt or unreadable file
+    except TimeoutError:
+        raise HTTPException(
+            status.HTTP_504_GATEWAY_TIMEOUT, "Reading that image took too long."
+        ) from None
+    except RuntimeError as exc:
+        if "timeout" in str(exc).lower():  # pytesseract: "Tesseract process timeout"
+            raise HTTPException(
+                status.HTTP_504_GATEWAY_TIMEOUT, "Reading that image took too long."
+            ) from None
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "I couldn't read that image."
+        ) from None
+    except Exception:  # noqa: BLE001 - corrupt, too many pixels, or not what it claims
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "I couldn't read that image."
         ) from None
@@ -552,15 +648,31 @@ _PRIORITY = {
 }
 
 
+#: How far before *after* GET /notifications looks again. created_at is stamped
+#: when a row is built, not when its transaction commits, so a row committed a
+#: moment late can carry a time the phone's cursor has already passed; without
+#: the overlap it was never delivered (security review 2026-10-24, finding 7).
+#: The app drops ids it has already shown, so the repeats are harmless.
+NOTIFICATION_OVERLAP_SECONDS = 30
+
+
 @router.get("/notifications", summary="What Jarvis has to tell you, oldest first")
 async def notifications(after: str | None = None, limit: int = 20):
-    """Notifications newer than *after* (ISO-8601), for the phone to post."""
-    from datetime import UTC, datetime
+    """Notifications from *after* (ISO-8601) on, for the phone to post.
+
+    The reply also repeats what was created in the NOTIFICATION_OVERLAP_SECONDS
+    before *after*, so it can hold notifications the phone already has: the
+    app de-duplicates by id. Those repeats come on top of *limit*, so a burst
+    inside the overlap can never fill the page and stop the cursor moving.
+    """
+    from datetime import UTC, datetime, timedelta
 
     from life_graph.models.db import Notification
 
     tenant_id = get_current_tenant_id()
     query = select(Notification).where(Notification.tenant_id == tenant_id)
+    page = max(1, min(limit, 50))
+    overlap = None
     if after:
         try:
             since = datetime.fromisoformat(after.replace("Z", "+00:00"))
@@ -568,14 +680,21 @@ async def notifications(after: str | None = None, limit: int = 20):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "after is not a date.") from None
         if since.tzinfo is None:
             since = since.replace(tzinfo=UTC)
+        overlap = query.where(
+            Notification.created_at > since - timedelta(seconds=NOTIFICATION_OVERLAP_SECONDS),
+            Notification.created_at <= since,
+        )
         query = query.where(Notification.created_at > since)
     async with async_session() as session:
-        rows = (
-            (
-                await session.execute(
-                    query.order_by(Notification.created_at).limit(max(1, min(limit, 50)))
-                )
+        rows = []
+        if overlap is not None:
+            rows = list(
+                (await session.execute(overlap.order_by(Notification.created_at).limit(50)))
+                .scalars()
+                .all()
             )
+        rows += (
+            (await session.execute(query.order_by(Notification.created_at).limit(page)))
             .scalars()
             .all()
         )
