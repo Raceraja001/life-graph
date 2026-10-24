@@ -245,12 +245,19 @@ async def _run(
         await session.commit()
 
 
+def _not_incident():
+    """Rows tagged ``properties.incident`` are kept as a record but left out of
+    the list and the stats: the 978 duplicates a re-run script queued on
+    2026-10-19 (all cancelled) would otherwise be most of what both show."""
+    return AgentTask.properties["incident"].astext.is_(None)
+
+
 async def list_dev_tasks(session: AsyncSession, tenant_id: str, limit: int = 50) -> list[dict]:
     rows = (
         (
             await session.execute(
                 select(AgentTask)
-                .where(AgentTask.tenant_id == tenant_id, _kind_filter())
+                .where(AgentTask.tenant_id == tenant_id, _kind_filter(), _not_incident())
                 .order_by(AgentTask.created_at.desc())
                 .limit(limit)
             )
