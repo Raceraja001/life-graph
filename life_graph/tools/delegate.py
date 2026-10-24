@@ -17,12 +17,30 @@ import json
 import logging
 import uuid
 
+from life_graph.core.run_taint import TAINTED_REFUSAL, outside_content_seen
 from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
 
 _POLL_INTERVAL_SECONDS = 2
 _TERMINAL_STATUSES = {"completed", "failed", "timeout", "cancelled"}
+
+
+async def _holds_host_tools(tenant_id: str, persona: str) -> bool:
+    """Whether *persona* can touch files, code or the shell. A failed lookup
+    counts as yes: this decides a refusal."""
+    from life_graph.api.dependencies import get_persona_service
+    from life_graph.kernel.personas import HOST_TOOLS
+
+    try:
+        row = await get_persona_service().get_by_name(tenant_id, persona)
+    except Exception:  # noqa: BLE001
+        logger.warning("delegate_to_persona could not read persona %s", persona, exc_info=True)
+        return True
+    if row is None:
+        return False  # spawn() refuses an unknown persona with its own message
+    tools = row.get("allowed_tools")
+    return tools is None or bool(HOST_TOOLS & set(tools))
 
 
 @tool(
@@ -98,6 +116,11 @@ async def delegate_to_persona(
                 ),
             }
         )
+
+    if outside_content_seen() and await _holds_host_tools(ctx.tenant_id, persona):
+        # An email or page read in this run must not be able to reach a shell
+        # through a worker (core/run_taint.py, review 2026-10-24).
+        return json.dumps({"error": f"{persona}: {TAINTED_REFUSAL}"})
 
     pm = get_process_manager()
 

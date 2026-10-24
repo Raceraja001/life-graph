@@ -32,6 +32,7 @@ import re
 from contextlib import nullcontext
 from typing import Any
 
+from life_graph.core.run_taint import TAINTED_REFUSAL, outside_content_seen
 from life_graph.scoring.ranking import INDEX_CONTENT_CHARS
 from life_graph.tools.registry import tool
 
@@ -183,6 +184,8 @@ async def memory_forget(memory_id: str, reason: str = "") -> str:
         if ctx is None:
             return json.dumps({"error": "memory_forget has no tenant context."})
         tenant_id = ctx.tenant_id
+    if outside_content_seen():
+        return json.dumps({"error": TAINTED_REFUSAL})
     try:
         mid = uuid.UUID(str(memory_id))
     except ValueError:
@@ -359,7 +362,10 @@ async def memory_save(
                 {"error": "replaces_id is not a memory id; use one from memory_search."}
             )
 
-    asked = bool(SAVE_INTENT.search(await _owner_message(ctx)))
+    # After an email or web page in this run, the owner asking is no proof the
+    # owner chose these words (core/run_taint.py): review it, replace nothing.
+    tainted = outside_content_seen()
+    asked = not tainted and bool(SAVE_INTENT.search(await _owner_message(ctx)))
     content_hash = hashlib.sha256(text_.lower().encode()).hexdigest()
     try:
         with tenant_scope(tenant_id):
@@ -418,6 +424,10 @@ async def memory_save(
     out: dict[str, Any] = {"saved": True, "id": str(row.id), "content": row.content}
     if not asked:
         out["status"] = "waiting for the user's review"
+    if tainted:
+        out["note"] = "This turn read outside content, so it waits for the user's review" + (
+            " and replaces nothing." if old_id is not None else "."
+        )
     if replaced:
         out["replaced"] = replaced
     # Not ASCII-escaped: the chat stream trims a tool result to 2,000 characters

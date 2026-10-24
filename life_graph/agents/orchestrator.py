@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from life_graph.config import Settings
 from life_graph.connectors.locality import audience_for_model
+from life_graph.core.run_taint import returns_outside_content, tool_call_scope
 from life_graph.services.claude_cli_reply import run_claude_cli
 from life_graph.services.resilient_llm import ResilientLLMExhaustedError
 from life_graph.tools.registry import registry
@@ -175,6 +176,9 @@ class AgentOrchestrator:
 
         detector = StuckDetector() if self.detect_stuck else None
         budget = condenser.budget_for(self.context_tokens, self.max_tokens)
+        # Set once a tool has returned someone else's text (core/run_taint.py);
+        # the memory and delegation tools read it. A local, so per run.
+        outside_seen = False
 
         for iteration in range(self.MAX_ITERATIONS):
             logger.debug("Agent iteration %d/%d", iteration + 1, self.MAX_ITERATIONS)
@@ -393,7 +397,7 @@ class AgentOrchestrator:
                             # this to decide what the model may see: local
                             # only if this model and every fallback it could
                             # fail over to mid-run are on this machine.
-                            with audience_for_model(self.model):
+                            with audience_for_model(self.model), tool_call_scope(outside_seen):
                                 result = await registry.execute(tool_name, tool_args)
                         except KeyError:
                             result = json.dumps(
@@ -401,6 +405,8 @@ class AgentOrchestrator:
                                     "error": f"Unknown tool: {tool_name}",
                                 }
                             )
+                        # Even a failed call may carry the page or mail it hit.
+                        outside_seen = outside_seen or returns_outside_content(tool_name)
 
                     # Signal tool execution result.
                     yield _sse(
