@@ -98,6 +98,26 @@ async def test_a_code_works_once_and_guessing_is_capped(client):
 
 @pytest.mark.asyncio
 @skip_on_db_error
+async def test_a_token_unused_for_too_long_stops_working(client):
+    """Review 2026-10-24 (M5): device_token_idle_days since last_seen_at."""
+    from datetime import UTC, datetime, timedelta
+
+    from life_graph.models.assistant import Device
+    from life_graph.services import devices
+    from life_graph.storage.database import async_session
+
+    device_id, token = await _pair(client)
+    phone = {"Authorization": f"Bearer {token}"}
+    async with async_session() as s:
+        row = await s.get(Device, uuid.UUID(device_id))
+        row.last_seen_at = datetime.now(UTC) - timedelta(days=61)
+        await s.commit()
+    devices._cache.clear()
+    assert (await client.get("/api/v1/jarvis/conversations", headers=phone)).status_code == 401
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
 async def test_a_new_code_retires_the_earlier_unused_one(client):
     """Review 2026-10-24 (M1): only the code on screen pairs."""
     first = (await client.post("/api/v1/devices/codes", headers=OWNER)).json()["data"]["code"]

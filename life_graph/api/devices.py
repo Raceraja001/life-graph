@@ -78,4 +78,5 @@ async def revoke_device(device_id: str):
         if not await devices.revoke(session, get_current_tenant_id(), pk):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "device not found")
         await session.commit()
-        return success_response(data={"revoked": True})
+    devices.forget_cached(pk)  # after the commit: nothing can re-cache the live row
+    return success_response(data={"revoked": True})

@@ -111,8 +111,16 @@ async def redeem(session: AsyncSession, code: str, name: str) -> tuple[Any, str]
 
 
 # token hash -> (expires, tenant_id, device_id); a miss is not cached, so a
-# fresh pairing works at once, and revoke() drops the entry.
+# fresh pairing works at once, and forget_cached() drops the entry once a
+# revocation is committed.
 _cache: dict[str, tuple[float, str, str]] = {}
+
+
+def _idle_too_long(last_seen_at: datetime | None, now: datetime) -> bool:
+    from life_graph.config import settings
+
+    days = settings.device_token_idle_days
+    return bool(days) and last_seen_at is not None and now - last_seen_at > timedelta(days=days)
 
 
 async def authenticate(token: str) -> tuple[str, str] | None:
@@ -135,6 +143,12 @@ async def authenticate(token: str) -> tuple[str, str] | None:
             _cache.pop(digest, None)
             return None
         seen = datetime.now(UTC)
+        if _idle_too_long(device.last_seen_at, seen):
+            # A token left unused this long (a lost or sold phone) no longer
+            # signs in (security review 2026-10-24, M5).
+            _cache.pop(digest, None)
+            logger.info("Device %s token expired: unused since %s", device.id, device.last_seen_at)
+            return None
         if device.last_seen_at is None or seen - device.last_seen_at > _SEEN_EVERY:
             device.last_seen_at = seen
             await session.commit()
@@ -159,7 +173,13 @@ async def list_devices(session: AsyncSession, tenant_id: str) -> list[Any]:
 
 
 async def revoke(session: AsyncSession, tenant_id: str, device_id: Any) -> bool:
-    """Stop the device's token working, at once. False if not this tenant's."""
+    """Mark the device revoked. False if not this tenant's.
+
+    The caller commits, THEN calls :func:`forget_cached`. Dropping the cache
+    here, before the commit, left a window in which a request re-read the
+    still-unrevoked row and cached the token for another minute (security
+    review 2026-10-24, M5).
+    """
     from life_graph.models.assistant import Device
 
     device = await session.get(Device, device_id)
@@ -167,9 +187,13 @@ async def revoke(session: AsyncSession, tenant_id: str, device_id: Any) -> bool:
         return False
     if device.revoked_at is None:
         device.revoked_at = datetime.now(UTC)
-    for digest in [d for d, v in _cache.items() if v[2] == str(device.id)]:
-        _cache.pop(digest, None)
     return True
+
+
+def forget_cached(device_id: Any) -> None:
+    """Drop the device's cached sign-in; call after its revocation is committed."""
+    for digest in [d for d, v in _cache.items() if v[2] == str(device_id)]:
+        _cache.pop(digest, None)
 
 
 def to_dict(device: Any) -> dict[str, Any]:
