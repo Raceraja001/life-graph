@@ -133,7 +133,10 @@ async def landing(monkeypatch):
         return {"head_commit": "a" * 40, "base_commit": "b" * 40, "base_branch": "master"}
 
     monkeypatch.setattr(github_pr, "describe_landing", fake_describe)
-    from life_graph.drivers import dispatcher
+    # describe_change / second_opinion are read by the approval-filing mixin
+    # (drivers/dispatch_approvals.py, split out of dispatcher.py), so that is
+    # the module to patch.
+    from life_graph.drivers import dispatch_approvals as dispatcher
     from life_graph.services import change_policy
 
     # The landed diff, as change_policy would describe it (the commits above
