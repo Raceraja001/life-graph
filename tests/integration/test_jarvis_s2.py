@@ -133,3 +133,111 @@ async def _memory(content: str, tenant: str, **fields) -> uuid.UUID:
         s.add(m)
         await s.commit()
         return m.id
+
+
+async def _entity(name: str, tenant: str, memory_ids: list[uuid.UUID]) -> uuid.UUID:
+    from life_graph.models.assistant import Entity, MemoryEntity
+    from life_graph.services.entities import normalize
+    from life_graph.storage.database import async_session
+
+    async with async_session() as s:
+        e = Entity(tenant_id=tenant, key=normalize(name), name=name, mentions=len(memory_ids))
+        s.add(e)
+        await s.flush()
+        for mid in memory_ids:
+            s.add(MemoryEntity(memory_id=mid, entity_id=e.id, tenant_id=tenant))
+        await s.commit()
+        return e.id
+
+
+# ── Memory ──────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_memory_overview_is_the_devices_tenant_only(client):
+    phone = await _phone(client)
+    fact = await _memory("I moved to Chennai.", TENANT)
+    rule = await _memory(
+        "Always write local HTML files.",
+        TENANT,
+        source_type="explicit",
+        tags=["explicit_save"],
+        properties={"saved_by": "jarvis"},
+    )
+    day = await _memory(
+        "Conversations with Jarvis on Saturday 24 October 2026: Planned the school app.",
+        TENANT,
+        source_type="episode",
+        properties={"kind": "episode", "source": "jarvis", "date": "2026-10-24"},
+    )
+    await _memory("Waiting for review.", TENANT, status="pending")
+    await _memory("Someone else's fact.", OTHER)
+    await _memory("Never share this.", OTHER, source_type="explicit", tags=["explicit_save"])
+    await _entity("Murugan", TENANT, [fact])
+
+    resp = await client.get("/api/v1/jarvis/memory/overview", headers=_spoofed(phone))
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert {"counts", "people", "projects", "rules", "recent", "days"} <= set(data)
+    assert data["counts"]["total"] == 3 and data["counts"]["to_review"] == 1
+    assert data["counts"]["rules"] == 1 and data["counts"]["facts"] == 1
+    assert [r["id"] for r in data["rules"]] == [str(rule)]
+    assert {r["id"]: r["kind"] for r in data["recent"]} == {str(fact): "fact", str(rule): "rule"}
+    assert data["days"] == [
+        {
+            "id": str(day),
+            "date": "2026-10-24",
+            "source": "Jarvis",
+            "summary": "Planned the school app.",
+        }
+    ]
+    # No contact or project names Murugan for this tenant: a thing, not a person.
+    assert data["people"] == [] and [t["name"] for t in data["things"]] == ["Murugan"]
+    assert "Someone else" not in resp.text and "Never share" not in resp.text
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_entity_is_the_devices_own(client):
+    phone = await _phone(client)
+    mine = await _memory("Murugan fixed the pump.", TENANT)
+    other_memory = await _memory("Murugan is someone else's.", OTHER)
+    ent = await _entity("Murugan", TENANT, [mine])
+    theirs = await _entity("Murugan", OTHER, [other_memory])
+
+    resp = await client.get(f"/api/v1/jarvis/entities/{ent}", headers=_spoofed(phone))
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert set(data) == {"id", "name", "also_called", "mentions", "memories", "related", "days"}
+    assert data["name"] == "Murugan" and [m["id"] for m in data["memories"]] == [str(mine)]
+    # Another tenant's entity id is not found, nor is a malformed one.
+    assert (await client.get(f"/api/v1/jarvis/entities/{theirs}", headers=phone)).status_code == 404
+    assert (await client.get("/api/v1/jarvis/entities/nope", headers=phone)).status_code == 404
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_memory_search_blank_is_empty_and_limit_is_bounded(client):
+    phone = await _phone(client)
+    resp = await client.get("/api/v1/jarvis/memory/search?q=", headers=phone)
+    assert resp.status_code == 200 and resp.json()["data"] == []
+    resp = await client.get("/api/v1/jarvis/memory/search?q=x&limit=500", headers=phone)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_memory_search_finds_only_the_devices_active_memories(client):
+    phone = await _phone(client)
+    word = f"zebrafish{uuid.uuid4().hex[:6]}"
+    mine = await _memory(f"My {word} is called Nemo.", TENANT)
+    await _memory(f"My {word} waits for review.", TENANT, status="pending")
+    await _memory(f"Their {word} is called Dory.", OTHER)
+    resp = await client.get(f"/api/v1/jarvis/memory/search?q={word}", headers=_spoofed(phone))
+    if resp.status_code == 503:
+        pytest.skip("no embedding service")
+    assert resp.status_code == 200
+    rows = resp.json()["data"]
+    assert [r["id"] for r in rows] == [str(mine)]
+    assert set(rows[0]) == {"id", "content", "kind", "source", "created_at", "score"}

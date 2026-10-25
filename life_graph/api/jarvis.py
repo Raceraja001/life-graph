@@ -1211,6 +1211,45 @@ async def plan(days: int = Query(7, ge=1, le=31)):
     return success_response(data=await jarvis_plan.plan(get_current_tenant_id(), days))
 
 
+@router.get("/memory/overview", summary="What Jarvis remembers: counts, people, rules, days")
+async def memory_overview():
+    """Counts, the people, projects and things memories mention, the rules,
+    the newest memories and the days (services/jarvis_memory.py). A part that
+    fails is null or empty; the call itself does not fail for it."""
+    from life_graph.services import jarvis_memory
+
+    return success_response(data=await jarvis_memory.overview(get_current_tenant_id()))
+
+
+@router.get("/memory/search", summary="Search what Jarvis remembers (active memories only)")
+async def memory_search(q: str = "", limit: int = Query(30, ge=1, le=100)):
+    """By meaning and by words (the store's hybrid search). A blank query is
+    an empty list; 503 when the embedding service is down."""
+    from life_graph.services import jarvis_memory
+
+    try:
+        return success_response(data=await jarvis_memory.search(q, limit))
+    except jarvis_memory.SearchUnavailableError:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Search is not available right now."
+        ) from None
+
+
+@router.get("/entities/{entity_id}", summary="One person, project or thing, and what is known")
+async def entity(entity_id: str):
+    """404 when the id is not a UUID or not one of this tenant's entities."""
+    from life_graph.services import jarvis_memory
+
+    try:
+        ident = uuid.UUID(entity_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.") from None
+    found = await jarvis_memory.entity_detail(get_current_tenant_id(), ident)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+    return success_response(data=found)
+
+
 # ── v4: in-app update ───────────────────────────────────────────────────────
 
 APK_MEDIA_TYPE = "application/vnd.android.package-archive"
