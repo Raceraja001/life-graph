@@ -32,6 +32,7 @@ from life_graph.api.dependencies import (
 )
 from life_graph.api.responses import paginated_response, success_response
 from life_graph.config import settings
+from life_graph.core.run_taint import TAINT_INPUT_KEY
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import with_shared
 from life_graph.services.chat_stream import get_chat_stream_bus, map_bus_event
@@ -813,6 +814,11 @@ async def chat_stream(
                     message=with_shared(body.message, body.shared),
                     owner_message=body.message,
                     shared=body.shared,
+                    # Someone else wrote it: the run starts as if it had read
+                    # an email, so the text cannot save, forget or delegate in
+                    # the owner's name (core/run_taint.py; owner's call
+                    # 2026-10-25, second review).
+                    **{TAINT_INPUT_KEY: True},
                 )
             spawn = await pm.spawn(
                 tenant_id=tenant_id,

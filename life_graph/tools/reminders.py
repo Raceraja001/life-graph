@@ -6,21 +6,27 @@ services/due_notifications.py posts it to the phone. The chat stream shows the
 result as a ``reminded`` event, and the voice reply lists it (api/jarvis.py),
 from the run's task id stored with the reminder.
 
-After a run has read outside content (an email, a web page, a worker's report)
-it refuses (core/run_taint.py): that text must not be able to schedule things
-in the owner's name.
+After a run has read outside content (an email, a web page, a worker's report,
+text the owner shared from another app) it refuses unless the owner's own typed
+words ask for a reminder (core/run_taint.py): that text must not be able to
+schedule things in the owner's name ("Pay 5000 to Acme"), but "remind me
+Friday" said over a shared school circular is the owner asking.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 
 from life_graph.core.run_taint import TAINTED_REFUSAL, outside_content_seen
 from life_graph.tools.registry import tool
 
 logger = logging.getLogger(__name__)
+
+#: The owner asking for a reminder in their own typed message.
+REMIND_INTENT = re.compile(r"\b(remind(er)?s?|set an? (alarm|alert))\b", re.IGNORECASE)
 
 
 @tool(
@@ -64,7 +70,10 @@ async def reminder_set(text: str, at: str) -> str:
     else:
         return json.dumps({"error": "reminder_set has no tenant context."})
     if outside_content_seen():
-        return json.dumps({"error": TAINTED_REFUSAL})
+        from life_graph.tools.memory_search import _owner_message
+
+        if not REMIND_INTENT.search(await _owner_message(ctx)):
+            return json.dumps({"error": TAINTED_REFUSAL})
     words = reminders.clean_text(text)
     if len(words) < 2:
         return json.dumps({"error": "What should the reminder say? Ask the user."})
