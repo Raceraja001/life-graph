@@ -15,7 +15,7 @@ import logging
 from typing import Any
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -416,11 +416,19 @@ async def dismiss_promise(item_id: str, tenant_id: str = Depends(get_current_ten
 
 
 @router.get("/today", summary="Today's events and mail waiting on you (dashboard view)")
-async def today(tenant_id: str = Depends(get_current_tenant_id)):
-    """The full local rendering: the dashboard is the user's own screen."""
-    from life_graph.connectors.brief import brief_sections
+async def today(request: Request, tenant_id: str = Depends(get_current_tenant_id)):
+    """The full local rendering: the dashboard is the user's own screen.
 
-    sections = await brief_sections(tenant_id)
-    if not sections:
+    A paired phone (docs/specs/device-access.md) gets it with ``local_only``
+    accounts reduced to times and kinds (connectors/brief.phone_sections).
+    """
+    from life_graph.connectors.brief import brief_sections, phone_sections
+
+    if getattr(request.state, "device_id", None):
+        local = await phone_sections(tenant_id)
+    else:
+        sections = await brief_sections(tenant_id)
+        local = sections["local"] if sections else None
+    if not local:
         return success_response(data=None)
-    return success_response(data={**sections["local"], "timezone": settings.user_timezone})
+    return success_response(data={**local, "timezone": settings.user_timezone})

@@ -401,3 +401,38 @@ async def test_mark_paid_from_the_phone(monkeypatch):
             await jarvis.bill_paid("gone")
     assert err.value.status_code == 404
     assert calls == [("t-own", "i1"), ("t-own", "gone")] and session.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_a_local_only_bill_reaches_the_phone_without_payee_or_amount(monkeypatch):
+    from life_graph.connectors import bills
+
+    def row(exposure, payee):
+        bill = {
+            "kind": "bill",
+            "payee": payee,
+            "due": TOMORROW,
+            "amount": 900.0,
+            "currency": "INR",
+            "state": "open",
+        }
+        return {
+            "id": f"id-{exposure}",
+            "account_name": "Mail",
+            "account_exposure": exposure,
+            "title": f"{payee} statement",
+            "flags": {"bill": bill},
+            "bill": bill,
+        }
+
+    async def bills_due(session, tenant_id, today):
+        assert tenant_id == "t-own"
+        return [row("standard", "TNEB"), row("local_only", "HDFC")]
+
+    monkeypatch.setattr(bills, "bills_due", bills_due)
+    monkeypatch.setattr("life_graph.storage.database.async_session", session_factory(FakeSession()))
+    out = await jt._bills("t-own", TODAY)
+    assert out[0]["payee"] == "TNEB" and out[0]["amount"] == 900.0
+    assert "payee" not in out[1] and "amount" not in out[1] and "HDFC" not in str(out[1:])
+    titles = [i["title"] for i in jt.insights({"bills": out}, TODAY)]
+    assert titles == ["TNEB ₹900 due tomorrow", "A bill due tomorrow"]

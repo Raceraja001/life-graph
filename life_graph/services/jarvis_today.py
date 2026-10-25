@@ -6,9 +6,9 @@ is ``None``: its part of the screen is null or empty, and the rest still
 shows. The failure is logged at debug level by source name and exception
 type only: the rows are the owner's mail, bills and memories.
 
-The phone is the owner's own screen, like the dashboard, so connector items
-use the LOCAL rendering (connectors/exposure.py): amounts and titles shown,
-``local_only`` accounts included.
+Connector items use the LOCAL rendering (connectors/exposure.py), amounts
+and titles shown, after ``phone_rows``: a ``local_only`` account's items show
+when and what kind only, as its due notifications do.
 
 Insights are fixed rules, no model: a bill due tomorrow (with "Mark paid",
 ``POST /jarvis/bills/{item_id}/paid``), a document expiring within
@@ -53,7 +53,7 @@ async def _read(name: str, fn: Callable[[], Awaitable[Any]]) -> Any:
 
 async def _events(tenant_id: str, today: date) -> list[dict[str, Any]]:
     from life_graph.connectors import store
-    from life_graph.connectors.exposure import view_items
+    from life_graph.connectors.exposure import phone_rows, view_items
     from life_graph.connectors.locality import LOCAL
     from life_graph.connectors.tools import day_bounds
     from life_graph.storage.database import async_session
@@ -61,18 +61,18 @@ async def _events(tenant_id: str, today: date) -> list[dict[str, Any]]:
     start, end = day_bounds(today)
     async with async_session() as session:
         rows = await store.events_between(session, tenant_id, start, end)
-    return view_items(rows, LOCAL)["items"]
+    return view_items(phone_rows(rows), LOCAL)["items"]
 
 
 async def _bills(tenant_id: str, today: date) -> list[dict[str, Any]]:
     from life_graph.connectors.bills import bills_due
-    from life_graph.connectors.exposure import view_bills
+    from life_graph.connectors.exposure import phone_rows, view_bills
     from life_graph.connectors.locality import LOCAL
     from life_graph.storage.database import async_session
 
     async with async_session() as session:
         rows = await bills_due(session, tenant_id, today)
-    return view_bills(rows, LOCAL)["items"]
+    return view_bills(phone_rows(rows), LOCAL)["items"]
 
 
 async def _documents(tenant_id: str, today: date) -> list[dict[str, Any]]:
@@ -86,21 +86,23 @@ async def _documents(tenant_id: str, today: date) -> list[dict[str, Any]]:
 
 async def _todos(tenant_id: str) -> list[dict[str, Any]]:
     from life_graph.connectors import store
-    from life_graph.connectors.exposure import view_items
+    from life_graph.connectors.exposure import phone_rows, view_items
     from life_graph.connectors.locality import LOCAL
     from life_graph.storage.database import async_session
 
     async with async_session() as session:
         rows = await store.task_items(session, tenant_id)
-    return view_items(rows, LOCAL)["items"]
+    return view_items(phone_rows(rows), LOCAL)["items"]
 
 
 async def _birthdays_tomorrow(tenant_id: str, today: date) -> list[dict[str, Any]]:
     from life_graph.connectors import store
+    from life_graph.connectors.exposure import phone_rows
     from life_graph.storage.database import async_session
 
     async with async_session() as session:
         rows = await store.birthdays_between(session, tenant_id, today + timedelta(days=1), 1)
+    rows = phone_rows(rows)  # a local_only contact has no name here: no insight
     return [{"id": r["id"], "name": r.get("title") or ""} for r in rows if r.get("title")]
 
 

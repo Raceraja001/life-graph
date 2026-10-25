@@ -8,7 +8,7 @@ See docs/specs/approvals-feed.md.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,16 +45,26 @@ async def list_approvals(
     return success_response(data)
 
 
+def resolver(request: Request, body: ResolveBody | None) -> str | None:
+    """Who decided. From a paired phone (api/device_access.py) it is always
+    ``phone:<device id>``, whatever the body says, so the audit trail shows a
+    decision taken on the phone and the phone cannot name someone else."""
+    device_id = getattr(request.state, "device_id", None)
+    if device_id:
+        return f"phone:{device_id}"
+    return body.resolved_by if body else None
+
+
 async def _resolve(
     approval_id: str,
     decision: str,
     body: ResolveBody | None,
     tenant_id: str,
     session: AsyncSession,
+    resolved_by: str | None = None,
 ):
     service = ApprovalService(session)
     note = body.note if body else None
-    resolved_by = body.resolved_by if body else None
     try:
         result = await service.resolve(
             tenant_id, approval_id, decision, note=note, resolved_by=resolved_by
@@ -85,18 +95,22 @@ async def _resolve(
 @router.post("/{approval_id}/approve", summary="Approve an item (runs its side-effect)")
 async def approve_approval(
     approval_id: str,
+    request: Request,
     body: ResolveBody | None = Body(default=None),
     tenant_id: str = Depends(get_current_tenant_id),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _resolve(approval_id, "approve", body, tenant_id, session)
+    by = resolver(request, body)
+    return await _resolve(approval_id, "approve", body, tenant_id, session, by)
 
 
 @router.post("/{approval_id}/reject", summary="Reject an item")
 async def reject_approval(
     approval_id: str,
+    request: Request,
     body: ResolveBody | None = Body(default=None),
     tenant_id: str = Depends(get_current_tenant_id),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _resolve(approval_id, "reject", body, tenant_id, session)
+    by = resolver(request, body)
+    return await _resolve(approval_id, "reject", body, tenant_id, session, by)

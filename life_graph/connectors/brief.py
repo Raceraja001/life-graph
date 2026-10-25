@@ -353,6 +353,27 @@ def _due_label(due: str | None, now: datetime) -> str:
     return f" — due {d:%a %d %b}"
 
 
+async def phone_sections(tenant_id: str, now: datetime | None = None) -> dict[str, Any] | None:
+    """The LOCAL rendering for the phone app, or None when there is nothing.
+
+    ``local_only`` accounts pass through ``phone_rows`` first (times and
+    kinds, no titles, people or amounts), and their contacts lend no names to
+    other accounts' mail and events.
+    """
+    from life_graph.connectors.exposure import EXPOSURE_LOCAL_ONLY, phone_rows
+
+    now = now or datetime.now(UTC)
+    raw = await collect(tenant_id, now)
+    if not any(raw.values()):
+        return None
+    people = raw.pop("people", {}) or {}
+    raw = {key: phone_rows(rows) for key, rows in raw.items()}
+    raw["people"] = {
+        addr: c for addr, c in people.items() if c.get("account_exposure") != EXPOSURE_LOCAL_ONLY
+    }
+    return render(raw, LOCAL, now)
+
+
 async def brief_sections(tenant_id: str, now: datetime | None = None) -> dict[str, Any] | None:
     """Both renderings, or None when there is nothing to say."""
     now = now or datetime.now(UTC)

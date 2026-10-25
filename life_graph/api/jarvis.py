@@ -1,8 +1,8 @@
 """Jarvis for the phone app (docs/design/12_android_app_plan.md, Phase 1).
 
-The only endpoints a paired device's token opens (api/middleware.py,
-``DEVICE_PATH_PREFIX``). The contract is the app's (life-graph-android
-docs/PLAN.md):
+Every method here is open to a paired device's token (api/device_access.py,
+``DEVICE_PATH_PREFIX``); beyond them it opens only the reviewed allowlist
+there. The contract is the app's (life-graph-android docs/PLAN.md):
 
 * ``POST /jarvis/chat`` streams ``{type: token, content}`` events, then
   ``{type: done, conversation_id, route}`` or ``{type: error, message}``.
