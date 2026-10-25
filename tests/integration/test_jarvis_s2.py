@@ -201,16 +201,18 @@ async def test_memory_overview_is_the_devices_tenant_only(client):
 @skip_on_db_error
 async def test_entity_is_the_devices_own(client):
     phone = await _phone(client)
-    mine = await _memory("Murugan fixed the pump.", TENANT)
-    other_memory = await _memory("Murugan is someone else's.", OTHER)
-    ent = await _entity("Murugan", TENANT, [mine])
-    theirs = await _entity("Murugan", OTHER, [other_memory])
+    # Not "Murugan": the overview test already made that entity for TENANT,
+    # and (tenant, key) is unique.
+    mine = await _memory("Karthik fixed the pump.", TENANT)
+    other_memory = await _memory("Karthik is someone else's.", OTHER)
+    ent = await _entity("Karthik", TENANT, [mine])
+    theirs = await _entity("Karthik", OTHER, [other_memory])
 
     resp = await client.get(f"/api/v1/jarvis/entities/{ent}", headers=_spoofed(phone))
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert set(data) == {"id", "name", "also_called", "mentions", "memories", "related", "days"}
-    assert data["name"] == "Murugan" and [m["id"] for m in data["memories"]] == [str(mine)]
+    assert data["name"] == "Karthik" and [m["id"] for m in data["memories"]] == [str(mine)]
     # Another tenant's entity id is not found, nor is a malformed one.
     assert (await client.get(f"/api/v1/jarvis/entities/{theirs}", headers=phone)).status_code == 404
     assert (await client.get("/api/v1/jarvis/entities/nope", headers=phone)).status_code == 404
