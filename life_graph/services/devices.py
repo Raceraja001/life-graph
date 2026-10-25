@@ -116,11 +116,16 @@ async def redeem(session: AsyncSession, code: str, name: str) -> tuple[Any, str]
 _cache: dict[str, tuple[float, str, str]] = {}
 
 
-def _idle_too_long(last_seen_at: datetime | None, now: datetime) -> bool:
+def _idle_too_long(
+    last_seen_at: datetime | None, now: datetime, created_at: datetime | None = None
+) -> bool:
+    """Unused for device_token_idle_days. A device never seen counts from its
+    pairing: a NULL last_seen_at must not mean "never expires"."""
     from life_graph.config import settings
 
     days = settings.device_token_idle_days
-    return bool(days) and last_seen_at is not None and now - last_seen_at > timedelta(days=days)
+    since = last_seen_at or created_at
+    return bool(days) and since is not None and now - since > timedelta(days=days)
 
 
 async def authenticate(token: str) -> tuple[str, str] | None:
@@ -143,7 +148,7 @@ async def authenticate(token: str) -> tuple[str, str] | None:
             _cache.pop(digest, None)
             return None
         seen = datetime.now(UTC)
-        if _idle_too_long(device.last_seen_at, seen):
+        if _idle_too_long(device.last_seen_at, seen, device.created_at):
             # A token left unused this long (a lost or sold phone) no longer
             # signs in (security review 2026-10-24, M5).
             _cache.pop(digest, None)

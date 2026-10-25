@@ -189,7 +189,7 @@ async def test_voice_is_transcribed_locally_and_spoken_back(client, monkeypatch)
             seen.update(local_only=local_only, size=len(data), filename=filename)
             return {"transcript": "what bills are due"}
 
-    async def fake_answer(tenant_id, question, conversation_id):
+    async def fake_answer(tenant_id, question, conversation_id, **kw):
         seen.update(tenant=tenant_id, question=question)
         return {"reply": "None this week.", "conversation_id": "c1", "route": "personal"}
 

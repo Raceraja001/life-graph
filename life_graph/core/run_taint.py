@@ -35,7 +35,12 @@ if TYPE_CHECKING:
 #: someone else's, but tainting every calendar question would put most of the
 #: owner's own saves behind review. ``watch_page`` and ``list_page_monitors``
 #: return ``last_excerpt``, text cut from the watched page (and watch_page its
-#: first check), so they are web pages too (review 2026-10-25).
+#: first check), so they are web pages too (review 2026-10-25). Also outside:
+#: ``bills_due`` (payee and wording from mail, a scam bill included),
+#: ``spending_summary`` (merchant names), ``contact_lookup`` (names and notes
+#: synced from other accounts), ``documents_expiring`` (titles read by OCR) and
+#: ``invoices_status`` (clients' names). The owner's own typed "remind me…"
+#: still sets a reminder after them (tools/reminders.py REMIND_INTENT).
 OUTSIDE_CONTENT_TOOLS: frozenset[str] = frozenset(
     {
         "web_search",
@@ -47,6 +52,11 @@ OUTSIDE_CONTENT_TOOLS: frozenset[str] = frozenset(
         "email_search",
         "email_read",
         "code_inbox",
+        "bills_due",
+        "spending_summary",
+        "contact_lookup",
+        "documents_expiring",
+        "invoices_status",
         "delegate_to_persona",
     }
 )
