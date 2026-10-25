@@ -422,6 +422,27 @@ async def test_reminder_set_refuses_after_outside_content(_fake_db):
 
 
 @pytest.mark.asyncio
+async def test_after_outside_content_the_owner_asking_still_sets_a_reminder(_fake_db, monkeypatch):
+    """Sharing a school circular and saying "remind me Friday" is the owner
+    asking; the same words inside the shared text are not."""
+    from unittest.mock import AsyncMock
+
+    from life_graph.core.run_taint import TAINTED_REFUSAL, tool_call_scope
+    from life_graph.tools import memory_search
+
+    owner = AsyncMock(return_value="is this legit?")
+    monkeypatch.setattr(memory_search, "_owner_message", owner)
+    with tool_call_scope(True):
+        out, _ = await _set("Pay the school fees", "in 1 hour")
+    assert out == {"error": TAINTED_REFUSAL}
+
+    owner.return_value = "remind me about this in an hour"
+    with tool_call_scope(True):
+        out, _ = await _set("Pay the school fees", "in 1 hour")
+    assert out.get("reminded") is True and len(_fake_db.added) == 1
+
+
+@pytest.mark.asyncio
 async def test_reminder_set_without_a_tenant():
     from life_graph.tools.reminders import reminder_set
 
