@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-25 15:06 UTC` from `master` @ `12aa4a4`
+Generated `2026-10-25 15:43 UTC` from `master` @ `7a27a52`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-10-25 15:06 UTC` from `master` @ `12aa4a4`
 
 | | |
 |---|---|
-| HTTP operations | **361** across 314 paths, 43 tags |
+| HTTP operations | **362** across 315 paths, 43 tags |
 | Database tables | **84** |
 | Migrations | **53** (head: `053_entities`) |
 | Event types | **79** |
@@ -24,17 +24,17 @@ Generated `2026-10-25 15:06 UTC` from `master` @ `12aa4a4`
 | Agent tools | **14** |
 | Scheduled jobs | **29** |
 | Config settings | **265** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3715** in 408 files |
+| Test functions | **3718** in 409 files |
 | Dashboard pages | **22** |
-| Python | 418 files, 108,731 lines |
+| Python | 418 files, 108,775 lines |
 
 ---
 
 ## HTTP API
 
-361 operations, grouped by OpenAPI tag.
+362 operations, grouped by OpenAPI tag.
 
-### `assistant` — 34
+### `assistant` — 35
 
 | Method | Path | Summary |
 |---|---|---|
@@ -70,6 +70,7 @@ Generated `2026-10-25 15:06 UTC` from `master` @ `12aa4a4`
 | POST | `/api/v1/study/cards` | Add Card |
 | DELETE | `/api/v1/study/cards/{card_id}` | Delete Card |
 | POST | `/api/v1/study/cards/{card_id}/grade` | Grade |
+| GET | `/api/v1/study/decks` | Study Decks |
 | GET | `/api/v1/study/due` | Due Cards |
 | POST | `/api/v1/study/generate` | Generate Cards |
 
@@ -967,10 +968,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 310 | 2951 |
+| `tests/unit/` | 311 | 2954 |
 | `tests/integration/` | 97 | 752 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **408** | **3715** |
+| **total** | **409** | **3718** |
 
 ---
 
