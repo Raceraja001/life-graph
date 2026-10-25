@@ -1,8 +1,8 @@
 """Jarvis for the phone app (docs/design/12_android_app_plan.md, Phase 1).
 
-The only endpoints a paired device's token opens (api/middleware.py,
-``DEVICE_PATH_PREFIX``). The contract is the app's (life-graph-android
-docs/PLAN.md):
+Every method here is open to a paired device's token (api/device_access.py,
+``DEVICE_PATH_PREFIX``); beyond them it opens only the reviewed allowlist
+there. The contract is the app's (life-graph-android docs/PLAN.md):
 
 * ``POST /jarvis/chat`` streams ``{type: token, content}`` events, then
   ``{type: done, conversation_id, route}`` or ``{type: error, message}``.
@@ -23,6 +23,11 @@ v3 (docs/PLAN-v3.md): notifications carry ``kind`` and ``actions``, and
 newest brief; ``GET /jarvis/reminders`` and ``.../{id}/cancel``. Jarvis's
 reminder_set reaches the chat as ``{type: reminded, id, text, at}`` and the
 voice reply as ``reminded``.
+
+v4 (docs/PLAN-v4.md, S1): ``GET /jarvis/today`` is the whole Today screen in
+one call (services/jarvis_today.py), each part failing on its own; ``POST
+/jarvis/bills/{item_id}/paid`` is its "Mark paid". ``GET /jarvis/app/latest``
+and ``.../app/download/{file}`` offer the newest APK from ``app_release_dir``.
 
 Where Jarvis ran (``route``: personal = this PC's model, general = a cloud
 model without the personal tools) comes from services/lead.py.
@@ -45,6 +50,7 @@ import re
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -1154,3 +1160,101 @@ async def cancel_reminder(reminder_id: str):
             row.status = "dismissed"
             await session.commit()
     return success_response(data={"id": str(row.id), "status": "cancelled"})
+
+
+# ── v4: the Today screen ────────────────────────────────────────────────────
+
+
+@router.get("/today", summary="The Today screen in one call")
+async def today():
+    """Counts, insights, schedule, what is due, money, work, study and what
+    Jarvis learnt (services/jarvis_today.py). A source that fails leaves its
+    part null or empty; the call itself does not fail for it."""
+    from life_graph.services.jarvis_today import today_screen
+
+    return success_response(data=await today_screen(get_current_tenant_id()))
+
+
+@router.post("/bills/{item_id}/paid", summary="Mark a bill from mail paid")
+async def bill_paid(item_id: str):
+    """The Today screen's "Mark paid": the bill on this email, and every other
+    open email about the same bill (connectors/bills.mark_paid). Only "paid":
+    the dashboard's dismiss and remind stay with the dashboard."""
+    from life_graph.connectors.bills import mark_paid
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        marked = await mark_paid(session, tenant_id, item_id, datetime.now(UTC))
+        if marked is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found.")
+        await session.commit()
+    return success_response(data={"id": item_id, "state": "paid", "marked": marked})
+
+
+# ── v4: in-app update ───────────────────────────────────────────────────────
+
+APK_MEDIA_TYPE = "application/vnd.android.package-archive"
+#: An APK's name as the release script writes it: no path, no hidden file.
+_APK_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.apk")
+
+
+def _release() -> tuple[Path, dict] | None:
+    """(the APK's path, latest.json) from ``app_release_dir``, or None when
+    unset, unreadable, malformed, or naming a file that is not right there."""
+    from life_graph.config import settings
+
+    folder = (settings.app_release_dir or "").strip()
+    if not folder:
+        return None
+    base = Path(folder).expanduser()
+    try:
+        meta = json.loads((base / "latest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(meta, dict):
+        return None
+    code, name, file, notes = (
+        meta.get(k) for k in ("version_code", "version_name", "file", "notes")
+    )
+    if not (isinstance(code, int) and not isinstance(code, bool) and code > 0):
+        return None
+    if not isinstance(name, str) or not isinstance(file, str) or not _APK_NAME.fullmatch(file):
+        return None
+    if notes is not None and not isinstance(notes, str):
+        return None
+    apk = base / file
+    try:
+        # The name pattern already rules out a path; this also refuses a symlink out.
+        if apk.resolve().parent != base.resolve() or not apk.is_file():
+            return None
+    except OSError:
+        return None
+    return apk, {"version_code": code, "version_name": name, "file": file, "notes": notes or ""}
+
+
+@router.get("/app/latest", summary="The newest phone app the PC offers (404: none)")
+async def app_latest():
+    """The app compares ``version_code`` with its own and offers Update when newer."""
+    found = _release()
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No app release here.")
+    _apk, meta = found
+    return success_response(
+        data={
+            "version_code": meta["version_code"],
+            "version_name": meta["version_name"],
+            "url": f"/api/v1/jarvis/app/download/{meta['file']}",
+            "notes": meta["notes"],
+        }
+    )
+
+
+@router.get("/app/download/{file}", summary="Download the phone app's APK")
+async def app_download(file: str):
+    """Only the file latest.json names: any other name, path or not, is a 404."""
+    from fastapi.responses import FileResponse
+
+    found = _release()
+    if found is None or file != found[1]["file"]:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such app release.")
+    return FileResponse(found[0], media_type=APK_MEDIA_TYPE, filename=file)

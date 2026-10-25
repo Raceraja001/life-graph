@@ -386,3 +386,42 @@ def body_for(audience: str, body: str | None) -> str | None:
 def audience_or_cloud(value: str | None) -> str:
     """Normalise an audience string; anything unrecognised is CLOUD."""
     return LOCAL if value == LOCAL else CLOUD
+
+
+#: Personal fields of a connector row; blanked for a ``local_only`` account on the phone.
+_PHONE_BLANK = {
+    "title": None,
+    "summary": None,
+    "location": None,
+    "local_detail": None,
+    "sender_name": None,
+    "sender_addr": None,
+    "attendees": [],
+    "emails": [],
+}
+_PHONE_FLAG_DROP = ("commitment", "birthday", "url", "repo", "author")
+_PHONE_BILL_DROP = ("payee", "amount", "currency")
+
+
+def phone_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Raw rows for the phone app, before the LOCAL ``view_items``/``view_bills``.
+
+    The phone is the owner's own screen, but what it is sent leaves this
+    machine (the tunnel, the handset), so a ``local_only`` account's items
+    reach it as due notifications do (services/due_notifications.py): when,
+    and what kind, never the title, people, payee or amount. Standard
+    accounts pass unchanged. Returns copies; the input is not modified.
+    """
+    out = []
+    for row in rows:
+        if row.get("account_exposure") != EXPOSURE_LOCAL_ONLY:
+            out.append(row)
+            continue
+        flags = {k: v for k, v in (row.get("flags") or {}).items() if k not in _PHONE_FLAG_DROP}
+        if isinstance(flags.get("bill"), dict):
+            flags["bill"] = {k: v for k, v in flags["bill"].items() if k not in _PHONE_BILL_DROP}
+        masked = {**row, **_PHONE_BLANK, "flags": flags}
+        if isinstance(row.get("bill"), dict):
+            masked["bill"] = flags.get("bill") or {}
+        out.append(masked)
+    return out

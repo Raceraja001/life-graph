@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 
 from life_graph.api.auth import is_exempt_path, verify_service_key
+from life_graph.api.device_access import device_may_call, route_path
 from life_graph.config import settings
 from life_graph.core.metrics import track_request
 from life_graph.core.rate_limit import check_rate_limit
@@ -64,14 +65,11 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# The only paths a device token opens (api/jarvis.py).
-DEVICE_PATH_PREFIX = "/api/v1/jarvis/"
-
-
 async def _device_for(request: Request) -> tuple[str, str] | None:
-    """(tenant_id, device_id) when the request is a paired device calling a
-    Jarvis endpoint with its own bearer token; None otherwise."""
-    if not request.url.path.startswith(DEVICE_PATH_PREFIX):
+    """(tenant_id, device_id) when the request is a paired device calling, with
+    its own bearer token, a Jarvis endpoint or a route on the device allowlist
+    (api/device_access.py); None otherwise."""
+    if not device_may_call(request.method, route_path(request)):
         return None
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
@@ -97,7 +95,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             verify_service_key(request)
         except Exception as e:
             # A paired phone's own token (services/devices.py) — accepted on
-            # the Jarvis endpoints only, never as a key to anything else.
+            # the Jarvis endpoints and the device allowlist only, never as a
+            # key to anything else.
             device = await _device_for(request)
             if device is not None:
                 request.state.device_tenant, request.state.device_id = device

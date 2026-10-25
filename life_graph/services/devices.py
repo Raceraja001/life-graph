@@ -6,8 +6,9 @@ dashboard (with the service key); the phone sends it once to
 
 * is stored only as its SHA-256 (``devices.token_hash``) — the table cannot be
   used to sign in, and a token is shown exactly once;
-* signs the phone in to the Jarvis endpoints and nothing else
-  (api/middleware.py, ``DEVICE_PATH_PREFIX``), as the tenant that paired it;
+* signs the phone in to the Jarvis endpoints and the reviewed device
+  allowlist only (api/device_access.py, docs/specs/device-access.md), as the
+  tenant that paired it;
 * stops working the moment the device is revoked.
 
 Pairing happens before the phone has any credential, so its endpoint is open;

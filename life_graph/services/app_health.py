@@ -63,6 +63,8 @@ async def report(session: AsyncSession, tenant_id: str) -> list[dict[str, Any]]:
                 "project": p.name,
                 "health_url": url,
                 "status": _status(state, bool(url)),
+                # Set by the watcher when it saw the outage begin; None before then.
+                "down_since": state.get("down_since") if state.get("down") else None,
                 "http_status": last.get("status"),
                 "latency_ms": last.get("latency_ms"),
                 "error": last.get("error"),
