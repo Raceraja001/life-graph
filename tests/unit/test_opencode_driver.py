@@ -70,7 +70,7 @@ REAL_RUN = "\n".join(
 def test_events_become_steps_with_calls_paired_to_results():
     text, steps, meta = parse_events(REAL_RUN)
 
-    assert text == "Done: added remove()."
+    assert text == "Let me read the file.\n\nDone: added remove()."
     assert meta == {"turns": 2, "session_id": "ses_1"}
     assert [(s["seq"], s["kind"], s.get("tool")) for s in steps] == [
         (1, "text", None),
@@ -91,6 +91,29 @@ def test_an_error_event_marks_the_run_failed():
         _event("error", {"name": "ProviderError", "message": "model gone"})
     )
     assert steps[0]["kind"] == "error" and "model gone" in meta["error"]
+
+
+def test_every_text_part_is_kept_so_an_early_spec_survives():
+    """Task 81de2480 wrote its ## Spec and its ## Understanding in separate
+    text parts; only the last was kept, so the task's spec was null."""
+    from life_graph.drivers.plan_spec import _extract_spec
+    from life_graph.services.proof_checks import _UNDERSTANDING_RE
+
+    run = "\n".join(
+        [
+            _event("text", {"type": "text", "text": "## Spec\n**Requirements:**\nAC-1: x"}),
+            _event("step_finish", {"type": "step-finish", "reason": "tool-calls"}),
+            _event("text", {"type": "text", "text": "## Understanding\nChange: y"}),
+        ]
+    )
+    text, _, _ = parse_events(run)
+    assert _extract_spec(text) == "**Requirements:**\nAC-1: x"
+    assert _UNDERSTANDING_RE.search(text).group(1).strip() == "Change: y"
+
+
+def test_the_prompt_allows_a_new_test_file_the_task_names(tmp_path):
+    prompt = OpencodeDriver._prompt(_packet(tmp_path))
+    assert "change only the files the task needs, including any new test file it names." in prompt
 
 
 def test_config_denies_shell_web_and_anything_outside_the_worktree(tmp_path):
@@ -191,7 +214,8 @@ async def test_dispatch_runs_headless_with_config_outside_the_worktree(tmp_path)
     result = await OpencodeDriver(binary=str(fake)).dispatch(_packet(work, ["code_edit"]), work)
 
     call = json.loads(seen.read_text())
-    assert result.success is True and result.output == "Done: added remove()."
+    assert result.success is True
+    assert result.output == "Let me read the file.\n\nDone: added remove()."
     assert call["argv"][:5] == ["run", "--format", "json", "--auto", "-m"]
     assert call["stdin_closed"] is True
     assert call["config"] and not call["config"].startswith(str(work))  # not in the diff
