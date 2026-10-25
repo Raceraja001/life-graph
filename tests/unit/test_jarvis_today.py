@@ -335,9 +335,15 @@ def test_money_card_and_night_run():
     assert jt.money_card(summary) == {"spent": 27200.0, "budget": 40000.0, "month": "2026-10"}
     no_budget = {**summary, "categories": [{"category": "food", "spent": 1.0, "budget": None}]}
     assert jt.money_card(no_budget)["budget"] is None
-    assert jt.money_card({"month": "2026-10", "total_spent": 0.0, "categories": []}) is None
+    # Nothing recorded yet is ₹0, not null (null means the source failed).
+    assert jt.money_card({"month": "2026-10", "total_spent": 0.0, "categories": []}) == {
+        "spent": 0.0,
+        "budget": None,
+        "month": "2026-10",
+    }
+    # Waiting tasks are approvals, of any age: not last night's results.
     rep = {"merged": [1, 2], "waiting": [3], "failed": [4], "queued": 2}
-    assert jt.night_run(rep) == {"passed": 3, "total": 4}
+    assert jt.night_run(rep) == {"passed": 2, "total": 3}
 
 
 @pytest.mark.asyncio

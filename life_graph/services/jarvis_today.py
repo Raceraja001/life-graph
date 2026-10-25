@@ -308,22 +308,30 @@ def brief_summary(text: str) -> str:
     return " · ".join(h for h in heads[:MAX_BRIEF_HEADINGS] if h)
 
 
-def money_card(summary: dict[str, Any]) -> dict[str, Any] | None:
-    """Spent this month against the sum of the budgets set; None with nothing recorded."""
+def money_card(summary: dict[str, Any]) -> dict[str, Any]:
+    """Spent this month against the sum of the budgets set.
+
+    Nothing recorded yet is ₹0 with no budget, not null: null is kept for a
+    source that failed, and the phone showed "Can't read your money" for a
+    month with no transactions (2026-10-25).
+    """
     cats = summary.get("categories") or []
-    if not cats:
-        return None
     budgets = [c["budget"] for c in cats if c.get("budget") is not None]
     return {
-        "spent": summary.get("total_spent", 0.0),
+        "spent": summary.get("total_spent", 0.0) if cats else 0.0,
         "budget": sum(budgets) if budgets else None,
         "month": summary.get("month"),
     }
 
 
 def night_run(rep: dict[str, Any]) -> dict[str, int]:
-    """Night shift (services/night_shift.py): merged or waiting on the owner passed."""
-    passed = len(rep.get("merged") or []) + len(rep.get("waiting") or [])
+    """Last night's dev tasks (services/night_shift.py): merged against merged + failed.
+
+    Only what settled in the report's window: "waiting" holds every task still
+    waiting on the owner, however old (they are the approvals count), and
+    counting them made the night look like 54 of 59 (2026-10-25).
+    """
+    passed = len(rep.get("merged") or [])
     return {"passed": passed, "total": passed + len(rep.get("failed") or [])}
 
 
