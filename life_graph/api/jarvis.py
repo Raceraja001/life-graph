@@ -749,11 +749,13 @@ async def notifications(after: str | None = None, limit: int = 20):
     async with async_session() as session:
         rows = []
         if overlap is not None:
-            rows = list(
-                (await session.execute(overlap.order_by(Notification.created_at).limit(50)))
-                .scalars()
-                .all()
-            )
+            # Newest first, then put back in order: the late-committed rows the
+            # overlap exists for sit just before *after*, and a burst over the
+            # LIMIT, read ascending, would keep the oldest and drop exactly them.
+            newest = (
+                await session.execute(overlap.order_by(Notification.created_at.desc()).limit(50))
+            ).scalars()
+            rows = sorted(newest.all(), key=lambda n: n.created_at)
         rows += (
             (await session.execute(query.order_by(Notification.created_at).limit(page)))
             .scalars()
