@@ -124,7 +124,15 @@ async def _find_run(capture_evt: Any, tenant_id: str) -> Any | None:
 
 
 async def _saved_in(task_id: uuid.UUID, tenant_id: str) -> list[SavedMemory]:
-    """What memory_save stored in this run and was not since taken back."""
+    """What memory_save stored in this run, including saves the owner undid.
+
+    An undone save still counts: the owner said not to keep it, so the
+    extractor's copy of it must not come back either. A capture deferred to
+    the sweep was settled after an Undo as "nothing saved", and its reworded
+    copy landed pending (seen live 2026-10-25).
+    """
+    from sqlalchemy import or_
+
     from life_graph.models.db import Memory
 
     async with async_session() as session:
@@ -133,7 +141,10 @@ async def _saved_in(task_id: uuid.UUID, tenant_id: str) -> list[SavedMemory]:
                 select(Memory.id, Memory.content, Memory.embedding).where(
                     Memory.tenant_id == tenant_id,
                     Memory.properties["task_id"].astext == str(task_id),
-                    Memory.status.in_(("active", "pending")),
+                    or_(
+                        Memory.status.in_(("active", "pending")),
+                        Memory.properties.has_key("undone"),
+                    ),
                 )
             )
         ).all()
