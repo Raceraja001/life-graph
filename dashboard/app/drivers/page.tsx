@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Bot, ExternalLink, GitBranch, GitMerge, GitPullRequest, Loader2, Send, ShieldAlert } from "lucide-react";
+import { Bot, ExternalLink, GitBranch, GitMerge, GitPullRequest, History, Loader2, Send, ShieldAlert } from "lucide-react";
 import {
   useAutoMergeStatus,
   useCreateDevTask,
@@ -285,8 +285,10 @@ function TaskCard({ t }: { t: any }) {
         </span>
       </div>
 
-      {(t.branch || t.pr_url || t.merge_commit || pending) && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          <Link href={`/drivers/${t.id}`} className="inline-flex items-center gap-1 text-accent-text hover:underline">
+            <History className="w-3.5 h-3.5" /> Replay the run
+          </Link>
           {t.branch && (
             <span className="inline-flex items-center gap-1 text-ink-mid">
               <GitBranch className="w-3.5 h-3.5" /> {t.branch}
@@ -313,8 +315,7 @@ function TaskCard({ t }: { t: any }) {
               Review in approvals →
             </Link>
           )}
-        </div>
-      )}
+      </div>
 
       {t.error && t.status === "failed" && <p className="text-xs text-danger break-words">{t.error}</p>}
 
