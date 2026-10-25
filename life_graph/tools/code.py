@@ -208,7 +208,9 @@ async def code_edit(
             and end_line is not None
             and int(end_line) == int(start_line) - 1
         )
-        if inserting and int(start_line) == 1 and not p.exists():
+        if old == "" and not p.exists():
+            # Creating a file: line numbers mean nothing yet. gpt-oss:20b
+            # passed start_line=1, end_line=200 and got "Not a file" (2026-10-25).
             start_line = end_line = None
         if old == "" and start_line is None:
             if p.exists():
@@ -222,7 +224,12 @@ async def code_edit(
             p.write_text(new, encoding="utf-8")
             return json.dumps({"created": str(p), "lines": new.count("\n") + 1})
         if not p.is_file():
-            return json.dumps({"error": f"Not a file: {path}"})
+            return json.dumps(
+                {
+                    "error": f"Not a file: {path}. To create it, call code_edit with only"
+                    ' path, old="" and the whole file as new (no start_line or end_line).'
+                }
+            )
         text = p.read_text(encoding="utf-8")
 
         if old == "":
