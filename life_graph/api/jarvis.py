@@ -26,6 +26,14 @@ voice reply as ``reminded``.
 
 Where Jarvis ran (``route``: personal = this PC's model, general = a cloud
 model without the personal tools) comes from services/lead.py.
+
+Idempotent sends: chat and voice take an optional ``client_id`` (8-64 of
+``[A-Za-z0-9_-]``), the phone outbox's id for one message. WorkManager can
+cancel a send the PC already received and send it again; a request whose
+client_id matches a top-level Jarvis turn of the last day spawns and captures
+nothing new: a finished turn is replayed (chat: ``saved``/``reminded``, one
+``token``, ``done``; voice: the stored reply, spoken again), a running one is
+waited for and then replayed, and a failed one is run again.
 """
 
 from __future__ import annotations
@@ -33,7 +41,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import re
+import time
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -49,11 +60,24 @@ router = APIRouter(prefix="/jarvis", tags=["jarvis"])
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 _TERMINAL = {"completed", "failed", "timeout", "cancelled"}
+#: A turn that ended in one of these is run again when its message is resent.
+_RETRY = {"failed", "timeout", "cancelled"}
+#: The phone outbox's id for one message (the app's contract).
+CLIENT_ID_PATTERN = r"^[A-Za-z0-9_-]{8,64}$"
+_CLIENT_ID = re.compile(CLIENT_ID_PATTERN)
+#: How long a resent message is recognised by its client_id.
+CLIENT_ID_WINDOW = timedelta(hours=24)
+#: Between looks at a turn being waited for.
+_POLL_SECONDS = 1.0
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"}
 
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
     conversation_id: uuid.UUID | None = None
+    # The phone outbox's id for this message: a resend with the same id
+    # replays the turn instead of asking Jarvis twice.
+    client_id: str | None = Field(None, pattern=CLIENT_ID_PATTERN)
     # Text the owner shared into the chat from another app (the share sheet, or
     # /jarvis/read-image's words). Someone else wrote it: Jarvis sees it fenced
     # as information (core/trust.py with_shared), it is captured as EXTERNAL,
@@ -151,6 +175,7 @@ async def _capture(
     conversation_id: uuid.UUID | None,
     *,
     trust_tier: str | None = None,
+    client_id: str | None = None,
 ) -> None:
     """The owner's own words to Jarvis, to the capture spine: memory is learnt from them.
 
@@ -174,6 +199,7 @@ async def _capture(
                 properties={
                     "input": kind,
                     "conversation_id": str(conversation_id) if conversation_id else None,
+                    **({"client_id": client_id} if client_id else {}),
                 },
                 trust_tier=trust_tier,
             )
@@ -185,48 +211,173 @@ async def _capture(
 
 @router.post("/chat", summary="Talk to Jarvis; the reply streams back (SSE)")
 async def chat(body: ChatRequest):
+    tenant_id = get_current_tenant_id()
+    await _own_conversation(tenant_id, body.conversation_id)
+    prior = await _turn_for(tenant_id, body.client_id) if body.client_id else None
+    if prior is not None and prior.status not in _RETRY:
+        # A resend of a message already received: replay it, never ask twice.
+        return StreamingResponse(
+            _replay_chat(tenant_id, prior, body),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
+        )
+    conversation_id = body.conversation_id
+    if prior is None:
+        await _capture_chat(tenant_id, body)
+    elif conversation_id is None:
+        # A failed turn run again: its words were captured the first time, and
+        # it goes on in the conversation that turn opened.
+        conversation_id = prior.session_id
+    inner = await _start_chat(body, conversation_id)
+    return StreamingResponse(
+        _app_frames(inner), media_type="text/event-stream", headers=dict(inner.headers)
+    )
+
+
+async def _capture_chat(tenant_id: str, body: ChatRequest) -> None:
+    from life_graph.core.trust import TrustTier
+
+    await _capture(tenant_id, body.message, "text", body.conversation_id, client_id=body.client_id)
+    if body.shared and body.shared.strip():
+        await _capture(
+            tenant_id,
+            body.shared,
+            "shared",
+            body.conversation_id,
+            trust_tier=TrustTier.EXTERNAL,
+            client_id=body.client_id,
+        )
+
+
+async def _start_chat(body: ChatRequest, conversation_id: uuid.UUID | None):
+    """The dashboard's chat stream (api/kernel.py) for one turn with Jarvis."""
     from life_graph.api.dependencies import get_persona_service, get_process_manager
     from life_graph.api.kernel import ChatStreamRequest, chat_stream
 
-    tenant_id = get_current_tenant_id()
-    await _own_conversation(tenant_id, body.conversation_id)
-    from life_graph.core.trust import TrustTier
-
-    await _capture(tenant_id, body.message, "text", body.conversation_id)
-    if body.shared and body.shared.strip():
-        await _capture(
-            tenant_id, body.shared, "shared", body.conversation_id, trust_tier=TrustTier.EXTERNAL
-        )
-    inner = await chat_stream(
+    return await chat_stream(
         ChatStreamRequest(
             message=body.message,
             target_agent=LEAD,
-            session_id=body.conversation_id,
+            session_id=conversation_id,
             shared=body.shared,
+            client_id=body.client_id,
         ),
         pm=get_process_manager(),
         personas=get_persona_service(),
     )
 
-    async def gen():
-        state: dict = {}
-        async for chunk in inner.body_iterator:
-            text = chunk.decode() if isinstance(chunk, bytes) else chunk
-            for frame in text.split("\n\n"):
-                if frame.startswith(":"):
-                    yield frame + "\n\n"  # heartbeat
-                    continue
-                if not frame.startswith("data: "):
-                    continue
-                try:
-                    event = json.loads(frame[6:])
-                except ValueError:
-                    continue
-                out = _app_event(event, state)
-                if out is not None:
-                    yield f"data: {json.dumps(out)}\n\n"
 
-    return StreamingResponse(gen(), media_type="text/event-stream", headers=dict(inner.headers))
+async def _app_frames(inner):
+    """The dashboard stream's frames, in the app's event shapes."""
+    state: dict = {}
+    async for chunk in inner.body_iterator:
+        text = chunk.decode() if isinstance(chunk, bytes) else chunk
+        for frame in text.split("\n\n"):
+            if frame.startswith(":"):
+                yield frame + "\n\n"  # heartbeat
+                continue
+            if not frame.startswith("data: "):
+                continue
+            try:
+                event = json.loads(frame[6:])
+            except ValueError:
+                continue
+            out = _app_event(event, state)
+            if out is not None:
+                yield f"data: {json.dumps(out)}\n\n"
+
+
+async def _turn_for(tenant_id: str, client_id: str):
+    """The newest top-level Jarvis turn sent under *client_id* in the last
+    CLIENT_ID_WINDOW, or None. Small without an index: one tenant's day."""
+    from life_graph.models.db import AgentTask
+
+    since = datetime.now(UTC) - CLIENT_ID_WINDOW
+    async with async_session() as session:
+        return (
+            (
+                await session.execute(
+                    select(AgentTask)
+                    .where(
+                        AgentTask.tenant_id == tenant_id,
+                        AgentTask.agent_name == LEAD,
+                        AgentTask.parent_task_id.is_(None),
+                        AgentTask.created_at >= since,
+                        AgentTask.input["client_id"].astext == client_id,
+                    )
+                    .order_by(AgentTask.created_at.desc())
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+
+async def _polls(tenant_id: str, task_id: object):
+    """The task, every _POLL_SECONDS, until it ends or the voice path's timeout
+    (telegram_ask_timeout_seconds) passes; the last one yielded is where it got to."""
+    from life_graph.api.dependencies import get_process_manager
+    from life_graph.config import settings
+
+    pm = get_process_manager()
+    deadline = time.monotonic() + settings.telegram_ask_timeout_seconds
+    while True:
+        task = await pm.get_task(tenant_id, str(task_id))
+        yield task
+        if (task is not None and task.status in _TERMINAL) or time.monotonic() >= deadline:
+            return
+        await asyncio.sleep(_POLL_SECONDS)
+
+
+async def _settled(tenant_id: str, task_id: object):
+    """The task once it has ended, or as it was when the wait ran out (None if lost)."""
+    task = None
+    async for latest in _polls(tenant_id, task_id):
+        task = latest
+    return task
+
+
+async def _replay_chat(tenant_id: str, prior, body: ChatRequest):
+    """A resent message's turn as the app's events, from what it stored.
+
+    Still running: waited for, with heartbeats so the stream stays open.
+    Failed meanwhile: run again, which is what the phone's resend wants.
+    """
+    from life_graph.api.kernel import CHAT_STREAM_HEARTBEAT_SECONDS
+
+    task, beat = prior, time.monotonic()
+    if prior.status not in _TERMINAL:
+        async for latest in _polls(tenant_id, prior.id):
+            task = latest
+            if time.monotonic() - beat >= CHAT_STREAM_HEARTBEAT_SECONDS:
+                beat = time.monotonic()
+                yield ": heartbeat\n\n"
+    if task is not None and task.status == "completed":
+        for event in await _replayed_events(tenant_id, task):
+            yield f"data: {json.dumps(event)}\n\n"
+        return
+    if task is not None and task.status in _RETRY:
+        inner = await _start_chat(body, body.conversation_id or task.session_id)
+        async for frame in _app_frames(inner):
+            yield frame
+        return
+    state = task.status if task is not None else "lost"
+    failed = {"type": "error", "message": f"Jarvis could not finish ({state})."}
+    yield f"data: {json.dumps(failed)}\n\n"
+
+
+async def _replayed_events(tenant_id: str, task) -> list[dict]:
+    """A finished turn as the stream showed it: what it saved and reminded
+    (still standing), its reply as one token, then done."""
+    turn = await _turn_result(tenant_id, task)
+    events = [{"type": "saved", **s} for s in turn["saved"]]
+    events += [{"type": "reminded", **r} for r in turn["reminded"]]
+    events.append({"type": "token", "content": turn["reply"]})
+    events.append(
+        {"type": "done", "conversation_id": turn["conversation_id"], "route": turn["route"]}
+    )
+    return events
 
 
 _warming: set = set()  # keeps the background tasks referenced until they finish
@@ -365,13 +516,16 @@ async def _saved_by_task(tenant_id: str, task_ids: list) -> dict[str, list[dict]
     return out
 
 
-async def _answer(tenant_id: str, question: str, conversation_id: uuid.UUID | None) -> dict:
-    """One Jarvis turn, waited for: {reply, conversation_id, route}."""
-    import asyncio
-
+async def _answer(
+    tenant_id: str,
+    question: str,
+    conversation_id: uuid.UUID | None,
+    *,
+    client_id: str | None = None,
+) -> dict:
+    """One Jarvis turn, waited for: {reply, conversation_id, route, saved, reminded}."""
     from life_graph.api.dependencies import get_process_manager
     from life_graph.api.kernel import _load_chat_history, _start_chat_session
-    from life_graph.config import settings
 
     pm = get_process_manager()
     if conversation_id is None:
@@ -379,31 +533,33 @@ async def _answer(tenant_id: str, question: str, conversation_id: uuid.UUID | No
         history: list[dict[str, str]] = []
     else:
         history = await _load_chat_history(tenant_id, conversation_id)
+    input_data: dict = {"message": question, "history": history}
+    if client_id:
+        input_data["client_id"] = client_id
     spawn = await pm.spawn(
         tenant_id=tenant_id,
         agent_name=LEAD,
-        input_data={"message": question, "history": history},
+        input_data=input_data,
         task_name=f"voice:{LEAD}",
         session_id=conversation_id,
         max_retries=0,
     )
-    waited, task = 0.0, None
-    while waited < settings.telegram_ask_timeout_seconds:
-        task = await pm.get_task(tenant_id, spawn["task_id"])
-        if task is not None and task.status in _TERMINAL:
-            break
-        await asyncio.sleep(1.0)
-        waited += 1.0
+    task = await _settled(tenant_id, spawn["task_id"])
     if task is None or task.status != "completed":
         state = task.status if task is not None else "lost"
         raise HTTPException(status.HTTP_504_GATEWAY_TIMEOUT, f"Jarvis could not finish ({state}).")
+    return await _turn_result(tenant_id, task)
+
+
+async def _turn_result(tenant_id: str, task) -> dict:
+    """A completed Jarvis turn as the app reads it."""
     result = task.result or {}
     return {
         "reply": str(result.get("response") or "").strip(),
-        "conversation_id": str(conversation_id),
+        "conversation_id": str(task.session_id) if task.session_id else None,
         "route": (result.get("route") or {}).get("kind"),
-        "saved": await _saved_in(tenant_id, spawn["task_id"]),
-        "reminded": await _reminded_in(tenant_id, spawn["task_id"]),
+        "saved": await _saved_in(tenant_id, task.id),
+        "reminded": await _reminded_in(tenant_id, task.id),
     }
 
 
@@ -442,7 +598,8 @@ async def _reminded_in(tenant_id: str, task_id: object) -> list[dict]:
 
 
 async def _saved_in(tenant_id: str, task_id: object) -> list[dict]:
-    """What memory_save stored during one Jarvis run (tools/memory_search.py tags it)."""
+    """What memory_save stored during one Jarvis run (tools/memory_search.py tags it)
+    and was not since taken back: a replayed turn must not offer Undo on an undone save."""
     from life_graph.models.db import Memory
 
     async with async_session() as session:
@@ -453,6 +610,7 @@ async def _saved_in(tenant_id: str, task_id: object) -> list[dict]:
                     .where(
                         Memory.tenant_id == tenant_id,
                         Memory.properties["task_id"].astext == str(task_id),
+                        Memory.status.in_(("active", "pending")),
                     )
                     .order_by(Memory.created_at)
                     .limit(10)
@@ -468,11 +626,14 @@ async def _saved_in(tenant_id: str, task_id: object) -> list[dict]:
 async def voice(
     audio: UploadFile = File(...),
     conversation_id: str | None = Form(None),
+    client_id: str | None = Form(None),
 ):
-    from life_graph.api.multimodal import _get_multimodal_service
-    from life_graph.services.assistant_chat import speak
-
     tenant_id = get_current_tenant_id()
+    if client_id is not None and not _CLIENT_ID.fullmatch(client_id):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "client_id must be 8-64 letters, digits, '-' or '_'.",
+        )
     conv = None
     if conversation_id:
         try:
@@ -480,6 +641,46 @@ async def voice(
         except ValueError:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "conversation not found") from None
     await _own_conversation(tenant_id, conv)
+    prior = await _turn_for(tenant_id, client_id) if client_id else None
+    # The words as heard the first time: a resend is not transcribed again.
+    heard = str((prior.input or {}).get("message") or "") if prior is not None else ""
+    if prior is not None and prior.status not in _RETRY:
+        # A resend of a message already received: its reply, not a second turn.
+        task = prior if prior.status in _TERMINAL else await _settled(tenant_id, prior.id)
+        if task is not None and task.status == "completed":
+            return await _voice_reply(heard, await _turn_result(tenant_id, task))
+        if task is None or task.status not in _RETRY:
+            state = task.status if task is not None else "lost"
+            raise HTTPException(
+                status.HTTP_504_GATEWAY_TIMEOUT, f"Jarvis could not finish ({state})."
+            )
+    if prior is not None and conv is None:
+        conv = prior.session_id  # a failed turn run again, in the conversation it opened
+    if prior is None or not heard:
+        heard = await _transcribe(audio)
+        if prior is None:  # a retry's words were captured the first time
+            await _capture(tenant_id, heard, "voice", conv, client_id=client_id)
+    turn = await _answer(tenant_id, heard, conv, client_id=client_id)
+    return await _voice_reply(heard, turn)
+
+
+async def _voice_reply(heard: str, turn: dict):
+    from life_graph.services.assistant_chat import speak
+
+    spoken = await speak(turn["reply"]) if turn["reply"] else None
+    return success_response(
+        data={
+            "heard": heard,
+            **turn,
+            "audio_base64": base64.b64encode(spoken).decode() if spoken else None,
+        }
+    )
+
+
+async def _transcribe(audio: UploadFile) -> str:
+    """The recording's words, transcribed on this machine only."""
+    from life_graph.api.multimodal import _get_multimodal_service
+
     data = await audio.read(MAX_AUDIO_BYTES + 1)
     if not data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No audio received.")
@@ -493,16 +694,7 @@ async def voice(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "I couldn't hear anything."
         ) from None
-    await _capture(tenant_id, heard["transcript"], "voice", conv)
-    turn = await _answer(tenant_id, heard["transcript"], conv)
-    spoken = await speak(turn["reply"]) if turn["reply"] else None
-    return success_response(
-        data={
-            "heard": heard["transcript"],
-            **turn,
-            "audio_base64": base64.b64encode(spoken).decode() if spoken else None,
-        }
-    )
+    return heard["transcript"]
 
 
 # ── v2: review memories, undo a save, read an image, notifications ──────────

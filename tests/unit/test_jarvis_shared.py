@@ -142,7 +142,9 @@ async def test_jarvis_chat_captures_shared_text_as_external(monkeypatch):
     captured = []
     sent = {}
 
-    async def fake_capture(tenant_id, text, kind, conversation_id, *, trust_tier=None):
+    async def fake_capture(
+        tenant_id, text, kind, conversation_id, *, trust_tier=None, client_id=None
+    ):
         captured.append((text, kind, trust_tier))
 
     async def fake_stream(body, pm, personas):
