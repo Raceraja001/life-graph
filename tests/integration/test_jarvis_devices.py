@@ -61,7 +61,7 @@ async def test_pairing_and_what_a_device_token_opens(client):
     assert (await client.get("/api/v1/jarvis/conversations", headers=other)).json()["data"] == []
 
     # Nothing outside /jarvis/ accepts it.
-    for path in ("/api/v1/devices", "/api/v1/kernel/personas", "/api/v1/memories"):
+    for path in ("/api/v1/devices", "/api/v1/admin/stats", "/api/v1/memories"):
         assert (await client.get(path, headers=phone)).status_code == 401, path
 
     # Only the hash is stored.
