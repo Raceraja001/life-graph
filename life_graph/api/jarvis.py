@@ -30,6 +30,7 @@ model without the personal tools) comes from services/lead.py.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import uuid
@@ -830,19 +831,40 @@ async def notification_action(notification_id: str, body: NotificationAction):
 #: synthesise twice. In-process and small; a restart just synthesises again.
 _brief_audio: dict[str, bytes] = {}
 BRIEF_AUDIO_CACHE = 4
+#: How long the endpoint waits for speech before answering with the text only.
+#: Under the phone's 30 s read timeout: on 2026-10-25, with the GPU held by a
+#: dev task's model, speech took over 60 s and the phone got nothing at all.
+BRIEF_AUDIO_WAIT_SECONDS = 20.0
+_brief_speaking: dict[str, asyncio.Task] = {}  # brief id -> the synthesis in flight
 
 
-async def _brief_mp3(brief_id: str, text: str) -> bytes | None:
+async def _speak_brief(brief_id: str, text: str) -> bytes | None:
     from life_graph.services.assistant_chat import speak
 
-    if brief_id in _brief_audio:
-        return _brief_audio[brief_id]
     audio = await speak(text)
     if audio:  # a failure is not cached: speech may be back next time
         _brief_audio[brief_id] = audio
         while len(_brief_audio) > BRIEF_AUDIO_CACHE:
             _brief_audio.pop(next(iter(_brief_audio)))
     return audio
+
+
+async def _brief_mp3(brief_id: str, text: str) -> bytes | None:
+    """The spoken brief, or None if it is not ready within the wait.
+
+    Synthesis carries on in the background either way, so the next tap plays it.
+    """
+    if brief_id in _brief_audio:
+        return _brief_audio[brief_id]
+    task = _brief_speaking.get(brief_id)
+    if task is None or task.done():
+        task = asyncio.create_task(_speak_brief(brief_id, text))
+        _brief_speaking[brief_id] = task
+        task.add_done_callback(lambda _t: _brief_speaking.pop(brief_id, None))
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), BRIEF_AUDIO_WAIT_SECONDS)
+    except TimeoutError:
+        return None
 
 
 @router.get("/brief/latest", summary="The newest daily brief, with its audio")
