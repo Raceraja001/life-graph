@@ -226,6 +226,36 @@ async def count_due(session: AsyncSession, tenant_id: str, today: date) -> int:
     ).scalar_one()
 
 
+def deck_row(deck: str, cards: int, due: int, reviewed: int, remembered: int) -> dict[str, Any]:
+    """One deck's counts; retention is the share of reviewed cards whose last
+    answer was not "again" (None until a card has been reviewed)."""
+    return {
+        "deck": deck,
+        "cards": cards,
+        "due": due,
+        "reviewed": reviewed,
+        "retention": round(remembered / reviewed, 3) if reviewed else None,
+    }
+
+
+async def deck_stats(session: AsyncSession, tenant_id: str, today: date) -> list[dict[str, Any]]:
+    """Every deck with its card, due and reviewed counts, most cards first."""
+    reviewed = ReviewCard.reviews > 0
+    stmt = (
+        select(
+            ReviewCard.deck,
+            func.count(),
+            func.count().filter(ReviewCard.due_on <= today),
+            func.count().filter(reviewed),
+            func.count().filter(reviewed, func.coalesce(ReviewCard.last_grade, "") != "again"),
+        )
+        .where(ReviewCard.tenant_id == tenant_id)
+        .group_by(ReviewCard.deck)
+        .order_by(func.count().desc(), ReviewCard.deck)
+    )
+    return [deck_row(*row) for row in (await session.execute(stmt)).all()]
+
+
 async def get_card(session: AsyncSession, tenant_id: str, card_id: uuid.UUID) -> ReviewCard | None:
     return (
         await session.execute(

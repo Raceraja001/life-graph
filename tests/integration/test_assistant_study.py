@@ -76,6 +76,8 @@ async def test_generate_dedupe_grade_and_review_on_telegram(fakes):
             await c.post(f"/api/v1/study/cards/{first['id']}/grade", json={"grade": "meh"})
         ).status_code == 422
         assert (await c.get("/api/v1/study/due")).json()["meta"]["due"] == 1
+        decks = (await c.get("/api/v1/study/decks")).json()["data"]
+        assert decks == [{"deck": "memory", "cards": 2, "due": 1, "reviewed": 1, "retention": 1.0}]
 
     chat = 9100001
     today = date.today()

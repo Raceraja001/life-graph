@@ -82,6 +82,7 @@ DEVICE_ALLOWLIST: tuple[Allowed, ...] = (
     _get("/connectors/today", "bills, calendar, mail waiting"),
     _get("/monitors", "monitors"),
     _get("/study/due", "study"),
+    _get("/study/decks", "study"),
     _get("/invoices", "invoices"),
     _get("/invoices/{invoice_id}", "invoices"),
     _get("/memories/", "memories"),
