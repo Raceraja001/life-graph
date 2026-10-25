@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-25 07:27 UTC` from `master` @ `0881651`
+Generated `2026-10-25 14:18 UTC` from `master` @ `719fa9d`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-10-25 07:27 UTC` from `master` @ `0881651`
 
 | | |
 |---|---|
-| HTTP operations | **351** across 304 paths, 43 tags |
+| HTTP operations | **355** across 308 paths, 43 tags |
 | Database tables | **84** |
 | Migrations | **53** (head: `053_entities`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **29** |
-| Config settings | **264** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3607** in 397 files |
+| Config settings | **265** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3655** in 403 files |
 | Dashboard pages | **22** |
-| Python | 412 files, 106,478 lines |
+| Python | 414 files, 107,332 lines |
 
 ---
 
 ## HTTP API
 
-351 operations, grouped by OpenAPI tag.
+355 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 34
 
@@ -221,6 +221,30 @@ Generated `2026-10-25 07:27 UTC` from `master` @ `0881651`
 | DELETE | `/api/v1/admin/webhooks/{webhook_id}` | Delete a webhook |
 | POST | `/api/v1/admin/webhooks/{webhook_id}/test` | Test a webhook |
 
+### `jarvis` — 19
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/jarvis/app/download/{file}` | Download the phone app's APK |
+| GET | `/api/v1/jarvis/app/latest` | The newest phone app the PC offers (404: none) |
+| POST | `/api/v1/jarvis/bills/{item_id}/paid` | Mark a bill from mail paid |
+| GET | `/api/v1/jarvis/brief/latest` | The newest daily brief, with its audio |
+| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
+| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
+| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
+| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
+| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
+| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
+| POST | `/api/v1/jarvis/notifications/{notification_id}/action` | Tap a notification's button |
+| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
+| GET | `/api/v1/jarvis/reminders` | Your pending reminders, soonest first |
+| POST | `/api/v1/jarvis/reminders/{reminder_id}/cancel` | Cancel a reminder |
+| GET | `/api/v1/jarvis/today` | The Today screen in one call |
+| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
+| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
+
 ### `connectors` — 15
 
 | Method | Path | Summary |
@@ -240,26 +264,6 @@ Generated `2026-10-25 07:27 UTC` from `master` @ `0881651`
 | POST | `/api/v1/connectors/items/{item_id}/remind` | Turn a promise from sent mail into a reminder |
 | GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
 | GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
-
-### `jarvis` — 15
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/jarvis/brief/latest` | The newest daily brief, with its audio |
-| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
-| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
-| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
-| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
-| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
-| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
-| POST | `/api/v1/jarvis/notifications/{notification_id}/action` | Tap a notification's button |
-| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
-| GET | `/api/v1/jarvis/reminders` | Your pending reminders, soonest first |
-| POST | `/api/v1/jarvis/reminders/{reminder_id}/cancel` | Cancel a reminder |
-| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
-| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
 
 ### `judgment-engine` — 14
 
@@ -915,6 +919,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `connector-tasks` | Unclassified | — |
 | `connectors` | Unclassified | — |
 | `dashboard-pwa` | Built | `dashboard/app/(mobile)/m/page.tsx` |
+| `device-access` | Unclassified | — |
 | `era4-personal-ai` | Built | `life_graph/api/advisor.py` |
 | `era5-self-improving` | Built | `life_graph/self_improving/prompt_resolver.py` |
 | `era6-ambient-ai` | Built | `life_graph/watchers/framework.py` |
@@ -956,16 +961,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 303 | 2860 |
-| `tests/integration/` | 93 | 735 |
+| `tests/unit/` | 306 | 2900 |
+| `tests/integration/` | 96 | 743 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **397** | **3607** |
+| **total** | **403** | **3655** |
 
 ---
 
 ## Configuration
 
-264 settings, all overridable by environment variable.
+265 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -978,6 +983,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_API_KEY` | `—` |
 | `LIFE_GRAPH_SERVICE_API_KEYS` | `''` |
 | `LIFE_GRAPH_DEVICE_TOKEN_IDLE_DAYS` | `60` |
+| `LIFE_GRAPH_APP_RELEASE_DIR` | `''` |
 | `LIFE_GRAPH_DATABASE_URL` | `'postgresql+asyncpg://life_graph:life_graph@localhost:543…` |
 | `LIFE_GRAPH_DATABASE_URL_SYNC` | `'postgresql://life_graph:life_graph@localhost:5432/life_g…` |
 | `LIFE_GRAPH_DATABASE_POOL_SIZE` | `10` |
