@@ -241,3 +241,123 @@ async def test_memory_search_finds_only_the_devices_active_memories(client):
     rows = resp.json()["data"]
     assert [r["id"] for r in rows] == [str(mine)]
     assert set(rows[0]) == {"id", "content", "kind", "source", "created_at", "score"}
+
+
+async def _account(tenant: str, connector: str, exposure: str = "standard") -> uuid.UUID:
+    from life_graph.connectors.models import ConnectorAccount
+    from life_graph.storage.database import async_session
+
+    async with async_session() as s:
+        a = ConnectorAccount(
+            tenant_id=tenant,
+            connector=connector,
+            account_key=f"{tenant}-{connector}-{exposure}-{uuid.uuid4().hex[:6]}",
+            display_name=f"{connector} ({exposure})",
+            auth_method="oauth",
+            exposure=exposure,
+        )
+        s.add(a)
+        await s.commit()
+        return a.id
+
+
+async def _item(tenant: str, account_id: uuid.UUID, kind: str, **fields) -> uuid.UUID:
+    from life_graph.connectors.models import ConnectorItem
+    from life_graph.storage.database import async_session
+
+    async with async_session() as s:
+        item = ConnectorItem(
+            tenant_id=tenant,
+            account_id=account_id,
+            kind=kind,
+            external_id=uuid.uuid4().hex,
+            direction=fields.pop("direction", "own"),
+            trust_tier="external",
+            occurred_at=fields.pop("occurred_at", datetime.now(UTC)),
+            **fields,
+        )
+        s.add(item)
+        await s.commit()
+        return item.id
+
+
+# ── Contacts and mail ───────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_contacts_are_the_devices_and_never_local_only(client):
+    import json
+
+    phone = await _phone(client)
+    book = await _account(TENANT, "contacts")
+    private = await _account(TENANT, "contacts", "local_only")
+    theirs = await _account(OTHER, "contacts")
+    amma = await _item(
+        TENANT,
+        book,
+        "contact",
+        title="Amma Raja",
+        emails=["amma@example.test"],
+        local_detail=json.dumps({"phones": ["+91 98765 43210 (mobile)"]}),
+    )
+    await _item(TENANT, private, "contact", title="Amma Private")
+    await _item(OTHER, theirs, "contact", title="Amma Other")
+
+    resp = await client.get("/api/v1/jarvis/contacts?q=amma", headers=_spoofed(phone))
+    assert resp.status_code == 200
+    assert resp.json()["data"] == [
+        {
+            "id": str(amma),
+            "name": "Amma Raja",
+            "phone": "+91 98765 43210",
+            "email": "amma@example.test",
+        }
+    ]
+    listed = (await client.get("/api/v1/jarvis/contacts", headers=phone)).json()["data"]
+    assert [c["id"] for c in listed] == [str(amma)]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_mail_waiting_is_the_devices_with_local_only_masked(client):
+    phone = await _phone(client)
+    mail = await _account(TENANT, "imap")
+    private = await _account(TENANT, "imap", "local_only")
+    theirs = await _account(OTHER, "imap")
+    two_days_ago = datetime.now(UTC) - timedelta(days=2)
+    # Inbound, to the owner, asking something, two days old: waiting on a reply.
+    asking = {
+        "direction": "inbound",
+        "to_me": True,
+        "flags": {"asks_me": True},
+        "occurred_at": two_days_ago,
+    }
+    mine = await _item(
+        TENANT,
+        mail,
+        "email",
+        title="Invoice for October?",
+        sender_name="Priya",
+        sender_addr="p@example.test",
+        **asking,
+    )
+    hidden = await _item(
+        TENANT,
+        private,
+        "email",
+        title="Lab results",
+        sender_name="Dr Rao",
+        sender_addr="lab@example.test",
+        **asking,
+    )
+    await _item(OTHER, theirs, "email", title="Other tenant's mail", sender_name="X", **asking)
+
+    resp = await client.get("/api/v1/jarvis/mail/waiting", headers=_spoofed(phone))
+    assert resp.status_code == 200
+    rows = {r["id"]: r for r in resp.json()["data"]}
+    assert set(rows) == {str(mine), str(hidden)}
+    assert rows[str(mine)]["from"] == "Priya" and rows[str(mine)]["needs_reply"] is True
+    assert set(rows[str(mine)]) == {"id", "from", "subject", "received_at", "needs_reply"}
+    assert "Dr Rao" not in resp.text and "Lab results" not in resp.text
+    assert "Other tenant" not in resp.text

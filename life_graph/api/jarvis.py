@@ -1250,6 +1250,22 @@ async def entity(entity_id: str):
     return success_response(data=found)
 
 
+@router.get("/contacts", summary="Your contacts, or those matching q")
+async def contacts(q: str = ""):
+    """Every word of *q* in the name, an address or the organisation; a blank
+    *q* lists them by name (services/jarvis_inbox.py)."""
+    from life_graph.services import jarvis_inbox
+
+    return success_response(data=await jarvis_inbox.contacts(get_current_tenant_id(), q))
+
+
+@router.get("/mail/waiting", summary="Mail waiting on your reply, longest wait first")
+async def mail_waiting():
+    from life_graph.services import jarvis_inbox
+
+    return success_response(data=await jarvis_inbox.mail_waiting(get_current_tenant_id()))
+
+
 # ── v4: in-app update ───────────────────────────────────────────────────────
 
 APK_MEDIA_TYPE = "application/vnd.android.package-archive"
