@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # A paired phone's token stops working after this many days unused
     # (services/devices.py authenticate; re-pair to get a new one). 0 = never.
     device_token_idle_days: int = Field(default=60, ge=0)
+    # Where the release script puts the phone app's APK and its latest.json
+    # ({"version_code", "version_name", "file", "notes"}), served to paired
+    # phones by GET /jarvis/app/latest and /jarvis/app/download/{file}.
+    # Empty = no update offered (404).
+    app_release_dir: str = ""
 
     # ── Database ───────────────────────────────────────
     database_url: str = "postgresql+asyncpg://life_graph:life_graph@localhost:5432/life_graph"

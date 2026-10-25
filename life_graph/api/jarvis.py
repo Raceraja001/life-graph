@@ -26,7 +26,8 @@ voice reply as ``reminded``.
 
 v4 (docs/PLAN-v4.md, S1): ``GET /jarvis/today`` is the whole Today screen in
 one call (services/jarvis_today.py), each part failing on its own; ``POST
-/jarvis/bills/{item_id}/paid`` is its "Mark paid".
+/jarvis/bills/{item_id}/paid`` is its "Mark paid". ``GET /jarvis/app/latest``
+and ``.../app/download/{file}`` offer the newest APK from ``app_release_dir``.
 
 Where Jarvis ran (``route``: personal = this PC's model, general = a cloud
 model without the personal tools) comes from services/lead.py.
@@ -49,6 +50,7 @@ import re
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -1187,3 +1189,72 @@ async def bill_paid(item_id: str):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found.")
         await session.commit()
     return success_response(data={"id": item_id, "state": "paid", "marked": marked})
+
+
+# ── v4: in-app update ───────────────────────────────────────────────────────
+
+APK_MEDIA_TYPE = "application/vnd.android.package-archive"
+#: An APK's name as the release script writes it: no path, no hidden file.
+_APK_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.apk")
+
+
+def _release() -> tuple[Path, dict] | None:
+    """(the APK's path, latest.json) from ``app_release_dir``, or None when
+    unset, unreadable, malformed, or naming a file that is not right there."""
+    from life_graph.config import settings
+
+    folder = (settings.app_release_dir or "").strip()
+    if not folder:
+        return None
+    base = Path(folder).expanduser()
+    try:
+        meta = json.loads((base / "latest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(meta, dict):
+        return None
+    code, name, file, notes = (
+        meta.get(k) for k in ("version_code", "version_name", "file", "notes")
+    )
+    if not (isinstance(code, int) and not isinstance(code, bool) and code > 0):
+        return None
+    if not isinstance(name, str) or not isinstance(file, str) or not _APK_NAME.fullmatch(file):
+        return None
+    if notes is not None and not isinstance(notes, str):
+        return None
+    apk = base / file
+    try:
+        # The name pattern already rules out a path; this also refuses a symlink out.
+        if apk.resolve().parent != base.resolve() or not apk.is_file():
+            return None
+    except OSError:
+        return None
+    return apk, {"version_code": code, "version_name": name, "file": file, "notes": notes or ""}
+
+
+@router.get("/app/latest", summary="The newest phone app the PC offers (404: none)")
+async def app_latest():
+    """The app compares ``version_code`` with its own and offers Update when newer."""
+    found = _release()
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No app release here.")
+    _apk, meta = found
+    return success_response(
+        data={
+            "version_code": meta["version_code"],
+            "version_name": meta["version_name"],
+            "url": f"/api/v1/jarvis/app/download/{meta['file']}",
+            "notes": meta["notes"],
+        }
+    )
+
+
+@router.get("/app/download/{file}", summary="Download the phone app's APK")
+async def app_download(file: str):
+    """Only the file latest.json names: any other name, path or not, is a 404."""
+    from fastapi.responses import FileResponse
+
+    found = _release()
+    if found is None or file != found[1]["file"]:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such app release.")
+    return FileResponse(found[0], media_type=APK_MEDIA_TYPE, filename=file)

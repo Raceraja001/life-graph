@@ -132,7 +132,7 @@ def route_path(request: Request) -> str | None:
 
 def device_may_call(method: str, path: str | None) -> bool:
     """Whether a device token opens *method* *path* (a :func:`route_path`)."""
-    if not path:
+    if not path or not _CLEAN_PATH.fullmatch(path):
         return False
     if path.startswith(DEVICE_PATH_PREFIX):
         return True
