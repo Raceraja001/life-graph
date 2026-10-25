@@ -24,6 +24,10 @@ newest brief; ``GET /jarvis/reminders`` and ``.../{id}/cancel``. Jarvis's
 reminder_set reaches the chat as ``{type: reminded, id, text, at}`` and the
 voice reply as ``reminded``.
 
+v4 (docs/PLAN-v4.md, S1): ``GET /jarvis/today`` is the whole Today screen in
+one call (services/jarvis_today.py), each part failing on its own; ``POST
+/jarvis/bills/{item_id}/paid`` is its "Mark paid".
+
 Where Jarvis ran (``route``: personal = this PC's model, general = a cloud
 model without the personal tools) comes from services/lead.py.
 
@@ -1154,3 +1158,32 @@ async def cancel_reminder(reminder_id: str):
             row.status = "dismissed"
             await session.commit()
     return success_response(data={"id": str(row.id), "status": "cancelled"})
+
+
+# ── v4: the Today screen ────────────────────────────────────────────────────
+
+
+@router.get("/today", summary="The Today screen in one call")
+async def today():
+    """Counts, insights, schedule, what is due, money, work, study and what
+    Jarvis learnt (services/jarvis_today.py). A source that fails leaves its
+    part null or empty; the call itself does not fail for it."""
+    from life_graph.services.jarvis_today import today_screen
+
+    return success_response(data=await today_screen(get_current_tenant_id()))
+
+
+@router.post("/bills/{item_id}/paid", summary="Mark a bill from mail paid")
+async def bill_paid(item_id: str):
+    """The Today screen's "Mark paid": the bill on this email, and every other
+    open email about the same bill (connectors/bills.mark_paid). Only "paid":
+    the dashboard's dismiss and remind stay with the dashboard."""
+    from life_graph.connectors.bills import mark_paid
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        marked = await mark_paid(session, tenant_id, item_id, datetime.now(UTC))
+        if marked is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found.")
+        await session.commit()
+    return success_response(data={"id": item_id, "state": "paid", "marked": marked})

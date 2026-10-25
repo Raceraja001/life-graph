@@ -176,6 +176,8 @@ class AppUptimeWatcher(BaseWatcher):
         state, change = next_state(state, probe)
         details = {"project_id": project["id"], "url": url, **probe}
         if change == "down":
+            # When the outage began, for "down since 06:12" (services/app_health.py).
+            state["down_since"] = now.isoformat()
             what = (
                 f"HTTP {probe['status']}"
                 if probe.get("status")
@@ -187,6 +189,7 @@ class AppUptimeWatcher(BaseWatcher):
                 project, title, f"{url} failed {DOWN_AFTER} checks in a row: {what}.", what
             )
         elif change == "up":
+            state.pop("down_since", None)
             self.emit_event(
                 Severity.INFO, f"{project['name']} is back up", details=details, summary=url
             )
