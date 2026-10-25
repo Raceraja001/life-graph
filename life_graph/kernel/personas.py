@@ -44,6 +44,18 @@ _UNDERSTANDING_ASK = (
     " function or class you changed."
 )
 
+# A test-first task spec gives the whole test file. gpt-oss:20b never created
+# it: it passed start_line=1, end_line=200 to code_edit and got "Not a file",
+# and the prompt made tests optional (2026-10-25).
+_TEST_FIRST_CODE_EDIT = (
+    " When the task gives a test file, create it FIRST, exactly as given: one"
+    ' code_edit call with only path, old="" and new=<the whole file>, no'
+    " start_line or end_line. Run it with run_tests and see it fail, then change"
+    " the source until it passes; never edit the given test to make it pass. If"
+    " you add or change any other test, run it with run_tests and fix it until it"
+    " passes."
+)
+
 _BUILTIN_PERSONAS: list[dict[str, Any]] = [
     {
         "name": "chief",
@@ -272,10 +284,10 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " code_search or code_list, read it with code_read (follow"
             " next_start_line for long files), change it with code_edit"
             " (copy `old` exactly, without the line-number prefixes), then"
-            " code_read the changed lines to confirm. If you add or change a"
-            " test, run it with run_tests and fix it until it passes. Never"
-            " rewrite a whole file to change part of it. Do not refactor or"
-            " touch unrelated files. Finish with a short summary of what you"
+            " code_read the changed lines to confirm."
+            + _TEST_FIRST_CODE_EDIT
+            + " Never rewrite a whole file to change part of it. Do not refactor"
+            " or touch unrelated files. Finish with a short summary of what you"
             " changed and why." + _UNDERSTANDING_ASK
         ),
         "intent_tags": ["code", "fix", "local"],
@@ -341,10 +353,10 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " the relevant code with code_search or code_list, read it with"
             " code_read (follow next_start_line for long files), change it with"
             " code_edit (copy `old` exactly, without the line-number prefixes),"
-            " then code_read the changed lines to confirm. If you add or change a"
-            " test, run it with run_tests and fix it until it passes. Never"
-            " rewrite a whole file to change part of it. Do not refactor or"
-            " touch unrelated files. Finish with a short summary of what you"
+            " then code_read the changed lines to confirm."
+            + _TEST_FIRST_CODE_EDIT
+            + " Never rewrite a whole file to change part of it. Do not refactor"
+            " or touch unrelated files. Finish with a short summary of what you"
             " changed and why." + _UNDERSTANDING_ASK
         ),
         "intent_tags": ["code", "fix", "cloud"],
