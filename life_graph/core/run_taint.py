@@ -32,12 +32,16 @@ if TYPE_CHECKING:
 #: web pages and mail it read; bridged MCP tools (``mcp_*``) are outside by
 #: default. Calendar entries are deliberately absent: an invite's title is
 #: someone else's, but tainting every calendar question would put most of the
-#: owner's own saves behind review.
+#: owner's own saves behind review. ``watch_page`` and ``list_page_monitors``
+#: return ``last_excerpt``, text cut from the watched page (and watch_page its
+#: first check), so they are web pages too (review 2026-10-25).
 OUTSIDE_CONTENT_TOOLS: frozenset[str] = frozenset(
     {
         "web_search",
         "browse_web",
         "research_web",
+        "watch_page",
+        "list_page_monitors",
         "email_waiting",
         "email_search",
         "email_read",

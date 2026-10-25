@@ -106,7 +106,18 @@ async def test_a_run_without_outside_content_is_not_tainted(monkeypatch):
     assert outside_content_seen() is False
 
 
-@pytest.mark.parametrize("name", ["web_search", "browse_web", "research_web", "mcp_x_fetch"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "web_search",
+        "browse_web",
+        "research_web",
+        "mcp_x_fetch",
+        # Both return last_excerpt, text cut from the watched page.
+        "watch_page",
+        "list_page_monitors",
+    ],
+)
 @pytest.mark.asyncio
 async def test_every_outside_tool_taints(monkeypatch, name):
     seen = await _run(monkeypatch, [[name], ["memory_forget"]])
