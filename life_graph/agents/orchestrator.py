@@ -74,6 +74,7 @@ class AgentOrchestrator:
         system_prompt: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         keep_going: Callable[[], str | None | Awaitable[str | None]] | None = None,
+        outside_content_seen: bool = False,
     ) -> AsyncGenerator[str, None]:
         """Run the agent loop, streaming SSE events.
 
@@ -91,6 +92,9 @@ class AgentOrchestrator:
             keep_going: Asked when the model ends a turn without tool calls.
                 Text it returns goes back as a user message and the loop
                 continues (within MAX_ITERATIONS); ``None`` ends the run.
+            outside_content_seen: Start the run tainted (core/run_taint.py):
+                a child delegated from a run that had already read outside
+                content.
 
         Yields:
             SSE-formatted event strings.
@@ -177,8 +181,9 @@ class AgentOrchestrator:
         detector = StuckDetector() if self.detect_stuck else None
         budget = condenser.budget_for(self.context_tokens, self.max_tokens)
         # Set once a tool has returned someone else's text (core/run_taint.py);
-        # the memory and delegation tools read it. A local, so per run.
-        outside_seen = False
+        # the memory and delegation tools read it. A local, so per run; a
+        # delegated child of a tainted run starts with it set.
+        outside_seen = outside_content_seen
 
         for iteration in range(self.MAX_ITERATIONS):
             logger.debug("Agent iteration %d/%d", iteration + 1, self.MAX_ITERATIONS)

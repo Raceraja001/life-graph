@@ -33,12 +33,16 @@ if TYPE_CHECKING:
 #: web pages and mail it read; bridged MCP tools (``mcp_*``) are outside by
 #: default. Calendar entries are deliberately absent: an invite's title is
 #: someone else's, but tainting every calendar question would put most of the
-#: owner's own saves behind review.
+#: owner's own saves behind review. ``watch_page`` and ``list_page_monitors``
+#: return ``last_excerpt``, text cut from the watched page (and watch_page its
+#: first check), so they are web pages too (review 2026-10-25).
 OUTSIDE_CONTENT_TOOLS: frozenset[str] = frozenset(
     {
         "web_search",
         "browse_web",
         "research_web",
+        "watch_page",
+        "list_page_monitors",
         "email_waiting",
         "email_search",
         "email_read",
@@ -46,6 +50,13 @@ OUTSIDE_CONTENT_TOOLS: frozenset[str] = frozenset(
         "delegate_to_persona",
     }
 )
+
+#: ``AgentTask.input`` key that starts a run tainted. ``delegate_to_persona``
+#: sets it on a child spawned from a tainted run: the child's brief was written
+#: after the outside text, and the child reads the root's owner message
+#: (memory_save's gate), so a clean child was a way round every rule above:
+#: Jarvis delegating to itself, then on to cody (review 2026-10-25).
+TAINT_INPUT_KEY = "outside_content_seen"
 
 _outside_seen: ContextVar[bool] = ContextVar("run_outside_content_seen", default=False)
 

@@ -132,6 +132,24 @@ async def test_writing_an_envrc_is_refused(roots):
     assert "error" in out and not (roots / ".envrc").exists()
 
 
+@pytest.mark.parametrize(
+    "rel",
+    [".GIT/hooks/pre-commit", ".Claude/settings.json", ".GitHub/workflows/ci.yml", ".ENVRC"],
+)
+def test_protected_names_are_matched_whatever_their_case(roots, rel):
+    """/mnt/h (drvfs) and NTFS are case-insensitive: ".GIT/hooks" IS ".git/hooks"."""
+    from life_graph.tools._guards import check_writable
+
+    with pytest.raises(ToolDeniedError, match="may not write"):
+        check_writable(roots / "repo" / rel, tool_name="file_write")
+
+
+@pytest.mark.parametrize("rel", [".SSH/id_rsa", ".ENV", ".Env.Local", "ID_RSA", ".AWS/creds"])
+def test_credential_names_are_matched_whatever_their_case(roots, rel):
+    with pytest.raises(ToolDeniedError, match="credential material"):
+        resolve_in_roots(str(roots / rel), tool_name="file_read")
+
+
 def test_check_writable_names_envrc(roots):
     from life_graph.tools._guards import check_writable
 

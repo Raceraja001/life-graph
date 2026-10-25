@@ -149,16 +149,19 @@ def _allowed_roots() -> list[Path]:
 
 
 def _is_sensitive(resolved: Path) -> str | None:
-    parts = set(resolved.parts)
-    posix = resolved.as_posix() + "/"
+    # Compared case-folded: the repos live on /mnt/h (drvfs) and NTFS, where
+    # ".ENV" or ".AWS/credentials" open the very same file (review 2026-10-25).
+    parts = {p.casefold() for p in resolved.parts}
+    posix = resolved.as_posix().casefold() + "/"
     for name in _SENSITIVE_DIR_NAMES:
         # ".config/gcloud" is two parts, never one; match it as a path segment.
         if name in parts or ("/" in name and f"/{name}/" in posix):
             return name
     name = resolved.name
-    if name in _SENSITIVE_FILE_NAMES:
+    folded = name.casefold()
+    if folded in _SENSITIVE_FILE_NAMES:
         return name
-    if name.startswith(".env") and name.lower() not in _ENV_TEMPLATES:
+    if folded.startswith(".env") and folded not in _ENV_TEMPLATES:
         return name
     if resolved.suffix.lower() in _SENSITIVE_SUFFIXES:
         return name
@@ -210,9 +213,11 @@ def check_writable(resolved: Path, *, tool_name: str) -> None:
     Allowing a write into any of them would hand a persona that holds only
     file tools a shell. Reads stay allowed.
     """
-    hit = next((d for d in _WRITE_PROTECTED_DIRS if d in resolved.parts), None)
-    if hit is None and resolved.name in _WRITE_PROTECTED_FILES:
-        hit = resolved.name
+    # Case-folded: on drvfs (/mnt/h) and NTFS ".GIT/hooks" is ".git/hooks".
+    parts = {p.casefold() for p in resolved.parts}
+    hit = next((d for d in _WRITE_PROTECTED_DIRS if d in parts), None)
+    if hit is None and resolved.name.casefold() in _WRITE_PROTECTED_FILES:
+        hit = resolved.name.casefold()
     if hit is not None:
         logger.warning("%s denied write inside %s: %s", tool_name, hit, resolved)
         where = f"inside a {hit} directory" if hit in _WRITE_PROTECTED_DIRS else f"to {hit}"
