@@ -58,6 +58,20 @@ async def test_repeats_do_not_use_up_the_page(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_busy_overlap_keeps_the_newest_rows_in_order(monkeypatch):
+    """Over the overlap's LIMIT the rows just before the cursor (the late
+    commits) are the ones to keep: fetched newest first, sent oldest first."""
+    from tests.unit.fakes import sql
+
+    newest_first = [_note(f"old{i}", AFTER - timedelta(seconds=i + 1)) for i in range(3)]
+    session = FakeSession(newest_first, [])
+    out = await _call(monkeypatch, session, after=AFTER.isoformat())
+    assert [n["title"] for n in out["data"]] == ["old2", "old1", "old0"]
+    overlap = sql(session.statements[0])
+    assert "ORDER BY notifications.created_at DESC" in overlap and "LIMIT 50" in overlap
+
+
+@pytest.mark.asyncio
 async def test_no_cursor_means_one_query_from_the_start(monkeypatch):
     session = FakeSession([_note("first", AFTER)])
     out = await _call(monkeypatch, session)

@@ -199,9 +199,39 @@ class TestRequestEnd:
         assert "end_requested_at" in marker
 
     @pytest.mark.asyncio
-    async def test_a_session_never_seen_is_a_noop(self, monkeypatch):
-        monkeypatch.setattr(ccs, "async_session", _FakeDB([_Result(rowcount=0)]))
-        assert await ccs.request_end("acme", "cc-1", None) is False
+    async def test_an_end_before_the_first_memory_is_kept_on_a_new_part(self, monkeypatch):
+        """SessionEnd before the first memory: part 1 is made already asked to
+        end, so the memory that follows joins it and it closes after the grace
+        period, not the idle timeout."""
+        part_one = ccs.memory_session_id("acme", "cc-1")
+        db = _FakeDB([_Result(rowcount=0), _Result(scalar=part_one)])
+        monkeypatch.setattr(ccs, "async_session", db)
+
+        assert await ccs.request_end("acme", "cc-1", "clear") is False
+
+        assert len(db.statements) == 2 and db.commits == 2
+        insert = db.statements[1]
+        sql = _sql(insert)
+        assert sql.startswith("INSERT INTO sessions")
+        assert "ON CONFLICT (id) DO UPDATE" in sql and "sessions.ended_at IS NULL" in sql
+        params = insert.compile(dialect=postgresql.dialect()).params
+        assert params["id"] == part_one and params["tenant_id"] == "acme"
+        context = params["context"]
+        assert context["source"] == "claude_code" and context["claude_code_session_id"] == "cc-1"
+        assert context["end_reason"] == "clear" and "end_requested_at" in context
+        assert context["part"] == 1 and "last_seen_at" in context
+
+    @pytest.mark.asyncio
+    async def test_an_end_after_every_part_ended_goes_on_the_next_part(self, monkeypatch):
+        part_two = ccs.memory_session_id("acme", "cc-1", 2)
+        db = _FakeDB([_Result(rowcount=0), _Result(scalar=None), _Result(scalar=part_two)])
+        monkeypatch.setattr(ccs, "async_session", db)
+
+        await ccs.request_end("acme", "cc-1", None)
+
+        params = db.statements[2].compile(dialect=postgresql.dialect()).params
+        assert params["id"] == part_two and params["context"]["part"] == 2
+        assert params["context"]["end_reason"] == "other"
 
 
 # ── Closing ──────────────────────────────────────────────────────────────
