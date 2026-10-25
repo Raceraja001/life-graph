@@ -301,7 +301,10 @@ export interface BirthdayContact {
   org?: string;
 }
 
-const GET = <T>(path: string, params?: Record<string, string>) => request<T>("GET", path, undefined, params);
+// Exported for lib/observe.ts, which adds the agent-observability calls
+// without growing this file further.
+export const GET = <T>(path: string, params?: Record<string, string>) =>
+  request<T>("GET", path, undefined, params);
 const POST = <T>(path: string, body?: unknown) => request<T>("POST", path, body);
 
 export const api = {
