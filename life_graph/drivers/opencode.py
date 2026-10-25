@@ -138,11 +138,14 @@ def _config(packet: ContextPacket, workdir: Path | None = None) -> dict:
 
 
 def parse_events(text: str) -> tuple[str, list[dict], dict]:
-    """``opencode run --format json`` stdout -> (final text, steps, metadata).
+    """``opencode run --format json`` stdout -> (all text, steps, metadata).
 
     Events (OpenCode 1.19): ``step_start`` / ``step_finish`` frame each model
     turn; ``text`` carries what the agent said; ``tool_use`` carries a whole
     tool call with its input and its output or error; ``error`` a failure.
+    Every text part is kept, not only the last: task 81de2480 wrote its
+    ``## Spec`` and its ``## Understanding`` in separate parts, and keeping
+    the last one lost the spec.
     """
     steps: list[dict] = []
     texts: list[str] = []
@@ -196,7 +199,7 @@ def parse_events(text: str) -> tuple[str, list[dict], dict]:
             error = event.get("error") or part
             steps.append({"kind": "error", "content": json.dumps(error, default=str), "at": at_iso})
             meta["error"] = json.dumps(error, default=str)[:500]
-    return (texts[-1] if texts else ""), number(steps), meta
+    return "\n\n".join(texts), number(steps), meta
 
 
 class OpencodeDriver:
@@ -298,7 +301,7 @@ class OpencodeDriver:
                 if run.timed_out:
                     return DriverResult(
                         success=False,
-                        output=(texts[-1] if texts else "")[:20000],
+                        output="\n\n".join(texts)[-20000:],
                         error=f"opencode timed out after {timeout}s",
                         duration_ms=int((time.monotonic() - start) * 1000),
                         metadata={
@@ -339,7 +342,8 @@ class OpencodeDriver:
             err = run.err
             return DriverResult(
                 success=success,
-                output=(texts[-1] if texts else "")[:20000],
+                # Every turn's text: the session may be continued by self-checks.
+                output="\n\n".join(texts)[-20000:],
                 cost_usd=0.0,  # local model; a paid provider is not metered here
                 duration_ms=int((time.monotonic() - start) * 1000),
                 error=None
@@ -386,7 +390,8 @@ class OpencodeDriver:
             )
             parts.append(
                 f"You cannot run shell commands. {tests} Do not write runner or scratch "
-                "files: change only the files the task needs."
+                "files: change only the files the task needs, including any new test file "
+                "it names."
             )
         return "\n\n".join(parts)
 

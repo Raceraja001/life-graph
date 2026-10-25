@@ -133,6 +133,25 @@ async def test_code_edit_empty_range_inserts_appends_and_creates(repo):
     assert (repo["wt"] / "pkg" / "fresh.py").read_text() == "Y = 1\n"
 
 
+async def test_code_edit_creates_a_missing_file_whatever_the_line_numbers(repo):
+    """gpt-oss:20b created a test file with start_line=1, end_line=200 and got
+    "Not a file" with no hint, every time (2026-10-25)."""
+    with confine_to(repo["wt"]):
+        new = json.loads(await code.code_edit("tests/unit/test_x.py", "", "X = 1\n", 1, 200))
+        assert "created" in new, new
+        # An existing file is still never clobbered by an empty `old`.
+        again = json.loads(await code.code_edit("tests/unit/test_x.py", "", "Y = 2\n", 1, 200))
+        assert "outside the file" in again["error"]
+        # A missing file with a non-empty `old` says how to create one.
+        missing = json.loads(await code.code_edit("pkg/none.py", "x = 1", "x = 2"))
+        assert 'old=""' in missing["error"] and "no start_line or end_line" in missing["error"]
+        # The write guards still hold for a new file.
+        git = json.loads(await code.code_edit(".git/hooks/pre-commit", "", "evil", 1, 9))
+        assert "inside a .git directory" in git["error"]
+    assert (repo["wt"] / "tests" / "unit" / "test_x.py").read_text() == "X = 1\n"
+    assert not (repo["wt"] / ".git").exists()
+
+
 async def test_code_edit_refuses_git_internals(repo):
     (repo["wt"] / ".git").write_text("gitdir: /somewhere\n")
     with confine_to(repo["wt"]):

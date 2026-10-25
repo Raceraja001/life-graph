@@ -333,6 +333,41 @@ def test_code_fixer_local_can_run_tests():
     assert "run_tests" in local["allowed_tools"]
 
 
+@pytest.mark.parametrize("name", ["code-fixer-local", "code-fixer-cloud"])
+def test_code_edit_fixers_create_a_given_test_file_first(name):
+    """gpt-oss:20b never created the test file a spec gave (2026-10-25): tests
+    were optional in its prompt, and it passed line numbers to create a file."""
+    from life_graph.kernel.personas import _BUILTIN_PERSONAS
+
+    prompt = next(p for p in _BUILTIN_PERSONAS if p["name"] == name)["system_prompt"]
+    assert "When the task gives a test file, create it FIRST, exactly as given" in prompt
+    assert 'only path, old="" and new=<the whole file>, no start_line or end_line' in prompt
+    assert "see it fail" in prompt and "never edit the given test to make it pass" in prompt
+    assert "If you add or change a test," not in prompt
+
+
+def test_the_opencode_fixer_writes_a_given_test_file_first():
+    from life_graph.kernel.personas import _BUILTIN_PERSONAS
+
+    prompt = next(p for p in _BUILTIN_PERSONAS if p["name"] == "code-fixer-opencode")[
+        "system_prompt"
+    ]
+    assert "When the task gives a test file, write it FIRST, exactly as given" in prompt
+    # OpenCode's own tool names: its write tool, and run_tests served over MCP.
+    assert "write tool" in prompt and "lg_tests_run_tests" in prompt
+    assert "see it fail" in prompt and "never edit the given test to make it pass" in prompt
+
+
+def test_the_understanding_ask_wants_a_text_last_message():
+    """gpt-oss:20b ended its turn on a tool call with no text, so the reply had
+    no '## Understanding' and change_explained failed (2026-10-25)."""
+    from life_graph.kernel.personas import _BUILTIN_PERSONAS, _UNDERSTANDING_ASK
+
+    assert _UNDERSTANDING_ASK.startswith(" Your last message must be text, not a tool call.")
+    local = next(p for p in _BUILTIN_PERSONAS if p["name"] == "code-fixer-local")
+    assert _UNDERSTANDING_ASK in local["system_prompt"]
+
+
 # ── Self-check: the harness runs the agent's own changed tests ──────────────
 
 
