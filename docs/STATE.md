@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-25 05:18 UTC` from `master` @ `4d6d4e5`
+Generated `2026-10-25 05:22 UTC` from `master` @ `beb2930`
 
 ---
 
@@ -25,7 +25,7 @@ Generated `2026-10-25 05:18 UTC` from `master` @ `4d6d4e5`
 | Scheduled jobs | **29** |
 | Config settings | **264** (prefix `LIFE_GRAPH_`) |
 | Test functions | **3563** in 395 files |
-| Dashboard pages | **18** |
+| Dashboard pages | **22** |
 | Python | 412 files, 106,123 lines |
 
 ---
@@ -867,7 +867,7 @@ Generated `2026-10-25 05:18 UTC` from `master` @ `4d6d4e5`
 
 ## Dashboard
 
-18 pages.
+22 pages.
 
 | Route | File |
 |---|---|
@@ -881,8 +881,12 @@ Generated `2026-10-25 05:18 UTC` from `master` @ `4d6d4e5`
 | `/m/shadow` | `dashboard/app/(mobile)/m/shadow/page.tsx` |
 | `/m/tasks` | `dashboard/app/(mobile)/m/tasks/page.tsx` |
 | `/activity` | `dashboard/app/activity/page.tsx` |
+| `/agents/failures` | `dashboard/app/agents/failures/page.tsx` |
+| `/agents` | `dashboard/app/agents/page.tsx` |
+| `/agents/scorecards` | `dashboard/app/agents/scorecards/page.tsx` |
 | `/calibration` | `dashboard/app/calibration/page.tsx` |
 | `/decisions` | `dashboard/app/decisions/page.tsx` |
+| `/drivers/[id]` | `dashboard/app/drivers/[id]/page.tsx` |
 | `/drivers` | `dashboard/app/drivers/page.tsx` |
 | `/login` | `dashboard/app/login/page.tsx` |
 | `/memories` | `dashboard/app/memories/page.tsx` |
