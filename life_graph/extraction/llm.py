@@ -94,7 +94,9 @@ Categories:
 - preference: Things the owner prefers or favours.
 - anti_preference: Things the owner dislikes or avoids.
 - decision: A choice the owner made, with the reason if given.
-- explicit_save: Something the owner explicitly asked to remember.
+- explicit_save: Something the owner explicitly asked to remember, or a standing
+  instruction for how things must always or never be done ("always…", "never…",
+  "from now on…").
 - intention: Something the owner plans or wants to do later.
 - fact: A lasting fact about the owner, their life or their projects.
 

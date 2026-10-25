@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from life_graph.config import settings
 from life_graph.core.events import Event, EventBus, EventType, event_bus
-from life_graph.services import claude_code_sessions
+from life_graph.services import claude_code_sessions, saved_by_tool
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -32,6 +32,28 @@ def _project_of(capture_evt: Any) -> str | None:
     properties = getattr(capture_evt, "properties", None) or {}
     project = properties.get("project")
     return str(project) if project else None
+
+
+# ── Standing instructions ──────────────────────────────────────────────
+# The owner setting a rule ("always…", "never…", "from now on…") asked for it
+# to be kept, like "remember that…", but the extractor reads it as a
+# preference, so it waited in review ("create local HTML files instead of
+# artifacts. always", 2026-10-25). Short messages only: a pasted document
+# saying "always" is not the owner setting a rule.
+_STANDING = re.compile(r"\b(always|never|from now on|every time|each time)\b", re.IGNORECASE)
+_RULE_TYPES = frozenset({"preference", "anti_preference", "decision"})
+STANDING_MAX_CHARS = 300
+
+
+def promote_standing(facts: list[Any], content: str | None) -> list[Any]:
+    """*facts* with rule-like ones marked ``explicit_save`` when *content* sets a rule."""
+    text = content or ""
+    if len(text) > STANDING_MAX_CHARS or not _STANDING.search(text):
+        return facts
+    for fact in facts:
+        if fact.fact_type in _RULE_TYPES:
+            fact.fact_type = "explicit_save"
+    return facts
 
 
 # ── Decision detection patterns ────────────────────────────────────────
@@ -173,11 +195,26 @@ class CaptureProcessors:
                         "Extraction pipeline failed for %s", capture_event_id, exc_info=True
                     )
 
-                if surface in settings.capture_saved_by_tool_surfaces_list:
+                facts = promote_standing(facts, content)
+
+                if facts and surface in settings.capture_saved_by_tool_surfaces_list:
                     # Jarvis saves "remember that…" itself (memory_save); kept
                     # here too it was stored twice in different words
                     # ("The owner's code is…" next to "My code is…", 2026-10-23).
-                    facts = [f for f in facts if f.fact_type != "explicit_save"]
+                    # What its run for this message saved decides, not the
+                    # extractor's label for the fact (services/saved_by_tool.py).
+                    # The commit hands the connection back while that waits.
+                    await session.commit()
+                    saved = await saved_by_tool.run_saves(
+                        capture_evt,
+                        tenant_id or capture_evt.tenant_id,
+                        wait_seconds=settings.capture_saved_by_tool_wait_seconds,
+                    )
+                    if saved is None:
+                        # The run is still going: left "received" for the
+                        # capture sweep, which settles it once it is done.
+                        return
+                    facts = await saved_by_tool.drop_saved(facts, saved, self._embed)
 
                 # ── 1b. Persist those facts as memories ─────────────
                 # Extraction alone yields nothing durable — the facts have to
@@ -310,6 +347,17 @@ class CaptureProcessors:
                 "Memory persistence failed for capture %s", capture_evt.id, exc_info=True
             )
             return 0
+
+    @staticmethod
+    async def _embed(text: str) -> list[float] | None:
+        """An embedding of *text*, or None when there is none to be had."""
+        try:
+            from life_graph.api.dependencies import get_memory_manager
+
+            return await get_memory_manager().generate_embedding(text)
+        except Exception:
+            logger.warning("Embedding failed while comparing with Jarvis's saves", exc_info=True)
+            return None
 
     @staticmethod
     async def _session_context(capture_evt: CaptureEvent, tenant_id: str | None) -> dict[str, str]:

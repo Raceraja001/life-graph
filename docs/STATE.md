@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-24 17:37 UTC` from `master` @ `5a47ad9`
+Generated `2026-10-25 05:10 UTC` from `master` @ `e3fa5ac`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-10-24 17:37 UTC` from `master` @ `5a47ad9`
 
 | | |
 |---|---|
-| HTTP operations | **347** across 300 paths, 43 tags |
+| HTTP operations | **351** across 304 paths, 43 tags |
 | Database tables | **84** |
 | Migrations | **53** (head: `053_entities`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **29** |
-| Config settings | **263** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3493** in 388 files |
+| Config settings | **264** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3562** in 395 files |
 | Dashboard pages | **18** |
-| Python | 398 files, 104,663 lines |
+| Python | 412 files, 106,101 lines |
 
 ---
 
 ## HTTP API
 
-347 operations, grouped by OpenAPI tag.
+351 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 34
 
@@ -241,6 +241,26 @@ Generated `2026-10-24 17:37 UTC` from `master` @ `5a47ad9`
 | GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
 | GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
 
+### `jarvis` — 15
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/jarvis/brief/latest` | The newest daily brief, with its audio |
+| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
+| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
+| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
+| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
+| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
+| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
+| POST | `/api/v1/jarvis/notifications/{notification_id}/action` | Tap a notification's button |
+| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
+| GET | `/api/v1/jarvis/reminders` | Your pending reminders, soonest first |
+| POST | `/api/v1/jarvis/reminders/{reminder_id}/cancel` | Cancel a reminder |
+| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
+| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
+
 ### `judgment-engine` — 14
 
 | Method | Path | Summary |
@@ -296,22 +316,6 @@ Generated `2026-10-24 17:37 UTC` from `master` @ `5a47ad9`
 | POST | `/api/v1/memories/{memory_id}/reinforce` | Reinforce a memory — confirm it is still accurate |
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
-
-### `jarvis` — 11
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
-| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
-| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
-| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
-| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
-| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
-| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
-| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
-| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
 
 ### `procedures` — 7
 
@@ -796,7 +800,7 @@ Generated `2026-10-24 17:37 UTC` from `master` @ `5a47ad9`
 | ~~assistant~~ (retired) — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
 | **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
 | ~~swe-lead~~ (retired) — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 28 |
+| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 29 |
 
 ---
 
@@ -948,16 +952,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 297 | 2757 |
-| `tests/integration/` | 90 | 724 |
+| `tests/unit/` | 302 | 2820 |
+| `tests/integration/` | 92 | 730 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **388** | **3493** |
+| **total** | **395** | **3562** |
 
 ---
 
 ## Configuration
 
-263 settings, all overridable by environment variable.
+264 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1008,6 +1012,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_EXTRACTION_LLM_CONFIDENCE_THRESHOLD` | `0.5` |
 | `LIFE_GRAPH_CAPTURE_NO_EXTRACT_SURFACES` | `'tool_exhaust,assistant_message'` |
 | `LIFE_GRAPH_CAPTURE_SAVED_BY_TOOL_SURFACES` | `'jarvis_app'` |
+| `LIFE_GRAPH_CAPTURE_SAVED_BY_TOOL_WAIT_SECONDS` | `90` |
 | `LIFE_GRAPH_CLAUDE_CODE_SESSION_END_GRACE_MINUTES` | `5` |
 | `LIFE_GRAPH_CLAUDE_CODE_SESSION_IDLE_MINUTES` | `240` |
 | `LIFE_GRAPH_COLD_START_MIN_MEMORIES` | `50` |
@@ -1199,7 +1204,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_CPUS` | `'4'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_CREDS_PATH` | `'~/.claude/.credentials.json'` |
 | `LIFE_GRAPH_TOOL_SHELL_ENABLED` | `True` |
-| `LIFE_GRAPH_TOOL_SHELL_MODE` | `'full'` |
+| `LIFE_GRAPH_TOOL_SHELL_MODE` | `'allowlist'` |
 | `LIFE_GRAPH_TOOL_PRIVILEGED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_TOOL_FS_ROOTS` | `''` |
 | `LIFE_GRAPH_INTERVIEW_MAX_QUESTIONS_PER_DAY` | `3` |

@@ -9,6 +9,7 @@ is…"). So from the first such tool result to the end of the run:
 
 * ``memory_save`` stores only for review (pending), and replaces nothing;
 * ``memory_forget`` refuses;
+* ``reminder_set`` refuses (tools/reminders.py);
 * ``delegate_to_persona`` refuses a worker that holds file, code or shell
   tools, so outside text cannot reach a shell one hop away.
 

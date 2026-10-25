@@ -17,12 +17,20 @@ docs/PLAN.md):
   by Jarvis in the same conversation, the reply spoken back as mp3.
 * ``POST /jarvis/warm``: the app opened; load the local model in the background.
 
+v3 (docs/PLAN-v3.md): notifications carry ``kind`` and ``actions``, and
+``POST /jarvis/notifications/{id}/action`` takes one
+(services/notification_actions.py); ``GET /jarvis/brief/latest`` speaks the
+newest brief; ``GET /jarvis/reminders`` and ``.../{id}/cancel``. Jarvis's
+reminder_set reaches the chat as ``{type: reminded, id, text, at}`` and the
+voice reply as ``reminded``.
+
 Where Jarvis ran (``route``: personal = this PC's model, general = a cloud
 model without the personal tools) comes from services/lead.py.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import uuid
@@ -90,7 +98,25 @@ def _app_event(event: dict, state: dict) -> dict | None:
     if kind == "tool_result" and event.get("name") == "memory_forget":
         # What Jarvis just forgot, so a wrong forget does not go unnoticed.
         return _forgotten_event(event.get("result"))
+    if kind == "tool_result" and event.get("name") == "reminder_set":
+        # The reminder just set, so the app can show it with a Cancel.
+        return _reminded_event(event.get("result"))
     return None  # other tool calls, delegations: not shown on the phone
+
+
+def _reminded_event(result: object) -> dict | None:
+    try:
+        out = json.loads(str(result or ""))
+    except ValueError:
+        return None
+    if not isinstance(out, dict) or out.get("reminded") is not True or not out.get("id"):
+        return None
+    return {
+        "type": "reminded",
+        "id": str(out["id"]),
+        "text": str(out.get("text") or ""),
+        "at": str(out.get("at") or ""),
+    }
 
 
 def _forgotten_event(result: object) -> dict | None:
@@ -377,7 +403,42 @@ async def _answer(tenant_id: str, question: str, conversation_id: uuid.UUID | No
         "conversation_id": str(conversation_id),
         "route": (result.get("route") or {}).get("kind"),
         "saved": await _saved_in(tenant_id, spawn["task_id"]),
+        "reminded": await _reminded_in(tenant_id, spawn["task_id"]),
     }
+
+
+def _reminder_row(it) -> dict:
+    """One reminder as the app reads it; ``at`` on the owner's clock."""
+    from life_graph.connectors.tools import user_tz
+
+    at = it.trigger_time.astimezone(user_tz()).isoformat() if it.trigger_time else None
+    return {"id": str(it.id), "text": it.content, "at": at}
+
+
+async def _reminded_in(tenant_id: str, task_id: object) -> list[dict]:
+    """What reminder_set scheduled during one Jarvis run and is still pending
+    (tools/reminders.py tags it with the run's task id)."""
+    from life_graph.models.db import Intention
+
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Intention)
+                    .where(
+                        Intention.tenant_id == tenant_id,
+                        Intention.trigger_type == "time",
+                        Intention.status == "pending",
+                        Intention.context_match["task_id"].astext == str(task_id),
+                    )
+                    .order_by(Intention.trigger_time)
+                    .limit(10)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return [_reminder_row(it) for it in rows]
 
 
 async def _saved_in(tenant_id: str, task_id: object) -> list[dict]:
@@ -698,15 +759,204 @@ async def notifications(after: str | None = None, limit: int = 20):
             .scalars()
             .all()
         )
-    return success_response(
-        data=[
-            {
-                "id": str(n.id),
-                "title": n.title,
-                "body": (n.body or "")[:2000],
-                "priority": _PRIORITY.get((n.priority or "").lower(), "info"),
-                "created_at": n.created_at.isoformat() if n.created_at else None,
-            }
-            for n in rows
-        ]
+    return success_response(data=[_notification_row(n) for n in rows])
+
+
+def _notification_row(n) -> dict:
+    from life_graph.services.notification_actions import actions_for, kind_of
+
+    meta = getattr(n, "extra_metadata", None) or {}
+    kind = kind_of(getattr(n, "source_type", None), meta)
+    return {
+        "id": str(n.id),
+        "title": n.title,
+        "body": (n.body or "")[:2000],
+        "priority": _PRIORITY.get((n.priority or "").lower(), "info"),
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+        "kind": kind,
+        "actions": actions_for(kind, meta),
+    }
+
+
+# ── v3: act on notifications, the morning brief, reminders ──────────────────
+
+
+class NotificationAction(BaseModel):
+    action: str = Field(..., min_length=1, max_length=32)
+
+
+async def _own_notification(session, tenant_id: str, notification_id: str, *, lock: bool = False):
+    """This tenant's notification, or 404 (an id that is not a UUID is unknown too)."""
+    from life_graph.models.db import Notification
+
+    try:
+        ident = uuid.UUID(notification_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.") from None
+    query = select(Notification).where(
+        Notification.id == ident, Notification.tenant_id == tenant_id
     )
+    if lock:
+        query = query.with_for_update()  # two quick taps: the second sees the first
+    row = (await session.execute(query)).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found.")
+    return row
+
+
+@router.post("/notifications/{notification_id}/action", summary="Tap a notification's button")
+async def notification_action(notification_id: str, body: NotificationAction):
+    """Mark a bill paid, a reminder done, or snooze; the notification is then read.
+
+    404 when the notification (or what it is about) is not yours; 409 when the
+    button is not offered for it or was already used.
+    """
+    from life_graph.connectors.tools import user_tz
+    from life_graph.services import notification_actions as na
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        row = await _own_notification(session, tenant_id, notification_id, lock=True)
+        try:
+            result = await na.perform(session, tenant_id, row, body.action, na.utcnow(), user_tz())
+        except na.ActionRefusedError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+        except na.ActionNotFoundError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from None
+        await session.commit()
+    return success_response(data={"id": str(row.id), "action": body.action, "result": result})
+
+
+#: Spoken briefs by notification id, newest last: tapping Listen twice does not
+#: synthesise twice. In-process and small; a restart just synthesises again.
+_brief_audio: dict[str, bytes] = {}
+BRIEF_AUDIO_CACHE = 4
+#: How long the endpoint waits for speech before answering with the text only.
+#: Under the phone's 30 s read timeout: on 2026-10-25, with the GPU held by a
+#: dev task's model, speech took over 60 s and the phone got nothing at all.
+BRIEF_AUDIO_WAIT_SECONDS = 20.0
+_brief_speaking: dict[str, asyncio.Task] = {}  # brief id -> the synthesis in flight
+
+
+async def _speak_brief(brief_id: str, text: str) -> bytes | None:
+    from life_graph.services.assistant_chat import speak
+
+    audio = await speak(text)
+    if audio:  # a failure is not cached: speech may be back next time
+        _brief_audio[brief_id] = audio
+        while len(_brief_audio) > BRIEF_AUDIO_CACHE:
+            _brief_audio.pop(next(iter(_brief_audio)))
+    return audio
+
+
+async def _brief_mp3(brief_id: str, text: str) -> bytes | None:
+    """The spoken brief, or None if it is not ready within the wait.
+
+    Synthesis carries on in the background either way, so the next tap plays it.
+    """
+    if brief_id in _brief_audio:
+        return _brief_audio[brief_id]
+    task = _brief_speaking.get(brief_id)
+    if task is None or task.done():
+        task = asyncio.create_task(_speak_brief(brief_id, text))
+        _brief_speaking[brief_id] = task
+        task.add_done_callback(lambda _t: _brief_speaking.pop(brief_id, None))
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), BRIEF_AUDIO_WAIT_SECONDS)
+    except TimeoutError:
+        return None
+
+
+@router.get("/brief/latest", summary="The newest daily brief, with its audio")
+async def latest_brief():
+    """The brief's text and the spoken brief as mp3 (null when speech is unavailable)."""
+    from life_graph.models.db import Notification
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        row = (
+            (
+                await session.execute(
+                    select(Notification)
+                    .where(Notification.tenant_id == tenant_id, Notification.source_type == "brief")
+                    .order_by(Notification.created_at.desc())
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .first()
+        )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No brief yet.")
+    text = row.body or ""
+    audio = await _brief_mp3(str(row.id), text) if text.strip() else None
+    return success_response(
+        data={
+            "id": str(row.id),
+            "title": row.title,
+            "text": text,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "audio_base64": base64.b64encode(audio).decode() if audio else None,
+        }
+    )
+
+
+@router.get("/reminders", summary="Your pending reminders, soonest first")
+async def pending_reminders(limit: int = 100):
+    from life_graph.models.db import Intention
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Intention)
+                    .where(
+                        Intention.tenant_id == tenant_id,
+                        Intention.trigger_type == "time",
+                        Intention.status == "pending",
+                        Intention.trigger_time.is_not(None),
+                    )
+                    .order_by(Intention.trigger_time)
+                    .limit(max(1, min(limit, 200)))
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return success_response(data=[{**_reminder_row(it), "status": "pending"} for it in rows])
+
+
+@router.post("/reminders/{reminder_id}/cancel", summary="Cancel a reminder")
+async def cancel_reminder(reminder_id: str):
+    """Stored as ``dismissed`` (services/intentions.py's word for it), never deleted.
+
+    Cancelling one already cancelled says so again; one already done is a 409.
+    """
+    from life_graph.models.db import Intention
+
+    tenant_id = get_current_tenant_id()
+    try:
+        ident = uuid.UUID(reminder_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Reminder not found.") from None
+    async with async_session() as session:
+        row = (
+            await session.execute(
+                select(Intention)
+                .where(
+                    Intention.id == ident,
+                    Intention.tenant_id == tenant_id,
+                    Intention.trigger_type == "time",
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Reminder not found.")
+        if row.status == "completed":
+            raise HTTPException(status.HTTP_409_CONFLICT, "That reminder is already done.")
+        if row.status == "pending":
+            row.status = "dismissed"
+            await session.commit()
+    return success_response(data={"id": str(row.id), "status": "cancelled"})
