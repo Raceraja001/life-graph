@@ -513,6 +513,19 @@ async def search_contacts(
     return [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
 
 
+async def list_contacts(
+    session: AsyncSession, tenant_id: str, limit: int = 100
+) -> list[dict[str, Any]]:
+    """Contacts by name, saved ones first: the phone's list before a search."""
+    stmt = (
+        _base(tenant_id)
+        .where(ConnectorItem.kind == KIND_CONTACT, ConnectorItem.title.is_not(None))
+        .order_by((ConnectorItem.direction == DIR_OWN).desc(), ConnectorItem.title)
+        .limit(limit)
+    )
+    return [_as_dict(i, a) for i, a in (await session.execute(stmt)).all()]
+
+
 def _month_days(first: date, days: int) -> dict[str, date]:
     """``MM-DD`` → the date it falls on, for ``days`` days from ``first``.
 

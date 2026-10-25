@@ -66,6 +66,9 @@ async def test_names_are_normalised_linked_once_and_found_in_questions():
         b.id,
     }  # "life graph" and "life graph frontend"
     assert "Murugan" in about["related"]
+    # The exact name's entity, not "life graph frontend" (the phone opens it).
+    ids = {n: i for i, n in await entities.known_in_text(TENANT, "the life graph frontend")}
+    assert about["id"] == ids["Life-Graph"]
     assert await entities.about(TENANT, "nobody at all") is None
 
 
@@ -79,7 +82,6 @@ async def test_the_memory_about_tool():
     await entities.link(TENANT, m.id, ["Priya"])
     with tenant_scope(TENANT):
         out = json.loads(await memory_about("priya"))
-        assert out["known"] and [r["content"] for r in out["memories"]] == [
-            "Priya is the school's head teacher."
-        ]
+        assert out["known"] and out["id"]
+        assert [r["content"] for r in out["memories"]] == ["Priya is the school's head teacher."]
         assert json.loads(await memory_about("Zed"))["known"] is False
