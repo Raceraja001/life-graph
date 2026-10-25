@@ -34,6 +34,28 @@ def _project_of(capture_evt: Any) -> str | None:
     return str(project) if project else None
 
 
+# ── Standing instructions ──────────────────────────────────────────────
+# The owner setting a rule ("always…", "never…", "from now on…") asked for it
+# to be kept, like "remember that…", but the extractor reads it as a
+# preference, so it waited in review ("create local HTML files instead of
+# artifacts. always", 2026-10-25). Short messages only: a pasted document
+# saying "always" is not the owner setting a rule.
+_STANDING = re.compile(r"\b(always|never|from now on|every time|each time)\b", re.IGNORECASE)
+_RULE_TYPES = frozenset({"preference", "anti_preference", "decision"})
+STANDING_MAX_CHARS = 300
+
+
+def promote_standing(facts: list[Any], content: str | None) -> list[Any]:
+    """*facts* with rule-like ones marked ``explicit_save`` when *content* sets a rule."""
+    text = content or ""
+    if len(text) > STANDING_MAX_CHARS or not _STANDING.search(text):
+        return facts
+    for fact in facts:
+        if fact.fact_type in _RULE_TYPES:
+            fact.fact_type = "explicit_save"
+    return facts
+
+
 # ── Decision detection patterns ────────────────────────────────────────
 # These fire DECISION_CANDIDATE for the Judgment Engine to consume.
 _DECISION_PATTERNS: list[re.Pattern[str]] = [
@@ -172,6 +194,8 @@ class CaptureProcessors:
                     logger.warning(
                         "Extraction pipeline failed for %s", capture_event_id, exc_info=True
                     )
+
+                facts = promote_standing(facts, content)
 
                 if facts and surface in settings.capture_saved_by_tool_surfaces_list:
                     # Jarvis saves "remember that…" itself (memory_save); kept
