@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import re
 import time
@@ -243,7 +244,7 @@ async def chat(body: ChatRequest):
         conversation_id = prior.session_id
     inner = await _start_chat(body, conversation_id)
     return StreamingResponse(
-        _app_frames(inner), media_type="text/event-stream", headers=dict(inner.headers)
+        _app_frames(inner, tenant_id), media_type="text/event-stream", headers=dict(inner.headers)
     )
 
 
@@ -280,8 +281,9 @@ async def _start_chat(body: ChatRequest, conversation_id: uuid.UUID | None):
     )
 
 
-async def _app_frames(inner):
-    """The dashboard stream's frames, in the app's event shapes."""
+async def _app_frames(inner, tenant_id: str | None = None):
+    """The dashboard stream's frames, in the app's event shapes, each tool
+    result's answer cards after its own event (services/jarvis_cards.py)."""
     state: dict = {}
     async for chunk in inner.body_iterator:
         text = chunk.decode() if isinstance(chunk, bytes) else chunk
@@ -298,6 +300,33 @@ async def _app_frames(inner):
             out = _app_event(event, state)
             if out is not None:
                 yield f"data: {json.dumps(out)}\n\n"
+            for card in await _card_events(event, state, tenant_id):
+                yield f"data: {json.dumps(card)}\n\n"
+
+
+async def _local_only(state: dict, tenant_id: str | None) -> set[str] | None:
+    """The tenant's local_only account names, read once per stream (None: unknown)."""
+    from life_graph.services import jarvis_cards
+
+    if "local_only" not in state:
+        state["local_only"] = (
+            await jarvis_cards.local_only_accounts(tenant_id) if tenant_id else None
+        )
+    return state["local_only"]
+
+
+async def _card_events(event: dict, state: dict, tenant_id: str | None) -> list[dict]:
+    """``{type: card, card}`` for each card a tool result makes; none otherwise."""
+    from life_graph.services import jarvis_cards
+
+    name = event.get("name")
+    if event.get("type") != "tool_result" or name not in jarvis_cards.CARD_TOOLS:
+        return []
+    local_only = await _local_only(state, tenant_id)
+    return [
+        {"type": "card", "card": c}
+        for c in jarvis_cards.cards_for(name, event.get("result"), local_only)
+    ]
 
 
 async def _turn_for(tenant_id: str, client_id: str):
@@ -372,7 +401,7 @@ async def _replay_chat(tenant_id: str, prior, body: ChatRequest):
         return
     if task is not None and task.status in _RETRY:
         inner = await _start_chat(body, body.conversation_id or task.session_id)
-        async for frame in _app_frames(inner):
+        async for frame in _app_frames(inner, tenant_id):
             yield frame
         return
     state = task.status if task is not None else "lost"
@@ -557,15 +586,62 @@ async def _answer(
         session_id=conversation_id,
         max_retries=0,
     )
-    task = await _settled(tenant_id, spawn["task_id"])
+    async with _tool_results(str(spawn["task_id"])) as results:
+        task = await _settled(tenant_id, spawn["task_id"])
     if task is None or task.status != "completed":
         state = task.status if task is not None else "lost"
         raise HTTPException(status.HTTP_504_GATEWAY_TIMEOUT, f"Jarvis could not finish ({state}).")
-    return await _turn_result(tenant_id, task)
+    return await _turn_result(tenant_id, task, await _cards(tenant_id, results))
 
 
-async def _turn_result(tenant_id: str, task) -> dict:
-    """A completed Jarvis turn as the app reads it."""
+@contextlib.asynccontextmanager
+async def _tool_results(stream_key: str):
+    """The run's own tool results, ``[(name, result)]``, heard on the chat
+    stream bus while the block runs: nothing stores them, and the voice
+    reply's cards are built from them as the chat's are.
+
+    Subscribing registers at once (ChatStreamBus.subscribe), and what the run
+    published before is replayed. A voice run has no stream consumer to
+    close the stream, so the listener is stopped and the key freed here.
+    """
+    from life_graph.services.chat_stream import get_chat_stream_bus
+    from life_graph.services.jarvis_cards import CARD_TOOLS
+
+    bus = get_chat_stream_bus()
+    events = bus.subscribe(stream_key)
+    results: list[tuple[str, str]] = []
+
+    async def listen() -> None:
+        async for raw in events:
+            ev = raw.get("event") or {}
+            # The run's own calls, not a delegated child's: as the chat shows.
+            top = raw.get("depth", 0) == 0 and ev.get("type") == "tool_result"
+            if top and ev.get("name") in CARD_TOOLS:
+                results.append((ev["name"], str(ev.get("result") or "")))
+
+    listener = asyncio.create_task(listen())
+    try:
+        yield results
+    finally:
+        await asyncio.sleep(0)  # what was published last is heard first
+        listener.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await listener
+        bus.discard(stream_key)
+
+
+async def _cards(tenant_id: str, results: list[tuple[str, str]]) -> list[dict]:
+    from life_graph.services import jarvis_cards
+
+    if not results:
+        return []
+    local_only = await jarvis_cards.local_only_accounts(tenant_id)
+    return [c for name, result in results for c in jarvis_cards.cards_for(name, result, local_only)]
+
+
+async def _turn_result(tenant_id: str, task, cards: list[dict] | None = None) -> dict:
+    """A completed Jarvis turn as the app reads it. ``cards`` only for a turn
+    just run: a replayed one's tool results are gone."""
     result = task.result or {}
     return {
         "reply": str(result.get("response") or "").strip(),
@@ -573,6 +649,7 @@ async def _turn_result(tenant_id: str, task) -> dict:
         "route": (result.get("route") or {}).get("kind"),
         "saved": await _saved_in(tenant_id, task.id),
         "reminded": await _reminded_in(tenant_id, task.id),
+        "cards": cards or [],
     }
 
 

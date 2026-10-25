@@ -269,6 +269,7 @@ async def memory_about(name: str, limit: int = 15) -> str:
         {
             "name": name,
             "known": True,
+            "id": str(found["id"]),
             "also_called": found["names"],
             "memories": [_to_row(m) for m in found["memories"]],
             "often_mentioned_with": found["related"],

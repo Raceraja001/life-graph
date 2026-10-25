@@ -244,7 +244,11 @@ async def about(tenant_id: str, name: str, limit: int = 20) -> dict[str, Any] | 
                 )
             ).all()
         related.update(r[0] for r in co)
+    # The entity the name is exactly, else the first it is part of: the phone
+    # opens it from Jarvis's answer (GET /jarvis/entities/{id}).
+    exact = next((r[0] for r in rows if r[1] == key), rows[0][0])
     return {
+        "id": exact,
         "names": [r[2] for r in rows],
         "memories": memories,
         "related": [n for n, _ in related.most_common(8)],
