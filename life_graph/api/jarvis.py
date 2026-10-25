@@ -29,6 +29,13 @@ one call (services/jarvis_today.py), each part failing on its own; ``POST
 /jarvis/bills/{item_id}/paid`` is its "Mark paid". ``GET /jarvis/app/latest``
 and ``.../app/download/{file}`` offer the newest APK from ``app_release_dir``.
 
+v4 S2: ``GET /jarvis/plan`` (services/jarvis_plan.py); ``GET
+/jarvis/memory/overview``, ``.../memory/search`` and ``/jarvis/entities/{id}``
+(services/jarvis_memory.py); ``GET /jarvis/contacts`` and ``.../mail/waiting``
+(services/jarvis_inbox.py). The chat stream gains ``{type: card, card}``
+events built from tool results (services/jarvis_cards.py), and the voice
+reply a ``cards`` list.
+
 Where Jarvis ran (``route``: personal = this PC's model, general = a cloud
 model without the personal tools) comes from services/lead.py.
 
@@ -52,7 +59,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -1189,6 +1196,19 @@ async def bill_paid(item_id: str):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found.")
         await session.commit()
     return success_response(data={"id": item_id, "state": "paid", "marked": marked})
+
+
+# ── v4 S2: Plan, Memory, contacts, mail ─────────────────────────────────────
+
+
+@router.get("/plan", summary="The next days: events, what is due, reminders, to-dos")
+async def plan(days: int = Query(7, ge=1, le=31)):
+    """One row per day from today in the owner's time zone, empty days
+    included (services/jarvis_plan.py). A source that fails leaves its kind
+    empty; the call itself does not fail for it."""
+    from life_graph.services import jarvis_plan
+
+    return success_response(data=await jarvis_plan.plan(get_current_tenant_id(), days))
 
 
 # ── v4: in-app update ───────────────────────────────────────────────────────
