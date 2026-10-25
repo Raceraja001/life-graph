@@ -346,6 +346,18 @@ def test_code_edit_fixers_create_a_given_test_file_first(name):
     assert "If you add or change a test," not in prompt
 
 
+def test_the_opencode_fixer_writes_a_given_test_file_first():
+    from life_graph.kernel.personas import _BUILTIN_PERSONAS
+
+    prompt = next(p for p in _BUILTIN_PERSONAS if p["name"] == "code-fixer-opencode")[
+        "system_prompt"
+    ]
+    assert "When the task gives a test file, write it FIRST, exactly as given" in prompt
+    # OpenCode's own tool names: its write tool, and run_tests served over MCP.
+    assert "write tool" in prompt and "lg_tests_run_tests" in prompt
+    assert "see it fail" in prompt and "never edit the given test to make it pass" in prompt
+
+
 # ── Self-check: the harness runs the agent's own changed tests ──────────────
 
 
