@@ -674,6 +674,14 @@ class ChatStreamRequest(BaseModel):
             "and only `message` counts as the user's own words."
         ),
     )
+    client_id: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9_-]{8,64}$",
+        description=(
+            "The phone app's id for this message, stored in the task's input so a resend "
+            "can be recognised (api/jarvis.py)."
+        ),
+    )
 
 
 # How many earlier turns a persona is given. Each turn is a user message and a
@@ -820,6 +828,8 @@ async def chat_stream(
                     # 2026-10-25, second review).
                     **{TAINT_INPUT_KEY: True},
                 )
+            if body.client_id:
+                input_data["client_id"] = body.client_id
             spawn = await pm.spawn(
                 tenant_id=tenant_id,
                 agent_name=body.target_agent,

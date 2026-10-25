@@ -11,11 +11,12 @@ from tests.unit.fakes import FakeResult, FakeSession, session_factory
 
 # Helper to create a fake device object
 class DummyDevice:
-    def __init__(self, tenant_id, device_id, revoked_at=None, last_seen_at=None):
+    def __init__(self, tenant_id, device_id, revoked_at=None, last_seen_at=None, created_at=None):
         self.tenant_id = tenant_id
         self.id = device_id
         self.revoked_at = revoked_at
         self.last_seen_at = last_seen_at
+        self.created_at = created_at
 
 
 # Monkeypatch the async_session import in authenticate
@@ -121,6 +122,28 @@ async def test_authenticate_refuses_a_long_idle_device(fake_session, patch_async
     assert await authenticate(token) is None
     assert hash_token(token) not in _cache
     assert fake_session.commits == 0  # last_seen_at is not refreshed by a refused try
+
+
+@pytest.mark.asyncio
+async def test_a_device_never_seen_expires_from_its_pairing(fake_session, patch_async_session):
+    """A NULL last_seen_at falls back to created_at instead of never expiring."""
+    token = "never-seen"
+    device = DummyDevice("tenant", "device", last_seen_at=None)
+    device.created_at = datetime.now(UTC) - timedelta(days=61)
+    fake_session._results = [FakeResult([device])]
+    assert await authenticate(token) is None
+    assert hash_token(token) not in _cache and fake_session.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_a_device_never_seen_but_paired_recently_signs_in(fake_session, patch_async_session):
+    token = "never-seen-new"
+    device = DummyDevice("tenant", "device", last_seen_at=None)
+    device.created_at = datetime.now(UTC) - timedelta(days=1)
+    fake_session._results = [FakeResult([device])]
+    assert await authenticate(token) == ("tenant", "device")
+    assert device.last_seen_at is not None  # now seen
+    _cache.pop(hash_token(token), None)
 
 
 @pytest.mark.asyncio
