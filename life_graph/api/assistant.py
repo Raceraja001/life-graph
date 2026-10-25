@@ -484,6 +484,16 @@ async def due_cards(limit: int = 20, deck: str | None = None) -> dict[str, Any]:
     return success_response([study.card_dict(c) for c in cards], meta={"due": total})
 
 
+@router.get("/study/decks")
+async def study_decks() -> dict[str, Any]:
+    from life_graph.services import study
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        decks = await study.deck_stats(session, tenant_id, _today())
+    return success_response(decks)
+
+
 @router.post("/study/generate")
 async def generate_cards(body: GenerateCards) -> dict[str, Any]:
     from life_graph.services import study

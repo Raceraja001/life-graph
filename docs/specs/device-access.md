@@ -55,6 +55,7 @@ service key is unchanged.
 | `GET /api/v1/connectors/today` | Bills, calendar, mail waiting | Today's events, mail waiting on you, promises, tasks, bills and birthdays (local_only masked, see Rules). |
 | `GET /api/v1/monitors` | Monitors | Page monitors and their last check. |
 | `GET /api/v1/study/due` | Study | The cards due, to review on the phone. |
+| `GET /api/v1/study/decks` | Study | Each deck's cards, due, reviewed and retention (counts and deck names only). |
 | `GET /api/v1/invoices` | Invoices | Invoices list. |
 | `GET /api/v1/invoices/{invoice_id}` | Invoices | One invoice. |
 | `GET /api/v1/memories/` | Memories | Search and browse memories (Memory tab). |

@@ -86,6 +86,9 @@ class ApprovalService:
             # mobile feed can render a risk badge without a dedicated endpoint.
             "payload": a.payload or {},
             "created_at": a.created_at.isoformat() if a.created_at else None,
+            # Who decided (dashboard, or "phone:<device>") and when; None while pending.
+            "resolved_by": a.resolved_by,
+            "resolved_at": a.resolved_at.isoformat() if a.resolved_at else None,
         }
 
     # ── Producer: self_improving promotions ───────────────────
