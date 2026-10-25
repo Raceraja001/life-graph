@@ -19,7 +19,9 @@ row, the thing MCP ``start_session``/``end_session`` manage):
   the timeout) gets a second row, "part 2", and so on.
 * :func:`request_end` — the hook's SessionEnd marker asks for the session to
   be closed. It is not closed on the spot: a prompt sent just before quitting
-  may still be in extraction, and an ended session accepts no new links.
+  may still be in extraction, and an ended session accepts no new links. If
+  that prompt is the session's first memory, there is no row yet: one is made
+  already asked to end, so the session still closes after the grace period.
 * :func:`close_due` — the worker cron closes sessions whose end was asked for
   a few minutes ago, and ones that never asked (terminal killed) once idle.
   Closing is ``POST /sessions/{id}/end`` (``api.sessions.close_session``) plus
@@ -162,8 +164,12 @@ async def ensure_session(
 async def request_end(tenant_id: str, claude_code_session_id: str, reason: str | None) -> bool:
     """Ask for a session's open part to be closed (by :func:`close_due`).
 
-    True if there was one. A session that never produced a memory has no row
-    and needs none.
+    True if there was an open part. If there was none yet (SessionEnd came
+    before the first memory finished extraction), the request is kept on a new
+    part made already ended-requested: the memory that arrives next joins it
+    through :func:`ensure_session`'s upsert, and it closes after the grace
+    period rather than the idle timeout. One that never gets a memory closes
+    empty, after the same grace.
     """
     from life_graph.models.db import Session
 
@@ -180,7 +186,53 @@ async def request_end(tenant_id: str, claude_code_session_id: str, reason: str |
             .values(context=_merged(Session.context, marker))
         )
         await db.commit()
-    return bool(result.rowcount)
+    if result.rowcount:
+        return True
+    await _record_end_request(tenant_id, claude_code_session_id, marker)
+    return False
+
+
+async def _record_end_request(
+    tenant_id: str, claude_code_session_id: str, marker: dict[str, Any]
+) -> None:
+    """Create the first free part of the session, already asked to end.
+
+    The same upsert walk as :func:`ensure_session`: a part that exists and has
+    ended is passed over; one a racing memory opened meanwhile gets the marker
+    instead of a new part being made beside it.
+    """
+    from life_graph.models.db import Session
+
+    seen = _now_iso()
+    for part in range(1, MAX_PARTS + 1):
+        stmt = (
+            pg_insert(Session)
+            .values(
+                id=memory_session_id(tenant_id, claude_code_session_id, part),
+                tenant_id=tenant_id,
+                started_at=datetime.now(UTC),
+                context={
+                    "source": SOURCE,
+                    "claude_code_session_id": claude_code_session_id,
+                    "part": part,
+                    "last_seen_at": seen,
+                    **marker,
+                },
+                memories_created=0,
+                memories_accessed=0,
+            )
+            .on_conflict_do_update(
+                index_elements=["id"],
+                set_={"context": _merged(Session.context, marker)},
+                where=(Session.tenant_id == tenant_id) & Session.ended_at.is_(None),
+            )
+            .returning(Session.id)
+        )
+        async with async_session() as db:
+            created = (await db.execute(stmt)).scalar()
+            await db.commit()
+        if created is not None:
+            return
 
 
 def _due_query(now: datetime, *, grace: timedelta, idle: timedelta, tenant_id: str | None = None):
