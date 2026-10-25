@@ -35,8 +35,10 @@ logger = logging.getLogger(__name__)
 # ── Built-in Persona Definitions ──────────────────────────────
 
 # What the change_explained check asks of a production-code change
-# (services/proof_checks.py); asked up front so it costs no bounce.
+# (services/proof_checks.py); asked up front so it costs no bounce. gpt-oss:20b
+# ended its turn on a tool call with no text, so the section was missing.
 _UNDERSTANDING_ASK = (
+    " Your last message must be text, not a tool call."
     " If you changed anything other than tests or docs, end your reply with a"
     " '## Understanding' section with three lines: 'Current behaviour:' (what"
     " the code did before), 'Change:' (what you changed and why) and 'Risk:'"

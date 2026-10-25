@@ -358,6 +358,16 @@ def test_the_opencode_fixer_writes_a_given_test_file_first():
     assert "see it fail" in prompt and "never edit the given test to make it pass" in prompt
 
 
+def test_the_understanding_ask_wants_a_text_last_message():
+    """gpt-oss:20b ended its turn on a tool call with no text, so the reply had
+    no '## Understanding' and change_explained failed (2026-10-25)."""
+    from life_graph.kernel.personas import _BUILTIN_PERSONAS, _UNDERSTANDING_ASK
+
+    assert _UNDERSTANDING_ASK.startswith(" Your last message must be text, not a tool call.")
+    local = next(p for p in _BUILTIN_PERSONAS if p["name"] == "code-fixer-local")
+    assert _UNDERSTANDING_ASK in local["system_prompt"]
+
+
 # ── Self-check: the harness runs the agent's own changed tests ──────────────
 
 
