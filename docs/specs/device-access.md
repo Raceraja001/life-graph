@@ -78,6 +78,8 @@ service key is unchanged.
 | `GET /api/v1/kernel/drivers/night-shift` | Dev tasks | The night run: merged, waiting, failed. |
 | `GET /api/v1/approvals` | Approvals | What waits for a decision. |
 | `GET /api/v1/kernel/observability/agents` | Agents | Agents console. |
+| `GET /api/v1/kernel/drivers/scorecards` | Agents | Per driver: runs, success, bounces, merges, cost, top failure causes (owner OK 2026-10-25; numbers, model and persona names only). |
+| `GET /api/v1/kernel/observability/budget` | Agents | Paid spend this month against the cap, projection, top tasks by cost (titles and cost; owner OK 2026-10-25). |
 | `GET /api/v1/watchers/events` | Activity | Activity feed. |
 | `GET /api/v1/watchers/events/summary` | Activity | Activity counts. |
 | `GET /api/v1/kernel/schedules` | Schedules | Scheduled jobs. |
