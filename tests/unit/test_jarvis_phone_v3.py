@@ -462,3 +462,33 @@ async def test_the_spoken_brief_is_synthesised_once_per_brief(monkeypatch):
     for i in range(jarvis.BRIEF_AUDIO_CACHE + 2):
         await jarvis._brief_mp3(f"x{i}", "hi")
     assert len(jarvis._brief_audio) == jarvis.BRIEF_AUDIO_CACHE
+
+
+@pytest.mark.asyncio
+async def test_slow_speech_returns_the_text_first_and_plays_on_the_next_tap(monkeypatch):
+    """With the GPU busy, speech took over 60 s and the phone got nothing (2026-10-25)."""
+    import asyncio
+
+    from life_graph.api import jarvis
+    from life_graph.services import assistant_chat
+
+    said = []
+    release = asyncio.Event()
+
+    async def slow_speak(text):
+        said.append(text)
+        await release.wait()
+        return b"mp3"
+
+    monkeypatch.setattr(assistant_chat, "speak", slow_speak)
+    monkeypatch.setattr(jarvis, "_brief_audio", {})
+    monkeypatch.setattr(jarvis, "_brief_speaking", {})
+    monkeypatch.setattr(jarvis, "BRIEF_AUDIO_WAIT_SECONDS", 0.05)
+
+    assert await jarvis._brief_mp3("b9", "Good morning") is None  # text only, at once
+    assert await jarvis._brief_mp3("b9", "Good morning") is None  # still speaking: not twice
+    release.set()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert await jarvis._brief_mp3("b9", "Good morning") == b"mp3"
+    assert said == ["Good morning"]
