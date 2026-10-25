@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-25 14:18 UTC` from `master` @ `719fa9d`
+Generated `2026-10-25 14:42 UTC` from `master` @ `deb7c4e`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-10-25 14:18 UTC` from `master` @ `719fa9d`
 
 | | |
 |---|---|
-| HTTP operations | **355** across 308 paths, 43 tags |
+| HTTP operations | **361** across 314 paths, 43 tags |
 | Database tables | **84** |
 | Migrations | **53** (head: `053_entities`) |
 | Event types | **79** |
@@ -24,15 +24,15 @@ Generated `2026-10-25 14:18 UTC` from `master` @ `719fa9d`
 | Agent tools | **14** |
 | Scheduled jobs | **29** |
 | Config settings | **265** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3655** in 403 files |
+| Test functions | **3715** in 408 files |
 | Dashboard pages | **22** |
-| Python | 414 files, 107,332 lines |
+| Python | 418 files, 108,723 lines |
 
 ---
 
 ## HTTP API
 
-355 operations, grouped by OpenAPI tag.
+361 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 34
 
@@ -141,6 +141,36 @@ Generated `2026-10-25 14:18 UTC` from `master` @ `719fa9d`
 | GET | `/api/v1/autonomy/trust/scores` | List Scores |
 | GET | `/api/v1/autonomy/trust/scores/{score_id}` | Get Score |
 
+### `jarvis` — 25
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/jarvis/app/download/{file}` | Download the phone app's APK |
+| GET | `/api/v1/jarvis/app/latest` | The newest phone app the PC offers (404: none) |
+| POST | `/api/v1/jarvis/bills/{item_id}/paid` | Mark a bill from mail paid |
+| GET | `/api/v1/jarvis/brief/latest` | The newest daily brief, with its audio |
+| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
+| GET | `/api/v1/jarvis/contacts` | Your contacts, or those matching q |
+| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
+| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
+| GET | `/api/v1/jarvis/entities/{entity_id}` | One person, project or thing, and what is known |
+| GET | `/api/v1/jarvis/mail/waiting` | Mail waiting on your reply, longest wait first |
+| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
+| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
+| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
+| GET | `/api/v1/jarvis/memory/overview` | What Jarvis remembers: counts, people, rules, days |
+| GET | `/api/v1/jarvis/memory/search` | Search what Jarvis remembers (active memories only) |
+| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
+| POST | `/api/v1/jarvis/notifications/{notification_id}/action` | Tap a notification's button |
+| GET | `/api/v1/jarvis/plan` | The next days: events, what is due, reminders, to-dos |
+| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
+| GET | `/api/v1/jarvis/reminders` | Your pending reminders, soonest first |
+| POST | `/api/v1/jarvis/reminders/{reminder_id}/cancel` | Cancel a reminder |
+| GET | `/api/v1/jarvis/today` | The Today screen in one call |
+| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
+| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
+
 ### `self-improving` — 23
 
 | Method | Path | Summary |
@@ -220,30 +250,6 @@ Generated `2026-10-25 14:18 UTC` from `master` @ `719fa9d`
 | POST | `/api/v1/admin/webhooks` | Register a webhook |
 | DELETE | `/api/v1/admin/webhooks/{webhook_id}` | Delete a webhook |
 | POST | `/api/v1/admin/webhooks/{webhook_id}/test` | Test a webhook |
-
-### `jarvis` — 19
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/jarvis/app/download/{file}` | Download the phone app's APK |
-| GET | `/api/v1/jarvis/app/latest` | The newest phone app the PC offers (404: none) |
-| POST | `/api/v1/jarvis/bills/{item_id}/paid` | Mark a bill from mail paid |
-| GET | `/api/v1/jarvis/brief/latest` | The newest daily brief, with its audio |
-| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
-| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
-| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
-| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
-| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
-| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
-| POST | `/api/v1/jarvis/notifications/{notification_id}/action` | Tap a notification's button |
-| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
-| GET | `/api/v1/jarvis/reminders` | Your pending reminders, soonest first |
-| POST | `/api/v1/jarvis/reminders/{reminder_id}/cancel` | Cancel a reminder |
-| GET | `/api/v1/jarvis/today` | The Today screen in one call |
-| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
-| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
 
 ### `connectors` — 15
 
@@ -961,10 +967,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 306 | 2900 |
-| `tests/integration/` | 96 | 743 |
+| `tests/unit/` | 310 | 2951 |
+| `tests/integration/` | 97 | 752 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **403** | **3655** |
+| **total** | **408** | **3715** |
 
 ---
 
