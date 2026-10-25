@@ -20,6 +20,7 @@ from life_graph.services import acceptance
 from life_graph.services.dev_tasks import (
     _approvals_by_task,
     _kind_filter,
+    _not_incident,
     _plan_gate,
     _stage,
     _verification_summary,
@@ -42,11 +43,13 @@ def _driver(task: AgentTask) -> str:
 
 
 async def _tasks(session: AsyncSession, tenant_id: str, *filters: Any, limit: int = 500):
+    """Dev tasks matching *filters*, newest first; incident rows (dev_tasks._not_incident)
+    are left out so they skew neither the scorecards nor the failures."""
     return (
         (
             await session.execute(
                 select(AgentTask)
-                .where(AgentTask.tenant_id == tenant_id, _kind_filter(), *filters)
+                .where(AgentTask.tenant_id == tenant_id, _kind_filter(), _not_incident(), *filters)
                 .order_by(AgentTask.created_at.desc())
                 .limit(limit)
             )

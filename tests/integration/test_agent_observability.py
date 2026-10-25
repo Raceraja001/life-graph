@@ -136,7 +136,13 @@ async def test_scorecards_group_by_driver_and_failures_carry_causes():
     local = _task(
         result={"metadata": {"tool_calls": 3, "model": "qwen"}}, persona="code-fixer-local"
     )
-    await _add(ok, bounced, local)
+    # Tagged incident rows (the 2026-10-19 duplicate flood) count nowhere.
+    flood = _task(
+        status="cancelled",
+        props={"incident": "duplicate-2026-10-19"},
+        result={"metadata": {"driver": "claude_code"}},
+    )
+    await _add(ok, bounced, local, flood)
     await _add(
         VerificationRun(
             tenant_id=TENANT,

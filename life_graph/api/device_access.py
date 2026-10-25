@@ -105,6 +105,8 @@ DEVICE_ALLOWLIST: tuple[Allowed, ...] = (
     _get("/kernel/drivers/night-shift", "dev tasks"),
     _get("/approvals", "approvals"),
     _get("/kernel/observability/agents", "agents"),
+    _get("/kernel/drivers/scorecards", "agents"),
+    _get("/kernel/observability/budget", "agents"),
     _get("/watchers/events", "activity"),
     _get("/watchers/events/summary", "activity"),
     _get("/kernel/schedules", "schedules"),
