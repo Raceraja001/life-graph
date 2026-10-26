@@ -1,28 +1,37 @@
 "use client";
-import { ClipboardList, CheckCircle, Clock, Loader2 } from "lucide-react";
+import { ClipboardList, CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
 import { useTasks } from "@/lib/hooks";
+import { boardColumn, isChatRun, taskAgent, taskTitle, type BoardColumn } from "@/lib/tasks";
 
-const COLUMNS = [
+const COLUMNS: { key: BoardColumn; label: string; icon: typeof Clock; color: string }[] = [
   { key: "queued", label: "Queued", icon: Clock, color: "text-ink-low" },
   { key: "running", label: "Running", icon: Loader2, color: "text-info" },
   { key: "verifying", label: "Verifying", icon: ClipboardList, color: "text-warning" },
   { key: "landed", label: "Landed", icon: CheckCircle, color: "text-accent" },
+  { key: "failed", label: "Failed", icon: XCircle, color: "text-danger" },
 ];
 
 export default function TasksPage() {
   const tasks = useTasks({ limit: "100" });
+  const all = tasks.data ?? [];
+  // Chat replies run as kernel tasks too ("chat:jarvis"); they would bury the work.
+  const work = all.filter((t: any) => !isChatRun(t));
+  const chats = all.length - work.length;
   const grouped = COLUMNS.map(col => ({
     ...col,
-    tasks: (tasks.data ?? []).filter((t: any) => t.status === col.key || (col.key === "landed" && ["completed", "done"].includes(t.status))),
+    tasks: work.filter((t: any) => boardColumn(t.status) === col.key),
   }));
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-ink">Tasks</h2>
-        <p className="text-sm text-ink-mid">Agent task board — monitor dispatch and verification</p>
+        <p className="text-sm text-ink-mid">
+          Agent task board — monitor dispatch and verification
+          {chats > 0 && <span className="text-ink-low"> · {chats} chat {chats === 1 ? "reply" : "replies"} not shown</span>}
+        </p>
       </div>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         {grouped.map(col => (
           <div key={col.key} className="bg-surface border border-line rounded-xl p-4 min-h-[350px]">
             <div className="flex items-center gap-2 mb-4">
@@ -34,8 +43,8 @@ export default function TasksPage() {
               <div className="space-y-2">
                 {col.tasks.map((t: any) => (
                   <div key={t.id} className="p-3 bg-surface-2 rounded-lg border border-line hover:border-line transition-colors">
-                    <p className="text-sm text-ink font-medium line-clamp-2">{t.description || t.intent || t.task_name || t.id}</p>
-                    <p className="text-xs text-ink-low mt-1">{t.persona || t.agent_name || "system"}</p>
+                    <p className="text-sm text-ink font-medium line-clamp-2">{taskTitle(t)}</p>
+                    <p className="text-xs text-ink-low mt-1">{taskAgent(t)}</p>
                   </div>
                 ))}
               </div>

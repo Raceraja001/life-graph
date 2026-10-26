@@ -17,7 +17,7 @@ export interface TaskMock {
   meta: string;
   status: string; // display label: urgent | running | verifying | queued | done
   tone: Tone;
-  group: "inflight" | "queued" | "done";
+  group: "inflight" | "queued" | "failed" | "done";
 }
 
 export interface ApprovalMock {

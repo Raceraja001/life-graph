@@ -338,6 +338,11 @@ export const api = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload shape matches the rest of this file's untyped API surface.
       request<any>("PATCH", `/memories/${id}`, body),
     pendingCount: () => GET<{ data?: { count?: number } }>(`/memories/pending/count`),
+    // The store's own counts (services/jarvis_memory.py overview); total is null if it failed.
+    total: () =>
+      GET<{ data?: { counts?: { total?: number | null } } }>("/jarvis/memory/overview").then(
+        (r) => r?.data?.counts?.total ?? null,
+      ),
   },
 
   // ── Connectors: calendar + email accounts ──────
@@ -425,6 +430,12 @@ export const api = {
     tasks: {
       list: (params?: { status?: string; limit?: string }) =>
         listRequest<any>("/kernel/tasks", params),
+      // One page plus whether there is more: the list has no total (meta.total is null).
+      page: (params?: { limit?: string }) =>
+        GET<any>("/kernel/tasks", params).then((r: any) => ({
+          rows: Array.isArray(r?.data) ? r.data : [],
+          hasMore: r?.meta?.has_more === true,
+        })),
       get: (id: string) => GET<any>(`/kernel/tasks/${id}`),
       cancel: (id: string) => POST<any>(`/kernel/tasks/${id}/cancel`, {}),
     },

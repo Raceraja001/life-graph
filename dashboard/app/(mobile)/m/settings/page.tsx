@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ChevronRight, Octagon } from "lucide-react";
 import { EmptyCard, ErrorCard, LoadingCard, Meta, Row, Section, Stack } from "@/components/mobile/parts";
 import {
+  currentError,
   useModelHealth,
   type ModelHealthVM,
   type ModelHealthState,
@@ -75,7 +76,7 @@ function ModelHealthRow({ item }: { item: ModelHealthVM }) {
           <span style={{ fontSize: "var(--size-body)", fontWeight: 600 }}>{item.shortName}</span>
           {lastSeen && <Meta>{lastSeen}</Meta>}
         </span>
-        {item.lastError && (
+        {currentError(item) && (
           <span
             style={{
               display: "block",
@@ -85,7 +86,7 @@ function ModelHealthRow({ item }: { item: ModelHealthVM }) {
               lineHeight: 1.4,
             }}
           >
-            {item.lastError}
+            {currentError(item)}
           </span>
         )}
       </span>

@@ -96,11 +96,12 @@ describe("mapTask", () => {
     expect(vm.tone).toBe(tone);
   });
 
-  it.each(["failed", "error"])("keeps %s in flight so it stays visible", (status) => {
+  it.each(["failed", "error", "timeout"])("puts %s in its own Failed group: visible, not in flight", (status) => {
     const vm = mapTask({ id: "t", status });
-    expect(vm.group).toBe("inflight");
+    expect(vm.group).toBe("failed");
     expect(vm.tone).toBe("danger");
     expect(vm.status).toBe("failed");
+    expect(TASK_GROUPS.map((g) => g.id)).toContain("failed");
   });
 
   it("is case-insensitive on status", () => {
@@ -122,6 +123,12 @@ describe("mapTask", () => {
     expect(mapTask({ id: "x", intent: "i", title: "t" }).title).toBe("i");
     expect(mapTask({ id: "x", title: "t" }).title).toBe("t");
     expect(mapTask({ id: "x" }).title).toBe("x");
+  });
+
+  it("reads what /kernel/tasks really sends: task_name and agent_name", () => {
+    const vm = mapTask({ id: "6000b1be", task_name: "Write unit tests for contact_row", agent_name: "dev_task", status: "queued" });
+    expect(vm.title).toBe("Write unit tests for contact_row");
+    expect(vm.meta).toBe("dev_task");
   });
 
   it("falls back to 'task' with no id at all", () => {
