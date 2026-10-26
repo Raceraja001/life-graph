@@ -2,7 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  // Allow API proxy in development
+  // The API proxy: a page opened from another machine calls its own origin at
+  // /api/v1 (lib/api-base.ts), and this forwards it to the API on loopback.
   async rewrites() {
     return [
       {

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { emitDistillComplete } from "./distill-events";
+import { pageLocation, wsBase } from "./api-base";
 import { emitCaptureComplete, type CaptureSource } from "./capture-events";
 
 type WSStatus = "connecting" | "connected" | "disconnected";
@@ -48,10 +49,7 @@ export function useWebSocket() {
 
     const apiKey = localStorage.getItem("lg_api_key") || "dev";
     const tenantId = localStorage.getItem("lg_tenant_id") || "default";
-    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080")
-      .replace("http://", "ws://")
-      .replace("https://", "wss://")
-      .replace("/api/v1", "")}/ws?api_key=${apiKey}&tenant_id=${tenantId}`;
+    const wsUrl = `${wsBase(pageLocation())}?api_key=${apiKey}&tenant_id=${tenantId}`;
 
     setStatus("connecting");
     const ws = new WebSocket(wsUrl);

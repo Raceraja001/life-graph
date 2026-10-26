@@ -3,6 +3,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Brain, Loader2, ArrowRight } from "lucide-react";
 import { saveCredentials } from "@/lib/auth";
+import { API_BASE } from "@/lib/api";
 
 function LoginForm() {
   const [apiKey, setApiKey] = useState("");
@@ -22,7 +23,7 @@ function LoginForm() {
       // checking it accepted any key — a wrong one only failed later, page by
       // page. This route is cheap, tenant-scoped and auth-gated.
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1"}/memories/pending/count`,
+        `${API_BASE}/memories/pending/count`,
         { headers: { "X-Tenant-ID": tenantId, "Authorization": `Bearer ${apiKey}` } }
       );
       if (res.status === 401) {

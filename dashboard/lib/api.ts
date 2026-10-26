@@ -1,6 +1,14 @@
+import { apiBase, pageLocation } from "./api-base";
+
 /** The API origin every request in this app goes to. Exported so UI that
- *  *reports* the endpoint (Settings) cannot drift from the one in use. */
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+ *  *reports* the endpoint (Settings) cannot drift from the one in use.
+ *  "/api/v1" (this page's origin) when opened from another machine: lib/api-base.ts. */
+export const API_BASE = apiBase(pageLocation());
+
+/** A request URL; a relative API_BASE resolves against this page. */
+function apiUrl(path: string): URL {
+  return new URL(`${API_BASE}${path}`, typeof window === "undefined" ? "http://localhost" : window.location.origin);
+}
 
 /** The tenant every request is sent as: the one chosen at login, else the
  *  build-time default. Exported for the same reason as API_BASE. */
@@ -39,7 +47,7 @@ function getHeaders(): Record<string, string> {
 }
 
 async function request<T>(method: string, path: string, body?: unknown, params?: Record<string, string>): Promise<T> {
-  const url = new URL(`${API_BASE}${path}`);
+  const url = apiUrl(path);
   if (params) Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
   const res = await fetch(url.toString(), {
     method,
@@ -60,7 +68,7 @@ async function request<T>(method: string, path: string, body?: unknown, params?:
 // Multipart upload — mirrors request()'s auth headers but lets the browser
 // set the multipart boundary (no explicit Content-Type).
 async function uploadRequest<T>(path: string, file: Blob, filename: string): Promise<T> {
-  const url = new URL(`${API_BASE}${path}`);
+  const url = apiUrl(path);
   const form = new FormData();
   form.append("file", file, filename);
   const headers: Record<string, string> = {};

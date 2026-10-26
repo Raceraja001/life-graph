@@ -192,6 +192,13 @@ async def lifespan(app: FastAPI):
         bridged_count = await connect_all(app.state.mcp_exit_stack)
         logger.info("MCP bridge: %d external tool(s) registered", bridged_count)
 
+    # Startup — Life Graph's own MCP tools over HTTP at /mcp/ (api/mcp_http.py);
+    # its session manager runs for the app's lifetime and closes with the stack.
+    if mcp_http_app is not None:
+        with startup_step(report, "mcp_http"):
+            await app.state.mcp_exit_stack.enter_async_context(mcp_http_app.lifespan(app))
+            logger.info("MCP over HTTP at /mcp/")
+
     # Startup — load plugins
     plugins_dir = Path(__file__).resolve().parent.parent / "plugins"
     plugin_manager = PluginManager(event_bus, plugins_dir=plugins_dir)
@@ -709,6 +716,14 @@ app.include_router(v1_router)
 
 # ── WebSocket (root-level, not versioned) ─────────────────────
 app.add_api_websocket_route("/ws", websocket_endpoint)
+
+# ── MCP over HTTP (opt-in; behind AuthMiddleware like the API) ─
+mcp_http_app = None
+if settings.mcp_http_enabled:
+    from life_graph.api.mcp_http import build_app as build_mcp_http_app
+
+    mcp_http_app = build_mcp_http_app()
+    app.mount("/mcp", mcp_http_app)
 
 # ── Static files (Brain Viewer dashboard) ─────────────────────
 static_dir = Path(__file__).parent / "static"
