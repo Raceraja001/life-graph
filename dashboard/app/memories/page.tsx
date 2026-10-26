@@ -4,6 +4,7 @@ import { Search, Brain, Check, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemories, useMemorySearch } from "@/lib/hooks";
 import { api } from "@/lib/api";
+import { statusLabel } from "@/lib/memory-status";
 import { MemoryDetail } from "@/components/memory-detail";
 
 export default function MemoriesPage() {
@@ -101,6 +102,9 @@ export default function MemoriesPage() {
                   <td className="px-5 py-3.5">
                     {m.status === "pending" ? (
                       <span className="text-warning bg-warning-soft rounded-full px-2 text-xs">pending</span>
+                    ) : statusLabel(m.status) ? (
+                      // archived, superseded, retired...: listed, but no longer recalled.
+                      <span className="text-ink-low bg-surface-3 rounded-full px-2 text-xs">{statusLabel(m.status)}</span>
                     ) : null}
                   </td>
                   <td className="px-5 py-3.5">

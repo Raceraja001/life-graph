@@ -4,6 +4,7 @@ import { StatsCard } from "@/components/stats-card";
 import { TodayCard } from "@/components/today-card";
 import { useMemories, useMemoryTotal, useTaskPage, usePreferences, useWatcherEvents } from "@/lib/hooks";
 import { countLabel } from "@/lib/tasks";
+import { isLive } from "@/lib/memory-status";
 
 export default function OverviewPage() {
   const memories = useMemories({ limit: "50" });
@@ -17,13 +18,15 @@ export default function OverviewPage() {
   const memCount = memoryTotal.isLoading ? "—" : (memoryTotal.data ?? countLabel(shownMemories, shownMemories >= 50));
   const taskCount = tasks.isLoading ? "—" : countLabel(tasks.data?.rows.length ?? 0, tasks.data?.hasMore ?? false);
   const prefCount = preferences.isLoading ? "—" : (preferences.data?.length ?? 0);
+  // The list includes archived rows (for browsing on Memories); recent means in use.
+  const recent = (memories.data ?? []).filter((m: any) => isLive(m.status));
 
   return (
     <div className="space-y-6">
       <TodayCard />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatsCard label="Memories" value={memCount} subtitle="Total stored" icon={Brain} />
+        <StatsCard label="Memories" value={memCount} subtitle="In use, incl. awaiting review" icon={Brain} />
         <StatsCard label="Tasks" value={taskCount} subtitle="Kernel tasks, latest first" icon={ClipboardList} />
         <StatsCard label="Preferences" value={prefCount} subtitle="Learned preferences" icon={BookOpen} />
         <StatsCard label="Events" value={events.isLoading ? "—" : (events.data?.length ?? 0)} subtitle="Recent watcher events" icon={Bell} />
@@ -37,9 +40,9 @@ export default function OverviewPage() {
             <div className="flex items-center justify-center h-36 text-danger text-sm">
               Cannot connect to API — is the backend running?
             </div>
-          ) : memories.data && memories.data.length > 0 ? (
+          ) : recent.length > 0 ? (
             <div className="space-y-2.5">
-              {memories.data.slice(0, 5).map((m: any) => (
+              {recent.slice(0, 5).map((m: any) => (
                 <div key={m.id} className="flex items-start gap-3 py-1.5">
                   <div className="w-1.5 h-1.5 rounded-full bg-accent mt-2 shrink-0" />
                   <div className="min-w-0">
