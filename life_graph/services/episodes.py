@@ -178,9 +178,13 @@ def episode_key(day: date, source: str) -> str:
 async def _exists(tenant_id: str, key: str) -> bool:
     async with async_session() as session:
         found = await session.scalar(
-            # Active ones only: archiving a day's summary lets it be written again.
+            # Archiving a day's summary lets it be written again (a stale one is
+            # redone). A rejected one stays: the owner said no, and treating it
+            # as missing wrote the archived emulator-test days straight back
+            # within the hour (2026-10-26).
             text(
-                "select 1 from memories where tenant_id = :t and status = 'active' "
+                "select 1 from memories where tenant_id = :t "
+                "and status in ('active', 'pending', 'rejected') "
                 "and properties @> CAST(:p AS jsonb) limit 1"
             ),
             {"t": tenant_id, "p": f'{{"kind": "{KIND}", "episode_key": "{key}"}}'},
