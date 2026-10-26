@@ -13,7 +13,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api/webhooks"];
+// /api/v1 is the API proxy (next.config.ts) a page opened from another machine
+// calls (lib/api-base.ts). The API checks the key on every request itself, and
+// the login page calls it before the cookie exists to verify the key — so the
+// page gate must not turn those calls into a redirect to /login.
+export const PUBLIC_PATHS = ["/login", "/api/webhooks", "/api/v1/"];
 
 // Phones/tablets get the mobile app; iPadOS increasingly reports a desktop UA,
 // which is fine — those users keep the desktop dashboard.
