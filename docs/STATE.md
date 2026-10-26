@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-26 09:20 UTC` from `master` @ `4d4f453`
+Generated `2026-10-26 12:14 UTC` from `master` @ `42fb23d`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-10-26 09:20 UTC` from `master` @ `4d4f453`
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **29** |
-| Config settings | **265** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3718** in 409 files |
+| Config settings | **268** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3723** in 410 files |
 | Dashboard pages | **22** |
-| Python | 418 files, 108,780 lines |
+| Python | 419 files, 108,863 lines |
 
 ---
 
@@ -968,16 +968,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 311 | 2954 |
+| `tests/unit/` | 312 | 2959 |
 | `tests/integration/` | 97 | 752 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **409** | **3718** |
+| **total** | **410** | **3723** |
 
 ---
 
 ## Configuration
 
-265 settings, all overridable by environment variable.
+268 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1086,6 +1086,9 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DEFAULT_PLAN` | `'free'` |
 | `LIFE_GRAPH_TENANT_PLANS` | `'{}'` |
 | `LIFE_GRAPH_MCP_SERVERS` | `'[]'` |
+| `LIFE_GRAPH_MCP_HTTP_ENABLED` | `False` |
+| `LIFE_GRAPH_MCP_HTTP_SELF_URL` | `'http://127.0.0.1:8080'` |
+| `LIFE_GRAPH_MCP_HTTP_ALLOWED_HOSTS` | `'localhost,127.0.0.1'` |
 | `LIFE_GRAPH_CORS_ORIGINS` | `'http://localhost:3000,http://localhost:8000'` |
 | `LIFE_GRAPH_AGENT_LLM_MODEL` | `'gemini/gemini-3.6-flash'` |
 | `LIFE_GRAPH_AGENT_LLM_TEMPERATURE` | `0.7` |
