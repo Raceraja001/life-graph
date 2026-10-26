@@ -25,17 +25,17 @@ def _at(hour: int) -> datetime:
     return datetime.combine(DAY, time(hour), tzinfo=user_tz()).astimezone(UTC)
 
 
-async def _seed_day():
+async def _seed_day(tenant: str = TENANT):
     from life_graph.models.db import AgentSession, AgentTask, CaptureEvent
     from life_graph.storage.database import async_session
 
     async with async_session() as s:
-        conv = AgentSession(tenant_id=TENANT, user_message="insurance", routed_to="jarvis")
+        conv = AgentSession(tenant_id=tenant, user_message="insurance", routed_to="jarvis")
         s.add(conv)
         await s.flush()
         s.add(
             AgentTask(
-                tenant_id=TENANT,
+                tenant_id=tenant,
                 agent_name="jarvis",
                 task_name="chat:jarvis",
                 session_id=conv.id,
@@ -49,11 +49,11 @@ async def _seed_day():
             ["Let's build the school fees module next.", "<task-notification> ignore me"]
         ):
             c = CaptureEvent(
-                tenant_id=TENANT,
+                tenant_id=tenant,
                 surface="cli",
                 modality="text",
                 content=text,
-                content_hash=hashlib.sha256(f"{TENANT}{i}".encode()).hexdigest(),
+                content_hash=hashlib.sha256(f"{tenant}{i}".encode()).hexdigest(),
                 status="processed",
                 trust_tier="self",
             )
@@ -109,6 +109,39 @@ async def test_a_day_becomes_one_memory_per_source_once(fakes):
         await episodes.episodes_between(TENANT, DAY + timedelta(days=1), DAY + timedelta(days=7))
         == []
     )
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_an_archived_day_is_rewritten_a_rejected_one_is_not(fakes):
+    """Archived means stale, so the day is summarised again; rejected means the
+    owner said no, and the day stays unwritten (2026-10-26: archived emulator
+    test days came straight back)."""
+    from sqlalchemy import update
+
+    from life_graph.models.db import Memory
+    from life_graph.services import episodes
+    from life_graph.storage.database import async_session
+
+    tenant = f"{TENANT}_rej"
+    key = f"{DAY}:jarvis"
+    await _seed_day(tenant)
+    assert key in await episodes.write_day(tenant, DAY)
+
+    async def mark(status: str):
+        async with async_session() as s:
+            await s.execute(
+                update(Memory)
+                .where(Memory.tenant_id == tenant, Memory.properties["episode_key"].astext == key)
+                .values(status=status)
+            )
+            await s.commit()
+
+    await mark("archived")
+    assert key in await episodes.write_day(tenant, DAY)
+
+    await mark("rejected")
+    assert key not in await episodes.write_day(tenant, DAY)
 
 
 @pytest.mark.asyncio
