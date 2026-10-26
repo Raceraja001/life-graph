@@ -11,6 +11,9 @@ export function useMemories(params?: { limit?: string; offset?: string }) {
 export function useMemory(id: string) {
   return useQuery({ queryKey: ["memories", id], queryFn: () => api.memories.get(id), enabled: !!id });
 }
+export function useMemoryTotal() {
+  return useQuery({ queryKey: ["memories", "total"], queryFn: () => api.memories.total() });
+}
 export function useMemorySearch(query: string) {
   return useQuery({ queryKey: ["memory-search", query], queryFn: () => api.memories.search(query), enabled: query.length > 2 });
 }
@@ -37,6 +40,9 @@ export function useEvidence(params?: { limit?: string }) {
 // ── Kernel hooks ──────────────────────────────
 export function useTasks(params?: { status?: string; limit?: string }) {
   return useQuery({ queryKey: ["tasks", params], queryFn: () => api.kernel.tasks.list(params) });
+}
+export function useTaskPage(limit: string) {
+  return useQuery({ queryKey: ["tasks", "page", limit], queryFn: () => api.kernel.tasks.page({ limit }) });
 }
 export function useRoute() {
   return useMutation({ mutationFn: (message: string) => api.kernel.route(message) });

@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import type { Tone } from "./mobile-mock";
+import { taskAgent, taskTitle } from "./tasks";
 
 // View-models the mobile screens render. Mappers below translate the backend's
 // loosely-typed payloads into these, so the screens stay clean and defensive.
@@ -19,7 +20,7 @@ export interface MemoryVM {
   _optimistic?: boolean; // true = local optimistic card, not yet persisted
 }
 
-export type TaskGroup = "inflight" | "queued" | "done";
+export type TaskGroup = "inflight" | "queued" | "failed" | "done";
 
 export interface TaskVM {
   id: string;
@@ -61,8 +62,10 @@ const STATUS_MAP: Record<string, { tone: Tone; group: TaskGroup; label: string }
   completed: { tone: "success", group: "done", label: "done" },
   landed: { tone: "success", group: "done", label: "done" },
   done: { tone: "success", group: "done", label: "done" },
-  failed: { tone: "danger", group: "inflight", label: "failed" },
-  error: { tone: "danger", group: "inflight", label: "failed" },
+  // Failed work keeps its own group, so it stays visible without counting as in flight.
+  failed: { tone: "danger", group: "failed", label: "failed" },
+  error: { tone: "danger", group: "failed", label: "failed" },
+  timeout: { tone: "danger", group: "failed", label: "failed" },
   cancelled: { tone: "neutral", group: "done", label: "cancelled" },
 };
 
@@ -71,8 +74,8 @@ export function mapTask(raw: any): TaskVM {
   const m = STATUS_MAP[status] ?? { tone: "neutral" as Tone, group: "inflight" as TaskGroup, label: status };
   return {
     id: String(raw?.id ?? ""),
-    title: raw?.description || raw?.intent || raw?.title || String(raw?.id ?? "task"),
-    meta: raw?.persona || "system",
+    title: taskTitle(raw),
+    meta: taskAgent(raw),
     status: m.label,
     tone: m.tone,
     group: m.group,
@@ -82,7 +85,8 @@ export function mapTask(raw: any): TaskVM {
 export const TASK_GROUPS: Array<{ id: TaskGroup; title: string }> = [
   { id: "inflight", title: "In flight" },
   { id: "queued", title: "Queued" },
-  { id: "done", title: "Done today" },
+  { id: "failed", title: "Failed" },
+  { id: "done", title: "Done" },
 ];
 
 // ── Hooks (share query keys with the desktop hooks so WebSocket
@@ -271,6 +275,13 @@ export function mapModelHealth(raw: RawModelHealth): ModelHealthVM {
     avgLatencyMs: typeof raw?.avg_latency_ms === "number" ? raw.avg_latency_ms : null,
     cooldownUntil: typeof raw?.cooldown_until === "number" ? raw.cooldown_until : null,
   };
+}
+
+/** The error to show for a model: only when its last failure came after its last success. */
+export function currentError(item: ModelHealthVM): string | null {
+  if (!item.lastError) return null;
+  if (item.lastFailureAt != null && item.lastSuccessAt != null && item.lastSuccessAt > item.lastFailureAt) return null;
+  return item.lastError;
 }
 
 export function useModelHealth() {

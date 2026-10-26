@@ -72,8 +72,10 @@ function NewTaskForm() {
             {projectList.length === 0 && <option value="">No registered projects</option>}
             {projectList.map((p) => (
               <option key={p.id} value={p.id}>
+                {/* No branch: git_branch is the checkout's branch when the project was
+                    registered (life-graph read feat/dev-agent-safety long after), and a
+                    task always starts from the project's default branch anyway. */}
                 {p.name}
-                {p.git_branch ? ` (${p.git_branch})` : ""}
               </option>
             ))}
           </select>

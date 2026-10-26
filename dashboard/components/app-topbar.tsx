@@ -10,13 +10,21 @@ const TITLES: Record<string, string> = {
   "/calibration": "Calibration",
   "/tasks": "Tasks",
   "/drivers": "Dev tasks",
+  "/agents": "Agents",
   "/activity": "Activity",
   "/settings": "Settings",
 };
 
+/** The top bar's title: the page's own, else its section's ("/agents/scorecards" → Agents). */
+export function topbarTitle(pathname: string): string {
+  if (TITLES[pathname]) return TITLES[pathname];
+  const section = "/" + (pathname.split("/")[1] ?? "");
+  return TITLES[section] || "Life Graph";
+}
+
 export function AppTopbar({ onOpenCommand }: { onOpenCommand?: () => void }) {
   const pathname = usePathname();
-  const title = TITLES[pathname] || "Life Graph";
+  const title = topbarTitle(pathname);
   return (
     <header className="h-14 bg-surface/80 backdrop-blur-sm border-b border-line flex items-center justify-between pl-14 pr-6 lg:px-6 shrink-0">
       <h1 className="text-sm font-semibold text-ink">{title}</h1>

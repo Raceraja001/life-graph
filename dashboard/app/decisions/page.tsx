@@ -1,5 +1,5 @@
 "use client";
-import { BookOpen, ChevronRight } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { usePreferences } from "@/lib/hooks";
 
 export default function DecisionsPage() {
@@ -8,8 +8,8 @@ export default function DecisionsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-ink">Preferences</h2>
-        <p className="text-sm text-ink-mid">Learned preferences and decisions</p>
+        <h2 className="text-lg font-semibold text-ink">Decisions</h2>
+        <p className="text-sm text-ink-mid">What Life Graph has learned you prefer and have decided</p>
       </div>
 
       {preferences.isError ? (
@@ -22,22 +22,25 @@ export default function DecisionsPage() {
             <div key={p.id} className="bg-surface border border-line rounded-xl p-5 hover:shadow-md hover:border-line-strong transition-all group">
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
+                  {/* A preference row (api/preferences.py): choice is the decision, topic what it is about. */}
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-sm font-semibold text-ink">{p.key || p.domain || p.id}</h3>
-                    {p.confidence && (
+                    <h3 className="text-sm font-semibold text-ink">{p.choice || p.key || p.topic || p.id}</h3>
+                    {p.confidence != null && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-soft text-accent-text font-medium">
                         {(p.confidence * 100).toFixed(0)}% confident
                       </span>
                     )}
                   </div>
-                  {p.value && <p className="text-sm text-ink-mid line-clamp-2 mb-2">{typeof p.value === 'string' ? p.value : JSON.stringify(p.value)}</p>}
+                  {p.topic && p.topic !== p.choice && <p className="text-xs text-ink-mid mb-1">{p.topic}</p>}
+                  {p.reason && <p className="text-sm text-ink-mid line-clamp-2 mb-2">{p.reason}</p>}
                   <div className="flex items-center gap-3 mt-2">
                     <span className="text-xs text-ink-low">{new Date(p.created_at).toLocaleDateString()}</span>
-                    {p.domain && <span className="text-[10px] px-1.5 py-0.5 bg-surface-3 text-ink-mid rounded">{p.domain}</span>}
-                    {p.source && <span className="text-[10px] px-1.5 py-0.5 bg-info-soft text-info rounded">{p.source}</span>}
+                    {(p.category || p.domain) && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-surface-3 text-ink-mid rounded">{p.category || p.domain}</span>
+                    )}
+                    {p.source && <span className="text-[10px] px-1.5 py-0.5 bg-info-soft text-info rounded">{p.source.replace(/_/g, " ")}</span>}
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-ink-low group-hover:text-ink-mid shrink-0 mt-1 transition-colors" />
               </div>
             </div>
           ))}
