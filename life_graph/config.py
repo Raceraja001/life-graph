@@ -318,6 +318,17 @@ class Settings(BaseSettings):
     #   {"name": ..., "transport": "http", "url": "http://host:port/mcp"}
     mcp_servers: str = "[]"
 
+    # ── Life Graph's own MCP tools over HTTP (api/mcp_http.py) ─────
+    # Off by default. On, the tools of life_graph/mcp_server.py answer at
+    # /mcp/ behind the same service-key check as the API (device tokens are
+    # refused): each call goes on to the API as the caller, with their key and
+    # tenant. self_url is where those calls go (this API, on loopback).
+    mcp_http_enabled: bool = False
+    mcp_http_self_url: str = "http://127.0.0.1:8080"
+    # Host headers the MCP endpoint answers (DNS-rebinding guard), e.g. the
+    # tailnet name a `tailscale serve` proxy sends.
+    mcp_http_allowed_hosts: str = "localhost,127.0.0.1"
+
     # ── CORS ───────────────────────────────────────────
     cors_origins: str = "http://localhost:3000,http://localhost:8000"
 

@@ -64,12 +64,22 @@ mcp = FastMCP(
 
 
 def _headers(tenant_id: str | None = None) -> dict[str, str]:
-    """Build request headers with tenant and optional auth."""
+    """Build request headers with tenant and optional auth.
+
+    Over HTTP (``/mcp/`` in the API, api/mcp_http.py) the caller's own key and
+    tenant go on to the API, so a call can do what that key can and no more;
+    over stdio there is no request and the environment's key and tenant apply.
+    """
+    from fastmcp.server.dependencies import get_http_headers
+
+    caller = get_http_headers(include={"authorization"})
     h = {
         "Content-Type": "application/json",
-        "X-Tenant-ID": tenant_id or DEFAULT_TENANT,
+        "X-Tenant-ID": tenant_id or caller.get("x-tenant-id") or DEFAULT_TENANT,
     }
-    if API_KEY:
+    if caller.get("authorization"):
+        h["Authorization"] = caller["authorization"]
+    elif API_KEY:
         h["Authorization"] = f"Bearer {API_KEY}"
     return h
 
