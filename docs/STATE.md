@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-27 09:34 UTC` from `master` @ `a62361e`
+Generated `2026-10-27 09:42 UTC` from `master` @ `8f6ddca`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-10-27 09:34 UTC` from `master` @ `a62361e`
 
 | | |
 |---|---|
-| HTTP operations | **364** across 317 paths, 43 tags |
+| HTTP operations | **367** across 319 paths, 43 tags |
 | Database tables | **84** |
 | Migrations | **55** (head: `055_feature_idea_worth`) |
 | Event types | **79** |
@@ -24,15 +24,15 @@ Generated `2026-10-27 09:34 UTC` from `master` @ `a62361e`
 | Agent tools | **14** |
 | Scheduled jobs | **30** |
 | Config settings | **268** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3740** in 413 files |
+| Test functions | **3747** in 415 files |
 | Dashboard pages | **22** |
-| Python | 423 files, 109,638 lines |
+| Python | 427 files, 110,218 lines |
 
 ---
 
 ## HTTP API
 
-364 operations, grouped by OpenAPI tag.
+367 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 35
 
@@ -142,12 +142,15 @@ Generated `2026-10-27 09:34 UTC` from `master` @ `a62361e`
 | GET | `/api/v1/autonomy/trust/scores` | List Scores |
 | GET | `/api/v1/autonomy/trust/scores/{score_id}` | Get Score |
 
-### `jarvis` — 25
+### `jarvis` — 28
 
 | Method | Path | Summary |
 |---|---|---|
 | GET | `/api/v1/jarvis/app/download/{file}` | Download the phone app's APK |
 | GET | `/api/v1/jarvis/app/latest` | The newest phone app the PC offers (404: none) |
+| GET | `/api/v1/jarvis/asks` | What Jarvis does on its own: your scheduled asks |
+| DELETE | `/api/v1/jarvis/asks/{ask_id}` | Stop a scheduled ask for good |
+| PATCH | `/api/v1/jarvis/asks/{ask_id}` | Pause or resume a scheduled ask |
 | POST | `/api/v1/jarvis/bills/{item_id}/paid` | Mark a bill from mail paid |
 | GET | `/api/v1/jarvis/brief/latest` | The newest daily brief, with its audio |
 | POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
@@ -813,7 +816,7 @@ Generated `2026-10-27 09:34 UTC` from `master` @ `a62361e`
 | ~~assistant~~ (retired) — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
 | **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
 | ~~swe-lead~~ (retired) — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 29 |
+| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 30 |
 
 ---
 
@@ -972,10 +975,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 313 | 2971 |
-| `tests/integration/` | 99 | 757 |
+| `tests/unit/` | 314 | 2974 |
+| `tests/integration/` | 100 | 761 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **413** | **3740** |
+| **total** | **415** | **3747** |
 
 ---
 
