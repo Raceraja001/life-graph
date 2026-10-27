@@ -110,13 +110,13 @@ class _FakeOrchestrator:
 
 
 class _FakeReg:
-    tool_names = [*TOOLS, "run_command"]
+    tool_names = [*TOOLS, "run_command", "memory_save", "reminder_set", "memory_search"]
 
     def get_tools(self):
         return [{"function": {"name": n}} for n in self.tool_names]
 
 
-async def _run(agent, persona, message, tool_override=None):
+async def _run(agent, persona, message, tool_override=None, **extra):
     from life_graph.kernel import process_manager as pm_mod
 
     pm = pm_mod.ProcessManager.__new__(pm_mod.ProcessManager)
@@ -124,11 +124,33 @@ async def _run(agent, persona, message, tool_override=None):
         patch("life_graph.tools.registry.registry", _FakeReg()),
         patch("life_graph.agents.orchestrator.AgentOrchestrator", _FakeOrchestrator),
         patch("life_graph.connectors.chat_context.context_for") as context_for,
+        patch("life_graph.services.memory_context.memory_block", _no_memories),
     ):
         out = await pm._run_agent(
-            "t1", agent, {"message": message}, persona, tool_override=tool_override
+            "t1", agent, {"message": message, **extra}, persona, tool_override=tool_override
         )
     return out, _FakeOrchestrator.seen, context_for
+
+
+async def _no_memories(*_a, **_k):
+    return ""
+
+
+def test_a_temporary_chat_is_local_even_when_cloud_is_asked_for():
+    r = lead.route(_persona(), {"message": "cloud: compare groq and cerebras", "temporary": True})
+    assert r.kind == "personal" and r.reason == lead.TEMPORARY_REASON
+    assert r.model == "ollama_chat/qwen3:14b" and r.pinned
+
+
+@pytest.mark.asyncio
+async def test_a_temporary_chat_has_no_tool_that_leaves_anything_behind():
+    persona = _persona(tools=[*TOOLS, "memory_save", "reminder_set", "memory_search"])
+    out, seen, _ = await _run("jarvis", persona, "what bills are due?", temporary=True)
+    assert seen["model"] == "ollama_chat/qwen3:14b"
+    assert "memory_save" not in seen["tools"] and "reminder_set" not in seen["tools"]
+    assert "delegate_to_persona" not in seen["tools"]
+    assert "bills_due" in seen["tools"] and "memory_search" in seen["tools"]  # reading is fine
+    assert out["route"]["reason"] == lead.TEMPORARY_REASON
 
 
 @pytest.mark.asyncio

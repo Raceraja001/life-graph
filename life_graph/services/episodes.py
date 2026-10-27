@@ -98,6 +98,8 @@ async def _jarvis_turns(tenant_id: str, day: date) -> tuple[list[str], list[str]
                         AgentTask.status == "completed",
                         AgentTask.created_at >= start,
                         AgentTask.created_at < end,
+                        # A temporary chat is never summarised (web-chat-wave1 F5).
+                        AgentTask.input["temporary"].as_boolean().is_not(True),
                     )
                     .order_by(AgentTask.created_at)
                     .limit(MAX_TURNS)

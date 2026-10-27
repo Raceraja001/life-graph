@@ -97,6 +97,9 @@ class ChatRequest(BaseModel):
     # as information (core/trust.py with_shared), it is captured as EXTERNAL,
     # and only `message` counts as the owner asking for anything.
     shared: str | None = Field(None, max_length=8000)
+    # A temporary chat (docs/specs/web-chat-wave1.md F5): local only, nothing
+    # captured; set on the first turn, kept by the conversation.
+    temporary: bool = False
 
 
 async def _own_conversation(tenant_id: str, conversation_id: uuid.UUID | None) -> None:
@@ -236,8 +239,13 @@ async def chat(body: ChatRequest):
             headers=_SSE_HEADERS,
         )
     conversation_id = body.conversation_id
+    from life_graph.api.kernel import session_is_temporary
+
+    # A temporary chat teaches memory nothing: its words are never captured.
+    temporary = body.temporary or await session_is_temporary(tenant_id, conversation_id)
     if prior is None:
-        await _capture_chat(tenant_id, body)
+        if not temporary:
+            await _capture_chat(tenant_id, body)
     elif conversation_id is None:
         # A failed turn run again: its words were captured the first time, and
         # it goes on in the conversation that turn opened.
@@ -275,6 +283,7 @@ async def _start_chat(body: ChatRequest, conversation_id: uuid.UUID | None):
             session_id=conversation_id,
             shared=body.shared,
             client_id=body.client_id,
+            temporary=body.temporary,
         ),
         pm=get_process_manager(),
         personas=get_persona_service(),
@@ -460,7 +469,12 @@ async def conversations(limit: int = 50):
             await session.execute(
                 select(AgentSession, last.c.at)
                 .outerjoin(last, last.c.session_id == AgentSession.id)
-                .where(AgentSession.tenant_id == tenant_id, AgentSession.routed_to == LEAD)
+                .where(
+                    AgentSession.tenant_id == tenant_id,
+                    AgentSession.routed_to == LEAD,
+                    # Temporary chats are never listed (F5).
+                    AgentSession.context["temporary"].as_boolean().is_not(True),
+                )
                 .order_by(func.coalesce(last.c.at, AgentSession.created_at).desc())
                 .limit(max(1, min(limit, 200)))
             )
@@ -748,7 +762,10 @@ async def voice(
         conv = prior.session_id  # a failed turn run again, in the conversation it opened
     if prior is None or not heard:
         heard = await _transcribe(audio)
-        if prior is None:  # a retry's words were captured the first time
+        from life_graph.api.kernel import session_is_temporary
+
+        # A retry's words were captured the first time; a temporary chat's never are.
+        if prior is None and not await session_is_temporary(tenant_id, conv):
             await _capture(tenant_id, heard, "voice", conv, client_id=client_id)
     turn = await _answer(tenant_id, heard, conv, client_id=client_id)
     return await _voice_reply(heard, turn)

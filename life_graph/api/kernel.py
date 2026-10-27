@@ -682,6 +682,15 @@ class ChatStreamRequest(BaseModel):
             "can be recognised (api/jarvis.py)."
         ),
     )
+    temporary: bool = Field(
+        default=False,
+        description=(
+            "A temporary chat: local model only, nothing captured or saved, never listed "
+            "or summarised, purged a day after its last message "
+            "(docs/specs/web-chat-wave1.md F5). Set on the first turn; the conversation "
+            "keeps it."
+        ),
+    )
 
 
 # How many earlier turns a persona is given. Each turn is a user message and a
@@ -691,7 +700,9 @@ class ChatStreamRequest(BaseModel):
 CHAT_HISTORY_TURNS = 10
 
 
-async def _start_chat_session(tenant_id: str, target_agent: str, message: str) -> uuid.UUID:
+async def _start_chat_session(
+    tenant_id: str, target_agent: str, message: str, *, temporary: bool = False
+) -> uuid.UUID:
     """Open a conversation and return its id.
 
     `user_message` is the opening message and is not updated afterwards — the
@@ -707,10 +718,36 @@ async def _start_chat_session(tenant_id: str, target_agent: str, message: str) -
             user_message=message,
             routed_to=target_agent,
             status="active",
+            context={"temporary": True} if temporary else {},
         )
         session.add(row)
         await session.commit()
         return row.id
+
+
+async def session_is_temporary(tenant_id: str, session_id: uuid.UUID | None) -> bool:
+    """True when the conversation was opened as a temporary chat."""
+    if session_id is None:
+        return False
+    from life_graph.models.db import AgentSession
+    from life_graph.storage.database import async_session
+
+    try:
+        async with async_session() as session:
+            row = await session.get(AgentSession, session_id)
+    except Exception:  # noqa: BLE001
+        # No database, no turn: the spawn and any capture need it too.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Could not read whether a chat is temporary", exc_info=True
+        )
+        return False
+    return bool(
+        row is not None
+        and row.tenant_id == tenant_id
+        and (row.context or {}).get("temporary") is True
+    )
 
 
 async def _load_chat_history(tenant_id: str, session_id: uuid.UUID) -> list[dict[str, str]]:
@@ -786,6 +823,17 @@ async def chat_stream(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown persona: {body.target_agent!r}",
         )
+    if (
+        body.temporary
+        and body.session_id is not None
+        and not await session_is_temporary(tenant_id, body.session_id)
+    ):
+        # Its earlier turns are already kept; half a temporary chat would promise
+        # what it cannot keep.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A chat becomes temporary only when it starts: open a new one.",
+        )
 
     bus = get_chat_stream_bus()
 
@@ -807,13 +855,20 @@ async def chat_stream(
             # single request, and the id goes back on `start` so the next turn
             # can name the conversation it belongs to.
             session_id = body.session_id
+            temporary = body.temporary
             if session_id is None:
-                session_id = await _start_chat_session(tenant_id, body.target_agent, body.message)
+                session_id = await _start_chat_session(
+                    tenant_id, body.target_agent, body.message, temporary=temporary
+                )
                 history: list[dict[str, str]] = []
             else:
                 history = await _load_chat_history(tenant_id, session_id)
+                # Once temporary, always: a later turn cannot switch it off.
+                temporary = temporary or await session_is_temporary(tenant_id, session_id)
 
             input_data: dict[str, Any] = {"message": body.message, "history": history}
+            if temporary:
+                input_data["temporary"] = True
             if body.shared and body.shared.strip():
                 # The model reads both; the owner's typed words stay apart, so
                 # memory_save's "did the owner ask" reads only them

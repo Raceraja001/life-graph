@@ -599,6 +599,13 @@ class ProcessManager:
                 for t in (allow if allow is not None else tool_registry.tool_names)
                 if t not in lead.PERSONAL_TOOLS
             ]
+        if input_data.get("temporary"):
+            # A temporary chat leaves nothing behind (services/lead.py).
+            allow = [
+                t
+                for t in (allow if allow is not None else tool_registry.tool_names)
+                if t not in lead.TEMPORARY_BLOCKED_TOOLS
+            ]
         if allow is not None:
             allowed_set = set(allow)
             tools = [t for t in tool_registry.get_tools() if t["function"]["name"] in allowed_set]

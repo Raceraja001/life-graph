@@ -163,9 +163,16 @@ class WorkerSettings:
         "life_graph.workers.episodes.write_daily_episodes",
         "life_graph.workers.claude_code_sessions.close_claude_code_sessions",
         "life_graph.workers.due_notifications.write_due_notifications",
+        "life_graph.workers.temporary_chats.purge_temporary_chats",
     ]
 
     cron_jobs = [
+        # Temporary chats quiet for a day are deleted (services/temporary_chats.py).
+        cron(
+            "life_graph.workers.temporary_chats.purge_temporary_chats",
+            minute=27,
+            run_at_startup=False,
+        ),
         # Yesterday's conversation summaries (services/episodes.py); idempotent.
         cron(
             "life_graph.workers.episodes.write_daily_episodes",
