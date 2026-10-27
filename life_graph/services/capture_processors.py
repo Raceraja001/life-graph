@@ -240,6 +240,9 @@ class CaptureProcessors:
                     )
                     logger.info("Decision candidate detected: %s", decision_text[:80])
 
+                # ── 2a. Promises with a time → nudges ───────────────
+                yield_count += await self._find_commitment(session, content, capture_evt, tenant_id)
+
                 # ── 2b. Prediction suggestions ──────────────────────
                 yield_count += await self._suggest_predictions(
                     session, content, capture_evt, tenant_id
@@ -270,6 +273,51 @@ class CaptureProcessors:
 
         except Exception:
             logger.error("CaptureProcessor failed for %s", capture_event_id, exc_info=True)
+
+    async def _find_commitment(
+        self, session: Any, content: str, capture_evt: Any, tenant_id: str | None
+    ) -> int:
+        """The owner's own "I'll ... this week" as a nudge (services/commitments.py).
+
+        Only the Jarvis app's typed or spoken words at the SELF tier: shared
+        text, mail and pages are someone else's and never make a promise."""
+        from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
+
+        surface = getattr(capture_evt, "surface", None)
+        props = getattr(capture_evt, "properties", None) or {}
+        tier = coerce_tier(
+            getattr(capture_evt, "trust_tier", None), default=classify_surface(surface)
+        )
+        if (
+            surface != "jarvis_app"
+            or tier != TrustTier.SELF
+            or props.get("input") not in ("text", "voice")
+        ):
+            return 0
+        try:
+            from datetime import UTC, datetime
+
+            from life_graph.services import commitments
+
+            found = commitments.find_commitment(
+                content or "", datetime.now(UTC), settings.user_timezone
+            )
+            if found is None:
+                return 0
+            row = await commitments.store(
+                session,
+                tenant_id or capture_evt.tenant_id,
+                found,
+                source={
+                    "source": "chat",
+                    "capture_event_id": str(capture_evt.id),
+                    "conversation_id": props.get("conversation_id"),
+                },
+            )
+            return 1 if row is not None else 0
+        except Exception:  # a promise missed never fails the capture
+            logger.warning("Commitment check failed for %s", capture_evt.id, exc_info=True)
+            return 0
 
     async def _store_memories(
         self,

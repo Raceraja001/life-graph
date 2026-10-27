@@ -176,9 +176,16 @@ class WorkerSettings:
         "life_graph.workers.claude_code_sessions.close_claude_code_sessions",
         "life_graph.workers.due_notifications.write_due_notifications",
         "life_graph.workers.temporary_chats.purge_temporary_chats",
+        "life_graph.workers.nudges.send_nudges",
     ]
 
     cron_jobs = [
+        # What the owner said they would do, at the right time (services/nudges.py).
+        cron(
+            "life_graph.workers.nudges.send_nudges",
+            minute={12, 42},
+            run_at_startup=False,
+        ),
         # Temporary chats quiet for a day are deleted (services/temporary_chats.py).
         cron(
             "life_graph.workers.temporary_chats.purge_temporary_chats",
