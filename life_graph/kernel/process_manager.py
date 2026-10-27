@@ -653,6 +653,11 @@ class ProcessManager:
                         system_prompt = f"{system_prompt or ''}\n\n{block}".strip()
                 except Exception:
                     logger.warning("Project context for %s failed", agent_name, exc_info=True)
+        # What shaped this answer (services/turn_trace.py): the memories put in
+        # front of the model and the tools it called, kept on the result.
+        used_memories: list[dict[str, Any]] = []
+        tool_calls: list[dict[str, Any]] = []
+        tool_started: float | None = None
         if (
             lead_route is not None
             and lead_route.kind == "personal"
@@ -664,7 +669,9 @@ class ProcessManager:
             from life_graph.services.memory_context import memory_block
 
             started = time.monotonic()
-            remembered = await memory_block(tenant_id, messages[-1]["content"], history)
+            remembered = await memory_block(
+                tenant_id, messages[-1]["content"], history, used=used_memories
+            )
             timing["memory_s"] = round(time.monotonic() - started, 2)
             if remembered:
                 volatile.append(remembered)
@@ -727,12 +734,40 @@ class ProcessManager:
                     content = data.get("content", "")
                     response_parts.append(content)
                     token_count += 1
+                elif data.get("type") == "tool_call":
+                    tool_started = time.monotonic()
                 elif data.get("type") == "tool_result":
                     tool_results.append(str(data.get("result") or ""))
+                    from life_graph.services.turn_trace import tool_ok
+
+                    tool_calls.append(
+                        {
+                            "name": data.get("name"),
+                            "ok": tool_ok(data.get("result")),
+                            "ms": round((time.monotonic() - tool_started) * 1000)
+                            if tool_started is not None
+                            else 0,
+                        }
+                    )
+                    tool_started = None
 
         response = "".join(response_parts)
         timing["total_s"] = round(time.monotonic() - run_started, 2)
         out: dict[str, Any] = {"response": response, "token_count": token_count, "timing": timing}
+        from life_graph.services.turn_trace import build_trace
+
+        # A pinned run may fail over only to local models (only_models above).
+        stayed_local = bool(lead_route is not None and lead_route.pinned) or run_is_local(
+            orchestrator.model
+        )
+        out["trace"] = build_trace(
+            lead_route.as_record()
+            if lead_route is not None
+            else {"kind": None, "model": orchestrator.model, "reason": ""},
+            [{"model": orchestrator.model, "local": stayed_local}],
+            used_memories,
+            tool_calls,
+        )
         if lead_route is not None:
             out["route"] = lead_route.as_record()
             # No content: stage times and where it ran only.

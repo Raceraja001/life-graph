@@ -136,6 +136,40 @@ async def _no_memories(*_a, **_k):
     return ""
 
 
+@pytest.mark.asyncio
+async def test_a_turn_records_what_shaped_it():
+    async def remembered(tenant_id, message, history=None, *, used=None):
+        used.append({"id": "m1", "content": "Electricity bill is due on the 5th."})
+        return "## What you remember\n- Electricity bill is due on the 5th."
+
+    from life_graph.kernel import process_manager as pm_mod
+
+    pm = pm_mod.ProcessManager.__new__(pm_mod.ProcessManager)
+    with (
+        patch("life_graph.tools.registry.registry", _FakeReg()),
+        patch("life_graph.agents.orchestrator.AgentOrchestrator", _FakeToolOrchestrator),
+        patch("life_graph.connectors.chat_context.context_for"),
+        patch("life_graph.services.memory_context.memory_block", remembered),
+    ):
+        out = await pm._run_agent("t1", "jarvis", {"message": "what bills are due?"}, _persona())
+    trace = out["trace"]
+    assert trace["local"] is True and trace["route"]["kind"] == "personal"
+    assert trace["memories"] == [{"id": "m1", "snippet": "Electricity bill is due on the 5th."}]
+    assert [(t["name"], t["ok"]) for t in trace["tools"]] == [
+        ("bills_due", True),
+        ("calendar_events", False),
+    ]
+
+
+class _FakeToolOrchestrator(_FakeOrchestrator):
+    async def run(self, messages, system_prompt=None, tools=None):
+        yield 'data: {"type": "tool_call", "name": "bills_due", "arguments": {}}'
+        yield 'data: {"type": "tool_result", "name": "bills_due", "result": "[]"}'
+        yield 'data: {"type": "tool_call", "name": "calendar_events", "arguments": {}}'
+        yield 'data: {"type": "tool_result", "name": "calendar_events", "result": "{\\"error\\": \\"x\\"}"}'
+        yield 'data: {"type": "token", "content": "ok"}'
+
+
 def test_a_temporary_chat_is_local_even_when_cloud_is_asked_for():
     r = lead.route(_persona(), {"message": "cloud: compare groq and cerebras", "temporary": True})
     assert r.kind == "personal" and r.reason == lead.TEMPORARY_REASON

@@ -1514,3 +1514,77 @@ async def delete_ask(ask_id: str):
         tenant_id, ask_id, {"is_active": False, "properties": props}
     )
     return success_response(data={"id": ask_id, "removed": True})
+
+
+# ── What shaped an answer (docs/specs/web-chat-wave1.md F3) ──────────────
+
+
+class WrongMemory(BaseModel):
+    note: str | None = Field(None, max_length=500)
+
+
+async def _own_turn(tenant_id: str, task_id: uuid.UUID):
+    from life_graph.models.db import AgentTask
+
+    async with async_session() as session:
+        task = await session.get(AgentTask, task_id)
+    if task is None or task.tenant_id != tenant_id or task.parent_task_id is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "turn not found")
+    return task
+
+
+@router.get(
+    "/turns/{task_id}/trace", summary="How one reply was made: memories, tools, where it ran"
+)
+async def turn_trace(task_id: uuid.UUID):
+    from life_graph.services.turn_trace import summary_line
+
+    task = await _own_turn(get_current_tenant_id(), task_id)
+    trace = (task.result or {}).get("trace")
+    if not trace:
+        # A turn from before traces were kept, or one still running.
+        return success_response(data={"task_id": str(task_id), "trace": None, "summary": None})
+    return success_response(
+        data={"task_id": str(task_id), "trace": trace, "summary": summary_line(trace)}
+    )
+
+
+@router.post(
+    "/turns/{task_id}/memories/{memory_id}/wrong",
+    summary="A memory this reply used is wrong: back to review, left out of answers",
+)
+async def memory_was_wrong(task_id: uuid.UUID, memory_id: uuid.UUID, body: WrongMemory):
+    """Only a memory the turn actually used, and only an active one: it goes back
+    to the review queue (pending, so recall leaves it out) with the owner's note.
+    Never deleted; Keep in review restores it."""
+    from sqlalchemy import text
+
+    tenant_id = get_current_tenant_id()
+    task = await _own_turn(tenant_id, task_id)
+    used = {m.get("id") for m in ((task.result or {}).get("trace") or {}).get("memories") or []}
+    if str(memory_id) not in used:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "this reply did not use that memory")
+    note = json.dumps(
+        {
+            "disputed": {
+                "at": datetime.now(UTC).isoformat(),
+                "task_id": str(task_id),
+                "note": (body.note or "").strip() or None,
+            }
+        }
+    )
+    async with async_session() as session:
+        row = (
+            await session.execute(
+                text(
+                    "UPDATE memories SET status = 'pending', updated_at = NOW(),"
+                    " properties = COALESCE(properties, '{}'::jsonb) || CAST(:note AS jsonb)"
+                    " WHERE id = :id AND tenant_id = :t AND status = 'active' RETURNING id"
+                ),
+                {"id": memory_id, "t": tenant_id, "note": note},
+            )
+        ).first()
+        await session.commit()
+    if row is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "that memory is not active any more")
+    return success_response(data={"id": str(memory_id), "status": "pending"})

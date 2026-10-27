@@ -834,6 +834,14 @@ async def chat_stream(
             status_code=status.HTTP_409_CONFLICT,
             detail="A chat becomes temporary only when it starts: open a new one.",
         )
+    from life_graph.services.lead import LEAD
+
+    if body.temporary and body.target_agent != LEAD:
+        # Only the lead's model is chosen per message, so only it can be held local.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A temporary chat is with Jarvis only.",
+        )
 
     bus = get_chat_stream_bus()
 

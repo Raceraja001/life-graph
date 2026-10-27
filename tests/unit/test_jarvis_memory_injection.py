@@ -29,7 +29,7 @@ async def _run(message: str, persona: dict) -> dict:
     set_task_context(task_id=root, tenant_id="t1", root_task_id=root, depth=0)
     calls = []
 
-    async def fake_block(tenant_id, msg, history=None):
+    async def fake_block(tenant_id, msg, history=None, *, used=None):
         calls.append((tenant_id, msg))
         return "## What you remember about the owner\n- MEMORY-MARKER"
 
