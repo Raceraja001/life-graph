@@ -237,7 +237,7 @@ def test_chat_events_in_the_apps_shape():
     from life_graph.api.jarvis import _app_event
 
     state: dict = {}
-    assert _app_event({"type": "start", "session_id": "s1"}, state) is None
+    assert _app_event({"type": "start", "session_id": "s1", "task_id": "t1"}, state) is None
     assert _app_event({"type": "route", "kind": "personal"}, state) is None
     assert _app_event({"type": "assistant_delta", "text": "Hi"}, state) == {
         "type": "token",
@@ -248,6 +248,7 @@ def test_chat_events_in_the_apps_shape():
         "type": "done",
         "conversation_id": "s1",
         "route": "personal",
+        "task_id": "t1",  # the turn: its trace is read by it
     }
     assert _app_event({"type": "error", "message": "boom"}, {}) == {
         "type": "error",

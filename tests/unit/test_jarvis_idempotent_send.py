@@ -155,7 +155,7 @@ async def test_a_new_message_is_captured_and_run_with_its_client_id(wired):
     assert wired.started == [(CID, None)]
     assert out == [
         {"type": "token", "content": "fresh"},
-        {"type": "done", "conversation_id": None, "route": None},
+        {"type": "done", "conversation_id": None, "route": None, "task_id": None},
     ]
 
 

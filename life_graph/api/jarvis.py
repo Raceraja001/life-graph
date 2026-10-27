@@ -119,6 +119,7 @@ def _app_event(event: dict, state: dict) -> dict | None:
     kind = event.get("type")
     if kind == "start":
         state["conversation_id"] = event.get("session_id")
+        state["task_id"] = event.get("task_id")
         return None
     if kind == "route":
         state["route"] = event.get("kind")
@@ -130,6 +131,8 @@ def _app_event(event: dict, state: dict) -> dict | None:
             "type": "done",
             "conversation_id": state.get("conversation_id"),
             "route": state.get("route"),
+            # The turn's task: its trace is read by it (GET /jarvis/turns/{id}/trace).
+            "task_id": state.get("task_id"),
         }
     if kind == "error":
         return {"type": "error", "message": event.get("message") or "Something went wrong."}

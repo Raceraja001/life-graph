@@ -52,6 +52,8 @@ OUTSIDE_CONTENT_TOOLS: frozenset[str] = frozenset(
         "email_search",
         "email_read",
         "code_inbox",
+        # Titles and summaries agents wrote (tools/approvals.py).
+        "approvals_waiting",
         "bills_due",
         "spending_summary",
         "contact_lookup",

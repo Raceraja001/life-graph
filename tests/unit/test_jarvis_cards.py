@@ -450,3 +450,28 @@ async def test_voice_reply_cards_from_the_runs_own_tool_results(monkeypatch):
     assert turn["cards"][0]["id"] == "r1"
     # The bus key is freed: no subscriber left, no buffer kept.
     assert bus.buffer_len(task_id) == 0 and not bus._subscribers.get(task_id)
+
+
+def test_approval_cards_say_what_deciding_does():
+    result = json.dumps(
+        {
+            "total": 3,
+            "items": [
+                {"id": "a1", "kind": "driver_pr", "title": "Open PR: Tests for day_row", "verified": True, "files": 1},
+                {"id": "a2", "kind": "model_adoption", "title": "Adopt MiniMax M3.1 Flash", "summary": "6/6 evals"},
+                {"id": "a3", "kind": "something_new", "title": "Review this"},
+            ],
+        }
+    )
+    cards = jc.cards_for("approvals_waiting", result, set())
+    assert [(c["kind"], c["id"], c["subtitle"]) for c in cards] == [
+        ("approval", "a1", "checks passed · 1 file"),
+        ("approval", "a2", "6/6 evals"),
+        ("approval", "a3", ""),
+    ]
+    assert [[a["label"] for a in c["actions"]] for c in cards] == [
+        ["Open PR", "Reject"],
+        ["Adopt", "Not now"],
+        ["Approve", "Reject"],
+    ]
+    assert jc.cards_for("approvals_waiting", json.dumps({"error": "x"}), set()) == []
