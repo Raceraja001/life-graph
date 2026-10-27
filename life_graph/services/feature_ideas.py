@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -75,9 +75,10 @@ def is_pricing(title: str, summary: str = "") -> bool:
     return bool(_PRICING.search(title) or _PAYING.search(summary))
 
 
-def is_leisure(title: str, summary: str = "") -> bool:
-    """Shopping, games or entertainment: always worth "low" here."""
-    return bool(_LEISURE.search(f"{title} {summary}"))
+def is_leisure(title: str) -> bool:
+    """Shopping, games or entertainment: always worth "low" here. The title only —
+    a summary listing "calculators, mini-games" made Intelligent UI shopping."""
+    return bool(_LEISURE.search(title))
 
 
 def capabilities() -> str:
@@ -105,7 +106,8 @@ ASSESSOR_BRIEF = (
     " using what Life Graph already has; else null,\n"
     '  "worth": for a feature, how much it would help the owner of a personal'
     ' assistant (their memory, day, money, work, privacy): "high", "medium" or "low"'
-    " (shopping, games, entertainment and other apps' business are low); else null,\n"
+    " (shopping, games, entertainment and other apps' business are low); every"
+    " feature needs one; else null,\n"
     '  "why": one short clause saying why that worth; else null,\n'
     '  "same_as": the id of a finding in this list or in KNOWN IDEAS that is the same'
     " feature reported again (same app, same thing, other words); else null.\n"
@@ -151,7 +153,8 @@ async def assess(
     *,
     redo: bool = False,
 ) -> dict[str, int]:
-    """Assess the topic's findings not assessed yet (suspicious sources are skipped).
+    """Assess the topic's findings not assessed yet (suspicious sources are skipped),
+    and open features the model left without a worth (it did on 4 of 16).
 
     *redo* judges the ones still undecided again (after the capability list or
     these rules change); decided ones keep their verdict."""
@@ -159,7 +162,18 @@ async def assess(
     from life_graph.services.source_trust import source_trust
     from life_graph.services.workers import WorkerError, json_array, run_worker
 
-    pending = TopicFinding.status == "new" if redo else TopicFinding.is_feature.is_(None)
+    pending = (
+        TopicFinding.status == "new"
+        if redo
+        else or_(
+            TopicFinding.is_feature.is_(None),
+            and_(
+                TopicFinding.is_feature.is_(True),
+                TopicFinding.worth.is_(None),
+                TopicFinding.status == "new",
+            ),
+        )
+    )
     async with session_factory() as session:
         rows = (
             (
@@ -240,7 +254,7 @@ async def assess(
                     v["suggestion"],
                 )
                 row.worth, row.worth_why = v["worth"], v["why"]
-                if v["is_feature"] and is_leisure(row.title, row.summary or ""):
+                if v["is_feature"] and is_leisure(row.title):
                     row.worth, row.worth_why = "low", "shopping, games or entertainment"
                 row.duplicate_of = uuid.UUID(v["same_as"]) if v["same_as"] else None
                 assessed += 1

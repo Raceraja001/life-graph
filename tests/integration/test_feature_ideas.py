@@ -60,7 +60,7 @@ def _fake(monkeypatch, assessed: list):
             assert tools == ()  # the assessor acts on nothing
             items = json.loads(inputs)["FINDINGS"]
             assessed.extend(i["title"] for i in items)
-            first_lock = next(i["id"] for i in items if "adds locked" in i["title"])
+            first_lock = next((i["id"] for i in items if "adds locked" in i["title"]), None)
             out = []
             for i in items:
                 lock = "lock" in i["title"]
@@ -157,12 +157,21 @@ async def test_redo_judges_undecided_ideas_again_and_keeps_decided_ones(monkeypa
     assessed: list = []
     _fake(monkeypatch, assessed)
     async with async_session() as s:
-        for i, (title, status) in enumerate([("ChatGPT adds locked chats", "new"), ("ChatGPT adds virtual try-on for clothes", "not_for_us")]):
-            s.add(TopicFinding(tenant_id=tenant, topic=TOPIC, dedup_key=f"k{i}", title=title, summary="s",
+        for i, (title, status, worth) in enumerate(
+            [
+                ("ChatGPT adds locked chats", "new", "high"),
+                ("ChatGPT adds virtual try-on for clothes", "not_for_us", None),
+                ("ChatGPT adds lockable folders", "new", None),  # the model gave no worth
+            ]
+        ):
+            s.add(TopicFinding(tenant_id=tenant, topic=TOPIC, dedup_key=f"k{i}", title=title, summary="s", worth=worth,
                                source_url=OFFICIAL, published_on=date.today(), status=status, is_feature=True, fit="new"))
         await s.commit()
 
     first = await feature_ideas.assess(async_session, tenant, TOPIC)
-    assert first["to_assess"] == 0  # already assessed
+    # Rated ones and decided ones are done; an open one without a worth is asked again.
+    assert first["to_assess"] == 1 and assessed == ["ChatGPT adds lockable folders"]
+    assessed.clear()
     redo = await feature_ideas.assess(async_session, tenant, TOPIC, redo=True)
-    assert redo["to_assess"] == 1 and assessed == ["ChatGPT adds locked chats"]  # the decided one is kept
+    assert redo["to_assess"] == 2  # the decided one is kept
+    assert sorted(assessed) == ["ChatGPT adds lockable folders", "ChatGPT adds locked chats"]
