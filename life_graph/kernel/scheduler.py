@@ -432,6 +432,7 @@ class SchedulerService:
         job_id: str,
         input_override: dict[str, Any] | None = None,
         tool_override: list[str] | None = None,
+        session_id: uuid.UUID | None = None,
     ) -> dict[str, Any] | None:
         """Fire a scheduled job — spawn a task.
 
@@ -448,6 +449,8 @@ class SchedulerService:
                 task's tool allowlist instead of the persona's
                 own `allowed_tools`. Safety-load-bearing for
                 scheduled action roles — see `_run_agent`.
+            session_id: The conversation the task is a turn of (an
+                owner's scheduled ask answers in the chat it was set in).
 
         Returns:
             Spawn result dict, or None if job not found.
@@ -479,6 +482,7 @@ class SchedulerService:
                 ),
                 max_retries=job.get("max_retries", 3),
                 tool_override=tool_override,
+                session_id=session_id,
             )
 
             task_id = result.get("task_id") if isinstance(result, dict) else str(result)

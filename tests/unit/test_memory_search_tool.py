@@ -306,14 +306,18 @@ def test_registered_by_main_startup():
             for item in node.items
         )
     )
-    imported = {
-        alias.name
+    # The step registers every tool through tools/load.py, which the worker uses too.
+    from_imports = {
+        (node.module, alias.name)
         for node in ast.walk(step)
-        if isinstance(node, ast.Import)
+        if isinstance(node, ast.ImportFrom)
         for alias in node.names
     }
+    assert ("life_graph.tools.load", "register_all") in from_imports
 
-    assert "life_graph.tools.memory_search" in imported
+    from life_graph.tools.load import MODULES
+
+    assert "life_graph.tools.memory_search" in MODULES
 
 
 SECRET_QUERY = "my blood test results from Dr. Rao"

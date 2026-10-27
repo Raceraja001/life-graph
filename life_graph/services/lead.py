@@ -40,6 +40,7 @@ PERSONAL_TOOLS = frozenset(
         "memory_forget",
         "memory_about",
         "reminder_set",
+        "ask_schedule",
         "calendar_events",
         "calendar_next",
         "email_waiting",

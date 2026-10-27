@@ -899,9 +899,15 @@ async def tick_scheduled_jobs(ctx: dict) -> dict:
     for job in due:
         try:
             set_tenant_context(job["tenant_id"], "system")
+            from life_graph.services import scheduled_asks
+
             override = None
             tool_override = None
-            if job["agent_name"] in AMBIENT_ADVISORY:
+            session_id = None
+            if scheduled_asks.is_ask(job):
+                # The owner's own ask, as a turn of the chat it was set in.
+                override, session_id = scheduled_asks.turn_input(job)
+            elif job["agent_name"] in AMBIENT_ADVISORY:
                 override = await build_ambient_input(
                     job["agent_name"], job.get("input") or {}, job["tenant_id"]
                 )
@@ -920,6 +926,7 @@ async def tick_scheduled_jobs(ctx: dict) -> dict:
                     job["id"],
                     input_override=override,
                     tool_override=tool_override,
+                    session_id=session_id,
                 )
             fired += 1
         except Exception:
