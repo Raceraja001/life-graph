@@ -71,7 +71,7 @@ def _fake(monkeypatch, assessed: list):
                         "app": "ChatGPT",
                         "fit": "part" if lock else "new",
                         "suggestion": "A temporary chat with a PIN." if lock else "Try clothes on.",
-                        "worth": "high" if lock else "low",
+                        "worth": "high",  # try-on too: code makes it low
                         "why": "privacy" if lock else "shopping",
                         "same_as": first_lock if lock and i["id"] != first_lock else None,
                     }
@@ -106,11 +106,13 @@ async def test_feature_watch_rates_assesses_lists_decides_and_briefs(monkeypatch
     assert "ChatGPT accepts MoMo payments" not in assessed  # pricing: decided in code
 
     ideas = (await client.get("/api/v1/tech-watch/ideas")).json()["data"]
-    # Most worth first; the second report of locked chats is not its own idea.
+    # Most worth first (try-on is shopping: low, whatever the model said); the second
+    # report of locked chats is not its own idea.
     assert [i["title"] for i in ideas] == [
         "ChatGPT adds locked chats",
         "ChatGPT adds virtual try-on for clothes",
     ]
+    assert (ideas[1]["worth"], ideas[1]["worth_why"]) == ("low", "shopping, games or entertainment")
     idea = ideas[0]
     assert (idea["trust"], idea["fit"], idea["worth"], idea["worth_why"]) == ("official", "part", "high", "privacy")
     assert idea["also_from"] == [TRACKER]  # both sources, one idea
