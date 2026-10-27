@@ -82,9 +82,18 @@ def render(rows: list[tuple]) -> str:
     return "\n".join(lines)
 
 
-async def memory_block(tenant_id: str, message: str, history: list[dict] | None = None) -> str:
+async def memory_block(
+    tenant_id: str,
+    message: str,
+    history: list[dict] | None = None,
+    *,
+    used: list[dict] | None = None,
+) -> str:
     """The block for the system prompt: the matching memories, a "nothing matches"
-    note, or "" when memory could not be searched at all (no embedding, any error)."""
+    note, or "" when memory could not be searched at all (no embedding, any error).
+
+    *used*, when given, receives ``{"id", "content"}`` for each memory put in the
+    block — what the turn's trace shows as "what shaped this answer"."""
     from life_graph.api.dependencies import get_store
     from life_graph.core.tenant import tenant_scope
 
@@ -109,4 +118,6 @@ async def memory_block(tenant_id: str, message: str, history: list[dict] | None 
     if not found:
         # Said, not left out: without it the model fills the gap with a guess.
         return NOTHING_FOUND
+    if used is not None:
+        used.extend({"id": str(m.id), "content": m.content} for m in found[:MAX_MEMORIES])
     return render([(m.content, m.created_at, getattr(m, "properties", None)) for m in found])
