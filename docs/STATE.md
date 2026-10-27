@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-27 11:04 UTC` from `master` @ `9d275b5`
+Generated `2026-10-27 11:42 UTC` from `master` @ `cc9e7f6`
 
 ---
 
@@ -24,9 +24,9 @@ Generated `2026-10-27 11:04 UTC` from `master` @ `9d275b5`
 | Agent tools | **14** |
 | Scheduled jobs | **31** |
 | Config settings | **268** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3764** in 420 files |
+| Test functions | **3766** in 421 files |
 | Dashboard pages | **22** |
-| Python | 432 files, 110,984 lines |
+| Python | 433 files, 111,116 lines |
 
 ---
 
@@ -820,7 +820,7 @@ Generated `2026-10-27 11:04 UTC` from `master` @ `9d275b5`
 | ~~assistant~~ (retired) — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
 | **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
 | ~~swe-lead~~ (retired) — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 30 |
+| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 31 |
 
 ---
 
@@ -980,10 +980,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 317 | 2987 |
-| `tests/integration/` | 102 | 765 |
+| `tests/unit/` | 317 | 2988 |
+| `tests/integration/` | 103 | 766 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **420** | **3764** |
+| **total** | **421** | **3766** |
 
 ---
 
