@@ -263,6 +263,7 @@ async def digest_lines(session: AsyncSession, tenant_id: str, *, mark: bool = Tr
                     TopicFinding.status.not_in(_DIGEST_HIDDEN_STATUS),
                     or_(TopicFinding.trust.is_(None), TopicFinding.trust != "suspicious"),
                     or_(TopicFinding.is_feature.is_(None), TopicFinding.is_feature.is_(True)),
+                    TopicFinding.duplicate_of.is_(None),  # sent once, as the first report
                 )
                 .order_by(TopicFinding.topic, TopicFinding.found_at.desc())
             )
@@ -307,5 +308,8 @@ def to_dict(row: Any) -> dict[str, Any]:
         "app": row.app,
         "fit": row.fit,
         "suggestion": row.suggestion,
+        "worth": row.worth,
+        "worth_why": row.worth_why,
+        "duplicate_of": str(row.duplicate_of) if row.duplicate_of else None,
         "decided_at": row.decided_at.isoformat() if row.decided_at else None,
     }

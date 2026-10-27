@@ -4,8 +4,14 @@ The feature watch (tech-watch topics with ``"ideas": true``, 2026-10-27)
 finds what ChatGPT, Claude, Gemini, Open WebUI and the rest shipped. Each new
 finding is assessed by a worker against docs/feature-watch/capabilities.md:
 is it a feature at all (a payment method or a price tier is not), which app,
-does Life Graph have it, have part of it, or not, and one suggestion for how it
-could work here. The owner then decides: consider, not for us, or dismiss.
+does Life Graph have it, have part of it, or not, one suggestion for how it
+could work here, how much it is worth for a personal assistant (high / medium /
+low, and why), and whether it is the same feature as one already known. The
+owner then decides: consider, not for us, or dismiss.
+
+Pricing never reaches the model: the first run judged "Pro 500 tier" a feature
+(and suggested Life Graph sell a premium tier), so a title or summary about
+tiers, plans, subscriptions or payment methods is "not a feature" in code.
 
 Findings are other people's web pages. Nothing here acts on them: the worker
 has no tools, its reply is stored as text, and "consider" only marks the idea
@@ -16,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,6 +39,13 @@ CAPABILITIES_FILE = (
     Path(__file__).resolve().parents[2] / "docs" / "feature-watch" / "capabilities.md"
 )
 FITS = ("have", "part", "new")
+WORTHS = ("high", "medium", "low")
+# Pricing and billing news: a plan, a tier, a subscription, a way to pay.
+_PRICING = re.compile(
+    r"\b(tiers?|pricing|prices?|subscriptions?|subscribers?|payment methods?|billing|"
+    r"pro plan|plus plan|team plan|enterprise plan|per month|/month|/mo)\b|\$\d",
+    re.IGNORECASE,
+)
 DECISIONS = {
     "consider": "considering",
     "not_for_us": "not_for_us",
@@ -40,6 +54,11 @@ DECISIONS = {
 }
 BATCH = 10
 MAX_SUGGESTION = 300
+
+
+def is_pricing(title: str, summary: str = "") -> bool:
+    """A finding about what something costs or how to pay, not about what it does."""
+    return bool(_PRICING.search(f"{title} {summary}"))
 
 
 def capabilities() -> str:
@@ -64,37 +83,63 @@ ASSESSOR_BRIEF = (
     '  "fit": "have" if Life Graph already does this, "part" if it does a piece of'
     ' it, "new" if not — judged only from the capability list,\n'
     '  "suggestion": for a feature, one sentence on how it could work in Life Graph,'
-    " using what Life Graph already has; else null.\n"
+    " using what Life Graph already has; else null,\n"
+    '  "worth": for a feature, how much it would help the owner of a personal'
+    ' assistant (their memory, day, money, work, privacy): "high", "medium" or "low"'
+    " (shopping, games, entertainment and other apps' business are low); else null,\n"
+    '  "why": one short clause saying why that worth; else null,\n'
+    '  "same_as": the id of a finding in this list or in KNOWN IDEAS that is the same'
+    " feature reported again (same app, same thing, other words); else null.\n"
+    'Read the capability list carefully before saying "new": background jobs,'
+    " watchers, voice and projects already exist in some form, so a feature built on"
+    ' them is usually "part".\n'
     "Reply with ONLY a JSON array with one object per finding.\n\n"
     "What Life Graph does:\n"
 )
 
 
-def validate(item: Any, ids: set[str]) -> dict[str, Any] | None:
-    """One assessment, normalised — or None if it does not name a finding of this batch."""
+def validate(item: Any, ids: set[str], known: set[str] = frozenset()) -> dict[str, Any] | None:
+    """One assessment, normalised — or None if it does not name a finding of this batch.
+
+    ``same_as`` must name another finding of the batch or a *known* idea."""
     if not isinstance(item, dict) or str(item.get("id")) not in ids:
         return None
+    fid = str(item["id"])
     is_feature = item.get("is_feature") is True
     fit = str(item.get("fit") or "").strip().lower()
+    worth = str(item.get("worth") or "").strip().lower()
     suggestion = str(item.get("suggestion") or "").strip()[:MAX_SUGGESTION] or None
+    why = str(item.get("why") or "").strip()[:MAX_SUGGESTION] or None
     app = str(item.get("app") or "").strip()[:80] or None
+    same = str(item.get("same_as") or "").strip()
     return {
-        "id": str(item["id"]),
+        "id": fid,
         "is_feature": is_feature,
         "app": app,
         "fit": fit if is_feature and fit in FITS else None,
         "suggestion": suggestion if is_feature else None,
+        "worth": worth if is_feature and worth in WORTHS else None,
+        "why": why if is_feature and worth in WORTHS else None,
+        "same_as": same if is_feature and same != fid and same in (ids | known) else None,
     }
 
 
 async def assess(
-    session_factory: async_sessionmaker[AsyncSession], tenant_id: str, topic: str
+    session_factory: async_sessionmaker[AsyncSession],
+    tenant_id: str,
+    topic: str,
+    *,
+    redo: bool = False,
 ) -> dict[str, int]:
-    """Assess the topic's findings not assessed yet (suspicious sources are skipped)."""
+    """Assess the topic's findings not assessed yet (suspicious sources are skipped).
+
+    *redo* judges the ones still undecided again (after the capability list or
+    these rules change); decided ones keep their verdict."""
     from life_graph.models.assistant import TopicFinding
     from life_graph.services.source_trust import source_trust
     from life_graph.services.workers import WorkerError, json_array, run_worker
 
+    pending = TopicFinding.status == "new" if redo else TopicFinding.is_feature.is_(None)
     async with session_factory() as session:
         rows = (
             (
@@ -102,21 +147,44 @@ async def assess(
                     select(TopicFinding).where(
                         TopicFinding.tenant_id == tenant_id,
                         TopicFinding.topic == topic,
-                        TopicFinding.is_feature.is_(None),
+                        pending,
                     )
                 )
             )
             .scalars()
             .all()
         )
-        for row in rows:  # findings stored before the trust check existed
-            if row.trust is None:
+        priced = 0
+        for row in rows:
+            if row.trust is None:  # findings stored before the trust check existed
                 row.trust = source_trust(row.source_url)
+            if redo:
+                row.duplicate_of = None
+            if is_pricing(row.title, row.summary or ""):
+                row.is_feature = False
+                row.app = row.fit = row.suggestion = row.worth = row.worth_why = None
+                priced += 1
         await session.commit()
         todo = [
             (str(r.id), r.title, r.summary or "", r.source_url)
             for r in rows
-            if r.trust != "suspicious"
+            if r.trust != "suspicious" and not is_pricing(r.title, r.summary or "")
+        ]
+        todo_ids = {fid for fid, *_ in todo}
+        # Ideas already judged features: a new finding may be one of them again.
+        known_rows = (
+            await session.execute(
+                select(TopicFinding.id, TopicFinding.app, TopicFinding.title).where(
+                    TopicFinding.tenant_id == tenant_id,
+                    TopicFinding.is_feature.is_(True),
+                    TopicFinding.duplicate_of.is_(None),
+                )
+            )
+        ).all()
+        known = [
+            {"id": str(k.id), "app": k.app, "title": k.title}
+            for k in known_rows
+            if str(k.id) not in todo_ids
         ]
 
     assessed = 0
@@ -127,7 +195,7 @@ async def assess(
             result = await run_worker(
                 "research",
                 brief=ASSESSOR_BRIEF + capabilities(),
-                inputs=json.dumps(findings, ensure_ascii=False),
+                inputs=json.dumps({"FINDINGS": findings, "KNOWN IDEAS": known}, ensure_ascii=False),
                 tools=(),
                 tenant_id=tenant_id,
                 reasoning=False,
@@ -136,7 +204,8 @@ async def assess(
             logger.info("feature ideas stopped: %s", exc)
             break
         ids = {fid for fid, *_ in chunk}
-        verdicts = [v for v in (validate(x, ids) for x in json_array(result.text)) if v]
+        known_ids = {k["id"] for k in known}
+        verdicts = [v for v in (validate(x, ids, known_ids) for x in json_array(result.text)) if v]
         if not verdicts:
             continue
         async with session_factory() as session:
@@ -150,9 +219,21 @@ async def assess(
                     v["fit"],
                     v["suggestion"],
                 )
+                row.worth, row.worth_why = v["worth"], v["why"]
+                row.duplicate_of = uuid.UUID(v["same_as"]) if v["same_as"] else None
                 assessed += 1
             await session.commit()
-    return {"to_assess": len(todo), "assessed": assessed}
+            # Later ones in this batch become known for the next batch.
+            known += [
+                {
+                    "id": v["id"],
+                    "app": v["app"],
+                    "title": next(t for f, t, *_ in chunk if f == v["id"]),
+                }
+                for v in verdicts
+                if v["is_feature"] and not v["same_as"]
+            ]
+    return {"to_assess": len(todo), "assessed": assessed, "pricing": priced}
 
 
 async def decide(

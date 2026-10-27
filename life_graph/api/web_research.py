@@ -62,28 +62,55 @@ async def list_ideas(
 ):
     """``open`` new ideas · ``considering`` · ``decided`` (not for us, dismissed) ·
     ``flagged`` findings from a suspicious source (kept for the record, never
-    offered as ideas) · ``all``. Only features: pricing, payments and news are left out."""
+    offered as ideas) · ``all``. Only features: pricing, payments and news are left out.
+
+    Most worth first (high, medium, low, not rated), then newest. A finding that
+    repeats an earlier one is not listed: its link is under the earlier one's
+    ``also_from``."""
+    from sqlalchemy import case
+
     from life_graph.models.assistant import TopicFinding
     from life_graph.services.web_research import to_dict
 
-    query = select(TopicFinding).where(TopicFinding.tenant_id == get_current_tenant_id())
+    tenant = get_current_tenant_id()
+    query = select(TopicFinding).where(TopicFinding.tenant_id == tenant)
     if status_ == "flagged":
         query = query.where(TopicFinding.trust == "suspicious")
     else:
-        query = query.where(TopicFinding.is_feature.is_(True), TopicFinding.trust != "suspicious")
+        query = query.where(
+            TopicFinding.is_feature.is_(True),
+            TopicFinding.trust != "suspicious",
+            TopicFinding.duplicate_of.is_(None),
+        )
         if status_ == "open":
             query = query.where(TopicFinding.status == "new")
         elif status_ == "considering":
             query = query.where(TopicFinding.status == "considering")
         elif status_ == "decided":
             query = query.where(TopicFinding.status.in_(("not_for_us", "dismissed")))
+    rank = case({"high": 0, "medium": 1, "low": 2}, value=TopicFinding.worth, else_=3)
     async with async_session() as session:
-        rows = (
+        rows = list(
+            (
+                await session.execute(
+                    query.order_by(rank, TopicFinding.published_on.desc().nullslast()).limit(limit)
+                )
+            ).scalars()
+        )
+        dupes = (
             await session.execute(
-                query.order_by(TopicFinding.published_on.desc().nullslast()).limit(limit)
+                select(TopicFinding.duplicate_of, TopicFinding.source_url).where(
+                    TopicFinding.tenant_id == tenant,
+                    TopicFinding.duplicate_of.in_([r.id for r in rows]),
+                )
             )
-        ).scalars()
-        return success_response(data=[to_dict(r) for r in rows])
+        ).all()
+    also: dict[str, list[str]] = {}
+    for of, url in dupes:
+        also.setdefault(str(of), []).append(url)
+    return success_response(
+        data=[{**to_dict(r), "also_from": also.get(str(r.id), [])} for r in rows]
+    )
 
 
 class DecisionBody(BaseModel):

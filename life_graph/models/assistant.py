@@ -335,6 +335,11 @@ class TopicFinding(Base):
     app: Mapped[str | None] = mapped_column(String(80), nullable=True)
     fit: Mapped[str | None] = mapped_column(String(8), nullable=True)  # have | part | new
     suggestion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Worth it for a personal assistant: high | medium | low, and why (migration 055).
+    worth: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    worth_why: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The same feature as an earlier finding: shown once, with both sources.
+    duplicate_of: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (

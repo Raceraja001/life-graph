@@ -64,6 +64,16 @@ The owner: "always search for new features in mega apps and bring them here". A 
   from a web page. *(integration test)*
 - **AC-10.10** The brief leaves out findings ruled out, dismissed, suspicious or judged not a
   feature, and shows an assessed one's fit and suggestion. *(integration test)*
+- **AC-10.11** Pricing never reaches the model: a title or summary about tiers, plans,
+  subscriptions or payment methods is `is_feature = false` in code
+  (`feature_ideas.is_pricing`) — the first run judged "Pro 500 tier" a feature. Each feature
+  is rated `worth` `high` / `medium` / `low` with a reason; ideas list most worth first.
+  `assess(..., redo=True)` judges the undecided ones again after the capability list changes.
+  *(unit + integration test)*
+- **AC-10.12** The same feature from two sites is one idea: the assessor names `same_as` (a
+  finding of the batch or a known idea); the repeat is stored with `duplicate_of`, left out of
+  the list and the brief, and its link shows under the first one's `also_from`.
+  *(integration test)*
 
 ## Data
 
