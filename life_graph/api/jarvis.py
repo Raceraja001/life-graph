@@ -1427,3 +1427,90 @@ async def app_download(file: str):
     if found is None or file != found[1]["file"]:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such app release.")
     return FileResponse(found[0], media_type=APK_MEDIA_TYPE, filename=file)
+
+
+# ── Scheduled asks (docs/specs/web-chat-wave1.md F1) ─────────────────────
+
+
+class AskUpdate(BaseModel):
+    active: bool
+
+
+async def _own_ask(tenant_id: str, ask_id: str) -> dict:
+    """The tenant's scheduled ask, or 404 (other schedules are not asks)."""
+    from life_graph.api.dependencies import get_scheduler_service
+    from life_graph.services import scheduled_asks
+
+    try:
+        uuid.UUID(ask_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ask not found") from None
+    job = await get_scheduler_service().get_by_id(tenant_id, ask_id)
+    if (
+        job is None
+        or not scheduled_asks.is_ask(job)
+        or (job.get("properties") or {}).get("removed")
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ask not found")
+    return job
+
+
+@router.get("/asks", summary="What Jarvis does on its own: your scheduled asks")
+async def list_asks():
+    from life_graph.api.dependencies import get_scheduler_service
+    from life_graph.models.db import AgentTask
+    from life_graph.services import scheduled_asks
+
+    tenant_id = get_current_tenant_id()
+    jobs, _ = await get_scheduler_service().list_all(tenant_id, include_inactive=True)
+    asks = [
+        j
+        for j in jobs
+        if scheduled_asks.is_ask(j) and not (j.get("properties") or {}).get("removed")
+    ]
+    last_ids = [uuid.UUID(j["last_run_task_id"]) for j in asks if j.get("last_run_task_id")]
+    replies: dict[str, str] = {}
+    if last_ids:
+        async with async_session() as session:
+            for task in (
+                await session.execute(
+                    select(AgentTask).where(
+                        AgentTask.tenant_id == tenant_id, AgentTask.id.in_(last_ids)
+                    )
+                )
+            ).scalars():
+                replies[str(task.id)] = str((task.result or {}).get("response") or "")[:600]
+    return success_response(
+        data=[
+            scheduled_asks.as_listed(j, replies.get(j.get("last_run_task_id") or ""))
+            for j in sorted(asks, key=lambda j: (not j["is_active"], j.get("next_run_at") or ""))
+        ]
+    )
+
+
+@router.patch("/asks/{ask_id}", summary="Pause or resume a scheduled ask")
+async def update_ask(ask_id: str, body: AskUpdate):
+    from life_graph.api.dependencies import get_scheduler_service
+    from life_graph.services import scheduled_asks
+
+    tenant_id = get_current_tenant_id()
+    job = await _own_ask(tenant_id, ask_id)
+    data: dict = {"is_active": body.active}
+    if body.active:
+        # From now: a paused ask does not run once for every time it missed.
+        data["cron_expression"] = job["cron_expression"]
+    updated = await get_scheduler_service().update(tenant_id, ask_id, data)
+    return success_response(data=scheduled_asks.as_listed(updated or job))
+
+
+@router.delete("/asks/{ask_id}", summary="Stop a scheduled ask for good")
+async def delete_ask(ask_id: str):
+    from life_graph.api.dependencies import get_scheduler_service
+
+    tenant_id = get_current_tenant_id()
+    job = await _own_ask(tenant_id, ask_id)
+    props = {**(job.get("properties") or {}), "removed": True}
+    await get_scheduler_service().update(
+        tenant_id, ask_id, {"is_active": False, "properties": props}
+    )
+    return success_response(data={"id": ask_id, "removed": True})

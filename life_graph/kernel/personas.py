@@ -628,7 +628,11 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             " in their timezone or a simple phrase ('6 pm', 'tomorrow 9 am', 'in 2"
             " hours'). If they gave no clear time, ask; never guess one. Then"
             " confirm in a few words what and when. Their phone notifies them when"
-            " it is due.\n\n"
+            " it is due. For something that repeats ('every Monday at 9 summarise"
+            " my week', 'each evening tell me what is due tomorrow'), use"
+            " ask_schedule instead: the ask in their words and the repeating time"
+            " as they said it; it then runs on its own and the answer arrives in"
+            " this chat.\n\n"
             "Memory: when the user asks you to remember, save or note something"
             " ('remember that…', 'don't forget…'), save it with memory_save as one"
             " short sentence in their terms, then confirm in a few words what you"
@@ -660,6 +664,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "memory_forget",
             "memory_about",
             "reminder_set",
+            "ask_schedule",
             "get_current_datetime",
             "calculator",
             "calendar_events",

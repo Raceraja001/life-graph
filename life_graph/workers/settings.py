@@ -65,6 +65,18 @@ class WorkerSettings:
         except Exception:
             logger.warning("Findings bridge not available in worker", exc_info=True)
 
+        # Scheduled persona turns run here: without the tools registered in
+        # this process they ran with none. And each finished scheduled ask
+        # becomes a notification (services/scheduled_asks.py).
+        try:
+            from life_graph.services.scheduled_asks import scheduled_ask_results
+            from life_graph.tools.load import register_all
+
+            logger.info("Worker agent tools: %d", len(register_all()))
+            scheduled_ask_results.subscribe()
+        except Exception:
+            logger.warning("Agent tools not available in worker", exc_info=True)
+
         try:
             from life_graph.services.action_proposal_bridge import action_proposal_handler
             from life_graph.services.autonomous_approvals import autonomous_approval_producer

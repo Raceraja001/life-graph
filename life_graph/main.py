@@ -159,23 +159,10 @@ async def lifespan(app: FastAPI):
 
     # Startup — register agent tools (import triggers @tool decorator)
     with startup_step(report, "agent_tools"):
-        import life_graph.tools.assistant  # noqa: F401
-        import life_graph.tools.browser  # noqa: F401
-        import life_graph.tools.calculator  # noqa: F401
-        import life_graph.tools.code  # noqa: F401
-        import life_graph.tools.datetime_tool  # noqa: F401
-        import life_graph.tools.delegate  # noqa: F401
-        import life_graph.tools.filesystem  # noqa: F401
-        import life_graph.tools.git  # noqa: F401
-        import life_graph.tools.memory_search  # noqa: F401
-        import life_graph.tools.reminders  # noqa: F401
-        import life_graph.tools.run_tests  # noqa: F401
-        import life_graph.tools.system_inspect  # noqa: F401
-        import life_graph.tools.terminal  # noqa: F401
-        import life_graph.tools.web_search  # noqa: F401
+        from life_graph.tools.load import register_all
         from life_graph.tools.registry import registry
 
-        logger.info("Agent tools registered: %s", registry.tool_names)
+        logger.info("Agent tools registered: %s", register_all())
 
         # Capture-spine tool-exhaust observation hook (secret redaction +
         # daily-cap sampling handled inside the hook).
