@@ -665,6 +665,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "memory_about",
             "reminder_set",
             "ask_schedule",
+            "approvals_waiting",
             "get_current_datetime",
             "calculator",
             "calendar_events",

@@ -10,6 +10,7 @@ from __future__ import annotations
 from importlib import import_module
 
 MODULES = (
+    "life_graph.tools.approvals",
     "life_graph.tools.assistant",
     "life_graph.tools.browser",
     "life_graph.tools.calculator",

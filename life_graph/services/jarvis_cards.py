@@ -46,6 +46,7 @@ CARD_TOOLS = frozenset(
         "app_health",
         "documents_expiring",
         "reminder_set",
+        "approvals_waiting",
     }
 )
 _DECODER = json.JSONDecoder()
@@ -313,6 +314,44 @@ def _reminder(result: str) -> list[dict[str, Any]]:
     ]
 
 
+#: An approval's two buttons, worded as the inbox words them (life-graph-ui
+#: lib/inbox.ts GROUPS): what deciding does, never a bare "Approve" for a PR.
+APPROVAL_ACTIONS = {
+    "driver_pr": [{"id": "approve", "label": "Open PR"}, {"id": "reject", "label": "Reject"}],
+    "model_adoption": [{"id": "approve", "label": "Adopt"}, {"id": "reject", "label": "Not now"}],
+    "contradiction": [{"id": "approve", "label": "Keep"}, {"id": "reject", "label": "Undo"}],
+}
+DEFAULT_APPROVAL_ACTIONS = [
+    {"id": "approve", "label": "Approve"},
+    {"id": "reject", "label": "Reject"},
+]
+
+
+def _approvals(result: str) -> list[dict[str, Any]]:
+    out = []
+    for a in _payload(result, ("items",)).get("items") or []:
+        if not a.get("id"):
+            continue
+        bits = []
+        if a.get("kind") == "driver_pr":
+            bits.append("checks passed" if a.get("verified") is True else "not verified")
+            if a.get("files"):
+                bits.append(f"{a['files']} file{'' if a['files'] == 1 else 's'}")
+        subtitle = " · ".join(bits) or _short(a.get("summary") or "")
+        out.append(
+            card(
+                "approval",
+                a["id"],
+                _short(a.get("title") or "Waiting on you"),
+                subtitle,
+                when=a.get("created_at"),
+                actions=APPROVAL_ACTIONS.get(a.get("kind"), DEFAULT_APPROVAL_ACTIONS),
+                source="your approvals inbox",
+            )
+        )
+    return out
+
+
 def cards_for(name: str | None, result: Any, local_only: set[str] | None) -> list[dict[str, Any]]:
     """The cards one tool result makes (at most MAX_CARDS); never raises."""
     if name not in CARD_TOOLS:
@@ -329,6 +368,8 @@ def cards_for(name: str | None, result: Any, local_only: set[str] | None) -> lis
             out = _apps_down(text)
         elif name == "documents_expiring":
             out = _documents(text)
+        elif name == "approvals_waiting":
+            out = _approvals(text)
         else:
             out = _reminder(text)
     except Exception as exc:  # noqa: BLE001 - a card is a nicety: the answer still shows
