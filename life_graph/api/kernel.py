@@ -19,7 +19,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 
 from life_graph.api.dependencies import (
@@ -654,7 +654,13 @@ async def route_message(
 class ChatStreamRequest(BaseModel):
     """Request body for a streaming persona chat turn."""
 
-    message: str = Field(..., min_length=1, description="User message to send to the persona")
+    message: str = Field(
+        default="",
+        description=(
+            "User message to send to the persona. Required, except with `regenerates`, "
+            "whose turn supplies it (anything sent here is then ignored)."
+        ),
+    )
     target_agent: str = Field(default="jarvis", description="Persona to converse with")
     project_id: uuid.UUID | None = None
     session_id: uuid.UUID | None = Field(
@@ -691,6 +697,21 @@ class ChatStreamRequest(BaseModel):
             "keeps it."
         ),
     )
+    regenerates: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Re-run this turn, the conversation's latest, keeping both versions "
+            "(docs/specs/web-chat-wave1.md F6). Its own message is asked again with the "
+            "history before it; the new turn records `regenerates`, and later turns see "
+            "only the newest completed version."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _message_or_regenerates(self) -> ChatStreamRequest:
+        if self.regenerates is None and not self.message:
+            raise ValueError("message is required")
+        return self
 
 
 # How many earlier turns a persona is given. Each turn is a user message and a
@@ -750,7 +771,9 @@ async def session_is_temporary(tenant_id: str, session_id: uuid.UUID | None) -> 
     )
 
 
-async def _load_chat_history(tenant_id: str, session_id: uuid.UUID) -> list[dict[str, str]]:
+async def _load_chat_history(
+    tenant_id: str, session_id: uuid.UUID, *, excluding: uuid.UUID | None = None
+) -> list[dict[str, str]]:
     """Earlier turns of this conversation, oldest first.
 
     Rebuilt from the agent_tasks rows each turn already writes rather than from
@@ -762,8 +785,13 @@ async def _load_chat_history(tenant_id: str, session_id: uuid.UUID) -> list[dict
     was cancelled mid-answer left no answer, and feeding its empty string back
     as an assistant message teaches the model that saying nothing is a valid
     reply.
+
+    A turn a completed regeneration replaced is left out, so the persona sees
+    only the version the owner kept (services/chat_history.py); `excluding` is
+    the turn being regenerated now, whose earlier versions stay out too.
     """
     from life_graph.models.db import AgentTask
+    from life_graph.services.chat_history import superseded_by, versions_of
     from life_graph.storage.database import async_session
 
     async with async_session() as session:
@@ -774,22 +802,29 @@ async def _load_chat_history(tenant_id: str, session_id: uuid.UUID) -> list[dict
                     .where(
                         AgentTask.tenant_id == tenant_id,
                         AgentTask.session_id == session_id,
-                        AgentTask.status == "completed",
                         AgentTask.parent_task_id.is_(None),
                     )
                     # Newest first, then reversed: the cut has to keep the most
                     # recent turns, and ordering ascending with a LIMIT would
                     # hand back the oldest ones instead.
                     .order_by(AgentTask.created_at.desc())
-                    .limit(CHAT_HISTORY_TURNS)
+                    # Every status, so a regeneration chain through a failed
+                    # version is seen; room for what is dropped below.
+                    .limit(CHAT_HISTORY_TURNS * 3)
                 )
             )
             .scalars()
             .all()
         )
 
+    rows = list(reversed(rows))
+    skip = set(superseded_by(rows))
+    if excluding is not None:
+        skip |= versions_of(rows, excluding)
+    kept = [t for t in rows if t.status == "completed" and str(t.id) not in skip]
+    kept = kept[-CHAT_HISTORY_TURNS:]
     history: list[dict[str, str]] = []
-    for task in reversed(rows):
+    for task in kept:
         asked = (task.input or {}).get("message")
         answered = (task.result or {}).get("response")
         if not asked or not answered:
@@ -797,6 +832,63 @@ async def _load_chat_history(tenant_id: str, session_id: uuid.UUID) -> list[dict
         history.append({"role": "user", "content": asked})
         history.append({"role": "assistant", "content": answered})
     return history
+
+
+#: A turn still being answered cannot be regenerated yet.
+_REGENERABLE = {"completed", "failed", "timeout", "cancelled"}
+
+
+async def _regeneration(tenant_id: str, body: ChatStreamRequest) -> ChatStreamRequest:
+    """The request for re-running ``body.regenerates``, from that turn's own words.
+
+    404 unless it is this tenant's top-level turn; 409 unless it is its
+    conversation's latest turn and has finished. The message and any shared
+    text are the turn's (what was asked is not the client's to rewrite), the
+    conversation is the turn's, and the phone's client_id is not carried: this
+    is a new turn, not a resend.
+    """
+    from life_graph.models.db import AgentTask
+    from life_graph.storage.database import async_session
+
+    async with async_session() as session:
+        turn = await session.get(AgentTask, body.regenerates)
+        if (
+            turn is None
+            or turn.tenant_id != tenant_id
+            or turn.parent_task_id is not None
+            or turn.session_id is None
+        ):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "turn not found")
+        latest = (
+            await session.execute(
+                select(AgentTask.id)
+                .where(
+                    AgentTask.tenant_id == tenant_id,
+                    AgentTask.session_id == turn.session_id,
+                    AgentTask.parent_task_id.is_(None),
+                )
+                .order_by(AgentTask.created_at.desc(), AgentTask.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    if body.session_id is not None and body.session_id != turn.session_id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "That turn is in another conversation.")
+    if latest != turn.id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only the latest reply can be regenerated.")
+    if turn.status not in _REGENERABLE:
+        raise HTTPException(status.HTTP_409_CONFLICT, "That reply is still being written.")
+    asked = turn.input or {}
+    message = asked.get("owner_message", asked.get("message"))
+    if not message:
+        raise HTTPException(status.HTTP_409_CONFLICT, "That turn has no message to ask again.")
+    return body.model_copy(
+        update={
+            "message": message,
+            "shared": asked.get("shared"),
+            "session_id": turn.session_id,
+            "client_id": None,
+        }
+    )
 
 
 @router.post(
@@ -823,6 +915,8 @@ async def chat_stream(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown persona: {body.target_agent!r}",
         )
+    if body.regenerates is not None:
+        body = await _regeneration(tenant_id, body)
     if (
         body.temporary
         and body.session_id is not None
@@ -836,8 +930,11 @@ async def chat_stream(
         )
     from life_graph.services.lead import LEAD
 
-    if body.temporary and body.target_agent != LEAD:
-        # Only the lead's model is chosen per message, so only it can be held local.
+    if body.target_agent != LEAD and (
+        body.temporary or await session_is_temporary(tenant_id, body.session_id)
+    ):
+        # Only the lead's model is chosen per message, so only it can be held
+        # local; a later turn (or a regeneration) of a temporary chat too.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A temporary chat is with Jarvis only.",
@@ -870,11 +967,15 @@ async def chat_stream(
                 )
                 history: list[dict[str, str]] = []
             else:
-                history = await _load_chat_history(tenant_id, session_id)
+                history = await _load_chat_history(
+                    tenant_id, session_id, excluding=body.regenerates
+                )
                 # Once temporary, always: a later turn cannot switch it off.
                 temporary = temporary or await session_is_temporary(tenant_id, session_id)
 
             input_data: dict[str, Any] = {"message": body.message, "history": history}
+            if body.regenerates is not None:
+                input_data["regenerates"] = str(body.regenerates)
             if temporary:
                 input_data["temporary"] = True
             if body.shared and body.shared.strip():
