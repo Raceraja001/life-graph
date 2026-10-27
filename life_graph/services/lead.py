@@ -62,6 +62,24 @@ PERSONAL_TOOLS = frozenset(
     }
 )
 
+# What a temporary chat may not use (docs/specs/web-chat-wave1.md, F5): it
+# teaches memory nothing and leaves nothing behind — no saves, no forgets, no
+# reminders or schedules, no files, and no hand-off to a persona that could.
+TEMPORARY_BLOCKED_TOOLS = frozenset(
+    {
+        "memory_save",
+        "memory_forget",
+        "reminder_set",
+        "ask_schedule",
+        "make_study_cards",
+        "watch_page",
+        "delegate_to_persona",
+        "file_write",
+        "code_edit",
+    }
+)
+TEMPORARY_REASON = "temporary chat: stays on your PC"
+
 # Tools that send work to a cloud worker (services/workers.py): fine for
 # general work, not from a personal conversation, whose query could carry
 # details the scrub does not know (names, places).
@@ -149,7 +167,10 @@ def route(persona: dict[str, Any], input_data: dict[str, Any]) -> Route:
         message = message[switch.end() :]
     wanted = switch.group(1).lower() if switch else None
 
-    if wanted in ("personal", "private", "local"):
+    if input_data.get("temporary"):
+        # Local whatever the message says: "cloud:" does not lift it.
+        reason = TEMPORARY_REASON
+    elif wanted in ("personal", "private", "local"):
         reason = "you asked for local"
     elif wanted == "cloud":
         reason = None
