@@ -34,6 +34,8 @@ ACTIONS: dict[str, list[tuple[str, str]]] = {
     "task": [("snooze_1d", "Tomorrow")],
     "document": [],
     "brief": [("listen", "Listen")],
+    # Something the owner said they would do (services/nudges.py).
+    "nudge": [("done", "Done"), ("snooze_1d", "Tomorrow"), ("drop", "Drop")],
     "other": [],
 }
 LISTEN_RESULT = "Open Jarvis to listen."
@@ -60,6 +62,8 @@ def kind_of(source_type: str | None, meta: dict[str, Any] | None) -> str:
     meta = meta or {}
     if source_type == "brief":
         return "brief"
+    if source_type == "nudge" and meta.get("item_id"):
+        return "nudge"
     if source_type == SOURCE_TYPE and meta.get("item") in ITEM_KINDS and meta.get("item_id"):
         return meta["item"]
     return "other"
@@ -94,6 +98,8 @@ def result_for(action: str, *, at: datetime | None, now: datetime, tz: Any) -> s
 
     if action == "paid":
         return "Marked paid."
+    if action == "drop":
+        return "Dropped: I won't bring it up again."
     if action == "done":
         return "Done."
     if action == "listen":
@@ -120,7 +126,14 @@ async def perform(
     if taken(meta):
         raise ActionRefusedError(ALREADY_DONE)
     at = None
-    if action == "paid":
+    if kind == "nudge":
+        from life_graph.services import nudges
+
+        row = await nudges.act(session, tenant_id, meta["item_id"], action, now, tz)
+        if row is None:
+            raise ActionNotFoundError("That is gone.")
+        at = row.trigger_time if action == "snooze_1d" else None
+    elif action == "paid":
         await _paid(session, tenant_id, meta["item_id"], now)
     elif kind == "reminder":
         at = await _reminder(session, tenant_id, meta["item_id"], action, now, tz)

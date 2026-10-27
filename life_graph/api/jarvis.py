@@ -1588,3 +1588,58 @@ async def memory_was_wrong(task_id: uuid.UUID, memory_id: uuid.UUID, body: Wrong
     if row is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "that memory is not active any more")
     return success_response(data={"id": str(memory_id), "status": "pending"})
+
+
+# ── Nudges from the owner's own words (docs/specs/web-chat-wave1.md F2) ──
+
+
+class NudgeAction(BaseModel):
+    action: str = Field(..., pattern="^(done|snooze_1d|drop)$")
+
+
+@router.get("/nudges", summary="What you said you would do, still open")
+async def open_nudges(limit: int = 50):
+    from life_graph.models.db import Intention
+    from life_graph.services import nudges
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Intention)
+                    .where(
+                        Intention.tenant_id == tenant_id,
+                        Intention.trigger_type == "nudge",
+                        Intention.status.in_(nudges.OPEN),
+                    )
+                    .order_by(Intention.trigger_time)
+                    .limit(max(1, min(limit, 200)))
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return success_response(data=[nudges.as_listed(r) for r in rows])
+
+
+@router.post(
+    "/nudges/{nudge_id}", summary="Done, Tomorrow or Drop for something you said you would do"
+)
+async def act_on_nudge(nudge_id: str, body: NudgeAction):
+    from life_graph.connectors.tools import user_tz
+    from life_graph.services import notification_actions as na
+    from life_graph.services import nudges
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        try:
+            row = await nudges.act(
+                session, tenant_id, nudge_id, body.action, na.utcnow(), user_tz()
+            )
+        except na.ActionRefusedError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nudge not found")
+        await session.commit()
+        return success_response(data=nudges.as_listed(row))
