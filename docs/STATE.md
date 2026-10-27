@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-27 10:26 UTC` from `master` @ `e0c41f4`
+Generated `2026-10-27 11:04 UTC` from `master` @ `9d275b5`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-10-27 10:26 UTC` from `master` @ `e0c41f4`
 
 | | |
 |---|---|
-| HTTP operations | **369** across 321 paths, 43 tags |
+| HTTP operations | **371** across 323 paths, 43 tags |
 | Database tables | **84** |
 | Migrations | **55** (head: `055_feature_idea_worth`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
-| Scheduled jobs | **30** |
+| Scheduled jobs | **31** |
 | Config settings | **268** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3754** in 417 files |
+| Test functions | **3764** in 420 files |
 | Dashboard pages | **22** |
-| Python | 428 files, 110,425 lines |
+| Python | 432 files, 110,984 lines |
 
 ---
 
 ## HTTP API
 
-369 operations, grouped by OpenAPI tag.
+371 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 35
 
@@ -74,7 +74,7 @@ Generated `2026-10-27 10:26 UTC` from `master` @ `e0c41f4`
 | GET | `/api/v1/study/due` | Due Cards |
 | POST | `/api/v1/study/generate` | Generate Cards |
 
-### `jarvis` — 30
+### `jarvis` — 32
 
 | Method | Path | Summary |
 |---|---|---|
@@ -99,6 +99,8 @@ Generated `2026-10-27 10:26 UTC` from `master` @ `e0c41f4`
 | GET | `/api/v1/jarvis/memory/search` | Search what Jarvis remembers (active memories only) |
 | GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
 | POST | `/api/v1/jarvis/notifications/{notification_id}/action` | Tap a notification's button |
+| GET | `/api/v1/jarvis/nudges` | What you said you would do, still open |
+| POST | `/api/v1/jarvis/nudges/{nudge_id}` | Done, Tomorrow or Drop for something you said you would do |
 | GET | `/api/v1/jarvis/plan` | The next days: events, what is due, reminders, to-dos |
 | POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
 | GET | `/api/v1/jarvis/reminders` | Your pending reminders, soonest first |
@@ -847,7 +849,7 @@ Generated `2026-10-27 10:26 UTC` from `master` @ `e0c41f4`
 
 ## Scheduled jobs
 
-30 ARQ cron jobs (times are UTC).
+31 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -875,6 +877,7 @@ Generated `2026-10-27 10:26 UTC` from `master` @ `e0c41f4`
 | `run_tech_watch` | 22:00 | `life_graph.workers.web_research.run_tech_watch` |
 | `run_watchers` | hourly at :00 | `life_graph.workers.tasks.run_watchers` |
 | `send_approval_escalations` | every 30 min | `life_graph.workers.tasks.send_approval_escalations` |
+| `send_nudges` | hourly at :12,:42 | `life_graph.workers.nudges.send_nudges` |
 | `sweep_stuck_captures` | hourly at :07,:22,:37,:52 | `life_graph.workers.capture_sweep.sweep_stuck_captures` |
 | `sync_connectors` | every 5 min | `life_graph.workers.tasks.sync_connectors` |
 | `sync_dev_task_prs` | every 15 min | `life_graph.workers.tasks.sync_dev_task_prs` |
@@ -977,10 +980,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 315 | 2979 |
-| `tests/integration/` | 101 | 763 |
+| `tests/unit/` | 317 | 2987 |
+| `tests/integration/` | 102 | 765 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **417** | **3754** |
+| **total** | **420** | **3764** |
 
 ---
 
