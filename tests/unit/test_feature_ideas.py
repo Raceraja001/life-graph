@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from life_graph.services.feature_ideas import validate
+from life_graph.services.feature_ideas import is_pricing, validate
 from life_graph.services.source_trust import source_trust
 
 
@@ -45,10 +45,51 @@ def test_not_a_feature_carries_no_fit_or_suggestion():
     v = validate(
         {"id": "b", "is_feature": False, "fit": "new", "suggestion": "pay with MoMo"}, {"b"}
     )
-    assert v == {"id": "b", "is_feature": False, "app": None, "fit": None, "suggestion": None}
+    assert v == {
+        "id": "b",
+        "is_feature": False,
+        "app": None,
+        "fit": None,
+        "suggestion": None,
+        "worth": None,
+        "why": None,
+        "same_as": None,
+    }
     # Anything but a JSON true is not a feature; an unknown fit is dropped.
     assert validate({"id": "b", "is_feature": "yes"}, {"b"})["is_feature"] is False
     assert validate({"id": "b", "is_feature": True, "fit": "maybe"}, {"b"})["fit"] is None
+
+
+def test_worth_needs_a_known_level_and_carries_its_reason():
+    v = validate({"id": "a", "is_feature": True, "worth": "HIGH", "why": "privacy"}, {"a"})
+    assert (v["worth"], v["why"]) == ("high", "privacy")
+    v = validate({"id": "a", "is_feature": True, "worth": "huge", "why": "x"}, {"a"})
+    assert (v["worth"], v["why"]) == (None, None)
+
+
+def test_same_as_names_another_finding_of_the_batch_or_a_known_idea():
+    ids = {"a", "b"}
+    assert validate({"id": "b", "is_feature": True, "same_as": "a"}, ids)["same_as"] == "a"
+    assert validate({"id": "b", "is_feature": True, "same_as": "k"}, ids, {"k"})["same_as"] == "k"
+    assert validate({"id": "b", "is_feature": True, "same_as": "b"}, ids)["same_as"] is None
+    assert validate({"id": "b", "is_feature": True, "same_as": "zz"}, ids)["same_as"] is None
+    assert validate({"id": "b", "is_feature": False, "same_as": "a"}, ids)["same_as"] is None
+
+
+@pytest.mark.parametrize(
+    ("title", "summary", "pricing"),
+    [
+        ("ChatGPT Pro 500 tier introduced", "", True),
+        ("ChatGPT accepts MoMo payments", "a payment method for subscriptions", True),
+        ("Claude Team plan now $25", "", True),
+        ("Gemini pricing changes in Europe", "", True),
+        ("ChatGPT adds locked chats", "hide chats behind a PIN", False),
+        ("Gemini can schedule actions", "run a prompt every morning", False),
+        ("Open WebUI adds audio uploads", "transcribe a recording", False),
+    ],
+)
+def test_pricing_is_told_apart_in_code(title, summary, pricing):
+    assert is_pricing(title, summary) is pricing
 
 
 def test_the_ideas_flag_is_read_from_the_topic_setting(monkeypatch):
