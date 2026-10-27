@@ -20,7 +20,7 @@ import logging
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from life_graph.config import settings
 
@@ -122,19 +122,24 @@ async def scan_topic(
     *,
     kind: str | None = None,
     max_memory_gb: float | None = None,
+    spread: bool = False,
 ) -> dict[str, int]:
-    """Read the topic's new pages and store what is new on it (AC-10.2/10.3)."""
+    """Read the topic's new pages and store what is new on it (AC-10.2/10.3).
+
+    *spread* (feature-watch topics) takes results a query at a time, at most
+    two pages per site (services/web_pages.candidates)."""
     from sqlalchemy.dialects.postgresql import insert
 
     from life_graph.models.assistant import TopicFinding
     from life_graph.services import web_pages
+    from life_graph.services.source_trust import source_trust
     from life_graph.services.worker_templates import topic_reader, validate_finding
     from life_graph.services.workers import WorkerError, json_array, run_worker
 
     key = _SEEN_KEY.format(tenant_id=tenant_id, topic=_topic_slug(topic))
     redis, seen = await web_pages.seen(key)
     hits = await web_pages.candidates(
-        dated_queries(queries), limit=settings.tech_watch_max_pages, skip=seen
+        dated_queries(queries), limit=settings.tech_watch_max_pages, skip=seen, spread=spread
     )
     urls = [h.url for h in hits]
     pages = await web_pages.read(urls)
@@ -192,6 +197,7 @@ async def scan_topic(
                     summary=f["summary"],
                     source_url=f["source"],
                     published_on=date.fromisoformat(f["published_on"]),
+                    trust=source_trust(f["source"]),
                 )
                 .on_conflict_do_nothing(index_elements=["tenant_id", "topic", "dedup_key"])
                 .returning(TopicFinding.id)
@@ -217,11 +223,28 @@ async def tech_watch(
                 spec["queries"],
                 kind=spec["kind"],
                 max_memory_gb=spec["max_memory_gb"],
+                spread=spec.get("ideas", False),
             )
         except Exception as exc:  # noqa: BLE001 - the next topic still runs
             logger.warning("tech watch on %r failed", topic, exc_info=True)
             out[topic] = {"error": str(exc)[:300]}
+            continue
+        if spec.get("ideas"):
+            from life_graph.services import feature_ideas
+
+            try:
+                out[topic]["assessed"] = await feature_ideas.assess(
+                    session_factory, tenant_id, topic
+                )
+            except Exception as exc:  # noqa: BLE001 - the findings are stored either way
+                logger.warning("feature ideas on %r failed", topic, exc_info=True)
+                out[topic]["assessed"] = {"error": str(exc)[:300]}
     return out
+
+
+# Findings the owner set aside, from a doubtful source, or judged not a feature
+# never go out in the brief (services/feature_ideas.py).
+_DIGEST_HIDDEN_STATUS = ("not_for_us", "dismissed")
 
 
 async def digest_lines(session: AsyncSession, tenant_id: str, *, mark: bool = True) -> list[str]:
@@ -234,7 +257,13 @@ async def digest_lines(session: AsyncSession, tenant_id: str, *, mark: bool = Tr
         (
             await session.execute(
                 select(TopicFinding)
-                .where(TopicFinding.tenant_id == tenant_id, TopicFinding.sent_at.is_(None))
+                .where(
+                    TopicFinding.tenant_id == tenant_id,
+                    TopicFinding.sent_at.is_(None),
+                    TopicFinding.status.not_in(_DIGEST_HIDDEN_STATUS),
+                    or_(TopicFinding.trust.is_(None), TopicFinding.trust != "suspicious"),
+                    or_(TopicFinding.is_feature.is_(None), TopicFinding.is_feature.is_(True)),
+                )
                 .order_by(TopicFinding.topic, TopicFinding.found_at.desc())
             )
         )
@@ -251,7 +280,10 @@ async def digest_lines(session: AsyncSession, tenant_id: str, *, mark: bool = Tr
     for topic, picked in by.items():
         lines.append(f"{topic}:")
         for row in picked:
-            lines.append(f"  - {row.title} — {row.source_url}")
+            idea = (
+                f" [{row.fit} for Jarvis: {row.suggestion}]" if row.fit and row.suggestion else ""
+            )
+            lines.append(f"  - {row.title}{idea} — {row.source_url}")
             if mark:
                 row.sent_at = now
     if mark and lines:
@@ -269,4 +301,11 @@ def to_dict(row: Any) -> dict[str, Any]:
         "published_on": row.published_on.isoformat() if row.published_on else None,
         "found_at": row.found_at.isoformat() if row.found_at else None,
         "sent_at": row.sent_at.isoformat() if row.sent_at else None,
+        "status": row.status,
+        "trust": row.trust,
+        "is_feature": row.is_feature,
+        "app": row.app,
+        "fit": row.fit,
+        "suggestion": row.suggestion,
+        "decided_at": row.decided_at.isoformat() if row.decided_at else None,
     }

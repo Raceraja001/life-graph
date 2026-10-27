@@ -580,6 +580,9 @@ class Settings(BaseSettings):
     # [...], "kind": "model" | "tool", "max_memory_gb": N} to have findings of
     # another kind, or needing more memory, dropped in code ("{month}" becomes
     # e.g. "October 2026", see services/web_research.dated_queries).
+    # "ideas": true makes it a feature-watch topic: results are taken a query
+    # at a time (at most 2 pages per site) and each finding is assessed against
+    # what Life Graph does (services/feature_ideas.py).
     tech_watch_tenants: str = ""
     tech_watch_topics: str = (
         '{"Open models that fit 16 GB": {"kind": "model", "max_memory_gb": 16, "queries": ['
@@ -875,7 +878,7 @@ class Settings(BaseSettings):
 
     @property
     def tech_watch_topic_specs(self) -> dict[str, dict]:
-        """Each topic's queries and rules: {"queries", "kind", "max_memory_gb"}."""
+        """Each topic's queries and rules: {"queries", "kind", "max_memory_gb", "ideas"}."""
         import json
 
         try:
@@ -899,6 +902,7 @@ class Settings(BaseSettings):
                 "queries": [str(q).strip() for q in queries if str(q).strip()],
                 "kind": kind,
                 "max_memory_gb": limit,
+                "ideas": spec.get("ideas") is True,
             }
         return out
 

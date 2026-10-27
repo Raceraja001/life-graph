@@ -305,6 +305,10 @@ class TopicFinding(Base):
 
     One row per item per source page per topic (``dedup_key``); ``sent_at``
     is set when it goes out in the Monday digest, so each is sent once.
+
+    Feature-watch topics also get an assessment (services/feature_ideas.py):
+    ``trust`` of the source, ``is_feature`` / ``app`` / ``fit`` /
+    ``suggestion``, and the owner's ``status`` on it.
     """
 
     __tablename__ = "topic_findings"
@@ -321,6 +325,17 @@ class TopicFinding(Base):
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # new | considering | not_for_us | dismissed
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="new", server_default="new"
+    )
+    # official | unknown | suspicious (services/source_trust.py); null until checked
+    trust: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    is_feature: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    app: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    fit: Mapped[str | None] = mapped_column(String(8), nullable=True)  # have | part | new
+    suggestion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("uq_topic_findings_key", "tenant_id", "topic", "dedup_key", unique=True),
