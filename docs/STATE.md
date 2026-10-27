@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-27 08:41 UTC` from `master` @ `240e600`
+Generated `2026-10-27 09:34 UTC` from `master` @ `a62361e`
 
 ---
 
@@ -22,11 +22,11 @@ Generated `2026-10-27 08:41 UTC` from `master` @ `240e600`
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
-| Scheduled jobs | **29** |
+| Scheduled jobs | **30** |
 | Config settings | **268** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3736** in 412 files |
+| Test functions | **3740** in 413 files |
 | Dashboard pages | **22** |
-| Python | 421 files, 109,443 lines |
+| Python | 423 files, 109,638 lines |
 
 ---
 
@@ -842,7 +842,7 @@ Generated `2026-10-27 08:41 UTC` from `master` @ `240e600`
 
 ## Scheduled jobs
 
-29 ARQ cron jobs (times are UTC).
+30 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -853,6 +853,7 @@ Generated `2026-10-27 08:41 UTC` from `master` @ `240e600`
 | `failure_pattern_mining` | 02:30 | `life_graph.workers.tasks.failure_pattern_mining` |
 | `purge_connector_items` | 04:40 | `life_graph.workers.tasks.purge_connector_items` |
 | `purge_telegram_pairing_codes` | 04:30 | `life_graph.workers.telegram.purge_telegram_pairing_codes` |
+| `purge_temporary_chats` | hourly at :27 | `life_graph.workers.temporary_chats.purge_temporary_chats` |
 | `run_all_consolidations` | 03:00 | `life_graph.workers.tasks.run_all_consolidations` |
 | `run_all_decay_sweeps` | 04:00 | `life_graph.workers.decay.run_all_decay_sweeps` |
 | `run_all_merge_suggestions` | 03:45 | `life_graph.workers.tasks.run_all_merge_suggestions` |
@@ -971,10 +972,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 313 | 2969 |
-| `tests/integration/` | 98 | 755 |
+| `tests/unit/` | 313 | 2971 |
+| `tests/integration/` | 99 | 757 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **412** | **3736** |
+| **total** | **413** | **3740** |
 
 ---
 
