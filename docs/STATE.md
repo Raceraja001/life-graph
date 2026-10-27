@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-26 16:45 UTC` from `master` @ `0b847d7`
+Generated `2026-10-27 06:07 UTC` from `master` @ `4425a0e`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-10-26 16:45 UTC` from `master` @ `0b847d7`
 
 | | |
 |---|---|
-| HTTP operations | **362** across 315 paths, 43 tags |
+| HTTP operations | **364** across 317 paths, 43 tags |
 | Database tables | **84** |
-| Migrations | **53** (head: `053_entities`) |
+| Migrations | **54** (head: `054_feature_ideas`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **29** |
 | Config settings | **268** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3724** in 410 files |
+| Test functions | **3730** in 412 files |
 | Dashboard pages | **22** |
-| Python | 419 files, 108,867 lines |
+| Python | 421 files, 109,290 lines |
 
 ---
 
 ## HTTP API
 
-362 operations, grouped by OpenAPI tag.
+364 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 35
 
@@ -340,6 +340,18 @@ Generated `2026-10-26 16:45 UTC` from `master` @ `0b847d7`
 | PATCH | `/api/v1/procedures/{procedure_id}` | Update a procedure |
 | POST | `/api/v1/procedures/{procedure_id}/apply` | Record a procedure application |
 
+### `research` — 7
+
+| Method | Path | Summary |
+|---|---|---|
+| POST | `/api/v1/research` | Answer a question from web pages read now, with sources |
+| GET | `/api/v1/research/runs` | List research runs |
+| GET | `/api/v1/research/runs/{run_id}` | Get research run detail |
+| POST | `/api/v1/research/trigger` | Trigger a research cycle |
+| GET | `/api/v1/tech-watch` | What the tech watch found new on your topics |
+| GET | `/api/v1/tech-watch/ideas` | Ideas for Jarvis: features other apps shipped, judged |
+| POST | `/api/v1/tech-watch/{finding_id}/decision` | Consider, rule out or dismiss an idea |
+
 ### `conversations` — 6
 
 | Method | Path | Summary |
@@ -421,16 +433,6 @@ Generated `2026-10-26 16:45 UTC` from `master` @ `0b847d7`
 | POST | `/api/v1/intentions/triggered` | Get currently triggered intentions |
 | PATCH | `/api/v1/intentions/{intention_id}/complete` | Mark an intention as completed |
 | PATCH | `/api/v1/intentions/{intention_id}/dismiss` | Dismiss an intention |
-
-### `research` — 5
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/research` | Answer a question from web pages read now, with sources |
-| GET | `/api/v1/research/runs` | List research runs |
-| GET | `/api/v1/research/runs/{run_id}` | Get research run detail |
-| POST | `/api/v1/research/trigger` | Trigger a research cycle |
-| GET | `/api/v1/tech-watch` | What the tech watch found new on your topics |
 
 ### `sessions` — 5
 
@@ -693,7 +695,7 @@ Generated `2026-10-26 16:45 UTC` from `master` @ `0b847d7`
 | `tenant_configs` | 8 | ✓ | `004_webhooks_tenants_dedup` |
 | `tenant_usage` | 7 | ✓ | `003_multi_tenancy` |
 | `tenant_webhooks` | 9 | ✓ | `004_webhooks_tenants_dedup` |
-| `topic_findings` | 10 | ✓ | `051_topic_findings` |
+| `topic_findings` | 17 | ✓ | `051_topic_findings` |
 | `trust_scores` | 22 | ✓ | `018_autonomous_ai` |
 | `watch_configs` | 13 | ✓ | `016_ambient_ai` |
 | `watch_events` | 11 | ✓ | `016_ambient_ai` |
@@ -956,9 +958,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-53 revisions, head `053_entities`.
+54 revisions, head `054_feature_ideas`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas`
 
 ---
 
@@ -968,10 +970,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 312 | 2959 |
-| `tests/integration/` | 97 | 753 |
+| `tests/unit/` | 313 | 2964 |
+| `tests/integration/` | 98 | 754 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **410** | **3724** |
+| **total** | **412** | **3730** |
 
 ---
 
