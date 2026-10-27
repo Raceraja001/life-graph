@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-27 06:07 UTC` from `master` @ `4425a0e`
+Generated `2026-10-27 06:54 UTC` from `master` @ `f4476ca`
 
 ---
 
@@ -18,15 +18,15 @@ Generated `2026-10-27 06:07 UTC` from `master` @ `4425a0e`
 |---|---|
 | HTTP operations | **364** across 317 paths, 43 tags |
 | Database tables | **84** |
-| Migrations | **54** (head: `054_feature_ideas`) |
+| Migrations | **55** (head: `055_feature_idea_worth`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **29** |
 | Config settings | **268** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3730** in 412 files |
+| Test functions | **3734** in 412 files |
 | Dashboard pages | **22** |
-| Python | 421 files, 109,290 lines |
+| Python | 421 files, 109,407 lines |
 
 ---
 
@@ -695,7 +695,7 @@ Generated `2026-10-27 06:07 UTC` from `master` @ `4425a0e`
 | `tenant_configs` | 8 | ✓ | `004_webhooks_tenants_dedup` |
 | `tenant_usage` | 7 | ✓ | `003_multi_tenancy` |
 | `tenant_webhooks` | 9 | ✓ | `004_webhooks_tenants_dedup` |
-| `topic_findings` | 17 | ✓ | `051_topic_findings` |
+| `topic_findings` | 20 | ✓ | `051_topic_findings` |
 | `trust_scores` | 22 | ✓ | `018_autonomous_ai` |
 | `watch_configs` | 13 | ✓ | `016_ambient_ai` |
 | `watch_events` | 11 | ✓ | `016_ambient_ai` |
@@ -958,9 +958,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-54 revisions, head `054_feature_ideas`.
+55 revisions, head `055_feature_idea_worth`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth`
 
 ---
 
@@ -970,10 +970,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 313 | 2964 |
-| `tests/integration/` | 98 | 754 |
+| `tests/unit/` | 313 | 2967 |
+| `tests/integration/` | 98 | 755 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **412** | **3730** |
+| **total** | **412** | **3734** |
 
 ---
 
