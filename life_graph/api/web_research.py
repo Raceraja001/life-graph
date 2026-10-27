@@ -51,3 +51,55 @@ async def list_findings(
             await session.execute(query.order_by(TopicFinding.found_at.desc()).limit(limit))
         ).scalars()
         return success_response(data=[to_dict(r) for r in rows])
+
+
+@router.get("/tech-watch/ideas", summary="Ideas for Jarvis: features other apps shipped, judged")
+async def list_ideas(
+    status_: str = Query(
+        "open", alias="status", pattern="^(open|considering|decided|flagged|all)$"
+    ),
+    limit: int = Query(100, ge=1, le=300),
+):
+    """``open`` new ideas · ``considering`` · ``decided`` (not for us, dismissed) ·
+    ``flagged`` findings from a suspicious source (kept for the record, never
+    offered as ideas) · ``all``. Only features: pricing, payments and news are left out."""
+    from life_graph.models.assistant import TopicFinding
+    from life_graph.services.web_research import to_dict
+
+    query = select(TopicFinding).where(TopicFinding.tenant_id == get_current_tenant_id())
+    if status_ == "flagged":
+        query = query.where(TopicFinding.trust == "suspicious")
+    else:
+        query = query.where(TopicFinding.is_feature.is_(True), TopicFinding.trust != "suspicious")
+        if status_ == "open":
+            query = query.where(TopicFinding.status == "new")
+        elif status_ == "considering":
+            query = query.where(TopicFinding.status == "considering")
+        elif status_ == "decided":
+            query = query.where(TopicFinding.status.in_(("not_for_us", "dismissed")))
+    async with async_session() as session:
+        rows = (
+            await session.execute(
+                query.order_by(TopicFinding.published_on.desc().nullslast()).limit(limit)
+            )
+        ).scalars()
+        return success_response(data=[to_dict(r) for r in rows])
+
+
+class DecisionBody(BaseModel):
+    decision: str = Field(..., pattern="^(consider|not_for_us|dismiss|reset)$")
+
+
+@router.post("/tech-watch/{finding_id}/decision", summary="Consider, rule out or dismiss an idea")
+async def decide_idea(finding_id: str, body: DecisionBody):
+    """Marks the finding only: "consider" starts no task (the text came from a web page)."""
+    from life_graph.services import feature_ideas
+    from life_graph.services.web_research import to_dict
+
+    async with async_session() as session:
+        row = await feature_ideas.decide(
+            session, get_current_tenant_id(), finding_id, body.decision
+        )
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Finding not found")
+        return success_response(data=to_dict(row))

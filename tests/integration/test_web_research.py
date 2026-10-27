@@ -38,7 +38,7 @@ def _fake_web(monkeypatch, pages: dict[str, str], findings: list[dict], calls: l
     async def seen(key):
         return None, set()
 
-    async def candidates(queries, *, limit, skip=frozenset()):
+    async def candidates(queries, *, limit, skip=frozenset(), **_kw):
         return [web_pages.Hit(url=u, title=u) for u in pages]
 
     async def read(urls, chars=0):
@@ -116,7 +116,7 @@ async def test_research_api(monkeypatch, client):
     reply = [{"text": "Groq allows 30 requests a minute.", "sources": [page]}]
     from life_graph.services import web_pages, workers
 
-    async def candidates(queries, *, limit, skip=frozenset()):
+    async def candidates(queries, *, limit, skip=frozenset(), **_kw):
         return [web_pages.Hit(url=page, title="Groq limits")]
 
     async def read(urls, chars=0):

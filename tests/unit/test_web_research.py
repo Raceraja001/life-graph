@@ -105,6 +105,7 @@ def test_tech_watch_topics_setting(monkeypatch):
         "queries": ["m"],
         "kind": None,  # only "model" or "tool"
         "max_memory_gb": 8.0,
+        "ideas": False,  # a feature-watch topic only when set true
     }
     monkeypatch.setattr(settings, "tech_watch_topics", "not json")
     assert settings.tech_watch_topics_map == {}

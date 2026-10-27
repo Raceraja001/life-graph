@@ -41,6 +41,30 @@ releases).
   yet sent, with their source; they are then marked sent. Nothing new → no section. *(test)*
 - **AC-10.5** `GET /api/v1/tech-watch?topic=` lists findings. *(integration test)*
 
+### Feature watch: ideas for Jarvis (2026-10-27)
+
+The owner: "always search for new features in mega apps and bring them here". A topic with
+`"ideas": true` is a feature-watch topic.
+
+- **AC-10.6** Feature-watch topics take search results one query at a time, at most 2 pages per
+  site (`web_pages.candidates(spread=True)`): the first run let one tracker and the ChatGPT query
+  fill all six pages. *(unit test)*
+- **AC-10.7** Every finding's source is rated `official` (the vendor's site or GitHub
+  organisation), `suspicious` (a GitHub repo named after a watched app outside its organisation —
+  the first run reported a copycat "open-webui-2026" repo as a release) or `unknown`
+  (`services/source_trust.py`). Suspicious findings are never offered as ideas nor sent in the
+  brief. *(unit test)*
+- **AC-10.8** After each run, the topic's unassessed findings are judged against
+  `docs/feature-watch/capabilities.md`: feature or not (pricing, payment methods and news are
+  not), app, `have` / `part` / `new`, one suggestion. The worker has no tools; its reply is
+  stored as text. *(unit test on validation)*
+- **AC-10.9** `GET /tech-watch/ideas?status=open|considering|decided|flagged|all` lists them;
+  `POST /tech-watch/{id}/decision` `{"decision": "consider"|"not_for_us"|"dismiss"|"reset"}`
+  records the owner's choice. "Consider" only marks it: it starts no task, because the text came
+  from a web page. *(integration test)*
+- **AC-10.10** The brief leaves out findings ruled out, dismissed, suspicious or judged not a
+  feature, and shows an assessed one's fit and suggestion. *(integration test)*
+
 ## Data
 
 ```sql

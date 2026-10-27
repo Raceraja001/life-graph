@@ -48,9 +48,23 @@ async def mark_seen(redis: Any, key: str, urls: list[str], ttl: int = SEEN_TTL) 
         logger.debug("could not record seen pages under %s", key, exc_info=True)
 
 
-async def candidates(queries: list[str], *, limit: int, skip: set[str] = frozenset()) -> list[Hit]:
+async def candidates(
+    queries: list[str],
+    *,
+    limit: int,
+    skip: set[str] = frozenset(),
+    spread: bool = False,
+    per_host: int = 2,
+) -> list[Hit]:
     """Result pages for *queries*, in order, without duplicates or URLs in
-    *skip* (normalised, see services/sources.normalise), at most *limit*."""
+    *skip* (normalised, see services/sources.normalise), at most *limit*.
+
+    *spread* takes one result from each query in turn and at most *per_host*
+    pages per site: the first feature-watch run let one release tracker and the
+    first query (ChatGPT) fill all six pages, so Claude and Gemini got none.
+    """
+    from urllib.parse import urlsplit
+
     from life_graph.services.sources import normalise
     from life_graph.tools.web_search import search
 
@@ -59,17 +73,41 @@ async def candidates(queries: list[str], *, limit: int, skip: set[str] = frozens
     # first version compared a normalised key with raw URLs, so nothing read
     # was ever skipped).
     keys: set[str] = {normalise(u) for u in skip}
-    for query in queries:
-        found = await search(query)
-        for result in found.get("results") or []:
-            url = str(result.get("url") or "").strip()
-            key = normalise(url) if url else ""
-            if not url.startswith("http") or key in keys:
+
+    def fresh(result: dict) -> Hit | None:
+        url = str(result.get("url") or "").strip()
+        key = normalise(url) if url else ""
+        if not url.startswith("http") or key in keys:
+            return None
+        keys.add(key)
+        return Hit(url=url, title=str(result.get("title") or "").strip()[:200])
+
+    if not spread:
+        for query in queries:
+            found = await search(query)
+            for result in found.get("results") or []:
+                hit = fresh(result)
+                if hit:
+                    picked.append(hit)
+                    if len(picked) >= limit:
+                        return picked
+        return picked
+
+    lists = [list((await search(q)).get("results") or []) for q in queries]
+    hosts: dict[str, int] = {}
+    for depth in range(max((len(x) for x in lists), default=0)):
+        for results in lists:
+            if depth >= len(results):
                 continue
-            keys.add(key)
-            picked.append(Hit(url=url, title=str(result.get("title") or "").strip()[:200]))
-            if len(picked) >= limit:
-                return picked
+            host = (urlsplit(str(results[depth].get("url") or "")).hostname or "").lower()
+            if hosts.get(host, 0) >= per_host:
+                continue
+            hit = fresh(results[depth])
+            if hit:
+                hosts[host] = hosts.get(host, 0) + 1
+                picked.append(hit)
+                if len(picked) >= limit:
+                    return picked
     return picked
 
 
