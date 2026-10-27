@@ -14,10 +14,14 @@ import pytest
 from life_graph.api import kernel
 
 
-def task(asked, answered, *, status="completed", parent=None):
+def task(asked, answered, *, status="completed", parent=None, regenerates=None):
     """An agent_tasks row, as the loader reads it."""
+    inp = {"message": asked} if asked is not None else {}
+    if regenerates is not None:
+        inp["regenerates"] = str(regenerates.id)
     return SimpleNamespace(
-        input={"message": asked} if asked is not None else {},
+        id=uuid.uuid4(),
+        input=inp,
         result={"response": answered} if answered is not None else {},
         status=status,
         parent_task_id=parent,
@@ -114,3 +118,56 @@ async def test_history_is_bounded(rows):
     history = await kernel._load_chat_history("raja", uuid.uuid4())
 
     assert len(history) == kernel.CHAT_HISTORY_TURNS * 2
+
+
+async def test_history_is_bounded_with_more_rows_than_turns(rows):
+    # The query reads extra rows to make room for replaced versions; the cut
+    # still keeps only the most recent turns.
+    n = kernel.CHAT_HISTORY_TURNS + 5
+    rows([task(f"q{i}", f"a{i}") for i in reversed(range(n))])
+
+    history = await kernel._load_chat_history("raja", uuid.uuid4())
+
+    assert len(history) == kernel.CHAT_HISTORY_TURNS * 2
+    assert history[-1]["content"] == f"a{n - 1}"
+
+
+async def test_a_failed_turn_is_not_history(rows):
+    # The loader now reads every status (to follow regeneration chains) and
+    # keeps only completed turns.
+    rows([task("broke", "half an answer", status="failed"), task("ok", "fine")])
+
+    history = await kernel._load_chat_history("raja", uuid.uuid4())
+
+    assert [m["content"] for m in history] == ["ok", "fine"]
+
+
+async def test_a_regenerated_turn_shows_only_the_kept_version(rows):
+    first = task("pick a film", "Jailer")
+    again = task("pick a film", "Vikram", regenerates=first)
+    rows([task("thanks", "welcome"), again, first])  # newest first, as queried
+
+    history = await kernel._load_chat_history("raja", uuid.uuid4())
+
+    assert [m["content"] for m in history] == ["pick a film", "Vikram", "thanks", "welcome"]
+
+
+async def test_a_failed_regeneration_keeps_the_original(rows):
+    first = task("pick a film", "Jailer")
+    again = task("pick a film", None, status="failed", regenerates=first)
+    rows([again, first])
+
+    history = await kernel._load_chat_history("raja", uuid.uuid4())
+
+    assert [m["content"] for m in history] == ["pick a film", "Jailer"]
+
+
+async def test_regenerating_leaves_out_the_turn_and_its_earlier_versions(rows):
+    before = task("hello", "hi")
+    first = task("pick a film", "Jailer")
+    again = task("pick a film", "Vikram", regenerates=first)
+    rows([again, first, before])
+
+    history = await kernel._load_chat_history("raja", uuid.uuid4(), excluding=again.id)
+
+    assert [m["content"] for m in history] == ["hello", "hi"]

@@ -12,7 +12,10 @@ there. The contract is the app's (life-graph-android docs/PLAN.md):
   they shared from another app, which Jarvis treats as someone else's words.
   Memory events: ``{type: saved, id, content, pending}`` and
   ``{type: forgotten, id, content}``.
-* ``GET /jarvis/conversations`` and ``.../{id}/messages``.
+* ``GET /jarvis/conversations`` (``?q=`` searches them) and ``.../{id}/messages``;
+  ``PATCH /jarvis/conversations/{id}`` renames or pins one, and ``POST
+  /jarvis/turns/{id}/regenerate`` asks the latest message again, keeping both
+  replies (docs/specs/web-chat-wave1.md F6).
 * ``POST /jarvis/voice``: audio in, transcribed on this machine only, answered
   by Jarvis in the same conversation, the reply spoken back as mp3.
 * ``POST /jarvis/warm``: the app opened; load the local model in the background.
@@ -456,41 +459,176 @@ async def warm():
     return success_response(data={"warming": True})
 
 
-@router.get("/conversations", summary="Your conversations with Jarvis, newest first")
-async def conversations(limit: int = 50):
+@router.get("/conversations", summary="Your conversations with Jarvis: pinned, then newest first")
+async def conversations(limit: int = 50, q: str | None = Query(None, max_length=200)):
+    """Every kept chat with Jarvis, pinned ones first, then by last message.
+
+    With ``q``, only those whose owner's messages or Jarvis's replies hold all
+    its words (docs/specs/web-chat-wave1.md AC-W6.1), each with ``match``: the
+    newest matching message, cut to 120 characters around the words.
+
+    Search is Postgres full text with the ``simple`` configuration rather than
+    ILIKE: the words match whole and in any order ("dentist friday" finds
+    "Friday at the dentist"), punctuation does not get in the way, and part of a
+    word does not match ("art" is not "party"). ``simple`` neither stems nor
+    drops stop words, so a chat in Tamil or Tanglish is searched as written. No
+    index (no migration): it scans this tenant's turns, which is small for one
+    person.
+    """
+    from sqlalchemy import or_
+
     from life_graph.models.db import AgentSession, AgentTask
+    from life_graph.services.chat_history import snippet
 
     tenant_id = get_current_tenant_id()
+    q = (q or "").strip()
     last = (
         select(AgentTask.session_id, func.max(AgentTask.created_at).label("at"))
         .where(AgentTask.tenant_id == tenant_id, AgentTask.parent_task_id.is_(None))
         .group_by(AgentTask.session_id)
         .subquery()
     )
+    pinned = func.coalesce(AgentSession.context["pinned"].as_boolean(), False)
+    query = select(AgentSession, last.c.at)
+    if q:
+        # What the owner typed (not text they shared from elsewhere), and the reply.
+        asked = func.coalesce(
+            AgentTask.input["owner_message"].astext, AgentTask.input["message"].astext, ""
+        )
+        answered = func.coalesce(AgentTask.result["response"].astext, "")
+        words = func.plainto_tsquery("simple", q)
+        asked_hit = func.to_tsvector("simple", asked).op("@@")(words)
+        answered_hit = func.to_tsvector("simple", answered).op("@@")(words)
+        # The newest matching turn of each conversation.
+        hits = (
+            select(
+                AgentTask.session_id,
+                asked.label("asked"),
+                answered.label("answered"),
+                asked_hit.label("asked_hit"),
+            )
+            .where(
+                AgentTask.tenant_id == tenant_id,
+                AgentTask.parent_task_id.is_(None),
+                AgentTask.session_id.is_not(None),
+                or_(asked_hit, answered_hit),
+            )
+            .distinct(AgentTask.session_id)
+            .order_by(AgentTask.session_id, AgentTask.created_at.desc())
+            .subquery()
+        )
+        query = select(
+            AgentSession, last.c.at, hits.c.asked, hits.c.answered, hits.c.asked_hit
+        ).join(hits, hits.c.session_id == AgentSession.id)
     async with async_session() as session:
         rows = (
             await session.execute(
-                select(AgentSession, last.c.at)
-                .outerjoin(last, last.c.session_id == AgentSession.id)
+                query.outerjoin(last, last.c.session_id == AgentSession.id)
                 .where(
                     AgentSession.tenant_id == tenant_id,
                     AgentSession.routed_to == LEAD,
                     # Temporary chats are never listed (F5).
                     AgentSession.context["temporary"].as_boolean().is_not(True),
                 )
-                .order_by(func.coalesce(last.c.at, AgentSession.created_at).desc())
+                .order_by(pinned.desc(), func.coalesce(last.c.at, AgentSession.created_at).desc())
                 .limit(max(1, min(limit, 200)))
             )
         ).all()
+    out = []
+    for row in rows:
+        s, at = row[0], row[1]
+        context = s.context or {}
+        item = {
+            "id": str(s.id),
+            "title": context.get("title") or " ".join((s.user_message or "").split())[:80],
+            "pinned": context.get("pinned") is True,
+            "updated_at": (at or s.created_at).isoformat(),
+        }
+        if q:
+            item["match"] = snippet(row[2] if row[4] else row[3], q)
+        out.append(item)
+    return success_response(data=out)
+
+
+class ConversationUpdate(BaseModel):
+    title: str | None = Field(None, max_length=200)
+    pinned: bool | None = None
+
+
+@router.patch("/conversations/{conversation_id}", summary="Rename or pin a conversation")
+async def update_conversation(conversation_id: uuid.UUID, body: ConversationUpdate):
+    """``{title?, pinned?}``, kept in the conversation's context beside what is
+    already there (AC-W6.2). A temporary chat is never listed, so it cannot be
+    pinned (409)."""
+    from life_graph.models.db import AgentSession
+
+    tenant_id = get_current_tenant_id()
+    title = None
+    if body.title is not None:
+        title = " ".join(body.title.split())
+        if not 1 <= len(title) <= 80:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "A title is 1 to 80 characters."
+            )
+    if title is None and body.pinned is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Send a title or pinned.")
+    await _own_conversation(tenant_id, conversation_id)
+    async with async_session() as session:
+        row = await session.get(AgentSession, conversation_id, with_for_update=True)
+        context = dict(row.context or {})
+        if body.pinned and context.get("temporary") is True:
+            raise HTTPException(status.HTTP_409_CONFLICT, "A temporary chat cannot be pinned.")
+        if title is not None:
+            context["title"] = title
+        if body.pinned is not None:
+            context["pinned"] = body.pinned
+        # A new dict: SQLAlchemy does not see changes made inside a JSONB value.
+        row.context = context
+        await session.commit()
     return success_response(
-        data=[
-            {
-                "id": str(s.id),
-                "title": " ".join((s.user_message or "").split())[:80],
-                "updated_at": (at or s.created_at).isoformat(),
-            }
-            for s, at in rows
-        ]
+        data={
+            "id": str(conversation_id),
+            "title": context.get("title") or " ".join((row.user_message or "").split())[:80],
+            "pinned": context.get("pinned") is True,
+        }
+    )
+
+
+class RegenerateRequest(BaseModel):
+    persona: str | None = Field(None, min_length=1, max_length=100)
+
+
+@router.post(
+    "/turns/{task_id}/regenerate",
+    summary="Ask the latest message again, keeping both replies (SSE)",
+)
+async def regenerate(task_id: uuid.UUID, body: RegenerateRequest | None = None):
+    """Re-run a conversation's latest turn, with Jarvis or ``persona``
+    (AC-W6.3). The stream is ``/jarvis/chat``'s. The new turn's input names the
+    one it replaces (``regenerates``); both stay, and the messages list marks
+    the older reply ``superseded_by``. Nothing is captured: the words were
+    captured when first sent. A temporary chat stays temporary, and with Jarvis
+    only. 404: not this tenant's Jarvis turn; 409: not the latest, or still
+    being answered (api/kernel.py ``_regeneration``)."""
+    from life_graph.api.dependencies import get_persona_service, get_process_manager
+    from life_graph.api.kernel import ChatStreamRequest, chat_stream
+
+    tenant_id = get_current_tenant_id()
+    turn = await _own_turn(tenant_id, task_id)
+    if turn.session_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "turn not found")
+    await _own_conversation(tenant_id, turn.session_id)
+    inner = await chat_stream(
+        ChatStreamRequest(
+            target_agent=(body.persona if body and body.persona else LEAD),
+            session_id=turn.session_id,
+            regenerates=task_id,
+        ),
+        pm=get_process_manager(),
+        personas=get_persona_service(),
+    )
+    return StreamingResponse(
+        _app_frames(inner, tenant_id), media_type="text/event-stream", headers=dict(inner.headers)
     )
 
 
@@ -517,30 +655,42 @@ async def messages(conversation_id: uuid.UUID):
             .scalars()
             .all()
         )
+    from life_graph.services.chat_history import superseded_by
+
     saved = await _saved_by_task(tenant_id, [t.id for t in tasks])
+    # Regenerated replies (AC-W6.3): every version is listed; the one a newer
+    # completed version replaced carries `superseded_by`, and a regeneration's
+    # reply `regenerates`, without repeating the question it re-asked.
+    replaced = superseded_by(tasks)
     out = []
     for t in tasks:
         when = t.created_at.isoformat() if t.created_at else None
         inp = t.input or {}
+        again = inp.get("regenerates")
         # A turn with shared text: the owner's typed words, and what they shared.
         asked = inp.get("owner_message", inp.get("message"))
-        if asked:
-            turn = {"role": "user", "content": asked, "created_at": when}
+        if asked and not again:
+            turn = {"role": "user", "content": asked, "created_at": when, "task_id": str(t.id)}
             if inp.get("shared"):
                 turn["shared"] = inp["shared"]
             out.append(turn)
         answered = (t.result or {}).get("response")
         if answered:
             done = t.completed_at.isoformat() if getattr(t, "completed_at", None) else when
-            out.append(
-                {
-                    "role": "assistant",
-                    "content": answered,
-                    "created_at": done,
-                    # What Jarvis saved in that turn, for the app's Saved lines (still undoable).
-                    "saved": saved.get(str(t.id), []),
-                }
-            )
+            reply = {
+                "role": "assistant",
+                "content": answered,
+                "created_at": done,
+                "task_id": str(t.id),
+                "persona": t.agent_name,
+                # What Jarvis saved in that turn, for the app's Saved lines (still undoable).
+                "saved": saved.get(str(t.id), []),
+            }
+            if again:
+                reply["regenerates"] = str(again)
+            if str(t.id) in replaced:
+                reply["superseded_by"] = replaced[str(t.id)]
+            out.append(reply)
     return success_response(data=out)
 
 
