@@ -40,10 +40,24 @@ CAPABILITIES_FILE = (
 )
 FITS = ("have", "part", "new")
 WORTHS = ("high", "medium", "low")
-# Pricing and billing news: a plan, a tier, a subscription, a way to pay.
+# Pricing and billing news: a plan, a tier, a subscription, a way to pay. In a
+# title these words mean the news is the plan; in a summary only paying does —
+# "on every tier" or "for all subscriptions" says who gets a feature (the second
+# run hid audio uploads and Intelligent UI that way).
 _PRICING = re.compile(
     r"\b(tiers?|pricing|prices?|subscriptions?|subscribers?|payment methods?|billing|"
     r"pro plan|plus plan|team plan|enterprise plan|per month|/month|/mo)\b|\$\d",
+    re.IGNORECASE,
+)
+_PAYING = re.compile(
+    r"\b(pricing|prices?|priced|payment methods?|pay with|billing|per month|/month|/mo)\b|\$\d",
+    re.IGNORECASE,
+)
+# Shopping, games and entertainment are low worth for a personal assistant,
+# whatever the model says (the second run rated virtual try-on "high").
+_LEISURE = re.compile(
+    r"\b(shopping|try-on|outfits?|clothes|clothing|games?|gaming|entertainment|"
+    r"movies?|music|stickers?)\b",
     re.IGNORECASE,
 )
 DECISIONS = {
@@ -58,7 +72,12 @@ MAX_SUGGESTION = 300
 
 def is_pricing(title: str, summary: str = "") -> bool:
     """A finding about what something costs or how to pay, not about what it does."""
-    return bool(_PRICING.search(f"{title} {summary}"))
+    return bool(_PRICING.search(title) or _PAYING.search(summary))
+
+
+def is_leisure(title: str, summary: str = "") -> bool:
+    """Shopping, games or entertainment: always worth "low" here."""
+    return bool(_LEISURE.search(f"{title} {summary}"))
 
 
 def capabilities() -> str:
@@ -90,9 +109,10 @@ ASSESSOR_BRIEF = (
     '  "why": one short clause saying why that worth; else null,\n'
     '  "same_as": the id of a finding in this list or in KNOWN IDEAS that is the same'
     " feature reported again (same app, same thing, other words); else null.\n"
-    'Read the capability list carefully before saying "new": background jobs,'
-    " watchers, voice and projects already exist in some form, so a feature built on"
-    ' them is usually "part".\n'
+    'How to choose the fit: "have" only if the capability list names this feature;'
+    ' "part" only if it names a piece of it (say which piece in the suggestion); "new"'
+    ' if the list does not mention it or says Life Graph has "no" such thing. Do not'
+    ' call a feature "part" just because Life Graph has chat, memory or agents.\n'
     "Reply with ONLY a JSON array with one object per finding.\n\n"
     "What Life Graph does:\n"
 )
@@ -220,6 +240,8 @@ async def assess(
                     v["suggestion"],
                 )
                 row.worth, row.worth_why = v["worth"], v["why"]
+                if v["is_feature"] and is_leisure(row.title, row.summary or ""):
+                    row.worth, row.worth_why = "low", "shopping, games or entertainment"
                 row.duplicate_of = uuid.UUID(v["same_as"]) if v["same_as"] else None
                 assessed += 1
             await session.commit()

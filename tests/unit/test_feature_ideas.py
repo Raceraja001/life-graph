@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from life_graph.services.feature_ideas import is_pricing, validate
+from life_graph.services.feature_ideas import is_leisure, is_pricing, validate
 from life_graph.services.source_trust import source_trust
 
 
@@ -86,10 +86,27 @@ def test_same_as_names_another_finding_of_the_batch_or_a_known_idea():
         ("ChatGPT adds locked chats", "hide chats behind a PIN", False),
         ("Gemini can schedule actions", "run a prompt every morning", False),
         ("Open WebUI adds audio uploads", "transcribe a recording", False),
+        # Who gets a feature is not what it costs (the second run hid both).
+        ("ChatGPT adds audio uploads", "available on all subscriptions", False),
+        ("GPT-6 with Intelligent UI released", "rolling out to every tier", False),
+        ("ChatGPT adds Slides", "free, then $20 per month", True),
     ],
 )
 def test_pricing_is_told_apart_in_code(title, summary, pricing):
     assert is_pricing(title, summary) is pricing
+
+
+@pytest.mark.parametrize(
+    ("title", "leisure"),
+    [
+        ("ChatGPT adds virtual try-on for clothes and accessories", True),
+        ("Gemini adds games in chat", True),
+        ("ChatGPT adds locked chats", False),
+        ("Dots (always-on agents) released", False),
+    ],
+)
+def test_shopping_and_games_are_told_apart_in_code(title, leisure):
+    assert is_leisure(title) is leisure
 
 
 def test_the_ideas_flag_is_read_from_the_topic_setting(monkeypatch):
