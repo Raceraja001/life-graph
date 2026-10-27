@@ -732,9 +732,22 @@ async def session_is_temporary(tenant_id: str, session_id: uuid.UUID | None) -> 
     from life_graph.models.db import AgentSession
     from life_graph.storage.database import async_session
 
-    async with async_session() as session:
-        row = await session.get(AgentSession, session_id)
-    return bool(row and row.tenant_id == tenant_id and (row.context or {}).get("temporary"))
+    try:
+        async with async_session() as session:
+            row = await session.get(AgentSession, session_id)
+    except Exception:  # noqa: BLE001
+        # No database, no turn: the spawn and any capture need it too.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Could not read whether a chat is temporary", exc_info=True
+        )
+        return False
+    return bool(
+        row is not None
+        and row.tenant_id == tenant_id
+        and (row.context or {}).get("temporary") is True
+    )
 
 
 async def _load_chat_history(tenant_id: str, session_id: uuid.UUID) -> list[dict[str, str]]:
