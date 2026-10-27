@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-27 07:54 UTC` from `master` @ `245ebd2`
+Generated `2026-10-27 08:41 UTC` from `master` @ `240e600`
 
 ---
 
@@ -952,6 +952,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `research-and-tech-watch` | Unclassified | — |
 | `telegram-bridge` | Built | `life_graph/api/integrations_telegram.py` |
 | `template-gallery` | Not this product | — |
+| `web-chat-wave1` | Unclassified | — |
 | `whatsapp-bot` | Not this product | — |
 
 ---
