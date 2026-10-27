@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-27 11:42 UTC` from `master` @ `cc9e7f6`
+Generated `2026-10-27 11:50 UTC` from `master` @ `f8c22bb`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-10-27 11:42 UTC` from `master` @ `cc9e7f6`
 
 | | |
 |---|---|
-| HTTP operations | **371** across 323 paths, 43 tags |
+| HTTP operations | **373** across 325 paths, 43 tags |
 | Database tables | **84** |
 | Migrations | **55** (head: `055_feature_idea_worth`) |
 | Event types | **79** |
@@ -24,15 +24,15 @@ Generated `2026-10-27 11:42 UTC` from `master` @ `cc9e7f6`
 | Agent tools | **14** |
 | Scheduled jobs | **31** |
 | Config settings | **268** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3766** in 421 files |
+| Test functions | **3788** in 423 files |
 | Dashboard pages | **22** |
-| Python | 433 files, 111,116 lines |
+| Python | 434 files, 111,460 lines |
 
 ---
 
 ## HTTP API
 
-371 operations, grouped by OpenAPI tag.
+373 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 35
 
@@ -74,7 +74,7 @@ Generated `2026-10-27 11:42 UTC` from `master` @ `cc9e7f6`
 | GET | `/api/v1/study/due` | Due Cards |
 | POST | `/api/v1/study/generate` | Generate Cards |
 
-### `jarvis` — 32
+### `jarvis` — 34
 
 | Method | Path | Summary |
 |---|---|---|
@@ -87,7 +87,8 @@ Generated `2026-10-27 11:42 UTC` from `master` @ `cc9e7f6`
 | GET | `/api/v1/jarvis/brief/latest` | The newest daily brief, with its audio |
 | POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
 | GET | `/api/v1/jarvis/contacts` | Your contacts, or those matching q |
-| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis, newest first |
+| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis: pinned, then newest first |
+| PATCH | `/api/v1/jarvis/conversations/{conversation_id}` | Rename or pin a conversation |
 | GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
 | GET | `/api/v1/jarvis/entities/{entity_id}` | One person, project or thing, and what is known |
 | GET | `/api/v1/jarvis/mail/waiting` | Mail waiting on your reply, longest wait first |
@@ -107,6 +108,7 @@ Generated `2026-10-27 11:42 UTC` from `master` @ `cc9e7f6`
 | POST | `/api/v1/jarvis/reminders/{reminder_id}/cancel` | Cancel a reminder |
 | GET | `/api/v1/jarvis/today` | The Today screen in one call |
 | POST | `/api/v1/jarvis/turns/{task_id}/memories/{memory_id}/wrong` | A memory this reply used is wrong: back to review, left out of answers |
+| POST | `/api/v1/jarvis/turns/{task_id}/regenerate` | Ask the latest message again, keeping both replies (SSE) |
 | GET | `/api/v1/jarvis/turns/{task_id}/trace` | How one reply was made: memories, tools, where it ran |
 | POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
 | POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
@@ -980,10 +982,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 317 | 2988 |
-| `tests/integration/` | 103 | 766 |
+| `tests/unit/` | 318 | 3003 |
+| `tests/integration/` | 104 | 773 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **421** | **3766** |
+| **total** | **423** | **3788** |
 
 ---
 
