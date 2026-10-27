@@ -109,6 +109,11 @@ def test_shopping_and_games_are_told_apart_in_code(title, leisure):
     assert is_leisure(title) is leisure
 
 
+def test_leisure_is_read_from_the_title_only():
+    # Intelligent UI's summary listed "calculators, mini-games"; that is not a game.
+    assert is_leisure("GPT-6 with Intelligent UI released") is False
+
+
 def test_the_ideas_flag_is_read_from_the_topic_setting(monkeypatch):
     from life_graph.config import settings
 
