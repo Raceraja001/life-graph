@@ -361,9 +361,14 @@ class BriefComposer:
         if not new:
             return None
         days = settings.pending_memory_expiry_days
-        expiry = f" Unreviewed ones are dropped after {days} days." if days > 0 else ""
+        expiry = (
+            f" Ones you leave unanswered are dropped {days} days after I ask." if days > 0 else ""
+        )
         word = "memory" if new == 1 else "memories"
-        return f"{new} new {word} to review ({total} waiting in all).{expiry}"
+        return (
+            f"{new} new {word} to review ({total} waiting in all): Keep or Drop them in the "
+            f"Memory check chat.{expiry}"
+        )
 
     async def _memory_yield_lines(self, tenant_id: str, since: datetime) -> list[str]:
         """What the capture spine kept in the window (services/memory_yield.py).

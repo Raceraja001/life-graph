@@ -177,6 +177,7 @@ class WorkerSettings:
         "life_graph.workers.due_notifications.write_due_notifications",
         "life_graph.workers.temporary_chats.purge_temporary_chats",
         "life_graph.workers.nudges.send_nudges",
+        "life_graph.workers.memory_check.send_memory_check",
     ]
 
     cron_jobs = [
@@ -184,6 +185,14 @@ class WorkerSettings:
         cron(
             "life_graph.workers.nudges.send_nudges",
             minute={12, 42},
+            run_at_startup=False,
+        ),
+        # Keep or drop what Jarvis noted, just before the brief counts it
+        # (services/memory_check.py).
+        cron(
+            "life_graph.workers.memory_check.send_memory_check",
+            hour=(settings.brief_hour_utc - 1) % 24,
+            minute=50,
             run_at_startup=False,
         ),
         # Temporary chats quiet for a day are deleted (services/temporary_chats.py).
