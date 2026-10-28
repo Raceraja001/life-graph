@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-28 05:53 UTC` from `master` @ `4207174`
+Generated `2026-10-28 18:04 UTC` from `master` @ `6d101e6`
 
 ---
 
@@ -22,11 +22,11 @@ Generated `2026-10-28 05:53 UTC` from `master` @ `4207174`
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
-| Scheduled jobs | **31** |
+| Scheduled jobs | **32** |
 | Config settings | **268** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3885** in 440 files |
+| Test functions | **3889** in 441 files |
 | Dashboard pages | **22** |
-| Python | 434 files, 111,649 lines |
+| Python | 436 files, 111,923 lines |
 
 ---
 
@@ -851,7 +851,7 @@ Generated `2026-10-28 05:53 UTC` from `master` @ `4207174`
 
 ## Scheduled jobs
 
-31 ARQ cron jobs (times are UTC).
+32 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -879,6 +879,7 @@ Generated `2026-10-28 05:53 UTC` from `master` @ `4207174`
 | `run_tech_watch` | 22:00 | `life_graph.workers.web_research.run_tech_watch` |
 | `run_watchers` | hourly at :00 | `life_graph.workers.tasks.run_watchers` |
 | `send_approval_escalations` | every 30 min | `life_graph.workers.tasks.send_approval_escalations` |
+| `send_memory_check` | daily at (settings.brief_hour_utc - 1) % 24:50 | `life_graph.workers.memory_check.send_memory_check` |
 | `send_nudges` | hourly at :12,:42 | `life_graph.workers.nudges.send_nudges` |
 | `sweep_stuck_captures` | hourly at :07,:22,:37,:52 | `life_graph.workers.capture_sweep.sweep_stuck_captures` |
 | `sync_connectors` | every 5 min | `life_graph.workers.tasks.sync_connectors` |
@@ -982,10 +983,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 335 | 3095 |
-| `tests/integration/` | 104 | 778 |
+| `tests/unit/` | 335 | 3097 |
+| `tests/integration/` | 105 | 780 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **440** | **3885** |
+| **total** | **441** | **3889** |
 
 ---
 
