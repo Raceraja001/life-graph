@@ -1052,7 +1052,34 @@ def _test_smells(source: str, local: set[str]) -> list[str]:
                     used = True
         if not used:
             smells.append(f"imports {', '.join(sorted(imported))} but never calls or patches it")
+    smells.extend(_calendar_arithmetic(tree))
     return smells
+
+
+_CALENDAR_FIELDS = ("year", "month", "day")
+
+
+def _calendar_arithmetic(tree) -> list[str]:
+    """``.replace(day=now.day - 3)`` and the like: a date that only exists on
+    some days. Task 02a4a6c0 (2026-10-27) passed every check with tests built
+    this way; they raise ValueError on days 1-10 of a month, so CI breaks on
+    the 1st. ``replace(day=1)`` is fine; arithmetic in the field is not."""
+    import ast
+
+    found = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "replace"
+        ):
+            for kw in node.keywords:
+                if kw.arg in _CALENDAR_FIELDS and isinstance(kw.value, ast.BinOp):
+                    found.append(
+                        f"line {node.lineno}: builds a date with .replace({kw.arg}=... ± n), "
+                        "which fails on some days of the month or year"
+                    )
+    return found
 
 
 # A JVM test that opens a source file to look at it, as the Python one above did.
@@ -1102,12 +1129,21 @@ async def _verify_tests_exercise_code(workdir: Path, ctx: dict) -> tuple[bool, d
         if smells:
             found[str(f.relative_to(workdir))] = smells
     evidence: dict = {"checked": [str(f.relative_to(workdir)) for f in tests], "problems": found}
-    if found:
-        evidence["hint"] = (
+    every = [s for smells in found.values() for s in smells]
+    hints = []
+    if any("builds a date" not in s for s in every):
+        hints.append(
             "Write the test to call the code it is about (with mocks or fixtures for "
             "its dependencies) and assert on what it does, so it fails if the change "
             "is reverted."
         )
+    if any("builds a date" in s for s in every):
+        hints.append(
+            "For a past or future date use now - timedelta(days=n), with a fixed "
+            "timezone-aware now such as datetime(2026, 10, 28, 12, tzinfo=UTC)."
+        )
+    if hints:
+        evidence["hint"] = " ".join(hints)
     return not found, evidence
 
 
