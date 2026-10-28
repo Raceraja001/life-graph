@@ -706,11 +706,21 @@ class ChatStreamRequest(BaseModel):
             "only the newest completed version."
         ),
     )
+    model: Literal["local", "cloud"] | None = Field(
+        default=None,
+        description=(
+            "With `regenerates`: ask again on the local model or in the cloud, as if the "
+            "message began `local:` or `cloud:` (services/lead.py). A temporary chat "
+            "stays local whichever is asked."
+        ),
+    )
 
     @model_validator(mode="after")
     def _message_or_regenerates(self) -> ChatStreamRequest:
         if self.regenerates is None and not self.message:
             raise ValueError("message is required")
+        if self.model is not None and self.regenerates is None:
+            raise ValueError("model is only for regenerates")
         return self
 
 
@@ -881,6 +891,11 @@ async def _regeneration(tenant_id: str, body: ChatStreamRequest) -> ChatStreamRe
     message = asked.get("owner_message", asked.get("message"))
     if not message:
         raise HTTPException(status.HTTP_409_CONFLICT, "That turn has no message to ask again.")
+    if body.model is not None:
+        from life_graph.services.lead import _SWITCH
+
+        # The owner's choice replaces any switch the words began with.
+        message = f"{body.model}: {_SWITCH.sub('', message, count=1)}"
     return body.model_copy(
         update={
             "message": message,

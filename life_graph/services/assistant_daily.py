@@ -116,4 +116,13 @@ async def brief_lines(session_factory, tenant_id: str, today: date | None = None
             lines.append(line)
     except Exception:
         logger.warning("brief: invoices line failed for %s", tenant_id, exc_info=True)
+    try:
+        from life_graph.services import nudges
+
+        async with session_factory() as session:
+            promised = await nudges.open_count(session, tenant_id)
+        if line := nudges.brief_line(promised):
+            lines.append(line)
+    except Exception:
+        logger.warning("brief: nudges line failed for %s", tenant_id, exc_info=True)
     return lines

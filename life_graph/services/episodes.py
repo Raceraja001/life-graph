@@ -108,8 +108,15 @@ async def _jarvis_turns(tenant_id: str, day: date) -> tuple[list[str], list[str]
             .scalars()
             .all()
         )
+    from life_graph.services.chat_history import superseded_by
+
+    # A reply the owner asked again for is not what the day said: only the
+    # version that replaced it is summarised (web-chat-wave1 F6).
+    replaced = superseded_by(rows)
     lines, sessions = [], []
     for t in rows:
+        if str(t.id) in replaced:
+            continue
         asked = str((t.input or {}).get("message") or "").strip()
         answered = str((t.result or {}).get("response") or "").strip()
         if not asked:

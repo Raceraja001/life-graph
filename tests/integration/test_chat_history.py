@@ -446,3 +446,34 @@ async def test_the_kernel_stream_regenerates_too(pm, client):
     finally:
         app.dependency_overrides.pop(kernel.get_process_manager, None)
         app.dependency_overrides.pop(kernel.get_persona_service, None)
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_regenerate_on_the_local_model_or_in_the_cloud(pm, client):
+    conv, (t1,) = await _conversation(TENANT, [("local: how is my week looking", "Busy.")])
+
+    r = await client.post(f"{API}/turns/{t1}/regenerate", json={"model": "cloud"})
+    assert r.status_code == 200, r.text
+    # The owner's choice replaces the switch the words began with.
+    assert pm.inputs[-1]["message"] == "cloud: how is my week looking"
+    assert pm.inputs[-1]["regenerates"] == str(t1)
+
+    r = await client.post(f"{API}/turns/{t1}/regenerate", json={"model": "local"})
+    assert r.status_code == 200 and pm.inputs[-1]["message"] == "local: how is my week looking"
+    r = await client.post(f"{API}/turns/{t1}/regenerate", json={"model": "gpt-9"})
+    assert r.status_code == 422
+    # Only with regenerates: a plain chat turn names its route in its words.
+    r = await client.post("/api/v1/kernel/chat/stream", json={"message": "hi", "model": "cloud"})
+    assert r.status_code == 422
+
+
+def test_a_cloud_regeneration_of_a_temporary_chat_stays_local():
+    from life_graph.services.lead import TEMPORARY_REASON, route
+
+    chosen = route(
+        {"model": "gemini/gemini-3.6-flash", "allowed_tools": None},
+        {"message": "cloud: how is my week looking", "temporary": True},
+    )
+    assert chosen.reason == TEMPORARY_REASON
+    assert chosen.message == "how is my week looking"

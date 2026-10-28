@@ -119,9 +119,83 @@ async def run_tenant(session, tenant_id: str, now: datetime, tz: Any) -> dict[st
                 delivered_at=now,
             )
         )
+        await _say_in_chat(session, tenant_id, row, now, tz)
         row.status, row.triggered_at = "nudged", now
     await session.commit()
     return {"sent": len(chosen), "lapsed": lapsed}
+
+
+async def _say_in_chat(session, tenant_id: str, row: Any, now: datetime, tz: Any) -> None:
+    """The nudge as a Jarvis message in the chat the promise was made in (AC-W2.3).
+
+    A completed top-level turn with a reply and no message: the messages list
+    shows it as Jarvis speaking (with ``nudge`` for its buttons), the history a
+    persona is shown and the episodes skip it (both need the owner's words),
+    and it cannot be asked again. A conversation that is gone, someone else's
+    or temporary gets the notification only.
+    """
+    from life_graph.models.db import AgentSession, AgentTask
+
+    conversation_id = (row.context_match or {}).get("conversation_id")
+    try:
+        conversation = (
+            await session.get(AgentSession, uuid.UUID(str(conversation_id)))
+            if conversation_id
+            else None
+        )
+    except ValueError:
+        conversation = None
+    if (
+        conversation is None
+        or conversation.tenant_id != tenant_id
+        or (conversation.context or {}).get("temporary") is True
+    ):
+        return
+    said = say_said((row.context_match or {}).get("said_at"), now, tz)
+    session.add(
+        AgentTask(
+            tenant_id=tenant_id,
+            agent_name="jarvis",
+            task_name="nudge",
+            status="completed",
+            session_id=conversation.id,
+            input={"origin": SOURCE_TYPE, "nudge_id": str(row.id)},
+            result={
+                "response": f"You said you would: “{row.content}”"
+                + (f" — you said so {said}." if said else "."),
+                "nudge_id": str(row.id),
+            },
+            started_at=now,
+            completed_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+
+
+async def open_count(session, tenant_id: str) -> int:
+    from life_graph.models.db import Intention
+
+    return int(
+        await session.scalar(
+            select(func.count())
+            .select_from(Intention)
+            .where(
+                Intention.tenant_id == tenant_id,
+                Intention.trigger_type == "nudge",
+                Intention.status.in_(OPEN),
+            )
+        )
+        or 0
+    )
+
+
+def brief_line(open_: int) -> str | None:
+    """The brief leaves the machine: how many, never the owner's words."""
+    if not open_:
+        return None
+    things = "thing" if open_ == 1 else "things"
+    return f"{TITLE}: {open_} {things} open — Done, Tomorrow or Drop in chat"
 
 
 async def run(session_factory, now: datetime | None = None) -> dict[str, Any]:
