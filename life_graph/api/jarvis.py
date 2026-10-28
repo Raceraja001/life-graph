@@ -663,6 +663,7 @@ async def messages(conversation_id: uuid.UUID):
 
     saved = await _saved_by_task(tenant_id, [t.id for t in tasks])
     nudged = await _nudge_states(tenant_id, tasks)
+    checked = await _memory_check_states(tenant_id, tasks)
     # Regenerated replies (AC-W6.3): every version is listed; the one a newer
     # completed version replaced carries `superseded_by`, and a regeneration's
     # reply `regenerates`, without repeating the question it re-asked.
@@ -699,8 +700,24 @@ async def messages(conversation_id: uuid.UUID):
                 # A nudge Jarvis said here (services/nudges.py): Done / Tomorrow /
                 # Drop while it is open, POST /jarvis/nudges/{id}.
                 reply["nudge"] = {"id": nudge_id, "status": nudged[nudge_id]}
+            if asked_about := (t.result or {}).get("memory_check"):
+                # A Memory check (services/memory_check.py): each memory with
+                # its status now, Keep / Drop while pending, i.e.
+                # POST /memories/{id}/approve|reject.
+                reply["memory_check"] = [checked[i] for i in asked_about if i in checked]
             out.append(reply)
     return success_response(data=out)
+
+
+async def _memory_check_states(tenant_id: str, tasks: list) -> dict[str, dict]:
+    """``{memory id: {"id", "content", "status"}}`` for the memories these turns asked about."""
+    from life_graph.services import memory_check
+
+    ids = [i for t in tasks for i in ((t.result or {}).get("memory_check") or [])]
+    if not ids:
+        return {}
+    async with async_session() as session:
+        return await memory_check.states(session, tenant_id, ids)
 
 
 async def _nudge_states(tenant_id: str, tasks: list) -> dict[str, str]:

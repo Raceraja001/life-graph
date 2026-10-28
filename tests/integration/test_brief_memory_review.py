@@ -53,9 +53,9 @@ async def test_the_line_counts_new_and_waiting_memories_without_their_content(mo
 
     line = await _composer()._memory_review_line(TENANT, since)
 
-    assert (
-        line
-        == "2 new memories to review (3 waiting in all). Unreviewed ones are dropped after 14 days."
+    assert line == (
+        "2 new memories to review (3 waiting in all): Keep or Drop them in the Memory check "
+        "chat. Ones you leave unanswered are dropped 14 days after I ask."
     )
     assert "passport" not in line and "dentist" not in line
 

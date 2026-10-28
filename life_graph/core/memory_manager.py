@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -417,6 +418,13 @@ class MemoryManager:
                 for c in contradictions
             ]
 
+        # Only a clash that would retire an active memory: a "scope" one keeps both.
+        kept_because = _auto_approved(fact, trust_tier, contradicts=bool(auto_supersede_targets))
+        active_now = kept_because is not None
+        if kept_because:
+            # Which rule let it skip review, so a wrong one can be traced.
+            properties["auto_kept"] = kept_because
+
         memory_create = MemoryCreate(
             content=fact.content,
             reasoning=fact.source_text or None,
@@ -426,7 +434,6 @@ class MemoryManager:
             source_type=source or "inferred",
         )
 
-        active_now = _auto_approved(fact, trust_tier)
         stored = await self._store.store(
             memory_create,
             embedding=embedding,
@@ -636,20 +643,51 @@ def _end_of_day(day: str | None):
 
 #: How sure the extractor must be that the owner asked to remember it.
 AUTO_APPROVE_MIN_CONFIDENCE = 0.8
+#: How sure it must be of a firm fact the owner stated without asking.
+AUTO_KEEP_MIN_CONFIDENCE = 0.9
+#: What the owner states firmly. Not ``intention``: plans change, and those
+#: wait for the owner's Keep or Drop in the Memory check (services/memory_check.py).
+AUTO_KEEP_TYPES = frozenset({"fact", "preference", "anti_preference", "decision"})
+#: Wording of a thought in progress, not a settled fact: "is considering…",
+#: "for now". On 2026-10-28 "The owner prefers using existing tools like Dify"
+#: came from exploring options, and the owner chose the opposite an hour later.
+HEDGED = re.compile(
+    r"\b(consider(s|ed|ing)?|explor(e|es|ed|ing)|thinking (about|of)|might|maybe|perhaps|"
+    r"possibl[ey]|potential(ly)?|wonder(s|ed|ing)?|whether|not sure|unsure|for now|"
+    r"for the time being)\b",
+    re.IGNORECASE,
+)
 
 
-def _auto_approved(fact: ExtractedFact, trust_tier: str | None) -> bool:
-    """Whether a new memory skips the review queue.
+def _auto_approved(
+    fact: ExtractedFact, trust_tier: str | None, *, contradicts: bool = False
+) -> str | None:
+    """Why a new memory skips the review queue, or None when it waits for review.
 
-    Only what the owner, in their own words (trust tier ``self``), explicitly
-    asked to be remembered. Everything else still waits for approval; the
-    queue jammed at 3,668 when that was every memory (2026-10-22).
+    Only what the owner said in their own words (trust tier ``self``):
+
+    - ``explicit_save``: what they asked to be remembered;
+    - ``firm_owner_fact``: a fact, preference or decision they stated plainly,
+      with no hedge and no clash with an active memory. A clash is the owner's
+      call: keeping the new one would retire the old one.
+
+    Everything else waits for the owner's Keep or Drop. On 2026-10-22 the
+    queue jammed at 3,668 when every memory waited; five days after the
+    2026-10-23 fresh start only day summaries were active, with lasting facts
+    ("prefers local HTML files") left pending.
     """
-    return (
-        trust_tier == "self"
-        and fact.fact_type == "explicit_save"
-        and fact.confidence >= AUTO_APPROVE_MIN_CONFIDENCE
-    )
+    if trust_tier != "self":
+        return None
+    if fact.fact_type == "explicit_save" and fact.confidence >= AUTO_APPROVE_MIN_CONFIDENCE:
+        return "explicit_save"
+    if (
+        fact.fact_type in AUTO_KEEP_TYPES
+        and fact.confidence >= AUTO_KEEP_MIN_CONFIDENCE
+        and not contradicts
+        and not HEDGED.search(fact.content)
+    ):
+        return "firm_owner_fact"
+    return None
 
 
 def _infer_tags(fact: ExtractedFact, importance_tier: str) -> list[str]:

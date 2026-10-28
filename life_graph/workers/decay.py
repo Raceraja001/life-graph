@@ -84,11 +84,16 @@ async def _queue_archive_proposals(session, tenant_id: str, candidates) -> int:
 
 
 async def _expire_stale_pending(session, tenant_id: str) -> int:
-    """Reject memories left unreviewed for ``pending_memory_expiry_days``.
+    """Reject memories the owner was asked about and left unanswered for
+    ``pending_memory_expiry_days``.
 
     A review queue nobody can finish is not a gate: on 2026-10-22, 3,668
     memories had waited since 2026-10-13 and nothing reached recall. Rejected,
     not deleted: approving one brings it back, and the reason is stamped on it.
+
+    The clock starts when the Memory check showed it (services/memory_check.py
+    stamps ``review_offered_at``), not when it was noted: until 2026-10-28 it
+    started at creation, and memories nobody had been shown were dropped.
     """
     days = settings.pending_memory_expiry_days
     if days <= 0:
@@ -102,7 +107,9 @@ async def _expire_stale_pending(session, tenant_id: str) -> int:
                         'at', NOW()::text, 'after_days', CAST(:days AS int)))
             WHERE tenant_id = :tenant_id
               AND status = 'pending'
-              AND created_at < NOW() - make_interval(days => CAST(:days AS int))
+              AND properties->>'review_offered_at' IS NOT NULL
+              AND (properties->>'review_offered_at')::timestamptz
+                  < NOW() - make_interval(days => CAST(:days AS int))
         """),
         {"tenant_id": tenant_id, "days": days},
     )
