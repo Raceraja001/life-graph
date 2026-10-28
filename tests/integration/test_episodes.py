@@ -151,3 +151,45 @@ async def test_a_quiet_day_writes_nothing(fakes):
 
     assert await episodes.write_day(f"{TENANT}_quiet", DAY) == []
     assert fakes == []
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_reply_asked_again_is_summarised_once(fakes):
+    from life_graph.models.db import AgentSession, AgentTask
+    from life_graph.services import episodes
+    from life_graph.storage.database import async_session
+
+    tenant = f"epi_{uuid.uuid4().hex[:8]}"
+    async with async_session() as s:
+        conv = AgentSession(tenant_id=tenant, user_message="film", routed_to="jarvis")
+        s.add(conv)
+        await s.flush()
+        first = AgentTask(
+            tenant_id=tenant,
+            agent_name="jarvis",
+            task_name="chat:jarvis",
+            session_id=conv.id,
+            status="completed",
+            input={"message": "Pick a film for tonight"},
+            result={"response": "Jailer."},
+            created_at=_at(20),
+        )
+        s.add(first)
+        await s.flush()
+        s.add(
+            AgentTask(
+                tenant_id=tenant,
+                agent_name="jarvis",
+                task_name="chat:jarvis",
+                session_id=conv.id,
+                status="completed",
+                input={"message": "Pick a film for tonight", "regenerates": str(first.id)},
+                result={"response": "Vikram."},
+                created_at=_at(21),
+            )
+        )
+        await s.commit()
+
+    lines, _ = await episodes._jarvis_turns(tenant, DAY)
+    assert lines == ["Owner: Pick a film for tonight", "Jarvis: Vikram."]

@@ -62,6 +62,7 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -596,6 +597,8 @@ async def update_conversation(conversation_id: uuid.UUID, body: ConversationUpda
 
 class RegenerateRequest(BaseModel):
     persona: str | None = Field(None, min_length=1, max_length=100)
+    # Where to ask again: the local model or the cloud (the `local:`/`cloud:` switch).
+    model: Literal["local", "cloud"] | None = None
 
 
 @router.post(
@@ -603,8 +606,8 @@ class RegenerateRequest(BaseModel):
     summary="Ask the latest message again, keeping both replies (SSE)",
 )
 async def regenerate(task_id: uuid.UUID, body: RegenerateRequest | None = None):
-    """Re-run a conversation's latest turn, with Jarvis or ``persona``
-    (AC-W6.3). The stream is ``/jarvis/chat``'s. The new turn's input names the
+    """Re-run a conversation's latest turn, with Jarvis or ``persona``, and on
+    the local model or in the cloud when ``model`` says (AC-W6.3). The stream is ``/jarvis/chat``'s. The new turn's input names the
     one it replaces (``regenerates``); both stay, and the messages list marks
     the older reply ``superseded_by``. Nothing is captured: the words were
     captured when first sent. A temporary chat stays temporary, and with Jarvis
@@ -623,6 +626,7 @@ async def regenerate(task_id: uuid.UUID, body: RegenerateRequest | None = None):
             target_agent=(body.persona if body and body.persona else LEAD),
             session_id=turn.session_id,
             regenerates=task_id,
+            model=body.model if body else None,
         ),
         pm=get_process_manager(),
         personas=get_persona_service(),
@@ -658,6 +662,7 @@ async def messages(conversation_id: uuid.UUID):
     from life_graph.services.chat_history import superseded_by
 
     saved = await _saved_by_task(tenant_id, [t.id for t in tasks])
+    nudged = await _nudge_states(tenant_id, tasks)
     # Regenerated replies (AC-W6.3): every version is listed; the one a newer
     # completed version replaced carries `superseded_by`, and a regeneration's
     # reply `regenerates`, without repeating the question it re-asked.
@@ -690,8 +695,34 @@ async def messages(conversation_id: uuid.UUID):
                 reply["regenerates"] = str(again)
             if str(t.id) in replaced:
                 reply["superseded_by"] = replaced[str(t.id)]
+            if (nudge_id := (t.result or {}).get("nudge_id")) in nudged:
+                # A nudge Jarvis said here (services/nudges.py): Done / Tomorrow /
+                # Drop while it is open, POST /jarvis/nudges/{id}.
+                reply["nudge"] = {"id": nudge_id, "status": nudged[nudge_id]}
             out.append(reply)
     return success_response(data=out)
+
+
+async def _nudge_states(tenant_id: str, tasks: list) -> dict[str, str]:
+    """``{nudge id: its status now}`` for the nudges said in these turns."""
+    from life_graph.models.db import Intention
+
+    ids = []
+    for t in tasks:
+        with contextlib.suppress(ValueError, TypeError):
+            if nudge_id := (t.result or {}).get("nudge_id"):
+                ids.append(uuid.UUID(str(nudge_id)))
+    if not ids:
+        return {}
+    async with async_session() as session:
+        rows = (
+            await session.execute(
+                select(Intention.id, Intention.status).where(
+                    Intention.tenant_id == tenant_id, Intention.id.in_(ids)
+                )
+            )
+        ).all()
+    return {str(i): s for i, s in rows}
 
 
 async def _saved_by_task(tenant_id: str, task_ids: list) -> dict[str, list[dict]]:
