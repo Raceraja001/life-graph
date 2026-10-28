@@ -297,3 +297,56 @@ def test_isinstance_and_hasattr_on_config_and_enums_are_real_tests():
         "    assert hasattr(EventType, 'TASK_BOUNCED')\n"
     )
     assert _test_smells(source, {"life_graph"}) == []
+
+
+# The shape of the tests from task 02a4a6c0 (2026-10-27): they passed every
+# check, then raise ValueError on days 1-10 of a month.
+DAY_ARITHMETIC_TEST = """from datetime import UTC, datetime
+
+from life_graph.services.nudges import say_said
+
+
+def test_say_said_date_format():
+    now = datetime.now(UTC)
+    ten_days_ago = now.replace(day=now.day - 10)
+    said_at = ten_days_ago.strftime("%Y-%m-%dT%H:%M:%S")
+    assert say_said(said_at, now, UTC) == f"on {ten_days_ago:%d %b}"
+"""
+
+
+def test_calendar_arithmetic_in_a_test_is_caught():
+    smells = _test_smells(DAY_ARITHMETIC_TEST, {"life_graph"})
+    assert smells == [
+        "line 8: builds a date with .replace(day=... ± n), "
+        "which fails on some days of the month or year"
+    ]
+
+
+@pytest.mark.parametrize("field", ["year", "month", "day"])
+def test_each_calendar_field_counts(field):
+    source = f"def test_x(d):\n    assert d.replace({field}=d.{field} + 1)\n"
+    assert any("builds a date" in s for s in _test_smells(source, set()))
+
+
+@pytest.mark.parametrize(
+    "safe",
+    [
+        "d.replace(day=1)",
+        "d.replace(hour=d.hour - 1)",
+        "d.replace(tzinfo=None)",
+        "d - timedelta(days=10)",
+        "text.replace('a', 'b')",
+    ],
+)
+def test_fixed_dates_and_other_replaces_are_fine(safe):
+    source = f"from datetime import timedelta\n\ndef test_x(d, text):\n    assert {safe}\n"
+    assert _test_smells(source, set()) == []
+
+
+@pytest.mark.asyncio
+async def test_the_date_hint_says_how_to_build_a_date(project):
+    (project / "tests/unit/test_nudges_say_said.py").write_text(DAY_ARITHMETIC_TEST)
+    passed, evidence = await _verify_tests_exercise_code(project, {})
+    assert not passed
+    assert "timedelta(days=n)" in evidence["hint"]
+    assert "call the code it is about" not in evidence["hint"]
