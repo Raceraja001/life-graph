@@ -101,7 +101,7 @@ class FakeSession:
     async def scalars(self, stmt, *_a, **_k) -> FakeResult:
         return (await self.execute(stmt)).scalars()
 
-    async def get(self, model, pk) -> Any:
+    async def get(self, model, pk, **_kwargs) -> Any:
         return self.objects.get((model, pk))
 
     def add(self, obj) -> None:

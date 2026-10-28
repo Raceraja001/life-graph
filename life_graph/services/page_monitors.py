@@ -175,21 +175,38 @@ def select_text(markup: str, selector: str | None) -> str | None:
 
 
 _PRICE = re.compile(
-    r"(?:₹|rs\.?|inr|\$|usd|€|£)?\s*(\d{1,3}(?:[,\s]\d{2,3})+(?:\.\d+)?|\d+(?:\.\d+)?)", re.I
+    r"(₹|rs\.?|inr|\$|usd|€|£)?\s*(\d{1,3}(?:[,\s]\d{2,3})+(?:\.\d+)?|\d+(?:\.\d+)?)", re.I
 )
+# What follows (or precedes) a bare number that is a rating or a percentage.
+_NOT_PRICE_AFTER = re.compile(r"\s*(?:%|/\s*\d|out of|stars?\b)", re.I)
+_NOT_PRICE_BEFORE = re.compile(r"(?:/|out of)\s*$", re.I)
 
 
 def parse_price(text: str | None) -> Decimal | None:
-    """The first price in ``text``: "₹1,24,999.00" → 124999.00."""
-    for m in _PRICE.finditer(text or ""):
-        raw = re.sub(r"[,\s]", "", m.group(1))
+    """The price in ``text``: "₹1,24,999.00" → 124999.00.
+
+    The first currency-marked number wins; failing that, the first bare one
+    that is not a percentage or a rating ("20%", "4.2/5", "4.5 out of 5",
+    "4 stars").
+    """
+    text = text or ""
+    bare: Decimal | None = None
+    for m in _PRICE.finditer(text):
         try:
-            value = Decimal(raw)
+            value = Decimal(re.sub(r"[,\s]", "", m.group(2)))
         except InvalidOperation:
             continue
-        if value > 0:
+        if value <= 0:
+            continue
+        if m.group(1):
             return value
-    return None
+        if (
+            bare is None
+            and not _NOT_PRICE_AFTER.match(text, m.end())
+            and not _NOT_PRICE_BEFORE.search(text, 0, m.start())
+        ):
+            bare = value
+    return bare
 
 
 def evaluate(
