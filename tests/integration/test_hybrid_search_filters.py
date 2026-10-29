@@ -81,28 +81,37 @@ async def test_hybrid_search_applies_its_filters():
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_ask_answers_from_active_memories_only(monkeypatch):
+    """Since 2026-10-29 ask finds memories the way Jarvis does
+    (services/memory_retrieval.py), still from active memories only."""
     from httpx import ASGITransport, AsyncClient
 
+    from life_graph.core.memory_manager import MemoryManager
     from life_graph.main import app
     from life_graph.storage.postgres import PostgresMemoryStore
 
+    async def fixed(self, text):
+        return [0.0] * 1024
+
+    monkeypatch.setattr(MemoryManager, "_generate_embedding", fixed)
     seen = {}
-    real = PostgresMemoryStore.search_similar
+    real = PostgresMemoryStore.hybrid_search
 
-    async def spy(self, embedding, limit=10, filters=None, include_embedding=True):
-        seen["filters"] = filters
-        return await real(self, embedding, limit, filters, include_embedding)
+    async def spy(self, *args, **kwargs):
+        seen["statuses"] = kwargs.get("statuses")
+        seen["filters"] = kwargs.get("filters")
+        return await real(self, *args, **kwargs)
 
-    monkeypatch.setattr(PostgresMemoryStore, "search_similar", spy)
+    monkeypatch.setattr(PostgresMemoryStore, "hybrid_search", spy)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.post(
             "/api/v1/search/ask",
             json={"question": "where do I travel?"},
             headers={"X-Tenant-ID": TENANT},
         )
-    if "filters" not in seen:
+    if "statuses" not in seen:
         pytest.skip(f"ask did not reach the search (embedding unavailable): {resp.status_code}")
-    assert seen["filters"] == {"status": "active"}
+    assert seen["statuses"] == ("active",)
+    assert not seen["filters"]
 
 
 @pytest.mark.asyncio

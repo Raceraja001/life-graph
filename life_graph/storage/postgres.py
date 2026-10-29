@@ -47,6 +47,24 @@ RRF_K = 60
 RRF_POOL = 100
 
 _WORD = re.compile(r"\w+", re.UNICODE)
+_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)
+_TAMIL = re.compile(r"[஀-௿]")
+
+
+def mostly_tamil(text_: str) -> bool:
+    """Whether most of the letters in *text_* are Tamil script.
+
+    The keyword leg matches words against memories the extractor writes in
+    English, so a Tamil question only matches the English names left in it
+    ("life-graph", "Claude") and pulls in whatever mentions them. Measured
+    2026-10-29 on 40 Tamil questions: first result right 67.5% with keywords,
+    75.0% without; translating the question to English first was worse (50%).
+    """
+    # Every Tamil-script character counts, vowel signs included: they are
+    # combining marks, not letters, and a Tamil word is half made of them.
+    tamil = len(_TAMIL.findall(text_ or ""))
+    other = sum(1 for ch in _LETTER.findall(text_ or "") if not _TAMIL.match(ch))
+    return tamil > other
 
 
 def _or_tsquery(text_: str) -> str:
@@ -449,7 +467,8 @@ class PostgresMemoryStore:
                 raw_sql,
                 {
                     "query_embedding": str(embedding),
-                    "tsquery": _or_tsquery(query_text),
+                    # No keyword leg for a Tamil question (mostly_tamil): meaning only.
+                    "tsquery": "" if mostly_tamil(query_text) else _or_tsquery(query_text),
                     "tenant_id": tenant_id,
                     "vw": float(vector_weight),
                     "bw": float(bm25_weight),
