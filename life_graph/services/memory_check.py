@@ -121,7 +121,10 @@ async def run_tenant(session, tenant_id: str, now: datetime) -> int:
 
 
 async def states(session, tenant_id: str, ids: list[str]) -> dict[str, dict[str, Any]]:
-    """``{memory id: {"id", "content", "status"}}`` for the memories a check asked about."""
+    """``{memory id: {"id", "content", "status", "evidence"}}`` for the memories a check asked about.
+
+    ``evidence`` (core/evidence.py) lets the chat say "you said" or "my guess"."""
+    from life_graph.core.evidence import evidence_of
     from life_graph.models.db import Memory
 
     wanted = []
@@ -134,12 +137,25 @@ async def states(session, tenant_id: str, ids: list[str]) -> dict[str, dict[str,
         return {}
     rows = (
         await session.execute(
-            select(Memory.id, Memory.content, Memory.status).where(
-                Memory.tenant_id == tenant_id, Memory.id.in_(wanted)
-            )
+            select(
+                Memory.id,
+                Memory.content,
+                Memory.status,
+                Memory.source_type,
+                Memory.trust_tier,
+                Memory.properties,
+            ).where(Memory.tenant_id == tenant_id, Memory.id.in_(wanted))
         )
     ).all()
-    return {str(i): {"id": str(i), "content": c, "status": s} for i, c, s in rows}
+    return {
+        str(i): {
+            "id": str(i),
+            "content": c,
+            "status": s,
+            "evidence": evidence_of(src, tier, props),
+        }
+        for i, c, s, src, tier, props in rows
+    }
 
 
 async def waiting(session, tenant_id: str) -> int:

@@ -169,6 +169,9 @@ class Settings(BaseSettings):
     # reloaded one (~15 s, measured 2026-10-22). The same model, already
     # loaded, judges in ~0.3 s.
     memory_judge_model: str = ""
+    # The owner's lasting facts, put in front of every local Jarvis answer
+    # whether or not search finds them (services/profile_card.py). 0 = off.
+    profile_card_max_items: int = 25
     """Most archive proposals one decay sweep may queue for a tenant.
 
     Decay proposes rather than archives, so an unbounded first sweep over a

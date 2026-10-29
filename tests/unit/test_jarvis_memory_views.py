@@ -26,6 +26,7 @@ def _m(content, *, props=None, tags=None, source_type="capture", status="active"
         properties=props or {},
         tags=tags,
         source_type=source_type,
+        trust_tier="self",
         status=status,
         created_at=NOW,
     )
@@ -122,7 +123,7 @@ def test_overview_has_every_part_of_the_contract():
         ("fact", "Jarvis"),
         ("rule", "Life Graph"),
     ]
-    assert set(out["recent"][0]) == {"id", "content", "kind", "source", "created_at"}
+    assert set(out["recent"][0]) == {"id", "content", "kind", "source", "evidence", "created_at"}
     assert out["days"][0] == {
         "id": str(src["days"][0].id),
         "date": "2026-10-24",
@@ -219,6 +220,7 @@ async def test_search_active_only_with_scores(monkeypatch):
             "content": "Lives in Chennai.",
             "kind": "fact",
             "source": "Life Graph",
+            "evidence": "said",
             "created_at": NOW.isoformat(),
             "score": 0.8765,
         }

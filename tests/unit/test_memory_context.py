@@ -6,9 +6,10 @@ import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from life_graph.services import memory_retrieval
+from life_graph.services import memory_retrieval, profile_card
 from life_graph.services.memory_context import (
     HEADER,
+    NOTHING_ELSE,
     NOTHING_FOUND,
     memory_block,
     render,
@@ -46,7 +47,7 @@ class _Store:
         _Store.touched = ids
 
 
-def _wire(monkeypatch, found):
+def _wire(monkeypatch, found, card=()):
     import life_graph.api.dependencies as deps
 
     async def fake_retrieve(question, limit=6):
@@ -54,9 +55,13 @@ def _wire(monkeypatch, found):
             raise found
         return found
 
+    async def fake_card(tenant_id):
+        return list(card)
+
     _Store.touched = None
     monkeypatch.setattr(deps, "get_store", lambda: _Store())
     monkeypatch.setattr(memory_retrieval, "retrieve", fake_retrieve)
+    monkeypatch.setattr(profile_card, "card_items", fake_card)
 
 
 async def test_matching_memories_are_shown_and_counted_as_read(monkeypatch):
@@ -83,3 +88,63 @@ async def test_memory_that_could_not_be_searched_says_nothing(monkeypatch):
 async def test_a_failure_is_never_a_failed_answer(monkeypatch):
     _wire(monkeypatch, RuntimeError("db down"))
     assert await memory_block("raja", "When does my car insurance renew?") == ""
+
+
+def test_a_note_that_is_not_the_owners_word_says_where_it_came_from():
+    when = datetime(2026, 10, 3, tzinfo=UTC)
+    out = render(
+        [
+            ("Prefers local HTML files.", when, {"evidence": "said"}),
+            ("Seems to like short answers.", when, {"evidence": "inferred"}),
+            ("Car insurance renews in March.", None, {"evidence": "document"}),
+        ]
+    )
+    assert out.splitlines()[-3:] == [
+        "- (2026-10-03) Prefers local HTML files.",
+        "- (2026-10-03 · your guess) Seems to like short answers.",
+        "- (from a document) Car insurance renews in March.",
+    ]
+    assert "never as a fact" in HEADER
+
+
+CARD = [{"id": "c1", "content": "My phone is a Realme X2 Pro.", "created_at": None}]
+
+
+async def test_the_profile_card_comes_first_and_is_not_repeated(monkeypatch):
+    on_card = SimpleNamespace(
+        id="c1", content="My phone is a Realme X2 Pro.", created_at=None, properties={}
+    )
+    other = SimpleNamespace(
+        id=uuid.uuid4(),
+        content="Seems to like short answers.",
+        created_at=None,
+        source_type="distillation",
+        trust_tier="verified",
+        properties={},
+    )
+    _wire(monkeypatch, [on_card, other], card=CARD)
+    used: list[dict] = []
+    out = await memory_block("raja", "Which phone case should I buy?", used=used)
+    assert out.startswith(profile_card.HEADER)
+    assert out.count("Realme X2 Pro") == 1
+    assert "(your guess) Seems to like short answers." in out
+    # Always shown is not read: only the searched memory is touched.
+    assert _Store.touched == [other.id]
+    assert used == [
+        {"id": "c1", "content": "My phone is a Realme X2 Pro.", "via": "profile"},
+        {"id": str(other.id), "content": "Seems to like short answers."},
+    ]
+
+
+async def test_with_a_card_nothing_found_does_not_contradict_it(monkeypatch):
+    _wire(monkeypatch, [], card=CARD)
+    out = await memory_block("raja", "What is my blood group?")
+    assert out.startswith(profile_card.HEADER) and out.endswith(NOTHING_ELSE)
+    assert NOTHING_FOUND not in out
+
+
+async def test_the_card_still_shows_when_search_cannot_run(monkeypatch):
+    _wire(monkeypatch, None, card=CARD)
+    assert await memory_block("raja", "anything at all here please") == profile_card.render(CARD)
+    _wire(monkeypatch, RuntimeError("db down"), card=CARD)
+    assert await memory_block("raja", "anything at all here please") == profile_card.render(CARD)

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy.orm import defer
 
+from life_graph.core.evidence import UNKNOWN_SOURCE, evidence_of
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, coerce_tier
 from life_graph.models.db import CaptureEvent, Memory, MemorySession, Session
@@ -166,14 +167,24 @@ class PostgresMemoryStore:
         """
         content_hash = hashlib.sha256(memory.content.strip().lower().encode()).hexdigest()
 
+        # No source is "unknown", not "inferred": that label means a guess
+        # (core/evidence.py), and every API write without a source carried it.
+        source_type = memory.source_type or UNKNOWN_SOURCE
+        tier_value = coerce_tier(trust_tier, default=TrustTier.VERIFIED).value
+        properties = dict(memory.properties or {})
+        # Said, read, observed or guessed: stamped once, from server-side
+        # provenance; a client-sent "evidence" is ignored.
+        properties.pop("evidence", None)
+        properties["evidence"] = evidence_of(source_type, tier_value, properties)
+
         row = Memory(
             content=memory.content,
             reasoning=memory.reasoning,
             tags=memory.tags,
-            properties=memory.properties or {},
+            properties=properties,
             importance=memory.importance if memory.importance is not None else 0.5,
-            source_type=memory.source_type or "inferred",
-            trust_tier=coerce_tier(trust_tier, default=TrustTier.VERIFIED).value,
+            source_type=source_type,
+            trust_tier=tier_value,
             content_hash=content_hash,
             tenant_id=get_current_tenant_id(),
             status=status,

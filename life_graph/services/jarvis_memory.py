@@ -124,12 +124,17 @@ def _iso(value) -> str | None:
 
 def memory_row(m) -> dict[str, Any]:
     from life_graph.api.jarvis import _source
+    from life_graph.core.evidence import evidence_of
 
     return {
         "id": str(m.id),
         "content": m.content,
         "kind": kind_of(m),
         "source": _source(m),
+        # Said, read, observed or guessed (core/evidence.py).
+        "evidence": evidence_of(
+            getattr(m, "source_type", None), getattr(m, "trust_tier", None), m.properties
+        ),
         "created_at": _iso(m.created_at),
     }
 
