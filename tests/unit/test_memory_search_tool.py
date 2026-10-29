@@ -286,14 +286,16 @@ def test_registered_by_main_startup():
 
     Asserted against the "agent_tools" startup step specifically — an
     import anywhere else in the module would not survive a reshuffle of
-    the lifespan steps.
+    the lifespan steps. Agent tools belong to the full profile, so the step
+    lives in ``_start_extended_domains`` (since 2026-10-29), which lifespan
+    runs when LIFE_GRAPH_PROFILE=full.
     """
     import ast
     import textwrap
 
     from life_graph import main
 
-    tree = ast.parse(textwrap.dedent(inspect.getsource(main.lifespan)))
+    tree = ast.parse(textwrap.dedent(inspect.getsource(main._start_extended_domains)))
 
     step = next(
         node

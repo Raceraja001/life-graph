@@ -8,6 +8,10 @@ Usage:
     # Development (with inspector UI):
     fastmcp dev life_graph/mcp_server.py
 
+    # Standalone (stdio for Claude Code, Cursor, Aider; or a network transport):
+    python -m life_graph.mcp_server
+    python -m life_graph.mcp_server --transport sse --port 8765
+
     # Production (stdio transport for Claude/Cursor):
     fastmcp run life_graph/mcp_server.py
 
@@ -220,14 +224,20 @@ async def search(
 
 @mcp.tool()
 async def recall(
-    context: dict[str, Any],
+    query: str | None = None,
+    limit: int = 5,
+    context: dict[str, Any] | None = None,
     index_only: bool = INDEX_ONLY_DEFAULT,
     session_id: str | None = None,
     tenant_id: str | None = None,
 ) -> ToolResult:
-    """Proactive recall — retrieves the most relevant memories for the current context.
+    """Recall memories — by a question, or proactively for the current context.
 
-    Returns memories grouped by category:
+    With ``query``: the memories that answer it, best first, as Jarvis finds
+    them (a judged search: none when nothing fits, so trust an empty result).
+
+    With ``context`` (and no query): proactive recall. Returns memories
+    grouped by category:
     - identity: Core preferences, values, working style
     - decisions: Relevant past decisions and rationale
     - intentions: Pending to-dos or reminders matching this context
@@ -238,6 +248,9 @@ async def recall(
     session caps, dismissal tracking).
 
     Args:
+        query: A question or topic ("which phone do I use?"). Takes precedence
+            over ``context``.
+        limit: With ``query``: at most this many memories (default 5).
         context: Current context dict (e.g. {"project": "my-app", "task": "deploy"})
         index_only: Return a compact index instead of the four populated buckets —
             about a tenth of the tokens. On by default; nothing is marked as
@@ -248,6 +261,16 @@ async def recall(
             which ones helped. In index mode pass it to `get_memories` too.
         tenant_id: Tenant scope
     """
+    if query:
+        return await search(
+            query=query,
+            limit=limit,
+            search_mode="judged",
+            index_only=index_only,
+            tenant_id=tenant_id,
+        )
+    if context is None:
+        return _result({"error": "recall needs a query or a context"})
     body: dict[str, Any] = {"context": context, "index_only": index_only}
     if session_id:
         body["session_id"] = session_id
@@ -410,6 +433,37 @@ async def beliefs(
         resp = await client.get("/api/v1/identity/beliefs", headers=_headers(tenant_id))
         resp.raise_for_status()
         return _result(_extract_data(resp.json()))
+
+
+PROFILE_CATEGORIES = ("all", "beliefs", "preferences")
+
+
+@mcp.tool()
+async def get_profile(
+    category: str = "all",
+    tenant_id: str | None = None,
+) -> ToolResult:
+    """What is known about the user: their current beliefs and their stated preferences.
+
+    Args:
+        category: "beliefs" (identity memories true right now: preferences,
+            values, decisions, working style), "preferences" (preferences the
+            user stated explicitly, with their scope), or "all" (both).
+        tenant_id: Tenant scope
+    """
+    if category not in PROFILE_CATEGORIES:
+        return _result({"error": f"category must be one of {', '.join(PROFILE_CATEGORIES)}"})
+    out: dict[str, Any] = {}
+    async with httpx.AsyncClient(base_url=API_BASE, timeout=30.0) as client:
+        if category in ("all", "beliefs"):
+            resp = await client.get("/api/v1/identity/beliefs", headers=_headers(tenant_id))
+            resp.raise_for_status()
+            out["beliefs"] = _extract_data(resp.json())
+        if category in ("all", "preferences"):
+            resp = await client.get("/api/v1/preferences/", headers=_headers(tenant_id))
+            resp.raise_for_status()
+            out["preferences"] = _extract_data(resp.json())
+    return _result(out)
 
 
 @mcp.tool()
@@ -838,5 +892,26 @@ async def memory_health() -> str:
 
 # ── Entry Point ──────────────────────────────────────────────────────────────
 
+
+def main(argv: list[str] | None = None) -> None:
+    """``python -m life_graph.mcp_server [--transport stdio|sse|http] [--host H] [--port P]``.
+
+    stdio (the default) is what Claude Code, Cursor and Aider launch; sse and
+    http serve the same tools on a port for clients that connect over the
+    network. Either way the tools call the REST API at LIFE_GRAPH_API_URL.
+    """
+    import argparse
+
+    ap = argparse.ArgumentParser(prog="python -m life_graph.mcp_server")
+    ap.add_argument("--transport", choices=["stdio", "sse", "http"], default="stdio")
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--port", type=int, default=8765)
+    args = ap.parse_args(argv)
+    if args.transport == "stdio":
+        mcp.run(transport="stdio", show_banner=False)
+    else:
+        mcp.run(transport=args.transport, host=args.host, port=args.port, show_banner=False)
+
+
 if __name__ == "__main__":
-    mcp.run()
+    main()

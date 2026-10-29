@@ -12,6 +12,11 @@ from unittest.mock import MagicMock
 
 import sqlalchemy
 
+# The suite tests every domain, so it runs the full profile; the memory_core
+# profile is tested in its own processes (tests/integration/test_memory_core_profile.py).
+# Set before anything imports life_graph.config, which reads it once.
+os.environ.setdefault("LIFE_GRAPH_PROFILE", "full")
+
 
 class _FakeVector(sqlalchemy.types.UserDefinedType):
     """Minimal Vector stand-in so SQLAlchemy can map Mapped[list[float]] columns."""

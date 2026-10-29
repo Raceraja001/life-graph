@@ -50,6 +50,8 @@ services:
       - LIFE_GRAPH_DATABASE_URL_SYNC=postgresql://${POSTGRES_USER:-life_graph}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-life_graph}
       - LIFE_GRAPH_REDIS_URL=redis://redis:6379/0
       - LIFE_GRAPH_ENVIRONMENT=production
+      # memory_core = the memory engine only (docs/modular_memory_service_plan.md)
+      - LIFE_GRAPH_PROFILE=${LIFE_GRAPH_PROFILE:-full}
       - LIFE_GRAPH_LOG_FORMAT=json
     env_file:
       - .env.production

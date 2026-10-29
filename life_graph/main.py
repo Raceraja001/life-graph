@@ -108,55 +108,11 @@ def startup_step(report: StartupReport, name: str):
         report.record(name, ok=True)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan: startup and shutdown."""
-    report = StartupReport()
-    app.state.startup_report = report
+async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
+    """Startup for the domains beyond the memory engine (profile ``full``).
 
-    # Startup — log environment
-    logger.info(
-        "Starting Life Graph v%s [%s mode]",
-        settings.version,
-        settings.environment,
-    )
-    if settings.is_development:
-        logger.warning("Running in DEVELOPMENT mode — auth/tenant requirements relaxed")
-
-    # Startup — refuse to boot with no embedding backend at all.
-    #
-    # With neither sentence-transformers installed nor a remote backend wired,
-    # every embed() call returns an empty vector: ingestion keeps reporting
-    # success while semantic search quietly returns nothing. That is the worst
-    # failure mode a memory system can have, so it is fatal by default.
-    #
-    # Deliberately NOT wrapped in startup_step() — that helper swallows
-    # exceptions so an optional step can never abort boot, and this one must.
-    # It only catches the statically knowable case (no local model, no client);
-    # a configured backend that happens to be down still fails at call time.
-    from life_graph.api.dependencies import get_embedding_service
-
-    if not get_embedding_service().available:
-        msg = (
-            "No embedding backend is available — semantic search would silently "
-            "return nothing. Install the local extra "
-            "(pip install 'life-graph[local-nlp]') or configure a remote backend "
-            "(LIFE_GRAPH_USE_LOCAL_LLM=true). To run without embeddings on "
-            "purpose, set LIFE_GRAPH_REQUIRE_EMBEDDING_BACKEND=false."
-        )
-        if settings.require_embedding_backend:
-            raise RuntimeError(msg)
-        logger.warning("%s — continuing, require_embedding_backend is false", msg)
-
-    # Startup — enable Langfuse tracing via LiteLLM (if configured)
-    if settings.langfuse_public_key:
-        with startup_step(report, "langfuse_tracing"):
-            import litellm
-
-            litellm.success_callback = ["langfuse"]
-            litellm.failure_callback = ["langfuse"]
-            logger.info("Langfuse tracing enabled → %s", settings.langfuse_host)
-
+    Moved out of ``lifespan`` unchanged on 2026-10-29, in the order it ran.
+    """
     # Startup — register agent tools (import triggers @tool decorator)
     with startup_step(report, "agent_tools"):
         from life_graph.tools.load import register_all
@@ -172,31 +128,11 @@ async def lifespan(app: FastAPI):
         logger.info("Tool-exhaust observation hook registered")
 
     # Startup — connect configured external MCP servers (bridge)
-    app.state.mcp_exit_stack = AsyncExitStack()
     with startup_step(report, "mcp_bridge"):
         from life_graph.services.mcp_bridge import connect_all
 
         bridged_count = await connect_all(app.state.mcp_exit_stack)
         logger.info("MCP bridge: %d external tool(s) registered", bridged_count)
-
-    # Startup — Life Graph's own MCP tools over HTTP at /mcp/ (api/mcp_http.py);
-    # its session manager runs for the app's lifetime and closes with the stack.
-    if mcp_http_app is not None:
-        with startup_step(report, "mcp_http"):
-            await app.state.mcp_exit_stack.enter_async_context(mcp_http_app.lifespan(app))
-            logger.info("MCP over HTTP at /mcp/")
-
-    # Startup — load plugins
-    plugins_dir = Path(__file__).resolve().parent.parent / "plugins"
-    plugin_manager = PluginManager(event_bus, plugins_dir=plugins_dir)
-    plugin_manager.load_all()
-    app.state.plugin_manager = plugin_manager
-    app.state.event_bus = event_bus
-    logger.info(
-        "Loaded %d plugin(s): %s",
-        len(plugin_manager.loaded),
-        list(plugin_manager.loaded.keys()),
-    )
 
     # Startup — connectors (calendar, email): discover plugins, register tools
     if settings.connectors_enabled:
@@ -206,15 +142,6 @@ async def lifespan(app: FastAPI):
 
             get_runtime()
             register_tools()
-
-    # Startup — wire WebSocket event broadcasting
-    event_bus.subscribe_all(ws_event_handler)
-    logger.info("WebSocket event handler registered")
-
-    # Startup — Redis
-    with startup_step(report, "redis"):
-        await init_redis()
-        enable_redis_bridge()
 
     # Startup — wire webhook event handler
     with startup_step(report, "webhook_handler"):
@@ -301,20 +228,6 @@ async def lifespan(app: FastAPI):
         # subscription is not stranded on a throwaway object.
         get_scheduler_service().subscribe()
         logger.info("Scheduler outcome reconciliation enabled (via EventBus)")
-
-    # Startup — wire preference → knowledge graph sync
-    with startup_step(report, "preference_graph_sync"):
-        from life_graph.services.preference_graph import preference_graph_service
-
-        preference_graph_service.subscribe()
-        logger.info("Preference graph sync enabled (auto-sync via EventBus)")
-
-    # Startup — wire capture spine processors
-    with startup_step(report, "capture_processors"):
-        from life_graph.services.capture_processors import capture_processors
-
-        capture_processors.subscribe()
-        logger.info("Capture spine processors enabled (extraction + decision detection)")
 
     # Startup — wire judgment engine
     with startup_step(report, "judgment_engine"):
@@ -438,6 +351,109 @@ async def lifespan(app: FastAPI):
         if is_dev_task_runner:
             app.state.dev_task_queue = asyncio.create_task(run_queue(async_session))
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: startup and shutdown."""
+    report = StartupReport()
+    app.state.startup_report = report
+
+    # Startup — log environment
+    logger.info(
+        "Starting Life Graph v%s [%s mode]",
+        settings.version,
+        settings.environment,
+    )
+    if settings.is_development:
+        logger.warning("Running in DEVELOPMENT mode — auth/tenant requirements relaxed")
+
+    # Startup — refuse to boot with no embedding backend at all.
+    #
+    # With neither sentence-transformers installed nor a remote backend wired,
+    # every embed() call returns an empty vector: ingestion keeps reporting
+    # success while semantic search quietly returns nothing. That is the worst
+    # failure mode a memory system can have, so it is fatal by default.
+    #
+    # Deliberately NOT wrapped in startup_step() — that helper swallows
+    # exceptions so an optional step can never abort boot, and this one must.
+    # It only catches the statically knowable case (no local model, no client);
+    # a configured backend that happens to be down still fails at call time.
+    from life_graph.api.dependencies import get_embedding_service
+
+    if not get_embedding_service().available:
+        msg = (
+            "No embedding backend is available — semantic search would silently "
+            "return nothing. Install the local extra "
+            "(pip install 'life-graph[local-nlp]') or configure a remote backend "
+            "(LIFE_GRAPH_USE_LOCAL_LLM=true). To run without embeddings on "
+            "purpose, set LIFE_GRAPH_REQUIRE_EMBEDDING_BACKEND=false."
+        )
+        if settings.require_embedding_backend:
+            raise RuntimeError(msg)
+        logger.warning("%s — continuing, require_embedding_backend is false", msg)
+
+    # Startup — enable Langfuse tracing via LiteLLM (if configured)
+    if settings.langfuse_public_key:
+        with startup_step(report, "langfuse_tracing"):
+            import litellm
+
+            litellm.success_callback = ["langfuse"]
+            litellm.failure_callback = ["langfuse"]
+            logger.info("Langfuse tracing enabled → %s", settings.langfuse_host)
+
+    app.state.mcp_exit_stack = AsyncExitStack()
+    # Startup — Life Graph's own MCP tools over HTTP at /mcp/ (api/mcp_http.py);
+    # its session manager runs for the app's lifetime and closes with the stack.
+    if mcp_http_app is not None:
+        with startup_step(report, "mcp_http"):
+            await app.state.mcp_exit_stack.enter_async_context(mcp_http_app.lifespan(app))
+            logger.info("MCP over HTTP at /mcp/")
+
+    # Startup — load plugins
+    plugins_dir = Path(__file__).resolve().parent.parent / "plugins"
+    plugin_manager = PluginManager(event_bus, plugins_dir=plugins_dir)
+    plugin_manager.load_all()
+    app.state.plugin_manager = plugin_manager
+    app.state.event_bus = event_bus
+    logger.info(
+        "Loaded %d plugin(s): %s",
+        len(plugin_manager.loaded),
+        list(plugin_manager.loaded.keys()),
+    )
+
+    # Startup — wire WebSocket event broadcasting
+    event_bus.subscribe_all(ws_event_handler)
+    logger.info("WebSocket event handler registered")
+
+    # Startup — Redis
+    with startup_step(report, "redis"):
+        await init_redis()
+        enable_redis_bridge()
+
+    # Startup — wire preference → knowledge graph sync
+    with startup_step(report, "preference_graph_sync"):
+        from life_graph.services.preference_graph import preference_graph_service
+
+        preference_graph_service.subscribe()
+        logger.info("Preference graph sync enabled (auto-sync via EventBus)")
+
+    # Startup — wire capture spine processors
+    with startup_step(report, "capture_processors"):
+        from life_graph.services.capture_processors import capture_processors
+
+        capture_processors.subscribe()
+        logger.info("Capture spine processors enabled (extraction + decision detection)")
+
+    # Everything beyond the memory engine (docs/modular_memory_service_plan.md):
+    # agent tools and drivers, personas, the ARQ pool, delivery handlers, the
+    # dev-task runner. Only in the full profile; memory_core serves memory alone.
+    app.state.dev_task_runner_lock = None
+    app.state.dev_task_queue = None
+    if settings.is_full_profile:
+        await _start_extended_domains(app, report)
+    else:
+        logger.info("Profile memory_core: extended domains not started")
+
     if report.failed:
         logger.warning(
             "Startup finished with %d degraded subsystem(s): %s",
@@ -471,6 +487,8 @@ async def lifespan(app: FastAPI):
     await close_redis()
 
     # Shutdown — close DB
+    from life_graph.storage.database import engine
+
     await engine.dispose()
 
 
@@ -551,152 +569,102 @@ app.add_middleware(
 
 
 # ── API v1 Router ─────────────────────────────────────────────
+# Two tiers (docs/modular_memory_service_plan.md). Tier 1, the memory engine,
+# always registers. Tier 2, every other domain, registers only with
+# LIFE_GRAPH_PROFILE=full; its modules are not even imported otherwise.
 v1_router = APIRouter(prefix="/api/v1")
+
+# ── Tier 1: core memory engine ──
+# memories, search, preferences, identity, capture, graph and health, plus what
+# the MCP memory tools call: sessions (start/end_session), memory links,
+# intentions (set_intention) and the Claude Code transcript intake.
+from life_graph.api import capture as capture_api
+from life_graph.api import health as health_api
+from life_graph.api import ingest_transcript as ingest_transcript_api
+from life_graph.api import memory_links
+from life_graph.api import preferences as preferences_api
+from life_graph.api import transcript_ingest as transcript_ingest_api
 
 v1_router.include_router(memories.router)
 v1_router.include_router(search.router)
 v1_router.include_router(intentions.router)
-v1_router.include_router(admin.router)
 v1_router.include_router(graph.router)
-v1_router.include_router(multimodal_router)
 v1_router.include_router(sessions.router)
 v1_router.include_router(identity.router)
-v1_router.include_router(agent.router)
-from life_graph.api import memory_links
-
 v1_router.include_router(memory_links.router)
-
-from life_graph.api import procedures
-
-v1_router.include_router(procedures.router)
-
-from life_graph.api import kernel as kernel_api
-
-v1_router.include_router(kernel_api.router)
-
-from life_graph.api import observability as observability_api
-
-v1_router.include_router(observability_api.router)
-
-from life_graph.api import preferences as preferences_api
-
 v1_router.include_router(preferences_api.router)
-
-from life_graph.api import evidence as evidence_api
-
-v1_router.include_router(evidence_api.router)
-
-from life_graph.api import advisor as advisor_api
-
-v1_router.include_router(advisor_api.router)
-
-from life_graph.api import ingest_transcript as ingest_transcript_api
-
 v1_router.include_router(ingest_transcript_api.router)
-
-from life_graph.api import transcript_ingest as transcript_ingest_api
-
 v1_router.include_router(transcript_ingest_api.router)
-
-from life_graph.api import research as research_api
-
-v1_router.include_router(research_api.router)
-
-from life_graph.self_improving import router as self_improving_router
-
-v1_router.include_router(self_improving_router.router)
-
-from life_graph.api import watchers as watchers_api
-
-v1_router.include_router(watchers_api.router)
-
-from life_graph.api import agent_workflows as agent_workflows_api
-
-v1_router.include_router(agent_workflows_api.router)
-
-from life_graph.api import agent_context as agent_context_api
-
-v1_router.include_router(agent_context_api.router)
-
-from life_graph.api import agent_tasks as agent_tasks_api
-
-v1_router.include_router(agent_tasks_api.router)
-
-from life_graph.api import agent_messages as agent_messages_api
-
-v1_router.include_router(agent_messages_api.router)
-
-from life_graph.api import internal_sync as internal_sync_api
-
-v1_router.include_router(internal_sync_api.router)
-
-from life_graph.autonomy.router import router as autonomy_router
-
-v1_router.include_router(autonomy_router)
-
-from life_graph.api import capture as capture_api
-
 v1_router.include_router(capture_api.router)
+v1_router.include_router(health_api.router)
 
-from life_graph.api import interview as interview_api
+# ── Tier 2: extended domains (profile "full") ──
+if settings.is_full_profile:
+    from life_graph.api import advisor as advisor_api
+    from life_graph.api import agent_context as agent_context_api
+    from life_graph.api import agent_messages as agent_messages_api
+    from life_graph.api import agent_tasks as agent_tasks_api
+    from life_graph.api import agent_workflows as agent_workflows_api
+    from life_graph.api import approvals as approvals_api
+    from life_graph.api import assistant as assistant_api
+    from life_graph.api import brief as brief_api
+    from life_graph.api import connectors as connectors_api
+    from life_graph.api import conversations as conversations_api
 
-v1_router.include_router(interview_api.router)
+    # The phone app (docs/design/12_android_app_plan.md): pairing, and the only
+    # endpoints a device token opens.
+    from life_graph.api import devices as devices_api
+    from life_graph.api import drivers as drivers_api
+    from life_graph.api import evidence as evidence_api
+    from life_graph.api import integrations_telegram as telegram_api
+    from life_graph.api import internal_sync as internal_sync_api
+    from life_graph.api import interview as interview_api
+    from life_graph.api import jarvis as jarvis_api
+    from life_graph.api import judgment as judgment_api
+    from life_graph.api import kernel as kernel_api
+    from life_graph.api import llm_offers as llm_offers_api
+    from life_graph.api import model_health as model_health_api
+    from life_graph.api import observability as observability_api
+    from life_graph.api import procedures
+    from life_graph.api import push as push_api
+    from life_graph.api import research as research_api
+    from life_graph.api import watchers as watchers_api
+    from life_graph.api import web_research as web_research_api
+    from life_graph.autonomy.router import router as autonomy_router
+    from life_graph.self_improving import router as self_improving_router
 
-from life_graph.api import brief as brief_api
-
-v1_router.include_router(brief_api.router)
-
-from life_graph.api import judgment as judgment_api
-
-v1_router.include_router(judgment_api.router)
-
-from life_graph.api import connectors as connectors_api
-
-v1_router.include_router(connectors_api.router)
-
-from life_graph.api import drivers as drivers_api
-
-v1_router.include_router(drivers_api.router)
-
-from life_graph.api import approvals as approvals_api
-
-v1_router.include_router(approvals_api.router)
-
-from life_graph.api import push as push_api
-
-v1_router.include_router(push_api.router)
-
-from life_graph.api import conversations as conversations_api
-
-v1_router.include_router(conversations_api.router)
-
-from life_graph.api import model_health as model_health_api
-
-v1_router.include_router(model_health_api.router)
-
-from life_graph.api import integrations_telegram as telegram_api
-
-v1_router.include_router(telegram_api.router)
-
-from life_graph.api import assistant as assistant_api
-
-v1_router.include_router(assistant_api.router)
-
-from life_graph.api import llm_offers as llm_offers_api
-
-v1_router.include_router(llm_offers_api.router)
-
-from life_graph.api import web_research as web_research_api
-
-v1_router.include_router(web_research_api.router)
-
-# The phone app (docs/design/12_android_app_plan.md): pairing, and the only
-# endpoints a device token opens.
-from life_graph.api import devices as devices_api
-from life_graph.api import jarvis as jarvis_api
-
-v1_router.include_router(devices_api.router)
-v1_router.include_router(jarvis_api.router)
+    v1_router.include_router(admin.router)
+    v1_router.include_router(multimodal_router)
+    v1_router.include_router(agent.router)
+    v1_router.include_router(procedures.router)
+    v1_router.include_router(kernel_api.router)
+    v1_router.include_router(observability_api.router)
+    v1_router.include_router(evidence_api.router)
+    v1_router.include_router(advisor_api.router)
+    v1_router.include_router(research_api.router)
+    v1_router.include_router(self_improving_router.router)
+    v1_router.include_router(watchers_api.router)
+    v1_router.include_router(agent_workflows_api.router)
+    v1_router.include_router(agent_context_api.router)
+    v1_router.include_router(agent_tasks_api.router)
+    v1_router.include_router(agent_messages_api.router)
+    v1_router.include_router(internal_sync_api.router)
+    v1_router.include_router(autonomy_router)
+    v1_router.include_router(interview_api.router)
+    v1_router.include_router(brief_api.router)
+    v1_router.include_router(judgment_api.router)
+    v1_router.include_router(connectors_api.router)
+    v1_router.include_router(drivers_api.router)
+    v1_router.include_router(approvals_api.router)
+    v1_router.include_router(push_api.router)
+    v1_router.include_router(conversations_api.router)
+    v1_router.include_router(model_health_api.router)
+    v1_router.include_router(telegram_api.router)
+    v1_router.include_router(assistant_api.router)
+    v1_router.include_router(llm_offers_api.router)
+    v1_router.include_router(web_research_api.router)
+    v1_router.include_router(devices_api.router)
+    v1_router.include_router(jarvis_api.router)
 
 app.include_router(v1_router)
 
