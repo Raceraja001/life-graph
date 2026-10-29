@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     def is_full_profile(self) -> bool:
         return self.profile == "full"
 
+    edition: str = ""
+    """Which copy of Life Graph this is on a machine that runs two: "prod" (the
+    owner's daily one, on a pinned release) or "dev" (the one development
+    changes). Only a label, shown by /health, so nobody mistakes one for the other."""
+    worker_cron_enabled: bool = True
+    """Whether the ARQ worker runs the scheduled jobs (brief, nudges, Memory check,
+    connector sync, night shift, ...). Off for a development copy beside the
+    owner's daily one: the same jobs on a copy of the same data would message the
+    owner twice and sync the same accounts twice. Queued jobs still run."""
+
     # ── Authentication (Service-to-Service) ────────────
     api_key: str | None = None  # Legacy single key (dev mode)
     service_api_keys: str = ""  # Comma-separated: "key1,key2,key3"
