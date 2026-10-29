@@ -468,6 +468,9 @@ class WorkerSettings:
             run_at_startup=False,
         ),
     ]
+    if not settings.worker_cron_enabled:
+        # A development copy beside the owner's daily one (config.worker_cron_enabled).
+        cron_jobs = []
 
     # Worker config
     max_jobs = 5

@@ -813,6 +813,8 @@ async def health_check():
         "status": overall,
         "version": settings.version,
         "environment": settings.environment,
+        "edition": settings.edition or None,
+        "profile": settings.profile,
         "checks": checks,
     }
     status_code = 503 if overall == "unhealthy" else 200
