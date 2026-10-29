@@ -303,6 +303,7 @@ async def semantic_search(
     # math.exp and a datetime.now() per item, and serializes twenty fields the
     # index does not carry.
     hits: list[tuple[Any, float]] = []
+    judged_fell_back = False
 
     if search_mode == "tri_hybrid":
         # ── Tri-hybrid: vector + BM25 + graph ────────────────
@@ -323,7 +324,37 @@ async def semantic_search(
             logger.warning("Tri-hybrid search failed — falling back to hybrid", exc_info=True)
             search_mode = "hybrid"
 
-    if search_mode == "hybrid":
+    if search_mode == "judged":
+        # ── Judged: hybrid's candidates, kept and ordered by the relevance
+        # judge (services/memory_retrieval.py), as Jarvis does. Measured
+        # 2026-10-29 on the owner's memories: first result right 89.2% vs
+        # 78.5% for hybrid, and it can return nothing when nothing fits
+        # (5 of 10 unanswerable questions; hybrid 0 of 10).
+        try:
+            from life_graph.services.memory_retrieval import CANDIDATES, judge
+
+            candidates = await store.hybrid_search(
+                embedding=embedding,
+                query_text=body.query,
+                limit=max(body.limit, CANDIDATES),
+                filters=filters or None,
+                statuses=statuses,
+            )
+            picked = await judge(body.query, [m.content for m, _ in candidates])
+            if picked is None:
+                # The judge failed: the search order, never the memories lost.
+                hits = [(m, float(s or 0.0)) for m, s in candidates[: body.limit]]
+                judged_fell_back = True
+            else:
+                hits = [(candidates[i][0], float(candidates[i][1] or 0.0)) for i in picked]
+                hits = hits[: body.limit]
+        except Exception:
+            logger.warning("Judged search failed — falling back to hybrid", exc_info=True)
+            search_mode = "hybrid"
+
+    if judged_fell_back:
+        search_mode = "hybrid"  # what the caller actually got
+    elif search_mode == "hybrid":
         # ── Hybrid: vector + BM25 ────────────────────────────
         try:
             hybrid_results = await store.hybrid_search(
@@ -480,14 +511,20 @@ async def ask_brain(
             source_count=0,
         )
 
-    # Search for relevant memories. Active only: unfiltered, this answered
-    # from unreviewed, rejected and superseded memories too.
-    rows = await store.search_similar(
-        embedding=embedding,
-        limit=body.limit,
-        filters={"status": "active"},
-        include_embedding=False,  # MemoryResponse never serializes it
-    )
+    # The memories that answer it, as Jarvis finds them (services/memory_retrieval.py):
+    # active only, hybrid search plus memories linked to what it names and the
+    # day summaries of a period it asks about, kept and ordered by the
+    # relevance judge, and none when none fits. Until 2026-10-29 this was the
+    # 10 nearest by meaning alone, related or not (first result right 84.9% vs
+    # 89.2% judged, on the owner's memories).
+    from life_graph.services.memory_retrieval import retrieve
+
+    rows = await retrieve(body.question, limit=body.limit)
+    if rows is None:
+        return AskResponse(
+            answer="Embedding service is unavailable. Cannot search memories.",
+            source_count=0,
+        )
 
     memories = [MemoryResponse.model_validate(r) for r in rows]
 

@@ -281,7 +281,11 @@ class SearchQuery(BaseModel):
     )
     search_mode: str = Field(
         "hybrid",
-        description="Search strategy: 'vector' (cosine only), 'hybrid' (vector+BM25), 'tri_hybrid' (vector+BM25+graph)",
+        description=(
+            "Search strategy: 'vector' (cosine only), 'hybrid' (vector+BM25), 'tri_hybrid' "
+            "(vector+BM25+graph), 'judged' (hybrid's candidates kept and ordered by the local "
+            "relevance judge; may return none when nothing fits)"
+        ),
     )
     include_trail: bool = Field(
         False,

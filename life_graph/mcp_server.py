@@ -172,7 +172,7 @@ async def remember(
 async def search(
     query: str,
     limit: int = 5,
-    search_mode: str = "hybrid",
+    search_mode: str = "judged",
     min_importance: float | None = None,
     tags: list[str] | None = None,
     index_only: bool = INDEX_ONLY_DEFAULT,
@@ -181,14 +181,18 @@ async def search(
     """Search across all memories with configurable strategy.
 
     Modes:
+    - "judged": Hybrid's candidates kept and ordered by a local relevance judge
+      (default; about half a second; returns nothing when nothing fits —
+      trust an empty result)
     - "vector": Pure cosine similarity (fastest, semantic only)
-    - "hybrid": Vector + BM25 keyword matching (default, best balance)
-    - "tri_hybrid": Vector + BM25 + graph entity proximity (most comprehensive)
+    - "hybrid": Vector + BM25 keyword matching (always returns its top results,
+      related or not)
+    - "tri_hybrid": Vector + BM25 + graph entity proximity
 
     Args:
         query: Natural language search query
         limit: Max results (1-100, default 5)
-        search_mode: Search strategy (vector, hybrid, or tri_hybrid)
+        search_mode: Search strategy (judged, vector, hybrid, or tri_hybrid)
         min_importance: Only return memories above this importance threshold
         tags: Filter by these tags
         index_only: Return a compact index (id, truncated content, tags, score,
