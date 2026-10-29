@@ -282,7 +282,7 @@ jobs:
 
       - name: Start API server
         run: |
-          python -m uvicorn life_graph.main:app --port 8000 &
+          LIFE_GRAPH_PROFILE=full python -m uvicorn life_graph.main:app --port 8000 &
           sleep 10
 
       - name: Run integration tests

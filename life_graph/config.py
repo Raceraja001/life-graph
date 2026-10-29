@@ -10,6 +10,7 @@ import json
 import logging
 import os
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -31,6 +32,18 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     log_format: str = "text"  # text (dev) | json (prod)
+    profile: Literal["memory_core", "full"] = "memory_core"
+    """Which parts of the API this process serves (docs/modular_memory_service_plan.md).
+
+    ``memory_core``: the memory engine only (memories, search, preferences,
+    identity, capture, graph, sessions, intentions, health); no ARQ pool, no
+    agent drivers, personas, connectors or delivery handlers at startup.
+    ``full``: everything, as before 2026-10-29. The owner's live stack sets
+    ``LIFE_GRAPH_PROFILE=full`` in .env (Jarvis, kernel and the rest live there)."""
+
+    @property
+    def is_full_profile(self) -> bool:
+        return self.profile == "full"
 
     # ── Authentication (Service-to-Service) ────────────
     api_key: str | None = None  # Legacy single key (dev mode)
