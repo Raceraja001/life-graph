@@ -83,8 +83,18 @@ async def test_a_few_a_day_are_asked_about_in_one_chat_and_keep_drop_work(client
     first = msgs[0]
     assert first["content"].startswith("I noted 2 things about you")
     assert first["memory_check"] == [
-        {"id": oldest, "content": "The owner uses a Realme X2 Pro phone.", "status": "pending"},
-        {"id": second, "content": "The owner wants to build mockups.", "status": "pending"},
+        {
+            "id": oldest,
+            "content": "The owner uses a Realme X2 Pro phone.",
+            "status": "pending",
+            "evidence": "said",
+        },
+        {
+            "id": second,
+            "content": "The owner wants to build mockups.",
+            "status": "pending",
+            "evidence": "said",
+        },
     ]
     assert [m["id"] for m in msgs[1]["memory_check"]] == [newest]
 

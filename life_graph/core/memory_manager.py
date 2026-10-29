@@ -22,6 +22,7 @@ import re
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from life_graph.core.evidence import UNKNOWN_SOURCE
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryUpdate
@@ -431,7 +432,7 @@ class MemoryManager:
             tags=_infer_tags(fact, tier),
             properties=properties,
             importance=importance,
-            source_type=source or "inferred",
+            source_type=source or UNKNOWN_SOURCE,
         )
 
         stored = await self._store.store(
