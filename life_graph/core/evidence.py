@@ -70,7 +70,11 @@ def evidence_of(
         # over the API it meant nothing more than "unlabelled".
         return INFERRED if trust_tier in ("self", "verified") else OUTSIDE
     if source == "document":
-        return DOCUMENT
+        # The source is declared by the caller: over the API or MCP anyone can
+        # say "document". Only our own pipeline's word counts; otherwise a
+        # pasted web page would be filed as the owner's paperwork and reach
+        # the always-loaded profile card (services/profile_card.py).
+        return DOCUMENT if trust_tier in ("self", "verified") else OUTSIDE
     if trust_tier == "self":
         return SAID
     if trust_tier == "verified":

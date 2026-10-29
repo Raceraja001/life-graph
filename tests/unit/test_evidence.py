@@ -12,7 +12,9 @@ from life_graph.core import evidence as ev
     [
         ("capture", "self", {}, ev.SAID),
         ("explicit", "self", {}, ev.SAID),
-        ("document", "external", {}, ev.DOCUMENT),
+        ("document", "verified", {}, ev.DOCUMENT),
+        # Declared by an API or MCP caller: not proof of anything.
+        ("document", "external", {}, ev.OUTSIDE),
         ("episode", "verified", {"kind": "episode"}, ev.SUMMARY),
         ("capture", "verified", {"kind": "episode"}, ev.SUMMARY),
         ("distillation", "verified", {}, ev.INFERRED),

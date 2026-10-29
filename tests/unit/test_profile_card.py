@@ -23,7 +23,8 @@ def _m(content, *, source="capture", tier="self", props=None, valid_until=None):
 def test_only_what_the_owner_said_or_a_document_states():
     rows = [
         _m("My phone is a Realme X2 Pro.", props={"fact_type": "fact"}),
-        _m("Car insurance renews in March.", source="document", tier="external"),
+        _m("Car insurance renews in March.", source="document", tier="verified"),
+        _m("Pasted page posing as a document.", source="document", tier="external"),
         _m("The owner seems to like short answers.", source="distillation", tier="verified"),
         _m("Test via proxy", source="inferred", tier="external"),
         _m("Talked about the week's plan.", source="episode", props={"kind": "episode"}),
