@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
+Generated `2026-10-29 05:15 UTC` from `master` @ `cbe63f5`
 
 ---
 
@@ -16,308 +16,23 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 
 | | |
 |---|---|
-| HTTP operations | **373** across 325 paths, 43 tags |
-| Database tables | **84** |
+| HTTP operations | **59** across 50 paths, 13 tags |
+| Database tables | **68** |
 | Migrations | **55** (head: `055_feature_idea_worth`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **32** |
-| Config settings | **268** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3897** in 444 files |
+| Config settings | **269** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3907** in 446 files |
 | Dashboard pages | **22** |
-| Python | 436 files, 111,987 lines |
+| Python | 437 files, 112,179 lines |
 
 ---
 
 ## HTTP API
 
-373 operations, grouped by OpenAPI tag.
-
-### `assistant` — 35
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/apps/health` | Apps Health |
-| GET | `/api/v1/documents` | List Documents |
-| POST | `/api/v1/documents` | Add Document |
-| GET | `/api/v1/documents/expiring` | Expiring Documents |
-| DELETE | `/api/v1/documents/{doc_id}` | Delete Document |
-| PATCH | `/api/v1/documents/{doc_id}` | Edit Document |
-| GET | `/api/v1/invoices` | List Invoices |
-| POST | `/api/v1/invoices` | Create Invoice |
-| GET | `/api/v1/invoices/{invoice_id}` | Get Invoice |
-| PATCH | `/api/v1/invoices/{invoice_id}` | Edit Invoice |
-| GET | `/api/v1/invoices/{invoice_id}/html` | Invoice Html |
-| POST | `/api/v1/invoices/{invoice_id}/paid` | Paid Invoice |
-| POST | `/api/v1/invoices/{invoice_id}/send` | Send Invoice |
-| POST | `/api/v1/invoices/{invoice_id}/void` | Void Invoice |
-| POST | `/api/v1/money/alerts` | Import Alerts |
-| GET | `/api/v1/money/budgets` | List Budgets |
-| DELETE | `/api/v1/money/budgets/{category}` | Delete Budget |
-| PUT | `/api/v1/money/budgets/{category}` | Put Budget |
-| GET | `/api/v1/money/categories` | Money Categories |
-| GET | `/api/v1/money/checkin` | Money Checkin |
-| POST | `/api/v1/money/import` | Import Statement |
-| GET | `/api/v1/money/summary` | Money Summary |
-| GET | `/api/v1/money/transactions` | List Transactions |
-| PATCH | `/api/v1/money/transactions/{txn_id}` | Recategorise |
-| GET | `/api/v1/monitors` | List Monitors |
-| POST | `/api/v1/monitors` | Add Monitor |
-| DELETE | `/api/v1/monitors/{monitor_id}` | Delete Monitor |
-| PATCH | `/api/v1/monitors/{monitor_id}` | Edit Monitor |
-| POST | `/api/v1/monitors/{monitor_id}/check` | Check Monitor |
-| POST | `/api/v1/study/cards` | Add Card |
-| DELETE | `/api/v1/study/cards/{card_id}` | Delete Card |
-| POST | `/api/v1/study/cards/{card_id}/grade` | Grade |
-| GET | `/api/v1/study/decks` | Study Decks |
-| GET | `/api/v1/study/due` | Due Cards |
-| POST | `/api/v1/study/generate` | Generate Cards |
-
-### `jarvis` — 34
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/jarvis/app/download/{file}` | Download the phone app's APK |
-| GET | `/api/v1/jarvis/app/latest` | The newest phone app the PC offers (404: none) |
-| GET | `/api/v1/jarvis/asks` | What Jarvis does on its own: your scheduled asks |
-| DELETE | `/api/v1/jarvis/asks/{ask_id}` | Stop a scheduled ask for good |
-| PATCH | `/api/v1/jarvis/asks/{ask_id}` | Pause or resume a scheduled ask |
-| POST | `/api/v1/jarvis/bills/{item_id}/paid` | Mark a bill from mail paid |
-| GET | `/api/v1/jarvis/brief/latest` | The newest daily brief, with its audio |
-| POST | `/api/v1/jarvis/chat` | Talk to Jarvis; the reply streams back (SSE) |
-| GET | `/api/v1/jarvis/contacts` | Your contacts, or those matching q |
-| GET | `/api/v1/jarvis/conversations` | Your conversations with Jarvis: pinned, then newest first |
-| PATCH | `/api/v1/jarvis/conversations/{conversation_id}` | Rename or pin a conversation |
-| GET | `/api/v1/jarvis/conversations/{conversation_id}/messages` | One conversation, oldest first |
-| GET | `/api/v1/jarvis/entities/{entity_id}` | One person, project or thing, and what is known |
-| GET | `/api/v1/jarvis/mail/waiting` | Mail waiting on your reply, longest wait first |
-| GET | `/api/v1/jarvis/memories/pending` | Memories waiting for your review, newest first |
-| POST | `/api/v1/jarvis/memories/{memory_id}/approve` | Keep a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/reject` | Drop a memory |
-| POST | `/api/v1/jarvis/memories/{memory_id}/undo` | Take back a memory Jarvis just saved |
-| GET | `/api/v1/jarvis/memory/overview` | What Jarvis remembers: counts, people, rules, days |
-| GET | `/api/v1/jarvis/memory/search` | Search what Jarvis remembers (active memories only) |
-| GET | `/api/v1/jarvis/notifications` | What Jarvis has to tell you, oldest first |
-| POST | `/api/v1/jarvis/notifications/{notification_id}/action` | Tap a notification's button |
-| GET | `/api/v1/jarvis/nudges` | What you said you would do, still open |
-| POST | `/api/v1/jarvis/nudges/{nudge_id}` | Done, Tomorrow or Drop for something you said you would do |
-| GET | `/api/v1/jarvis/plan` | The next days: events, what is due, reminders, to-dos |
-| POST | `/api/v1/jarvis/read-image` | The words in an image, read on this PC; nothing is stored |
-| GET | `/api/v1/jarvis/reminders` | Your pending reminders, soonest first |
-| POST | `/api/v1/jarvis/reminders/{reminder_id}/cancel` | Cancel a reminder |
-| GET | `/api/v1/jarvis/today` | The Today screen in one call |
-| POST | `/api/v1/jarvis/turns/{task_id}/memories/{memory_id}/wrong` | A memory this reply used is wrong: back to review, left out of answers |
-| POST | `/api/v1/jarvis/turns/{task_id}/regenerate` | Ask the latest message again, keeping both replies (SSE) |
-| GET | `/api/v1/jarvis/turns/{task_id}/trace` | How one reply was made: memories, tools, where it ran |
-| POST | `/api/v1/jarvis/voice` | Speak to Jarvis: audio in, spoken reply out |
-| POST | `/api/v1/jarvis/warm` | Get Jarvis's local model ready |
-
-### `kernel` — 30
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/kernel/alerts/external` | Receive an alert from an external system and deliver it |
-| POST | `/api/v1/kernel/chat/stream` | Stream a persona chat response (SSE) |
-| POST | `/api/v1/kernel/classify` | Classify intent without routing |
-| GET | `/api/v1/kernel/models` | List available LLM models for the persona picker |
-| GET | `/api/v1/kernel/notifications` | List notifications |
-| POST | `/api/v1/kernel/notifications/read-all` | Mark all notifications as read |
-| PATCH | `/api/v1/kernel/notifications/{notification_id}/read` | Mark notification as read |
-| GET | `/api/v1/kernel/personas` | List all personas for the current tenant |
-| POST | `/api/v1/kernel/personas` | Create a new agent persona |
-| DELETE | `/api/v1/kernel/personas/{persona_id}` | Deactivate (soft-delete) a persona |
-| GET | `/api/v1/kernel/personas/{persona_id}` | Get full persona details |
-| PATCH | `/api/v1/kernel/personas/{persona_id}` | Update a persona |
-| GET | `/api/v1/kernel/projects` | List registered projects |
-| POST | `/api/v1/kernel/projects` | Register a project codebase |
-| DELETE | `/api/v1/kernel/projects/{project_id}` | Remove a project |
-| GET | `/api/v1/kernel/projects/{project_id}` | Get project details |
-| PATCH | `/api/v1/kernel/projects/{project_id}` | Update project settings |
-| POST | `/api/v1/kernel/projects/{project_id}/learn` | Learn a project's conventions into preferences (background job) |
-| POST | `/api/v1/kernel/projects/{project_id}/scan` | Re-scan a project |
-| POST | `/api/v1/kernel/route` | Route a message to the best agent |
-| GET | `/api/v1/kernel/schedules` | List scheduled jobs |
-| POST | `/api/v1/kernel/schedules` | Create a scheduled job |
-| DELETE | `/api/v1/kernel/schedules/{schedule_id}` | Delete (deactivate) a scheduled job |
-| GET | `/api/v1/kernel/schedules/{schedule_id}` | Get schedule details |
-| PATCH | `/api/v1/kernel/schedules/{schedule_id}` | Update a scheduled job |
-| GET | `/api/v1/kernel/sessions` | List routing sessions |
-| GET | `/api/v1/kernel/tasks` | List agent tasks with optional filters |
-| POST | `/api/v1/kernel/tasks` | Create and queue a new agent task |
-| GET | `/api/v1/kernel/tasks/{task_id}` | Get full task details |
-| POST | `/api/v1/kernel/tasks/{task_id}/cancel` | Cancel a running task |
-
-### `autonomy` — 28
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/autonomy/approvals` | List Approvals |
-| POST | `/api/v1/autonomy/approvals/batch` | Batch Resolve |
-| POST | `/api/v1/autonomy/approvals/{approval_id}/resolve` | Resolve Approval |
-| GET | `/api/v1/autonomy/audit` | Query Audit Log |
-| POST | `/api/v1/autonomy/audit/export` | Export Audit Log |
-| POST | `/api/v1/autonomy/audit/{action_id}/rollback` | Rollback From Audit |
-| GET | `/api/v1/autonomy/auto-actions` | List Auto Actions |
-| POST | `/api/v1/autonomy/auto-actions` | Trigger Auto Action |
-| POST | `/api/v1/autonomy/auto-actions/{action_id}/rollback` | Rollback Action |
-| GET | `/api/v1/autonomy/levels/{project_id}` | Get Autonomy Level |
-| POST | `/api/v1/autonomy/levels/{project_id}/set` | Set Autonomy Level |
-| POST | `/api/v1/autonomy/safety/classify` | Classify Action |
-| GET | `/api/v1/autonomy/safety/kill-switch` | Get Kill Switch |
-| POST | `/api/v1/autonomy/safety/kill-switch/pause` | Pause Kill Switch |
-| POST | `/api/v1/autonomy/safety/kill-switch/resume` | Resume Kill Switch |
-| GET | `/api/v1/autonomy/safety/rules` | List Rules |
-| POST | `/api/v1/autonomy/safety/rules` | Create Rule |
-| DELETE | `/api/v1/autonomy/safety/rules/{rule_id}` | Delete Rule |
-| GET | `/api/v1/autonomy/safety/rules/{rule_id}` | Get Rule |
-| PATCH | `/api/v1/autonomy/safety/rules/{rule_id}` | Update Rule |
-| POST | `/api/v1/autonomy/safety/seed` | Seed Defaults |
-| GET | `/api/v1/autonomy/shadow/enrollments` | List Enrollments |
-| GET | `/api/v1/autonomy/shadow/runs` | List Runs |
-| POST | `/api/v1/autonomy/shadow/runs/{run_id}/grade` | Grade Run |
-| POST | `/api/v1/autonomy/trust/decay` | Trigger Decay |
-| POST | `/api/v1/autonomy/trust/override` | Override Trust |
-| GET | `/api/v1/autonomy/trust/scores` | List Scores |
-| GET | `/api/v1/autonomy/trust/scores/{score_id}` | Get Score |
-
-### `self-improving` — 23
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/self-improving/dashboard/accuracy-trends` | Accuracy trends over time |
-| GET | `/api/v1/self-improving/dashboard/auto-fixes` | Recent auto-fixes |
-| GET | `/api/v1/self-improving/dashboard/cost-trends` | Eval cost trends |
-| GET | `/api/v1/self-improving/dashboard/overview` | Dashboard overview |
-| GET | `/api/v1/self-improving/dashboard/pending-reviews` | Pending optimization reviews |
-| GET | `/api/v1/self-improving/dashboard/per-task-accuracy` | Per-task accuracy with status |
-| GET | `/api/v1/self-improving/eval-runs/{run_id}` | Get eval run with results |
-| GET | `/api/v1/self-improving/eval-runs/{run_id}/failures` | Failure analysis for eval run |
-| GET | `/api/v1/self-improving/eval-suites` | List eval suites |
-| POST | `/api/v1/self-improving/eval-suites` | Create an eval suite |
-| POST | `/api/v1/self-improving/eval-suites/{suite_id}/cases` | Add eval case to suite |
-| POST | `/api/v1/self-improving/eval-suites/{suite_id}/cases/bulk` | Bulk import eval cases |
-| POST | `/api/v1/self-improving/eval-suites/{suite_id}/run` | Trigger eval run |
-| POST | `/api/v1/self-improving/extraction/sync` | Rebuild the extraction eval suite from reviews now |
-| GET | `/api/v1/self-improving/optimization-runs/{run_id}` | Get optimization run details |
-| POST | `/api/v1/self-improving/optimization-runs/{run_id}/review` | Approve or reject an optimization |
-| POST | `/api/v1/self-improving/optimize/{suite_id}` | Manually trigger optimization |
-| GET | `/api/v1/self-improving/prompt-versions` | List prompt versions |
-| POST | `/api/v1/self-improving/prompt-versions` | Create prompt version |
-| POST | `/api/v1/self-improving/prompt-versions/deactivate` | Return a task to its built-in prompt |
-| POST | `/api/v1/self-improving/prompt-versions/{version_id}/activate` | Activate a prompt version |
-| POST | `/api/v1/self-improving/prompt-versions/{version_id}/rollback` | Rollback to a previous prompt version |
-| GET | `/api/v1/self-improving/status` | How much the loop has to learn from |
-
-### `drivers` — 22
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/kernel/drivers` | List registered drivers |
-| GET | `/api/v1/kernel/drivers/compute` | Where queued coding work runs right now: local GPU, free cloud model, or later |
-| PUT | `/api/v1/kernel/drivers/compute/presence` | Set the active/away switch (auto clears it) |
-| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
-| GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
-| GET | `/api/v1/kernel/drivers/night-shift` | What the coding engines did: merged, waiting for you and why, failed and why |
-| GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
-| GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
-| POST | `/api/v1/kernel/drivers/projects/bootstrap` | Idea to app: scaffold, version, register and optionally plan a new app |
-| POST | `/api/v1/kernel/drivers/projects/{project_id}/findings` | Report a production failure; queues a fix task (de-duplicated) |
-| GET | `/api/v1/kernel/drivers/scorecards` | Per driver and model: success, bounces, merges, cost |
-| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
-| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
-| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
-| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
-| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
-| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
-| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
-| GET | `/api/v1/kernel/drivers/templates` | App templates a new project can start from |
-
-### `admin` — 20
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/admin/bulk/delete` | Bulk delete memories |
-| POST | `/api/v1/admin/bulk/import` | Bulk import memories |
-| POST | `/api/v1/admin/consolidate` | Run consolidation now |
-| GET | `/api/v1/admin/export` | Export all memories as NDJSON stream |
-| GET | `/api/v1/admin/gaps` | List knowledge gaps |
-| POST | `/api/v1/admin/ingest` | Ingest raw text |
-| GET | `/api/v1/admin/jobs` | List recent job runs |
-| POST | `/api/v1/admin/jobs/cleanup-memories` | Enqueue one-time memory cleanup job |
-| POST | `/api/v1/admin/jobs/consolidate` | Enqueue consolidation job |
-| POST | `/api/v1/admin/micro-consolidate/{session_id}` | Run micro-consolidation for a session |
-| GET | `/api/v1/admin/stats` | System statistics |
-| POST | `/api/v1/admin/tenants/provision` | Provision a new tenant |
-| DELETE | `/api/v1/admin/tenants/{tenant_id}` | Permanently delete a tenant |
-| GET | `/api/v1/admin/tenants/{tenant_id}` | Get tenant summary |
-| POST | `/api/v1/admin/tenants/{tenant_id}/deactivate` | Deactivate a tenant |
-| POST | `/api/v1/admin/tenants/{tenant_id}/reactivate` | Reactivate a tenant |
-| GET | `/api/v1/admin/webhooks` | List webhooks |
-| POST | `/api/v1/admin/webhooks` | Register a webhook |
-| DELETE | `/api/v1/admin/webhooks/{webhook_id}` | Delete a webhook |
-| POST | `/api/v1/admin/webhooks/{webhook_id}/test` | Test a webhook |
-
-### `connectors` — 15
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/connectors` | Connector catalogue and accounts |
-| POST | `/api/v1/connectors/accounts` | Add an account |
-| DELETE | `/api/v1/connectors/accounts/{account_id}` | Remove an account and its indexed items |
-| PATCH | `/api/v1/connectors/accounts/{account_id}` | Change an account |
-| PUT | `/api/v1/connectors/accounts/{account_id}/credential` | Replace an account's credential |
-| POST | `/api/v1/connectors/accounts/{account_id}/import` | Replace an account's items from a file |
-| POST | `/api/v1/connectors/accounts/{account_id}/oauth/start` | Begin Google sign-in |
-| POST | `/api/v1/connectors/accounts/{account_id}/sync` | Sync now (background) |
-| POST | `/api/v1/connectors/bills/rescan` | Look for bills in recent mail (background) |
-| PUT | `/api/v1/connectors/google-client` | Store the Google OAuth client (Desktop app JSON) |
-| POST | `/api/v1/connectors/items/{item_id}/bill` | Mark a bill from mail paid, dismiss it, or remind |
-| POST | `/api/v1/connectors/items/{item_id}/dismiss-promise` | Hide a detected promise |
-| POST | `/api/v1/connectors/items/{item_id}/remind` | Turn a promise from sent mail into a reminder |
-| GET | `/api/v1/connectors/recommend` | Suggested auth method for an address |
-| GET | `/api/v1/connectors/today` | Today's events and mail waiting on you (dashboard view) |
-
-### `judgment-engine` — 14
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/judgment/calibration` | Get calibration data |
-| GET | `/api/v1/judgment/calibration/curve` | Get calibration curve data |
-| POST | `/api/v1/judgment/calibration/recompute` | Recompute calibration snapshots now |
-| POST | `/api/v1/judgment/challenge` | Create adversarial challenge |
-| POST | `/api/v1/judgment/challenge/{challenge_id}/resolve` | Resolve a challenge |
-| GET | `/api/v1/judgment/decisions` | List decisions |
-| POST | `/api/v1/judgment/decisions` | Create a decision |
-| GET | `/api/v1/judgment/decisions/{decision_id}` | Get decision with predictions |
-| GET | `/api/v1/judgment/predictions` | List predictions |
-| POST | `/api/v1/judgment/predictions` | Create a prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/accept` | Accept a suggested prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/dismiss` | Dismiss a suggested prediction |
-| POST | `/api/v1/judgment/predictions/{prediction_id}/resolve` | Resolve a prediction |
-| GET | `/api/v1/judgment/stats` | Judgment dashboard stats |
-
-### `watchers` — 14
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/watchers/configs` | List all watcher configurations |
-| PATCH | `/api/v1/watchers/configs/{watcher_name}` | Update a watcher configuration |
-| GET | `/api/v1/watchers/events` | List watch events |
-| POST | `/api/v1/watchers/events/acknowledge-all` | Bulk acknowledge events |
-| GET | `/api/v1/watchers/events/summary` | Get event summary counts |
-| POST | `/api/v1/watchers/events/{event_id}/acknowledge` | Acknowledge a single event |
-| GET | `/api/v1/watchers/notification-channels` | List notification channels |
-| POST | `/api/v1/watchers/notification-channels` | Create a notification channel |
-| DELETE | `/api/v1/watchers/notification-channels/{channel_id}` | Delete a notification channel |
-| PATCH | `/api/v1/watchers/notification-channels/{channel_id}` | Update a notification channel |
-| GET | `/api/v1/watchers/notifications` | List notifications |
-| GET | `/api/v1/watchers/runs` | List watcher runs |
-| GET | `/api/v1/watchers/tech-radar` | List tech radar articles |
-| POST | `/api/v1/watchers/{watcher_name}/run` | Trigger a manual watcher run |
+59 operations, grouped by OpenAPI tag.
 
 ### `memories` — 13
 
@@ -336,41 +51,6 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | POST | `/api/v1/memories/{memory_id}/reinforce` | Reinforce a memory — confirm it is still accurate |
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
-
-### `procedures` — 7
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/procedures/` | List procedures |
-| POST | `/api/v1/procedures/` | Create a procedure |
-| GET | `/api/v1/procedures/match/{query}` | Find matching procedures |
-| DELETE | `/api/v1/procedures/{procedure_id}` | Delete a procedure |
-| GET | `/api/v1/procedures/{procedure_id}` | Get a procedure by ID |
-| PATCH | `/api/v1/procedures/{procedure_id}` | Update a procedure |
-| POST | `/api/v1/procedures/{procedure_id}/apply` | Record a procedure application |
-
-### `research` — 7
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/research` | Answer a question from web pages read now, with sources |
-| GET | `/api/v1/research/runs` | List research runs |
-| GET | `/api/v1/research/runs/{run_id}` | Get research run detail |
-| POST | `/api/v1/research/trigger` | Trigger a research cycle |
-| GET | `/api/v1/tech-watch` | What the tech watch found new on your topics |
-| GET | `/api/v1/tech-watch/ideas` | Ideas for Jarvis: features other apps shipped, judged |
-| POST | `/api/v1/tech-watch/{finding_id}/decision` | Consider, rule out or dismiss an idea |
-
-### `conversations` — 6
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/conversations` | List Conversations |
-| POST | `/api/v1/conversations` | Create Conversation |
-| DELETE | `/api/v1/conversations/{conversation_id}` | Delete Conversation |
-| GET | `/api/v1/conversations/{conversation_id}` | Get Conversation |
-| POST | `/api/v1/conversations/{conversation_id}/distill` | Distill Conversation Endpoint |
-| POST | `/api/v1/conversations/{conversation_id}/messages` | Post Message |
 
 ### `preferences` — 6
 
@@ -393,16 +73,6 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | GET | `/metrics` | Metrics |
 | GET | `/ready` | Readiness |
 
-### `Agent Tasks` — 5
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/agent-tasks` | Create Task |
-| PATCH | `/api/v1/agent-tasks/{task_id}` | Update Task |
-| POST | `/api/v1/agent-tasks/{task_id}/cancel` | Cancel Task |
-| GET | `/api/v1/agent-tasks/{task_id}/children` | Get Children |
-| GET | `/api/v1/agent-tasks/{task_id}/tree` | Get Task Tree |
-
 ### `capture-spine` — 5
 
 | Method | Path | Summary |
@@ -412,16 +82,6 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | POST | `/api/v1/capture/correction` | Record a correction |
 | GET | `/api/v1/capture/corrections` | List corrections |
 | GET | `/api/v1/capture/corrections/export` | Export correction triples as NDJSON |
-
-### `evidence` — 5
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/evidence/` | Add evidence to a preference |
-| GET | `/api/v1/evidence/for-preference/{preference_id}` | List evidence for a preference |
-| POST | `/api/v1/evidence/search` | Semantic evidence search |
-| DELETE | `/api/v1/evidence/{evidence_id}` | Soft-delete evidence |
-| GET | `/api/v1/evidence/{evidence_id}` | Get a single evidence item |
 
 ### `graph` — 5
 
@@ -453,33 +113,6 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | POST | `/api/v1/sessions/{session_id}/end` | End a session |
 | POST | `/api/v1/sessions/{session_id}/heartbeat` | Update session context mid-conversation |
 
-### `Agent Messages` — 4
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/agent-messages` | Send Message |
-| GET | `/api/v1/agent-messages/inbox/{agent}` | Get Inbox |
-| PATCH | `/api/v1/agent-messages/{message_id}/read` | Mark Read |
-| POST | `/api/v1/agent-messages/{message_id}/reply` | Reply To Message |
-
-### `advisor` — 4
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/advisor/ask` | Query multiple models for a recommendation |
-| GET | `/api/v1/advisor/sessions` | List advisor sessions |
-| GET | `/api/v1/advisor/sessions/{session_id}` | Get an advisor session by ID |
-| POST | `/api/v1/advisor/sessions/{session_id}/choose` | Record which model's recommendation was chosen |
-
-### `devices` — 4
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/devices` | Paired phones |
-| POST | `/api/v1/devices/codes` | A one-time code to pair a phone |
-| POST | `/api/v1/devices/pair` | Pair a phone with a one-time code (no API key) |
-| DELETE | `/api/v1/devices/{device_id}` | Revoke a phone: its token stops working at once |
-
 ### `identity` — 4
 
 | Method | Path | Summary |
@@ -498,33 +131,6 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | GET | `/api/v1/memories/{memory_id}/links` | List links for a memory |
 | POST | `/api/v1/memories/{memory_id}/links` | Create a link between two memories |
 
-### `multi-modal` — 4
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/ingest/document` | Ingest a document |
-| POST | `/api/v1/ingest/image` | Ingest an image for OCR |
-| POST | `/api/v1/ingest/transcribe` | Transcribe a voice recording without storing it as a memory |
-| POST | `/api/v1/ingest/voice` | Ingest a voice recording |
-
-### `observability` — 4
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/kernel/observability/agents` | Every persona, its model, and tools it lists that do not exist |
-| GET | `/api/v1/kernel/observability/budget` | Month-to-date spend against the cap, with the top tasks |
-| GET | `/api/v1/kernel/observability/decision-gaps` | Topics discussed often with no recorded decision |
-| GET | `/api/v1/kernel/observability/system` | Subsystems, dev-task runner, queue, drivers and local models |
-
-### `push` — 4
-
-| Method | Path | Summary |
-|---|---|---|
-| DELETE | `/api/v1/push/subscriptions` | Remove a browser push subscription |
-| POST | `/api/v1/push/subscriptions` | Save a browser push subscription |
-| POST | `/api/v1/push/test` | Send a test push notification to the caller's tenant |
-| GET | `/api/v1/push/vapid-key` | Get the public VAPID key |
-
 ### `search` — 4
 
 | Method | Path | Summary |
@@ -534,81 +140,11 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | POST | `/api/v1/search/recall` | Proactive recall at session start |
 | POST | `/api/v1/search/recall/event` | Mid-session event-driven recall |
 
-### `telegram` — 4
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/integrations/telegram/bindings` | List the Telegram chats linked to this tenant |
-| DELETE | `/api/v1/integrations/telegram/bindings/{binding_id}` | Revoke a Telegram binding |
-| POST | `/api/v1/integrations/telegram/pair` | Mint a pairing code for a Telegram chat |
-| GET | `/api/v1/integrations/telegram/status` | Report whether the Telegram bridge is running |
-
-### `workflows` — 4
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/workflows/` | Create a workflow DAG |
-| POST | `/api/v1/workflows/{workflow_id}/run` | Start a workflow run |
-| GET | `/api/v1/workflows/{workflow_id}/runs/{run_id}` | Get workflow run with step details |
-| POST | `/api/v1/workflows/{workflow_id}/runs/{run_id}/cancel` | Cancel a workflow run |
-
-### `approvals` — 3
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/approvals` | List items awaiting a decision |
-| POST | `/api/v1/approvals/{approval_id}/approve` | Approve an item (runs its side-effect) |
-| POST | `/api/v1/approvals/{approval_id}/reject` | Reject an item |
-
-### `interview` — 3
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/interview/pending` | Today's pending interview questions |
-| POST | `/api/v1/interview/{question_id}/answer` | Answer an interview question |
-| POST | `/api/v1/interview/{question_id}/skip` | Skip an interview question |
-
-### `shared-context` — 3
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/shared-context/` | Create a shared context entry |
-| GET | `/api/v1/shared-context/thread/{root_task_id}` | Get context from a task thread |
-| GET | `/api/v1/shared-context/{project_id}` | Search shared context by project |
-
-### `Internal Sync` — 2
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/internal/sync/analytics` | Receive Analytics |
-| POST | `/api/v1/internal/sync/preferences` | Sync Preferences |
-
-### `agent` — 2
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/agent/context` | Build agent context for a task |
-| POST | `/api/v1/agent/learn` | Learn from a completed task |
-
-### `brief` — 2
-
-| Method | Path | Summary |
-|---|---|---|
-| POST | `/api/v1/brief/compose` | Compose today's brief now |
-| GET | `/api/v1/brief/today` | Latest composed daily brief |
-
-### `llm-offers` — 2
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/llm-offers` | Free LLM models, tiers and credits found, with their evaluation |
-| POST | `/api/v1/llm-offers/{offer_id}/evaluate` | Queue an offer for evaluation |
-
 ### `health` — 1
 
 | Method | Path | Summary |
 |---|---|---|
-| GET | `/api/v1/health/models` | Model Health |
+| GET | `/api/v1/health/memory` | Is the memory engine able to store and find memories? |
 
 ### `ingest` — 1
 
@@ -626,7 +162,7 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 
 ## Database tables
 
-84 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+68 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -643,15 +179,9 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | `auto_actions` | 31 | ✓ | `018_autonomous_ai` |
 | `autonomy_levels` | 28 | ✓ | `018_autonomous_ai` |
 | `budget_spend` | 6 | ✓ | `023_budget_spend` |
-| `connector_accounts` | 18 | ✓ | `039_connectors` |
-| `connector_items` | 25 | ✓ | `039_connectors` |
 | `conversation_messages` | 8 | ✓ | `027_conversations` |
 | `conversations` | 6 | ✓ | `027_conversations` |
 | `cross_system_syncs` | 20 | ✓ | `017_agent_networks` |
-| `device_pairing_codes` | 5 | ✓ | `052_devices` |
-| `devices` | 7 | ✓ | `052_devices` |
-| `documents` | 15 | ✓ | `045_documents` |
-| `entities` | 7 | ✓ | `053_entities` |
 | `eval_cases` | 10 | — | `015_self_improving` |
 | `eval_results` | 14 | — | `015_self_improving` |
 | `eval_runs` | 18 | — | `015_self_improving` |
@@ -660,7 +190,6 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | `external_sessions` | 11 | ✓ | `030_external_sessions` |
 | `extraction_traces` | 10 | ✓ | `038_extraction_traces` |
 | `intentions` | 16 | ✓ | `001_initial_schema` |
-| `invoices` | 21 | ✓ | `049_invoices` |
 | `job_runs` | 10 | ✓ | `003_multi_tenancy` |
 | `knowledge_gaps` | 9 | ✓ | `001_initial_schema` |
 | `life_graph.calibration_snapshots` | 11 | ✓ | `—` |
@@ -672,27 +201,19 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | `life_graph.interview_questions` | 12 | ✓ | `—` |
 | `life_graph.predictions` | 15 | ✓ | `—` |
 | `life_graph.verification_runs` | 7 | ✓ | `—` |
-| `llm_catalog_snapshots` | 4 | — | `050_llm_offers` |
-| `llm_offers` | 16 | ✓ | `050_llm_offers` |
 | `memories` | 34 | ✓ | `001_initial_schema` |
-| `memory_entities` | 3 | ✓ | `053_entities` |
 | `memory_links` | 8 | ✓ | `—` |
 | `memory_sessions` | 5 | — | `001_initial_schema` |
-| `money_budgets` | 7 | ✓ | `046_money` |
-| `money_category_rules` | 5 | ✓ | `046_money` |
-| `money_transactions` | 14 | ✓ | `046_money` |
 | `nightly_run_log` | 15 | ✓ | `015_self_improving` |
 | `notification_channels` | 9 | ✓ | `016_ambient_ai` |
 | `notifications` | 14 | ✓ | `013_projects_notifications` |
 | `optimization_runs` | 28 | ✓ | `015_self_improving` |
-| `page_monitors` | 17 | ✓ | `047_page_monitors` |
 | `preferences` | 21 | ✓ | `014_personal_ai` |
 | `procedures` | 14 | ✓ | `—` |
 | `projects` | 18 | ✓ | `013_projects_notifications` |
 | `prompt_versions` | 14 | ✓ | `015_self_improving` |
 | `push_subscriptions` | 8 | ✓ | `028_push_subscriptions` |
 | `research_runs` | 12 | ✓ | `014_personal_ai` |
-| `review_cards` | 14 | ✓ | `048_review_cards` |
 | `scheduled_jobs` | 19 | ✓ | `012_scheduled_jobs` |
 | `sessions` | 10 | ✓ | `001_initial_schema` |
 | `shadow_enrollments` | 9 | ✓ | `024_shadow_mode` |
@@ -704,7 +225,6 @@ Generated `2026-10-29 04:29 UTC` from `master` @ `88cd3e9`
 | `tenant_configs` | 8 | ✓ | `004_webhooks_tenants_dedup` |
 | `tenant_usage` | 7 | ✓ | `003_multi_tenancy` |
 | `tenant_webhooks` | 9 | ✓ | `004_webhooks_tenants_dedup` |
-| `topic_findings` | 20 | ✓ | `051_topic_findings` |
 | `trust_scores` | 22 | ✓ | `018_autonomous_ai` |
 | `watch_configs` | 13 | ✓ | `016_ambient_ai` |
 | `watch_events` | 11 | ✓ | `016_ambient_ai` |
@@ -983,16 +503,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 337 | 3101 |
-| `tests/integration/` | 106 | 784 |
+| `tests/unit/` | 338 | 3108 |
+| `tests/integration/` | 107 | 787 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **444** | **3897** |
+| **total** | **446** | **3907** |
 
 ---
 
 ## Configuration
 
-268 settings, all overridable by environment variable.
+269 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1002,6 +522,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DEBUG` | `False` |
 | `LIFE_GRAPH_LOG_LEVEL` | `'INFO'` |
 | `LIFE_GRAPH_LOG_FORMAT` | `'text'` |
+| `LIFE_GRAPH_PROFILE` | `'memory_core'` |
 | `LIFE_GRAPH_API_KEY` | `—` |
 | `LIFE_GRAPH_SERVICE_API_KEYS` | `''` |
 | `LIFE_GRAPH_DEVICE_TOKEN_IDLE_DAYS` | `60` |
