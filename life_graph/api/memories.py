@@ -244,6 +244,9 @@ async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemorySt
     row = await store.retrieve(memory_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Memory not found")
+    from life_graph.services import profile_card
+
+    profile_card.invalidate(row.tenant_id)  # Keep or Drop changes what the card holds
     if action == "approve":
         if row.status == "active":
             return row  # idempotent

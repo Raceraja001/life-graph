@@ -49,6 +49,12 @@ def clear_cache() -> None:
     _cache.clear()
 
 
+def invalidate(tenant_id: str) -> None:
+    """A memory was saved, kept, dropped or replaced: rebuild the card on next use,
+    so a correction is not contradicted by the cached card for a minute."""
+    _cache.pop(tenant_id, None)
+
+
 def belongs(m: Any, now: datetime) -> bool:
     """True when *m* is a lasting fact the owner said or a document states."""
     props = getattr(m, "properties", None) or {}

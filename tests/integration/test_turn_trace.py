@@ -108,3 +108,43 @@ async def test_a_temporary_chat_is_with_jarvis_only():
     finally:
         app.dependency_overrides.pop(get_persona_service, None)
     assert r.status_code == 400 and "Jarvis only" in r.text
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_how_i_answered_shows_the_owners_words_and_where_a_memory_came_from(client):
+    from life_graph.models.db import Memory
+    from life_graph.storage.database import async_session
+
+    async with async_session() as s:
+        m = Memory(
+            content="The owner's phone is a Pixel 8.",
+            reasoning="no, it's a pixel 8 now",
+            tenant_id=TENANT,
+            status="active",
+            trust_tier="self",
+            source_type="capture",
+            content_hash=hashlib.sha256(f"{TENANT}pixel".encode()).hexdigest(),
+        )
+        s.add(m)
+        await s.commit()
+        said = m.id
+    dropped = await _memory("Uses a Realme X2 Pro.", status="rejected")
+    gone = uuid.uuid4()
+    trace = {
+        "route": {"kind": "personal"},
+        "local": True,
+        "models": ["m"],
+        "memories": [
+            {"id": str(said), "snippet": "The owner's phone is a Pixel 8.", "via": "profile"},
+            {"id": str(dropped), "snippet": "Uses a Realme X2 Pro."},
+            {"id": str(gone), "snippet": "Something since deleted."},
+        ],
+        "tools": [],
+    }
+    turn = await _turn(trace)
+    mems = (await client.get(f"/api/v1/jarvis/turns/{turn}/trace")).json()["data"]["trace"]["memories"]
+    assert mems[0]["evidence"] == "said" and mems[0]["quote"] == "no, it's a pixel 8 now"
+    assert mems[0]["via"] == "profile" and mems[0]["status"] == "active" and mems[0]["noted_at"]
+    assert mems[1]["status"] == "rejected" and mems[1]["quote"] is None
+    assert mems[2]["status"] == "gone"
