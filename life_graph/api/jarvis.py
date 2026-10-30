@@ -1738,13 +1738,21 @@ async def _own_turn(tenant_id: str, task_id: uuid.UUID):
     "/turns/{task_id}/trace", summary="How one reply was made: memories, tools, where it ran"
 )
 async def turn_trace(task_id: uuid.UUID):
-    from life_graph.services.turn_trace import summary_line
+    from life_graph.services.turn_trace import memory_details, summary_line
 
-    task = await _own_turn(get_current_tenant_id(), task_id)
+    tenant_id = get_current_tenant_id()
+    task = await _own_turn(tenant_id, task_id)
     trace = (task.result or {}).get("trace")
     if not trace:
         # A turn from before traces were kept, or one still running.
         return success_response(data={"task_id": str(task_id), "trace": None, "summary": None})
+    used = trace.get("memories") or []
+    details = await memory_details(tenant_id, [m.get("id") for m in used])
+    # A copy: the stored trace stays as it was recorded.
+    trace = {
+        **trace,
+        "memories": [{**m, **details.get(str(m.get("id")), {"status": "gone"})} for m in used],
+    }
     return success_response(
         data={"task_id": str(task_id), "trace": trace, "summary": summary_line(trace)}
     )

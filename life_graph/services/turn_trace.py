@@ -36,7 +36,12 @@ def build_trace(
         "local": bool(model_calls) and all(c.get("local") is True for c in model_calls),
         "models": [str(c.get("model")) for c in model_calls if c.get("model")],
         "memories": [
-            {"id": str(m["id"]), "snippet": _snippet(str(m.get("content") or ""))}
+            {
+                "id": str(m["id"]),
+                "snippet": _snippet(str(m.get("content") or "")),
+                # Always shown (services/profile_card.py), not found by search.
+                **({"via": "profile"} if m.get("via") == "profile" else {}),
+            }
             for m in memories
             if m.get("id") is not None
         ],
@@ -45,6 +50,62 @@ def build_trace(
             for t in tool_calls
         ],
     }
+
+
+QUOTE_CHARS = 300
+
+
+async def memory_details(tenant_id: str, ids: list[str]) -> dict[str, dict[str, Any]]:
+    """What "How I answered" shows for each memory a turn used, read now.
+
+    The trace keeps only an id and a snippet; the rest is read from the store
+    when asked: the full text, where it came from (core/evidence.py), the
+    owner's words it was taken from (``reasoning``, the extractor's source
+    text) and whether it is still kept. A memory dropped or replaced since
+    says so instead of vanishing from the explanation.
+    """
+    import uuid
+
+    from sqlalchemy import select
+
+    from life_graph.core.evidence import evidence_of
+    from life_graph.models.db import Memory
+    from life_graph.storage.database import async_session
+
+    wanted = []
+    for i in ids:
+        try:
+            wanted.append(uuid.UUID(str(i)))
+        except ValueError:
+            continue
+    if not wanted:
+        return {}
+    async with async_session() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Memory).where(Memory.tenant_id == tenant_id, Memory.id.in_(wanted))
+                )
+            )
+            .scalars()
+            .all()
+        )
+    out: dict[str, dict[str, Any]] = {}
+    for m in rows:
+        quote = " ".join((m.reasoning or "").split())
+        if len(quote) > QUOTE_CHARS:
+            quote = quote[: QUOTE_CHARS - 1] + "…"
+        out[str(m.id)] = {
+            "content": m.content,
+            "evidence": evidence_of(m.source_type, m.trust_tier, m.properties),
+            # The same words as the memory add nothing: only a different source text.
+            "quote": quote
+            if quote and quote.lower() != " ".join(m.content.split()).lower()
+            else None,
+            "noted_at": m.created_at.isoformat() if m.created_at else None,
+            "status": m.status,
+        }
+    return out
 
 
 def _count(n: int, one: str, many: str) -> str:

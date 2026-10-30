@@ -147,15 +147,33 @@ async def states(session, tenant_id: str, ids: list[str]) -> dict[str, dict[str,
             ).where(Memory.tenant_id == tenant_id, Memory.id.in_(wanted))
         )
     ).all()
-    return {
-        str(i): {
-            "id": str(i),
-            "content": c,
-            "status": s,
-            "evidence": evidence_of(src, tier, props),
+    # A correction waiting for review names the fact it replaces (tools/memory_search.py).
+    replaces = {str(i): (props or {}).get("replaces_id") for i, *_, props in rows}
+    old_ids = []
+    for r in replaces.values():
+        try:
+            old_ids.append(uuid.UUID(str(r)))
+        except ValueError:
+            continue
+    old_text: dict[str, str] = {}
+    if old_ids:
+        old_text = {
+            str(i): c
+            for i, c in (
+                await session.execute(
+                    select(Memory.id, Memory.content).where(
+                        Memory.tenant_id == tenant_id, Memory.id.in_(old_ids)
+                    )
+                )
+            ).all()
         }
-        for i, c, s, src, tier, props in rows
-    }
+    out: dict[str, dict[str, Any]] = {}
+    for i, c, s, src, tier, props in rows:
+        item = {"id": str(i), "content": c, "status": s, "evidence": evidence_of(src, tier, props)}
+        if (old := old_text.get(str(replaces[str(i)]))) is not None:
+            item["replaces"] = old
+        out[str(i)] = item
+    return out
 
 
 async def waiting(session, tenant_id: str) -> int:

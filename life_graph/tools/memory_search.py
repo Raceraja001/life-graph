@@ -302,6 +302,20 @@ FORGET_INTENT = re.compile(
     r"|isn'?t right|not right|out of date|outdated|no longer|not any ?more|anymore)\b",
     re.IGNORECASE,
 )
+#: The owner putting right something Jarvis said or remembers: "no, it's a
+#: Pixel 8 now", "that's wrong", "I moved to Chennai", "இல்லை, …". Read only
+#: together with memory_save's replaces_id, i.e. when the model has already
+#: named the remembered fact being corrected (2026-10-30: before this only
+#: "remember that …" let a correction replace anything, so "no, it's X now"
+#: was saved for review and the old fact stayed active beside it).
+CORRECTION_INTENT = re.compile(
+    r"^\s*(?:no|nope|nah|wrong|actually|not quite|correction)\b"
+    r"|\b(?:wrong|incorrect|not right|isn'?t right|not true|isn'?t true|mistake|out of date"
+    r"|outdated|no longer|not any ?more|anymore|changed|switched|moved|now (?:it'?s|i|my|we)"
+    r"|it'?s now|instead|not (?:a|an|the|my) \w+,? (?:it'?s|but))\b"
+    r"|இல்லை|தவறு|மாறி|மாற்றி|இப்போ",
+    re.IGNORECASE,
+)
 # "Don't forget…" asks to remember, not to forget.
 _KEEP_PHRASE = re.compile(r"\b(?:don'?t|do not|never) forget\b", re.IGNORECASE)
 _SENTENCE = re.compile(r"(?<=[.!?\n])\s+")
@@ -313,6 +327,14 @@ def asks_to_save(text: str) -> bool:
     says so and is not a question about what is already remembered."""
     return any(
         SAVE_INTENT.search(s) and not RECALL_QUESTION.search(s) for s in _SENTENCE.split(text or "")
+    )
+
+
+def asks_to_correct(text: str) -> bool:
+    """Whether the owner's message puts right something remembered (see CORRECTION_INTENT)."""
+    return any(
+        CORRECTION_INTENT.search(s) and not RECALL_QUESTION.search(s)
+        for s in _SENTENCE.split(text or "")
     )
 
 
@@ -415,11 +437,17 @@ async def memory_save(
     # After an email or web page in this run, the owner asking is no proof the
     # owner chose these words (core/run_taint.py): review it, replace nothing.
     tainted = outside_content_seen()
-    asked = not tainted and asks_to_save(await _owner_message(ctx))
+    said = await _owner_message(ctx)
+    # A correction of a fact the model named is the owner asking, too.
+    correcting = not tainted and old_id is not None and asks_to_correct(said)
+    asked = not tainted and (asks_to_save(said) or correcting)
     saved_props: dict[str, Any] = {
         "saved_by": "jarvis",
         # The run it was said in: the phone's voice reply lists it.
         **({"task_id": str(ctx.root_task_id or ctx.task_id)} if ctx is not None else {}),
+        # What it corrects, kept even while it waits for review: the Memory
+        # check shows it, and Keep then replaces the old fact (below).
+        **({"replaces_id": str(old_id)} if old_id is not None and not tainted else {}),
     }
     content_hash = hashlib.sha256(text_.lower().encode()).hexdigest()
     try:
@@ -454,9 +482,18 @@ async def memory_save(
                     status="active" if asked else "pending",
                     extraction_tier="explicit",
                 )
-            replaced = None
+            replaced = will_replace = None
             if old_id is not None and asked:
                 replaced = await _supersede(tenant_id, old_id, row.id)
+                if replaced is not None:
+                    # Filed for review too: rejecting it brings the old fact back.
+                    await _queue_replacement(tenant_id, old_id, row.id, replaced, applied=True)
+            elif old_id is not None and not tainted:
+                # Waits for review: Keep applies the replacement
+                # (ApprovalService.on_memory_approved), Drop leaves the old fact.
+                will_replace = await _active_content(tenant_id, old_id, row.id)
+                if will_replace is not None:
+                    await _queue_replacement(tenant_id, old_id, row.id, will_replace, applied=False)
     except Exception as exc:  # noqa: BLE001
         logger.warning("memory_save failed (%d chars): %s", len(text_), exc)
         return json.dumps({"error": f"Could not save it: {exc}"})
@@ -470,6 +507,9 @@ async def memory_save(
     except Exception:  # noqa: BLE001
         logger.warning("Entity linking failed for saved memory %s", row.id, exc_info=True)
 
+    from life_graph.services import profile_card
+
+    profile_card.invalidate(tenant_id)
     out: dict[str, Any] = {"saved": True, "id": str(row.id), "content": row.content}
     if not asked:
         out["status"] = "waiting for the user's review"
@@ -479,6 +519,8 @@ async def memory_save(
         )
     if replaced:
         out["replaced"] = replaced
+    if will_replace:
+        out["will_replace"] = will_replace
     # Not ASCII-escaped: the chat stream trims a tool result to 2,000 characters
     # before the phone's "saved" event is read from it, and a Tamil sentence
     # escaped as \uXXXX is six times longer, so a long one lost its Undo.
@@ -500,6 +542,59 @@ async def _activate(tenant_id: str, memory_id: Any, props: dict[str, Any]) -> No
             {"id": memory_id, "t": tenant_id, "props": json.dumps(props)},
         )
         await session.commit()
+
+
+async def _active_content(tenant_id: str, old_id: Any, new_id: Any) -> str | None:
+    """The content of the owner's active memory *old_id* (not *new_id*), or None."""
+    from sqlalchemy import text
+
+    from life_graph.storage.database import async_session
+
+    async with async_session() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT content FROM memories WHERE id = :old AND tenant_id = :t"
+                    " AND status = 'active' AND id <> :new"
+                ),
+                {"old": old_id, "new": new_id, "t": tenant_id},
+            )
+        ).first()
+    return row[0] if row else None
+
+
+async def _queue_replacement(
+    tenant_id: str, old_id: Any, new_id: Any, old_content: str, *, applied: bool
+) -> None:
+    """A contradiction approval for a correction (services/approvals.py _apply_contradiction).
+
+    ``applied``: the old fact is already replaced (approve confirms, reject
+    restores it) or waits for the new one to be kept. Best-effort: a failure
+    here never costs the save.
+    """
+    from life_graph.models.db import Approval
+    from life_graph.storage.database import async_session
+
+    try:
+        async with async_session() as session:
+            session.add(
+                Approval(
+                    tenant_id=tenant_id,
+                    kind="contradiction",
+                    source="correction",
+                    source_ref=f"{old_id}|{new_id}",
+                    title="You corrected a memory" if applied else "A correction to review",
+                    detail=f"Replaces: {' '.join(str(old_content).split())[:200]}",
+                    payload={
+                        "memory_id_old": str(old_id),
+                        "memory_id_new": str(new_id),
+                        "applied": applied,
+                    },
+                )
+            )
+            await session.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("Correction approval failed for %s", str(new_id)[:8], exc_info=True)
 
 
 async def _supersede(tenant_id: str, old_id: Any, new_id: Any) -> str | None:

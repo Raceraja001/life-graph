@@ -77,3 +77,13 @@ async def test_off_when_max_items_is_zero(monkeypatch):
 
     monkeypatch.setattr(settings, "profile_card_max_items", 0)
     assert await pc.card_items("raja") == []
+
+
+def test_invalidate_drops_only_that_tenant():
+    pc.clear_cache()
+    pc._cache["a"] = (0.0, [])
+    pc._cache["b"] = (0.0, [])
+    pc.invalidate("a")
+    pc.invalidate("nobody")
+    assert set(pc._cache) == {"b"}
+    pc.clear_cache()

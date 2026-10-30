@@ -170,3 +170,83 @@ async def test_bad_input_is_refused_without_saving():
         assert "error" in json.loads(await memory_save("  "))
         assert "error" in json.loads(await memory_save("x" * 1001))
         assert "error" in json.loads(await memory_save("A fact.", replaces_id="not-an-id"))
+
+
+async def _approval(old, new):
+    from sqlalchemy import select
+
+    from life_graph.models.db import Approval
+    from life_graph.storage.database import async_session
+
+    async with async_session() as s:
+        return (
+            await s.execute(select(Approval).where(Approval.source_ref == f"{old}|{new}"))
+        ).scalar_one_or_none()
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_plain_correction_replaces_at_once_and_can_be_undone():
+    """ "No, it's X now" with the fact named: before 2026-10-30 only "remember …"
+    replaced anything, so the old fact stayed active beside the new one."""
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    tag = uuid.uuid4().hex[:6]
+    old = await _seed(f"My phone is a Realme X2 Pro ({tag}).")
+    with _in_run(await _run("No, it's a Pixel 8 now")):
+        out = json.loads(
+            await memory_save_(f"My phone is a Pixel 8 ({tag}).", replaces_id=str(old))
+        )
+    assert out["replaced"] == f"My phone is a Realme X2 Pro ({tag})."
+    assert (await _row(out["id"])).status == "active"
+    assert (await _row(old)).status == "superseded"
+    appr = await _approval(old, out["id"])
+    assert appr.kind == "contradiction" and appr.payload["applied"] is True
+    assert appr.detail == f"Replaces: My phone is a Realme X2 Pro ({tag})."
+
+    # Rejecting the review item brings the old fact back.
+    async with async_session() as s:
+        await ApprovalService(s).resolve(TENANT, str(appr.id), "reject")
+        await s.commit()
+    assert (await _row(old)).status == "active"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_an_unclear_correction_waits_and_keep_replaces():
+    from httpx import ASGITransport, AsyncClient
+
+    from life_graph.main import app
+    from life_graph.services import memory_check
+    from life_graph.storage.database import async_session
+
+    tag = uuid.uuid4().hex[:6]
+    old = await _seed(f"My car is a Honda City ({tag}).")
+    with _in_run(await _run("I got a Kia Seltos")):
+        out = json.loads(
+            await memory_save_(f"My car is a Kia Seltos ({tag}).", replaces_id=str(old))
+        )
+    assert out["status"] == "waiting for the user's review"
+    assert out["will_replace"] == f"My car is a Honda City ({tag})."
+    assert (await _row(old)).status == "active"  # not yet
+    assert (await _approval(old, out["id"])).payload["applied"] is False
+
+    async with async_session() as s:
+        item = (await memory_check.states(s, TENANT, [out["id"]]))[out["id"]]
+    assert item["replaces"] == f"My car is a Honda City ({tag})."
+
+    # Keep (the Memory check's approve) applies the replacement.
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers={"X-Tenant-ID": TENANT}
+    ) as c:
+        assert (await c.post(f"/api/v1/memories/{out['id']}/approve")).status_code == 200
+    assert (await _row(out["id"])).status == "active"
+    was = await _row(old)
+    assert was.status == "superseded" and str(was.superseded_by) == out["id"]
+
+
+async def memory_save_(content, **kw):
+    from life_graph.tools.memory_search import memory_save
+
+    return await memory_save(content, **kw)
