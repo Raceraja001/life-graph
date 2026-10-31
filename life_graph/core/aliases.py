@@ -261,11 +261,104 @@ _ROLE = (
 _NOT_IN_LAW = r"\b(?![\s\-]*(?i:in)[\s\-]*(?i:laws?)\b)"
 _MY = r"(?i:my|our|the owner's|the owner’s|owner's)"
 
+#: Tamil case endings on a name, romanised and in Tamil script: "Priyavukku" is
+#: "to Priya", "Anuvoda" is "Anu's", never another name (bake-off 2026-10-31:
+#: "Priyavukku" was learned as Priya's nickname). Longest first.
+_CASE_ROMAN = (
+    "vukkum",
+    "ukkum",
+    "kkum",
+    "vukku",
+    "ukku",
+    "kku",
+    "ku",
+    "kum",
+    "kitte",
+    "kitta",
+    "voda",
+    "vodu",
+    "vode",
+    "yoda",
+    "yodu",
+    "oda",
+    "odu",
+    "ode",
+    "vai",
+    "yai",
+    "ai",
+    "vin",
+    "yin",
+    "in",
+    "vum",
+    "yum",
+    "um",
+)
+_CASE_TAMIL = (
+    "வுக்கும்",
+    "வுக்கு",
+    "க்கும்",
+    "க்கு",
+    "கிட்ட",
+    "விடம்",
+    "வோட",
+    "வோடு",
+    "வுடைய",
+    "வின்",
+    "வும்",
+    "வை",
+)
+#: After a name ending in a consonant (குமார்): the pulli gives way to a vowel sign.
+_CASE_TAMIL_SIGN = ("ுக்கும்", "ுக்கு", "ிடம்", "ோட", "ோடு", "ுடைய", "ின்", "ும்", "ை")
+_PULLI = "்"
+
+
+def stems(word: str) -> list[str]:
+    """*word* without a Tamil case ending, for each ending it could have (longest
+    first); the stem keeps at least three letters, four before a two-letter
+    ending ("Robin" is not "Rob" + -in). Empty when it has none."""
+    low = word.lower()
+    out: list[str] = []
+    for suf in _CASE_ROMAN + _CASE_TAMIL:
+        if low.endswith(suf) and len(word) - len(suf) >= (4 if len(suf) <= 2 else 3):
+            out.append(word[: -len(suf)])
+    for suf in _CASE_TAMIL_SIGN:
+        if word.endswith(suf) and len(word) - len(suf) >= 2:
+            out.append(word[: -len(suf)] + _PULLI)
+    return out
+
+
+def base_name(word: str, known) -> str | None:
+    """The name in *known* that *word* is a Tamil case form of ("Priyavukku" →
+    "Priya"), else None. Same case first, then any case."""
+    known = list(known)
+    if not word or " " in word.strip():
+        return None
+    lower = {k.lower(): k for k in reversed(known)}
+    candidates = stems(word.strip())
+    for stem in candidates:
+        if stem in known:
+            return stem
+    for stem in candidates:
+        if stem.lower() in lower:
+            return lower[stem.lower()]
+    return None
+
+
+def case_form(a: str, b: str) -> bool:
+    """Whether one of two names is the other with a Tamil case ending."""
+    return base_name(a, [b]) is not None or base_name(b, [a]) is not None
+
+
+#: Words that introduce another name inside brackets: "(the owner's wife, called Priya)".
+_CALLED = r"(?:also\s+)?(?:called|known as|nicknamed|aka|a\.k\.a\.|who goes by|goes by)"
+
 _ALIAS_PATTERNS = (
     # Anushka (Anu) · Lakshmi (Amma) · Anushka (called Anu)
     re.compile(
         rf"(?P<full>{_NAME})\s*\((?:also |called |nicknamed |aka |a\.k\.a\. )?(?P<alias>{_NAME})\)"
     ),
+    # Priyadharshini (the owner's wife, called Priya) · Vikram (our son, aka Vicky)
+    re.compile(rf"(?P<full>{_NAME})\s*\([^()]*?[,;]\s*{_CALLED}\s+(?P<alias>{_NAME})\s*\)"),
     # Priyadharshini, called Priya · Vikram, also known as Vicky
     re.compile(
         rf"(?P<full>{_NAME}),?\s+(?:also\s+)?(?:called|known as|nicknamed|aka|a\.k\.a\.|"
@@ -361,7 +454,7 @@ def parse(text: str) -> tuple[list[AliasClaim], list[RoleClaim]]:
         full, alias = clean_name(full_raw), clean_name(alias_raw)
         if not full or not alias or _key(full) == _key(alias):
             return
-        if alias.lower() in _STOP or _is_role_word(full):
+        if alias.lower() in _STOP or _is_role_word(full) or case_form(full, alias):
             return
         claim = AliasClaim(full, alias)
         if claim not in aliases:
@@ -411,7 +504,8 @@ def compatible(a: str, b: str) -> bool:
     ("Ma", "Maha", "Mahalakshmi"). Used only together with a shared one-person role."""
     x, y = a.lower().split()[0], b.lower().split()[0]
     short, long_ = sorted((x, y), key=len)
-    return len(short) >= 2 and long_.startswith(short)
+    # "Priyavukku" is "to Priya", not a longer name of hers.
+    return len(short) >= 2 and long_.startswith(short) and not case_form(x, y)
 
 
 #: A one-person role named in a question: "my wife", "amma", "அம்மா".

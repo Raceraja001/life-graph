@@ -222,3 +222,143 @@ def test_sentence_words_and_negations_name_nobody(text):
 def test_a_negated_explicit_alias_teaches_nothing():
     assert aliases.parse("Mahalakshmi — nobody calls her Maha.")[0] == []
     assert aliases.parse("My name is Karthik, but don't call me Karthi.")[0] == []
+
+
+# ── Bake-off leftovers (2026-10-31) ────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # test_life m84: "Priyavukku eppavum malli poo pudikkum — Priya always loves
+        # jasmine flowers." The extracted fact kept the Tamil word in brackets.
+        "Priya (Priyavukku) always loves jasmine flowers.",
+        "Priyavukku (Priya) always loves jasmine flowers.",
+        "Priya, called Priyavukku, loves jasmine.",
+        "Anu (Anuvoda) school is DAV.",
+        "Maha (Mahakitta) said yes.",
+        "Kumar (Kumarukku) is my brother.",
+    ],
+)
+def test_a_tamil_case_form_is_not_a_nickname(text):
+    assert aliases.parse(text)[0] == [], text
+
+
+@pytest.mark.parametrize(
+    ("word", "base"),
+    [
+        ("Priyavukku", "Priya"),
+        ("priyavukku", "priya"),
+        ("Anuvoda", "Anu"),
+        ("Ravikku", "Ravi"),
+        ("Kumarukku", "Kumar"),
+        ("Mahakitta", "Maha"),
+        ("பிரியாவுக்கு", "பிரியா"),
+        ("Priyadharshini", None),
+        ("Anushka", None),
+        ("Priya", None),
+    ],
+)
+def test_case_forms(word, base):
+    known = ["Priya", "priya", "Anu", "Ravi", "Kumar", "Maha", "பிரியா"]
+    assert aliases.base_name(word, known) == base
+
+
+def test_a_case_form_is_never_compatible():
+    assert aliases.compatible("Priya", "Priyavukku") is False
+    assert aliases.compatible("Priya", "Priyadharshini") is True
+
+
+@pytest.mark.parametrize(
+    ("text", "claims"),
+    [
+        (
+            "Priyadharshini (the owner's wife, called Priya) teaches maths at Sunrise.",
+            [AliasClaim("Priyadharshini", "Priya")],
+        ),
+        (
+            "Priyadharshini (the owner's wife, also known as Priya) teaches.",
+            [AliasClaim("Priyadharshini", "Priya")],
+        ),
+        ("Priyadharshini (called Priya) teaches.", [AliasClaim("Priyadharshini", "Priya")]),
+        ("Priyadharshini, called Priya, teaches.", [AliasClaim("Priyadharshini", "Priya")]),
+        # Guards kept: negated, a Tamil case form, a description without a name.
+        ("Priyadharshini (the owner's wife, never called Priya) teaches.", []),
+        ("Priya (the owner's wife, called Priyavukku) teaches.", []),
+        ("Ravi (the owner's colleague) is learning Japanese.", []),
+    ],
+)
+def test_a_name_given_inside_brackets(text, claims):
+    assert aliases.parse(text)[0] == claims
+
+
+@pytest.fixture
+def priya_known():
+    pd, p, pv, an, anu, lk, ammu = (uuid.uuid4() for _ in range(7))
+    rows = [
+        ("priyadharshini", pd, "Priyadharshini", None, "spouse"),
+        ("priya", p, "Priya", pd, None),
+        ("priyavukku", pv, "Priyavukku", None, None),
+        ("anushka", an, "Anushka", None, "daughter"),
+        ("anu", anu, "Anu", an, None),
+        ("lakshmi", lk, "Lakshmi", None, "mother"),
+        ("ammu", ammu, "Ammu", lk, None),
+    ]
+    entities._cache[T] = (time.monotonic(), sorted(rows, key=lambda r: -len(r[0])))
+    yield
+    entities._cache.pop(T, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("slot", "expected"),
+    [
+        ("family.priya.birthday", "family.priyadharshini.birthday"),
+        ("family.priyadharshini.occupation", "family.priyadharshini.occupation"),
+        # A case form of a known name files under that person.
+        ("family.priyavukku.likes", "family.priyadharshini.likes"),
+        # A nickname left as a path segment is dropped.
+        ("family.anushka.anu.age", "family.anushka.age"),
+        ("family.anu.anushka.age", "family.anushka.age"),
+        ("family.lakshmi.ammu.health", "family.lakshmi.health"),
+        ("family.anushka.school.bus", "family.anushka.school.bus"),
+    ],
+)
+async def test_one_person_one_name_in_the_form(priya_known, slot, expected):
+    assert await entities.canonical_slot(T, slot) == expected
+
+
+@pytest.mark.asyncio
+async def test_a_case_form_in_the_question_finds_the_person(priya_known):
+    rows = entities._cache[T][1]
+    # Without an entity of its own, the case form still matches the person.
+    entities._cache[T] = (time.monotonic(), [r for r in rows if r[0] != "priyavukku"])
+    found = await entities.known_in_text(T, "Priyavukku enna pidikkum?")
+    assert "Priyadharshini" in {n for _, n in found}
+
+
+@pytest.mark.asyncio
+async def test_the_card_shows_one_person_once_linked(priya_known):
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    def m(content, slot):
+        return SimpleNamespace(
+            content=content,
+            source_type="capture",
+            trust_tier="self",
+            properties={"fact_type": "fact", "slot": slot},
+            valid_until=None,
+            created_at=datetime(2025, 1, 7, tzinfo=UTC),
+        )
+
+    rows = [
+        m("Priya's birthday is on 14 February.", "family.priya.birthday"),
+        m("Priyadharshini teaches maths.", "family.priyadharshini.occupation"),
+    ]
+    filed = await profile_card.filed_slots(T, rows)
+    picked = profile_card.pick(rows, 25, filed=filed)
+    assert [profile_card.card_slot(r, filed) for r in picked] == [
+        "family.priyadharshini.birthday",
+        "family.priyadharshini.occupation",
+    ]

@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import re
 
+from life_graph.core import aliases
+
 TOPICS = (
     "basics",
     "home",
@@ -404,6 +406,40 @@ def _hobby(fields: list[str], content: str) -> list[str] | None:
     return [_activity(act), field] if field else [_activity(act), *rest]
 
 
+def _same_person(a: str, b: str) -> bool:
+    """Whether two family slot segments name one person: equal, one a short form
+    of the other (``anu``, ``anushka``) or a Tamil case form (``priyavukku``)."""
+    if a == b:
+        return True
+    not_names = FAMILY_FIELDS | set(aliases.ROLE_WORDS) | set(aliases.ROLE_WORDS.values())
+    if a in not_names or b in not_names:
+        return False
+    return aliases.compatible(a, b) or aliases.case_form(a, b)
+
+
+def _longer(a: str, b: str) -> str:
+    """The name to keep of two for one person: the full name, never a case form."""
+    if aliases.case_form(a, b):
+        return a if len(a) <= len(b) else b
+    return a if len(a) >= len(b) else b
+
+
+def _one_name(fields: list[str]) -> list[str]:
+    """``[anushka, anu, age]`` → ``[anushka, age]``: a middle segment naming the
+    same person is dropped, so a nickname never makes a second slot beside the
+    field (bake-off 2026-10-31: family.anushka.anu.age stayed current next to
+    family.anushka.age). The last segment is the field and always stays."""
+    if len(fields) < 3:
+        return fields
+    person, middle = fields[0], []
+    for seg in fields[1:-1]:
+        if _same_person(seg, person):
+            person = _longer(person, seg)
+        else:
+            middle.append(seg)
+    return [person, *middle, fields[-1]]
+
+
 def _clean(segment: str) -> str:
     return re.sub(r"_+", "_", re.sub(r"[\s\-/]+", "_", segment.strip().lower())).strip("_")
 
@@ -489,9 +525,15 @@ def normalise(raw: str | None, *, subject: str = "owner", content: str = "") -> 
         if not _SEGMENT.fullmatch(who):
             return None
         if fields[0] != who:
-            fields = [who, *fields]
-        if len(fields) > 3:
-            return None
+            if _same_person(fields[0], who):
+                # family.anu.age for a fact about Anushka: her field, one name.
+                fields = [_longer(fields[0], who), *fields[1:]]
+            else:
+                fields = [who, *fields]
+    if topic == "family":
+        fields = _one_name(fields)
+    if subject and subject.lower() != "owner" and len(fields) > 3:
+        return None
     if topic == "home" and content and not _OWNER_HOME.search(content):
         return None
     key = ".".join([topic, *fields])[:80]

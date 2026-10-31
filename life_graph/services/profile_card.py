@@ -83,11 +83,50 @@ def belongs(m: Any, now: datetime) -> bool:
     return fact_type is None or fact_type in LASTING_TYPES
 
 
-def _form_order(m: Any) -> tuple:
+def _raw_slot(m: Any) -> str | None:
+    """*m*'s slot read through today's rules: an older spelling of the same field
+    (hobbies.cricket_day, family.anushka.anu.age) is the same slot."""
+    from life_graph.core import slots
+
+    props = getattr(m, "properties", None) or {}
+    slot = props.get("slot")
+    if not slot:
+        return None
+    text = " ".join((getattr(m, "content", None) or "").split())
+    return slots.normalise(slot, subject=props.get("subject") or "owner", content=text) or slot
+
+
+def card_slot(m: Any, filed: dict[str, str] | None = None) -> str | None:
+    """The slot *m* is shown under: normalised, then filed under the name its
+    person is known by (*filed*, from :func:`filed_slots`)."""
+    slot = _raw_slot(m)
+    return (filed or {}).get(slot, slot) if slot else None
+
+
+async def filed_slots(tenant_id: str, rows: list[Any]) -> dict[str, str]:
+    """Normalised family slot → the slot under the person's known name
+    (entities.canonical_slot), so ``family.priya.birthday`` saved before Priya was
+    linked to Priyadharshini shows with ``family.priyadharshini.*``: one person."""
+    from life_graph.services import entities
+
+    out: dict[str, str] = {}
+    for m in rows:
+        slot = _raw_slot(m)
+        if not slot or not slot.startswith("family.") or slot in out:
+            continue
+        try:
+            out[slot] = await entities.canonical_slot(tenant_id, slot)
+        except Exception:  # noqa: BLE001 — the filing is a bonus on the card
+            logger.warning("Filing a card slot under the known name failed", exc_info=True)
+            return out
+    return out
+
+
+def _form_order(m: Any, filed: dict[str, str] | None = None) -> tuple:
     """The form first (slotted facts, by topic), then the other lasting facts."""
     from life_graph.core import slots
 
-    slot = (getattr(m, "properties", None) or {}).get("slot")
+    slot = card_slot(m, filed)
     if not slot:
         return (1, 0, "", 0.0)
     topic = slots.topic_of(slot)
@@ -98,11 +137,25 @@ def _form_order(m: Any) -> tuple:
     return (0, rank, slot, -created.timestamp() if created else 0.0)
 
 
-def pick(rows: list[Any], max_items: int, now: datetime | None = None) -> list[Any]:
+#: Room kept on a family field for the other names the person goes by
+#: (" (Maha, Ma)"), added after picking (:func:`_add_other_names`).
+AKA_RESERVE = 24
+
+
+def pick(
+    rows: list[Any],
+    max_items: int,
+    now: datetime | None = None,
+    *,
+    filed: dict[str, str] | None = None,
+) -> list[Any]:
     """The card's memories within the size budget: the owner's form (one memory
-    per slot) first, then the other lasting facts in the order given (best first)."""
+    per slot) first, then the other lasting facts in the order given (best first).
+    The budget counts each line as rendered (label, date and all), so the card
+    stays within MAX_CHARS (bake-off 2026-10-31: 3,714 chars were rendered)."""
     now = now or datetime.now(UTC)
-    rows = sorted(rows, key=_form_order)  # stable: best-first order kept within each group
+    # stable: best-first order kept within each group
+    rows = sorted(rows, key=lambda m: _form_order(m, filed))
     out: list[Any] = []
     slots_seen: set[str] = set()
     seen: set[str] = set()
@@ -114,49 +167,62 @@ def pick(rows: list[Any], max_items: int, now: datetime | None = None) -> list[A
             continue
         text = " ".join((m.content or "").split())
         key = text.lower()
-        props = getattr(m, "properties", None) or {}
-        slot = props.get("slot")
-        if slot:
-            # An older spelling of the same field (hobbies.cricket_day) is the same slot.
-            from life_graph.core import slots
-
-            slot = (
-                slots.normalise(slot, subject=props.get("subject") or "owner", content=text) or slot
-            )
+        slot = card_slot(m, filed)
         if not text or key in seen or (slot and slot in slots_seen):
             continue
         if slot:
             slots_seen.add(slot)
-        line = len(text[:ITEM_CHARS]) + 16
-        if used + line > MAX_CHARS:
+        props = getattr(m, "properties", None) or {}
+        item = {
+            "content": text,
+            "created_at": getattr(m, "created_at", None),
+            "changes_over_time": bool(props.get("changes_over_time")),
+            "slot": slot,
+        }
+        size = 1 + len(_line(item))
+        if slot and slot.startswith("family.") and slot.count(".") >= 2:
+            size += AKA_RESERVE
+        if used + size > MAX_CHARS:
             break
         seen.add(key)
-        used += line
+        used += size
         out.append(m)
     return out
 
 
+def _line(it: dict[str, Any]) -> str:
+    """One card line, as rendered."""
+    text = " ".join((it["content"] or "").split())
+    if len(text) > ITEM_CHARS:
+        text = text[: ITEM_CHARS - 1] + "…"
+    when = it.get("created_at")
+    prefix = f"(as of {when:%Y-%m-%d}) " if it.get("changes_over_time") and when else ""
+    if it.get("slot"):
+        from life_graph.core import slots
+
+        parts = it["slot"].split(".")
+        if it.get("aka") and len(parts) >= 3:
+            # family · mahalakshmi (Maha, Ma) · birthday: the other names she goes by.
+            parts[1] = f"{parts[1]} ({', '.join(it['aka'])})"
+        label = " · ".join(parts) if it.get("aka") else slots.label(it["slot"])
+        prefix = f"[{label}] " + (f"(since {when:%Y-%m-%d}) " if when else "")
+    return f"- {prefix}{text}"
+
+
 def render(items: list[dict[str, Any]]) -> str:
-    """items: {"content", "created_at", "changes_over_time"}. Empty string for none."""
+    """items: {"content", "created_at", "changes_over_time", "slot", "aka"}.
+    Empty string for none. Never longer than MAX_CHARS: a line that would pass
+    it is left off (pick already keeps within it; this is the guarantee)."""
     if not items:
         return ""
     lines = [HEADER]
+    used = len(HEADER)
     for it in items:
-        text = " ".join((it["content"] or "").split())
-        if len(text) > ITEM_CHARS:
-            text = text[: ITEM_CHARS - 1] + "…"
-        when = it.get("created_at")
-        prefix = f"(as of {when:%Y-%m-%d}) " if it.get("changes_over_time") and when else ""
-        if it.get("slot"):
-            from life_graph.core import slots
-
-            parts = it["slot"].split(".")
-            if it.get("aka") and len(parts) >= 3:
-                # family · mahalakshmi (Maha, Ma) · birthday: the other names she goes by.
-                parts[1] = f"{parts[1]} ({', '.join(it['aka'])})"
-            label = " · ".join(parts) if it.get("aka") else slots.label(it["slot"])
-            prefix = f"[{label}] " + (f"(since {when:%Y-%m-%d}) " if when else "")
-        lines.append(f"- {prefix}{text}")
+        line = _line(it)
+        if used + 1 + len(line) > MAX_CHARS:
+            break
+        used += 1 + len(line)
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -252,15 +318,16 @@ async def card_items(tenant_id: str) -> list[dict[str, Any]]:
     )
     async with async_session() as session:
         rows = list((await session.execute(query)).scalars().all())
+    filed = await filed_slots(tenant_id, rows)
     items = [
         {
             "id": str(m.id),
             "content": m.content,
             "created_at": m.created_at,
             "changes_over_time": bool((m.properties or {}).get("changes_over_time")),
-            "slot": (m.properties or {}).get("slot"),
+            "slot": card_slot(m, filed),
         }
-        for m in pick(rows, max_items, now)
+        for m in pick(rows, max_items, now, filed=filed)
     ]
     await _add_other_names(tenant_id, items)
     _cache[tenant_id] = (time.monotonic(), items)

@@ -206,6 +206,32 @@ def test_family_fields_have_one_spelling(raw, subject, expected):
     assert slots.normalise(raw, subject=subject) == expected
 
 
+@pytest.mark.parametrize(
+    ("raw", "subject", "expected"),
+    [
+        # Bake-off 2026-10-31: the model wrote family.anu.age for a fact about Anushka,
+        # and family.anushka.anu.age stayed current next to family.anushka.age.
+        ("family.anu.age", "Anushka", "family.anushka.age"),
+        ("family.anushka.anu.age", "owner", "family.anushka.age"),
+        ("family.anushka.anushka.age", "owner", "family.anushka.age"),
+        ("family.anushka.anu.age", "Anushka", "family.anushka.age"),
+        # A middle segment that is not the person stays.
+        ("family.anushka.school.bus", "owner", "family.anushka.school.bus"),
+        ("family.anu.school", "Anu", "family.anu.school"),
+    ],
+)
+def test_a_name_in_the_path_is_the_person(raw, subject, expected):
+    assert slots.normalise(raw, subject=subject) == expected
+
+
+def test_old_rows_with_the_nickname_segment_count_once_on_the_card():
+    rows = [
+        _m("Anu is 9 years old.", "family.anushka.age"),
+        _m("Anushka, called Anu, is 7 years old.", "family.anushka.anu.age"),
+    ]
+    assert [m.content for m in pc.pick(rows, 25, NOW)] == ["Anu is 9 years old."]
+
+
 def test_old_spellings_count_once_on_the_card():
     rows = [
         _m("The owner plays cricket on Saturdays.", "hobbies.cricket.day"),
