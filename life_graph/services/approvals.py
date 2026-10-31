@@ -823,6 +823,9 @@ class ApprovalService:
         winner.properties = {**(loser.properties or {}), **(winner.properties or {})}
         loser.status = "superseded"
         loser.superseded_by = winner.id
+        # A duplicate, not an earlier value: the cold tier must not show it as
+        # "later replaced" (services/memory_tiers.py).
+        loser.properties = {**(loser.properties or {}), "merged_into": str(winner.id)}
         winner.supersedes = loser.id
 
     async def _apply_archive(self, tenant_id: str, appr: Approval, approve: bool) -> None:
@@ -852,6 +855,9 @@ class ApprovalService:
             return
         # Recalled since the proposal was raised — it has earned its place.
         if memory.status != "active":
+            return
+        # Became a form fact since (services/form_fill.py): the form never decays.
+        if (getattr(memory, "properties", None) or {}).get("slot"):
             return
         memory.status = "archived"
 

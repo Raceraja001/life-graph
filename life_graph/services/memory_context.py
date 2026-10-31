@@ -182,7 +182,7 @@ async def memory_block(
     found = None
     try:
         with tenant_scope(tenant_id):
-            found = await retrieve(query, limit=MAX_MEMORIES)
+            found = await retrieve(query, limit=MAX_MEMORIES, cold=True)
             if found:
                 # Already on the card: shown once, there.
                 found = [m for m in found if str(m.id) not in on_card]

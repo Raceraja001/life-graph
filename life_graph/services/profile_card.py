@@ -89,10 +89,13 @@ def _form_order(m: Any) -> tuple:
 
     slot = (getattr(m, "properties", None) or {}).get("slot")
     if not slot:
-        return (1, 0, "")
+        return (1, 0, "", 0.0)
     topic = slots.topic_of(slot)
     rank = slots.TOPICS.index(topic) if topic in slots.TOPICS else len(slots.TOPICS)
-    return (0, rank, slot)
+    # Two active memories can share a slot while a replacement waits for the
+    # owner (services/form_fill.py): the newest is the current value.
+    created = getattr(m, "created_at", None)
+    return (0, rank, slot, -created.timestamp() if created else 0.0)
 
 
 def pick(rows: list[Any], max_items: int, now: datetime | None = None) -> list[Any]:

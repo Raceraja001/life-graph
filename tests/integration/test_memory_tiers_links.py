@@ -187,7 +187,7 @@ async def test_retrieve_falls_back_to_cold_and_follows_links(monkeypatch):
 
     monkeypatch.setattr(memory_retrieval, "judge", judge)
     with tenant_scope(TENANT):
-        got = await memory_retrieval.retrieve(f"What is my {word} locker code?")
+        got = await memory_retrieval.retrieve(f"What is my {word} locker code?", cold=True)
     assert [m.id for m in got] == [cold.id]
 
     # A linked memory joins the candidates though search would not find it.
@@ -202,7 +202,7 @@ async def test_retrieve_falls_back_to_cold_and_follows_links(monkeypatch):
 
     monkeypatch.setattr(memory_retrieval, "judge", record)
     with tenant_scope(TENANT):
-        got = await memory_retrieval.retrieve(f"Where is my {word} gym?")
+        got = await memory_retrieval.retrieve(f"Where is my {word} gym?", cold=True)
     assert linked.content in seen
     assert linked.id in {m.id for m in got}
 
@@ -226,7 +226,7 @@ async def test_form_fill_sets_slots_and_offers_same_slot_replacement(monkeypatch
     finally:
         TENANT = saved
 
-    async def slot_of(content):
+    async def slot_of(content, subject=None):
         return "work.employer" if "works at" in content else None
 
     monkeypatch.setattr(form_fill, "ask_slot", slot_of)
@@ -249,3 +249,136 @@ async def test_form_fill_sets_slots_and_offers_same_slot_replacement(monkeypatch
         "slotted": 0,
         "replacements_offered": 0,
     }
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_review_fixes_for_the_cold_tier(monkeypatch):
+    """Review 2026-10-31: /ask gets no unlabelled cold memories; a merged duplicate
+    is not "later replaced"; what the owner archived does not wake up by itself."""
+    from sqlalchemy import text
+
+    from life_graph.api.dependencies import get_memory_manager
+    from life_graph.core.tenant import tenant_scope
+    from life_graph.services import memory_retrieval, memory_tiers
+    from life_graph.storage.database import async_session
+
+    tag = uuid.uuid4().hex[:6]
+    word = f"marlinspike{tag}"
+    cold = await _put(f"The owner's {word} tent is orange.", "archived")
+    winner = await _put(f"The owner's {word} kayak is yellow.", "active")
+    dup = await _put(
+        f"The owner's {word} kayak is yellow!", "superseded", merged_into=str(winner.id)
+    )
+    mine = await _put(f"The owner's {word} sail is white.", "archived", archived_by="owner")
+    async with async_session() as s:
+        await s.execute(
+            text("UPDATE memories SET superseded_by = :w WHERE id = :d"),
+            {"w": winner.id, "d": dup.id},
+        )
+        await s.commit()
+
+    async def vector(text_):
+        return [0.01] * 1024
+
+    async def keep_cold(question, contents):
+        return [i for i, c in enumerate(contents) if "tent" in c]
+
+    monkeypatch.setattr(get_memory_manager(), "generate_embedding", vector)
+    monkeypatch.setattr(memory_retrieval, "judge", keep_cold)
+    with tenant_scope(TENANT):
+        # /ask and the dashboard chat: no cold tier.
+        assert await memory_retrieval.retrieve(f"What colour is my {word} tent?") == []
+        # The Jarvis block (labelled): the cold tier.
+        got = await memory_retrieval.retrieve(f"What colour is my {word} tent?", cold=True)
+        assert [m.id for m in got] == [cold.id]
+        found = await memory_tiers.search([0.01] * 1024, f"{word} kayak tent sail")
+    ids = {m.id for m in found}
+    assert dup.id not in ids  # a duplicate, not an earlier value
+    assert {cold.id, mine.id} <= ids
+    with tenant_scope(TENANT):
+        assert await memory_tiers.reawaken(found) == 1  # the decay-archived one only
+    assert (await _row(cold.id)).status == "active"
+    assert (await _row(mine.id)).status == "archived"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_an_unjudged_answer_never_includes_cold_memories(monkeypatch):
+    from life_graph.api.dependencies import get_memory_manager
+    from life_graph.core.tenant import tenant_scope
+    from life_graph.services import memory_retrieval
+
+    word = f"gunwale{uuid.uuid4().hex[:6]}"
+    warm = await _put(f"The owner's {word} job started in March.", "active")
+    old = await _put(f"The owner's {word} job before was at a bank.", "archived")
+
+    async def vector(text_):
+        return [0.01] * 1024
+
+    async def outage(question, contents):
+        return None
+
+    monkeypatch.setattr(get_memory_manager(), "generate_embedding", vector)
+    monkeypatch.setattr(memory_retrieval, "judge", outage)
+    with tenant_scope(TENANT):
+        got = await memory_retrieval.retrieve(f"Where did I {word} work before?", cold=True)
+    ids = [m.id for m in got]
+    assert warm.id in ids and old.id not in ids
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_the_card_shows_the_newest_value_of_a_shared_slot():
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import text
+
+    from life_graph.services import profile_card
+    from life_graph.storage.database import async_session
+
+    tenant = f"card_{uuid.uuid4().hex[:8]}"
+    global TENANT
+    saved, TENANT = TENANT, tenant
+    try:
+        old = await _put("The owner works at Infosys.", "active", slot="work.employer")
+        new = await _put("The owner works at Zoho.", "active", slot="work.employer")
+    finally:
+        TENANT = saved
+    async with async_session() as s:
+        # The old one is more used and more important: it still must not win.
+        await s.execute(
+            text(
+                "UPDATE memories SET created_at = :c, importance = 0.95, access_count = 40"
+                " WHERE id = :id"
+            ),
+            {"c": datetime.now(UTC) - timedelta(days=400), "id": old.id},
+        )
+        await s.commit()
+    profile_card.clear_cache()
+    card = await profile_card.card_items(tenant)
+    assert [c["content"] for c in card if c.get("slot") == "work.employer"] == [new.content]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_an_old_decay_proposal_never_archives_a_form_fact():
+    from life_graph.models.db import Approval
+    from life_graph.services.approvals import ApprovalService
+    from life_graph.storage.database import async_session
+
+    m = await _put("The owner lives in Coimbatore.", "active", slot="home.city")
+    async with async_session() as s:
+        appr = Approval(
+            tenant_id=TENANT,
+            kind="archive",
+            title="Archive a decayed memory",
+            payload={"memory_id": str(m.id)},
+            source="decay",
+            source_ref=f"decay:{m.id}",
+        )
+        s.add(appr)
+        await s.commit()
+        await ApprovalService(s)._apply_archive(TENANT, appr, True)
+        await s.commit()
+    assert (await _row(m.id)).status == "active"

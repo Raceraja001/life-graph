@@ -50,7 +50,7 @@ class _Store:
 def _wire(monkeypatch, found, card=()):
     import life_graph.api.dependencies as deps
 
-    async def fake_retrieve(question, limit=6):
+    async def fake_retrieve(question, limit=6, **kw):
         if isinstance(found, Exception):
             raise found
         return found

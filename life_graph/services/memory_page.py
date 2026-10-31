@@ -371,6 +371,11 @@ async def connections(tenant_id: str, memory_id: uuid.UUID) -> dict[str, Any] | 
                         Memory.tenant_id == tenant_id,
                         Memory.id.in_([*strength, *chain_ids]),
                         Memory.status != "rejected",
+                        # Taken back by the owner: never shown again, here either.
+                        text(
+                            "NOT (COALESCE(memories.properties, '{}'::jsonb)"
+                            " ?| ARRAY['forgotten', 'undone'])"
+                        ),
                     )
                     .options(defer(Memory.embedding))
                 )
@@ -513,8 +518,25 @@ async def drop(tenant_id: str, memory_id: uuid.UUID, store: Any) -> dict[str, An
         }
     }
     if await _set_status(tenant_id, memory_id, from_=("active",), to="archived", note=note):
+        # A wrong replacement taken back: the value it replaced is current again,
+        # as /jarvis/memories/{id}/undo and a rejected contradiction do.
+        await _restore_replaced(tenant_id, memory_id)
         return {"id": str(memory_id), "status": "archived", "forgotten": True}
     raise await _refuse(tenant_id, memory_id, "drop")
+
+
+async def _restore_replaced(tenant_id: str, memory_id: uuid.UUID) -> None:
+    async with async_session() as session:
+        await session.execute(
+            text(
+                "UPDATE memories SET status = 'active', superseded_by = NULL, updated_at = NOW()"
+                " WHERE tenant_id = :t AND superseded_by = :id AND status = 'superseded'"
+                " AND NOT (COALESCE(properties, '{}'::jsonb) ? 'merged_into')"
+            ),
+            {"id": memory_id, "t": tenant_id},
+        )
+        await session.commit()
+    _changed(tenant_id)
 
 
 async def correct(tenant_id: str, memory_id: uuid.UUID, content: str) -> dict[str, Any]:

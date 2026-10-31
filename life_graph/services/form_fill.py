@@ -52,7 +52,7 @@ def wants_slot(m: Any) -> bool:
     return evidence_of(m.source_type, m.trust_tier, props) == "said"
 
 
-async def ask_slot(content: str) -> str | None:
+async def ask_slot(content: str, subject: str | None = None) -> str | None:
     """The normalised slot for one fact, or None."""
     from life_graph.api.dependencies import get_lm_client
     from life_graph.config import settings
@@ -71,9 +71,10 @@ async def ask_slot(content: str) -> str | None:
         return None
     if not isinstance(out, dict):
         return None
-    return slots.normalise(
-        out.get("slot"), subject=str(out.get("subject") or "owner"), content=content
-    )
+    # Whose fact it is was decided at extraction (properties.subject); the
+    # model's guess here only fills in when that was not recorded.
+    who = subject or str(out.get("subject") or "owner")
+    return slots.normalise(out.get("slot"), subject=who, content=content)
 
 
 async def plan(tenant_id: str, cap: int = CAP) -> dict[str, Any]:
@@ -101,7 +102,9 @@ async def plan(tenant_id: str, cap: int = CAP) -> dict[str, Any]:
     proposed: dict[str, str | None] = {}
     for m in todo:
         try:
-            proposed[str(m.id)] = await ask_slot(m.content or "")
+            proposed[str(m.id)] = await ask_slot(
+                m.content or "", (m.properties or {}).get("subject")
+            )
         except Exception:  # noqa: BLE001 — one failed call skips one memory, for tonight
             logger.warning("Form fill: slot question failed for %s", m.id, exc_info=True)
     holders: dict[str, list[Any]] = defaultdict(list)
