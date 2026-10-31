@@ -9,11 +9,18 @@ method that mixes up whose fact is whose.
 
 Deterministic (fixed seed): every run builds the same file.
 
-    python evals/memory_structures/make_big_life.py
+    python evals/memory_structures/make_big_life.py            # test_life_big.json
+    python evals/memory_structures/make_big_life.py --life 2   # test_life_2_big.json
+
+``--life 2`` does the same for test_life_2.json (Kavitha, Madurai then
+Coimbatore): QA work days, pickle batches, films, outings in the city she lived
+in on that date, Tamil and Tanglish chatter, and other people's facts (a
+friend's car, a colleague's phone, a daycare teacher also called Nila).
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import random
 from datetime import date, timedelta
@@ -157,43 +164,195 @@ WEIGHTS = {
 }
 
 
-def fill(template: str, rng: random.Random) -> str:
+# ── test life 2 (Kavitha) ──────────────────────────────────────────
+#: She moved from Madurai to Coimbatore on this date; outings follow her city.
+MOVE_2 = date(2026, 1, 25)
+T2 = {
+    "work": [
+        "Long day at work, {n} meetings back to back.",
+        "Found a nasty bug in the {feature} screen today.",
+        "Spent the afternoon writing test cases for the {feature} flow.",
+        "Our release went out tonight; no rollbacks.",
+        "Mentored a new tester today.",
+        "Flaky tests ate my whole morning.",
+        "Bug triage ran for two hours again.",
+        "Automated {n} more regression tests this week.",
+        "Office-la inniku full-aa meetings dhaan.",
+    ],
+    "pickles": [
+        "Made {n} jars of {pickle} today.",
+        "Packed {n} pickle orders for delivery this evening.",
+        "Raw mango prices are up again at the market.",
+        "A customer asked for less oil in the {pickle}.",
+        "Inniku {pickle} {n} bottle pack panniten.",
+        "Ran out of glass jars; ordered {n} more.",
+    ],
+    "others": [
+        "My friend Deepa Sekar bought a Hyundai i20.",
+        "Senthil's colleague Ganesh uses a Pixel 9.",
+        "One of the teachers at Ilan's daycare is also called Nila.",
+        "Revathi's daughter got into Anna University.",
+        "Arun is thinking of moving to Bangalore someday.",
+        "KR's husband works at a bank in Tiruppur.",
+        "Swathi runs a physio clinic in Kothrud, Pune.",
+        "Lakshmi's husband is a cardiologist.",
+        "Senthil's amma Pushpa goes to the Meenakshi temple every Friday.",
+        "Prakash has become a director at Velan Infotech.",
+        "Deepa Iyer's son plays chess at the district level.",
+        "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்.",
+        "செந்திலோட அண்ணன் முரளி துபாய்ல புது கார் வாங்கினார்.",
+        "தீபா சேகர் புது கடை திறக்கலாமான்னு யோசிக்கிறாங்க.",
+        "KR-ku coffee illaama mudiyaadhu, dhinamum moonu cup.",
+    ],
+    "media": [
+        "Watched {movie} with Senthil last night.",
+        "Reading {book} these days.",
+        "Finished {book}; loved it.",
+        "{movie} padam paathom, semma.",
+    ],
+    "outings": [
+        "Took the kids to {place} this evening.",
+        "Evening walk near {place}; nice breeze.",
+        "Went to {place} on Sunday; very crowded.",
+        "Had lunch at {restaurant} with Senthil.",
+    ],
+    "errands": [
+        "Spent {amount} rupees on groceries today.",
+        "Paid the electricity bill.",
+        "Got the Baleno washed.",
+        "Booked the gas cylinder.",
+        "Paid Nila's school fees for the term.",
+        "Recharged the internet plan.",
+        "Kaaikari vaanga market pogaNum.",
+    ],
+    "kids": [
+        "Nila got a star in her spelling test.",
+        "Ilan threw his food on the floor again, haha.",
+        "Nila's class went on a field trip.",
+        "Helped Nila with her maths homework.",
+        "Ilan has a cold today.",
+        "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா.",
+        "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்.",
+    ],
+    "small_talk": [
+        "Good morning!",
+        "Nalaiku mazhai varuma?",
+        "Inniku romba tired-aa irukku.",
+        "Sari Jarvis, thanks!",
+        "Tell me a joke.",
+        "இன்னைக்கு என்ன கிழமை?",
+    ],
+    "musings": [
+        "Maybe I should try Zumba.",
+        "Thinking about a new sofa for the hall.",
+        "Might start a small terrace garden.",
+        "Not sure if we should get a second car.",
+        "Oru naal Kerala trip pogalaam-nu thonudhu.",
+    ],
+    "health_small": [
+        "Slept badly last night.",
+        "Mild headache today; drank more water.",
+        "Back pain after badminton.",
+        "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்.",
+    ],
+}
+FILL2 = {
+    "n": [str(x) for x in range(3, 61)],
+    "feature": ["login", "claims", "payments", "reports", "dashboard", "onboarding"],
+    "pickle": ["mango thokku", "lemon pickle", "garlic pickle", "paruppu podi", "idli podi"],
+    "movie": ["Jailer", "Vikram", "Leo", "96", "Amaran", "Maharaja", "Ponniyin Selvan 2"],
+    "book": ["Ponniyin Selvan", "Sivagamiyin Sabatham", "Atomic Habits", "Ikigai"],
+    "restaurant": ["Murugan Idli Shop", "Sree Sabarees", "Hotel Anandha", "Kumar Mess"],
+    "amount": [str(x) for x in range(800, 4800, 150)],
+}
+PLACES_2 = {
+    "madurai": ["the Meenakshi temple", "Gandhi Museum", "Eco Park", "Thirumalai Nayakkar Mahal"],
+    "coimbatore": ["Brookefields mall", "VOC Park", "Race Course", "Marudhamalai temple"],
+}
+WEIGHTS2 = {
+    "work": 20,
+    "pickles": 12,
+    "others": 9,
+    "media": 8,
+    "outings": 9,
+    "errands": 11,
+    "kids": 11,
+    "small_talk": 8,
+    "musings": 5,
+    "health_small": 7,
+}
+
+
+def fills_2(d: date) -> dict[str, list[str]]:
+    city = "madurai" if d < MOVE_2 else "coimbatore"
+    return {**FILL2, "place": PLACES_2[city]}
+
+
+def fill(template: str, rng: random.Random, fills: dict[str, list[str]] | None = None) -> str:
     out = template
-    for k, vals in FILL.items():
+    for k, vals in (FILL if fills is None else fills).items():
         while "{" + k + "}" in out:
             out = out.replace("{" + k + "}", rng.choice(vals), 1)
     return out
 
 
-def main() -> None:
-    rng = random.Random(SEED)
-    base = json.loads((HERE / "test_life.json").read_text(encoding="utf-8"))
-    start, end = date(2025, 1, 1), date(2026, 10, 29)
+#: name -> (base file, big file, seed, first filler date, last filler date, templates,
+#: weights, fills: a fixed dict or a function of the date).
+LIVES = {
+    "1": (
+        "test_life.json",
+        "test_life_big.json",
+        SEED,
+        date(2025, 1, 1),
+        date(2026, 10, 29),
+        T,
+        WEIGHTS,
+        FILL,
+    ),
+    "2": (
+        "test_life_2.json",
+        "test_life_2_big.json",
+        20261031,
+        date(2025, 3, 1),
+        date(2026, 10, 30),
+        T2,
+        WEIGHTS2,
+        fills_2,
+    ),
+}
+
+
+def main(life: str = "1") -> None:
+    base_name, out_name, seed, start, end, templates, weights, fills = LIVES[life]
+    rng = random.Random(seed)
+    base = json.loads((HERE / base_name).read_text(encoding="utf-8"))
     days = (end - start).days
-    kinds = list(WEIGHTS)
+    kinds = list(weights)
     extra = []
     for i in range(EXTRA):
-        kind = rng.choices(kinds, weights=[WEIGHTS[k] for k in kinds])[0]
+        kind = rng.choices(kinds, weights=[weights[k] for k in kinds])[0]
         d = start + timedelta(days=rng.randrange(days + 1))
         extra.append(
             {
                 "id": f"f{i + 1:04d}",
                 "date": d.isoformat(),
                 "kind": kind,
-                "text": fill(rng.choice(T[kind]), rng),
+                "text": fill(
+                    rng.choice(templates[kind]), rng, fills(d) if callable(fills) else fills
+                ),
             }
         )
     big = dict(base)
     big["about"] = (
         base["about"] + " BIG version: the same facts and questions plus "
-        f"{EXTRA} everyday messages (make_big_life.py, seed {SEED}); none changes a right answer."
+        f"{EXTRA} everyday messages (make_big_life.py, seed {seed}); none changes a right answer."
     )
     big["messages"] = sorted(base["messages"] + extra, key=lambda m: (m["date"], m["id"]))
-    (HERE / "test_life_big.json").write_text(
-        json.dumps(big, ensure_ascii=False, indent=1), encoding="utf-8"
-    )
+    (HERE / out_name).write_text(json.dumps(big, ensure_ascii=False, indent=1), encoding="utf-8")
     print(len(big["messages"]), "messages")
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--life", choices=sorted(LIVES), default="1", help="which test life")
+    main(ap.parse_args().life)
