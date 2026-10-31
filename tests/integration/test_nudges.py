@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from tests.integration.conftest import skip_on_db_error
 
@@ -106,6 +106,17 @@ async def test_the_job_sends_a_few_a_day_and_the_buttons_work(client):
     from life_graph.models.db import Intention, Notification
     from life_graph.services import nudges
     from life_graph.storage.database import async_session
+
+    # The promise the test above stored for this tenant is timed by the real clock: before
+    # 11:00 UTC it counted as due at this test's 11:00 and took one of the 3 daily slots, so
+    # "thing 2" was left pending and the test failed every morning (2026-10-30, 31).
+    async with async_session() as s:
+        await s.execute(
+            update(Intention)
+            .where(Intention.tenant_id == TENANT, Intention.status == "pending")
+            .values(status="done")
+        )
+        await s.commit()
 
     now = datetime.now(UTC).replace(hour=11, minute=0, second=0, microsecond=0)
     ids = [

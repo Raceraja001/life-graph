@@ -36,6 +36,19 @@ class ExtractedFact:
     plan): shown "as of" the day it was noted (services/memory_context.py)."""
     valid_until: str | None = None
     """YYYY-MM-DD after which it stops being true, when the text said so."""
+    subject: str = "owner"
+    """Who the fact is about: "owner", or the name of another person ("Ravi").
+    A fact about someone else the owner told us is kept, but is never read as
+    the owner's own (memory bake-off 2026-10-30: "Ravi is learning Japanese"
+    became "you are learning Japanese")."""
+    polarity: str = "affirm"
+    """"negate" when the fact says something is not, no longer or will not be."""
+    certainty: str = "firm"
+    """"hedged" when the owner is only considering or unsure; never kept unreviewed."""
+    reason: str | None = None
+    """Why, when the text says ("because Firebase got too expensive")."""
+    correction: bool = False
+    """The owner is correcting something said or remembered earlier ("actually…")."""
 
 
 # ---------------------------------------------------------------------------

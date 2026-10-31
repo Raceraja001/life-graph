@@ -67,6 +67,31 @@ _EXTRACTION_SCHEMA: dict[str, Any] = {
                             " text says so ('in Chennai until Friday'); otherwise null."
                         ),
                     },
+                    "subject": {
+                        "type": "string",
+                        "description": (
+                            "'owner' when the fact is about the owner; otherwise the name of"
+                            " the person it is about (e.g. 'Ravi', 'Anu')."
+                        ),
+                    },
+                    "polarity": {
+                        "type": "string",
+                        "enum": ["affirm", "negate"],
+                        "description": "'negate' when it says something is not, no longer or won't be.",
+                    },
+                    "certainty": {
+                        "type": "string",
+                        "enum": ["firm", "hedged"],
+                        "description": "'hedged' when the owner is only considering, unsure or might.",
+                    },
+                    "reason": {
+                        "type": ["string", "null"],
+                        "description": "The reason, if the text gives one; otherwise null.",
+                    },
+                    "correction": {
+                        "type": "boolean",
+                        "description": "True when the owner corrects something said or remembered before.",
+                    },
                 },
                 "required": ["content", "fact_type", "confidence", "entities"],
             },
@@ -120,6 +145,25 @@ Do NOT keep:
 - what an assistant or tool did, said or is about to do;
 - ids, paths, commands, exit codes, log lines, numbers that only mattered today;
 - greetings and filler.
+
+For every fact, also say:
+- subject: "owner" when it is about the owner; otherwise the name of the person it
+  is about. "My colleague Ravi is learning Japanese" is about Ravi, not the owner:
+  content "Ravi (the owner's colleague) is learning Japanese.", subject "Ravi".
+  Facts about the owner's family, friends and colleagues are worth keeping.
+- polarity "negate" when the fact says something is not, no longer or will not be
+  ("decided not to buy a car", "stopped the veena classes"); keep the "not" in the
+  content too. Otherwise "affirm".
+- certainty "hedged" when the owner is only considering, unsure or might ("maybe",
+  "thinking about", "not sure if", "might"). Keep such a plan as a hedged intention
+  ("The owner is considering learning Japanese next year.") rather than dropping
+  it, and never state it as decided. Otherwise "firm".
+- reason: why, when the text says ("because…", "since…", "to save…"); also keep
+  it in the content.
+- correction true when the owner corrects something said or remembered earlier
+  ("actually…", "no, it's…", "not X — Y", "correction:", "sorry, it's…"). The
+  content states only the corrected fact.
+Text in Tamil or Tanglish counts the same as English; write the content in English.
 
 Rules:
 1. Most texts contain nothing worth keeping: then return {"facts": []}.
@@ -351,6 +395,7 @@ class LLMExtractor:
                     entities=entities,
                     source_text=text[:500],
                     **_validity(item),
+                    **_meaning(item),
                 )
             )
 
@@ -459,6 +504,7 @@ class LLMExtractor:
                     entities=entities,
                     source_text=source_text[:500],
                     **_validity(item),
+                    **_meaning(item),
                 )
             )
 
@@ -488,6 +534,27 @@ def _validity(item: dict) -> dict[str, Any]:
     except ValueError:
         until = None
     return {"changes_over_time": bool(item.get("changes_over_time")), "valid_until": until}
+
+
+def _meaning(item: dict) -> dict[str, Any]:
+    """Who a fact is about, its "not" and "maybe", the reason and a correction, checked.
+
+    Anything missing or unrecognised falls back to the plain reading (about the
+    owner, affirmed, firm): a small model that skips these fields gets today's
+    behaviour, never a fact about someone else filed as the owner's by accident.
+    """
+    subject = str(item.get("subject") or "owner").strip()
+    if subject.lower() in ("owner", "the owner", "self", "user", "the user", "me", "i", ""):
+        subject = "owner"
+    reason = item.get("reason")
+    reason = " ".join(str(reason).split())[:300] if reason else None
+    return {
+        "subject": subject[:80],
+        "polarity": "negate" if str(item.get("polarity", "")).lower() == "negate" else "affirm",
+        "certainty": "hedged" if str(item.get("certainty", "")).lower() == "hedged" else "firm",
+        "reason": reason or None,
+        "correction": item.get("correction") is True,
+    }
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
