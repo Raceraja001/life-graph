@@ -143,8 +143,72 @@ def test_a_slot_must_fit_its_sentence():
         == "devices.phone"
     )
     assert slots.normalise("family.spouse", content="Priya teaches maths.") is None
-    # Fields that are not checked pass as before.
     assert (
         slots.normalise("hobbies.cricket.day", content="The owner plays on Saturdays.")
         == "hobbies.cricket.day"
     )
+
+
+CRICKET = "The owner plays cricket on Saturday mornings with the Adyar Cricket Club."
+
+
+@pytest.mark.parametrize(
+    ("raw", "content", "expected"),
+    [
+        # 2026-10-31: a changed hobby day or club landed in a new slot beside the old one.
+        ("hobbies.cricket_day", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.cricket.day", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.day_cricket", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.cricket.playing_day", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.cricket.practice.day", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.playing_cricket.day", CRICKET, "hobbies.cricket.day"),
+        ("sports.cricket_days", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.cricket.team", CRICKET, "hobbies.cricket.club"),
+        ("hobbies.cricket_club.name", CRICKET, "hobbies.cricket.club"),
+        ("hobbies.cricket.timing", CRICKET, "hobbies.cricket.time"),
+        (
+            "hobbies.badminton_club",
+            "The owner plays badminton at Smash Club.",
+            "hobbies.badminton.club",
+        ),
+        (
+            "hobbies.club",
+            "The owner switched to Shuttle Hub for badminton.",
+            "hobbies.badminton.club",
+        ),
+        ("hobbies.soccer.coach", "The owner's football coach is Ravi.", "hobbies.football.coach"),
+        (
+            "hobbies.table_tennis.day",
+            "The owner plays table tennis every Friday.",
+            "hobbies.table_tennis.day",
+        ),
+        # A field with no activity, and the sentence names none or several: no slot.
+        ("hobbies.club", "The owner joined a new club.", None),
+        ("hobbies.day", "The owner plays cricket and tennis on Sundays.", None),
+        # A day that the sentence does not give is not filled.
+        ("hobbies.cricket.day", "The owner likes cricket.", None),
+    ],
+)
+def test_hobby_slots_have_one_spelling(raw, content, expected):
+    assert slots.normalise(raw, content=content) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "subject", "expected"),
+    [
+        ("family.anu_school", "owner", "family.anu.school"),
+        ("family.anu_school", "Anu", "family.anu.school"),
+        ("family.amma.health", "owner", "family.mother.health"),
+        ("family.priya.dob", "owner", "family.priya.birthday"),
+    ],
+)
+def test_family_fields_have_one_spelling(raw, subject, expected):
+    assert slots.normalise(raw, subject=subject) == expected
+
+
+def test_old_spellings_count_once_on_the_card():
+    rows = [
+        _m("The owner plays cricket on Saturdays.", "hobbies.cricket.day"),
+        _m("The owner plays cricket on Sundays.", "hobbies.cricket_day"),  # older spelling
+    ]
+    assert [m.content for m in pc.pick(rows, 25, NOW)] == ["The owner plays cricket on Saturdays."]

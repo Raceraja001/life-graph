@@ -203,6 +203,8 @@ class ApprovalService:
             await self._apply_archive(tenant_id, appr, approve)
         elif appr.kind == "contradiction":
             await self._apply_contradiction(tenant_id, appr, approve)
+        elif appr.kind == "entity_alias":
+            await self._apply_entity_alias(tenant_id, appr, approve)
         elif appr.kind == "autonomous_action":
             await self._apply_autonomous_action(tenant_id, appr, approve, resolved_by)
         elif appr.kind == "driver_pr":
@@ -852,6 +854,37 @@ class ApprovalService:
         if memory.status != "active":
             return
         memory.status = "archived"
+
+    async def _apply_entity_alias(self, tenant_id: str, appr: Approval, approve: bool) -> None:
+        """Two names, one person? (services/entities.py, migration 057)
+
+        ``applied`` True: the link was made (same one-person role, fitting names);
+        approve confirms, reject makes the name its own person again (or restores
+        its earlier link). ``applied`` False: only suggested (the name already
+        belongs to someone else, or the names do not fit); approve links it,
+        reject leaves both as they are. Never raises: a stale item is a no-op.
+        """
+        from life_graph.services import entities
+
+        payload = appr.payload or {}
+        alias_id, canonical_id = payload.get("alias_id"), payload.get("canonical_id")
+        if not alias_id:
+            return
+        try:
+            if payload.get("applied") and not approve:
+                await entities.set_alias(
+                    self.session,
+                    tenant_id,
+                    alias_id,
+                    payload.get("previous_canonical_id"),
+                    via="approved",
+                )
+            elif not payload.get("applied") and approve and canonical_id:
+                await entities.set_alias(
+                    self.session, tenant_id, alias_id, canonical_id, via="approved"
+                )
+        except Exception:  # noqa: BLE001 — the decision is still recorded
+            logger.warning("entity_alias %s could not be applied", appr.id, exc_info=True)
 
     async def _apply_contradiction(self, tenant_id: str, appr: Approval, approve: bool) -> None:
         """Apply or confirm a supersede (approve), or UNDO / decline it (reject).

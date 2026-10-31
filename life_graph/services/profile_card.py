@@ -111,7 +111,15 @@ def pick(rows: list[Any], max_items: int, now: datetime | None = None) -> list[A
             continue
         text = " ".join((m.content or "").split())
         key = text.lower()
-        slot = (getattr(m, "properties", None) or {}).get("slot")
+        props = getattr(m, "properties", None) or {}
+        slot = props.get("slot")
+        if slot:
+            # An older spelling of the same field (hobbies.cricket_day) is the same slot.
+            from life_graph.core import slots
+
+            slot = (
+                slots.normalise(slot, subject=props.get("subject") or "owner", content=text) or slot
+            )
         if not text or key in seen or (slot and slot in slots_seen):
             continue
         if slot:
@@ -139,7 +147,12 @@ def render(items: list[dict[str, Any]]) -> str:
         if it.get("slot"):
             from life_graph.core import slots
 
-            prefix = f"[{slots.label(it['slot'])}] " + (f"(since {when:%Y-%m-%d}) " if when else "")
+            parts = it["slot"].split(".")
+            if it.get("aka") and len(parts) >= 3:
+                # family · mahalakshmi (Maha, Ma) · birthday: the other names she goes by.
+                parts[1] = f"{parts[1]} ({', '.join(it['aka'])})"
+            label = " · ".join(parts) if it.get("aka") else slots.label(it["slot"])
+            prefix = f"[{label}] " + (f"(since {when:%Y-%m-%d}) " if when else "")
         lines.append(f"- {prefix}{text}")
     return "\n".join(lines)
 
@@ -189,6 +202,24 @@ async def history(tenant_id: str, limit: int = 12) -> list[dict[str, Any]]:
     ]
 
 
+async def _add_other_names(tenant_id: str, items: list[dict[str, Any]]) -> None:
+    """``aka`` on each family field: the other names that person goes by
+    (services/entities.py), so "Maha's birthday" matches the mahalakshmi field."""
+    from life_graph.services import entities
+
+    for it in items:
+        parts = (it.get("slot") or "").split(".")
+        if len(parts) < 3 or parts[0] != "family":
+            continue
+        try:
+            aka = await entities.other_names(tenant_id, parts[1])
+        except Exception:  # noqa: BLE001 — the names are a bonus on the card
+            logger.warning("Other names for the card failed", exc_info=True)
+            return
+        if aka:
+            it["aka"] = aka[:4]
+
+
 async def card_items(tenant_id: str) -> list[dict[str, Any]]:
     """The card's memories for *tenant_id*: {"id", "content", "created_at", "changes_over_time"}."""
     from life_graph.config import settings
@@ -228,5 +259,6 @@ async def card_items(tenant_id: str) -> list[dict[str, Any]]:
         }
         for m in pick(rows, max_items, now)
     ]
+    await _add_other_names(tenant_id, items)
     _cache[tenant_id] = (time.monotonic(), items)
     return items

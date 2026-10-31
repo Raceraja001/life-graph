@@ -208,7 +208,7 @@ class ReviewCard(Base):
 
 
 class StudyReview(Base):
-    """One answer to a study card (migration 056): the history behind streaks
+    """One answer to a study card (migration 057): the history behind streaks
     and accuracy, and what a later FSRS fit would learn from.
 
     No foreign key to ``review_cards``: deleting a card keeps its history.
@@ -430,6 +430,9 @@ class Entity(Base):
 
     ``key`` is the normalised name ("life graph" for "Life-Graph" and "life
     graph"), unique per tenant; ``name`` is how it is usually written.
+    ``canonical_id`` set means this name is another name for that entity
+    ("Maha" → "Mahalakshmi", migration 057); ``role`` is the person's relation
+    to the owner (spouse, mother, owner, …).
     """
 
     __tablename__ = "entities"
@@ -439,6 +442,14 @@ class Entity(Base):
     key: Mapped[str] = mapped_column(String(200), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     mentions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    canonical_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("entities.id", ondelete="SET NULL"), nullable=True
+    )
+    role: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    #: Why canonical_id was set: "said" (an explicit statement), "role" (the same
+    #: one-person role, fitting names) or "approved" (the owner said yes).
+    alias_via: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    alias_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )

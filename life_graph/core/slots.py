@@ -10,7 +10,12 @@ and kept the latest value where notes alone returned stale ones.
 
 Fixed topics, free fields: the connections method's free relation names grew to
 129 on the bake-off's big test, so field names are normalised here (aliases and
-synonyms) and anything that is not ``topic.field`` is refused.
+synonyms) and anything that is not ``topic.field`` is refused. A hobby is always
+``hobbies.<activity>.<field>`` with a fixed field (:data:`HOBBY_FIELDS`), so a
+changed day or club replaces the old value (2026-10-31: ``hobbies.cricket_day``
+and ``hobbies.cricket.day`` both stayed current). A family member's name in a
+slot is mapped to the name they are known by in services/entities.py
+(``entities.canonical_slot``): "Maha" and "Mahalakshmi" are one person's fields.
 """
 
 from __future__ import annotations
@@ -103,7 +108,20 @@ FIELD_SYNONYMS = {
         "locality": "area",
         "suburb": "area",
     },
-    "family": {"wife": "spouse", "husband": "spouse", "partner": "spouse"},
+    "family": {
+        "wife": "spouse",
+        "husband": "spouse",
+        "partner": "spouse",
+        "mom": "mother",
+        "mum": "mother",
+        "amma": "mother",
+        "dad": "father",
+        "appa": "father",
+        "dob": "birthday",
+        "date_of_birth": "birthday",
+        "bday": "birthday",
+        "birth_date": "birthday",
+    },
     "devices": {
         "mobile": "phone",
         "smartphone": "phone",
@@ -123,6 +141,186 @@ FIELD_SYNONYMS = {
 }
 
 _SEGMENT = re.compile(r"[a-z0-9_]+")
+
+#: A hobby's fields: every hobby slot is ``hobbies.<activity>.<field>`` with one of
+#: these fields, so a changed day or club replaces the old one instead of landing
+#: in a new slot beside it (``hobbies.cricket_day`` then ``hobbies.cricket.day``,
+#: ``hobbies.badminton_club`` then ``hobbies.club``: both stayed current).
+HOBBY_FIELDS = {
+    "day": "day",
+    "days": "day",
+    "weekday": "day",
+    "weekdays": "day",
+    "play_day": "day",
+    "playing_day": "day",
+    "practice_day": "day",
+    "match_day": "day",
+    "class_day": "day",
+    "schedule": "day",
+    "when": "day",
+    "time": "time",
+    "timing": "time",
+    "timings": "time",
+    "play_time": "time",
+    "practice_time": "time",
+    "session_time": "time",
+    "class_time": "time",
+    "club": "club",
+    "club_name": "club",
+    "team": "club",
+    "team_name": "club",
+    "group": "club",
+    "academy": "club",
+    "coach": "coach",
+    "coach_name": "coach",
+    "trainer": "coach",
+    "teacher": "coach",
+    "instructor": "coach",
+    "guru": "coach",
+    "master": "coach",
+    "place": "place",
+    "venue": "place",
+    "ground": "place",
+    "court": "place",
+    "location": "place",
+    "pool": "place",
+    "role": "role",
+    "position": "role",
+    "batting_position": "role",
+}
+#: Activities recognised in a sentence, for a slot that names none (``hobbies.club``).
+ACTIVITIES = (
+    "cricket",
+    "badminton",
+    "table_tennis",
+    "tennis",
+    "football",
+    "basketball",
+    "volleyball",
+    "hockey",
+    "kabaddi",
+    "chess",
+    "swimming",
+    "yoga",
+    "running",
+    "cycling",
+    "gym",
+    "karate",
+    "boxing",
+    "golf",
+    "squash",
+    "pickleball",
+    "trekking",
+    "hiking",
+    "veena",
+    "guitar",
+    "piano",
+    "violin",
+    "flute",
+    "singing",
+    "dance",
+    "bharatanatyam",
+    "painting",
+    "drawing",
+    "photography",
+    "meditation",
+)
+ACTIVITY_SYNONYMS = {
+    "soccer": "football",
+    "shuttle": "badminton",
+    "shuttlecock": "badminton",
+    "ping_pong": "table_tennis",
+    "tt": "table_tennis",
+    "swim": "swimming",
+    "run": "running",
+    "jogging": "running",
+    "cycle": "cycling",
+    "workout": "gym",
+    "dancing": "dance",
+}
+_ACTIVITY_PREFIX = re.compile(r"^(?:playing|play|plays|learning|weekly|my|owner)_")
+#: The fields of a family member: ``family.anu_school`` is ``family.anu.school``.
+FAMILY_FIELDS = frozenset(
+    {
+        "school",
+        "class",
+        "grade",
+        "birthday",
+        "age",
+        "city",
+        "spouse",
+        "phone",
+        "employer",
+        "college",
+        "doctor",
+        "medicine",
+        "blood_group",
+        "health",
+        "job",
+        "title",
+    }
+)
+
+
+def _activity(segment: str) -> str:
+    segment = _ACTIVITY_PREFIX.sub("", segment)
+    return ACTIVITY_SYNONYMS.get(segment, segment)
+
+
+def _activity_in(content: str) -> str | None:
+    """The one activity *content* names, else None (none, or more than one)."""
+    text = " " + re.sub(r"[^a-z]+", " ", content.lower()) + " "
+    found = []
+    for act in ACTIVITIES:
+        if f" {act.replace('_', ' ')} " in text and not any(act in f for f in found):
+            found.append(act)
+    for word, act in ACTIVITY_SYNONYMS.items():
+        if f" {word.replace('_', ' ')} " in text and act not in found:
+            found.append(act)
+    return found[0] if len(found) == 1 else None
+
+
+def _split_field(segment: str, fields) -> tuple[str, str] | None:
+    """``cricket_day`` → (cricket, day), ``day_cricket`` → (cricket, day), else None."""
+    bits = segment.split("_")
+    for i in range(1, len(bits)):
+        head, tail = "_".join(bits[:i]), "_".join(bits[i:])
+        if tail in fields and head not in fields:
+            return head, tail
+    for i in range(len(bits) - 1, 0, -1):
+        head, tail = "_".join(bits[:i]), "_".join(bits[i:])
+        if head in fields and tail not in fields:
+            return tail, head
+    return None
+
+
+def _hobby(fields: list[str], content: str) -> list[str] | None:
+    """A hobby slot's fields as ``[activity, field]`` (or ``[activity]``); None when
+    it names a field but no activity and the sentence does not name exactly one."""
+    if len(fields) == 1:
+        (seg,) = fields
+        if seg in HOBBY_FIELDS:
+            act = _activity_in(content) if content else None
+            return [act, HOBBY_FIELDS[seg]] if act else None
+        split = _split_field(seg, HOBBY_FIELDS)
+        if split:
+            return [_activity(split[0]), HOBBY_FIELDS[split[1]]]
+        return [_activity(seg)]
+    act, rest = fields[0], fields[1:]
+    if act in HOBBY_FIELDS and rest and rest[0] not in HOBBY_FIELDS:
+        # hobbies.day.cricket
+        act, rest = rest[0], [act, *rest[1:]]
+    if act in HOBBY_FIELDS:
+        # hobbies.club.name: a field with no activity
+        found = _activity_in(content) if content else None
+        return [found, HOBBY_FIELDS[act]] if found else None
+    split = _split_field(act, HOBBY_FIELDS)
+    if split:
+        # hobbies.cricket_club.name
+        return [_activity(split[0]), HOBBY_FIELDS[split[1]]]
+    joined = "_".join(rest)
+    field = HOBBY_FIELDS.get(joined) or HOBBY_FIELDS.get(rest[-1]) or HOBBY_FIELDS.get(rest[0])
+    return [_activity(act), field] if field else [_activity(act), *rest]
 
 
 def _clean(segment: str) -> str:
@@ -157,6 +355,8 @@ _PLAUSIBLE = {
     "blood_group": r"\bblood\b",
     "school": r"\b(?:school|class|grade|studies|study|kindergarten|college|vidyashram|academy)\b",
     "birthday": r"\b(?:birthday|born|birth)\b",
+    # A hobby's day: a changed day replaces the old one, so the sentence must name one.
+    "day": r"\b(?:(?:mon|tues|wednes|thurs|fri|satur|sun)days?|weekends?|weekdays?|daily|every)\b",
 }
 
 
@@ -186,6 +386,16 @@ def normalise(raw: str | None, *, subject: str = "owner", content: str = "") -> 
         return None
     synonyms = FIELD_SYNONYMS.get(topic, {})
     fields = [synonyms.get(p, p) for p in parts[1:]]
+    if topic == "hobbies":
+        hobby = _hobby(fields, content)
+        if not hobby:
+            return None
+        fields = hobby
+    elif topic == "family" and len(fields) == 1 and fields[0] not in FAMILY_FIELDS:
+        # family.anu_school: one person's field written as one segment
+        split = _split_field(fields[0], FAMILY_FIELDS)
+        if split:
+            fields = [split[0], split[1]]
     if subject and subject.lower() != "owner":
         # Someone else's fact: only under family, and always under their name, so
         # "Divya is married to Naveen" is family.divya.spouse, never the owner's

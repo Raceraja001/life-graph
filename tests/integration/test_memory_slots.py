@@ -107,3 +107,25 @@ async def test_outside_text_never_replaces_a_form_value(monkeypatch):
     # Over MCP/API: waits for review, replaces nothing until the owner keeps it.
     assert (await _row(theirs.id)).status == "pending"
     assert (await _row(mine.id)).status == "active"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_changed_hobby_day_replaces_an_older_spelling(monkeypatch):
+    # 2026-10-31: hobbies.cricket_day then hobbies.cricket.day both stayed current.
+    from life_graph.services import profile_card
+
+    tag = uuid.uuid4().hex[:6]
+    (old,) = await _ingest(
+        monkeypatch,
+        [_fact(f"The owner plays cricket every Sunday ({tag}).", "hobbies.cricket_day")],
+    )
+    (new,) = await _ingest(
+        monkeypatch,
+        [_fact(f"The owner plays cricket on Saturdays now ({tag}).", "hobbies.cricket.day")],
+    )
+    was = await _row(old.id)
+    assert was.status == "superseded" and str(was.superseded_by) == str(new.id)
+    profile_card.clear_cache()
+    card = [c["content"] for c in await profile_card.card_items(TENANT) if tag in c["content"]]
+    assert card == [new.content]

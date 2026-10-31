@@ -182,10 +182,14 @@ For every fact, also say:
   basics.name, family.priya.birthday, family.anu.age. home.* is only where the
   OWNER lives: where a relative lives is family.<name>.city. A fact about someone
   else uses their name in the slot (family.divya.spouse, never family.spouse).
+  A hobby is always hobbies.<activity>.<field> with field one of day, time, club,
+  coach, place, role: hobbies.cricket.day, hobbies.cricket.club (a team too),
+  hobbies.badminton.time; never hobbies.cricket_day or hobbies.club.
   Use null for things that can have many values (friends, likes, trips), and for
   hedged or negated facts.
 - Names: keep a person's full name together with what they are called
-  ("Priyadharshini, called Priya", "Anushka (Anu)"), and the owner's own full name.
+  ("Priyadharshini, called Priya", "Anushka (Anu)", "Mahalakshmi, the owner's
+  wife, called Maha"), and the owner's own full name.
 Text in Tamil or Tanglish counts the same as English; write the content in English.
 
 Rules:
