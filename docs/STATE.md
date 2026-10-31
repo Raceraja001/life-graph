@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-31 16:12 UTC` from `master` @ `a074289`
+Generated `2026-10-31 16:26 UTC` from `master` @ `6760a25`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-10-31 16:12 UTC` from `master` @ `a074289`
 
 | | |
 |---|---|
-| HTTP operations | **59** across 50 paths, 13 tags |
+| HTTP operations | **65** across 56 paths, 14 tags |
 | Database tables | **68** |
 | Migrations | **56** (head: `056_study_upgrade`) |
 | Event types | **79** |
@@ -24,15 +24,15 @@ Generated `2026-10-31 16:12 UTC` from `master` @ `a074289`
 | Agent tools | **14** |
 | Scheduled jobs | **34** |
 | Config settings | **277** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3978** in 458 files |
+| Test functions | **3986** in 460 files |
 | Dashboard pages | **22** |
-| Python | 446 files, 114,872 lines |
+| Python | 448 files, 115,582 lines |
 
 ---
 
 ## HTTP API
 
-59 operations, grouped by OpenAPI tag.
+65 operations, grouped by OpenAPI tag.
 
 ### `memories` — 13
 
@@ -51,6 +51,17 @@ Generated `2026-10-31 16:12 UTC` from `master` @ `a074289`
 | POST | `/api/v1/memories/{memory_id}/reinforce` | Reinforce a memory — confirm it is still accurate |
 | POST | `/api/v1/memories/{memory_id}/reject` | Reject a memory |
 | POST | `/api/v1/memories/{memory_id}/unarchive` | Unarchive a memory |
+
+### `memory-page` — 6
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/memories/overview` | What Jarvis knows: review queue, form, notes, older memories |
+| POST | `/api/v1/memories/{memory_id}/archive` | Archive a memory (kept, shown under older memories) |
+| GET | `/api/v1/memories/{memory_id}/connections` | One memory's links, history and mentions |
+| POST | `/api/v1/memories/{memory_id}/correct` | Correct a memory: the old one is kept as history |
+| POST | `/api/v1/memories/{memory_id}/drop` | Drop a memory: reject if pending, take back if active |
+| POST | `/api/v1/memories/{memory_id}/restore` | Bring an archived memory back into use |
 
 ### `preferences` — 6
 
@@ -505,10 +516,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 346 | 3166 |
-| `tests/integration/` | 111 | 800 |
+| `tests/unit/` | 347 | 3169 |
+| `tests/integration/` | 112 | 805 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **458** | **3978** |
+| **total** | **460** | **3986** |
 
 ---
 
