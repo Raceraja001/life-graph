@@ -59,6 +59,8 @@ PERSONAL_TOOLS = frozenset(
         "list_page_monitors",
         "make_study_cards",
         "study_cards_due",
+        "study_progress",
+        "draft_study_cards",
         "invoices_status",
         "delegate_to_persona",
     }
@@ -74,6 +76,7 @@ TEMPORARY_BLOCKED_TOOLS = frozenset(
         "reminder_set",
         "ask_schedule",
         "make_study_cards",
+        "draft_study_cards",
         "watch_page",
         "delegate_to_persona",
         "file_write",

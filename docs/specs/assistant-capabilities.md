@@ -177,6 +177,17 @@ rather than beside it.
   - Telegram: `/review` sends the next due card and accepts `again`, `hard`,
     `good` or `easy`;
   - a brief line with the count of cards due.
+- **Upgrade (2026-10-31, migration 056):** SM-2 kept; cards gain a status
+  (`draft`, `active`, `suspended`), a lapse count (leech at 8) and their
+  source; `study_reviews` logs every answer.
+  - Drafts: the local model writes cards from one saved memory or document,
+    a topic or pasted notes (`POST /study/drafts`, tool `draft_study_cards`);
+    the owner edits (`PATCH /study/cards/{id}`), accepts or rejects them
+    (`/study/drafts/accept|reject`, Telegram `/drafts`) before they are due.
+  - Progress: `GET /study/progress`, tool `study_progress`, Telegram `/study`
+    (streak, due/new/learning/young/mature, accuracy per deck over 30 days).
+  - Nudge: once a day after `study_nudge_hour` (default 18, local), outside
+    quiet hours, a phone notification "N cards due" (services/study_nudge.py).
 
 ### Phase H — Business operations (commercial)
 - **Invoices:**

@@ -683,6 +683,8 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "list_page_monitors",
             "make_study_cards",
             "study_cards_due",
+            "study_progress",
+            "draft_study_cards",
             "invoices_status",
             "money_checkin",
             "app_health",

@@ -56,6 +56,8 @@ service key is unchanged.
 | `GET /api/v1/monitors` | Monitors | Page monitors and their last check. |
 | `GET /api/v1/study/due` | Study | The cards due, to review on the phone. |
 | `GET /api/v1/study/decks` | Study | Each deck's cards, due, reviewed and retention (counts and deck names only). |
+| `GET /api/v1/study/progress` | Study | Streak, due/new/learning/mature counts, drafts waiting and accuracy per deck (counts and deck names only). |
+| `GET /api/v1/study/drafts` | Study | Draft cards waiting for the owner to check, to read on the phone (accepting stays on Telegram and the dashboard). |
 | `GET /api/v1/invoices` | Invoices | Invoices list. |
 | `GET /api/v1/invoices/{invoice_id}` | Invoices | One invoice. |
 | `GET /api/v1/memories/` | Memories | Search and browse memories (Memory tab). |
@@ -119,7 +121,7 @@ codes and revocation (`/api/v1/devices*`), `/api/v1/kernel/tasks` writes and
 `/dispatch`), dev task diffs, budgets, imports, connector accounts and
 credentials, personas and schedules writes, watchers config, the autonomy
 kill switch, `POST /api/v1/research` (spends model and fetch time), study card
-generation and deletion, invoice send/paid/void, LLM offer evaluation, and
+generation, drafting, accepting, editing and deletion, invoice send/paid/void, LLM offer evaluation, and
 everything under `/api/v1/admin`.
 
 ## Adding an entry
