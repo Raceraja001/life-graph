@@ -586,6 +586,31 @@ class _RealStore:
 
 
 _REAL: _RealStore | None = None
+#: One question at a time through the real path: its judge calls go through
+#: Life Graph's own client, outside the LLM class's limit, and 140 at once
+#: locked up the shared Ollama (2026-10-31).
+_REAL_GATE = asyncio.Semaphore(1)
+#: Judge outcomes per variant, so a run whose judge failed cannot pass as a result.
+_JUDGE: dict[str, dict[str, int]] = defaultdict(lambda: {"calls": 0, "failed": 0})
+_CURRENT = {"key": ""}
+
+
+def _count_judge() -> None:
+    from life_graph.services import memory_retrieval
+
+    if getattr(memory_retrieval, "_bakeoff_counted", False):
+        return
+    original = memory_retrieval.judge
+
+    async def counted(question, contents):
+        out = await original(question, contents)
+        tally = _JUDGE[_CURRENT["key"]]
+        tally["calls"] += 1
+        tally["failed"] += out is None
+        return out
+
+    memory_retrieval.judge = counted
+    memory_retrieval._bakeoff_counted = True
 
 
 def _dated_extraction():
@@ -655,17 +680,24 @@ class RealLifeGraph(Method):
 
         memory_context._strengthen = nothing
         get_store().touch_many = nothing
+        _count_judge()
 
     async def context(self, q, llm, emb):
         from life_graph.core.tenant import tenant_scope
         from life_graph.services import memory_context
 
-        self._apply()
-        with tenant_scope(_REAL.tenant):
-            return await memory_context.memory_block(_REAL.tenant, q) or ""
+        async with _REAL_GATE:
+            self._apply()
+            _CURRENT["key"] = self.key
+            with tenant_scope(_REAL.tenant):
+                return await memory_context.memory_block(_REAL.tenant, q) or ""
 
     def stats(self):
-        return {"tenant": _REAL.tenant if _REAL else None, **(_REAL.counts if _REAL else {})}
+        return {
+            "tenant": _REAL.tenant if _REAL else None,
+            **(_REAL.counts if _REAL else {}),
+            "judge": dict(_JUDGE[self.key]),
+        }
 
 
 # ── B: a fixed profile form (Memobase-style topics, free sub-fields) ──
