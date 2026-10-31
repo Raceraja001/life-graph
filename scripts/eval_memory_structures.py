@@ -396,36 +396,14 @@ class LifeGraph(Method):
     key, name = "L", "Life Graph: notes + form (real code)"
 
     async def build(self, data, llm, emb):
-        import contextvars
-        from datetime import date as _date
-
         from life_graph.api.dependencies import get_extraction_pipeline
-        from life_graph.extraction import llm as lg_llm
 
         pipeline = get_extraction_pipeline()
         # Production extracts a message the day it is said and tells the model
         # "Today is …"; here old messages are replayed, so each is told its own
         # date (else "dinner for her birthday" in February became "her birthday
         # is today", 2026-10-31).
-        said_on = contextvars.ContextVar("said_on", default=None)
-        if not getattr(lg_llm, "_bakeoff_dated", False):
-            original = lg_llm._user_message
-
-            def dated(text, *, schema_in_prompt):
-                msg = original(text, schema_in_prompt=schema_in_prompt)
-                d = said_on.get()
-                if d:
-                    day = _date.fromisoformat(d)
-                    msg = re.sub(
-                        r"Today is \w+ \d{4}-\d{2}-\d{2}",
-                        f"Today is {day:%A %Y-%m-%d}",
-                        msg,
-                        count=1,
-                    )
-                return msg
-
-            lg_llm._user_message = dated
-            lg_llm._bakeoff_dated = True
+        said_on = _dated_extraction()
 
         self.notes_m = Notes()
         self.notes_m.notes = []
@@ -470,6 +448,224 @@ class LifeGraph(Method):
             "slotted_facts": self.slot_count,
             "with_history": sum(1 for v in self.form.values() if v["history"]),
         }
+
+
+# ── R: Life Graph end to end — the real store, search, judge and form ──
+
+
+class _RealStore:
+    """The test life stored once through Life Graph's own MemoryManager in a
+    throwaway tenant (database: LIFE_GRAPH_DATABASE_URL, use the test database),
+    shared by every R variant of a run. Facts come from the real extractor and
+    are cached in evals/local/bakeoff/facts_<data>.json, so variants and re-runs
+    store the same facts. Each memory is dated to its message; the owner is
+    taken to keep every unreviewed fact that is not hedged."""
+
+    def __init__(self) -> None:
+        self.tenant = f"bakeoff_{datetime.now(UTC):%Y%m%d%H%M%S}"
+        self.built = False
+        self.decayed = False
+        self.counts: dict[str, int] = {}
+
+    async def build(self, data: dict) -> None:
+        if self.built:
+            return
+        from dataclasses import asdict
+
+        from sqlalchemy import text
+
+        from life_graph.api.dependencies import get_extraction_pipeline, get_memory_manager
+        from life_graph.core.tenant import tenant_scope
+        from life_graph.extraction.rules import ExtractedFact
+        from life_graph.storage.database import async_session
+
+        cache = OUT / f"facts_{Path(data.get('_path', 'test_life')).stem}.json"
+        facts: dict[str, list[dict]] = (
+            json.loads(cache.read_text(encoding="utf-8")) if cache.exists() else {}
+        )
+        msgs = sorted(data["messages"], key=lambda d: (d["date"], d["id"]))
+        said_on = _dated_extraction()
+        pipeline = get_extraction_pipeline()
+        for n, m in enumerate(msgs, 1):
+            if m["id"] not in facts:
+                said_on.set(m["date"])
+                got = (await pipeline.extract(m["text"], capture=True)).facts
+                facts[m["id"]] = [asdict(f) for f in got]
+                if n % 50 == 0:
+                    cache.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
+        cache.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
+
+        from life_graph.config import settings
+
+        # Stored as production stores (facts said together are linked); the
+        # variants differ only in how Jarvis reads.
+        settings.memory_links = True
+        manager = get_memory_manager()
+        known = set(ExtractedFact.__dataclass_fields__)
+        with tenant_scope(self.tenant):
+            for m in msgs:
+                batch = [
+                    ExtractedFact(**{k: v for k, v in f.items() if k in known})
+                    for f in facts[m["id"]]
+                    if (f.get("content") or "").strip()
+                ]
+                if not batch:
+                    continue
+                async with async_session() as s:
+                    wall = (await s.execute(text("SELECT clock_timestamp()"))).scalar_one()
+                await manager.store_facts(batch, source="capture", trust_tier="self")
+                async with async_session() as s:
+                    # Said on the message's day: written now, dated then.
+                    await s.execute(
+                        text(
+                            "UPDATE memories SET updated_at = CAST(:d AS timestamptz),"
+                            " created_at = CASE WHEN created_at >= :w"
+                            " THEN CAST(:d AS timestamptz) ELSE created_at END,"
+                            " last_accessed = CASE WHEN last_accessed >= :w"
+                            " THEN CAST(:d AS timestamptz) ELSE last_accessed END"
+                            " WHERE tenant_id = :t AND updated_at >= :w"
+                        ),
+                        {
+                            "d": datetime.fromisoformat(f"{m['date']}T12:00:00+05:30"),
+                            "t": self.tenant,
+                            "w": wall,
+                        },
+                    )
+                    await s.commit()
+        async with async_session() as s:
+            # The owner keeps what is not hedged (a stand-in for reviewing it).
+            await s.execute(
+                text(
+                    "UPDATE memories SET status = 'active' WHERE tenant_id = :t"
+                    " AND status = 'pending'"
+                    " AND COALESCE(properties->>'certainty', '') <> 'hedged'"
+                ),
+                {"t": self.tenant},
+            )
+            await s.commit()
+            rows = await s.execute(
+                text("SELECT status, count(*) FROM memories WHERE tenant_id = :t GROUP BY 1"),
+                {"t": self.tenant},
+            )
+            self.counts = {r[0]: r[1] for r in rows}
+            links = await s.execute(
+                text("SELECT count(*) FROM memory_links WHERE tenant_id = :t"), {"t": self.tenant}
+            )
+            self.counts["links"] = links.scalar_one()
+        self.built = True
+
+    async def decay(self, today: str) -> None:
+        """The owner approves every archive the decay job would propose on *today*
+        (workers/decay.py's formula, without its per-night cap)."""
+        if self.decayed:
+            return
+        from sqlalchemy import text
+
+        from life_graph.config import settings
+        from life_graph.storage.database import async_session
+
+        async with async_session() as s:
+            res = await s.execute(
+                text(
+                    "UPDATE memories SET status = 'archived' WHERE tenant_id = :t"
+                    " AND status = 'active' AND importance_tier <> 'critical'"
+                    " AND COALESCE(properties->>'kind', '') <> 'episode'"
+                    " AND importance * exp(-decay_rate * EXTRACT(EPOCH FROM ("
+                    "CAST(:today AS timestamptz) - COALESCE(last_accessed, created_at)))"
+                    " / 86400.0) < :th"
+                ),
+                {
+                    "t": self.tenant,
+                    "today": datetime.fromisoformat(f"{today}T12:00:00+05:30"),
+                    "th": settings.decay_archive_threshold,
+                },
+            )
+            await s.commit()
+        self.counts["decay_archived"] = res.rowcount or 0
+        self.decayed = True
+
+
+_REAL: _RealStore | None = None
+
+
+def _dated_extraction():
+    """Tell the extractor each replayed message's own date (see LifeGraph.build)."""
+    import contextvars
+    from datetime import date as _date
+
+    from life_graph.extraction import llm as lg_llm
+
+    if getattr(lg_llm, "_bakeoff_said_on", None) is not None:
+        return lg_llm._bakeoff_said_on
+    said_on = contextvars.ContextVar("said_on", default=None)
+    original = lg_llm._user_message
+
+    def dated(text, *, schema_in_prompt):
+        msg = original(text, schema_in_prompt=schema_in_prompt)
+        d = said_on.get()
+        if d:
+            day = _date.fromisoformat(d)
+            msg = re.sub(
+                r"Today is \w+ \d{4}-\d{2}-\d{2}", f"Today is {day:%A %Y-%m-%d}", msg, count=1
+            )
+        return msg
+
+    lg_llm._user_message = dated
+    lg_llm._bakeoff_said_on = said_on
+    return said_on
+
+
+class RealLifeGraph(Method):
+    """R*: what Jarvis gets in production (services/memory_context.py: the form,
+    then search + links + cold tier, filtered by the local relevance judge),
+    with the 2026-10-31 brain steps switched on or off. Asking changes nothing:
+    usage counts, used-together links and reawakening are off here, so variants
+    do not leak into each other (that learning needs real use over time)."""
+
+    def __init__(self, key, name, *, cold=False, links=False, strength=False, decay=False):
+        self.key, self.name = key, name
+        self.flags = {
+            "memory_cold_tier": cold,
+            "memory_links": links,
+            "memory_strength_rank": strength,
+        }
+        self.decay_first = decay
+
+    def _apply(self) -> None:
+        from life_graph.config import settings
+
+        for k, v in self.flags.items():
+            setattr(settings, k, v)
+
+    async def build(self, data, llm, emb):
+        global _REAL
+        if _REAL is None:
+            _REAL = _RealStore()
+        if _REAL.decayed and not self.decay_first:
+            sys.exit("R variants without decay must run before the ones with it")
+        await _REAL.build(data)
+        self._apply()
+        if self.decay_first:
+            await _REAL.decay(data["today"])
+        from life_graph.api.dependencies import get_store
+        from life_graph.services import memory_context
+
+        async def nothing(*a, **k):
+            return 0
+
+        memory_context._strengthen = nothing
+        get_store().touch_many = nothing
+
+    async def context(self, q, llm, emb):
+        from life_graph.core.tenant import tenant_scope
+        from life_graph.services import memory_context
+
+        self._apply()
+        with tenant_scope(_REAL.tenant):
+            return await memory_context.memory_block(_REAL.tenant, q) or ""
+
+    def stats(self):
+        return {"tenant": _REAL.tenant if _REAL else None, **(_REAL.counts if _REAL else {})}
 
 
 # ── B: a fixed profile form (Memobase-style topics, free sub-fields) ──
@@ -899,6 +1095,25 @@ _SHARED_GRAPH: Graph | None = None
 METHODS: dict[str, Any] = {
     "Z": Everything,
     "L": LifeGraph,
+    "R0": lambda: RealLifeGraph("R0", "Real: as of 30 Oct (no brain steps)"),
+    "R1": lambda: RealLifeGraph("R1", "Real: + cold tier", cold=True),
+    "R2": lambda: RealLifeGraph("R2", "Real: + cold + links", cold=True, links=True),
+    "R3": lambda: RealLifeGraph(
+        "R3", "Real: + cold + links + strength", cold=True, links=True, strength=True
+    ),
+    "RD0": lambda: RealLifeGraph("RD0", "Real, after decay: no brain steps", decay=True),
+    "RD1": lambda: RealLifeGraph("RD1", "Real, after decay: + cold", cold=True, decay=True),
+    "RD2": lambda: RealLifeGraph(
+        "RD2", "Real, after decay: + cold + links", cold=True, links=True, decay=True
+    ),
+    "RD3": lambda: RealLifeGraph(
+        "RD3",
+        "Real, after decay: + cold + links + strength",
+        cold=True,
+        links=True,
+        strength=True,
+        decay=True,
+    ),
     "A": Notes,
     "B": Form,
     "C": _graph_once,
@@ -922,6 +1137,7 @@ async def run(
     parallel: int = 1,
 ) -> Path:
     data = json.loads(data_path.read_text(encoding="utf-8"))
+    data["_path"] = str(data_path)
     questions = [q for q in data["questions"] if not kinds or q["kind"] in kinds][: limit or None]
     llm, emb = LLM(model, parallel), Embedder()
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")

@@ -38,6 +38,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def _link_said_together(memories: list[Memory]) -> None:
+    """Facts from one message are linked (services/associations.py)."""
+    tenant = next(
+        (t for m in memories if isinstance(t := getattr(m, "tenant_id", None), str)), None
+    )
+    if tenant and len(memories) > 1:
+        from life_graph.services import associations
+
+        await associations.said_together(tenant, [m.id for m in memories])
+
+
 class MemoryManager:
     """Orchestrates memory ingestion, contradiction resolution, and supersession.
 
@@ -161,6 +172,7 @@ class MemoryManager:
                 stored_memories.append(memory)
 
         logger.info("Ingested %d memories from %d facts", len(stored_memories), len(facts))
+        await _link_said_together(stored_memories)
         return stored_memories
 
     async def store_facts(
@@ -201,6 +213,7 @@ class MemoryManager:
             )
             if memory:
                 stored.append(memory)
+        await _link_said_together(stored)
         return stored
 
     async def supersede(

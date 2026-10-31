@@ -115,6 +115,14 @@ def _raw_filter_sql(filters: dict | None) -> tuple[str, dict]:
     if "source_type" in filters:
         clauses.append("source_type = :f_source_type")
         params["f_source_type"] = filters["source_type"]
+    if filters.get("cold_tier"):
+        # services/memory_tiers.py: not what the owner took back (forgot,
+        # undid) and not what a bulk clean-up moved out on purpose.
+        clauses.append(
+            "NOT (COALESCE(properties, '{}'::jsonb) ?| ARRAY['forgotten', 'undone'])"
+            " AND COALESCE(properties->>'archived_by', '') <> ALL(CAST(:f_bulk AS text[]))"
+        )
+        params["f_bulk"] = list(filters.get("bulk_archives") or ())
     return "".join(f"\n                  AND {c}" for c in clauses), params
 
 
