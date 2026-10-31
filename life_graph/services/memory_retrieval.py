@@ -167,6 +167,7 @@ async def retrieve(question: str, limit: int = 6) -> list[Any] | None:
     from life_graph.services import entities
 
     linked: list[Any] = []
+    asked = question
     try:
         named = await entities.known_in_text(tenant_id, question)
         if named:
@@ -175,6 +176,12 @@ async def retrieve(question: str, limit: int = 6) -> list[Any] | None:
             )
             known_ids = {m.id for m in candidates}
             candidates += [m for m in linked if m.id not in known_ids]
+            # "When is Maha's birthday?" against "Mahalakshmi's birthday is …":
+            # the judge is told they are one person (migration 056), else it
+            # may drop the note as about someone else.
+            hint = entities.alias_hint(tenant_id, named)
+            if hint:
+                asked = f"{question}\n({hint})"
     except Exception:  # noqa: BLE001 — the index is a bonus; search alone still answers
         logger.warning("Entity candidates failed; using search only", exc_info=True)
     if linked and ABOUT.search(question):
@@ -207,14 +214,14 @@ async def retrieve(question: str, limit: int = 6) -> list[Any] | None:
         # "Where did I work before?": how things were is in the cold tier.
         known = {m.id for m in memories} | seen
         memories += [m for m in await _cold(embedding, question) if m.id not in known]
-    picked = await _judged(question, memories) if memories else []
+    picked = await _judged(asked, memories) if memories else []
     if picked is None:
         logger.warning("Memory relevance judge gave no answer; using the search order")
         return (dated + memories)[:limit]
     if not picked and not dated and cold_too and not past:
         # Nothing warm answers: older memories might (nothing is forgotten).
         cold = await _cold(embedding, question)
-        picked = (await _judged(question, cold) or []) if cold else []
+        picked = (await _judged(asked, cold) or []) if cold else []
     return (dated + picked)[:limit]
 
 

@@ -404,6 +404,12 @@ class MemoryManager:
         # Step 5: Handle contradictions
         auto_supersede_targets = self._resolve_contradictions(contradictions)
 
+        # Step 5a: other names for the same person (services/entities.py,
+        # migration 056), learned only from the owner's own firm words, then a
+        # family slot filed under the name the person is known by, so
+        # family.maha.birthday replaces family.mahalakshmi.birthday.
+        await self._learn_names(fact, trust_tier)
+
         # Step 6: Store the new memory
         properties: dict[str, Any] = {}
         if context:
@@ -586,28 +592,73 @@ class MemoryManager:
                 str(new_id)[:8],
             )
 
-    async def _same_slot_active(self, slot: str) -> list[tuple[str, str]]:
-        """Active memories of this tenant that fill *slot*: (id, reason) to supersede."""
-        from sqlalchemy import select
+    async def _learn_names(self, fact: ExtractedFact, trust_tier: str | None) -> None:
+        """Learn aliases from *fact* and file its family slot under the known name.
 
-        from life_graph.storage.database import async_session
+        Best-effort: a failure costs the alias, never the memory. Outside text
+        (MCP/API) and hedged or negated facts teach nothing ("Maha is not my
+        wife" must not link anyone)."""
+        from life_graph.services import entities
 
         try:
+            tenant_id = get_current_tenant_id()
+            if trust_tier == "self" and fact.polarity != "negate" and fact.certainty != "hedged":
+                said = " ".join(t for t in (fact.content, fact.source_text) if t)
+                await entities.learn_aliases(tenant_id, said, evidence=fact.content)
+            if fact.slot:
+                fact.slot = await entities.canonical_slot(tenant_id, fact.slot)
+        except Exception:  # noqa: BLE001
+            logger.warning("Name learning failed for a fact", exc_info=True)
+
+    async def _same_slot_active(self, slot: str) -> list[tuple[str, str]]:
+        """Active memories of this tenant that fill *slot*: (id, reason) to supersede.
+
+        Also a row whose stored slot is an older spelling of the same field
+        (``hobbies.cricket_day`` for ``hobbies.cricket.day``, ``family.maha.age``
+        for ``family.mahalakshmi.age``): it is read again through today's rules
+        (core/slots.py, entities.canonical_slot), so no data migration is needed."""
+        from sqlalchemy import or_, select
+
+        from life_graph.core import slots
+        from life_graph.services import entities
+        from life_graph.storage.database import async_session
+
+        slot_of = Memory.properties["slot"].astext
+        topic = slots.topic_of(slot)
+        try:
+            tenant_id = get_current_tenant_id()
             async with async_session() as session:
                 rows = (
                     await session.execute(
-                        select(Memory.id, Memory.content).where(
-                            Memory.tenant_id == get_current_tenant_id(),
+                        select(Memory.id, Memory.content, Memory.properties)
+                        .where(
+                            Memory.tenant_id == tenant_id,
                             Memory.status == "active",
-                            Memory.properties["slot"].astext == slot,
+                            or_(slot_of == slot, slot_of.like(f"{topic}.%")),
                         )
+                        .limit(300)
                     )
                 ).all()
+            same = []
+            for mid, content, props in rows:
+                stored = (props or {}).get("slot")
+                if stored != slot:
+                    again = slots.normalise(
+                        stored,
+                        subject=(props or {}).get("subject") or "owner",
+                        content=content or "",
+                    )
+                    if again and topic == "family":
+                        again = await entities.canonical_slot(tenant_id, again)
+                    if again != slot:
+                        continue
+                same.append((mid, content))
         except Exception:  # noqa: BLE001 — a failed lookup costs the replacement, never the memory
             logger.warning("Same-slot lookup failed for %s", slot, exc_info=True)
             return []
         return [
-            (str(i), f"New value for {slot} (was: {' '.join(c.split())[:120]})") for i, c in rows
+            (str(i), f"New value for {slot} (was: {' '.join((c or '').split())[:120]})")
+            for i, c in same
         ]
 
     def _resolve_contradictions(
