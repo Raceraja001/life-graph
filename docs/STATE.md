@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-31 16:05 UTC` from `master` @ `86615d0`
+Generated `2026-10-31 16:12 UTC` from `master` @ `a074289`
 
 ---
 
@@ -18,15 +18,15 @@ Generated `2026-10-31 16:05 UTC` from `master` @ `86615d0`
 |---|---|
 | HTTP operations | **59** across 50 paths, 13 tags |
 | Database tables | **68** |
-| Migrations | **55** (head: `055_feature_idea_worth`) |
+| Migrations | **56** (head: `056_study_upgrade`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
-| Scheduled jobs | **33** |
-| Config settings | **276** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3957** in 456 files |
+| Scheduled jobs | **34** |
+| Config settings | **277** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3978** in 458 files |
 | Dashboard pages | **22** |
-| Python | 444 files, 113,887 lines |
+| Python | 446 files, 114,872 lines |
 
 ---
 
@@ -342,7 +342,7 @@ Generated `2026-10-31 16:05 UTC` from `master` @ `86615d0`
 | ~~assistant~~ (retired) — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
 | **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
 | ~~swe-lead~~ (retired) — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 31 |
+| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 33 |
 
 ---
 
@@ -371,7 +371,7 @@ Generated `2026-10-31 16:05 UTC` from `master` @ `86615d0`
 
 ## Scheduled jobs
 
-33 ARQ cron jobs (times are UTC).
+34 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -402,6 +402,7 @@ Generated `2026-10-31 16:05 UTC` from `master` @ `86615d0`
 | `send_approval_escalations` | every 30 min | `life_graph.workers.tasks.send_approval_escalations` |
 | `send_memory_check` | daily at (settings.brief_hour_utc - 1) % 24:50 | `life_graph.workers.memory_check.send_memory_check` |
 | `send_nudges` | hourly at :12,:42 | `life_graph.workers.nudges.send_nudges` |
+| `send_study_nudge` | hourly at :07 | `life_graph.workers.study_nudge.send_study_nudge` |
 | `sweep_stuck_captures` | hourly at :07,:22,:37,:52 | `life_graph.workers.capture_sweep.sweep_stuck_captures` |
 | `sync_connectors` | every 5 min | `life_graph.workers.tasks.sync_connectors` |
 | `sync_dev_task_prs` | every 15 min | `life_graph.workers.tasks.sync_dev_task_prs` |
@@ -492,9 +493,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-55 revisions, head `055_feature_idea_worth`.
+56 revisions, head `056_study_upgrade`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade`
 
 ---
 
@@ -504,16 +505,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 345 | 3147 |
-| `tests/integration/` | 110 | 798 |
+| `tests/unit/` | 346 | 3166 |
+| `tests/integration/` | 111 | 800 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **456** | **3957** |
+| **total** | **458** | **3978** |
 
 ---
 
 ## Configuration
 
-276 settings, all overridable by environment variable.
+277 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -775,6 +776,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_INTERVIEW_QUESTION_TTL_DAYS` | `7` |
 | `LIFE_GRAPH_BRIEF_HOUR_UTC` | `2` |
 | `LIFE_GRAPH_PHONE_DUE_NOTIFICATIONS` | `True` |
+| `LIFE_GRAPH_STUDY_NUDGE_HOUR` | `18` |
 | `LIFE_GRAPH_VAPID_PUBLIC_KEY` | `''` |
 | `LIFE_GRAPH_VAPID_PRIVATE_KEY` | `''` |
 | `LIFE_GRAPH_VAPID_SUBJECT` | `'mailto:tolokanathan@gmail.com'` |
