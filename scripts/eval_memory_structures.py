@@ -1250,13 +1250,15 @@ async def run(
 
 def rescore(run_dir: Path) -> None:
     """Score a run's answers again with the current test set: no model calls."""
-    data = json.loads(DATA.read_text(encoding="utf-8"))
+    s = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    # The run's own test life (summary "data"), not always the first one.
+    data_path = DATA.parent / s.get("data", DATA.name)
+    data = json.loads(data_path.read_text(encoding="utf-8"))
     qs = {q["id"]: q for q in data["questions"]}
     rows = [
         json.loads(line)
         for line in (run_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    s = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
     per: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(lambda: [0, 0]))
     for r in rows:
         r["ok"], r["why"] = score(qs[r["id"]], r["answer"])
