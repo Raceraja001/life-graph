@@ -27,6 +27,7 @@ READ_ONLY_TOOLS = frozenset(
         "app_health",
         "list_page_monitors",
         "study_cards_due",
+        "study_progress",
         "invoices_status",
     }
 )
@@ -296,6 +297,93 @@ async def study_cards_due() -> str:
         cards = await study.due_cards(session, tenant, today, limit=5)
         total = await study.count_due(session, tenant, today)
     return _out({"due": total, "next": [{"deck": c.deck, "front": c.front} for c in cards]})
+
+
+@tool(
+    name="study_progress",
+    description=(
+        "The user's study progress: streak, cards due today, new/learning/mature counts,"
+        " drafts waiting to be checked, and accuracy over 30 days (per deck for a local model)."
+    ),
+    parameters_schema={"type": "object", "properties": {}},
+)
+async def study_progress() -> str:
+    from life_graph.services import study
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    async with async_session() as session:
+        p = await study.progress(session, tenant, _today())
+    if current_audience() != LOCAL:
+        # Deck names are the owner's topics: a cloud model gets the counts.
+        p = {k: v for k, v in p.items() if k != "decks"}
+    return _out(p)
+
+
+@tool(
+    name="draft_study_cards",
+    description=(
+        "Draft flashcards from one thing the user saved — a memory (source_id), a document"
+        " (source_id), their memories on a topic, or notes they paste (text) — for them to"
+        " check and accept before the cards are scheduled (/drafts on Telegram). Written by"
+        " the local model. Only when they ask to study or be quizzed on something."
+    ),
+    parameters_schema={
+        "type": "object",
+        "properties": {
+            "source": {"type": "string", "enum": ["memory", "document", "topic", "text"]},
+            "source_id": {"type": "string", "description": "Memory or document id"},
+            "topic": {"type": "string"},
+            "text": {"type": "string", "description": "Notes to make cards from"},
+            "deck": {"type": "string"},
+        },
+        "required": ["source"],
+    },
+)
+async def draft_study_cards(
+    source: str,
+    source_id: str | None = None,
+    topic: str | None = None,
+    text: str | None = None,
+    deck: str | None = None,
+) -> str:
+    import uuid
+
+    from life_graph.services import study
+    from life_graph.storage.database import async_session
+
+    tenant = _tenant()
+    if not tenant:
+        return json.dumps({"error": "no tenant context"})
+    if source not in study.SOURCE_KINDS:
+        return json.dumps({"error": f"source must be one of {', '.join(study.SOURCE_KINDS)}"})
+    sid = None
+    if source in ("memory", "document"):
+        try:
+            sid = uuid.UUID(str(source_id))
+        except ValueError:
+            return json.dumps({"error": f"a {source} needs its id (source_id)"})
+    async with async_session() as session:
+        out = await study.draft(
+            session,
+            tenant,
+            today=_today(),
+            source=source,
+            source_id=sid,
+            topic=topic,
+            text=text,
+            deck=deck,
+        )
+        await session.commit()
+    drafts = out.pop("drafts", [])
+    if current_audience() == LOCAL:
+        out["drafts"] = [
+            {"front": d["front"], "back": d["back"], "deck": d["deck"]} for d in drafts
+        ]
+    out["next_step"] = "The user checks them with /drafts on Telegram or in the app."
+    return _out(out)
 
 
 @tool(

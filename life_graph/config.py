@@ -719,6 +719,9 @@ class Settings(BaseSettings):
     # notifications for the phone to post (services/due_notifications.py).
     # False keeps the phone quiet about them; the brief still lists them.
     phone_due_notifications: bool = True
+    # Local hour (user_timezone) after which the daily "N study cards due" nudge
+    # may go to the phone (services/study_nudge.py); -1 turns it off.
+    study_nudge_hour: int = 18
 
     # ── Web Push Notifications ──────────────────────────
     vapid_public_key: str = ""  # Set LIFE_GRAPH_VAPID_PUBLIC_KEY

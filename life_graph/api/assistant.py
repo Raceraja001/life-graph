@@ -472,6 +472,140 @@ class GradeIn(BaseModel):
     grade: str
 
 
+class DraftIn(BaseModel):
+    """Draft cards (checked by the owner before they are scheduled) from one
+    source: a saved ``memory`` or ``document`` (``source_id``), memories on a
+    ``topic``, or pasted ``text``. Written by the local model only."""
+
+    source: str = Field(pattern="^(text|topic|memory|document)$")
+    source_id: uuid.UUID | None = None
+    topic: str | None = Field(default=None, max_length=120)
+    text: str | None = Field(default=None, max_length=20_000)
+    deck: str | None = Field(default=None, max_length=80)
+
+
+class DraftSelection(BaseModel):
+    """Which drafts: ``ids``, or ``all``."""
+
+    ids: list[uuid.UUID] | None = Field(default=None, max_length=200)
+    all: bool = False
+
+
+class CardPatch(BaseModel):
+    front: str | None = Field(default=None, min_length=1, max_length=500)
+    back: str | None = Field(default=None, min_length=1, max_length=1500)
+    deck: str | None = Field(default=None, max_length=80)
+    status: str | None = Field(default=None, pattern="^(active|suspended)$")
+
+
+@router.get("/study/progress")
+async def study_progress() -> dict[str, Any]:
+    """Streak, due/new/learning/young/mature counts, drafts, accuracy per deck (30 days)."""
+    from life_graph.services import study
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        out = await study.progress(session, tenant_id, _today())
+    return success_response(out)
+
+
+@router.post("/study/drafts", status_code=201)
+async def draft_cards(body: DraftIn) -> dict[str, Any]:
+    from life_graph.services import study
+
+    if body.source in ("memory", "document") and body.source_id is None:
+        raise HTTPException(status_code=422, detail=f"A {body.source} needs source_id")
+    if body.source == "topic" and not (body.topic or "").strip():
+        raise HTTPException(status_code=422, detail="A topic source needs topic")
+    if body.source == "text" and not (body.text or "").strip():
+        raise HTTPException(status_code=422, detail="A text source needs text")
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        out = await study.draft(
+            session,
+            tenant_id,
+            today=_today(),
+            source=body.source,
+            source_id=body.source_id,
+            topic=body.topic,
+            text=body.text,
+            deck=body.deck,
+        )
+        await session.commit()
+    return success_response(out)
+
+
+@router.get("/study/drafts")
+async def list_drafts(limit: int = 50) -> dict[str, Any]:
+    from life_graph.services import study
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        cards = await study.list_drafts(session, tenant_id, max(1, min(limit, 200)))
+    return success_response([study.card_dict(c) for c in cards])
+
+
+def _selection(body: DraftSelection) -> list[uuid.UUID] | None:
+    if body.all:
+        return None
+    if not body.ids:
+        raise HTTPException(status_code=422, detail="Give ids, or all: true")
+    return body.ids
+
+
+@router.post("/study/drafts/accept")
+async def accept_drafts(body: DraftSelection) -> dict[str, Any]:
+    from life_graph.services import study
+
+    ids = _selection(body)
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        n = await study.accept_drafts(session, tenant_id, _today(), ids)
+        await session.commit()
+    return success_response({"accepted": n})
+
+
+@router.post("/study/drafts/reject")
+async def reject_drafts(body: DraftSelection) -> dict[str, Any]:
+    from life_graph.services import study
+
+    ids = _selection(body)
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        n = await study.reject_drafts(session, tenant_id, ids)
+        await session.commit()
+    return success_response({"rejected": n})
+
+
+@router.patch("/study/cards/{card_id}")
+async def edit_card(card_id: str, body: CardPatch) -> dict[str, Any]:
+    """Edit a card or draft (front, back, deck), or suspend/unsuspend a card."""
+    from life_graph.services import study
+
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        card = await study.get_card(session, tenant_id, _uuid(card_id))
+        if card is None:
+            raise HTTPException(status_code=404, detail="Card not found")
+        try:
+            await study.edit_card(
+                session,
+                tenant_id,
+                card,
+                front=body.front,
+                back=body.back,
+                deck=body.deck,
+                status=body.status,
+            )
+        except study.DuplicateCardError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await session.commit()
+        await session.refresh(card)
+    return success_response(study.card_dict(card))
+
+
 @router.get("/study/due")
 async def due_cards(limit: int = 20, deck: str | None = None) -> dict[str, Any]:
     from life_graph.services import study
@@ -536,7 +670,7 @@ async def grade(card_id: str, body: GradeIn) -> dict[str, Any]:
         if card is None:
             raise HTTPException(status_code=404, detail="Card not found")
         try:
-            study.grade_card(card, body.grade, _today())
+            await study.review(session, tenant_id, card, body.grade, _today())
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         await session.commit()
