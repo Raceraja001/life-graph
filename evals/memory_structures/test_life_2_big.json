@@ -1,0 +1,9327 @@
+{
+ "about": "Synthetic test life no. 2 for the memory-structure bake-off (2026-10-31). Fictional person, every fact invented; no owner data. Messages are what the person says to Jarvis, in date order, in English, Tamil and Tanglish. Questions are asked 'today' = 2026-10-31. Scoring is the same as test_life.json: an answer passes when every group in 'must' has at least one alternative in the answer (case-insensitive) and no 'must_not' term appears; 'abstain' questions pass only when the answer says it doesn't know and states no value. Alternatives of 3 characters or fewer match as whole words only. Kinds as in test_life.json plus 'connected' (needs two facts said far apart) and 'old_fact' (said once, more than six months before today, never repeated). 'gold' is a right answer and 'traps' are wrong answers that must fail; the runner ignores both (scripts/check_memory_eval_data.py checks them). BIG version: the same facts and questions plus 1000 everyday messages (make_big_life.py, seed 20261031); none changes a right answer.",
+ "person": "Kavitha Murugesan",
+ "today": "2026-10-31",
+ "messages": [
+  {
+   "id": "f0409",
+   "date": "2025-03-01",
+   "kind": "media",
+   "text": "Ponniyin Selvan 2 padam paathom, semma."
+  },
+  {
+   "id": "f0671",
+   "date": "2025-03-01",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0429",
+   "date": "2025-03-02",
+   "kind": "others",
+   "text": "Senthil's amma Pushpa goes to the Meenakshi temple every Friday."
+  },
+  {
+   "id": "f0936",
+   "date": "2025-03-03",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0965",
+   "date": "2025-03-03",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the dashboard flow."
+  },
+  {
+   "id": "m001",
+   "date": "2025-03-03",
+   "text": "Hi Jarvis! I'm Kavitha Murugesan. My friends call me Kavi."
+  },
+  {
+   "id": "m002",
+   "date": "2025-03-03",
+   "text": "I live in a rented flat in K.K. Nagar, Madurai, with my husband Senthil, our daughter Nila and our son Ilan."
+  },
+  {
+   "id": "f0080",
+   "date": "2025-03-04",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0104",
+   "date": "2025-03-04",
+   "kind": "media",
+   "text": "Watched Ponniyin Selvan 2 with Senthil last night."
+  },
+  {
+   "id": "m003",
+   "date": "2025-03-04",
+   "text": "Senthil (Senthilkumar on paper) is a site engineer at L&T Construction."
+  },
+  {
+   "id": "m004",
+   "date": "2025-03-04",
+   "text": "Nila is 6 and in class 1 at Sri Vidya Mandir. Her birthday is 12 June."
+  },
+  {
+   "id": "f0680",
+   "date": "2025-03-05",
+   "kind": "pickles",
+   "text": "Made 60 jars of paruppu podi today."
+  },
+  {
+   "id": "m005",
+   "date": "2025-03-05",
+   "text": "Ilan was born on 27 January 2024. At home we call him Kutty."
+  },
+  {
+   "id": "m006",
+   "date": "2025-03-06",
+   "text": "En amma peru Mahalakshmi. Naan avangala 'Ma'nu dhaan kooppiduven, avanga friends ellarum 'Maha'nu kooppiduvanga."
+  },
+  {
+   "id": "m007",
+   "date": "2025-03-06",
+   "text": "Ma and Appa live in Palayamkottai, Tirunelveli. Appa, Subramanian, is a retired headmaster."
+  },
+  {
+   "id": "f0095",
+   "date": "2025-03-07",
+   "kind": "musings",
+   "text": "Maybe I should try Zumba."
+  },
+  {
+   "id": "m008",
+   "date": "2025-03-07",
+   "text": "I work at Velan Infotech in Madurai as a QA lead. I've been there since 2019."
+  },
+  {
+   "id": "m009",
+   "date": "2025-03-07",
+   "text": "My project at Velan is MediBill, a hospital billing app. I lead a team of five testers."
+  },
+  {
+   "id": "f0348",
+   "date": "2025-03-08",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the idli podi."
+  },
+  {
+   "id": "f0356",
+   "date": "2025-03-08",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0378",
+   "date": "2025-03-08",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0741",
+   "date": "2025-03-08",
+   "kind": "media",
+   "text": "Reading Sivagamiyin Sabatham these days."
+  },
+  {
+   "id": "f0837",
+   "date": "2025-03-08",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the mango thokku."
+  },
+  {
+   "id": "m010",
+   "date": "2025-03-08",
+   "text": "My manager at Velan is Prakash."
+  },
+  {
+   "id": "f0059",
+   "date": "2025-03-09",
+   "kind": "pickles",
+   "text": "Made 47 jars of lemon pickle today."
+  },
+  {
+   "id": "f0783",
+   "date": "2025-03-10",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "m011",
+   "date": "2025-03-10",
+   "text": "My side business is Nila Pickles: homemade pickles and podis that I sell through WhatsApp and Instagram."
+  },
+  {
+   "id": "m012",
+   "date": "2025-03-10",
+   "text": "The heart of Nila Pickles is Ma's narthangai (citron) pickle recipe. I learnt it from her."
+  },
+  {
+   "id": "f0399",
+   "date": "2025-03-11",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0583",
+   "date": "2025-03-11",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 8 more."
+  },
+  {
+   "id": "f0042",
+   "date": "2025-03-12",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0189",
+   "date": "2025-03-12",
+   "kind": "outings",
+   "text": "Went to Eco Park on Sunday; very crowded."
+  },
+  {
+   "id": "f0819",
+   "date": "2025-03-12",
+   "kind": "others",
+   "text": "Lakshmi's husband is a cardiologist."
+  },
+  {
+   "id": "m013",
+   "date": "2025-03-12",
+   "text": "I play badminton every Tuesday evening at the Gandhi Nagar indoor court."
+  },
+  {
+   "id": "m014",
+   "date": "2025-03-12",
+   "text": "Sorry, I said Tuesday, I meant Thursday. Badminton is on Thursday evenings."
+  },
+  {
+   "id": "f0486",
+   "date": "2025-03-13",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0277",
+   "date": "2025-03-14",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "m015",
+   "date": "2025-03-14",
+   "text": "My phone is a Redmi Note 12. Senthil uses a Vivo V29 and rides a Bajaj Pulsar."
+  },
+  {
+   "id": "f0290",
+   "date": "2025-03-15",
+   "kind": "work",
+   "text": "Long day at work, 48 meetings back to back."
+  },
+  {
+   "id": "f0367",
+   "date": "2025-03-15",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0808",
+   "date": "2025-03-15",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "m016",
+   "date": "2025-03-15",
+   "text": "En blood group O negative, adhanala blood donation camp-ku eppavum ennai kooppiduvanga."
+  },
+  {
+   "id": "f0292",
+   "date": "2025-03-16",
+   "kind": "pickles",
+   "text": "Inniku mango thokku 12 bottle pack panniten."
+  },
+  {
+   "id": "m017",
+   "date": "2025-03-16",
+   "text": "I don't drink coffee at all. I'm a ginger tea person."
+  },
+  {
+   "id": "f0495",
+   "date": "2025-03-17",
+   "kind": "others",
+   "text": "Prakash has become a director at Velan Infotech."
+  },
+  {
+   "id": "f0560",
+   "date": "2025-03-17",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "m018",
+   "date": "2025-03-17",
+   "text": "My birthday is 18 March."
+  },
+  {
+   "id": "f0452",
+   "date": "2025-03-18",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0940",
+   "date": "2025-03-18",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0962",
+   "date": "2025-03-18",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "m019",
+   "date": "2025-03-18",
+   "text": "Senthil got me a silver anklet for my birthday today."
+  },
+  {
+   "id": "f0317",
+   "date": "2025-03-19",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0458",
+   "date": "2025-03-19",
+   "kind": "small_talk",
+   "text": "இன்னைக்கு என்ன கிழமை?"
+  },
+  {
+   "id": "f0015",
+   "date": "2025-03-20",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0226",
+   "date": "2025-03-20",
+   "kind": "outings",
+   "text": "Took the kids to the Meenakshi temple this evening."
+  },
+  {
+   "id": "f0774",
+   "date": "2025-03-20",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "m020",
+   "date": "2025-03-20",
+   "text": "My best friend from college is Deepa Sekar. She runs a boutique called Deepa Designs on Town Hall Road, Madurai."
+  },
+  {
+   "id": "f0190",
+   "date": "2025-03-21",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0295",
+   "date": "2025-03-21",
+   "kind": "media",
+   "text": "Reading Sivagamiyin Sabatham these days."
+  },
+  {
+   "id": "f0643",
+   "date": "2025-03-21",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "m021",
+   "date": "2025-03-21",
+   "text": "Thursday night badminton mudichittu late-ah dhaan veetuku varuven, so andha naal dinner Senthil dhaan seivaaru."
+  },
+  {
+   "id": "f0619",
+   "date": "2025-03-22",
+   "kind": "outings",
+   "text": "Evening walk near the Meenakshi temple; nice breeze."
+  },
+  {
+   "id": "m022",
+   "date": "2025-03-22",
+   "text": "Our car is a Maruti Baleno. The SBI car loan EMI is 11,500 rupees on the 10th of every month."
+  },
+  {
+   "id": "m023",
+   "date": "2025-03-22",
+   "text": "For short trips I ride my Honda Activa."
+  },
+  {
+   "id": "f0733",
+   "date": "2025-03-23",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0068",
+   "date": "2025-03-24",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0140",
+   "date": "2025-03-24",
+   "kind": "errands",
+   "text": "Kaaikari vaanga market pogaNum."
+  },
+  {
+   "id": "f0550",
+   "date": "2025-03-24",
+   "kind": "media",
+   "text": "Finished Sivagamiyin Sabatham; loved it."
+  },
+  {
+   "id": "f0581",
+   "date": "2025-03-24",
+   "kind": "others",
+   "text": "One of the teachers at Ilan's daycare is also called Nila."
+  },
+  {
+   "id": "f0047",
+   "date": "2025-03-25",
+   "kind": "outings",
+   "text": "Had lunch at Murugan Idli Shop with Senthil."
+  },
+  {
+   "id": "m024",
+   "date": "2025-03-25",
+   "text": "I'm lactose intolerant, so I avoid milk. Curd is fine for me though."
+  },
+  {
+   "id": "f0141",
+   "date": "2025-03-26",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0634",
+   "date": "2025-03-28",
+   "kind": "others",
+   "text": "தீபா சேகர் புது கடை திறக்கலாமான்னு யோசிக்கிறாங்க."
+  },
+  {
+   "id": "m025",
+   "date": "2025-03-28",
+   "text": "Senthil's amma, Pushpa, lives in her own house in Anna Nagar, Madurai."
+  },
+  {
+   "id": "f0091",
+   "date": "2025-03-29",
+   "kind": "others",
+   "text": "KR-ku coffee illaama mudiyaadhu, dhinamum moonu cup."
+  },
+  {
+   "id": "f0599",
+   "date": "2025-03-30",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0346",
+   "date": "2025-04-01",
+   "kind": "media",
+   "text": "Reading Atomic Habits these days."
+  },
+  {
+   "id": "m026",
+   "date": "2025-04-01",
+   "text": "Started an SIP of 5,000 rupees a month in the Navarasa Flexi Cap fund."
+  },
+  {
+   "id": "f0349",
+   "date": "2025-04-02",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "m027",
+   "date": "2025-04-02",
+   "text": "I also pay 3,000 a month into a gold savings scheme at Kanaga Jewellers."
+  },
+  {
+   "id": "f0445",
+   "date": "2025-04-03",
+   "kind": "errands",
+   "text": "Spent 4700 rupees on groceries today."
+  },
+  {
+   "id": "f0788",
+   "date": "2025-04-05",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 13 more."
+  },
+  {
+   "id": "m028",
+   "date": "2025-04-05",
+   "text": "Our rent in K.K. Nagar is 14,000 a month."
+  },
+  {
+   "id": "f0919",
+   "date": "2025-04-06",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0419",
+   "date": "2025-04-07",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0472",
+   "date": "2025-04-07",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0499",
+   "date": "2025-04-07",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0747",
+   "date": "2025-04-08",
+   "kind": "work",
+   "text": "Automated 16 more regression tests this week."
+  },
+  {
+   "id": "f0955",
+   "date": "2025-04-09",
+   "kind": "work",
+   "text": "Long day at work, 7 meetings back to back."
+  },
+  {
+   "id": "f0184",
+   "date": "2025-04-11",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0605",
+   "date": "2025-04-11",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0958",
+   "date": "2025-04-11",
+   "kind": "pickles",
+   "text": "Inniku garlic pickle 40 bottle pack panniten."
+  },
+  {
+   "id": "f0799",
+   "date": "2025-04-12",
+   "kind": "pickles",
+   "text": "Packed 35 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0872",
+   "date": "2025-04-12",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "m029",
+   "date": "2025-04-12",
+   "text": "Back from Rameswaram: three days, for Ma's prayer at the temple. Ilan loved the beach."
+  },
+  {
+   "id": "f0987",
+   "date": "2025-04-13",
+   "kind": "pickles",
+   "text": "Made 23 jars of idli podi today."
+  },
+  {
+   "id": "f0442",
+   "date": "2025-04-15",
+   "kind": "others",
+   "text": "செந்திலோட அண்ணன் முரளி துபாய்ல புது கார் வாங்கினார்."
+  },
+  {
+   "id": "m030",
+   "date": "2025-04-15",
+   "text": "My brother Arun lives in Pune and works as a data engineer at Zentrix Systems."
+  },
+  {
+   "id": "m031",
+   "date": "2025-04-15",
+   "text": "Arun just switched to a OnePlus 13. He keeps telling me to get one too, but I'm not buying it."
+  },
+  {
+   "id": "f0061",
+   "date": "2025-04-17",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0247",
+   "date": "2025-04-18",
+   "kind": "media",
+   "text": "Amaran padam paathom, semma."
+  },
+  {
+   "id": "f0887",
+   "date": "2025-04-18",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "f0921",
+   "date": "2025-04-19",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0099",
+   "date": "2025-04-20",
+   "kind": "pickles",
+   "text": "Made 40 jars of idli podi today."
+  },
+  {
+   "id": "f0829",
+   "date": "2025-04-20",
+   "kind": "others",
+   "text": "KR-ku coffee illaama mudiyaadhu, dhinamum moonu cup."
+  },
+  {
+   "id": "f0508",
+   "date": "2025-04-21",
+   "kind": "work",
+   "text": "Found a nasty bug in the onboarding screen today."
+  },
+  {
+   "id": "f0039",
+   "date": "2025-04-22",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0086",
+   "date": "2025-04-22",
+   "kind": "pickles",
+   "text": "Inniku garlic pickle 51 bottle pack panniten."
+  },
+  {
+   "id": "f0467",
+   "date": "2025-04-22",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0802",
+   "date": "2025-04-22",
+   "kind": "outings",
+   "text": "Had lunch at Kumar Mess with Senthil."
+  },
+  {
+   "id": "f0505",
+   "date": "2025-04-23",
+   "kind": "pickles",
+   "text": "Made 49 jars of lemon pickle today."
+  },
+  {
+   "id": "f0389",
+   "date": "2025-04-24",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0854",
+   "date": "2025-04-25",
+   "kind": "musings",
+   "text": "Thinking about a new sofa for the hall."
+  },
+  {
+   "id": "f0868",
+   "date": "2025-04-25",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the onboarding flow."
+  },
+  {
+   "id": "m032",
+   "date": "2025-04-25",
+   "text": "Our neighbour Revathi in K.K. Nagar teaches chemistry at Madurai Kamaraj University."
+  },
+  {
+   "id": "f0239",
+   "date": "2025-04-26",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0307",
+   "date": "2025-04-27",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0504",
+   "date": "2025-04-27",
+   "kind": "others",
+   "text": "செந்திலோட அண்ணன் முரளி துபாய்ல புது கார் வாங்கினார்."
+  },
+  {
+   "id": "f0978",
+   "date": "2025-04-27",
+   "kind": "outings",
+   "text": "Had lunch at Sree Sabarees with Senthil."
+  },
+  {
+   "id": "f0021",
+   "date": "2025-04-28",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 53 more."
+  },
+  {
+   "id": "f0067",
+   "date": "2025-04-28",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0522",
+   "date": "2025-04-28",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0649",
+   "date": "2025-04-28",
+   "kind": "musings",
+   "text": "Thinking about a new sofa for the hall."
+  },
+  {
+   "id": "f0531",
+   "date": "2025-04-29",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0100",
+   "date": "2025-04-30",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0133",
+   "date": "2025-04-30",
+   "kind": "work",
+   "text": "Long day at work, 47 meetings back to back."
+  },
+  {
+   "id": "f0641",
+   "date": "2025-04-30",
+   "kind": "work",
+   "text": "Long day at work, 57 meetings back to back."
+  },
+  {
+   "id": "f0713",
+   "date": "2025-04-30",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0871",
+   "date": "2025-05-02",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "m033",
+   "date": "2025-05-02",
+   "text": "Nila Pickles got its FSSAI registration today!"
+  },
+  {
+   "id": "f0085",
+   "date": "2025-05-03",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0310",
+   "date": "2025-05-05",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 12 more."
+  },
+  {
+   "id": "f0388",
+   "date": "2025-05-05",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0604",
+   "date": "2025-05-05",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0864",
+   "date": "2025-05-05",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "m034",
+   "date": "2025-05-05",
+   "text": "Ma has thyroid; she takes a Thyronorm tablet every morning."
+  },
+  {
+   "id": "f0548",
+   "date": "2025-05-06",
+   "kind": "media",
+   "text": "Watched 96 with Senthil last night."
+  },
+  {
+   "id": "f0022",
+   "date": "2025-05-07",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0447",
+   "date": "2025-05-07",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0806",
+   "date": "2025-05-07",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "f0746",
+   "date": "2025-05-08",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 11 more."
+  },
+  {
+   "id": "f0143",
+   "date": "2025-05-09",
+   "kind": "outings",
+   "text": "Went to Eco Park on Sunday; very crowded."
+  },
+  {
+   "id": "f0699",
+   "date": "2025-05-09",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0897",
+   "date": "2025-05-09",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0264",
+   "date": "2025-05-10",
+   "kind": "work",
+   "text": "Long day at work, 57 meetings back to back."
+  },
+  {
+   "id": "m035",
+   "date": "2025-05-10",
+   "text": "I joined a pottery class at Mann Studio on Saturday mornings."
+  },
+  {
+   "id": "f0524",
+   "date": "2025-05-11",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0161",
+   "date": "2025-05-12",
+   "kind": "pickles",
+   "text": "Made 24 jars of garlic pickle today."
+  },
+  {
+   "id": "f0232",
+   "date": "2025-05-12",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0334",
+   "date": "2025-05-13",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0925",
+   "date": "2025-05-16",
+   "kind": "errands",
+   "text": "Spent 3350 rupees on groceries today."
+  },
+  {
+   "id": "f0912",
+   "date": "2025-05-17",
+   "kind": "media",
+   "text": "Reading Ponniyin Selvan these days."
+  },
+  {
+   "id": "m036",
+   "date": "2025-05-18",
+   "text": "Thinking about learning Hindi, maybe next year. Not sure yet."
+  },
+  {
+   "id": "f0144",
+   "date": "2025-05-19",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0302",
+   "date": "2025-05-19",
+   "kind": "media",
+   "text": "Watched Maharaja with Senthil last night."
+  },
+  {
+   "id": "f0928",
+   "date": "2025-05-19",
+   "kind": "small_talk",
+   "text": "இன்னைக்கு என்ன கிழமை?"
+  },
+  {
+   "id": "f0278",
+   "date": "2025-05-20",
+   "kind": "media",
+   "text": "Watched Amaran with Senthil last night."
+  },
+  {
+   "id": "f0507",
+   "date": "2025-05-20",
+   "kind": "pickles",
+   "text": "Inniku lemon pickle 30 bottle pack panniten."
+  },
+  {
+   "id": "f0629",
+   "date": "2025-05-20",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0849",
+   "date": "2025-05-20",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "f0724",
+   "date": "2025-05-21",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 56 more."
+  },
+  {
+   "id": "f0824",
+   "date": "2025-05-21",
+   "kind": "others",
+   "text": "Senthil's amma Pushpa goes to the Meenakshi temple every Friday."
+  },
+  {
+   "id": "f0898",
+   "date": "2025-05-22",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0037",
+   "date": "2025-05-23",
+   "kind": "outings",
+   "text": "Went to Thirumalai Nayakkar Mahal on Sunday; very crowded."
+  },
+  {
+   "id": "f0148",
+   "date": "2025-05-23",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 42 more."
+  },
+  {
+   "id": "f0612",
+   "date": "2025-05-23",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0800",
+   "date": "2025-05-23",
+   "kind": "outings",
+   "text": "Had lunch at Hotel Anandha with Senthil."
+  },
+  {
+   "id": "f0333",
+   "date": "2025-05-24",
+   "kind": "pickles",
+   "text": "Packed 19 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0374",
+   "date": "2025-05-24",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the claims flow."
+  },
+  {
+   "id": "f0929",
+   "date": "2025-05-24",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0444",
+   "date": "2025-05-25",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0525",
+   "date": "2025-05-25",
+   "kind": "outings",
+   "text": "Evening walk near Thirumalai Nayakkar Mahal; nice breeze."
+  },
+  {
+   "id": "f0950",
+   "date": "2025-05-25",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "m037",
+   "date": "2025-05-25",
+   "text": "Senthil plays cricket on Sundays with his office team."
+  },
+  {
+   "id": "f0324",
+   "date": "2025-05-26",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0383",
+   "date": "2025-05-26",
+   "kind": "outings",
+   "text": "Went to Gandhi Museum on Sunday; very crowded."
+  },
+  {
+   "id": "f0459",
+   "date": "2025-05-26",
+   "kind": "pickles",
+   "text": "Inniku mango thokku 13 bottle pack panniten."
+  },
+  {
+   "id": "f0674",
+   "date": "2025-05-26",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0830",
+   "date": "2025-05-27",
+   "kind": "others",
+   "text": "Arun is thinking of moving to Bangalore someday."
+  },
+  {
+   "id": "f0586",
+   "date": "2025-05-28",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0457",
+   "date": "2025-05-29",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "f0614",
+   "date": "2025-05-29",
+   "kind": "pickles",
+   "text": "Packed 53 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0252",
+   "date": "2025-05-30",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0380",
+   "date": "2025-05-30",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0483",
+   "date": "2025-05-30",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0648",
+   "date": "2025-05-30",
+   "kind": "outings",
+   "text": "Took the kids to Thirumalai Nayakkar Mahal this evening."
+  },
+  {
+   "id": "f0342",
+   "date": "2025-06-01",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0417",
+   "date": "2025-06-01",
+   "kind": "outings",
+   "text": "Had lunch at Kumar Mess with Senthil."
+  },
+  {
+   "id": "f0423",
+   "date": "2025-06-01",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0886",
+   "date": "2025-06-01",
+   "kind": "work",
+   "text": "Long day at work, 22 meetings back to back."
+  },
+  {
+   "id": "m038",
+   "date": "2025-06-01",
+   "text": "My dentist is Dr. Farhana at Pearl Smile Clinic on Bypass Road, Madurai."
+  },
+  {
+   "id": "f0079",
+   "date": "2025-06-02",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0379",
+   "date": "2025-06-02",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the lemon pickle."
+  },
+  {
+   "id": "f0554",
+   "date": "2025-06-02",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0286",
+   "date": "2025-06-03",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0294",
+   "date": "2025-06-03",
+   "kind": "small_talk",
+   "text": "இன்னைக்கு என்ன கிழமை?"
+  },
+  {
+   "id": "f0513",
+   "date": "2025-06-03",
+   "kind": "work",
+   "text": "Automated 20 more regression tests this week."
+  },
+  {
+   "id": "f0777",
+   "date": "2025-06-03",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0809",
+   "date": "2025-06-03",
+   "kind": "media",
+   "text": "Reading Atomic Habits these days."
+  },
+  {
+   "id": "f0857",
+   "date": "2025-06-04",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0948",
+   "date": "2025-06-04",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0119",
+   "date": "2025-06-05",
+   "kind": "pickles",
+   "text": "Inniku idli podi 53 bottle pack panniten."
+  },
+  {
+   "id": "f0164",
+   "date": "2025-06-05",
+   "kind": "media",
+   "text": "Ponniyin Selvan 2 padam paathom, semma."
+  },
+  {
+   "id": "f0983",
+   "date": "2025-06-05",
+   "kind": "others",
+   "text": "செந்திலோட அண்ணன் முரளி துபாய்ல புது கார் வாங்கினார்."
+  },
+  {
+   "id": "f0475",
+   "date": "2025-06-06",
+   "kind": "work",
+   "text": "Found a nasty bug in the claims screen today."
+  },
+  {
+   "id": "f0850",
+   "date": "2025-06-06",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0862",
+   "date": "2025-06-06",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0506",
+   "date": "2025-06-07",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0963",
+   "date": "2025-06-07",
+   "kind": "media",
+   "text": "Maharaja padam paathom, semma."
+  },
+  {
+   "id": "f0212",
+   "date": "2025-06-08",
+   "kind": "others",
+   "text": "KR-ku coffee illaama mudiyaadhu, dhinamum moonu cup."
+  },
+  {
+   "id": "f0213",
+   "date": "2025-06-08",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0279",
+   "date": "2025-06-08",
+   "kind": "others",
+   "text": "Senthil's colleague Ganesh uses a Pixel 9."
+  },
+  {
+   "id": "f0660",
+   "date": "2025-06-08",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0571",
+   "date": "2025-06-09",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0743",
+   "date": "2025-06-09",
+   "kind": "media",
+   "text": "Watched Vikram with Senthil last night."
+  },
+  {
+   "id": "f0347",
+   "date": "2025-06-10",
+   "kind": "others",
+   "text": "Senthil's amma Pushpa goes to the Meenakshi temple every Friday."
+  },
+  {
+   "id": "f0728",
+   "date": "2025-06-10",
+   "kind": "pickles",
+   "text": "Packed 10 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0097",
+   "date": "2025-06-11",
+   "kind": "media",
+   "text": "Reading Ikigai these days."
+  },
+  {
+   "id": "f0494",
+   "date": "2025-06-12",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "f0615",
+   "date": "2025-06-12",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0796",
+   "date": "2025-06-12",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the login flow."
+  },
+  {
+   "id": "m039",
+   "date": "2025-06-12",
+   "text": "Nila turned 7 today! Cake, balloons, the full drama."
+  },
+  {
+   "id": "f0263",
+   "date": "2025-06-13",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0320",
+   "date": "2025-06-13",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0424",
+   "date": "2025-06-13",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0490",
+   "date": "2025-06-13",
+   "kind": "musings",
+   "text": "Maybe I should try Zumba."
+  },
+  {
+   "id": "f0938",
+   "date": "2025-06-13",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0041",
+   "date": "2025-06-15",
+   "kind": "others",
+   "text": "Arun is thinking of moving to Bangalore someday."
+  },
+  {
+   "id": "f0870",
+   "date": "2025-06-16",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "m040",
+   "date": "2025-06-16",
+   "text": "Nila moved up to class 2 at Sri Vidya Mandir this week."
+  },
+  {
+   "id": "f0435",
+   "date": "2025-06-17",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0460",
+   "date": "2025-06-18",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0696",
+   "date": "2025-06-19",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0617",
+   "date": "2025-06-21",
+   "kind": "others",
+   "text": "Prakash has become a director at Velan Infotech."
+  },
+  {
+   "id": "f0090",
+   "date": "2025-06-22",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0129",
+   "date": "2025-06-22",
+   "kind": "pickles",
+   "text": "Packed 44 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0500",
+   "date": "2025-06-22",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 7 more."
+  },
+  {
+   "id": "f0515",
+   "date": "2025-06-22",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0759",
+   "date": "2025-06-22",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0235",
+   "date": "2025-06-24",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "m041",
+   "date": "2025-06-25",
+   "text": "நிலாவுக்கு கணக்கு பாடம் ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0456",
+   "date": "2025-06-26",
+   "kind": "media",
+   "text": "Reading Sivagamiyin Sabatham these days."
+  },
+  {
+   "id": "f0455",
+   "date": "2025-06-27",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the onboarding flow."
+  },
+  {
+   "id": "f0892",
+   "date": "2025-06-27",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0973",
+   "date": "2025-06-28",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0997",
+   "date": "2025-06-30",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0127",
+   "date": "2025-07-01",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0265",
+   "date": "2025-07-01",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0795",
+   "date": "2025-07-01",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "m042",
+   "date": "2025-07-01",
+   "text": "Indha maasam Nila Pickles-ku 120 orders vandhuchu!"
+  },
+  {
+   "id": "f0159",
+   "date": "2025-07-02",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the lemon pickle."
+  },
+  {
+   "id": "f0241",
+   "date": "2025-07-03",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 35 more."
+  },
+  {
+   "id": "f0169",
+   "date": "2025-07-04",
+   "kind": "media",
+   "text": "Leo padam paathom, semma."
+  },
+  {
+   "id": "f0757",
+   "date": "2025-07-04",
+   "kind": "work",
+   "text": "Found a nasty bug in the onboarding screen today."
+  },
+  {
+   "id": "f0337",
+   "date": "2025-07-05",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0360",
+   "date": "2025-07-05",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0895",
+   "date": "2025-07-05",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0994",
+   "date": "2025-07-05",
+   "kind": "pickles",
+   "text": "Packed 6 pickle orders for delivery this evening."
+  },
+  {
+   "id": "m043",
+   "date": "2025-07-05",
+   "text": "Deepa, my college friend, wants to stock Nila Pickles in her boutique. We're trying it from August."
+  },
+  {
+   "id": "f0373",
+   "date": "2025-07-07",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0089",
+   "date": "2025-07-10",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0873",
+   "date": "2025-07-10",
+   "kind": "others",
+   "text": "Revathi's daughter got into Anna University."
+  },
+  {
+   "id": "f0518",
+   "date": "2025-07-11",
+   "kind": "outings",
+   "text": "Took the kids to Gandhi Museum this evening."
+  },
+  {
+   "id": "f0758",
+   "date": "2025-07-12",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0826",
+   "date": "2025-07-12",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the lemon pickle."
+  },
+  {
+   "id": "f0881",
+   "date": "2025-07-12",
+   "kind": "pickles",
+   "text": "Inniku paruppu podi 11 bottle pack panniten."
+  },
+  {
+   "id": "m044",
+   "date": "2025-07-12",
+   "text": "I don't eat non-veg on Saturdays."
+  },
+  {
+   "id": "f0309",
+   "date": "2025-07-13",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0817",
+   "date": "2025-07-13",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0840",
+   "date": "2025-07-13",
+   "kind": "others",
+   "text": "Lakshmi's husband is a cardiologist."
+  },
+  {
+   "id": "f0217",
+   "date": "2025-07-14",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0477",
+   "date": "2025-07-14",
+   "kind": "media",
+   "text": "Reading Atomic Habits these days."
+  },
+  {
+   "id": "f0729",
+   "date": "2025-07-15",
+   "kind": "errands",
+   "text": "Kaaikari vaanga market pogaNum."
+  },
+  {
+   "id": "f0568",
+   "date": "2025-07-16",
+   "kind": "outings",
+   "text": "Went to Eco Park on Sunday; very crowded."
+  },
+  {
+   "id": "f0703",
+   "date": "2025-07-16",
+   "kind": "outings",
+   "text": "Had lunch at Kumar Mess with Senthil."
+  },
+  {
+   "id": "f0915",
+   "date": "2025-07-17",
+   "kind": "media",
+   "text": "Watched Vikram with Senthil last night."
+  },
+  {
+   "id": "f0739",
+   "date": "2025-07-18",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0990",
+   "date": "2025-07-18",
+   "kind": "others",
+   "text": "தீபா சேகர் புது கடை திறக்கலாமான்னு யோசிக்கிறாங்க."
+  },
+  {
+   "id": "f0432",
+   "date": "2025-07-19",
+   "kind": "media",
+   "text": "Amaran padam paathom, semma."
+  },
+  {
+   "id": "f0280",
+   "date": "2025-07-20",
+   "kind": "outings",
+   "text": "Evening walk near Eco Park; nice breeze."
+  },
+  {
+   "id": "f0312",
+   "date": "2025-07-20",
+   "kind": "small_talk",
+   "text": "இன்னைக்கு என்ன கிழமை?"
+  },
+  {
+   "id": "m045",
+   "date": "2025-07-20",
+   "text": "Thinking of switching jobs. Velan hasn't given appraisals for two years."
+  },
+  {
+   "id": "f0233",
+   "date": "2025-07-22",
+   "kind": "outings",
+   "text": "Had lunch at Kumar Mess with Senthil."
+  },
+  {
+   "id": "f0330",
+   "date": "2025-07-22",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0658",
+   "date": "2025-07-23",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 7 more."
+  },
+  {
+   "id": "f0511",
+   "date": "2025-07-25",
+   "kind": "musings",
+   "text": "Thinking about a new sofa for the hall."
+  },
+  {
+   "id": "f0544",
+   "date": "2025-07-25",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0682",
+   "date": "2025-07-27",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0359",
+   "date": "2025-07-28",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0031",
+   "date": "2025-07-29",
+   "kind": "pickles",
+   "text": "Inniku idli podi 17 bottle pack panniten."
+  },
+  {
+   "id": "f0105",
+   "date": "2025-07-29",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0250",
+   "date": "2025-07-29",
+   "kind": "pickles",
+   "text": "Inniku lemon pickle 49 bottle pack panniten."
+  },
+  {
+   "id": "f0805",
+   "date": "2025-07-29",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0366",
+   "date": "2025-07-30",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0814",
+   "date": "2025-07-30",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0487",
+   "date": "2025-07-31",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0076",
+   "date": "2025-08-01",
+   "kind": "outings",
+   "text": "Went to the Meenakshi temple on Sunday; very crowded."
+  },
+  {
+   "id": "f0377",
+   "date": "2025-08-01",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0538",
+   "date": "2025-08-01",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0336",
+   "date": "2025-08-02",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "m046",
+   "date": "2025-08-02",
+   "text": "Bought a new phone: a Samsung Galaxy S24. My old Redmi went to Ma."
+  },
+  {
+   "id": "f0020",
+   "date": "2025-08-03",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0454",
+   "date": "2025-08-03",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0463",
+   "date": "2025-08-03",
+   "kind": "outings",
+   "text": "Went to Gandhi Museum on Sunday; very crowded."
+  },
+  {
+   "id": "f0044",
+   "date": "2025-08-04",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0106",
+   "date": "2025-08-04",
+   "kind": "others",
+   "text": "KR-ku coffee illaama mudiyaadhu, dhinamum moonu cup."
+  },
+  {
+   "id": "f0304",
+   "date": "2025-08-04",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0385",
+   "date": "2025-08-05",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0761",
+   "date": "2025-08-06",
+   "kind": "outings",
+   "text": "Had lunch at Sree Sabarees with Senthil."
+  },
+  {
+   "id": "f0846",
+   "date": "2025-08-06",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0865",
+   "date": "2025-08-06",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0656",
+   "date": "2025-08-08",
+   "kind": "others",
+   "text": "KR's husband works at a bank in Tiruppur."
+  },
+  {
+   "id": "f0782",
+   "date": "2025-08-09",
+   "kind": "others",
+   "text": "Revathi's daughter got into Anna University."
+  },
+  {
+   "id": "m047",
+   "date": "2025-08-10",
+   "text": "For personal stuff I use a MacBook Air M2; at work I have a Dell Latitude."
+  },
+  {
+   "id": "f0771",
+   "date": "2025-08-12",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the claims flow."
+  },
+  {
+   "id": "f0115",
+   "date": "2025-08-13",
+   "kind": "work",
+   "text": "Long day at work, 4 meetings back to back."
+  },
+  {
+   "id": "f0407",
+   "date": "2025-08-13",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0345",
+   "date": "2025-08-14",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the lemon pickle."
+  },
+  {
+   "id": "f0035",
+   "date": "2025-08-15",
+   "kind": "pickles",
+   "text": "Made 55 jars of idli podi today."
+  },
+  {
+   "id": "f0368",
+   "date": "2025-08-15",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0433",
+   "date": "2025-08-16",
+   "kind": "small_talk",
+   "text": "இன்னைக்கு என்ன கிழமை?"
+  },
+  {
+   "id": "f0999",
+   "date": "2025-08-16",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the onboarding flow."
+  },
+  {
+   "id": "f0838",
+   "date": "2025-08-17",
+   "kind": "others",
+   "text": "தீபா சேகர் புது கடை திறக்கலாமான்னு யோசிக்கிறாங்க."
+  },
+  {
+   "id": "f0231",
+   "date": "2025-08-18",
+   "kind": "others",
+   "text": "Deepa Iyer's son plays chess at the district level."
+  },
+  {
+   "id": "f0686",
+   "date": "2025-08-18",
+   "kind": "work",
+   "text": "Long day at work, 31 meetings back to back."
+  },
+  {
+   "id": "f0014",
+   "date": "2025-08-19",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0327",
+   "date": "2025-08-19",
+   "kind": "pickles",
+   "text": "Packed 46 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0461",
+   "date": "2025-08-20",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "m048",
+   "date": "2025-08-20",
+   "text": "Senthil's anna Murali lives in Dubai and works as an electrician."
+  },
+  {
+   "id": "f0186",
+   "date": "2025-08-21",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0289",
+   "date": "2025-08-21",
+   "kind": "media",
+   "text": "Watched Ponniyin Selvan 2 with Senthil last night."
+  },
+  {
+   "id": "f0207",
+   "date": "2025-08-22",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0575",
+   "date": "2025-08-22",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0798",
+   "date": "2025-08-22",
+   "kind": "pickles",
+   "text": "Inniku lemon pickle 43 bottle pack panniten."
+  },
+  {
+   "id": "f0065",
+   "date": "2025-08-23",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0611",
+   "date": "2025-08-23",
+   "kind": "media",
+   "text": "96 padam paathom, semma."
+  },
+  {
+   "id": "f0255",
+   "date": "2025-08-24",
+   "kind": "pickles",
+   "text": "Inniku idli podi 19 bottle pack panniten."
+  },
+  {
+   "id": "f0441",
+   "date": "2025-08-24",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0027",
+   "date": "2025-08-27",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0616",
+   "date": "2025-08-28",
+   "kind": "media",
+   "text": "Watched Leo with Senthil last night."
+  },
+  {
+   "id": "f0917",
+   "date": "2025-08-28",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "m049",
+   "date": "2025-08-28",
+   "text": "என் அப்பா தினமும் காலையில 5 மணிக்கு எழுந்து நடக்கப் போவார்."
+  },
+  {
+   "id": "f0138",
+   "date": "2025-08-30",
+   "kind": "outings",
+   "text": "Went to the Meenakshi temple on Sunday; very crowded."
+  },
+  {
+   "id": "f0908",
+   "date": "2025-08-30",
+   "kind": "errands",
+   "text": "Spent 4100 rupees on groceries today."
+  },
+  {
+   "id": "f0422",
+   "date": "2025-08-31",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0096",
+   "date": "2025-09-01",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the claims flow."
+  },
+  {
+   "id": "f0574",
+   "date": "2025-09-01",
+   "kind": "pickles",
+   "text": "Made 55 jars of mango thokku today."
+  },
+  {
+   "id": "f0711",
+   "date": "2025-09-01",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0228",
+   "date": "2025-09-02",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0556",
+   "date": "2025-09-02",
+   "kind": "outings",
+   "text": "Took the kids to Gandhi Museum this evening."
+  },
+  {
+   "id": "f0073",
+   "date": "2025-09-03",
+   "kind": "pickles",
+   "text": "Made 59 jars of paruppu podi today."
+  },
+  {
+   "id": "f0287",
+   "date": "2025-09-03",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0296",
+   "date": "2025-09-03",
+   "kind": "pickles",
+   "text": "Made 24 jars of lemon pickle today."
+  },
+  {
+   "id": "f0448",
+   "date": "2025-09-03",
+   "kind": "outings",
+   "text": "Took the kids to Thirumalai Nayakkar Mahal this evening."
+  },
+  {
+   "id": "f0240",
+   "date": "2025-09-04",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0369",
+   "date": "2025-09-04",
+   "kind": "others",
+   "text": "KR-ku coffee illaama mudiyaadhu, dhinamum moonu cup."
+  },
+  {
+   "id": "f0584",
+   "date": "2025-09-05",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "m050",
+   "date": "2025-09-05",
+   "text": "Today is our 10th wedding anniversary!"
+  },
+  {
+   "id": "f0982",
+   "date": "2025-09-06",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0988",
+   "date": "2025-09-07",
+   "kind": "others",
+   "text": "Prakash has become a director at Velan Infotech."
+  },
+  {
+   "id": "f0267",
+   "date": "2025-09-09",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 31 more."
+  },
+  {
+   "id": "f0329",
+   "date": "2025-09-09",
+   "kind": "pickles",
+   "text": "Made 56 jars of lemon pickle today."
+  },
+  {
+   "id": "f0624",
+   "date": "2025-09-11",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0246",
+   "date": "2025-09-12",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the garlic pickle."
+  },
+  {
+   "id": "m051",
+   "date": "2025-09-12",
+   "text": "Oru vishayam: Lakshmi from my college batch works at Thenral Systems in Coimbatore. Avanga QA manager role-ku aal edukkuraanga-nu sonnaanga."
+  },
+  {
+   "id": "f0151",
+   "date": "2025-09-15",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0313",
+   "date": "2025-09-15",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0694",
+   "date": "2025-09-15",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0306",
+   "date": "2025-09-16",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0563",
+   "date": "2025-09-16",
+   "kind": "media",
+   "text": "Watched Amaran with Senthil last night."
+  },
+  {
+   "id": "f0205",
+   "date": "2025-09-17",
+   "kind": "outings",
+   "text": "Had lunch at Murugan Idli Shop with Senthil."
+  },
+  {
+   "id": "f0376",
+   "date": "2025-09-17",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0567",
+   "date": "2025-09-17",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0598",
+   "date": "2025-09-17",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 46 more."
+  },
+  {
+   "id": "f0851",
+   "date": "2025-09-17",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0142",
+   "date": "2025-09-18",
+   "kind": "outings",
+   "text": "Had lunch at Kumar Mess with Senthil."
+  },
+  {
+   "id": "f0211",
+   "date": "2025-09-18",
+   "kind": "outings",
+   "text": "Evening walk near Eco Park; nice breeze."
+  },
+  {
+   "id": "f0275",
+   "date": "2025-09-18",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0281",
+   "date": "2025-09-19",
+   "kind": "media",
+   "text": "96 padam paathom, semma."
+  },
+  {
+   "id": "f0282",
+   "date": "2025-09-19",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0688",
+   "date": "2025-09-20",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0976",
+   "date": "2025-09-20",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "m052",
+   "date": "2025-09-20",
+   "text": "Ma's knee pain is worse; Appa is taking her to Dr. Selvaraj at Tirunelveli Medical College."
+  },
+  {
+   "id": "f0046",
+   "date": "2025-09-21",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0194",
+   "date": "2025-09-21",
+   "kind": "work",
+   "text": "Automated 20 more regression tests this week."
+  },
+  {
+   "id": "f0661",
+   "date": "2025-09-21",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0736",
+   "date": "2025-09-23",
+   "kind": "pickles",
+   "text": "Made 8 jars of paruppu podi today."
+  },
+  {
+   "id": "f0946",
+   "date": "2025-09-24",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0343",
+   "date": "2025-09-26",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0199",
+   "date": "2025-09-27",
+   "kind": "media",
+   "text": "Watched Maharaja with Senthil last night."
+  },
+  {
+   "id": "f0476",
+   "date": "2025-09-27",
+   "kind": "work",
+   "text": "Found a nasty bug in the dashboard screen today."
+  },
+  {
+   "id": "f0569",
+   "date": "2025-09-27",
+   "kind": "others",
+   "text": "Lakshmi's husband is a cardiologist."
+  },
+  {
+   "id": "f0715",
+   "date": "2025-09-27",
+   "kind": "media",
+   "text": "Leo padam paathom, semma."
+  },
+  {
+   "id": "f0945",
+   "date": "2025-09-27",
+   "kind": "outings",
+   "text": "Had lunch at Hotel Anandha with Senthil."
+  },
+  {
+   "id": "f0303",
+   "date": "2025-09-28",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0750",
+   "date": "2025-09-28",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0803",
+   "date": "2025-09-28",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "m053",
+   "date": "2025-09-28",
+   "text": "Indha Navarathri-ku Nila golu vechaa, neighbours ellarum paakka vandhaanga."
+  },
+  {
+   "id": "f0428",
+   "date": "2025-09-29",
+   "kind": "pickles",
+   "text": "Made 38 jars of idli podi today."
+  },
+  {
+   "id": "f0446",
+   "date": "2025-09-29",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0178",
+   "date": "2025-10-01",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0398",
+   "date": "2025-10-03",
+   "kind": "media",
+   "text": "96 padam paathom, semma."
+  },
+  {
+   "id": "f0995",
+   "date": "2025-10-03",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the login flow."
+  },
+  {
+   "id": "m054",
+   "date": "2025-10-03",
+   "text": "Interview at Thenral Systems went well. Second round next week."
+  },
+  {
+   "id": "f0167",
+   "date": "2025-10-04",
+   "kind": "media",
+   "text": "Watched Jailer with Senthil last night."
+  },
+  {
+   "id": "f0627",
+   "date": "2025-10-04",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "f0517",
+   "date": "2025-10-05",
+   "kind": "work",
+   "text": "Long day at work, 22 meetings back to back."
+  },
+  {
+   "id": "f0071",
+   "date": "2025-10-06",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0114",
+   "date": "2025-10-07",
+   "kind": "media",
+   "text": "Reading Atomic Habits these days."
+  },
+  {
+   "id": "f0175",
+   "date": "2025-10-08",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0214",
+   "date": "2025-10-08",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0833",
+   "date": "2025-10-08",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0393",
+   "date": "2025-10-09",
+   "kind": "media",
+   "text": "96 padam paathom, semma."
+  },
+  {
+   "id": "f0566",
+   "date": "2025-10-09",
+   "kind": "media",
+   "text": "96 padam paathom, semma."
+  },
+  {
+   "id": "f0471",
+   "date": "2025-10-10",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0823",
+   "date": "2025-10-10",
+   "kind": "work",
+   "text": "Automated 15 more regression tests this week."
+  },
+  {
+   "id": "f0991",
+   "date": "2025-10-11",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 5 more."
+  },
+  {
+   "id": "f0412",
+   "date": "2025-10-12",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0315",
+   "date": "2025-10-13",
+   "kind": "work",
+   "text": "Automated 30 more regression tests this week."
+  },
+  {
+   "id": "f0434",
+   "date": "2025-10-14",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0017",
+   "date": "2025-10-15",
+   "kind": "outings",
+   "text": "Took the kids to Eco Park this evening."
+  },
+  {
+   "id": "m055",
+   "date": "2025-10-15",
+   "text": "Got the offer! Senior QA Manager at Thenral Systems in Coimbatore. Lakshmi referred me. I join on 2 February 2026."
+  },
+  {
+   "id": "m056",
+   "date": "2025-10-16",
+   "text": "Senthil has asked L&T for a transfer to Coimbatore."
+  },
+  {
+   "id": "f0074",
+   "date": "2025-10-18",
+   "kind": "others",
+   "text": "One of the teachers at Ilan's daycare is also called Nila."
+  },
+  {
+   "id": "f0654",
+   "date": "2025-10-18",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0053",
+   "date": "2025-10-20",
+   "kind": "media",
+   "text": "96 padam paathom, semma."
+  },
+  {
+   "id": "f0081",
+   "date": "2025-10-20",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0004",
+   "date": "2025-10-21",
+   "kind": "pickles",
+   "text": "Inniku lemon pickle 33 bottle pack panniten."
+  },
+  {
+   "id": "f0907",
+   "date": "2025-10-21",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0257",
+   "date": "2025-10-22",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0820",
+   "date": "2025-10-22",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 58 more."
+  },
+  {
+   "id": "f0414",
+   "date": "2025-10-23",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0943",
+   "date": "2025-10-23",
+   "kind": "media",
+   "text": "Leo padam paathom, semma."
+  },
+  {
+   "id": "f0038",
+   "date": "2025-10-24",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0811",
+   "date": "2025-10-25",
+   "kind": "outings",
+   "text": "Took the kids to Gandhi Museum this evening."
+  },
+  {
+   "id": "f0839",
+   "date": "2025-10-25",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "m057",
+   "date": "2025-10-25",
+   "text": "I stopped the pottery classes. Saturdays are too packed with pickle orders."
+  },
+  {
+   "id": "f0158",
+   "date": "2025-10-26",
+   "kind": "errands",
+   "text": "Kaaikari vaanga market pogaNum."
+  },
+  {
+   "id": "f0396",
+   "date": "2025-10-26",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0894",
+   "date": "2025-10-26",
+   "kind": "media",
+   "text": "Amaran padam paathom, semma."
+  },
+  {
+   "id": "f0996",
+   "date": "2025-10-26",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "f0209",
+   "date": "2025-10-28",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0721",
+   "date": "2025-10-28",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0767",
+   "date": "2025-10-28",
+   "kind": "media",
+   "text": "Vikram padam paathom, semma."
+  },
+  {
+   "id": "f0801",
+   "date": "2025-10-28",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the dashboard flow."
+  },
+  {
+   "id": "f0877",
+   "date": "2025-10-28",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "m058",
+   "date": "2025-10-28",
+   "text": "Deepavali orders were crazy: 300 jars of pickle in two weeks."
+  },
+  {
+   "id": "f0888",
+   "date": "2025-10-30",
+   "kind": "others",
+   "text": "தீபா சேகர் புது கடை திறக்கலாமான்னு யோசிக்கிறாங்க."
+  },
+  {
+   "id": "f0012",
+   "date": "2025-10-31",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0006",
+   "date": "2025-11-01",
+   "kind": "errands",
+   "text": "Spent 950 rupees on groceries today."
+  },
+  {
+   "id": "f0341",
+   "date": "2025-11-02",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0573",
+   "date": "2025-11-02",
+   "kind": "work",
+   "text": "Found a nasty bug in the dashboard screen today."
+  },
+  {
+   "id": "m059",
+   "date": "2025-11-02",
+   "text": "It's Senthil's birthday today. Got him a Noise smartwatch."
+  },
+  {
+   "id": "f0116",
+   "date": "2025-11-03",
+   "kind": "work",
+   "text": "Automated 7 more regression tests this week."
+  },
+  {
+   "id": "f0293",
+   "date": "2025-11-03",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0727",
+   "date": "2025-11-03",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0094",
+   "date": "2025-11-04",
+   "kind": "errands",
+   "text": "Spent 4550 rupees on groceries today."
+  },
+  {
+   "id": "f0230",
+   "date": "2025-11-04",
+   "kind": "outings",
+   "text": "Had lunch at Murugan Idli Shop with Senthil."
+  },
+  {
+   "id": "f0630",
+   "date": "2025-11-04",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0111",
+   "date": "2025-11-05",
+   "kind": "work",
+   "text": "Found a nasty bug in the payments screen today."
+  },
+  {
+   "id": "f0150",
+   "date": "2025-11-05",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0930",
+   "date": "2025-11-05",
+   "kind": "work",
+   "text": "Automated 37 more regression tests this week."
+  },
+  {
+   "id": "f0859",
+   "date": "2025-11-06",
+   "kind": "work",
+   "text": "Automated 16 more regression tests this week."
+  },
+  {
+   "id": "f0670",
+   "date": "2025-11-09",
+   "kind": "work",
+   "text": "Automated 41 more regression tests this week."
+  },
+  {
+   "id": "f0920",
+   "date": "2025-11-09",
+   "kind": "others",
+   "text": "KR's husband works at a bank in Tiruppur."
+  },
+  {
+   "id": "f0125",
+   "date": "2025-11-10",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0185",
+   "date": "2025-11-10",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0672",
+   "date": "2025-11-10",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0534",
+   "date": "2025-11-12",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the onboarding flow."
+  },
+  {
+   "id": "f0559",
+   "date": "2025-11-12",
+   "kind": "others",
+   "text": "Deepa Iyer's son plays chess at the district level."
+  },
+  {
+   "id": "f0712",
+   "date": "2025-11-12",
+   "kind": "work",
+   "text": "Found a nasty bug in the payments screen today."
+  },
+  {
+   "id": "f0010",
+   "date": "2025-11-13",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the login flow."
+  },
+  {
+   "id": "f0405",
+   "date": "2025-11-14",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the garlic pickle."
+  },
+  {
+   "id": "f0636",
+   "date": "2025-11-14",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0902",
+   "date": "2025-11-14",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0110",
+   "date": "2025-11-15",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0971",
+   "date": "2025-11-15",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0078",
+   "date": "2025-11-16",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0103",
+   "date": "2025-11-16",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0827",
+   "date": "2025-11-16",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0191",
+   "date": "2025-11-18",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0585",
+   "date": "2025-11-18",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0716",
+   "date": "2025-11-18",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0607",
+   "date": "2025-11-19",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0879",
+   "date": "2025-11-19",
+   "kind": "media",
+   "text": "96 padam paathom, semma."
+  },
+  {
+   "id": "f0048",
+   "date": "2025-11-20",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0620",
+   "date": "2025-11-20",
+   "kind": "errands",
+   "text": "Spent 3800 rupees on groceries today."
+  },
+  {
+   "id": "f0957",
+   "date": "2025-11-20",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "m060",
+   "date": "2025-11-20",
+   "text": "Senthil's transfer came through: from February he'll be on the Coimbatore airport expansion project."
+  },
+  {
+   "id": "f0625",
+   "date": "2025-11-21",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0251",
+   "date": "2025-11-22",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0853",
+   "date": "2025-11-23",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0418",
+   "date": "2025-11-24",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0719",
+   "date": "2025-11-24",
+   "kind": "media",
+   "text": "Amaran padam paathom, semma."
+  },
+  {
+   "id": "f0852",
+   "date": "2025-11-24",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0198",
+   "date": "2025-11-25",
+   "kind": "media",
+   "text": "Finished Sivagamiyin Sabatham; loved it."
+  },
+  {
+   "id": "f0350",
+   "date": "2025-11-25",
+   "kind": "pickles",
+   "text": "Inniku lemon pickle 48 bottle pack panniten."
+  },
+  {
+   "id": "f0916",
+   "date": "2025-11-25",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "m061",
+   "date": "2025-11-25",
+   "text": "எனக்கு மல்லிகைப்பூவை விட கனகாம்பரம் தான் ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0386",
+   "date": "2025-11-26",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0645",
+   "date": "2025-11-27",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0057",
+   "date": "2025-11-28",
+   "kind": "media",
+   "text": "Watched Ponniyin Selvan 2 with Senthil last night."
+  },
+  {
+   "id": "f0092",
+   "date": "2025-11-28",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0425",
+   "date": "2025-11-29",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0482",
+   "date": "2025-11-29",
+   "kind": "media",
+   "text": "Finished Ikigai; loved it."
+  },
+  {
+   "id": "f0535",
+   "date": "2025-11-29",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0972",
+   "date": "2025-11-29",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0328",
+   "date": "2025-11-30",
+   "kind": "musings",
+   "text": "Thinking about a new sofa for the hall."
+  },
+  {
+   "id": "f0126",
+   "date": "2025-12-01",
+   "kind": "outings",
+   "text": "Evening walk near Eco Park; nice breeze."
+  },
+  {
+   "id": "f0415",
+   "date": "2025-12-01",
+   "kind": "work",
+   "text": "Automated 21 more regression tests this week."
+  },
+  {
+   "id": "m062",
+   "date": "2025-12-01",
+   "text": "We've decided to stop shipping Nila Pickles outside Tamil Nadu. Too many glass jars broke in the courier."
+  },
+  {
+   "id": "f0311",
+   "date": "2025-12-02",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0748",
+   "date": "2025-12-02",
+   "kind": "outings",
+   "text": "Took the kids to Eco Park this evening."
+  },
+  {
+   "id": "f0545",
+   "date": "2025-12-04",
+   "kind": "work",
+   "text": "Found a nasty bug in the onboarding screen today."
+  },
+  {
+   "id": "f1000",
+   "date": "2025-12-04",
+   "kind": "media",
+   "text": "Watched 96 with Senthil last night."
+  },
+  {
+   "id": "f0124",
+   "date": "2025-12-05",
+   "kind": "errands",
+   "text": "Spent 3650 rupees on groceries today."
+  },
+  {
+   "id": "f0134",
+   "date": "2025-12-06",
+   "kind": "media",
+   "text": "Finished Atomic Habits; loved it."
+  },
+  {
+   "id": "f0416",
+   "date": "2025-12-06",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0593",
+   "date": "2025-12-06",
+   "kind": "media",
+   "text": "Vikram padam paathom, semma."
+  },
+  {
+   "id": "f0411",
+   "date": "2025-12-07",
+   "kind": "errands",
+   "text": "Spent 4400 rupees on groceries today."
+  },
+  {
+   "id": "f0760",
+   "date": "2025-12-07",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0779",
+   "date": "2025-12-07",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0781",
+   "date": "2025-12-07",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the claims flow."
+  },
+  {
+   "id": "f0466",
+   "date": "2025-12-08",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0831",
+   "date": "2025-12-08",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0154",
+   "date": "2025-12-09",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0527",
+   "date": "2025-12-09",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0937",
+   "date": "2025-12-09",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0201",
+   "date": "2025-12-10",
+   "kind": "outings",
+   "text": "Evening walk near Thirumalai Nayakkar Mahal; nice breeze."
+  },
+  {
+   "id": "f0683",
+   "date": "2025-12-11",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0934",
+   "date": "2025-12-11",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0220",
+   "date": "2025-12-13",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0244",
+   "date": "2025-12-13",
+   "kind": "outings",
+   "text": "Went to Eco Park on Sunday; very crowded."
+  },
+  {
+   "id": "f0861",
+   "date": "2025-12-13",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "m063",
+   "date": "2025-12-14",
+   "text": "Ilan has a mild wheeze. His paediatrician, Dr. Anand, gave him an inhaler."
+  },
+  {
+   "id": "f0572",
+   "date": "2025-12-15",
+   "kind": "media",
+   "text": "Finished Sivagamiyin Sabatham; loved it."
+  },
+  {
+   "id": "f0889",
+   "date": "2025-12-15",
+   "kind": "media",
+   "text": "Reading Ponniyin Selvan these days."
+  },
+  {
+   "id": "f0160",
+   "date": "2025-12-16",
+   "kind": "work",
+   "text": "Automated 20 more regression tests this week."
+  },
+  {
+   "id": "f0256",
+   "date": "2025-12-16",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0474",
+   "date": "2025-12-16",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0468",
+   "date": "2025-12-17",
+   "kind": "outings",
+   "text": "Evening walk near Eco Park; nice breeze."
+  },
+  {
+   "id": "f0700",
+   "date": "2025-12-17",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0011",
+   "date": "2025-12-20",
+   "kind": "media",
+   "text": "Ponniyin Selvan 2 padam paathom, semma."
+  },
+  {
+   "id": "f0319",
+   "date": "2025-12-20",
+   "kind": "outings",
+   "text": "Evening walk near Thirumalai Nayakkar Mahal; nice breeze."
+  },
+  {
+   "id": "f0122",
+   "date": "2025-12-21",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0025",
+   "date": "2025-12-22",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0029",
+   "date": "2025-12-22",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0051",
+   "date": "2025-12-22",
+   "kind": "others",
+   "text": "Lakshmi's husband is a cardiologist."
+  },
+  {
+   "id": "f0054",
+   "date": "2025-12-22",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "f0131",
+   "date": "2025-12-22",
+   "kind": "media",
+   "text": "Finished Ponniyin Selvan; loved it."
+  },
+  {
+   "id": "f0055",
+   "date": "2025-12-23",
+   "kind": "work",
+   "text": "Automated 42 more regression tests this week."
+  },
+  {
+   "id": "f0136",
+   "date": "2025-12-23",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0335",
+   "date": "2025-12-23",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0913",
+   "date": "2025-12-24",
+   "kind": "work",
+   "text": "Automated 4 more regression tests this week."
+  },
+  {
+   "id": "f0066",
+   "date": "2025-12-25",
+   "kind": "work",
+   "text": "Automated 47 more regression tests this week."
+  },
+  {
+   "id": "f0180",
+   "date": "2025-12-26",
+   "kind": "media",
+   "text": "Finished Sivagamiyin Sabatham; loved it."
+  },
+  {
+   "id": "f0496",
+   "date": "2025-12-26",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "f0735",
+   "date": "2025-12-26",
+   "kind": "others",
+   "text": "Revathi's daughter got into Anna University."
+  },
+  {
+   "id": "f0438",
+   "date": "2025-12-27",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0890",
+   "date": "2025-12-27",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0062",
+   "date": "2025-12-28",
+   "kind": "media",
+   "text": "Finished Atomic Habits; loved it."
+  },
+  {
+   "id": "f0215",
+   "date": "2025-12-28",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the login flow."
+  },
+  {
+   "id": "f0362",
+   "date": "2025-12-28",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the lemon pickle."
+  },
+  {
+   "id": "f0032",
+   "date": "2025-12-30",
+   "kind": "errands",
+   "text": "Spent 4400 rupees on groceries today."
+  },
+  {
+   "id": "f0863",
+   "date": "2026-01-04",
+   "kind": "work",
+   "text": "Found a nasty bug in the claims screen today."
+  },
+  {
+   "id": "m064",
+   "date": "2026-01-05",
+   "text": "Found a flat in Saibaba Colony, Coimbatore. Rent is 22,000 a month. We move on 25 January."
+  },
+  {
+   "id": "f0171",
+   "date": "2026-01-06",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0543",
+   "date": "2026-01-06",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0730",
+   "date": "2026-01-06",
+   "kind": "others",
+   "text": "My friend Deepa Sekar bought a Hyundai i20."
+  },
+  {
+   "id": "f0941",
+   "date": "2026-01-06",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0188",
+   "date": "2026-01-07",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0270",
+   "date": "2026-01-07",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the paruppu podi."
+  },
+  {
+   "id": "f0283",
+   "date": "2026-01-07",
+   "kind": "media",
+   "text": "Watched Maharaja with Senthil last night."
+  },
+  {
+   "id": "f0541",
+   "date": "2026-01-07",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the onboarding flow."
+  },
+  {
+   "id": "f0794",
+   "date": "2026-01-07",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0451",
+   "date": "2026-01-08",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0638",
+   "date": "2026-01-08",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the dashboard flow."
+  },
+  {
+   "id": "f0707",
+   "date": "2026-01-09",
+   "kind": "errands",
+   "text": "Spent 1700 rupees on groceries today."
+  },
+  {
+   "id": "f0855",
+   "date": "2026-01-09",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0896",
+   "date": "2026-01-09",
+   "kind": "media",
+   "text": "Watched Vikram with Senthil last night."
+  },
+  {
+   "id": "f0266",
+   "date": "2026-01-10",
+   "kind": "others",
+   "text": "Lakshmi's husband is a cardiologist."
+  },
+  {
+   "id": "f0766",
+   "date": "2026-01-10",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "m065",
+   "date": "2026-01-10",
+   "text": "What's the weather in Coimbatore this week?"
+  },
+  {
+   "id": "f0358",
+   "date": "2026-01-11",
+   "kind": "pickles",
+   "text": "Inniku lemon pickle 57 bottle pack panniten."
+  },
+  {
+   "id": "f0245",
+   "date": "2026-01-12",
+   "kind": "work",
+   "text": "Long day at work, 28 meetings back to back."
+  },
+  {
+   "id": "f0497",
+   "date": "2026-01-13",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0981",
+   "date": "2026-01-15",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0867",
+   "date": "2026-01-16",
+   "kind": "errands",
+   "text": "Kaaikari vaanga market pogaNum."
+  },
+  {
+   "id": "f0234",
+   "date": "2026-01-17",
+   "kind": "media",
+   "text": "Watched Ponniyin Selvan 2 with Senthil last night."
+  },
+  {
+   "id": "f0243",
+   "date": "2026-01-17",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0284",
+   "date": "2026-01-17",
+   "kind": "work",
+   "text": "Long day at work, 42 meetings back to back."
+  },
+  {
+   "id": "f0745",
+   "date": "2026-01-17",
+   "kind": "errands",
+   "text": "Spent 2000 rupees on groceries today."
+  },
+  {
+   "id": "f0947",
+   "date": "2026-01-18",
+   "kind": "media",
+   "text": "Watched Ponniyin Selvan 2 with Senthil last night."
+  },
+  {
+   "id": "f0043",
+   "date": "2026-01-19",
+   "kind": "outings",
+   "text": "Evening walk near Eco Park; nice breeze."
+  },
+  {
+   "id": "f0666",
+   "date": "2026-01-19",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0959",
+   "date": "2026-01-19",
+   "kind": "work",
+   "text": "Automated 25 more regression tests this week."
+  },
+  {
+   "id": "f0146",
+   "date": "2026-01-20",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the garlic pickle."
+  },
+  {
+   "id": "f0202",
+   "date": "2026-01-20",
+   "kind": "pickles",
+   "text": "Packed 43 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0259",
+   "date": "2026-01-20",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the garlic pickle."
+  },
+  {
+   "id": "f0400",
+   "date": "2026-01-20",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0876",
+   "date": "2026-01-23",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "m066",
+   "date": "2026-01-23",
+   "text": "Last day at Velan Infotech today. The MediBill team took me out for a farewell lunch."
+  },
+  {
+   "id": "f0222",
+   "date": "2026-01-24",
+   "kind": "outings",
+   "text": "Went to Gandhi Museum on Sunday; very crowded."
+  },
+  {
+   "id": "f0218",
+   "date": "2026-01-25",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the mango thokku."
+  },
+  {
+   "id": "f0587",
+   "date": "2026-01-25",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the onboarding flow."
+  },
+  {
+   "id": "m067",
+   "date": "2026-01-25",
+   "text": "Moved! We now live in Saibaba Colony, Coimbatore."
+  },
+  {
+   "id": "f0036",
+   "date": "2026-01-26",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0162",
+   "date": "2026-01-26",
+   "kind": "media",
+   "text": "Finished Atomic Habits; loved it."
+  },
+  {
+   "id": "f0420",
+   "date": "2026-01-26",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the dashboard flow."
+  },
+  {
+   "id": "f0551",
+   "date": "2026-01-26",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "m068",
+   "date": "2026-01-27",
+   "text": "Ilan turned 2 today."
+  },
+  {
+   "id": "f0137",
+   "date": "2026-01-28",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0147",
+   "date": "2026-01-28",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0667",
+   "date": "2026-01-28",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0576",
+   "date": "2026-01-29",
+   "kind": "media",
+   "text": "Finished Ikigai; loved it."
+  },
+  {
+   "id": "f0603",
+   "date": "2026-01-29",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "f0610",
+   "date": "2026-01-31",
+   "kind": "media",
+   "text": "Watched Leo with Senthil last night."
+  },
+  {
+   "id": "f0664",
+   "date": "2026-01-31",
+   "kind": "outings",
+   "text": "Took the kids to Marudhamalai temple this evening."
+  },
+  {
+   "id": "f0763",
+   "date": "2026-01-31",
+   "kind": "errands",
+   "text": "Kaaikari vaanga market pogaNum."
+  },
+  {
+   "id": "f0681",
+   "date": "2026-02-02",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "m069",
+   "date": "2026-02-02",
+   "text": "First day at Thenral Systems. My manager is Deepa Iyer."
+  },
+  {
+   "id": "f0381",
+   "date": "2026-02-03",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "m070",
+   "date": "2026-02-03",
+   "text": "Funny, two Deepas in my life now: Deepa Iyer is my boss, and Deepa Sekar is still my friend with the boutique in Madurai."
+  },
+  {
+   "id": "f0331",
+   "date": "2026-02-05",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "f0580",
+   "date": "2026-02-05",
+   "kind": "errands",
+   "text": "Spent 950 rupees on groceries today."
+  },
+  {
+   "id": "m071",
+   "date": "2026-02-05",
+   "text": "At Thenral I'm in charge of testing AgriSense, a crop-insurance platform. We use Playwright and k6."
+  },
+  {
+   "id": "f0087",
+   "date": "2026-02-06",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0880",
+   "date": "2026-02-07",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0977",
+   "date": "2026-02-07",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 11 more."
+  },
+  {
+   "id": "f0353",
+   "date": "2026-02-08",
+   "kind": "outings",
+   "text": "Evening walk near Marudhamalai temple; nice breeze."
+  },
+  {
+   "id": "f0537",
+   "date": "2026-02-08",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "m072",
+   "date": "2026-02-08",
+   "text": "Nila joined class 2 at Kovai Public School."
+  },
+  {
+   "id": "f0193",
+   "date": "2026-02-09",
+   "kind": "media",
+   "text": "Watched Amaran with Senthil last night."
+  },
+  {
+   "id": "f0401",
+   "date": "2026-02-10",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0464",
+   "date": "2026-02-10",
+   "kind": "media",
+   "text": "Jailer padam paathom, semma."
+  },
+  {
+   "id": "m073",
+   "date": "2026-02-10",
+   "text": "Ilan goes to Little Steps daycare near our flat."
+  },
+  {
+   "id": "f0553",
+   "date": "2026-02-11",
+   "kind": "outings",
+   "text": "Evening walk near Race Course; nice breeze."
+  },
+  {
+   "id": "f0642",
+   "date": "2026-02-11",
+   "kind": "others",
+   "text": "One of the teachers at Ilan's daycare is also called Nila."
+  },
+  {
+   "id": "f0926",
+   "date": "2026-02-11",
+   "kind": "media",
+   "text": "Reading Atomic Habits these days."
+  },
+  {
+   "id": "f0056",
+   "date": "2026-02-12",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0952",
+   "date": "2026-02-12",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0153",
+   "date": "2026-02-13",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0060",
+   "date": "2026-02-16",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0072",
+   "date": "2026-02-16",
+   "kind": "errands",
+   "text": "Spent 950 rupees on groceries today."
+  },
+  {
+   "id": "f0084",
+   "date": "2026-02-16",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0338",
+   "date": "2026-02-16",
+   "kind": "media",
+   "text": "Watched Ponniyin Selvan 2 with Senthil last night."
+  },
+  {
+   "id": "f0822",
+   "date": "2026-02-17",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0285",
+   "date": "2026-02-18",
+   "kind": "others",
+   "text": "My friend Deepa Sekar bought a Hyundai i20."
+  },
+  {
+   "id": "f0564",
+   "date": "2026-02-19",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0979",
+   "date": "2026-02-19",
+   "kind": "outings",
+   "text": "Had lunch at Hotel Anandha with Senthil."
+  },
+  {
+   "id": "f0578",
+   "date": "2026-02-20",
+   "kind": "work",
+   "text": "Automated 50 more regression tests this week."
+  },
+  {
+   "id": "f0784",
+   "date": "2026-02-20",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "m074",
+   "date": "2026-02-20",
+   "text": "Senthil started on the airport expansion project this week."
+  },
+  {
+   "id": "f0093",
+   "date": "2026-02-21",
+   "kind": "others",
+   "text": "My friend Deepa Sekar bought a Hyundai i20."
+  },
+  {
+   "id": "f0845",
+   "date": "2026-02-21",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0179",
+   "date": "2026-02-22",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0272",
+   "date": "2026-02-24",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0592",
+   "date": "2026-02-24",
+   "kind": "work",
+   "text": "Long day at work, 17 meetings back to back."
+  },
+  {
+   "id": "f0860",
+   "date": "2026-02-24",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0237",
+   "date": "2026-02-25",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0288",
+   "date": "2026-02-25",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0305",
+   "date": "2026-02-25",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "m075",
+   "date": "2026-02-25",
+   "text": "புது வீட்டுல இன்னும் இன்டர்நெட் கனெக்ஷன் வரல."
+  },
+  {
+   "id": "f0834",
+   "date": "2026-02-26",
+   "kind": "others",
+   "text": "Senthil's amma Pushpa goes to the Meenakshi temple every Friday."
+  },
+  {
+   "id": "f0253",
+   "date": "2026-02-28",
+   "kind": "errands",
+   "text": "Kaaikari vaanga market pogaNum."
+  },
+  {
+   "id": "f0384",
+   "date": "2026-02-28",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0600",
+   "date": "2026-02-28",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0714",
+   "date": "2026-02-28",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "m076",
+   "date": "2026-03-01",
+   "text": "Increased my SIP to 8,000 a month with the new salary."
+  },
+  {
+   "id": "f0397",
+   "date": "2026-03-02",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "m077",
+   "date": "2026-03-02",
+   "text": "No wait, I made it 9,000, not 8,000."
+  },
+  {
+   "id": "f0077",
+   "date": "2026-03-03",
+   "kind": "outings",
+   "text": "Went to Brookefields mall on Sunday; very crowded."
+  },
+  {
+   "id": "f0646",
+   "date": "2026-03-03",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0899",
+   "date": "2026-03-03",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0789",
+   "date": "2026-03-04",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0156",
+   "date": "2026-03-06",
+   "kind": "work",
+   "text": "Long day at work, 51 meetings back to back."
+  },
+  {
+   "id": "f0225",
+   "date": "2026-03-06",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "f0791",
+   "date": "2026-03-06",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the lemon pickle."
+  },
+  {
+   "id": "f0848",
+   "date": "2026-03-06",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0403",
+   "date": "2026-03-07",
+   "kind": "outings",
+   "text": "Had lunch at Kumar Mess with Senthil."
+  },
+  {
+   "id": "f0655",
+   "date": "2026-03-07",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0906",
+   "date": "2026-03-07",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0924",
+   "date": "2026-03-07",
+   "kind": "media",
+   "text": "Watched Maharaja with Senthil last night."
+  },
+  {
+   "id": "f0008",
+   "date": "2026-03-08",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "f0192",
+   "date": "2026-03-08",
+   "kind": "others",
+   "text": "Lakshmi's husband is a cardiologist."
+  },
+  {
+   "id": "f0392",
+   "date": "2026-03-08",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the claims flow."
+  },
+  {
+   "id": "m078",
+   "date": "2026-03-08",
+   "text": "Joined the Saibaba Colony Shuttle Club. Badminton is on Sunday mornings now, no more Thursdays."
+  },
+  {
+   "id": "f0229",
+   "date": "2026-03-09",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 33 more."
+  },
+  {
+   "id": "f0421",
+   "date": "2026-03-09",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0521",
+   "date": "2026-03-10",
+   "kind": "work",
+   "text": "Long day at work, 4 meetings back to back."
+  },
+  {
+   "id": "f0509",
+   "date": "2026-03-11",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0064",
+   "date": "2026-03-12",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0866",
+   "date": "2026-03-12",
+   "kind": "media",
+   "text": "Amaran padam paathom, semma."
+  },
+  {
+   "id": "m079",
+   "date": "2026-03-12",
+   "text": "There's another Kavitha on my team, Kavitha Raman, a junior tester. Everyone calls her KR to avoid confusion."
+  },
+  {
+   "id": "f0608",
+   "date": "2026-03-13",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0063",
+   "date": "2026-03-14",
+   "kind": "others",
+   "text": "தீபா சேகர் புது கடை திறக்கலாமான்னு யோசிக்கிறாங்க."
+  },
+  {
+   "id": "f0181",
+   "date": "2026-03-14",
+   "kind": "pickles",
+   "text": "Inniku lemon pickle 60 bottle pack panniten."
+  },
+  {
+   "id": "f0016",
+   "date": "2026-03-15",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0023",
+   "date": "2026-03-16",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0858",
+   "date": "2026-03-16",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0481",
+   "date": "2026-03-17",
+   "kind": "others",
+   "text": "செந்திலோட அண்ணன் முரளி துபாய்ல புது கார் வாங்கினார்."
+  },
+  {
+   "id": "f0710",
+   "date": "2026-03-17",
+   "kind": "pickles",
+   "text": "Inniku mango thokku 18 bottle pack panniten."
+  },
+  {
+   "id": "f0786",
+   "date": "2026-03-17",
+   "kind": "work",
+   "text": "Automated 10 more regression tests this week."
+  },
+  {
+   "id": "f0883",
+   "date": "2026-03-17",
+   "kind": "pickles",
+   "text": "Made 54 jars of lemon pickle today."
+  },
+  {
+   "id": "f0960",
+   "date": "2026-03-17",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0118",
+   "date": "2026-03-18",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0332",
+   "date": "2026-03-18",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "f0542",
+   "date": "2026-03-18",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "m080",
+   "date": "2026-03-18",
+   "text": "Birthday today; the team at Thenral surprised me with a cake."
+  },
+  {
+   "id": "f0526",
+   "date": "2026-03-19",
+   "kind": "media",
+   "text": "Finished Ikigai; loved it."
+  },
+  {
+   "id": "f0810",
+   "date": "2026-03-19",
+   "kind": "work",
+   "text": "Long day at work, 41 meetings back to back."
+  },
+  {
+   "id": "f0923",
+   "date": "2026-03-19",
+   "kind": "pickles",
+   "text": "Made 22 jars of idli podi today."
+  },
+  {
+   "id": "f0001",
+   "date": "2026-03-20",
+   "kind": "pickles",
+   "text": "Made 35 jars of mango thokku today."
+  },
+  {
+   "id": "f0751",
+   "date": "2026-03-20",
+   "kind": "others",
+   "text": "One of the teachers at Ilan's daycare is also called Nila."
+  },
+  {
+   "id": "f0408",
+   "date": "2026-03-21",
+   "kind": "others",
+   "text": "Deepa Iyer's son plays chess at the district level."
+  },
+  {
+   "id": "f0557",
+   "date": "2026-03-21",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0882",
+   "date": "2026-03-21",
+   "kind": "others",
+   "text": "My friend Deepa Sekar bought a Hyundai i20."
+  },
+  {
+   "id": "f0974",
+   "date": "2026-03-21",
+   "kind": "pickles",
+   "text": "Made 49 jars of garlic pickle today."
+  },
+  {
+   "id": "f0723",
+   "date": "2026-03-22",
+   "kind": "pickles",
+   "text": "Packed 14 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0790",
+   "date": "2026-03-22",
+   "kind": "others",
+   "text": "செந்திலோட அண்ணன் முரளி துபாய்ல புது கார் வாங்கினார்."
+  },
+  {
+   "id": "f0005",
+   "date": "2026-03-23",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0117",
+   "date": "2026-03-24",
+   "kind": "small_talk",
+   "text": "இன்னைக்கு என்ன கிழமை?"
+  },
+  {
+   "id": "f0227",
+   "date": "2026-03-25",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "m081",
+   "date": "2026-03-25",
+   "text": "Ma and Appa are visiting us in Coimbatore for two weeks."
+  },
+  {
+   "id": "f0768",
+   "date": "2026-03-26",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "f0606",
+   "date": "2026-03-27",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0704",
+   "date": "2026-03-27",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0942",
+   "date": "2026-03-27",
+   "kind": "work",
+   "text": "Long day at work, 34 meetings back to back."
+  },
+  {
+   "id": "f0967",
+   "date": "2026-03-30",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0224",
+   "date": "2026-03-31",
+   "kind": "others",
+   "text": "One of the teachers at Ilan's daycare is also called Nila."
+  },
+  {
+   "id": "f0633",
+   "date": "2026-04-01",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "f0775",
+   "date": "2026-04-01",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0069",
+   "date": "2026-04-03",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0195",
+   "date": "2026-04-04",
+   "kind": "work",
+   "text": "Automated 35 more regression tests this week."
+  },
+  {
+   "id": "f0644",
+   "date": "2026-04-04",
+   "kind": "errands",
+   "text": "Spent 1700 rupees on groceries today."
+  },
+  {
+   "id": "f0254",
+   "date": "2026-04-05",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0391",
+   "date": "2026-04-05",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0969",
+   "date": "2026-04-05",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 26 more."
+  },
+  {
+   "id": "m082",
+   "date": "2026-04-05",
+   "text": "Nila Pickles now delivers across Coimbatore too, and Deepa Sekar still stocks it in her Madurai boutique."
+  },
+  {
+   "id": "f0121",
+   "date": "2026-04-06",
+   "kind": "pickles",
+   "text": "Inniku paruppu podi 55 bottle pack panniten."
+  },
+  {
+   "id": "f0395",
+   "date": "2026-04-06",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0903",
+   "date": "2026-04-06",
+   "kind": "small_talk",
+   "text": "இன்னைக்கு என்ன கிழமை?"
+  },
+  {
+   "id": "f0836",
+   "date": "2026-04-07",
+   "kind": "others",
+   "text": "Senthil's amma Pushpa goes to the Meenakshi temple every Friday."
+  },
+  {
+   "id": "f0009",
+   "date": "2026-04-09",
+   "kind": "others",
+   "text": "KR's husband works at a bank in Tiruppur."
+  },
+  {
+   "id": "f0450",
+   "date": "2026-04-09",
+   "kind": "work",
+   "text": "Automated 21 more regression tests this week."
+  },
+  {
+   "id": "f0462",
+   "date": "2026-04-10",
+   "kind": "pickles",
+   "text": "Packed 23 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0372",
+   "date": "2026-04-11",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0582",
+   "date": "2026-04-11",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0088",
+   "date": "2026-04-12",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0469",
+   "date": "2026-04-12",
+   "kind": "outings",
+   "text": "Evening walk near VOC Park; nice breeze."
+  },
+  {
+   "id": "f0493",
+   "date": "2026-04-12",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "m083",
+   "date": "2026-04-12",
+   "text": "Deepa Iyer uses an iPhone 16 Pro and keeps sending me AirDrop requests I can't accept."
+  },
+  {
+   "id": "f0813",
+   "date": "2026-04-13",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0503",
+   "date": "2026-04-15",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0528",
+   "date": "2026-04-15",
+   "kind": "small_talk",
+   "text": "இன்னைக்கு என்ன கிழமை?"
+  },
+  {
+   "id": "f0082",
+   "date": "2026-04-16",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0970",
+   "date": "2026-04-17",
+   "kind": "media",
+   "text": "Finished Ponniyin Selvan; loved it."
+  },
+  {
+   "id": "f0485",
+   "date": "2026-04-18",
+   "kind": "outings",
+   "text": "Evening walk near Race Course; nice breeze."
+  },
+  {
+   "id": "f0590",
+   "date": "2026-04-19",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0594",
+   "date": "2026-04-19",
+   "kind": "media",
+   "text": "Finished Atomic Habits; loved it."
+  },
+  {
+   "id": "f0597",
+   "date": "2026-04-19",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 55 more."
+  },
+  {
+   "id": "f0780",
+   "date": "2026-04-19",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0690",
+   "date": "2026-04-20",
+   "kind": "pickles",
+   "text": "Made 13 jars of lemon pickle today."
+  },
+  {
+   "id": "f0835",
+   "date": "2026-04-20",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "m084",
+   "date": "2026-04-20",
+   "text": "Maybe I'll join a gym near Saibaba Colony. Haven't decided."
+  },
+  {
+   "id": "f0033",
+   "date": "2026-04-21",
+   "kind": "outings",
+   "text": "Went to Marudhamalai temple on Sunday; very crowded."
+  },
+  {
+   "id": "f0339",
+   "date": "2026-04-21",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0382",
+   "date": "2026-04-21",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0869",
+   "date": "2026-04-22",
+   "kind": "work",
+   "text": "Automated 42 more regression tests this week."
+  },
+  {
+   "id": "f0371",
+   "date": "2026-04-23",
+   "kind": "others",
+   "text": "Prakash has become a director at Velan Infotech."
+  },
+  {
+   "id": "f0565",
+   "date": "2026-04-24",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0268",
+   "date": "2026-04-25",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "m085",
+   "date": "2026-04-25",
+   "text": "Thanks Jarvis!"
+  },
+  {
+   "id": "f0489",
+   "date": "2026-04-26",
+   "kind": "musings",
+   "text": "Maybe I should try Zumba."
+  },
+  {
+   "id": "f0579",
+   "date": "2026-04-26",
+   "kind": "work",
+   "text": "Long day at work, 13 meetings back to back."
+  },
+  {
+   "id": "f0203",
+   "date": "2026-04-27",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0885",
+   "date": "2026-04-27",
+   "kind": "outings",
+   "text": "Took the kids to Race Course this evening."
+  },
+  {
+   "id": "f0591",
+   "date": "2026-04-28",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0844",
+   "date": "2026-04-28",
+   "kind": "others",
+   "text": "Senthil's colleague Ganesh uses a Pixel 9."
+  },
+  {
+   "id": "f0891",
+   "date": "2026-04-28",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0922",
+   "date": "2026-04-28",
+   "kind": "work",
+   "text": "Found a nasty bug in the login screen today."
+  },
+  {
+   "id": "f0007",
+   "date": "2026-04-29",
+   "kind": "media",
+   "text": "Amaran padam paathom, semma."
+  },
+  {
+   "id": "f0364",
+   "date": "2026-04-29",
+   "kind": "outings",
+   "text": "Went to Race Course on Sunday; very crowded."
+  },
+  {
+   "id": "f0390",
+   "date": "2026-04-29",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0523",
+   "date": "2026-04-30",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0717",
+   "date": "2026-04-30",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0640",
+   "date": "2026-05-01",
+   "kind": "errands",
+   "text": "Spent 3800 rupees on groceries today."
+  },
+  {
+   "id": "f0657",
+   "date": "2026-05-01",
+   "kind": "others",
+   "text": "Arun is thinking of moving to Bangalore someday."
+  },
+  {
+   "id": "f0878",
+   "date": "2026-05-01",
+   "kind": "others",
+   "text": "செந்திலோட அண்ணன் முரளி துபாய்ல புது கார் வாங்கினார்."
+  },
+  {
+   "id": "m086",
+   "date": "2026-05-01",
+   "text": "Nila Pickles started on 1 May 2023, so three years today!"
+  },
+  {
+   "id": "f0102",
+   "date": "2026-05-02",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0440",
+   "date": "2026-05-03",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0709",
+   "date": "2026-05-03",
+   "kind": "outings",
+   "text": "Had lunch at Hotel Anandha with Senthil."
+  },
+  {
+   "id": "f0539",
+   "date": "2026-05-06",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "f0549",
+   "date": "2026-05-06",
+   "kind": "others",
+   "text": "Revathi's daughter got into Anna University."
+  },
+  {
+   "id": "f0480",
+   "date": "2026-05-07",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0792",
+   "date": "2026-05-07",
+   "kind": "outings",
+   "text": "Evening walk near Brookefields mall; nice breeze."
+  },
+  {
+   "id": "f0905",
+   "date": "2026-05-08",
+   "kind": "work",
+   "text": "Found a nasty bug in the onboarding screen today."
+  },
+  {
+   "id": "f0931",
+   "date": "2026-05-08",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "m087",
+   "date": "2026-05-10",
+   "text": "Summer holidays: Nila is at Ma's place in Palayamkottai for two weeks."
+  },
+  {
+   "id": "f0149",
+   "date": "2026-05-11",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0123",
+   "date": "2026-05-12",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the lemon pickle."
+  },
+  {
+   "id": "f0749",
+   "date": "2026-05-12",
+   "kind": "pickles",
+   "text": "Packed 54 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0083",
+   "date": "2026-05-13",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0488",
+   "date": "2026-05-13",
+   "kind": "outings",
+   "text": "Evening walk near Brookefields mall; nice breeze."
+  },
+  {
+   "id": "f0436",
+   "date": "2026-05-14",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0695",
+   "date": "2026-05-14",
+   "kind": "others",
+   "text": "KR's husband works at a bank in Tiruppur."
+  },
+  {
+   "id": "f0966",
+   "date": "2026-05-15",
+   "kind": "others",
+   "text": "செந்திலோட அண்ணன் முரளி துபாய்ல புது கார் வாங்கினார்."
+  },
+  {
+   "id": "f0473",
+   "date": "2026-05-17",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0720",
+   "date": "2026-05-17",
+   "kind": "others",
+   "text": "KR-ku coffee illaama mudiyaadhu, dhinamum moonu cup."
+  },
+  {
+   "id": "f0742",
+   "date": "2026-05-17",
+   "kind": "outings",
+   "text": "Evening walk near Marudhamalai temple; nice breeze."
+  },
+  {
+   "id": "f0653",
+   "date": "2026-05-18",
+   "kind": "outings",
+   "text": "Had lunch at Kumar Mess with Senthil."
+  },
+  {
+   "id": "f0172",
+   "date": "2026-05-19",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0589",
+   "date": "2026-05-20",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "m088",
+   "date": "2026-05-20",
+   "text": "Closed the gold scheme at Kanaga Jewellers; their Madurai branch is too far now."
+  },
+  {
+   "id": "f0726",
+   "date": "2026-05-21",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0210",
+   "date": "2026-05-22",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0276",
+   "date": "2026-05-22",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "f0875",
+   "date": "2026-05-23",
+   "kind": "pickles",
+   "text": "Packed 4 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0260",
+   "date": "2026-05-24",
+   "kind": "errands",
+   "text": "Spent 1250 rupees on groceries today."
+  },
+  {
+   "id": "f0939",
+   "date": "2026-05-25",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0949",
+   "date": "2026-05-25",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "m089",
+   "date": "2026-05-25",
+   "text": "இலன் இப்போ 'அம்மா', 'தாத்தா'ன்னு பேச ஆரம்பிச்சிட்டான்."
+  },
+  {
+   "id": "f0187",
+   "date": "2026-05-26",
+   "kind": "media",
+   "text": "Vikram padam paathom, semma."
+  },
+  {
+   "id": "f0206",
+   "date": "2026-05-26",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0737",
+   "date": "2026-05-26",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0355",
+   "date": "2026-05-27",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0536",
+   "date": "2026-05-27",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0519",
+   "date": "2026-05-28",
+   "kind": "errands",
+   "text": "Spent 4250 rupees on groceries today."
+  },
+  {
+   "id": "f0443",
+   "date": "2026-05-29",
+   "kind": "others",
+   "text": "Prakash has become a director at Velan Infotech."
+  },
+  {
+   "id": "f0842",
+   "date": "2026-05-29",
+   "kind": "musings",
+   "text": "Maybe I should try Zumba."
+  },
+  {
+   "id": "f0989",
+   "date": "2026-05-29",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0706",
+   "date": "2026-06-02",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "m090",
+   "date": "2026-06-02",
+   "text": "Good morning Jarvis"
+  },
+  {
+   "id": "f0238",
+   "date": "2026-06-03",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0993",
+   "date": "2026-06-03",
+   "kind": "outings",
+   "text": "Had lunch at Kumar Mess with Senthil."
+  },
+  {
+   "id": "f0439",
+   "date": "2026-06-04",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0677",
+   "date": "2026-06-04",
+   "kind": "media",
+   "text": "Jailer padam paathom, semma."
+  },
+  {
+   "id": "f0874",
+   "date": "2026-06-04",
+   "kind": "others",
+   "text": "Deepa Iyer's son plays chess at the district level."
+  },
+  {
+   "id": "f0961",
+   "date": "2026-06-04",
+   "kind": "media",
+   "text": "Watched Leo with Senthil last night."
+  },
+  {
+   "id": "m091",
+   "date": "2026-06-05",
+   "text": "Nila is in class 3 now."
+  },
+  {
+   "id": "f0756",
+   "date": "2026-06-06",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 51 more."
+  },
+  {
+   "id": "f0174",
+   "date": "2026-06-07",
+   "kind": "media",
+   "text": "Finished Ponniyin Selvan; loved it."
+  },
+  {
+   "id": "f0529",
+   "date": "2026-06-07",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0702",
+   "date": "2026-06-09",
+   "kind": "pickles",
+   "text": "Made 42 jars of lemon pickle today."
+  },
+  {
+   "id": "f0351",
+   "date": "2026-06-10",
+   "kind": "musings",
+   "text": "Thinking about a new sofa for the hall."
+  },
+  {
+   "id": "f0498",
+   "date": "2026-06-10",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0613",
+   "date": "2026-06-10",
+   "kind": "errands",
+   "text": "Spent 2750 rupees on groceries today."
+  },
+  {
+   "id": "f0698",
+   "date": "2026-06-10",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0601",
+   "date": "2026-06-12",
+   "kind": "others",
+   "text": "Senthil's colleague Ganesh uses a Pixel 9."
+  },
+  {
+   "id": "m092",
+   "date": "2026-06-12",
+   "text": "Nila turned 8 today."
+  },
+  {
+   "id": "f0510",
+   "date": "2026-06-14",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0113",
+   "date": "2026-06-15",
+   "kind": "errands",
+   "text": "Spent 3200 rupees on groceries today."
+  },
+  {
+   "id": "f0297",
+   "date": "2026-06-15",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "m093",
+   "date": "2026-06-15",
+   "text": "Arun married Swathi in Pune last week. She's a physiotherapist."
+  },
+  {
+   "id": "f0291",
+   "date": "2026-06-16",
+   "kind": "outings",
+   "text": "Had lunch at Kumar Mess with Senthil."
+  },
+  {
+   "id": "f0155",
+   "date": "2026-06-17",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0274",
+   "date": "2026-06-17",
+   "kind": "pickles",
+   "text": "Packed 40 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0764",
+   "date": "2026-06-17",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the lemon pickle."
+  },
+  {
+   "id": "f0953",
+   "date": "2026-06-18",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0344",
+   "date": "2026-06-19",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0365",
+   "date": "2026-06-20",
+   "kind": "media",
+   "text": "Reading Ikigai these days."
+  },
+  {
+   "id": "f0561",
+   "date": "2026-06-20",
+   "kind": "others",
+   "text": "Revathi's daughter got into Anna University."
+  },
+  {
+   "id": "f0689",
+   "date": "2026-06-20",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "m094",
+   "date": "2026-06-20",
+   "text": "Ilan's new paediatrician in Coimbatore is Dr. Shanthi at Kidz Care. She says his wheeze is better and he can stop the inhaler."
+  },
+  {
+   "id": "f0753",
+   "date": "2026-06-23",
+   "kind": "errands",
+   "text": "Spent 950 rupees on groceries today."
+  },
+  {
+   "id": "f0135",
+   "date": "2026-06-24",
+   "kind": "small_talk",
+   "text": "இன்னைக்கு என்ன கிழமை?"
+  },
+  {
+   "id": "f0394",
+   "date": "2026-06-24",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0558",
+   "date": "2026-06-27",
+   "kind": "pickles",
+   "text": "Packed 23 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0577",
+   "date": "2026-06-27",
+   "kind": "media",
+   "text": "Vikram padam paathom, semma."
+  },
+  {
+   "id": "f0685",
+   "date": "2026-06-27",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0512",
+   "date": "2026-06-28",
+   "kind": "work",
+   "text": "Long day at work, 3 meetings back to back."
+  },
+  {
+   "id": "f0986",
+   "date": "2026-06-28",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "m095",
+   "date": "2026-06-28",
+   "text": "KR bought a TVS Jupiter scooter."
+  },
+  {
+   "id": "f0269",
+   "date": "2026-06-29",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0404",
+   "date": "2026-06-29",
+   "kind": "work",
+   "text": "Long day at work, 14 meetings back to back."
+  },
+  {
+   "id": "f0145",
+   "date": "2026-06-30",
+   "kind": "musings",
+   "text": "Maybe I should try Zumba."
+  },
+  {
+   "id": "f0002",
+   "date": "2026-07-01",
+   "kind": "pickles",
+   "text": "Packed 43 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0708",
+   "date": "2026-07-01",
+   "kind": "media",
+   "text": "Finished Ponniyin Selvan; loved it."
+  },
+  {
+   "id": "f0893",
+   "date": "2026-07-01",
+   "kind": "work",
+   "text": "Long day at work, 14 meetings back to back."
+  },
+  {
+   "id": "m096",
+   "date": "2026-07-01",
+   "text": "Narthangai pickle is still our bestseller, around 40 jars a month."
+  },
+  {
+   "id": "f0197",
+   "date": "2026-07-02",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0530",
+   "date": "2026-07-03",
+   "kind": "others",
+   "text": "KR-ku coffee illaama mudiyaadhu, dhinamum moonu cup."
+  },
+  {
+   "id": "f0847",
+   "date": "2026-07-03",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 25 more."
+  },
+  {
+   "id": "f0951",
+   "date": "2026-07-03",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0298",
+   "date": "2026-07-04",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0832",
+   "date": "2026-07-04",
+   "kind": "pickles",
+   "text": "Packed 30 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0177",
+   "date": "2026-07-05",
+   "kind": "media",
+   "text": "Reading Ikigai these days."
+  },
+  {
+   "id": "f0825",
+   "date": "2026-07-05",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "m097",
+   "date": "2026-07-05",
+   "text": "Deepa Iyer kooda ippo ennai Kavi-nu dhaan kooppidraanga; office-la ellarukkum naan Kavi dhaan."
+  },
+  {
+   "id": "f0130",
+   "date": "2026-07-06",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0166",
+   "date": "2026-07-06",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "f0684",
+   "date": "2026-07-06",
+   "kind": "pickles",
+   "text": "Inniku paruppu podi 52 bottle pack panniten."
+  },
+  {
+   "id": "f0484",
+   "date": "2026-07-07",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0139",
+   "date": "2026-07-08",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0308",
+   "date": "2026-07-08",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0769",
+   "date": "2026-07-08",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0098",
+   "date": "2026-07-09",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0109",
+   "date": "2026-07-09",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0216",
+   "date": "2026-07-09",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0363",
+   "date": "2026-07-09",
+   "kind": "errands",
+   "text": "Kaaikari vaanga market pogaNum."
+  },
+  {
+   "id": "f0402",
+   "date": "2026-07-09",
+   "kind": "musings",
+   "text": "Maybe I should try Zumba."
+  },
+  {
+   "id": "f0492",
+   "date": "2026-07-09",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0956",
+   "date": "2026-07-09",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0911",
+   "date": "2026-07-10",
+   "kind": "media",
+   "text": "Ponniyin Selvan 2 padam paathom, semma."
+  },
+  {
+   "id": "f0725",
+   "date": "2026-07-11",
+   "kind": "others",
+   "text": "Senthil's colleague Ganesh uses a Pixel 9."
+  },
+  {
+   "id": "f0998",
+   "date": "2026-07-11",
+   "kind": "others",
+   "text": "Senthil's amma Pushpa goes to the Meenakshi temple every Friday."
+  },
+  {
+   "id": "f0785",
+   "date": "2026-07-13",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0465",
+   "date": "2026-07-14",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0679",
+   "date": "2026-07-15",
+   "kind": "work",
+   "text": "Long day at work, 3 meetings back to back."
+  },
+  {
+   "id": "m098",
+   "date": "2026-07-15",
+   "text": "Senthil sold his Pulsar and bought a Royal Enfield Hunter 350."
+  },
+  {
+   "id": "f0357",
+   "date": "2026-07-16",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0449",
+   "date": "2026-07-16",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the payments flow."
+  },
+  {
+   "id": "f0631",
+   "date": "2026-07-16",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0107",
+   "date": "2026-07-17",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0718",
+   "date": "2026-07-17",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0734",
+   "date": "2026-07-20",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "m099",
+   "date": "2026-07-20",
+   "text": "I've been thinking about selling Nila Pickles on Amazon. Maybe after Deepavali."
+  },
+  {
+   "id": "f0797",
+   "date": "2026-07-21",
+   "kind": "work",
+   "text": "Long day at work, 55 meetings back to back."
+  },
+  {
+   "id": "f0562",
+   "date": "2026-07-22",
+   "kind": "kids",
+   "text": "நிலா இன்னைக்கு ஒரு அழகான படம் வரைஞ்சா."
+  },
+  {
+   "id": "f0588",
+   "date": "2026-07-22",
+   "kind": "work",
+   "text": "Long day at work, 3 meetings back to back."
+  },
+  {
+   "id": "f0639",
+   "date": "2026-07-23",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0968",
+   "date": "2026-07-23",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "f0152",
+   "date": "2026-07-24",
+   "kind": "others",
+   "text": "Prakash has become a director at Velan Infotech."
+  },
+  {
+   "id": "f0173",
+   "date": "2026-07-25",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "f0299",
+   "date": "2026-07-25",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0596",
+   "date": "2026-07-25",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0652",
+   "date": "2026-07-25",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0663",
+   "date": "2026-07-25",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0271",
+   "date": "2026-07-26",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0321",
+   "date": "2026-07-26",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0740",
+   "date": "2026-07-26",
+   "kind": "kids",
+   "text": "Ilan threw his food on the floor again, haha."
+  },
+  {
+   "id": "f0909",
+   "date": "2026-07-26",
+   "kind": "others",
+   "text": "KR's husband works at a bank in Tiruppur."
+  },
+  {
+   "id": "f0352",
+   "date": "2026-07-27",
+   "kind": "others",
+   "text": "Senthil's colleague Ganesh uses a Pixel 9."
+  },
+  {
+   "id": "f0772",
+   "date": "2026-07-27",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0821",
+   "date": "2026-07-27",
+   "kind": "work",
+   "text": "Automated 5 more regression tests this week."
+  },
+  {
+   "id": "f0176",
+   "date": "2026-07-30",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0693",
+   "date": "2026-07-30",
+   "kind": "work",
+   "text": "Found a nasty bug in the payments screen today."
+  },
+  {
+   "id": "m100",
+   "date": "2026-08-01",
+   "text": "From today I also lead QA for Thenral's new product, KisanPay."
+  },
+  {
+   "id": "f0520",
+   "date": "2026-08-02",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0776",
+   "date": "2026-08-02",
+   "kind": "work",
+   "text": "Found a nasty bug in the onboarding screen today."
+  },
+  {
+   "id": "f0632",
+   "date": "2026-08-03",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0431",
+   "date": "2026-08-04",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0570",
+   "date": "2026-08-04",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0793",
+   "date": "2026-08-04",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "m101",
+   "date": "2026-08-05",
+   "text": "Senthil-ku kaaram konjam kooda pidikkadhu, aana enakku nalla kaaram dhaan venum."
+  },
+  {
+   "id": "f0744",
+   "date": "2026-08-08",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0128",
+   "date": "2026-08-09",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0755",
+   "date": "2026-08-09",
+   "kind": "outings",
+   "text": "Had lunch at Hotel Anandha with Senthil."
+  },
+  {
+   "id": "f0954",
+   "date": "2026-08-10",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0546",
+   "date": "2026-08-11",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0678",
+   "date": "2026-08-12",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "f0732",
+   "date": "2026-08-12",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the idli podi."
+  },
+  {
+   "id": "m102",
+   "date": "2026-08-12",
+   "text": "Deepa Iyer worked at Zoho for eight years before she joined Thenral."
+  },
+  {
+   "id": "f0387",
+   "date": "2026-08-13",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the mango thokku."
+  },
+  {
+   "id": "f0426",
+   "date": "2026-08-14",
+   "kind": "work",
+   "text": "Long day at work, 45 meetings back to back."
+  },
+  {
+   "id": "f0314",
+   "date": "2026-08-15",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0812",
+   "date": "2026-08-15",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0992",
+   "date": "2026-08-15",
+   "kind": "pickles",
+   "text": "Packed 14 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0410",
+   "date": "2026-08-16",
+   "kind": "outings",
+   "text": "Went to Marudhamalai temple on Sunday; very crowded."
+  },
+  {
+   "id": "f0975",
+   "date": "2026-08-16",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0316",
+   "date": "2026-08-17",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0738",
+   "date": "2026-08-17",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0804",
+   "date": "2026-08-17",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0675",
+   "date": "2026-08-18",
+   "kind": "errands",
+   "text": "Spent 1850 rupees on groceries today."
+  },
+  {
+   "id": "m103",
+   "date": "2026-08-18",
+   "text": "Took up watercolour painting: an online class with Ms. Rekha every Wednesday night."
+  },
+  {
+   "id": "f0028",
+   "date": "2026-08-19",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0249",
+   "date": "2026-08-20",
+   "kind": "work",
+   "text": "Found a nasty bug in the onboarding screen today."
+  },
+  {
+   "id": "f0437",
+   "date": "2026-08-20",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0479",
+   "date": "2026-08-21",
+   "kind": "media",
+   "text": "Reading Sivagamiyin Sabatham these days."
+  },
+  {
+   "id": "f0273",
+   "date": "2026-08-22",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0024",
+   "date": "2026-08-23",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "f0108",
+   "date": "2026-08-23",
+   "kind": "work",
+   "text": "Long day at work, 24 meetings back to back."
+  },
+  {
+   "id": "f0168",
+   "date": "2026-08-23",
+   "kind": "outings",
+   "text": "Took the kids to VOC Park this evening."
+  },
+  {
+   "id": "f0547",
+   "date": "2026-08-23",
+   "kind": "others",
+   "text": "Swathi runs a physio clinic in Kothrud, Pune."
+  },
+  {
+   "id": "f0183",
+   "date": "2026-08-24",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0731",
+   "date": "2026-08-24",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0101",
+   "date": "2026-08-25",
+   "kind": "work",
+   "text": "Long day at work, 49 meetings back to back."
+  },
+  {
+   "id": "f0470",
+   "date": "2026-08-25",
+   "kind": "others",
+   "text": "My friend Deepa Sekar bought a Hyundai i20."
+  },
+  {
+   "id": "f0676",
+   "date": "2026-08-25",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0933",
+   "date": "2026-08-25",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 56 more."
+  },
+  {
+   "id": "m104",
+   "date": "2026-08-25",
+   "text": "Correction: Ms. Rekha's class is on Friday nights, not Wednesday."
+  },
+  {
+   "id": "f0075",
+   "date": "2026-08-26",
+   "kind": "others",
+   "text": "Prakash has become a director at Velan Infotech."
+  },
+  {
+   "id": "f0478",
+   "date": "2026-08-26",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0502",
+   "date": "2026-08-26",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0049",
+   "date": "2026-08-28",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0516",
+   "date": "2026-08-28",
+   "kind": "outings",
+   "text": "Took the kids to Race Course this evening."
+  },
+  {
+   "id": "f0770",
+   "date": "2026-08-28",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0914",
+   "date": "2026-08-28",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0778",
+   "date": "2026-08-29",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "m105",
+   "date": "2026-08-30",
+   "text": "Senthil-oda friend Ganesh Chennai-la Velachery-la oru flat vaanginaar."
+  },
+  {
+   "id": "f0705",
+   "date": "2026-08-31",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0261",
+   "date": "2026-09-01",
+   "kind": "outings",
+   "text": "Went to Marudhamalai temple on Sunday; very crowded."
+  },
+  {
+   "id": "f0262",
+   "date": "2026-09-01",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0361",
+   "date": "2026-09-01",
+   "kind": "pickles",
+   "text": "Packed 59 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0626",
+   "date": "2026-09-01",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0856",
+   "date": "2026-09-01",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0070",
+   "date": "2026-09-02",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0208",
+   "date": "2026-09-02",
+   "kind": "kids",
+   "text": "Nila's class went on a field trip."
+  },
+  {
+   "id": "f0637",
+   "date": "2026-09-02",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "f0918",
+   "date": "2026-09-02",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0318",
+   "date": "2026-09-03",
+   "kind": "others",
+   "text": "My friend Deepa Sekar bought a Hyundai i20."
+  },
+  {
+   "id": "f0602",
+   "date": "2026-09-03",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0623",
+   "date": "2026-09-03",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 60 more."
+  },
+  {
+   "id": "f0754",
+   "date": "2026-09-03",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0984",
+   "date": "2026-09-03",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0018",
+   "date": "2026-09-04",
+   "kind": "outings",
+   "text": "Evening walk near VOC Park; nice breeze."
+  },
+  {
+   "id": "f0354",
+   "date": "2026-09-04",
+   "kind": "work",
+   "text": "Long day at work, 32 meetings back to back."
+  },
+  {
+   "id": "f0752",
+   "date": "2026-09-04",
+   "kind": "pickles",
+   "text": "Inniku garlic pickle 52 bottle pack panniten."
+  },
+  {
+   "id": "f0807",
+   "date": "2026-09-04",
+   "kind": "errands",
+   "text": "Booked the gas cylinder."
+  },
+  {
+   "id": "f0697",
+   "date": "2026-09-05",
+   "kind": "media",
+   "text": "Finished Ponniyin Selvan; loved it."
+  },
+  {
+   "id": "m106",
+   "date": "2026-09-05",
+   "text": "11th anniversary today. Dinner at Kovai Vilas."
+  },
+  {
+   "id": "f0163",
+   "date": "2026-09-06",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0609",
+   "date": "2026-09-06",
+   "kind": "others",
+   "text": "Senthil's colleague Ganesh uses a Pixel 9."
+  },
+  {
+   "id": "f0818",
+   "date": "2026-09-07",
+   "kind": "others",
+   "text": "My friend Deepa Sekar bought a Hyundai i20."
+  },
+  {
+   "id": "f0841",
+   "date": "2026-09-07",
+   "kind": "others",
+   "text": "Lakshmi's husband is a cardiologist."
+  },
+  {
+   "id": "f0322",
+   "date": "2026-09-08",
+   "kind": "others",
+   "text": "KR's husband works at a bank in Tiruppur."
+  },
+  {
+   "id": "f0932",
+   "date": "2026-09-08",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0765",
+   "date": "2026-09-09",
+   "kind": "small_talk",
+   "text": "Sari Jarvis, thanks!"
+  },
+  {
+   "id": "f0165",
+   "date": "2026-09-10",
+   "kind": "others",
+   "text": "அருணுக்கு பிரியாணி ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0552",
+   "date": "2026-09-10",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0647",
+   "date": "2026-09-10",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "m107",
+   "date": "2026-09-10",
+   "text": "Swapped my Samsung S24 for a Pixel 10. The Samsung went to Senthil."
+  },
+  {
+   "id": "f0040",
+   "date": "2026-09-12",
+   "kind": "pickles",
+   "text": "Made 57 jars of lemon pickle today."
+  },
+  {
+   "id": "f0662",
+   "date": "2026-09-12",
+   "kind": "pickles",
+   "text": "Packed 49 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0668",
+   "date": "2026-09-12",
+   "kind": "errands",
+   "text": "Recharged the internet plan."
+  },
+  {
+   "id": "f0223",
+   "date": "2026-09-13",
+   "kind": "health_small",
+   "text": "தலைவலி, இன்னைக்கு சீக்கிரம் தூங்கணும்."
+  },
+  {
+   "id": "f0236",
+   "date": "2026-09-13",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0533",
+   "date": "2026-09-13",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0120",
+   "date": "2026-09-14",
+   "kind": "work",
+   "text": "Long day at work, 31 meetings back to back."
+  },
+  {
+   "id": "f0258",
+   "date": "2026-09-14",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0370",
+   "date": "2026-09-14",
+   "kind": "work",
+   "text": "Spent the afternoon writing test cases for the payments flow."
+  },
+  {
+   "id": "f0491",
+   "date": "2026-09-14",
+   "kind": "media",
+   "text": "Reading Sivagamiyin Sabatham these days."
+  },
+  {
+   "id": "f0622",
+   "date": "2026-09-14",
+   "kind": "work",
+   "text": "Long day at work, 59 meetings back to back."
+  },
+  {
+   "id": "f0816",
+   "date": "2026-09-14",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "m108",
+   "date": "2026-09-15",
+   "text": "Ma's thyroid tests came back normal."
+  },
+  {
+   "id": "f0052",
+   "date": "2026-09-16",
+   "kind": "media",
+   "text": "Reading Atomic Habits these days."
+  },
+  {
+   "id": "f0219",
+   "date": "2026-09-16",
+   "kind": "small_talk",
+   "text": "Nalaiku mazhai varuma?"
+  },
+  {
+   "id": "f0013",
+   "date": "2026-09-17",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0045",
+   "date": "2026-09-17",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0242",
+   "date": "2026-09-17",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0673",
+   "date": "2026-09-17",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the mango thokku."
+  },
+  {
+   "id": "f0030",
+   "date": "2026-09-18",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0540",
+   "date": "2026-09-18",
+   "kind": "media",
+   "text": "Reading Ikigai these days."
+  },
+  {
+   "id": "f0669",
+   "date": "2026-09-18",
+   "kind": "kids",
+   "text": "Ilan has a cold today."
+  },
+  {
+   "id": "f0884",
+   "date": "2026-09-18",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0815",
+   "date": "2026-09-19",
+   "kind": "outings",
+   "text": "Took the kids to Marudhamalai temple this evening."
+  },
+  {
+   "id": "f0900",
+   "date": "2026-09-20",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "m109",
+   "date": "2026-09-20",
+   "text": "I've stopped taking sugar in my tea."
+  },
+  {
+   "id": "f0722",
+   "date": "2026-09-21",
+   "kind": "media",
+   "text": "Watched Jailer with Senthil last night."
+  },
+  {
+   "id": "f0157",
+   "date": "2026-09-22",
+   "kind": "pickles",
+   "text": "A customer asked for less oil in the lemon pickle."
+  },
+  {
+   "id": "f0901",
+   "date": "2026-09-22",
+   "kind": "pickles",
+   "text": "Packed 52 pickle orders for delivery this evening."
+  },
+  {
+   "id": "f0904",
+   "date": "2026-09-22",
+   "kind": "outings",
+   "text": "Went to Race Course on Sunday; very crowded."
+  },
+  {
+   "id": "f0019",
+   "date": "2026-09-23",
+   "kind": "media",
+   "text": "Reading Ponniyin Selvan these days."
+  },
+  {
+   "id": "f0325",
+   "date": "2026-09-23",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0828",
+   "date": "2026-09-24",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0026",
+   "date": "2026-09-25",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0927",
+   "date": "2026-09-25",
+   "kind": "outings",
+   "text": "Went to VOC Park on Sunday; very crowded."
+  },
+  {
+   "id": "f0944",
+   "date": "2026-09-25",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "m110",
+   "date": "2026-09-25",
+   "text": "Nila wants to learn Bharatanatyam, so we enrolled her at Natya Kala Academy. Classes are on Tuesdays and Saturdays."
+  },
+  {
+   "id": "f0687",
+   "date": "2026-09-27",
+   "kind": "others",
+   "text": "KR-ku coffee illaama mudiyaadhu, dhinamum moonu cup."
+  },
+  {
+   "id": "f0787",
+   "date": "2026-09-27",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 35 more."
+  },
+  {
+   "id": "f0112",
+   "date": "2026-09-28",
+   "kind": "work",
+   "text": "Long day at work, 37 meetings back to back."
+  },
+  {
+   "id": "f0430",
+   "date": "2026-09-28",
+   "kind": "others",
+   "text": "தீபா சேகர் புது கடை திறக்கலாமான்னு யோசிக்கிறாங்க."
+  },
+  {
+   "id": "m111",
+   "date": "2026-09-28",
+   "text": "என் காரை ஸ்ரீ கணேஷ் மோட்டார்ஸ்ல தான் சர்வீஸ் பண்ணுவேன்."
+  },
+  {
+   "id": "f0196",
+   "date": "2026-09-29",
+   "kind": "media",
+   "text": "Reading Ponniyin Selvan these days."
+  },
+  {
+   "id": "f0221",
+   "date": "2026-09-29",
+   "kind": "musings",
+   "text": "Maybe I should try Zumba."
+  },
+  {
+   "id": "f0618",
+   "date": "2026-09-29",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "m112",
+   "date": "2026-10-01",
+   "text": "Lakshmi, the friend who referred me, has moved to Bangalore for a job at Brightloop."
+  },
+  {
+   "id": "f0182",
+   "date": "2026-10-02",
+   "kind": "musings",
+   "text": "Not sure if we should get a second car."
+  },
+  {
+   "id": "f0453",
+   "date": "2026-10-02",
+   "kind": "outings",
+   "text": "Went to Race Course on Sunday; very crowded."
+  },
+  {
+   "id": "f0514",
+   "date": "2026-10-02",
+   "kind": "media",
+   "text": "Reading Ponniyin Selvan these days."
+  },
+  {
+   "id": "f0532",
+   "date": "2026-10-02",
+   "kind": "kids",
+   "text": "Helped Nila with her maths homework."
+  },
+  {
+   "id": "m113",
+   "date": "2026-10-03",
+   "text": "Planning the December holiday: maybe Ooty, maybe Yercaud."
+  },
+  {
+   "id": "f0773",
+   "date": "2026-10-04",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0406",
+   "date": "2026-10-05",
+   "kind": "work",
+   "text": "Bug triage ran for two hours again."
+  },
+  {
+   "id": "f0692",
+   "date": "2026-10-05",
+   "kind": "work",
+   "text": "Automated 55 more regression tests this week."
+  },
+  {
+   "id": "f0659",
+   "date": "2026-10-06",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0427",
+   "date": "2026-10-07",
+   "kind": "musings",
+   "text": "Thinking about a new sofa for the hall."
+  },
+  {
+   "id": "m114",
+   "date": "2026-10-08",
+   "text": "Can you set a timer for 10 minutes?"
+  },
+  {
+   "id": "f0003",
+   "date": "2026-10-09",
+   "kind": "work",
+   "text": "Long day at work, 20 meetings back to back."
+  },
+  {
+   "id": "f0050",
+   "date": "2026-10-09",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0326",
+   "date": "2026-10-09",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0628",
+   "date": "2026-10-09",
+   "kind": "pickles",
+   "text": "Raw mango prices are up again at the market."
+  },
+  {
+   "id": "f0034",
+   "date": "2026-10-10",
+   "kind": "pickles",
+   "text": "Inniku idli podi 19 bottle pack panniten."
+  },
+  {
+   "id": "f0200",
+   "date": "2026-10-10",
+   "kind": "pickles",
+   "text": "Ran out of glass jars; ordered 49 more."
+  },
+  {
+   "id": "m115",
+   "date": "2026-10-10",
+   "text": "Booked a cottage in Yercaud from 20 to 23 December."
+  },
+  {
+   "id": "f0323",
+   "date": "2026-10-12",
+   "kind": "kids",
+   "text": "இலன் இன்னைக்கு ரொம்ப சேட்டை பண்ணான்."
+  },
+  {
+   "id": "m116",
+   "date": "2026-10-12",
+   "text": "For Deepavali (8 November) we're going to Palayamkottai, 6 to 9 November."
+  },
+  {
+   "id": "f0935",
+   "date": "2026-10-13",
+   "kind": "media",
+   "text": "Reading Ponniyin Selvan these days."
+  },
+  {
+   "id": "f0651",
+   "date": "2026-10-14",
+   "kind": "work",
+   "text": "Office-la inniku full-aa meetings dhaan."
+  },
+  {
+   "id": "f0910",
+   "date": "2026-10-14",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0300",
+   "date": "2026-10-15",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0301",
+   "date": "2026-10-15",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0635",
+   "date": "2026-10-15",
+   "kind": "work",
+   "text": "Flaky tests ate my whole morning."
+  },
+  {
+   "id": "f0701",
+   "date": "2026-10-15",
+   "kind": "others",
+   "text": "KR's husband works at a bank in Tiruppur."
+  },
+  {
+   "id": "m117",
+   "date": "2026-10-15",
+   "text": "Nila Pickles Deepavali pre-orders: 180 jars so far."
+  },
+  {
+   "id": "f0501",
+   "date": "2026-10-16",
+   "kind": "media",
+   "text": "Reading Ponniyin Selvan these days."
+  },
+  {
+   "id": "f0340",
+   "date": "2026-10-17",
+   "kind": "work",
+   "text": "Our release went out tonight; no rollbacks."
+  },
+  {
+   "id": "f0665",
+   "date": "2026-10-18",
+   "kind": "errands",
+   "text": "Paid the electricity bill."
+  },
+  {
+   "id": "f0980",
+   "date": "2026-10-18",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "m118",
+   "date": "2026-10-18",
+   "text": "I don't use Instagram for Nila Pickles anymore; WhatsApp brings most of the orders."
+  },
+  {
+   "id": "f0595",
+   "date": "2026-10-19",
+   "kind": "others",
+   "text": "One of the teachers at Ilan's daycare is also called Nila."
+  },
+  {
+   "id": "f0985",
+   "date": "2026-10-19",
+   "kind": "errands",
+   "text": "Paid Nila's school fees for the term."
+  },
+  {
+   "id": "f0170",
+   "date": "2026-10-20",
+   "kind": "errands",
+   "text": "Got the Baleno washed."
+  },
+  {
+   "id": "f0204",
+   "date": "2026-10-20",
+   "kind": "media",
+   "text": "Finished Atomic Habits; loved it."
+  },
+  {
+   "id": "f0650",
+   "date": "2026-10-20",
+   "kind": "musings",
+   "text": "Oru naal Kerala trip pogalaam-nu thonudhu."
+  },
+  {
+   "id": "m119",
+   "date": "2026-10-20",
+   "text": "Arun and Swathi might visit us at Christmas, not confirmed."
+  },
+  {
+   "id": "f0058",
+   "date": "2026-10-21",
+   "kind": "health_small",
+   "text": "Back pain after badminton."
+  },
+  {
+   "id": "f0555",
+   "date": "2026-10-22",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0762",
+   "date": "2026-10-22",
+   "kind": "others",
+   "text": "One of the teachers at Ilan's daycare is also called Nila."
+  },
+  {
+   "id": "f0843",
+   "date": "2026-10-22",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  },
+  {
+   "id": "m120",
+   "date": "2026-10-22",
+   "text": "Remind me: Nila's school PTA meeting is on 14 November."
+  },
+  {
+   "id": "f0248",
+   "date": "2026-10-23",
+   "kind": "work",
+   "text": "Mentored a new tester today."
+  },
+  {
+   "id": "f0375",
+   "date": "2026-10-23",
+   "kind": "small_talk",
+   "text": "Inniku romba tired-aa irukku."
+  },
+  {
+   "id": "f0964",
+   "date": "2026-10-23",
+   "kind": "kids",
+   "text": "Nila got a star in her spelling test."
+  },
+  {
+   "id": "f0691",
+   "date": "2026-10-24",
+   "kind": "others",
+   "text": "Arun is thinking of moving to Bangalore someday."
+  },
+  {
+   "id": "f0621",
+   "date": "2026-10-25",
+   "kind": "work",
+   "text": "Automated 57 more regression tests this week."
+  },
+  {
+   "id": "m121",
+   "date": "2026-10-25",
+   "text": "Ma-ku next month 65 vayasu aagudhu; avanga birthday 30 November."
+  },
+  {
+   "id": "m122",
+   "date": "2026-10-28",
+   "text": "Senthil's airport project finishes next March. L&T may move him to Chennai after that, nothing confirmed."
+  },
+  {
+   "id": "f0132",
+   "date": "2026-10-30",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0413",
+   "date": "2026-10-30",
+   "kind": "musings",
+   "text": "Might start a small terrace garden."
+  }
+ ],
+ "questions": [
+  {
+   "id": "t2q001",
+   "kind": "simple",
+   "q": "What is my full name?",
+   "must": [
+    [
+     "kavitha murugesan"
+    ]
+   ],
+   "gold": "Your name is Kavitha Murugesan."
+  },
+  {
+   "id": "t2q002",
+   "kind": "simple",
+   "q": "When is my birthday?",
+   "must": [
+    [
+     "18 march",
+     "march 18",
+     "18th march",
+     "march 18th",
+     "18th of march"
+    ]
+   ],
+   "gold": "Your birthday is 18 March."
+  },
+  {
+   "id": "t2q003",
+   "kind": "simple",
+   "q": "What does Senthil do for a living?",
+   "must": [
+    [
+     "engineer"
+    ],
+    [
+     "l&t",
+     "larsen"
+    ]
+   ],
+   "gold": "Senthil is a site engineer at L&T Construction."
+  },
+  {
+   "id": "t2q004",
+   "kind": "simple",
+   "q": "When is Nila's birthday?",
+   "must": [
+    [
+     "12 june",
+     "june 12",
+     "12th june",
+     "june 12th",
+     "12th of june"
+    ]
+   ],
+   "gold": "Nila's birthday is 12 June."
+  },
+  {
+   "id": "t2q005",
+   "kind": "simple",
+   "q": "When was Ilan born?",
+   "must": [
+    [
+     "27 jan",
+     "january 27",
+     "27th jan",
+     "27th of jan"
+    ],
+    [
+     "2024"
+    ]
+   ],
+   "gold": "Ilan was born on 27 January 2024."
+  },
+  {
+   "id": "t2q006",
+   "kind": "simple",
+   "q": "What is my side business?",
+   "must": [
+    [
+     "nila pickles"
+    ]
+   ],
+   "gold": "Your side business is Nila Pickles, homemade pickles and podis."
+  },
+  {
+   "id": "t2q007",
+   "kind": "simple",
+   "q": "When did I start Nila Pickles?",
+   "must": [
+    [
+     "2023"
+    ]
+   ],
+   "gold": "You started Nila Pickles on 1 May 2023."
+  },
+  {
+   "id": "t2q008",
+   "kind": "simple",
+   "q": "When is our wedding anniversary?",
+   "must": [
+    [
+     "5 sep",
+     "september 5",
+     "5th sep",
+     "sept 5",
+     "5th of sep"
+    ]
+   ],
+   "gold": "Your wedding anniversary is 5 September."
+  },
+  {
+   "id": "t2q009",
+   "kind": "simple",
+   "q": "Which fund is my SIP in?",
+   "must": [
+    [
+     "navarasa"
+    ]
+   ],
+   "gold": "Your SIP is in the Navarasa Flexi Cap fund."
+  },
+  {
+   "id": "t2q010",
+   "kind": "simple",
+   "q": "What car do we have?",
+   "must": [
+    [
+     "baleno"
+    ]
+   ],
+   "gold": "You have a Maruti Baleno."
+  },
+  {
+   "id": "t2q011",
+   "kind": "simple",
+   "q": "How much is my car loan EMI, and on which day?",
+   "must": [
+    [
+     "11,500",
+     "11500"
+    ],
+    [
+     "10th",
+     "10 of",
+     "the 10"
+    ]
+   ],
+   "gold": "The car loan EMI is 11,500 rupees on the 10th of every month."
+  },
+  {
+   "id": "t2q012",
+   "kind": "simple",
+   "q": "Which bank is my car loan with?",
+   "must": [
+    [
+     "sbi",
+     "state bank"
+    ]
+   ],
+   "gold": "Your car loan is with SBI."
+  },
+  {
+   "id": "t2q013",
+   "kind": "simple",
+   "q": "Is there any food I can't take?",
+   "must": [
+    [
+     "lactose",
+     "milk"
+    ]
+   ],
+   "gold": "You're lactose intolerant, so you avoid milk (curd is fine)."
+  },
+  {
+   "id": "t2q014",
+   "kind": "simple",
+   "q": "Do I drink coffee?",
+   "must": [
+    [
+     "no",
+     "don't",
+     "do not",
+     "not"
+    ],
+    [
+     "tea"
+    ]
+   ],
+   "must_not": [
+    "you drink coffee",
+    "you like coffee",
+    "you love coffee"
+   ],
+   "gold": "No, you don't drink coffee at all; you're a ginger tea person.",
+   "traps": [
+    "Yes, you drink coffee every morning."
+   ]
+  },
+  {
+   "id": "t2q015",
+   "kind": "simple",
+   "q": "Which laptop do I use at work?",
+   "must": [
+    [
+     "dell",
+     "latitude"
+    ]
+   ],
+   "gold": "At work you use a Dell Latitude."
+  },
+  {
+   "id": "t2q016",
+   "kind": "simple",
+   "q": "What does AgriSense do?",
+   "must": [
+    [
+     "crop"
+    ],
+    [
+     "insurance"
+    ]
+   ],
+   "gold": "AgriSense is a crop-insurance platform."
+  },
+  {
+   "id": "t2q017",
+   "kind": "simple",
+   "q": "Which testing tools do we use at Thenral?",
+   "must": [
+    [
+     "playwright"
+    ],
+    [
+     "k6"
+    ]
+   ],
+   "gold": "You use Playwright and k6."
+  },
+  {
+   "id": "t2q018",
+   "kind": "simple",
+   "q": "Where is Deepa Sekar's boutique?",
+   "must": [
+    [
+     "town hall",
+     "madurai"
+    ]
+   ],
+   "gold": "Deepa Designs is on Town Hall Road, Madurai."
+  },
+  {
+   "id": "t2q019",
+   "kind": "simple",
+   "q": "What is the name of Deepa Sekar's boutique?",
+   "must": [
+    [
+     "deepa designs"
+    ]
+   ],
+   "gold": "Her boutique is called Deepa Designs."
+  },
+  {
+   "id": "t2q020",
+   "kind": "simple",
+   "q": "Who is Revathi?",
+   "must": [
+    [
+     "neighbour",
+     "neighbor"
+    ],
+    [
+     "chemistry",
+     "madurai kamaraj",
+     "university",
+     "professor",
+     "lecturer",
+     "teach"
+    ]
+   ],
+   "gold": "Revathi was your neighbour in K.K. Nagar; she teaches chemistry at Madurai Kamaraj University."
+  },
+  {
+   "id": "t2q021",
+   "kind": "simple",
+   "q": "How many jars did Nila Pickles sell for Deepavali last year?",
+   "must": [
+    [
+     "300"
+    ]
+   ],
+   "gold": "About 300 jars in two weeks."
+  },
+  {
+   "id": "t2q022",
+   "kind": "simple",
+   "q": "Where are we going for Deepavali?",
+   "must": [
+    [
+     "palayamkottai",
+     "tirunelveli"
+    ]
+   ],
+   "gold": "You're going to Palayamkottai, 6 to 9 November."
+  },
+  {
+   "id": "t2q023",
+   "kind": "simple",
+   "q": "When is Nila's PTA meeting?",
+   "must": [
+    [
+     "14 nov",
+     "november 14",
+     "14th nov",
+     "nov 14",
+     "14th of nov"
+    ]
+   ],
+   "gold": "Nila's PTA meeting is on 14 November."
+  },
+  {
+   "id": "t2q024",
+   "kind": "simple",
+   "q": "When is our Yercaud trip?",
+   "must": [
+    [
+     "20"
+    ],
+    [
+     "23"
+    ],
+    [
+     "december",
+     "dec"
+    ]
+   ],
+   "gold": "You've booked a cottage in Yercaud from 20 to 23 December."
+  },
+  {
+   "id": "t2q025",
+   "kind": "simple",
+   "q": "What did I give Senthil for his birthday last year?",
+   "must": [
+    [
+     "smartwatch",
+     "watch",
+     "noise"
+    ]
+   ],
+   "gold": "You got him a Noise smartwatch."
+  },
+  {
+   "id": "t2q026",
+   "kind": "simple",
+   "q": "When is Senthil's birthday?",
+   "must": [
+    [
+     "2 nov",
+     "november 2",
+     "2nd nov",
+     "nov 2",
+     "2nd of nov"
+    ]
+   ],
+   "gold": "Senthil's birthday is 2 November."
+  },
+  {
+   "id": "t2q027",
+   "kind": "simple",
+   "q": "How many Deepavali pre-orders does Nila Pickles have this year?",
+   "must": [
+    [
+     "180"
+    ]
+   ],
+   "gold": "180 jars so far."
+  },
+  {
+   "id": "t2q028",
+   "kind": "current",
+   "q": "Where do I live now?",
+   "must": [
+    [
+     "saibaba colony",
+     "coimbatore"
+    ]
+   ],
+   "must_not": [
+    "you live in k.k. nagar",
+    "you live in madurai",
+    "you live in kk nagar"
+   ],
+   "gold": "You live in Saibaba Colony, Coimbatore (you moved from K.K. Nagar, Madurai in January 2026).",
+   "traps": [
+    "You live in K.K. Nagar, Madurai."
+   ]
+  },
+  {
+   "id": "t2q029",
+   "kind": "current",
+   "q": "Which company do I work for now?",
+   "must": [
+    [
+     "thenral"
+    ]
+   ],
+   "must_not": [
+    "you work at velan",
+    "you work for velan"
+   ],
+   "gold": "You work at Thenral Systems in Coimbatore.",
+   "traps": [
+    "You work at Velan Infotech in Madurai."
+   ]
+  },
+  {
+   "id": "t2q030",
+   "kind": "current",
+   "q": "What is my job title now?",
+   "must": [
+    [
+     "qa manager"
+    ]
+   ],
+   "must_not": [
+    "you are a qa lead",
+    "you're a qa lead",
+    "title is qa lead"
+   ],
+   "gold": "You're a Senior QA Manager at Thenral Systems.",
+   "traps": [
+    "You're a QA lead at Velan Infotech."
+   ]
+  },
+  {
+   "id": "t2q031",
+   "kind": "current",
+   "q": "Who is my manager now?",
+   "must": [
+    [
+     "deepa iyer"
+    ]
+   ],
+   "must_not": [
+    "manager is prakash",
+    "manager is deepa sekar"
+   ],
+   "gold": "Your manager is Deepa Iyer.",
+   "traps": [
+    "Your manager is Prakash.",
+    "Your manager is Deepa Sekar."
+   ]
+  },
+  {
+   "id": "t2q032",
+   "kind": "current",
+   "q": "What phone do I use now?",
+   "must": [
+    [
+     "pixel"
+    ]
+   ],
+   "must_not": [
+    "you use a samsung",
+    "you use a redmi",
+    "phone is a samsung",
+    "phone is a redmi",
+    "you use the samsung"
+   ],
+   "gold": "You use a Pixel 10 (you swapped your Samsung S24 for it).",
+   "traps": [
+    "You use a Samsung Galaxy S24.",
+    "Your phone is a Redmi Note 12."
+   ]
+  },
+  {
+   "id": "t2q033",
+   "kind": "current",
+   "q": "Which day do I play badminton now?",
+   "must": [
+    [
+     "sunday"
+    ]
+   ],
+   "must_not": [
+    "you play on thursday",
+    "you play on tuesday",
+    "badminton is on thursday"
+   ],
+   "gold": "Sunday mornings, at the Saibaba Colony Shuttle Club.",
+   "traps": [
+    "You play on Thursday evenings."
+   ]
+  },
+  {
+   "id": "t2q034",
+   "kind": "current",
+   "q": "Where do I play badminton now?",
+   "must": [
+    [
+     "saibaba colony shuttle",
+     "shuttle club"
+    ]
+   ],
+   "must_not": [
+    "you play at gandhi nagar",
+    "at the gandhi nagar"
+   ],
+   "gold": "At the Saibaba Colony Shuttle Club.",
+   "traps": [
+    "You play at the Gandhi Nagar indoor court."
+   ]
+  },
+  {
+   "id": "t2q035",
+   "kind": "current",
+   "q": "How much is my SIP now?",
+   "must": [
+    [
+     "9,000",
+     "9000",
+     "9k"
+    ]
+   ],
+   "must_not": [
+    "sip is 8,000",
+    "sip is 5,000",
+    "is 8,000 a month",
+    "is 5,000 a month",
+    "sip is 8000",
+    "sip is 5000"
+   ],
+   "gold": "9,000 rupees a month in the Navarasa Flexi Cap fund.",
+   "traps": [
+    "Your SIP is 8,000 a month.",
+    "Your SIP is 5,000 a month."
+   ]
+  },
+  {
+   "id": "t2q036",
+   "kind": "current",
+   "q": "Which school does Nila go to now?",
+   "must": [
+    [
+     "kovai public"
+    ]
+   ],
+   "must_not": [
+    "goes to sri vidya",
+    "attends sri vidya",
+    "studies at sri vidya"
+   ],
+   "gold": "Nila goes to Kovai Public School.",
+   "traps": [
+    "Nila goes to Sri Vidya Mandir."
+   ]
+  },
+  {
+   "id": "t2q037",
+   "kind": "current",
+   "q": "Which class is Nila in now?",
+   "must": [
+    [
+     "3",
+     "three"
+    ]
+   ],
+   "must_not": [
+    "is in class 2",
+    "is in class 1"
+   ],
+   "gold": "Nila is in class 3.",
+   "traps": [
+    "Nila is in class 2."
+   ]
+  },
+  {
+   "id": "t2q038",
+   "kind": "current",
+   "q": "How old is Nila now?",
+   "must": [
+    [
+     "8",
+     "eight"
+    ]
+   ],
+   "must_not": [
+    "she is 7",
+    "nila is 7",
+    "she's 7",
+    "nila is 6"
+   ],
+   "gold": "Nila is 8.",
+   "traps": [
+    "Nila is 7."
+   ]
+  },
+  {
+   "id": "t2q039",
+   "kind": "current",
+   "q": "How much rent do we pay now?",
+   "must": [
+    [
+     "22,000",
+     "22000",
+     "22k"
+    ]
+   ],
+   "must_not": [
+    "rent is 14,000",
+    "rent is 14000"
+   ],
+   "gold": "22,000 rupees a month for the Saibaba Colony flat.",
+   "traps": [
+    "Your rent is 14,000 a month."
+   ]
+  },
+  {
+   "id": "t2q040",
+   "kind": "current",
+   "q": "Where does Ilan go during the day?",
+   "must": [
+    [
+     "little steps"
+    ]
+   ],
+   "gold": "Ilan goes to Little Steps daycare near your flat."
+  },
+  {
+   "id": "t2q041",
+   "kind": "current",
+   "q": "Who is Ilan's paediatrician now?",
+   "must": [
+    [
+     "shanthi"
+    ]
+   ],
+   "must_not": [
+    "paediatrician is dr. anand",
+    "pediatrician is dr. anand",
+    "is dr. anand"
+   ],
+   "gold": "Dr. Shanthi at Kidz Care in Coimbatore.",
+   "traps": [
+    "Ilan's paediatrician is Dr. Anand."
+   ]
+  },
+  {
+   "id": "t2q042",
+   "kind": "current",
+   "q": "Does Ilan still use his inhaler?",
+   "must": [
+    [
+     "stop",
+     "no longer",
+     "not",
+     "doesn't",
+     "does not"
+    ]
+   ],
+   "must_not": [
+    "he still uses",
+    "yes, he uses"
+   ],
+   "gold": "No; Dr. Shanthi said his wheeze is better and he can stop the inhaler.",
+   "traps": [
+    "Yes, he uses an inhaler for his wheeze."
+   ]
+  },
+  {
+   "id": "t2q043",
+   "kind": "current",
+   "q": "What phone does Senthil use now?",
+   "must": [
+    [
+     "s24",
+     "samsung"
+    ]
+   ],
+   "must_not": [
+    "uses a vivo",
+    "uses the vivo",
+    "phone is a vivo"
+   ],
+   "gold": "Senthil has your old Samsung Galaxy S24.",
+   "traps": [
+    "Senthil uses a Vivo V29."
+   ]
+  },
+  {
+   "id": "t2q044",
+   "kind": "current",
+   "q": "What bike does Senthil ride now?",
+   "must": [
+    [
+     "hunter",
+     "royal enfield"
+    ]
+   ],
+   "must_not": [
+    "rides a bajaj",
+    "rides a pulsar"
+   ],
+   "gold": "A Royal Enfield Hunter 350.",
+   "traps": [
+    "Senthil rides a Bajaj Pulsar."
+   ]
+  },
+  {
+   "id": "t2q045",
+   "kind": "current",
+   "q": "Which project is Senthil working on now?",
+   "must": [
+    [
+     "airport"
+    ]
+   ],
+   "gold": "The Coimbatore airport expansion project for L&T."
+  },
+  {
+   "id": "t2q046",
+   "kind": "current",
+   "q": "Which products do I lead QA for now?",
+   "must": [
+    [
+     "agrisense"
+    ],
+    [
+     "kisanpay"
+    ]
+   ],
+   "gold": "AgriSense and, since August, KisanPay."
+  },
+  {
+   "id": "t2q047",
+   "kind": "current",
+   "q": "Where does Lakshmi work now?",
+   "must": [
+    [
+     "brightloop"
+    ]
+   ],
+   "must_not": [
+    "works at thenral",
+    "she is at thenral"
+   ],
+   "gold": "Lakshmi now works at Brightloop in Bangalore.",
+   "traps": [
+    "Lakshmi works at Thenral Systems."
+   ]
+  },
+  {
+   "id": "t2q048",
+   "kind": "current",
+   "q": "When is my painting class?",
+   "must": [
+    [
+     "friday"
+    ]
+   ],
+   "must_not": [
+    "class is on wednesday",
+    "on wednesday nights",
+    "every wednesday"
+   ],
+   "gold": "Friday nights, online with Ms. Rekha.",
+   "traps": [
+    "Your painting class is every Wednesday night."
+   ]
+  },
+  {
+   "id": "t2q049",
+   "kind": "current",
+   "q": "Where do most Nila Pickles orders come from now?",
+   "must": [
+    [
+     "whatsapp"
+    ]
+   ],
+   "must_not": [
+    "through instagram",
+    "on instagram",
+    "via instagram"
+   ],
+   "gold": "Mostly WhatsApp; you don't use Instagram for it anymore.",
+   "traps": [
+    "Most orders come through Instagram."
+   ]
+  },
+  {
+   "id": "t2q050",
+   "kind": "current",
+   "q": "Do I take sugar in my tea?",
+   "must": [
+    [
+     "no",
+     "not",
+     "stopped",
+     "don't"
+    ]
+   ],
+   "must_not": [
+    "you take sugar",
+    "yes,"
+   ],
+   "gold": "No, you stopped taking sugar in your tea.",
+   "traps": [
+    "Yes, you take sugar in your tea."
+   ]
+  },
+  {
+   "id": "t2q051",
+   "kind": "past",
+   "q": "Where did I live before Coimbatore?",
+   "must": [
+    [
+     "k.k. nagar",
+     "kk nagar",
+     "k k nagar",
+     "madurai"
+    ]
+   ],
+   "gold": "In a rented flat in K.K. Nagar, Madurai."
+  },
+  {
+   "id": "t2q052",
+   "kind": "past",
+   "q": "Where did I work before Thenral Systems?",
+   "must": [
+    [
+     "velan"
+    ]
+   ],
+   "gold": "At Velan Infotech in Madurai (from 2019)."
+  },
+  {
+   "id": "t2q053",
+   "kind": "past",
+   "q": "What was my project at Velan?",
+   "must": [
+    [
+     "medibill"
+    ]
+   ],
+   "gold": "MediBill, a hospital billing app."
+  },
+  {
+   "id": "t2q054",
+   "kind": "past",
+   "q": "Who was my manager at Velan?",
+   "must": [
+    [
+     "prakash"
+    ]
+   ],
+   "gold": "Prakash."
+  },
+  {
+   "id": "t2q055",
+   "kind": "past",
+   "q": "What was my job title at Velan?",
+   "must": [
+    [
+     "qa lead"
+    ]
+   ],
+   "gold": "You were a QA lead."
+  },
+  {
+   "id": "t2q056",
+   "kind": "past",
+   "q": "What phone did I have before the Pixel?",
+   "must": [
+    [
+     "s24",
+     "samsung"
+    ]
+   ],
+   "gold": "A Samsung Galaxy S24."
+  },
+  {
+   "id": "t2q057",
+   "kind": "past",
+   "q": "What phone did I have before the Samsung?",
+   "must": [
+    [
+     "redmi"
+    ]
+   ],
+   "gold": "A Redmi Note 12 (it went to Ma)."
+  },
+  {
+   "id": "t2q058",
+   "kind": "past",
+   "q": "Which day did I play badminton when we lived in Madurai?",
+   "must": [
+    [
+     "thursday"
+    ]
+   ],
+   "must_not": [
+    "played on tuesday",
+    "was on tuesday",
+    "on tuesday evening",
+    "every tuesday"
+   ],
+   "gold": "Thursday evenings (you first said Tuesday, then corrected it).",
+   "traps": [
+    "You played every Tuesday evening."
+   ]
+  },
+  {
+   "id": "t2q059",
+   "kind": "past",
+   "q": "Where did I play badminton in Madurai?",
+   "must": [
+    [
+     "gandhi nagar"
+    ]
+   ],
+   "gold": "At the Gandhi Nagar indoor court."
+  },
+  {
+   "id": "t2q060",
+   "kind": "past",
+   "q": "Which school did Nila go to in Madurai?",
+   "must": [
+    [
+     "sri vidya"
+    ]
+   ],
+   "gold": "Sri Vidya Mandir."
+  },
+  {
+   "id": "t2q061",
+   "kind": "past",
+   "q": "How much was my SIP when I started it?",
+   "must": [
+    [
+     "5,000",
+     "5000",
+     "5k"
+    ]
+   ],
+   "gold": "5,000 rupees a month."
+  },
+  {
+   "id": "t2q062",
+   "kind": "past",
+   "q": "What was our rent in Madurai?",
+   "must": [
+    [
+     "14,000",
+     "14000",
+     "14k"
+    ]
+   ],
+   "gold": "14,000 rupees a month."
+  },
+  {
+   "id": "t2q063",
+   "kind": "past",
+   "q": "Who was Ilan's paediatrician in Madurai?",
+   "must": [
+    [
+     "anand"
+    ]
+   ],
+   "gold": "Dr. Anand."
+  },
+  {
+   "id": "t2q064",
+   "kind": "past",
+   "q": "What bike did Senthil ride before the Royal Enfield?",
+   "must": [
+    [
+     "pulsar",
+     "bajaj"
+    ]
+   ],
+   "gold": "A Bajaj Pulsar."
+  },
+  {
+   "id": "t2q065",
+   "kind": "past",
+   "q": "Which class did I take on Saturday mornings in 2025?",
+   "must": [
+    [
+     "pottery"
+    ]
+   ],
+   "gold": "A pottery class at Mann Studio (you stopped in October 2025)."
+  },
+  {
+   "id": "t2q066",
+   "kind": "past",
+   "q": "Where did Lakshmi work before Brightloop?",
+   "must": [
+    [
+     "thenral"
+    ]
+   ],
+   "gold": "At Thenral Systems in Coimbatore."
+  },
+  {
+   "id": "t2q067",
+   "kind": "past",
+   "q": "Which channels did I use to sell Nila Pickles at first?",
+   "must": [
+    [
+     "whatsapp"
+    ],
+    [
+     "instagram"
+    ]
+   ],
+   "gold": "WhatsApp and Instagram."
+  },
+  {
+   "id": "t2q068",
+   "kind": "past",
+   "q": "What phone did Senthil use before he got my Samsung?",
+   "must": [
+    [
+     "vivo"
+    ]
+   ],
+   "gold": "A Vivo V29."
+  },
+  {
+   "id": "t2q069",
+   "kind": "multi_hop",
+   "q": "Where does my husband work?",
+   "must": [
+    [
+     "l&t",
+     "larsen"
+    ]
+   ],
+   "gold": "Senthil works at L&T Construction, on the Coimbatore airport expansion project."
+  },
+  {
+   "id": "t2q070",
+   "kind": "multi_hop",
+   "q": "What is my mother's name?",
+   "must": [
+    [
+     "mahalakshmi"
+    ]
+   ],
+   "gold": "Mahalakshmi (you call her Ma)."
+  },
+  {
+   "id": "t2q071",
+   "kind": "multi_hop",
+   "q": "Where do my parents live?",
+   "must": [
+    [
+     "palayamkottai",
+     "tirunelveli"
+    ]
+   ],
+   "must_not": [
+    "they live in coimbatore",
+    "live with you"
+   ],
+   "gold": "In Palayamkottai, Tirunelveli.",
+   "traps": [
+    "Your parents live with you in Coimbatore."
+   ]
+  },
+  {
+   "id": "t2q072",
+   "kind": "multi_hop",
+   "q": "What did my father do before he retired?",
+   "must": [
+    [
+     "headmaster",
+     "head master",
+     "principal"
+    ]
+   ],
+   "gold": "He was a headmaster."
+  },
+  {
+   "id": "t2q073",
+   "kind": "multi_hop",
+   "q": "Which tablet does my mother take every morning?",
+   "must": [
+    [
+     "thyronorm"
+    ]
+   ],
+   "gold": "Thyronorm, for her thyroid."
+  },
+  {
+   "id": "t2q074",
+   "kind": "multi_hop",
+   "q": "What health issues does my mother have?",
+   "must": [
+    [
+     "thyroid"
+    ],
+    [
+     "knee"
+    ]
+   ],
+   "must_not": [
+    "you have thyroid",
+    "your thyroid"
+   ],
+   "gold": "Thyroid (tests now normal) and knee pain.",
+   "traps": [
+    "You have thyroid."
+   ]
+  },
+  {
+   "id": "t2q075",
+   "kind": "multi_hop",
+   "q": "What phone does my mother use?",
+   "must": [
+    [
+     "redmi"
+    ]
+   ],
+   "gold": "Your old Redmi Note 12."
+  },
+  {
+   "id": "t2q076",
+   "kind": "multi_hop",
+   "q": "Where does my mother-in-law live?",
+   "must": [
+    [
+     "anna nagar",
+     "madurai"
+    ]
+   ],
+   "must_not": [
+    "lives in coimbatore",
+    "lives with you"
+   ],
+   "gold": "Pushpa lives in her own house in Anna Nagar, Madurai.",
+   "traps": [
+    "She lives with you in Coimbatore."
+   ]
+  },
+  {
+   "id": "t2q077",
+   "kind": "multi_hop",
+   "q": "What is my mother-in-law's name?",
+   "must": [
+    [
+     "pushpa"
+    ]
+   ],
+   "gold": "Pushpa."
+  },
+  {
+   "id": "t2q078",
+   "kind": "multi_hop",
+   "q": "Which city does my brother live in?",
+   "must": [
+    [
+     "pune"
+    ]
+   ],
+   "gold": "Arun lives in Pune."
+  },
+  {
+   "id": "t2q079",
+   "kind": "multi_hop",
+   "q": "Which company does my brother work for?",
+   "must": [
+    [
+     "zentrix"
+    ]
+   ],
+   "gold": "Zentrix Systems, as a data engineer."
+  },
+  {
+   "id": "t2q080",
+   "kind": "multi_hop",
+   "q": "Who is my brother married to?",
+   "must": [
+    [
+     "swathi"
+    ]
+   ],
+   "gold": "Swathi."
+  },
+  {
+   "id": "t2q081",
+   "kind": "multi_hop",
+   "q": "What does my brother's wife do?",
+   "must": [
+    [
+     "physio"
+    ]
+   ],
+   "gold": "Swathi is a physiotherapist."
+  },
+  {
+   "id": "t2q082",
+   "kind": "multi_hop",
+   "q": "Where does my husband's brother live?",
+   "must": [
+    [
+     "dubai"
+    ]
+   ],
+   "gold": "Murali lives in Dubai."
+  },
+  {
+   "id": "t2q083",
+   "kind": "multi_hop",
+   "q": "What does my husband's brother do?",
+   "must": [
+    [
+     "electrician"
+    ]
+   ],
+   "gold": "Murali is an electrician."
+  },
+  {
+   "id": "t2q084",
+   "kind": "multi_hop",
+   "q": "What phone does my brother use?",
+   "must": [
+    [
+     "oneplus",
+     "one plus"
+    ]
+   ],
+   "must_not": [
+    "you use a oneplus",
+    "you bought a oneplus"
+   ],
+   "gold": "A OnePlus 13.",
+   "traps": [
+    "Arun uses a OnePlus 13, and you use a OnePlus too."
+   ]
+  },
+  {
+   "id": "t2q085",
+   "kind": "multi_hop",
+   "q": "Which dance does my daughter learn, and where?",
+   "must": [
+    [
+     "bharatanatyam",
+     "bharathanatyam",
+     "bharatnatyam"
+    ],
+    [
+     "natya kala"
+    ]
+   ],
+   "gold": "Bharatanatyam at Natya Kala Academy."
+  },
+  {
+   "id": "t2q086",
+   "kind": "multi_hop",
+   "q": "On which days are my daughter's dance classes?",
+   "must": [
+    [
+     "tuesday"
+    ],
+    [
+     "saturday"
+    ]
+   ],
+   "gold": "Tuesdays and Saturdays."
+  },
+  {
+   "id": "t2q087",
+   "kind": "multi_hop",
+   "q": "Which school subject does my daughter love?",
+   "must": [
+    [
+     "math"
+    ]
+   ],
+   "gold": "Maths."
+  },
+  {
+   "id": "t2q088",
+   "kind": "multi_hop",
+   "q": "What sport does my husband play on Sundays?",
+   "must": [
+    [
+     "cricket"
+    ]
+   ],
+   "gold": "Cricket, with his office team."
+  },
+  {
+   "id": "t2q089",
+   "kind": "multi_hop",
+   "q": "What kind of food does my husband dislike?",
+   "must": [
+    [
+     "spicy",
+     "kaaram",
+     "spice",
+     "hot food"
+    ]
+   ],
+   "gold": "Spicy food; he doesn't like kaaram at all."
+  },
+  {
+   "id": "t2q090",
+   "kind": "multi_hop",
+   "q": "How old is my son now?",
+   "must": [
+    [
+     "2",
+     "two"
+    ]
+   ],
+   "gold": "Ilan is 2 (born 27 January 2024)."
+  },
+  {
+   "id": "t2q091",
+   "kind": "multi_hop",
+   "q": "Who stocks my pickles in Madurai?",
+   "must": [
+    [
+     "deepa sekar",
+     "deepa designs"
+    ]
+   ],
+   "must_not": [
+    "deepa iyer stocks",
+    "deepa iyer's"
+   ],
+   "gold": "Your college friend Deepa Sekar, in her boutique Deepa Designs.",
+   "traps": [
+    "Deepa Iyer stocks them."
+   ]
+  },
+  {
+   "id": "t2q092",
+   "kind": "multi_hop",
+   "q": "Which doctor treats my mother's knee?",
+   "must": [
+    [
+     "selvaraj"
+    ]
+   ],
+   "gold": "Dr. Selvaraj at Tirunelveli Medical College."
+  },
+  {
+   "id": "t2q093",
+   "kind": "alias",
+   "q": "Who is Maha?",
+   "must": [
+    [
+     "mother",
+     "amma",
+     "mom",
+     "mahalakshmi"
+    ]
+   ],
+   "gold": "Maha is your mother, Mahalakshmi."
+  },
+  {
+   "id": "t2q094",
+   "kind": "alias",
+   "q": "Where does Mahalakshmi live?",
+   "must": [
+    [
+     "palayamkottai",
+     "tirunelveli"
+    ]
+   ],
+   "gold": "In Palayamkottai, Tirunelveli, with Appa."
+  },
+  {
+   "id": "t2q095",
+   "kind": "alias",
+   "q": "When is Ma's birthday?",
+   "must": [
+    [
+     "30 nov",
+     "november 30",
+     "30th nov",
+     "nov 30",
+     "30th of nov"
+    ]
+   ],
+   "gold": "30 November."
+  },
+  {
+   "id": "t2q096",
+   "kind": "alias",
+   "q": "How old is Maha turning this year?",
+   "must": [
+    [
+     "65"
+    ]
+   ],
+   "gold": "She turns 65 on 30 November."
+  },
+  {
+   "id": "t2q097",
+   "kind": "alias",
+   "q": "When was Kutty born?",
+   "must": [
+    [
+     "27 jan",
+     "january 27",
+     "27th jan",
+     "27th of jan"
+    ]
+   ],
+   "gold": "Ilan (Kutty) was born on 27 January 2024."
+  },
+  {
+   "id": "t2q098",
+   "kind": "alias",
+   "q": "Where does Senthilkumar work?",
+   "must": [
+    [
+     "l&t",
+     "larsen"
+    ]
+   ],
+   "gold": "At L&T Construction."
+  },
+  {
+   "id": "t2q099",
+   "kind": "alias",
+   "q": "What is Kavi's blood group?",
+   "must": [
+    [
+     "o negative",
+     "o-",
+     "o -ve",
+     "o neg",
+     "o−"
+    ]
+   ],
+   "gold": "O negative."
+  },
+  {
+   "id": "t2q100",
+   "kind": "alias",
+   "q": "What does KR do?",
+   "must": [
+    [
+     "tester"
+    ]
+   ],
+   "must_not": [
+    "kr is a senior",
+    "she is a senior qa"
+   ],
+   "gold": "KR (Kavitha Raman) is a junior tester on your team.",
+   "traps": [
+    "KR is a Senior QA Manager."
+   ]
+  },
+  {
+   "id": "t2q101",
+   "kind": "alias",
+   "q": "Who is Kavitha Raman?",
+   "must": [
+    [
+     "tester",
+     "colleague",
+     "team"
+    ]
+   ],
+   "must_not": [
+    "that's you",
+    "you are kavitha raman",
+    "that is you"
+   ],
+   "gold": "A junior tester on your team at Thenral, called KR.",
+   "traps": [
+    "That's you."
+   ]
+  },
+  {
+   "id": "t2q102",
+   "kind": "alias",
+   "q": "Which scooter did KR buy?",
+   "must": [
+    [
+     "jupiter"
+    ]
+   ],
+   "must_not": [
+    "you bought"
+   ],
+   "gold": "A TVS Jupiter.",
+   "traps": [
+    "You bought a TVS Jupiter."
+   ]
+  },
+  {
+   "id": "t2q103",
+   "kind": "alias",
+   "q": "Which scooter do I ride?",
+   "must": [
+    [
+     "activa"
+    ]
+   ],
+   "must_not": [
+    "jupiter"
+   ],
+   "gold": "A Honda Activa.",
+   "traps": [
+    "You ride a TVS Jupiter."
+   ]
+  },
+  {
+   "id": "t2q104",
+   "kind": "alias",
+   "q": "Which phone does Deepa Iyer use?",
+   "must": [
+    [
+     "iphone"
+    ]
+   ],
+   "must_not": [
+    "you use an iphone"
+   ],
+   "gold": "An iPhone 16 Pro.",
+   "traps": [
+    "You use an iPhone 16 Pro."
+   ]
+  },
+  {
+   "id": "t2q105",
+   "kind": "alias",
+   "q": "Who is Subramanian?",
+   "must": [
+    [
+     "father",
+     "appa",
+     "dad"
+    ]
+   ],
+   "gold": "Your father (Appa), a retired headmaster."
+  },
+  {
+   "id": "t2q106",
+   "kind": "alias",
+   "q": "Is Deepa Iyer the same person as my friend Deepa?",
+   "must": [
+    [
+     "no",
+     "different",
+     "not"
+    ]
+   ],
+   "must_not": [
+    "yes, she is",
+    "yes, the same",
+    "yes, they are"
+   ],
+   "gold": "No, they're different people: Deepa Iyer is your manager at Thenral; Deepa Sekar is your college friend with the boutique.",
+   "traps": [
+    "Yes, she is the same person."
+   ]
+  },
+  {
+   "id": "t2q107",
+   "kind": "alias",
+   "q": "Which Deepa runs a boutique?",
+   "must": [
+    [
+     "sekar"
+    ]
+   ],
+   "must_not": [
+    "deepa iyer runs"
+   ],
+   "gold": "Deepa Sekar (Deepa Designs, Madurai).",
+   "traps": [
+    "Deepa Iyer runs the boutique."
+   ]
+  },
+  {
+   "id": "t2q108",
+   "kind": "tamil",
+   "q": "நான் இப்போ எங்கே வசிக்கிறேன்?",
+   "must": [
+    [
+     "சாய்பாபா காலனி",
+     "saibaba",
+     "கோயம்புத்தூர்",
+     "கோவை",
+     "coimbatore"
+    ]
+   ],
+   "gold": "நீங்கள் இப்போது கோயம்புத்தூர் சாய்பாபா காலனியில் வசிக்கிறீர்கள்."
+  },
+  {
+   "id": "t2q109",
+   "kind": "tamil",
+   "q": "என் கணவர் எங்கே வேலை செய்கிறார்?",
+   "must": [
+    [
+     "l&t",
+     "எல்&டி",
+     "எல் அண்ட் டி",
+     "எல்.அண்ட்.டி",
+     "larsen",
+     "எல் & டி"
+    ]
+   ],
+   "gold": "செந்தில் L&T Construction-இல் சைட் இன்ஜினியராக வேலை செய்கிறார்."
+  },
+  {
+   "id": "t2q110",
+   "kind": "tamil",
+   "q": "என் அம்மா பெயர் என்ன?",
+   "must": [
+    [
+     "mahalakshmi",
+     "மகாலட்சுமி",
+     "மஹாலட்சுமி",
+     "மகாலக்ஷ்மி",
+     "மஹாலக்ஷ்மி"
+    ]
+   ],
+   "gold": "உங்கள் அம்மா பெயர் மகாலட்சுமி."
+  },
+  {
+   "id": "t2q111",
+   "kind": "tamil",
+   "q": "நிலா எந்த பள்ளியில் படிக்கிறாள்?",
+   "must": [
+    [
+     "kovai public",
+     "கோவை பப்ளிக்"
+    ]
+   ],
+   "gold": "நிலா Kovai Public School-இல் 3-ஆம் வகுப்பு படிக்கிறாள்."
+  },
+  {
+   "id": "t2q112",
+   "kind": "tamil",
+   "q": "என் போன் எது?",
+   "must": [
+    [
+     "pixel",
+     "பிக்சல்"
+    ]
+   ],
+   "gold": "உங்கள் போன் Pixel 10."
+  },
+  {
+   "id": "t2q113",
+   "kind": "tamil",
+   "q": "எனக்கு எந்த பூ ரொம்ப பிடிக்கும்?",
+   "must": [
+    [
+     "kanakambaram",
+     "கனகாம்பரம்",
+     "crossandra"
+    ]
+   ],
+   "gold": "உங்களுக்கு மல்லிகையை விட கனகாம்பரம் தான் பிடிக்கும்."
+  },
+  {
+   "id": "t2q114",
+   "kind": "tamil",
+   "q": "என் ரத்த வகை என்ன?",
+   "must": [
+    [
+     "o negative",
+     "o-",
+     "o -ve",
+     "o neg",
+     "ஓ நெகட்டிவ்",
+     "o நெகட்டிவ்",
+     "ஓ நெகடிவ்",
+     "o நெகடிவ்"
+    ]
+   ],
+   "gold": "உங்கள் ரத்த வகை O negative."
+  },
+  {
+   "id": "t2q115",
+   "kind": "tamil",
+   "q": "நான் இப்போ எந்த கிழமை பேட்மிண்டன் விளையாடுகிறேன்?",
+   "must": [
+    [
+     "sunday",
+     "ஞாயிறு",
+     "ஞாயிற்று"
+    ]
+   ],
+   "gold": "ஞாயிற்றுக்கிழமை காலை, Saibaba Colony Shuttle Club-இல்.",
+   "traps": [
+    "வியாழக்கிழமை மாலை."
+   ]
+  },
+  {
+   "id": "t2q116",
+   "kind": "tamil",
+   "q": "En SIP ippo evlo?",
+   "must": [
+    [
+     "9,000",
+     "9000",
+     "9k",
+     "ஒன்பதாயிரம்"
+    ]
+   ],
+   "gold": "Ippo unga SIP maasam 9,000 rupees.",
+   "traps": [
+    "Unga SIP 8,000 rupees."
+   ]
+  },
+  {
+   "id": "t2q117",
+   "kind": "tamil",
+   "q": "Senthil-ku enna maadhiri saapadu pidikkadhu?",
+   "must": [
+    [
+     "spicy",
+     "kaaram",
+     "காரம்",
+     "spice"
+    ]
+   ],
+   "gold": "Senthil-ku kaaram (spicy food) konjam kooda pidikkadhu."
+  },
+  {
+   "id": "t2q118",
+   "kind": "tamil",
+   "q": "இலன் எப்போ பிறந்தான்?",
+   "must": [
+    [
+     "27"
+    ],
+    [
+     "2024"
+    ]
+   ],
+   "gold": "இலன் 27 ஜனவரி 2024 அன்று பிறந்தான்."
+  },
+  {
+   "id": "t2q119",
+   "kind": "tamil",
+   "q": "Naan ippo endha company-la velai seiren?",
+   "must": [
+    [
+     "thenral",
+     "தென்றல்"
+    ]
+   ],
+   "gold": "Neenga ippo Thenral Systems-la Senior QA Manager-aa irukeenga.",
+   "traps": [
+    "Velan Infotech."
+   ]
+  },
+  {
+   "id": "t2q120",
+   "kind": "tamil",
+   "q": "எங்க அம்மா அப்பா எங்கே இருக்காங்க?",
+   "must": [
+    [
+     "palayamkottai",
+     "பாளையங்கோட்டை",
+     "tirunelveli",
+     "திருநெல்வேலி",
+     "நெல்லை"
+    ]
+   ],
+   "gold": "அவர்கள் திருநெல்வேலி பாளையங்கோட்டையில் இருக்கிறார்கள்."
+  },
+  {
+   "id": "t2q121",
+   "kind": "tamil",
+   "q": "நான் காபி குடிப்பேனா?",
+   "must": [
+    [
+     "இல்லை",
+     "no",
+     "don't",
+     "மாட்டீர்கள்",
+     "மாட்டீங்க",
+     "மாட்டேன்",
+     "not"
+    ],
+    [
+     "tea",
+     "டீ",
+     "தேநீர்",
+     "இஞ்சி",
+     "ginger"
+    ]
+   ],
+   "gold": "இல்லை, நீங்கள் காபி குடிப்பதில்லை; இஞ்சி டீ தான் உங்களுக்கு."
+  },
+  {
+   "id": "t2q122",
+   "kind": "tamil",
+   "q": "Nila Pickles-la bestseller enna?",
+   "must": [
+    [
+     "narthangai",
+     "நார்த்தங்காய்",
+     "citron"
+    ]
+   ],
+   "gold": "Narthangai (citron) pickle dhaan bestseller, maasam 40 jars."
+  },
+  {
+   "id": "t2q123",
+   "kind": "tamil",
+   "q": "டிசம்பர்ல நாங்க எங்கே போறோம்?",
+   "must": [
+    [
+     "yercaud",
+     "ஏற்காடு"
+    ]
+   ],
+   "must_not": [
+    "ஊட்டிக்கு போகிறீர்கள்",
+    "going to ooty"
+   ],
+   "gold": "டிசம்பர் 20 முதல் 23 வரை ஏற்காடு (Yercaud) போகிறீர்கள்.",
+   "traps": [
+    "ஊட்டிக்கு போகிறீர்கள்."
+   ]
+  },
+  {
+   "id": "t2q124",
+   "kind": "tamil",
+   "q": "என் சகோதரர் அருண் எங்கே வசிக்கிறார்?",
+   "must": [
+    [
+     "pune",
+     "புனே",
+     "பூனே"
+    ]
+   ],
+   "gold": "அருண் புனேவில் வசிக்கிறார்."
+  },
+  {
+   "id": "t2q125",
+   "kind": "tamil",
+   "q": "Ma-ku enna health problem?",
+   "must": [
+    [
+     "thyroid",
+     "தைராய்டு",
+     "knee",
+     "முழங்கால்",
+     "மூட்டு"
+    ]
+   ],
+   "gold": "Ma-ku thyroid irukku (ippo tests normal), and knee pain."
+  },
+  {
+   "id": "t2q126",
+   "kind": "abstain",
+   "q": "What is Senthil's blood group?",
+   "abstain": true,
+   "gold": "I don't know.",
+   "traps": [
+    "Senthil's blood group is O negative."
+   ]
+  },
+  {
+   "id": "t2q127",
+   "kind": "abstain",
+   "q": "What is my salary at Thenral?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q128",
+   "kind": "abstain",
+   "q": "What is my car's registration number?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q129",
+   "kind": "abstain",
+   "q": "Which college did I study at?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q130",
+   "kind": "abstain",
+   "q": "What is Deepa Sekar's phone number?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q131",
+   "kind": "abstain",
+   "q": "Do I speak Hindi?",
+   "abstain": true,
+   "must_not": [
+    "yes, you speak",
+    "you are fluent",
+    "you speak hindi"
+   ],
+   "gold": "I don't know; you only said you were thinking about learning Hindi.",
+   "traps": [
+    "Yes, you speak Hindi."
+   ]
+  },
+  {
+   "id": "t2q132",
+   "kind": "abstain",
+   "q": "Which gym did I join?",
+   "abstain": true,
+   "gold": "I don't know; you only said you might join a gym near Saibaba Colony.",
+   "traps": [
+    "You joined a gym near Saibaba Colony."
+   ]
+  },
+  {
+   "id": "t2q133",
+   "kind": "abstain",
+   "q": "When did I start selling Nila Pickles on Amazon?",
+   "abstain": true,
+   "must_not": [
+    "you started selling"
+   ],
+   "gold": "I don't know; you only said you were thinking about Amazon, maybe after Deepavali.",
+   "traps": [
+    "You started selling on Amazon in August."
+   ]
+  },
+  {
+   "id": "t2q134",
+   "kind": "abstain",
+   "q": "What is the name of the cottage we booked in Yercaud?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q135",
+   "kind": "abstain",
+   "q": "What time is Nila's Bharatanatyam class?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q136",
+   "kind": "abstain",
+   "q": "When is Swathi's birthday?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q137",
+   "kind": "abstain",
+   "q": "How much did my Pixel 10 cost?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q138",
+   "kind": "abstain",
+   "q": "How much is Ilan's daycare fee?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q139",
+   "kind": "abstain",
+   "q": "What is my PAN number?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q140",
+   "kind": "abstain",
+   "q": "What is Prakash's surname?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q141",
+   "kind": "abstain",
+   "q": "What is our dog's name?",
+   "abstain": true,
+   "gold": "I don't know."
+  },
+  {
+   "id": "t2q142",
+   "kind": "decision",
+   "q": "Why did we stop shipping Nila Pickles outside Tamil Nadu?",
+   "must": [
+    [
+     "broke",
+     "broken",
+     "breakage",
+     "break"
+    ]
+   ],
+   "gold": "Too many glass jars broke in the courier."
+  },
+  {
+   "id": "t2q143",
+   "kind": "decision",
+   "q": "Why did I stop the pottery classes?",
+   "must": [
+    [
+     "pickle",
+     "orders",
+     "busy",
+     "packed"
+    ]
+   ],
+   "gold": "Saturdays were too packed with pickle orders."
+  },
+  {
+   "id": "t2q144",
+   "kind": "decision",
+   "q": "Why did we move to Coimbatore?",
+   "must": [
+    [
+     "job",
+     "thenral"
+    ]
+   ],
+   "gold": "For your new job at Thenral Systems."
+  },
+  {
+   "id": "t2q145",
+   "kind": "decision",
+   "q": "Why did I close the gold scheme at Kanaga Jewellers?",
+   "must": [
+    [
+     "far",
+     "distance"
+    ]
+   ],
+   "gold": "Their Madurai branch is too far now that you live in Coimbatore."
+  },
+  {
+   "id": "t2q146",
+   "kind": "decision",
+   "q": "Why did I want to leave Velan?",
+   "must": [
+    [
+     "appraisal"
+    ]
+   ],
+   "gold": "Velan hadn't given appraisals for two years."
+  },
+  {
+   "id": "t2q147",
+   "kind": "decision",
+   "q": "What did I say about learning Hindi?",
+   "must": [
+    [
+     "maybe",
+     "not sure",
+     "might",
+     "thinking",
+     "consider"
+    ]
+   ],
+   "must_not": [
+    "you are learning hindi",
+    "you're learning hindi",
+    "you started learning hindi"
+   ],
+   "gold": "You were thinking about learning Hindi, maybe next year, but weren't sure.",
+   "traps": [
+    "You are learning Hindi."
+   ]
+  },
+  {
+   "id": "t2q148",
+   "kind": "decision",
+   "q": "Did I decide to join a gym?",
+   "must": [
+    [
+     "not decided",
+     "haven't decided",
+     "undecided",
+     "maybe",
+     "not yet",
+     "thinking",
+     "might",
+     "no"
+    ]
+   ],
+   "must_not": [
+    "yes, you joined",
+    "you decided to join"
+   ],
+   "gold": "No, not yet; you said maybe one near Saibaba Colony but haven't decided.",
+   "traps": [
+    "Yes, you joined a gym in April."
+   ]
+  },
+  {
+   "id": "t2q149",
+   "kind": "decision",
+   "q": "Are we selling Nila Pickles on Amazon?",
+   "must": [
+    [
+     "not yet",
+     "thinking",
+     "maybe",
+     "consider",
+     "might",
+     "no"
+    ]
+   ],
+   "must_not": [
+    "yes, you sell",
+    "you sell on amazon",
+    "you are selling on amazon",
+    "yes, it is"
+   ],
+   "gold": "Not yet; you're thinking about it, maybe after Deepavali.",
+   "traps": [
+    "Yes, you sell on Amazon."
+   ]
+  },
+  {
+   "id": "t2q150",
+   "kind": "decision",
+   "q": "Are Arun and Swathi visiting us at Christmas?",
+   "must": [
+    [
+     "might",
+     "maybe",
+     "not confirmed",
+     "unconfirmed",
+     "possibly",
+     "not sure"
+    ]
+   ],
+   "must_not": [
+    "yes, they are",
+    "they will visit",
+    "they're visiting on"
+   ],
+   "gold": "They might, but it's not confirmed.",
+   "traps": [
+    "Yes, they will visit you at Christmas."
+   ]
+  },
+  {
+   "id": "t2q151",
+   "kind": "decision",
+   "q": "Is Senthil moving to Chennai?",
+   "must": [
+    [
+     "may",
+     "might",
+     "not confirmed",
+     "nothing confirmed",
+     "possibly",
+     "maybe",
+     "not sure"
+    ]
+   ],
+   "must_not": [
+    "yes, he is moving",
+    "he will move to chennai",
+    "you are moving to chennai"
+   ],
+   "gold": "Maybe after his airport project ends next March, but nothing is confirmed.",
+   "traps": [
+    "Yes, he will move to Chennai in March."
+   ]
+  },
+  {
+   "id": "t2q152",
+   "kind": "decision",
+   "q": "Did I buy a OnePlus like Arun?",
+   "must": [
+    [
+     "no",
+     "not",
+     "didn't"
+    ]
+   ],
+   "must_not": [
+    "yes, you bought",
+    "you have a oneplus",
+    "you use a oneplus"
+   ],
+   "gold": "No; Arun kept telling you to, but you said you're not buying one.",
+   "traps": [
+    "Yes, you bought a OnePlus 13."
+   ]
+  },
+  {
+   "id": "t2q153",
+   "kind": "about",
+   "q": "Tell me about Nila.",
+   "must": [
+    [
+     "8",
+     "eight"
+    ],
+    [
+     "kovai public"
+    ],
+    [
+     "class 3",
+     "3rd standard",
+     "third"
+    ],
+    [
+     "bharatanatyam",
+     "bharathanatyam",
+     "bharatnatyam"
+    ]
+   ],
+   "gold": "Nila is 8 (birthday 12 June), in class 3 at Kovai Public School; she loves maths and learns Bharatanatyam at Natya Kala Academy."
+  },
+  {
+   "id": "t2q154",
+   "kind": "about",
+   "q": "Tell me about Nila Pickles.",
+   "must": [
+    [
+     "narthangai",
+     "citron"
+    ],
+    [
+     "whatsapp"
+    ],
+    [
+     "fssai",
+     "2023",
+     "deepa"
+    ]
+   ],
+   "gold": "Your side business since May 2023: homemade pickles and podis, FSSAI registered; bestseller narthangai pickle (Ma's recipe); orders mostly via WhatsApp; Deepa Sekar stocks it in Madurai; Tamil Nadu only."
+  },
+  {
+   "id": "t2q155",
+   "kind": "about",
+   "q": "Tell me about my job.",
+   "must": [
+    [
+     "thenral"
+    ],
+    [
+     "qa manager"
+    ],
+    [
+     "agrisense"
+    ],
+    [
+     "deepa iyer"
+    ]
+   ],
+   "gold": "Senior QA Manager at Thenral Systems, Coimbatore, since 2 February 2026; you lead QA for AgriSense and KisanPay; your manager is Deepa Iyer."
+  },
+  {
+   "id": "t2q156",
+   "kind": "about",
+   "q": "Tell me about Senthil.",
+   "must": [
+    [
+     "husband"
+    ],
+    [
+     "l&t",
+     "larsen"
+    ],
+    [
+     "airport"
+    ]
+   ],
+   "gold": "Your husband Senthil(kumar), a site engineer at L&T on the Coimbatore airport expansion project; birthday 2 November; rides a Royal Enfield Hunter 350."
+  },
+  {
+   "id": "t2q157",
+   "kind": "about",
+   "q": "Tell me about my badminton.",
+   "must": [
+    [
+     "shuttle club",
+     "saibaba colony"
+    ],
+    [
+     "sunday"
+    ]
+   ],
+   "must_not": [
+    "you play on thursday"
+   ],
+   "gold": "You play on Sunday mornings at the Saibaba Colony Shuttle Club (in Madurai it was Thursday evenings at Gandhi Nagar).",
+   "traps": [
+    "You play on Thursday evenings at the Gandhi Nagar indoor court."
+   ]
+  },
+  {
+   "id": "t2q158",
+   "kind": "about",
+   "q": "Tell me about Ma.",
+   "must": [
+    [
+     "mahalakshmi"
+    ],
+    [
+     "palayamkottai",
+     "tirunelveli"
+    ],
+    [
+     "thyroid",
+     "knee"
+    ],
+    [
+     "30 nov",
+     "november 30",
+     "65"
+    ]
+   ],
+   "gold": "Your mother Mahalakshmi (Maha) lives in Palayamkottai, Tirunelveli with Appa; she has thyroid and knee pain; she turns 65 on 30 November."
+  },
+  {
+   "id": "t2q159",
+   "kind": "about",
+   "q": "Tell me about my money.",
+   "must": [
+    [
+     "9,000",
+     "9000"
+    ],
+    [
+     "11,500",
+     "11500"
+    ],
+    [
+     "22,000",
+     "22000"
+    ]
+   ],
+   "gold": "SIP 9,000 a month (Navarasa Flexi Cap), car loan EMI 11,500 on the 10th (SBI), rent 22,000 a month; the gold scheme is closed."
+  },
+  {
+   "id": "t2q160",
+   "kind": "about",
+   "q": "Tell me about Ilan.",
+   "must": [
+    [
+     "27 jan",
+     "january 27",
+     "2024"
+    ],
+    [
+     "little steps"
+    ],
+    [
+     "shanthi",
+     "wheez",
+     "inhaler"
+    ]
+   ],
+   "gold": "Ilan (Kutty), born 27 January 2024, goes to Little Steps daycare; his paediatrician Dr. Shanthi says his wheeze is better and he can stop the inhaler."
+  },
+  {
+   "id": "t2q161",
+   "kind": "about",
+   "q": "Tell me about Deepa Iyer.",
+   "must": [
+    [
+     "manager",
+     "boss"
+    ],
+    [
+     "zoho"
+    ],
+    [
+     "iphone"
+    ]
+   ],
+   "must_not": [
+    "she runs a boutique",
+    "her boutique"
+   ],
+   "gold": "Your manager at Thenral; she worked at Zoho for eight years before; she uses an iPhone 16 Pro.",
+   "traps": [
+    "Deepa Iyer runs Deepa Designs, a boutique in Madurai."
+   ]
+  },
+  {
+   "id": "t2q162",
+   "kind": "about",
+   "q": "Tell me about Arun.",
+   "must": [
+    [
+     "brother"
+    ],
+    [
+     "pune"
+    ],
+    [
+     "zentrix"
+    ],
+    [
+     "swathi"
+    ]
+   ],
+   "gold": "Your brother; a data engineer at Zentrix Systems in Pune; married Swathi, a physiotherapist, in June 2026; uses a OnePlus 13."
+  },
+  {
+   "id": "t2q163",
+   "kind": "connected",
+   "q": "Whose recipe is my bestselling pickle?",
+   "must": [
+    [
+     "ma",
+     "mother",
+     "amma",
+     "mahalakshmi",
+     "mom",
+     "maha"
+    ]
+   ],
+   "gold": "Your bestseller, the narthangai pickle, is Ma's recipe."
+  },
+  {
+   "id": "t2q164",
+   "kind": "connected",
+   "q": "Where did my current manager work before Thenral?",
+   "must": [
+    [
+     "zoho"
+    ]
+   ],
+   "gold": "Deepa Iyer worked at Zoho for eight years."
+  },
+  {
+   "id": "t2q165",
+   "kind": "connected",
+   "q": "Which city does the friend who referred me to my job live in now?",
+   "must": [
+    [
+     "bangalore",
+     "bengaluru"
+    ]
+   ],
+   "gold": "Lakshmi has moved to Bangalore."
+  },
+  {
+   "id": "t2q166",
+   "kind": "connected",
+   "q": "Which company does the person who referred me to Thenral work for now?",
+   "must": [
+    [
+     "brightloop"
+    ]
+   ],
+   "must_not": [
+    "works at thenral"
+   ],
+   "gold": "Lakshmi now works at Brightloop.",
+   "traps": [
+    "Lakshmi works at Thenral Systems."
+   ]
+  },
+  {
+   "id": "t2q167",
+   "kind": "connected",
+   "q": "Which of my kids' grandparents lives in Madurai?",
+   "must": [
+    [
+     "pushpa"
+    ]
+   ],
+   "must_not": [
+    "mahalakshmi lives in madurai",
+    "your mother lives in madurai"
+   ],
+   "gold": "Pushpa, Senthil's mother, in Anna Nagar, Madurai.",
+   "traps": [
+    "Your mother Mahalakshmi lives in Madurai."
+   ]
+  },
+  {
+   "id": "t2q168",
+   "kind": "connected",
+   "q": "About how many years was I at Velan Infotech?",
+   "must": [
+    [
+     "6",
+     "7",
+     "six",
+     "seven"
+    ]
+   ],
+   "gold": "About seven years: from 2019 until January 2026."
+  },
+  {
+   "id": "t2q169",
+   "kind": "connected",
+   "q": "Who uses the first phone I told you about?",
+   "must": [
+    [
+     "ma",
+     "mother",
+     "amma",
+     "mahalakshmi",
+     "mom",
+     "maha"
+    ]
+   ],
+   "gold": "Ma: your Redmi Note 12 went to her."
+  },
+  {
+   "id": "t2q170",
+   "kind": "connected",
+   "q": "On which road is the boutique that stocks my pickles?",
+   "must": [
+    [
+     "town hall"
+    ]
+   ],
+   "gold": "Town Hall Road, Madurai (Deepa Sekar's Deepa Designs)."
+  },
+  {
+   "id": "t2q171",
+   "kind": "connected",
+   "q": "Ennoda ippo irukura manager munnadi endha company-la velai senjaanga?",
+   "must": [
+    [
+     "zoho",
+     "சோஹோ",
+     "ஜோஹோ"
+    ]
+   ],
+   "gold": "Deepa Iyer munnadi Zoho-la ettu varusham irundhaanga."
+  },
+  {
+   "id": "t2q172",
+   "kind": "connected",
+   "q": "At what time does my children's maternal grandfather go for his walk?",
+   "must": [
+    [
+     "5"
+    ]
+   ],
+   "gold": "Appa wakes up at 5 every morning to walk."
+  },
+  {
+   "id": "t2q173",
+   "kind": "connected",
+   "q": "How long after joining Thenral did I start leading QA for KisanPay?",
+   "must": [
+    [
+     "6 months",
+     "six months",
+     "half a year",
+     "6 month",
+     "5 months",
+     "five months"
+    ]
+   ],
+   "gold": "About six months: you joined on 2 February 2026 and took on KisanPay on 1 August 2026."
+  },
+  {
+   "id": "t2q174",
+   "kind": "connected",
+   "q": "In which city was the paediatrician who gave Ilan an inhaler?",
+   "must": [
+    [
+     "madurai"
+    ]
+   ],
+   "gold": "Madurai: Dr. Anand, in December 2025, before you moved."
+  },
+  {
+   "id": "t2q175",
+   "kind": "old_fact",
+   "q": "What is my blood group?",
+   "must": [
+    [
+     "o negative",
+     "o-",
+     "o -ve",
+     "o neg",
+     "o−"
+    ]
+   ],
+   "gold": "O negative."
+  },
+  {
+   "id": "t2q176",
+   "kind": "old_fact",
+   "q": "Who was my dentist?",
+   "must": [
+    [
+     "farhana"
+    ]
+   ],
+   "gold": "Dr. Farhana at Pearl Smile Clinic, Bypass Road, Madurai."
+  },
+  {
+   "id": "t2q177",
+   "kind": "old_fact",
+   "q": "Where did we go for Ma's temple prayer?",
+   "must": [
+    [
+     "rameswaram"
+    ]
+   ],
+   "gold": "Rameswaram, for three days in April 2025."
+  },
+  {
+   "id": "t2q178",
+   "kind": "old_fact",
+   "q": "What did Senthil give me for my birthday in 2025?",
+   "must": [
+    [
+     "anklet"
+    ]
+   ],
+   "gold": "A silver anklet."
+  },
+  {
+   "id": "t2q179",
+   "kind": "old_fact",
+   "q": "When did Nila Pickles get its FSSAI registration?",
+   "must": [
+    [
+     "may 2025",
+     "2 may",
+     "may 2",
+     "2nd may",
+     "2nd of may"
+    ]
+   ],
+   "gold": "On 2 May 2025."
+  },
+  {
+   "id": "t2q180",
+   "kind": "old_fact",
+   "q": "How many orders did Nila Pickles get in July 2025?",
+   "must": [
+    [
+     "120"
+    ]
+   ],
+   "gold": "120 orders."
+  },
+  {
+   "id": "t2q181",
+   "kind": "old_fact",
+   "q": "On which day of the week do I avoid non-veg?",
+   "must": [
+    [
+     "saturday"
+    ]
+   ],
+   "gold": "Saturdays."
+  },
+  {
+   "id": "t2q182",
+   "kind": "old_fact",
+   "q": "Since which year had I been at Velan Infotech?",
+   "must": [
+    [
+     "2019"
+    ]
+   ],
+   "gold": "Since 2019."
+  },
+  {
+   "id": "t2q183",
+   "kind": "old_fact",
+   "q": "How many testers did I lead at Velan?",
+   "must": [
+    [
+     "five",
+     "5"
+    ]
+   ],
+   "gold": "Five testers."
+  },
+  {
+   "id": "t2q184",
+   "kind": "old_fact",
+   "q": "What phone did Arun keep telling me to buy?",
+   "must": [
+    [
+     "oneplus",
+     "one plus"
+    ]
+   ],
+   "gold": "A OnePlus (he had switched to a OnePlus 13)."
+  },
+  {
+   "id": "t2q185",
+   "kind": "old_fact",
+   "q": "What subject does our old neighbour Revathi teach?",
+   "must": [
+    [
+     "chemistry"
+    ]
+   ],
+   "gold": "Chemistry, at Madurai Kamaraj University."
+  }
+ ]
+}
