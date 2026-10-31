@@ -171,7 +171,7 @@ class Settings(BaseSettings):
     memory_judge_model: str = ""
     # The owner's lasting facts, put in front of every local Jarvis answer
     # whether or not search finds them (services/profile_card.py). 0 = off.
-    profile_card_max_items: int = 25
+    profile_card_max_items: int = 40
     """Most archive proposals one decay sweep may queue for a tenant.
 
     Decay proposes rather than archives, so an unbounded first sweep over a

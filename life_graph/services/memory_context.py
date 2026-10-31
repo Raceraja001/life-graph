@@ -143,6 +143,21 @@ async def memory_block(
     on_card = {c["id"] for c in card}
     if used is not None:
         used.extend({"id": c["id"], "content": c["content"], "via": "profile"} for c in card)
+    if profile_card.PAST.search(message or ""):
+        # "Where did I work before?": the replaced values of the form, dated.
+        try:
+            earlier = await profile_card.history(tenant_id)
+        except Exception as exc:  # noqa: BLE001 — history is a bonus
+            logger.warning("Form history failed: %s", exc)
+            earlier = []
+        if earlier:
+            card_text = "\n\n".join(
+                t for t in (card_text, profile_card.render_history(earlier)) if t
+            )
+            if used is not None:
+                used.extend(
+                    {"id": e["id"], "content": e["content"], "via": "history"} for e in earlier
+                )
 
     found = None
     try:
