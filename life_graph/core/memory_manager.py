@@ -413,6 +413,8 @@ class MemoryManager:
             properties["reason"] = fact.reason
         if fact.correction:
             properties["correction"] = True
+        if fact.slot:
+            properties["slot"] = fact.slot
         if fact.trace_id:
             # How the user resolves this memory is the self-improvement label
             # for that extraction call (self_improving/suite_builder.py).
@@ -432,7 +434,14 @@ class MemoryManager:
             ]
 
         # Only a clash that would retire an active memory: a "scope" one keeps both.
-        kept_because = _auto_approved(fact, trust_tier, contradicts=bool(auto_supersede_targets))
+        # The same slot already filled by an active memory (core/slots.py): an
+        # exact clash. Your firm statement of a new value is not held back by it —
+        # the old value is replaced (undoably) — while any other clash still is.
+        same_slot = await self._same_slot_active(fact.slot) if fact.slot else []
+        slot_ids = {old for old, _ in same_slot}
+        other_clashes = [t for t in auto_supersede_targets if str(t[0]) not in slot_ids]
+        auto_supersede_targets = other_clashes + same_slot
+        kept_because = _auto_approved(fact, trust_tier, contradicts=bool(other_clashes))
         active_now = kept_because is not None
         if kept_because:
             # Which rule let it skip review, so a wrong one can be traced.
@@ -490,6 +499,12 @@ class MemoryManager:
             await self._queue_contradiction_approval(
                 old_id, str(stored.id), reason, applied=active_now
             )
+        if active_now and (fact.slot or auto_supersede_targets):
+            # The owner's form changed: rebuild the always-loaded card on next use.
+            from life_graph.services import profile_card
+
+            if tenant := getattr(stored, "tenant_id", None):
+                profile_card.invalidate(tenant)
 
         return stored
 
@@ -557,6 +572,30 @@ class MemoryManager:
                 str(old_id)[:8],
                 str(new_id)[:8],
             )
+
+    async def _same_slot_active(self, slot: str) -> list[tuple[str, str]]:
+        """Active memories of this tenant that fill *slot*: (id, reason) to supersede."""
+        from sqlalchemy import select
+
+        from life_graph.storage.database import async_session
+
+        try:
+            async with async_session() as session:
+                rows = (
+                    await session.execute(
+                        select(Memory.id, Memory.content).where(
+                            Memory.tenant_id == get_current_tenant_id(),
+                            Memory.status == "active",
+                            Memory.properties["slot"].astext == slot,
+                        )
+                    )
+                ).all()
+        except Exception:  # noqa: BLE001 — a failed lookup costs the replacement, never the memory
+            logger.warning("Same-slot lookup failed for %s", slot, exc_info=True)
+            return []
+        return [
+            (str(i), f"New value for {slot} (was: {' '.join(c.split())[:120]})") for i, c in rows
+        ]
 
     def _resolve_contradictions(
         self,

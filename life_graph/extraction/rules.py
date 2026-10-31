@@ -49,6 +49,10 @@ class ExtractedFact:
     """Why, when the text says ("because Firebase got too expensive")."""
     correction: bool = False
     """The owner is correcting something said or remembered earlier ("actually…")."""
+    slot: str | None = None
+    """The owner's form field this fact fills, ``topic.field`` (core/slots.py): a firm,
+    current, single value such as ``work.employer`` or ``home.city``; None otherwise.
+    A new value for a slot replaces the old one."""
 
 
 # ---------------------------------------------------------------------------

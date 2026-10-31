@@ -92,6 +92,14 @@ _EXTRACTION_SCHEMA: dict[str, Any] = {
                         "type": "boolean",
                         "description": "True when the owner corrects something said or remembered before.",
                     },
+                    "slot": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "For a firm, current, single value about the owner or their family,"
+                            " a key topic.field such as work.employer, home.city, devices.phone,"
+                            " family.spouse, family.anu.school; otherwise null."
+                        ),
+                    },
                 },
                 "required": ["content", "fact_type", "confidence", "entities"],
             },
@@ -163,6 +171,21 @@ For every fact, also say:
 - correction true when the owner corrects something said or remembered earlier
   ("actually…", "no, it's…", "not X — Y", "correction:", "sorry, it's…"). The
   content states only the corrected fact.
+- slot: when the fact is a firm, current, single value about the owner or one of
+  their family — where they live, employer, job title, manager, phone, laptop,
+  car, spouse, a child's school or class, monthly budget, SIP amount, blood group,
+  the day or club of a hobby — a short key "topic.field". Topics: basics, home,
+  family, work, projects, hobbies, devices, vehicles, money, health, learning,
+  travel. Examples: work.employer, work.title, work.manager, home.city, home.area,
+  devices.phone, vehicles.car, family.spouse, family.anu.school, money.budget,
+  health.blood_group, hobbies.cricket.day, projects.farmlink.database,
+  basics.name, family.priya.birthday, family.anu.age. home.* is only where the
+  OWNER lives: where a relative lives is family.<name>.city. A fact about someone
+  else uses their name in the slot (family.divya.spouse, never family.spouse).
+  Use null for things that can have many values (friends, likes, trips), and for
+  hedged or negated facts.
+- Names: keep a person's full name together with what they are called
+  ("Priyadharshini, called Priya", "Anushka (Anu)"), and the owner's own full name.
 Text in Tamil or Tanglish counts the same as English; write the content in English.
 
 Rules:
@@ -546,14 +569,28 @@ def _meaning(item: dict) -> dict[str, Any]:
     subject = str(item.get("subject") or "owner").strip()
     if subject.lower() in ("owner", "the owner", "self", "user", "the user", "me", "i", ""):
         subject = "owner"
+    from life_graph.core import slots
+
     reason = item.get("reason")
     reason = " ".join(str(reason).split())[:300] if reason else None
+    polarity = "negate" if str(item.get("polarity", "")).lower() == "negate" else "affirm"
+    certainty = "hedged" if str(item.get("certainty", "")).lower() == "hedged" else "firm"
+    # Only a firm, affirmed value fills the form: "maybe a Pixel" or "no longer
+    # the iPhone" must not become the current phone.
+    slot = (
+        slots.normalise(
+            item.get("slot"), subject=subject[:80], content=str(item.get("content") or "")
+        )
+        if polarity == "affirm" and certainty == "firm"
+        else None
+    )
     return {
         "subject": subject[:80],
-        "polarity": "negate" if str(item.get("polarity", "")).lower() == "negate" else "affirm",
-        "certainty": "hedged" if str(item.get("certainty", "")).lower() == "hedged" else "firm",
+        "polarity": polarity,
+        "certainty": certainty,
         "reason": reason or None,
         "correction": item.get("correction") is True,
+        "slot": slot,
     }
 
 
