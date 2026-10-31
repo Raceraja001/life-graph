@@ -321,3 +321,37 @@ async def test_rejecting_a_role_link_takes_back_all_of_it(monkeypatch):
     named = await entities.known_in_text(t, "Is Ma at home?")
     assert mahal.id not in {eid for eid, _ in named}
     assert (await _entity(t, "mahalakshmi")).role == "spouse"  # her own, never copied
+
+
+# -- Bake-off leftovers (2026-10-31) ------------------------------------------
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_name_in_brackets_links_and_the_card_shows_one_person(monkeypatch):
+    from life_graph.services import profile_card
+
+    t = _tenant()
+    await _ingest(
+        monkeypatch,
+        t,
+        [_fact("Priya's birthday is on 14 February.", slot="family.priya.birthday")],
+    )
+    content = "Priyadharshini (the owner's wife, called Priya) teaches maths at Sunrise School."
+    await _ingest(monkeypatch, t, [_fact(content, slot="family.priyadharshini.occupation")])
+    pd, priya = await _entity(t, "priyadharshini"), await _entity(t, "priya")
+    assert priya.canonical_id == pd.id and pd.role == "spouse"
+    profile_card.clear_cache()
+    slots = {c["slot"] for c in await profile_card.card_items(t)}
+    assert {"family.priyadharshini.birthday", "family.priyadharshini.occupation"} <= slots
+    assert "family.priya.birthday" not in slots
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_tamil_case_form_is_not_learned_as_a_nickname(monkeypatch):
+    t = _tenant()
+    await _ingest(monkeypatch, t, [_fact("Priya (Priyavukku) always loves jasmine flowers.")])
+    form = await _entity(t, "priyavukku")
+    assert form is None or form.canonical_id is None
+    assert not await _approvals(t)

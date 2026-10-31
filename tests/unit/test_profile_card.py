@@ -87,3 +87,42 @@ def test_invalidate_drops_only_that_tenant():
     pc.invalidate("nobody")
     assert set(pc._cache) == {"b"}
     pc.clear_cache()
+
+
+# ── The budget counts what is rendered (bake-off, 2026-10-31) ──────────────
+
+
+def test_the_budget_counts_labels_and_dates():
+    # A real card rendered 3,714 chars against a 2,600 budget: only the fact text
+    # was counted, not the "[family · anushka (Anu) · age] (since …)" prefix.
+    when = datetime(2025, 1, 8, tzinfo=UTC)
+    rows = [
+        _m(
+            f"Fact {i}: " + "the owner said something lasting about this person " * 3,
+            props={"fact_type": "fact", "slot": f"family.person_with_long_name_{i}.occupation"},
+        )
+        for i in range(40)
+    ]
+    for m in rows:
+        m.created_at = when
+    picked = pc.pick(rows, 40, NOW)
+    items = [
+        {
+            "content": m.content,
+            "created_at": m.created_at,
+            "slot": m.properties["slot"],
+            "aka": ["Someone", "Another"],
+        }
+        for m in picked
+    ]
+    out = pc.render(items)
+    assert len(out) <= pc.MAX_CHARS
+    # The estimate is close: what pick chose is all shown.
+    assert out.count("\n- ") == len(picked)
+
+
+def test_render_never_exceeds_the_budget():
+    items = [
+        {"content": "x" * 400, "slot": f"family.p{i}.age", "aka": ["A" * 30]} for i in range(50)
+    ]
+    assert len(pc.render(items)) <= pc.MAX_CHARS

@@ -205,6 +205,14 @@ async def known_in_text(tenant_id: str, text_: str) -> list[tuple[uuid.UUID, str
     padded = f" {normalize(text_)} "
     rows = await _known(tenant_id)
     hits = [r for r in rows if f" {r[0]} " in padded or f" {r[0]}s " in padded]
+    # A Tamil case form of a known name: "Priyavukku" (to Priya) names Priya.
+    by_key = {r[0]: r for r in rows}
+    for word in padded.split():
+        if word in by_key:
+            continue
+        base = aliases.base_name(word, by_key)
+        if base and by_key[base] not in hits:
+            hits.append(by_key[base])
     roles = aliases.roles_in_question(text_)
     if roles:
         hits += [r for r in rows if r[4] in roles and r[3] is None and r not in hits]
@@ -255,7 +263,9 @@ async def canonical_slot(tenant_id: str, slot: str) -> str:
     """*slot* with a family member's name (or one-person role) replaced by the name
     their group is known by: ``family.maha.birthday`` → ``family.mahalakshmi.birthday``,
     and ``family.spouse.birthday`` the same once the spouse is known.
-    ``family.spouse`` itself (the spouse's name) is kept."""
+    ``family.spouse`` itself (the spouse's name) is kept. A Tamil case form of a
+    known name (``family.priyavukku.*``) is that person, and another name of the
+    person left as a segment (``family.anushka.anu.age``) is dropped."""
     parts = (slot or "").split(".")
     if len(parts) < 3 or parts[0] != "family":
         return slot
@@ -265,6 +275,9 @@ async def canonical_slot(tenant_id: str, slot: str) -> str:
     if not rows:
         return slot
     by_id = {r[1]: r for r in rows}
+    by_slug: dict[str, _Row] = {}
+    for r in rows:
+        by_slug.setdefault(_slug(r[0]), r)
     roots = _roots(rows)
     seg = parts[1]
     root = None
@@ -273,15 +286,25 @@ async def canonical_slot(tenant_id: str, slot: str) -> str:
         if len(holders) == 1:
             root = holders[0][1]
     else:
-        match = next((r for r in rows if _slug(r[0]) == seg), None)
+        match = by_slug.get(seg)
+        lone = match is not None and match[3] is None and not any(r[3] == match[1] for r in rows)
+        if match is None or lone:
+            # "priyavukku" (to Priya), as its own entity or none: Priya's field.
+            base = aliases.base_name(seg, by_slug)
+            if base:
+                match = by_slug[base]
         if match is not None:
             root = roots[match[1]]
     if root is None:
         return slot
     name = _slug(by_id[root][0])
-    if not name or name == seg:
+    if not name:
         return slot
-    return ".".join([parts[0], name, *parts[2:]])[:80]
+    members = {_slug(r[0]) for r in rows if roots[r[1]] == root} | {name, seg}
+    # The field is the last segment; a middle segment naming the person is dropped.
+    middle = [p for p in parts[2:-1] if p not in members]
+    out = ".".join([parts[0], name, *middle, parts[-1]])[:80]
+    return out if out != ".".join(parts) else slot
 
 
 async def other_names(tenant_id: str, slug: str) -> list[str]:

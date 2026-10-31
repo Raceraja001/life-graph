@@ -133,6 +133,27 @@ async def test_a_changed_hobby_day_replaces_an_older_spelling(monkeypatch):
 
 @pytest.mark.asyncio
 @skip_on_db_error
+async def test_a_nickname_left_in_the_slot_path_is_replaced_like_the_field(monkeypatch):
+    # Bake-off 2026-10-31: family.anushka.anu.age stayed current next to family.anushka.age.
+    from life_graph.services import profile_card
+
+    tag = uuid.uuid4().hex[:6]
+    (old,) = await _ingest(
+        monkeypatch,
+        [_fact(f"Anushka is 7 years old ({tag}).", "family.anushka.anu.age")],
+    )
+    (new,) = await _ingest(
+        monkeypatch, [_fact(f"Anushka is 9 years old now ({tag}).", "family.anushka.age")]
+    )
+    was = await _row(old.id)
+    assert was.status == "superseded" and str(was.superseded_by) == str(new.id)
+    profile_card.clear_cache()
+    card = [c["content"] for c in await profile_card.card_items(TENANT) if tag in c["content"]]
+    assert card == [new.content]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
 async def test_a_match_day_never_replaces_the_practice_day(monkeypatch):
     # Review of PR #205: practice_day and match_day both became hobbies.cricket.day,
     # so "matches are on Sundays" retired "practice is on Tuesdays".
