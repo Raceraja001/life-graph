@@ -105,7 +105,9 @@ _CACHE_SECONDS = 60.0
 _Row = tuple[str, "uuid.UUID", str, "uuid.UUID | None", "str | None"]
 _cache: dict[str, tuple[float, list[_Row]]] = {}
 #: Links followed to find the name a group is known by; a longer chain is a loop.
-MAX_HOPS = 5
+#: Linking never re-points other names (:func:`_link`), so a chain grows by one
+#: each time a name that others point at is linked onward.
+MAX_HOPS = 20
 
 
 def normalize(name: str) -> str:
@@ -418,7 +420,14 @@ async def _root_of(session: Any, entity: Any) -> Any:
 
 
 async def _queue(
-    session: Any, tenant_id: str, alias: Any, canonical: Any, *, applied: bool, why: str
+    session: Any,
+    tenant_id: str,
+    alias: Any,
+    canonical: Any,
+    *,
+    applied: bool,
+    why: str,
+    role_copied: bool = False,
 ) -> None:
     """An ``entity_alias`` approval: *applied* (the link is made; reject undoes it)
     or suggested (approve makes it). Asked once per pair, whatever the answer."""
@@ -452,28 +461,28 @@ async def _queue(
                 "canonical_id": str(canonical.id),
                 # What reject restores for an applied link (None: its own person).
                 "previous_canonical_id": None,
+                # The link gave *canonical* the alias's role: reject takes it back.
+                "role_copied": role_copied,
                 "applied": applied,
             },
         )
     )
 
 
-async def _link(session: Any, alias: Any, root: Any, via: str, evidence: str) -> None:
-    """Point *alias*, and any names pointing at it, at *root*."""
-    from sqlalchemy import update
+async def _link(session: Any, alias: Any, root: Any, via: str, evidence: str) -> bool:
+    """Point *alias* at *root*; True when *alias*'s role was copied to *root*.
 
-    from life_graph.models.assistant import Entity
-
-    await session.execute(
-        update(Entity)
-        .where(Entity.tenant_id == alias.tenant_id, Entity.canonical_id == alias.id)
-        .values(canonical_id=root.id)
-    )
+    Only *alias* changes: names that point at *alias* keep pointing at it and
+    reach *root* through it (every reader follows the chain, :func:`_roots`,
+    :func:`_root_of`). Until the review of PR #205 they were re-pointed at
+    *root*, and rejecting the link freed *alias* but left them on *root*."""
     alias.canonical_id = root.id
     alias.alias_via = via
     alias.alias_evidence = evidence[:300] or None
     if alias.role and not root.role:
         root.role = alias.role
+        return True
+    return False
 
 
 async def learn_aliases(tenant_id: str, text_: str, *, evidence: str = "") -> dict[str, int]:
@@ -545,8 +554,16 @@ async def learn_aliases(tenant_id: str, text_: str, *, evidence: str = "") -> di
                 if aliases.compatible(other.name, root.name):
                     # "Ma" and "Mahalakshmi": the shorter is the other name.
                     short, long_ = sorted((other, root), key=lambda e: len(e.name))
-                    await _link(session, short, long_, "role", evidence)
-                    await _queue(session, tenant_id, short, long_, applied=True, why=why)
+                    copied = await _link(session, short, long_, "role", evidence)
+                    await _queue(
+                        session,
+                        tenant_id,
+                        short,
+                        long_,
+                        applied=True,
+                        why=why,
+                        role_copied=copied,
+                    )
                     counts["linked"] += 1
                     root = long_
                 else:
@@ -585,6 +602,34 @@ async def set_alias(
         ent.alias_via = None
     _cache.pop(tenant_id, None)
     return True
+
+
+async def undo_link(session: Any, tenant_id: str, payload: dict[str, Any]) -> bool:
+    """Undo an applied ``entity_alias`` link (the owner rejected it) in the caller's
+    transaction: the alias points where it did before, and a role the link copied
+    onto the other name is taken back. Names pointing at the alias stay with it
+    (:func:`_link` never moves them), so they leave the group with it."""
+    import uuid as _uuid
+
+    from life_graph.models.assistant import Entity
+
+    alias_id, canonical_id = payload.get("alias_id"), payload.get("canonical_id")
+    if payload.get("role_copied") and alias_id and canonical_id:
+        try:
+            alias = await session.get(Entity, _uuid.UUID(str(alias_id)))
+            target = await session.get(Entity, _uuid.UUID(str(canonical_id)))
+        except ValueError:
+            alias = target = None
+        if (
+            alias is not None
+            and target is not None
+            and alias.tenant_id == tenant_id == target.tenant_id
+            and target.role == alias.role
+        ):
+            target.role = None
+    return await set_alias(
+        session, tenant_id, alias_id, payload.get("previous_canonical_id"), via="approved"
+    )
 
 
 async def unlink_alias(tenant_id: str, entity_id: Any) -> bool:

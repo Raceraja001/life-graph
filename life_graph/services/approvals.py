@@ -878,13 +878,9 @@ class ApprovalService:
             return
         try:
             if payload.get("applied") and not approve:
-                await entities.set_alias(
-                    self.session,
-                    tenant_id,
-                    alias_id,
-                    payload.get("previous_canonical_id"),
-                    via="approved",
-                )
+                # The whole link is undone: its own canonical_id and any role it
+                # copied. Names pointing at the alias were never moved.
+                await entities.undo_link(self.session, tenant_id, payload)
             elif not payload.get("applied") and approve and canonical_id:
                 await entities.set_alias(
                     self.session, tenant_id, alias_id, canonical_id, via="approved"

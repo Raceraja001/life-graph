@@ -160,7 +160,7 @@ CRICKET = "The owner plays cricket on Saturday mornings with the Adyar Cricket C
         ("hobbies.cricket.day", CRICKET, "hobbies.cricket.day"),
         ("hobbies.day_cricket", CRICKET, "hobbies.cricket.day"),
         ("hobbies.cricket.playing_day", CRICKET, "hobbies.cricket.day"),
-        ("hobbies.cricket.practice.day", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.cricket.practice.day", CRICKET, "hobbies.cricket.practice_day"),
         ("hobbies.playing_cricket.day", CRICKET, "hobbies.cricket.day"),
         ("sports.cricket_days", CRICKET, "hobbies.cricket.day"),
         ("hobbies.cricket.team", CRICKET, "hobbies.cricket.club"),
@@ -212,3 +212,54 @@ def test_old_spellings_count_once_on_the_card():
         _m("The owner plays cricket on Sundays.", "hobbies.cricket_day"),  # older spelling
     ]
     assert [m.content for m in pc.pick(rows, 25, NOW)] == ["The owner plays cricket on Saturdays."]
+
+
+PRACTICE = "The owner's cricket practice is on Tuesdays."
+MATCHES = "The owner's cricket matches are on Sundays."
+CHESS = "The owner's chess club meets on Thursdays."
+TT = "The owner plays table tennis every Friday."
+
+
+@pytest.mark.parametrize(
+    ("raw", "content", "expected"),
+    [
+        # Review of PR #205: different hobby fields must not share one slot.
+        ("hobbies.cricket.practice_day", PRACTICE, "hobbies.cricket.practice_day"),
+        ("hobbies.cricket.practice.day", PRACTICE, "hobbies.cricket.practice_day"),
+        ("hobbies.cricket_practice_day", PRACTICE, "hobbies.cricket.practice_day"),
+        ("hobbies.cricket.training_day", PRACTICE, "hobbies.cricket.practice_day"),
+        ("hobbies.practice_day", PRACTICE, "hobbies.cricket.practice_day"),
+        ("hobbies.cricket.match_day", MATCHES, "hobbies.cricket.match_day"),
+        ("hobbies.cricket.match_days", MATCHES, "hobbies.cricket.match_day"),
+        ("hobbies.cricket.match.day", MATCHES, "hobbies.cricket.match_day"),
+        ("hobbies.cricket.game_day", MATCHES, "hobbies.cricket.match_day"),
+        ("hobbies.chess.club.day", CHESS, "hobbies.chess.club_day"),
+        ("hobbies.chess_club_day", CHESS, "hobbies.chess.club_day"),
+        ("hobbies.chess.team.day", CHESS, "hobbies.chess.club_day"),
+        ("hobbies.chess.club.name", CHESS, "hobbies.chess.club"),
+        (
+            "hobbies.cricket.practice_time",
+            "Cricket practice is at 6 am.",
+            "hobbies.cricket.practice_time",
+        ),
+        # An unknown qualifier is kept, never dropped.
+        ("hobbies.chess.tournament.day", CHESS, "hobbies.chess.tournament_day"),
+        ("hobbies.chess.blitz.day", CHESS, "hobbies.chess.blitz_day"),
+        # Genuine spellings of one field still collapse.
+        ("hobbies.cricket_day", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.day_cricket", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.cricket.days", CRICKET, "hobbies.cricket.day"),
+        ("hobbies.table_tennis_day", TT, "hobbies.table_tennis.day"),
+        # A practice day must still name a day.
+        ("hobbies.cricket.practice_day", "The owner likes cricket practice.", None),
+    ],
+)
+def test_distinct_hobby_fields_stay_distinct(raw, content, expected):
+    assert slots.normalise(raw, content=content) == expected
+
+
+def test_practice_and_match_days_are_never_one_slot():
+    practice = slots.normalise("hobbies.cricket.practice_day", content=PRACTICE)
+    match = slots.normalise("hobbies.cricket.match_day", content=MATCHES)
+    day = slots.normalise("hobbies.cricket.day", content=CRICKET)
+    assert len({practice, match, day}) == 3

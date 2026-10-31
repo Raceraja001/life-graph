@@ -221,3 +221,103 @@ async def test_outside_or_negated_text_teaches_no_names(monkeypatch):
     assert await _entity(t, "anu") is None
     assert await _entity(t, "vicky") is None
     assert await _approvals(t) == []
+
+
+# ── Review of PR #205 (2026-10-31) ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_mother_in_law_is_never_merged_with_the_mother(monkeypatch):
+    t = _tenant()
+    await _ingest(monkeypatch, t, [_fact("My mother Meena lives in Madurai.")])
+    await _ingest(monkeypatch, t, [_fact("Meenakshi is my mother-in-law.")])
+    await _ingest(monkeypatch, t, [_fact("Kamala, my mother in law, visited.")])
+    meena, meenakshi = await _entity(t, "meena"), await _entity(t, "meenakshi")
+    assert meena.canonical_id is None and meena.role == "mother"
+    assert meenakshi.canonical_id is None and meenakshi.role == "mother_in_law"
+    kamala = await _entity(t, "kamala")
+    assert kamala.role == "mother_in_law" and kamala.canonical_id is None
+    # Two mothers-in-law with unfitting names are asked about; the mother never is.
+    for ask in await _approvals(t):
+        assert str(meena.id) not in (ask.payload["alias_id"], ask.payload["canonical_id"])
+        assert ask.payload["applied"] is False
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_only_the_facts_own_firm_words_teach_names(monkeypatch):
+    t = _tenant()
+    message = "I think Ravi is short for Ravindran, not sure. My wife Priya teaches at DAV."
+    from life_graph.extraction.rules import ExtractedFact
+
+    (priya,) = await _ingest(
+        monkeypatch,
+        t,
+        [
+            ExtractedFact(
+                content="My wife Priya teaches at DAV.",
+                fact_type="fact",
+                confidence=0.95,
+                source_text=message,  # the LLM extractor passes the whole message
+            )
+        ],
+    )
+    assert (await _row(priya.id)).status == "active"
+    assert (await _entity(t, "priya")).role == "spouse"
+    assert await _entity(t, "ravi") is None and await _entity(t, "ravindran") is None
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_memory_waiting_for_review_teaches_no_names(monkeypatch):
+    t = _tenant()
+    fact = _fact("Anushka (Anu) is in class 2.")
+    fact.confidence = 0.5  # below the auto-keep bar: waits for the owner's review
+    (held,) = await _ingest(monkeypatch, t, [fact])
+    assert (await _row(held.id)).status == "pending"
+    assert await _entity(t, "anu") is None
+    assert await _approvals(t) == []
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_sentence_words_and_denials_link_nobody(monkeypatch):
+    t = _tenant()
+    await _ingest(monkeypatch, t, [_fact("My mother Lakshmi has diabetes.")])
+    await _ingest(monkeypatch, t, [_fact("Nobody calls her Lakshmi.")])
+    await _ingest(monkeypatch, t, [_fact("Remember I call her Ammu.")])
+    lakshmi = await _entity(t, "lakshmi")
+    assert lakshmi.canonical_id is None
+    assert await _entity(t, "nobody") is None and await _entity(t, "remember") is None
+    ammu = await _entity(t, "ammu")
+    assert ammu is None or ammu.canonical_id is None
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_rejecting_a_role_link_takes_back_all_of_it(monkeypatch):
+    from life_graph.services import entities
+
+    t = _tenant()
+    await _ingest(monkeypatch, t, [_fact("My wife Mahalakshmi works at a bank.")])
+    await _ingest(monkeypatch, t, [_fact("Maha (Ma) loves filter coffee.")])
+    ma, maha = await _entity(t, "ma"), await _entity(t, "maha")
+    assert ma.canonical_id == maha.id and ma.alias_via == "said"
+
+    # The role links Maha to Mahalakshmi; Ma comes along through Maha.
+    await _ingest(monkeypatch, t, [_fact("My wife Maha sings Carnatic music.")])
+    mahal = await _entity(t, "mahalakshmi")
+    assert (await _entity(t, "maha")).canonical_id == mahal.id
+    named = await entities.known_in_text(t, "Is Ma at home?")
+    assert mahal.id in {eid for eid, _ in named}
+    (applied,) = [a for a in await _approvals(t) if a.payload["applied"]]
+
+    # The owner says no: Maha and her nickname Ma leave Mahalakshmi together.
+    await _resolve(t, applied.id, "reject")
+    maha, ma = await _entity(t, "maha"), await _entity(t, "ma")
+    assert maha.canonical_id is None
+    assert ma.canonical_id == maha.id
+    named = await entities.known_in_text(t, "Is Ma at home?")
+    assert mahal.id not in {eid for eid, _ in named}
+    assert (await _entity(t, "mahalakshmi")).role == "spouse"  # her own, never copied
