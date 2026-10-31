@@ -856,7 +856,7 @@ class ApprovalService:
         memory.status = "archived"
 
     async def _apply_entity_alias(self, tenant_id: str, appr: Approval, approve: bool) -> None:
-        """Two names, one person? (services/entities.py, migration 056)
+        """Two names, one person? (services/entities.py, migration 057)
 
         ``applied`` True: the link was made (same one-person role, fitting names);
         approve confirms, reject makes the name its own person again (or restores

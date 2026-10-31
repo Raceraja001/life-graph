@@ -177,7 +177,7 @@ async def retrieve(question: str, limit: int = 6) -> list[Any] | None:
             known_ids = {m.id for m in candidates}
             candidates += [m for m in linked if m.id not in known_ids]
             # "When is Maha's birthday?" against "Mahalakshmi's birthday is …":
-            # the judge is told they are one person (migration 056), else it
+            # the judge is told they are one person (migration 057), else it
             # may drop the note as about someone else.
             hint = entities.alias_hint(tenant_id, named)
             if hint:

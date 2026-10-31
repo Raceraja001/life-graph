@@ -15,7 +15,7 @@ so this keeps a plain tenant-scoped index (migration 053):
 Generic words the extractor tends to list ("user", "merge", "app") are not
 entities and are dropped (:data:`NOT_ENTITIES`).
 
-One person, many names (migration 056, core/aliases.py): an entity may point at
+One person, many names (migration 057, core/aliases.py): an entity may point at
 the entity it is another name for (``canonical_id``). Links are learned only from
 the owner's explicit statements ("Mahalakshmi (Maha)", "I call her Ma") or from
 a shared one-person role with fitting names ("my wife Ma" / "my wife
@@ -196,7 +196,7 @@ def _roots(rows: list[_Row]) -> dict[uuid.UUID, uuid.UUID]:
 
 async def known_in_text(tenant_id: str, text_: str) -> list[tuple[uuid.UUID, str]]:
     """Known entities named in *text_* (whole words), as (id, name), then the other
-    names of each (migration 056): "Maha" also brings "Mahalakshmi". A one-person
+    names of each (migration 057): "Maha" also brings "Mahalakshmi". A one-person
     role in the question ("my wife", "amma") brings the person who holds it."""
     from life_graph.core import aliases
 
@@ -349,7 +349,7 @@ async def about(tenant_id: str, name: str, limit: int = 20) -> dict[str, Any] | 
     if not rows:
         return None
     ids = [r[0] for r in rows]
-    # The other names of the same person (migration 056): "about Maha" is about
+    # The other names of the same person (migration 057): "about Maha" is about
     # Mahalakshmi too.
     known = await _known(tenant_id)
     if any(r[3] for r in known):
@@ -385,7 +385,7 @@ async def about(tenant_id: str, name: str, limit: int = 20) -> dict[str, Any] | 
     }
 
 
-# ── Learning other names (migration 056, core/aliases.py) ─────────────────
+# ── Learning other names (migration 057, core/aliases.py) ─────────────────
 
 
 async def _entity(session: Any, tenant_id: str, name: str) -> Any | None:

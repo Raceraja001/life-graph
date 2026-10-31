@@ -1,4 +1,4 @@
-"""One person, many names, against the database (services/entities.py, migration 056).
+"""One person, many names, against the database (services/entities.py, migration 057).
 
 The extractor is a stand-in (no model call): here only the wiring is checked —
 what the owner's words link, what they never link, and that every link can be
@@ -46,11 +46,13 @@ async def _ingest(monkeypatch, tenant, facts, *, tier="self"):
     async def fake_extract(text, capture=False):
         return _Result(list(facts))
 
-    async def no_embedding(text):
+    async def no_embedding(self, text):
         return None
 
     monkeypatch.setattr(manager._extractor, "extract", fake_extract)
-    monkeypatch.setattr(manager, "_generate_embedding", no_embedding)
+    # On the class: undoing an instance patch leaves a bound method on the shared
+    # manager, which hides later class-level patches (test_judged_search).
+    monkeypatch.setattr(type(manager), "_generate_embedding", no_embedding)
     with tenant_scope(tenant):
         return await manager.ingest("…", source="capture", trust_tier=tier, capture=True)
 

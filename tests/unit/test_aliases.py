@@ -1,5 +1,5 @@
 """One person, many names: what the owner's words teach (core/aliases.py) and how the
-entity index uses it without a query (services/entities.py, migration 056)."""
+entity index uses it without a query (services/entities.py, migration 057)."""
 
 from __future__ import annotations
 

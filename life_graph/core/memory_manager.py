@@ -405,7 +405,7 @@ class MemoryManager:
         auto_supersede_targets = self._resolve_contradictions(contradictions)
 
         # Step 5a: other names for the same person (services/entities.py,
-        # migration 056), learned only from the owner's own firm words, then a
+        # migration 057), learned only from the owner's own firm words, then a
         # family slot filed under the name the person is known by, so
         # family.maha.birthday replaces family.mahalakshmi.birthday.
         await self._learn_names(fact, trust_tier)

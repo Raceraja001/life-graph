@@ -14,7 +14,7 @@ only linked to another on evidence:
   person when one name starts with the other (:class:`RoleClaim`,
   :data:`UNIQUE_ROLES`, :func:`compatible`).
 
-This module only reads text; services/entities.py stores the links (migration 056).
+This module only reads text; services/entities.py stores the links (migration 057).
 """
 
 from __future__ import annotations

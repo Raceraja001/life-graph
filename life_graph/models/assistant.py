@@ -208,7 +208,7 @@ class ReviewCard(Base):
 
 
 class StudyReview(Base):
-    """One answer to a study card (migration 056): the history behind streaks
+    """One answer to a study card (migration 057): the history behind streaks
     and accuracy, and what a later FSRS fit would learn from.
 
     No foreign key to ``review_cards``: deleting a card keeps its history.
@@ -431,7 +431,7 @@ class Entity(Base):
     ``key`` is the normalised name ("life graph" for "Life-Graph" and "life
     graph"), unique per tenant; ``name`` is how it is usually written.
     ``canonical_id`` set means this name is another name for that entity
-    ("Maha" → "Mahalakshmi", migration 056); ``role`` is the person's relation
+    ("Maha" → "Mahalakshmi", migration 057); ``role`` is the person's relation
     to the owner (spouse, mother, owner, …).
     """
 

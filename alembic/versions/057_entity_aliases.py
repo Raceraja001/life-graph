@@ -1,4 +1,4 @@
-"""056 — entity aliases: one person, many names (services/entities.py, core/aliases.py).
+"""057 — entity aliases: one person, many names (services/entities.py, core/aliases.py).
 
 The owner calls one person "Mahalakshmi", "Maha" and "my wife"; each name was
 its own entity, so a question using one name missed what was said with another.
@@ -10,8 +10,8 @@ was made, so it can be checked and undone (clearing ``canonical_id``).
 Additive: every existing row keeps null in all four columns, which is today's
 behaviour (each name its own entity). No schema qualifier, matching 023+.
 
-Revision ID: 056
-Revises: 055
+Revision ID: 057
+Revises: 056
 Create Date: 2026-10-31
 """
 
@@ -20,8 +20,8 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from alembic import op
 
-revision = "056"
-down_revision = "055"
+revision = "057"
+down_revision = "056"
 branch_labels = None
 depends_on = None
 
