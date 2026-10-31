@@ -401,6 +401,18 @@ class MemoryManager:
             properties["entities"] = fact.entities
         if fact.changes_over_time:
             properties["changes_over_time"] = True
+        # Meaning the sentence alone may lose (extraction/rules.py ExtractedFact).
+        # Stored only when it differs from the plain reading.
+        if fact.subject and fact.subject != "owner":
+            properties["subject"] = fact.subject
+        if fact.polarity == "negate":
+            properties["polarity"] = "negate"
+        if fact.certainty == "hedged":
+            properties["certainty"] = "hedged"
+        if fact.reason:
+            properties["reason"] = fact.reason
+        if fact.correction:
+            properties["correction"] = True
         if fact.trace_id:
             # How the user resolves this memory is the self-improvement label
             # for that extraction call (self_improving/suite_builder.py).
@@ -678,6 +690,10 @@ def _auto_approved(
     ("prefers local HTML files") left pending.
     """
     if trust_tier != "self":
+        return None
+    # "Maybe…" is never kept unreviewed, whatever the wording (the HEDGED regex
+    # below misses "not sure if" in other words, and Tamil).
+    if getattr(fact, "certainty", "firm") == "hedged":
         return None
     if fact.fact_type == "explicit_save" and fact.confidence >= AUTO_APPROVE_MIN_CONFIDENCE:
         return "explicit_save"
