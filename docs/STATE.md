@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-31 07:21 UTC` from `master` @ `cb53b46`
+Generated `2026-10-31 07:48 UTC` from `master` @ `10656a6`
 
 ---
 
@@ -24,9 +24,9 @@ Generated `2026-10-31 07:21 UTC` from `master` @ `cb53b46`
 | Agent tools | **14** |
 | Scheduled jobs | **32** |
 | Config settings | **272** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3936** in 452 files |
+| Test functions | **3946** in 454 files |
 | Dashboard pages | **22** |
-| Python | 439 files, 112,811 lines |
+| Python | 440 files, 113,202 lines |
 
 ---
 
@@ -503,10 +503,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 343 | 3132 |
-| `tests/integration/` | 108 | 792 |
+| `tests/unit/` | 344 | 3140 |
+| `tests/integration/` | 109 | 794 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **452** | **3936** |
+| **total** | **454** | **3946** |
 
 ---
 
@@ -553,7 +553,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_PENDING_MEMORY_EXPIRY_DAYS` | `14` |
 | `LIFE_GRAPH_MEMORY_START_AT` | `''` |
 | `LIFE_GRAPH_MEMORY_JUDGE_MODEL` | `''` |
-| `LIFE_GRAPH_PROFILE_CARD_MAX_ITEMS` | `25` |
+| `LIFE_GRAPH_PROFILE_CARD_MAX_ITEMS` | `40` |
 | `LIFE_GRAPH_DECAY_DEFAULT_LAMBDA` | `0.1` |
 | `LIFE_GRAPH_DEDUP_ENABLED` | `True` |
 | `LIFE_GRAPH_DEDUP_THRESHOLD` | `0.92` |
