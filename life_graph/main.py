@@ -582,9 +582,12 @@ from life_graph.api import capture as capture_api
 from life_graph.api import health as health_api
 from life_graph.api import ingest_transcript as ingest_transcript_api
 from life_graph.api import memory_links
+from life_graph.api import memory_page as memory_page_api
 from life_graph.api import preferences as preferences_api
 from life_graph.api import transcript_ingest as transcript_ingest_api
 
+# Before memories.router: its GET /memories/{memory_id} would take /memories/overview.
+v1_router.include_router(memory_page_api.router)
 v1_router.include_router(memories.router)
 v1_router.include_router(search.router)
 v1_router.include_router(intentions.router)

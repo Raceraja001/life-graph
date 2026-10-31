@@ -1088,7 +1088,8 @@ async def reject_memory(memory_id: uuid.UUID):
 
 @router.post("/memories/{memory_id}/undo", summary="Take back a memory Jarvis just saved")
 async def undo_save(memory_id: uuid.UUID):
-    """Archives (never deletes) one memory Jarvis saved with memory_save."""
+    """Archives (never deletes) one memory Jarvis saved with memory_save, or a
+    correction the owner typed on the memory page; a replaced memory comes back."""
     from datetime import UTC, datetime
 
     from sqlalchemy import text
@@ -1102,7 +1103,8 @@ async def undo_save(memory_id: uuid.UUID):
                     "UPDATE memories SET status = 'archived', updated_at = NOW(),"
                     " properties = COALESCE(properties, '{}'::jsonb) || CAST(:note AS jsonb)"
                     " WHERE id = :id AND tenant_id = :t AND status IN ('active', 'pending')"
-                    " AND properties->>'saved_by' = 'jarvis' RETURNING id"
+                    # 'owner': a correction typed on the memory page (services/memory_page.py).
+                    " AND properties->>'saved_by' IN ('jarvis', 'owner') RETURNING id"
                 ),
                 {"id": memory_id, "t": tenant_id, "note": note},
             )
