@@ -169,6 +169,18 @@ class Settings(BaseSettings):
     # reloaded one (~15 s, measured 2026-10-22). The same model, already
     # loaded, judges in ~0.3 s.
     memory_judge_model: str = ""
+    # Nothing is forgotten, only further away (services/memory_tiers.py): when
+    # no active memory answers, or the question is about the past, archived and
+    # replaced memories are searched too, and say so.
+    memory_cold_tier: bool = True
+    # Memories said together or used together are linked, and a found memory
+    # brings its strongest links along for the judge (services/associations.py).
+    memory_links: bool = True
+    # Search order nudged by how important, used and recent a memory is
+    # (services/memory_retrieval.py strength_order).
+    memory_strength_rank: bool = False
+    # Nightly: active memories without a form slot get one (services/form_fill.py).
+    memory_form_fill: bool = True
     # The owner's lasting facts, put in front of every local Jarvis answer
     # whether or not search finds them (services/profile_card.py). 0 = off.
     profile_card_max_items: int = 40

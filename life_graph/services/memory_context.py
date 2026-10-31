@@ -86,10 +86,12 @@ def render(rows: list[tuple]) -> str:
             text = text[: limit - 1] + "…"
         kind = props.get("evidence")
         label = "" if episode or kind in (None, ev.SAID) else ev.PROMPT_LABEL.get(kind, "")
+        # An archived or replaced memory (services/memory_tiers.py) says so.
+        label = " · ".join(x for x in (props.get("tier"), label) if x)
         tail = f" · {label}" if label else ""
         if episode or not created_at:
             when = f"({label}) " if label else ""
-        elif props.get("changes_over_time"):
+        elif props.get("changes_over_time") and not props.get("tier"):
             when = f"(as of {created_at:%Y-%m-%d}{tail}) "
         else:
             when = f"({created_at:%Y-%m-%d}{tail}) "
@@ -102,7 +104,23 @@ def _row(m) -> tuple:
     props["evidence"] = ev.evidence_of(
         getattr(m, "source_type", None), getattr(m, "trust_tier", None), props
     )
+    from life_graph.services import memory_tiers
+
+    if tier := memory_tiers.label(m):
+        props["tier"] = tier
     return (m.content, m.created_at, props)
+
+
+async def _strengthen(tenant_id: str, found: list) -> None:
+    """What one answer used is linked (services/associations.py), and an
+    archived memory that answered goes back to active (services/memory_tiers.py)."""
+    from life_graph.services import associations, memory_tiers
+
+    await associations.used_together(tenant_id, [m.id for m in found])
+    try:
+        await memory_tiers.reawaken(found)
+    except Exception:  # noqa: BLE001 — bookkeeping; the answer still has the memory
+        logger.warning("Reawakening used memories failed", exc_info=True)
 
 
 async def _card(tenant_id: str) -> list[dict]:
@@ -151,6 +169,8 @@ async def memory_block(
             logger.warning("Form history failed: %s", exc)
             earlier = []
         if earlier:
+            # Shown once, here, even when the cold tier finds them too.
+            on_card |= {e["id"] for e in earlier}
             card_text = "\n\n".join(
                 t for t in (card_text, profile_card.render_history(earlier)) if t
             )
@@ -172,6 +192,7 @@ async def memory_block(
                     # are not touched: always shown is not read, and counting
                     # it would freeze the card's own ranking.
                     await get_store().touch_many([m.id for m in found])
+                    await _strengthen(tenant_id, found[:MAX_MEMORIES])
     except Exception as exc:  # noqa: BLE001 — memory is a bonus, never a failed answer
         # Never the message text in the log: it is personal.
         logger.warning("Memory context failed (%d chars): %s", len(query), exc)

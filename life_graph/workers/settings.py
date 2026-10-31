@@ -140,6 +140,7 @@ class WorkerSettings:
         "life_graph.workers.web_research.run_tech_watch",
         "life_graph.workers.tasks.run_tenant_consolidation",
         "life_graph.workers.tasks.run_all_consolidations",
+        "life_graph.workers.form_fill.run_all_form_fills",
         "life_graph.workers.tasks.run_tenant_merge_suggestions",
         "life_graph.workers.tasks.run_all_merge_suggestions",
         "life_graph.workers.cleanup.cleanup_memories_tenant",
@@ -232,6 +233,14 @@ class WorkerSettings:
             "life_graph.workers.tasks.run_all_consolidations",
             hour=3,
             minute=0,
+            run_at_startup=False,
+        ),
+        # After consolidation: memories without a form slot get one
+        # (services/form_fill.py).
+        cron(
+            "life_graph.workers.form_fill.run_all_form_fills",
+            hour=3,
+            minute=20,
             run_at_startup=False,
         ),
         cron(
