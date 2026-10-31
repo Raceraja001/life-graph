@@ -179,6 +179,7 @@ class WorkerSettings:
         "life_graph.workers.temporary_chats.purge_temporary_chats",
         "life_graph.workers.nudges.send_nudges",
         "life_graph.workers.memory_check.send_memory_check",
+        "life_graph.workers.study_nudge.send_study_nudge",
     ]
 
     cron_jobs = [
@@ -194,6 +195,12 @@ class WorkerSettings:
             "life_graph.workers.memory_check.send_memory_check",
             hour=(settings.brief_hour_utc - 1) % 24,
             minute=50,
+            run_at_startup=False,
+        ),
+        # "N study cards due", once a day after study_nudge_hour (services/study_nudge.py).
+        cron(
+            "life_graph.workers.study_nudge.send_study_nudge",
+            minute=7,
             run_at_startup=False,
         ),
         # Temporary chats quiet for a day are deleted (services/temporary_chats.py).

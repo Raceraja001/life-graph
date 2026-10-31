@@ -66,6 +66,8 @@ _HELP = (
     "/capture — back to saving messages as memories\n"
     "/txn <bank SMS> — record a transaction\n"
     "/review — study your next flashcard\n"
+    "/study — your streak, cards due and accuracy\n"
+    "/drafts — check new flashcards before they are scheduled\n"
     "/recall <query> — search your memories\n"
     "/pending — items awaiting your decision\n"
     "/help — this message\n"
@@ -275,6 +277,16 @@ async def _handle_command(chat_id: int, tenant_id: str, text: str, session: Asyn
         return
     if command == "review":
         await _review(chat_id, tenant_id, rest)
+        return
+    if command == "study":
+        from life_graph.services import study
+
+        await _reply(chat_id, await study.telegram_progress(tenant_id))
+        return
+    if command == "drafts":
+        from life_graph.services import study
+
+        await _reply(chat_id, await study.telegram_drafts(chat_id, tenant_id, rest))
         return
 
     await _reply(chat_id, f"Unknown command: /{command}\n\n{_HELP}")

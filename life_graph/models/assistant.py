@@ -187,6 +187,15 @@ class ReviewCard(Base):
     last_grade: Mapped[str | None] = mapped_column(String(8), nullable=True)
     reviews: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     dedup_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Migration 056: draft (written, waiting for the owner), active (scheduled)
+    # or suspended (kept, never due). Only active cards are due or counted.
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="active")
+    # "Again" on a card that had been remembered (repetitions > 0).
+    lapses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_reviewed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Where the card came from: text, topic, memory or document (+ its id).
+    source_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -194,6 +203,36 @@ class ReviewCard(Base):
     __table_args__ = (
         Index("uq_review_cards_dedup", "tenant_id", "dedup_key", unique=True),
         Index("ix_review_cards_due", "tenant_id", "due_on"),
+        Index("ix_review_cards_status", "tenant_id", "status"),
+    )
+
+
+class StudyReview(Base):
+    """One answer to a study card (migration 056): the history behind streaks
+    and accuracy, and what a later FSRS fit would learn from.
+
+    No foreign key to ``review_cards``: deleting a card keeps its history.
+    ``reviewed_on`` is the owner's own day (``user_timezone``).
+    """
+
+    __tablename__ = "study_reviews"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    card_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    deck: Mapped[str] = mapped_column(String(80), nullable=False, default="general")
+    grade: Mapped[str] = mapped_column(String(8), nullable=False)
+    reviewed_on: Mapped[date] = mapped_column(Date, nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    interval_before: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    interval_after: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ease_after: Mapped[float] = mapped_column(Float, nullable=False, default=2.5)
+
+    __table_args__ = (
+        Index("ix_study_reviews_day", "tenant_id", "reviewed_on"),
+        Index("ix_study_reviews_deck", "tenant_id", "deck"),
     )
 
 
