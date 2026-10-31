@@ -56,9 +56,7 @@ def test_decay_sweep_no_longer_archives():
         if isinstance(node, ast.Constant) and isinstance(node.value, str)
     )
     assert "SET status = 'archived'" not in sql
-    assert "_queue_archive_proposals" in _source(decay.run_decay_sweep), (
-        "it should propose instead"
-    )
+    assert "_queue_archive_proposals" in _source(decay.run_decay_sweep), "it should propose instead"
 
 
 def test_decay_sweep_skips_critical_memories():
@@ -66,8 +64,17 @@ def test_decay_sweep_skips_critical_memories():
 
     src = _source(decay.run_decay_sweep)
     assert "importance_tier <> 'critical'" in src, (
-        "critical memories were exempt from archival and must stay exempt "
-        "from proposals too"
+        "critical memories were exempt from archival and must stay exempt from proposals too"
+    )
+
+
+def test_decay_sweep_spares_the_owners_form():
+    from life_graph.workers import decay
+
+    src = _source(decay.run_decay_sweep)
+    assert "? 'slot')" in src, (
+        "a form fact (properties.slot) is current until replaced, used or not: "
+        "it must never be proposed for archival"
     )
 
 
@@ -94,12 +101,12 @@ def test_proposal_carries_what_a_reviewer_needs():
     tree = ast.parse(_source(decay._queue_archive_proposals))
     payload_keys: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.keyword) and node.arg == "payload" and isinstance(
-            node.value, ast.Dict
+        if (
+            isinstance(node, ast.keyword)
+            and node.arg == "payload"
+            and isinstance(node.value, ast.Dict)
         ):
-            payload_keys |= {
-                k.value for k in node.value.keys if isinstance(k, ast.Constant)
-            }
+            payload_keys |= {k.value for k in node.value.keys if isinstance(k, ast.Constant)}
     assert {"memory_id", "effective_importance", "importance_tier"} <= payload_keys
 
 

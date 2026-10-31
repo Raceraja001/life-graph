@@ -570,6 +570,7 @@ class _RealStore:
                     "UPDATE memories SET status = 'archived' WHERE tenant_id = :t"
                     " AND status = 'active' AND importance_tier <> 'critical'"
                     " AND COALESCE(properties->>'kind', '') <> 'episode'"
+                    " AND NOT (COALESCE(properties, '{}'::jsonb) ? 'slot')"
                     " AND importance * exp(-decay_rate * EXTRACT(EPOCH FROM ("
                     "CAST(:today AS timestamptz) - COALESCE(last_accessed, created_at)))"
                     " / 86400.0) < :th"

@@ -179,6 +179,11 @@ async def run_decay_sweep(ctx: dict, tenant_id: str) -> dict:
             #
             # Formula: importance * exp(-decay_rate * days_since_activity)
             # ref_time = COALESCE(last_accessed, created_at)
+            #
+            # The owner's form (properties.slot, core/slots.py) never decays:
+            # "works at Zoho" is true until replaced, used or not. In the
+            # bake-off, archiving unused form facts took the answer rate from
+            # 76% to 29%, and the cold tier won back only part (2026-10-31).
             result = await session.execute(
                 text("""
                     SELECT id, content, importance, importance_tier,
@@ -191,6 +196,7 @@ async def run_decay_sweep(ctx: dict, tenant_id: str) -> dict:
                     WHERE tenant_id = :tenant_id
                       AND status = 'active'
                       AND importance_tier <> 'critical'
+                      AND NOT (COALESCE(properties, '{}'::jsonb) ? 'slot')
                       AND importance * exp(
                               -decay_rate *
                               EXTRACT(EPOCH FROM (NOW() - COALESCE(last_accessed, created_at)))
