@@ -132,6 +132,8 @@ async def reawaken(memories: list[Any]) -> int:
                 " properties = COALESCE(properties, '{}'::jsonb) || CAST(:note AS jsonb)"
                 " WHERE id = ANY(:ids) AND tenant_id = :t AND status = 'archived'"
                 " AND NOT (COALESCE(properties, '{}'::jsonb) ?| ARRAY['forgotten', 'undone'])"
+                # Archived by the owner (memory page) or a clean-up: their call, not recall's.
+                " AND NOT (COALESCE(properties, '{}'::jsonb) ? 'archived_by')"
             ),
             {"ids": ids, "t": get_current_tenant_id(), "note": note},
         )

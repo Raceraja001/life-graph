@@ -16,12 +16,14 @@ to the nightly :class:`ConsolidationPipeline`.
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select, update
+from sqlalchemy import cast, func, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory, MemorySession
@@ -226,6 +228,10 @@ class MicroConsolidator:
                             .values(
                                 status="superseded",
                                 superseded_by=existing.id,
+                                # A duplicate, not an earlier value (services/memory_tiers.py).
+                                properties=func.coalesce(Memory.properties, cast("{}", JSONB)).op(
+                                    "||"
+                                )(cast(json.dumps({"merged_into": str(existing.id)}), JSONB)),
                             )
                         )
                         await session.commit()

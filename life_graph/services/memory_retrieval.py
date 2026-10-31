@@ -119,12 +119,14 @@ async def _with_neighbours(tenant_id: str, candidates: list[Any]) -> list[Any]:
     return candidates + [m for m in linked if m.id not in known]
 
 
-async def retrieve(question: str, limit: int = 6) -> list[Any] | None:
+async def retrieve(question: str, limit: int = 6, *, cold: bool = False) -> list[Any] | None:
     """Memories of the current tenant that help answer *question*, best first.
 
     Active memories first; archived and replaced ones (services/memory_tiers.py)
     when none of those helps, or alongside them when the question is about the
-    past. ``[]`` means memory was searched and nothing helps; ``None`` means it
+    past — only for a caller that labels them (*cold*, services/memory_context.py
+    render); /ask and the dashboard chat would pass an old value on as current.
+    ``[]`` means memory was searched and nothing helps; ``None`` means it
     could not be searched (no embedding), which a caller must not present as
     "nothing remembered". Falls back to the plain search order when the judge
     cannot answer, so a model outage costs precision, never the memories
@@ -208,7 +210,7 @@ async def retrieve(question: str, limit: int = 6) -> list[Any] | None:
         # Asked about a time: other days' summaries only blur the answer.
         and not (window is not None and (m.properties or {}).get("kind") == episodes.KIND)
     ]
-    cold_too = settings.memory_cold_tier
+    cold_too = cold and settings.memory_cold_tier
     past = cold_too and memory_tiers.asks_about_past(question)
     if past:
         # "Where did I work before?": how things were is in the cold tier.
@@ -217,7 +219,10 @@ async def retrieve(question: str, limit: int = 6) -> list[Any] | None:
     picked = await _judged(asked, memories) if memories else []
     if picked is None:
         logger.warning("Memory relevance judge gave no answer; using the search order")
-        return (dated + memories)[:limit]
+        # Unjudged, so active ones only: an unjudged cold hit is a guess, and
+        # being returned would reawaken it (services/memory_tiers.py).
+        warm = [m for m in memories if getattr(m, "status", "active") == "active"]
+        return (dated + warm)[:limit]
     if not picked and not dated and cold_too and not past:
         # Nothing warm answers: older memories might (nothing is forgotten).
         cold = await _cold(embedding, question)
