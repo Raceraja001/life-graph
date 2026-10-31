@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-10-31 07:58 UTC` from `master` @ `ec8a143`
+Generated `2026-10-31 14:58 UTC` from `master` @ `e0470dc`
 
 ---
 
@@ -22,11 +22,11 @@ Generated `2026-10-31 07:58 UTC` from `master` @ `ec8a143`
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
-| Scheduled jobs | **32** |
-| Config settings | **272** (prefix `LIFE_GRAPH_`) |
-| Test functions | **3946** in 454 files |
+| Scheduled jobs | **33** |
+| Config settings | **276** (prefix `LIFE_GRAPH_`) |
+| Test functions | **3956** in 456 files |
 | Dashboard pages | **22** |
-| Python | 440 files, 113,202 lines |
+| Python | 444 files, 113,881 lines |
 
 ---
 
@@ -371,7 +371,7 @@ Generated `2026-10-31 07:58 UTC` from `master` @ `ec8a143`
 
 ## Scheduled jobs
 
-32 ARQ cron jobs (times are UTC).
+33 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -385,6 +385,7 @@ Generated `2026-10-31 07:58 UTC` from `master` @ `ec8a143`
 | `purge_temporary_chats` | hourly at :27 | `life_graph.workers.temporary_chats.purge_temporary_chats` |
 | `run_all_consolidations` | 03:00 | `life_graph.workers.tasks.run_all_consolidations` |
 | `run_all_decay_sweeps` | 04:00 | `life_graph.workers.decay.run_all_decay_sweeps` |
+| `run_all_form_fills` | 03:20 | `life_graph.workers.form_fill.run_all_form_fills` |
 | `run_all_merge_suggestions` | 03:45 | `life_graph.workers.tasks.run_all_merge_suggestions` |
 | `run_all_research` | Sun 02:00 | `life_graph.workers.tasks.run_all_research` |
 | `run_assistant_daily` | daily at (settings.brief_hour_utc - 1) % 24:30 | `life_graph.workers.tasks.run_assistant_daily` |
@@ -503,16 +504,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 344 | 3140 |
-| `tests/integration/` | 109 | 794 |
+| `tests/unit/` | 345 | 3146 |
+| `tests/integration/` | 110 | 798 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **454** | **3946** |
+| **total** | **456** | **3956** |
 
 ---
 
 ## Configuration
 
-272 settings, all overridable by environment variable.
+276 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -553,6 +554,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_PENDING_MEMORY_EXPIRY_DAYS` | `14` |
 | `LIFE_GRAPH_MEMORY_START_AT` | `''` |
 | `LIFE_GRAPH_MEMORY_JUDGE_MODEL` | `''` |
+| `LIFE_GRAPH_MEMORY_COLD_TIER` | `True` |
+| `LIFE_GRAPH_MEMORY_LINKS` | `True` |
+| `LIFE_GRAPH_MEMORY_STRENGTH_RANK` | `False` |
+| `LIFE_GRAPH_MEMORY_FORM_FILL` | `True` |
 | `LIFE_GRAPH_PROFILE_CARD_MAX_ITEMS` | `40` |
 | `LIFE_GRAPH_DECAY_DEFAULT_LAMBDA` | `0.1` |
 | `LIFE_GRAPH_DEDUP_ENABLED` | `True` |
