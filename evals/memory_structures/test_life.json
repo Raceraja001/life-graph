@@ -1,0 +1,2082 @@
+{
+ "about": "Synthetic test life for the memory-structure bake-off (2026-10-30). Fictional person, every fact invented; no owner data. Messages are what the person says to Jarvis, in date order. Questions are asked 'today' = 2026-10-30. Scoring: an answer passes when every group in 'must' has at least one alternative in the answer (case-insensitive) and no 'must_not' term appears; 'abstain' questions pass only when the answer says it doesn't know and states no value. Alternatives of 3 characters or fewer match as whole words only (so 'go' does not match 'good').",
+ "person": "Karthik Rajan",
+ "today": "2026-10-30",
+ "messages": [
+  {
+   "id": "m01",
+   "date": "2025-01-06",
+   "text": "My name is Karthik Rajan, but everyone calls me Karthi."
+  },
+  {
+   "id": "m02",
+   "date": "2025-01-06",
+   "text": "I live in RS Puram, Coimbatore with my family."
+  },
+  {
+   "id": "m03",
+   "date": "2025-01-07",
+   "text": "My wife Priyadharshini — I call her Priya — teaches maths at Sunrise Matric School."
+  },
+  {
+   "id": "m04",
+   "date": "2025-01-07",
+   "text": "Priya's birthday is on 14 February."
+  },
+  {
+   "id": "m05",
+   "date": "2025-01-08",
+   "text": "We have two kids: our daughter Anushka, we call her Anu, is 7, and our son Vikram (Vicky) is 3."
+  },
+  {
+   "id": "m06",
+   "date": "2025-01-08",
+   "text": "Anu's birthday is 3 August."
+  },
+  {
+   "id": "m07",
+   "date": "2025-01-09",
+   "text": "Anu studies in class 2 at Green Valley School."
+  },
+  {
+   "id": "m08",
+   "date": "2025-01-10",
+   "text": "My parents live in Madurai, that's my hometown. Appa is Ramasamy and Amma is Lakshmi."
+  },
+  {
+   "id": "m09",
+   "date": "2025-01-10",
+   "text": "My sister Divya lives in Bangalore and works at Infosys."
+  },
+  {
+   "id": "m10",
+   "date": "2025-01-12",
+   "text": "Our wedding anniversary is 22 November."
+  },
+  {
+   "id": "m11",
+   "date": "2025-01-15",
+   "text": "I work at Nimbus Soft as a senior backend engineer."
+  },
+  {
+   "id": "m12",
+   "date": "2025-01-15",
+   "text": "At Nimbus my main project is PayRail, a payments service written in Java."
+  },
+  {
+   "id": "m13",
+   "date": "2025-01-20",
+   "text": "My side project is FarmLink, an app that helps farmers sell produce directly. I'm building it with my friend Arjun."
+  },
+  {
+   "id": "m14",
+   "date": "2025-01-20",
+   "text": "FarmLink uses Next.js and Firebase."
+  },
+  {
+   "id": "m15",
+   "date": "2025-01-22",
+   "text": "I also run a home lab on a Raspberry Pi 5 with Proxmox."
+  },
+  {
+   "id": "m16",
+   "date": "2025-02-01",
+   "text": "I play cricket every Sunday morning with the Peelamedu Strikers. I'm the opening batsman."
+  },
+  {
+   "id": "m17",
+   "date": "2025-02-02",
+   "text": "Photography is my other hobby. I shoot with a Canon 200D."
+  },
+  {
+   "id": "m18",
+   "date": "2025-02-03",
+   "text": "I've started learning the veena from Mrs. Saraswathi on Wednesday evenings."
+  },
+  {
+   "id": "m19",
+   "date": "2025-02-05",
+   "text": "I play FIFA on my PS5 to relax at night."
+  },
+  {
+   "id": "m20",
+   "date": "2025-02-10",
+   "text": "My phone is an iPhone 15."
+  },
+  {
+   "id": "m21",
+   "date": "2025-02-10",
+   "text": "For work I use a ThinkPad X1 Carbon."
+  },
+  {
+   "id": "m22",
+   "date": "2025-02-12",
+   "text": "We drive a Hyundai Creta, bought in 2024. I also ride a Royal Enfield Classic 350."
+  },
+  {
+   "id": "m23",
+   "date": "2025-02-15",
+   "text": "We have a home loan with HDFC; the EMI is 42,000 rupees on the 5th of every month."
+  },
+  {
+   "id": "m24",
+   "date": "2025-02-15",
+   "text": "Our monthly household budget is 60,000 rupees."
+  },
+  {
+   "id": "m25",
+   "date": "2025-02-16",
+   "text": "I put 10,000 rupees a month in a Nifty index fund SIP."
+  },
+  {
+   "id": "m26",
+   "date": "2025-02-20",
+   "text": "I'm allergic to peanuts."
+  },
+  {
+   "id": "m27",
+   "date": "2025-02-20",
+   "text": "My blood group is B positive."
+  },
+  {
+   "id": "m28",
+   "date": "2025-02-21",
+   "text": "I walk 5 km every morning at 6."
+  },
+  {
+   "id": "m29",
+   "date": "2025-02-22",
+   "text": "My dentist is Dr. Kumar at Smile Care, Gandhipuram."
+  },
+  {
+   "id": "m30",
+   "date": "2025-03-01",
+   "text": "I'm vegetarian."
+  },
+  {
+   "id": "m31",
+   "date": "2025-03-01",
+   "text": "I like filter coffee with no sugar."
+  },
+  {
+   "id": "m32",
+   "date": "2025-03-02",
+   "text": "I prefer WhatsApp messages over phone calls."
+  },
+  {
+   "id": "m33",
+   "date": "2025-03-02",
+   "text": "I hate long meetings; 30 minutes is my limit."
+  },
+  {
+   "id": "m34",
+   "date": "2025-03-03",
+   "text": "I prefer dark mode on everything."
+  },
+  {
+   "id": "m35",
+   "date": "2025-03-05",
+   "text": "Our favourite restaurant is Annalakshmi."
+  },
+  {
+   "id": "m36",
+   "date": "2025-03-10",
+   "text": "Maybe I'll learn Japanese next year, not sure yet."
+  },
+  {
+   "id": "m37",
+   "date": "2025-03-12",
+   "text": "What's the weather like today?"
+  },
+  {
+   "id": "m38",
+   "date": "2025-03-12",
+   "text": "Thanks, that helps."
+  },
+  {
+   "id": "m39",
+   "date": "2025-04-02",
+   "text": "Arjun handles the FarmLink backend; I do the frontend and design."
+  },
+  {
+   "id": "m40",
+   "date": "2025-04-05",
+   "text": "FarmLink's first pilot is with the Pollachi Farmers Collective."
+  },
+  {
+   "id": "m41",
+   "date": "2025-05-10",
+   "text": "We went to Japan for 10 days — Tokyo and Kyoto. Best trip ever."
+  },
+  {
+   "id": "m42",
+   "date": "2025-06-01",
+   "text": "I passed the AWS Solutions Architect Associate exam."
+  },
+  {
+   "id": "m43",
+   "date": "2025-06-15",
+   "text": "My boss at Nimbus is Suresh. He's very supportive."
+  },
+  {
+   "id": "m44",
+   "date": "2025-07-01",
+   "text": "என் அம்மாவுக்கு சர்க்கரை நோய் இருக்கு, மாத்திரை சாப்பிடுறாங்க."
+  },
+  {
+   "id": "m45",
+   "date": "2025-07-03",
+   "text": "Appa's tablets come from Apollo Pharmacy in Madurai every month."
+  },
+  {
+   "id": "m46",
+   "date": "2025-08-03",
+   "text": "Anu turned 8 today! We had a party at home."
+  },
+  {
+   "id": "m47",
+   "date": "2025-08-10",
+   "text": "Divya got married to Naveen; he's a doctor in Bangalore."
+  },
+  {
+   "id": "m48",
+   "date": "2025-09-01",
+   "text": "I'm starting to learn Rust in the evenings."
+  },
+  {
+   "id": "m49",
+   "date": "2025-09-20",
+   "text": "I sold my Canon 200D and bought a Sony A7 IV."
+  },
+  {
+   "id": "m50",
+   "date": "2025-10-01",
+   "text": "Big news: I've accepted an offer from Tessera Labs as an engineering manager. I start on 1 December."
+  },
+  {
+   "id": "m51",
+   "date": "2025-11-30",
+   "text": "Last day at Nimbus Soft today."
+  },
+  {
+   "id": "m52",
+   "date": "2025-12-01",
+   "text": "First day at Tessera Labs. My manager here is Meena."
+  },
+  {
+   "id": "m53",
+   "date": "2025-12-05",
+   "text": "At Tessera I lead the Ledgerly team; Ledgerly is a lending platform built with Go and Kafka."
+  },
+  {
+   "id": "m54",
+   "date": "2026-01-10",
+   "text": "We've decided to move to Chennai in March because of my new job."
+  },
+  {
+   "id": "m55",
+   "date": "2026-01-15",
+   "text": "We decided to prepay part of the home loan in January next year."
+  },
+  {
+   "id": "m56",
+   "date": "2026-01-20",
+   "text": "FarmLink is moving from Firebase to PostgreSQL; Firebase got too expensive."
+  },
+  {
+   "id": "m57",
+   "date": "2026-02-14",
+   "text": "Took Priya to dinner for her birthday at Annalakshmi."
+  },
+  {
+   "id": "m58",
+   "date": "2026-03-15",
+   "text": "We moved! We now live in Adyar, Chennai."
+  },
+  {
+   "id": "m59",
+   "date": "2026-03-20",
+   "text": "Anu joined class 3 at Chettinad Vidyashram in Chennai."
+  },
+  {
+   "id": "m60",
+   "date": "2026-03-22",
+   "text": "Priya now teaches maths at Kalakshetra School in Chennai."
+  },
+  {
+   "id": "m61",
+   "date": "2026-04-01",
+   "text": "Vicky started kindergarten at Little Elly, Adyar."
+  },
+  {
+   "id": "m62",
+   "date": "2026-04-05",
+   "text": "My new dentist in Chennai is Dr. Ananya at Pearl Dental."
+  },
+  {
+   "id": "m63",
+   "date": "2026-04-12",
+   "text": "I've joined the Adyar Cricket Club; we play on Saturday mornings now, not Sundays."
+  },
+  {
+   "id": "m64",
+   "date": "2026-04-20",
+   "text": "I switched from the iPhone 15 to a Pixel 9."
+  },
+  {
+   "id": "m65",
+   "date": "2026-05-01",
+   "text": "I stopped the veena classes after the move."
+  },
+  {
+   "id": "m66",
+   "date": "2026-05-10",
+   "text": "FarmLink is now live with 3 farmer collectives: Pollachi, Udumalpet and Theni."
+  },
+  {
+   "id": "m67",
+   "date": "2026-05-15",
+   "text": "Our household budget went up to 75,000 rupees a month in Chennai."
+  },
+  {
+   "id": "m68",
+   "date": "2026-06-01",
+   "text": "I increased my SIP to 15,000 rupees a month."
+  },
+  {
+   "id": "m69",
+   "date": "2026-06-10",
+   "text": "Ledgerly runs on AWS EKS."
+  },
+  {
+   "id": "m70",
+   "date": "2026-06-12",
+   "text": "Ravi from my team is the tech lead on Ledgerly's payments module."
+  },
+  {
+   "id": "m93",
+   "date": "2026-06-20",
+   "text": "Vicky turned 5 today."
+  },
+  {
+   "id": "m71",
+   "date": "2026-07-01",
+   "text": "Naveen and Divya had a baby boy, Aadhav."
+  },
+  {
+   "id": "m72",
+   "date": "2026-07-05",
+   "text": "எனக்கு ப்ரியா செய்யும் தோசை ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "m73",
+   "date": "2026-07-20",
+   "text": "I'm thinking about buying an electric car, maybe next year."
+  },
+  {
+   "id": "m74",
+   "date": "2026-08-01",
+   "text": "We decided not to buy a new car this year."
+  },
+  {
+   "id": "m75",
+   "date": "2026-08-03",
+   "text": "Anu is 9 now."
+  },
+  {
+   "id": "m76",
+   "date": "2026-08-15",
+   "text": "My home lab moved to an Intel NUC; the Raspberry Pi is retired."
+  },
+  {
+   "id": "m77",
+   "date": "2026-09-01",
+   "text": "I finished the Rust book and rewrote my backup tool in Rust."
+  },
+  {
+   "id": "m78",
+   "date": "2026-09-05",
+   "text": "Our client for Ledgerly's first launch is Kaveri Finance."
+  },
+  {
+   "id": "m79",
+   "date": "2026-09-10",
+   "text": "Ledgerly went live for Kaveri Finance today."
+  },
+  {
+   "id": "m80",
+   "date": "2026-09-15",
+   "text": "We're planning a trip to Munnar for the Christmas holidays."
+  },
+  {
+   "id": "m81",
+   "date": "2026-09-18",
+   "text": "Appa's 70th birthday party will be on 9 January 2027 in Madurai."
+  },
+  {
+   "id": "m82",
+   "date": "2026-09-20",
+   "text": "Arjun is now FarmLink's CTO; I'm the CEO."
+  },
+  {
+   "id": "m83",
+   "date": "2026-10-01",
+   "text": "Meena moved to another team; my new manager is Gopal."
+  },
+  {
+   "id": "m84",
+   "date": "2026-10-05",
+   "text": "Priyavukku eppavum malli poo pudikkum — Priya always loves jasmine flowers."
+  },
+  {
+   "id": "m85",
+   "date": "2026-10-08",
+   "text": "Can you remind me what time it is?"
+  },
+  {
+   "id": "m86",
+   "date": "2026-10-10",
+   "text": "I take Vicky to swimming classes at the Anna Nagar pool on Tuesdays."
+  },
+  {
+   "id": "m87",
+   "date": "2026-10-12",
+   "text": "Actually, the swimming classes are at the YMCA pool in Nandanam, not Anna Nagar."
+  },
+  {
+   "id": "m88",
+   "date": "2026-10-15",
+   "text": "I use Obsidian for my notes and Linear for FarmLink tasks."
+  },
+  {
+   "id": "m89",
+   "date": "2026-10-18",
+   "text": "Remember that my passport expires in June 2027."
+  },
+  {
+   "id": "m90",
+   "date": "2026-10-20",
+   "text": "My Royal Enfield needs its service; I take it to Sri Murugan Motors."
+  },
+  {
+   "id": "m91",
+   "date": "2026-10-25",
+   "text": "Kaveri Finance renewed the Ledgerly contract for two years."
+  },
+  {
+   "id": "m92",
+   "date": "2026-10-28",
+   "text": "We booked a homestay in Munnar from 23 to 27 December."
+  }
+ ],
+ "questions": [
+  {
+   "id": "q001",
+   "kind": "simple",
+   "q": "What is my name?",
+   "must": [
+    [
+     "karthik"
+    ]
+   ]
+  },
+  {
+   "id": "q002",
+   "kind": "simple",
+   "q": "What do people call me?",
+   "must": [
+    [
+     "karthi"
+    ]
+   ]
+  },
+  {
+   "id": "q003",
+   "kind": "simple",
+   "q": "What is my blood group?",
+   "must": [
+    [
+     "b positive",
+     "b+",
+     "b +ve"
+    ]
+   ]
+  },
+  {
+   "id": "q004",
+   "kind": "simple",
+   "q": "What am I allergic to?",
+   "must": [
+    [
+     "peanut"
+    ]
+   ]
+  },
+  {
+   "id": "q005",
+   "kind": "simple",
+   "q": "Am I vegetarian?",
+   "must": [
+    [
+     "yes",
+     "vegetarian"
+    ]
+   ],
+   "must_not": [
+    "not vegetarian",
+    "non-vegetarian"
+   ]
+  },
+  {
+   "id": "q006",
+   "kind": "simple",
+   "q": "How do I take my coffee?",
+   "must": [
+    [
+     "filter"
+    ],
+    [
+     "no sugar",
+     "without sugar"
+    ]
+   ]
+  },
+  {
+   "id": "q007",
+   "kind": "simple",
+   "q": "Do I prefer calls or messages?",
+   "must": [
+    [
+     "whatsapp",
+     "messages"
+    ]
+   ]
+  },
+  {
+   "id": "q008",
+   "kind": "simple",
+   "q": "How long is too long for a meeting for me?",
+   "must": [
+    [
+     "30"
+    ]
+   ]
+  },
+  {
+   "id": "q009",
+   "kind": "simple",
+   "q": "Which theme do I like on my apps?",
+   "must": [
+    [
+     "dark"
+    ]
+   ]
+  },
+  {
+   "id": "q010",
+   "kind": "simple",
+   "q": "What is our favourite restaurant?",
+   "must": [
+    [
+     "annalakshmi"
+    ]
+   ]
+  },
+  {
+   "id": "q011",
+   "kind": "simple",
+   "q": "How far do I walk in the morning?",
+   "must": [
+    [
+     "5 km",
+     "5km",
+     "five"
+    ]
+   ]
+  },
+  {
+   "id": "q012",
+   "kind": "simple",
+   "q": "What laptop do I use for work?",
+   "must": [
+    [
+     "thinkpad"
+    ]
+   ]
+  },
+  {
+   "id": "q013",
+   "kind": "simple",
+   "q": "What motorbike do I ride?",
+   "must": [
+    [
+     "royal enfield",
+     "classic 350"
+    ]
+   ]
+  },
+  {
+   "id": "q014",
+   "kind": "simple",
+   "q": "Which bank is our home loan with?",
+   "must": [
+    [
+     "hdfc"
+    ]
+   ]
+  },
+  {
+   "id": "q015",
+   "kind": "simple",
+   "q": "How much is the home loan EMI and when is it due?",
+   "must": [
+    [
+     "42,000",
+     "42000",
+     "42k"
+    ],
+    [
+     "5th",
+     "fifth"
+    ]
+   ]
+  },
+  {
+   "id": "q016",
+   "kind": "simple",
+   "q": "When does my passport expire?",
+   "must": [
+    [
+     "june 2027",
+     "2027"
+    ]
+   ]
+  },
+  {
+   "id": "q017",
+   "kind": "simple",
+   "q": "Which certification did I pass in 2025?",
+   "must": [
+    [
+     "aws"
+    ],
+    [
+     "solutions architect"
+    ]
+   ]
+  },
+  {
+   "id": "q018",
+   "kind": "simple",
+   "q": "Where did we travel in May 2025?",
+   "must": [
+    [
+     "japan",
+     "tokyo",
+     "kyoto"
+    ]
+   ]
+  },
+  {
+   "id": "q019",
+   "kind": "simple",
+   "q": "What note-taking app do I use?",
+   "must": [
+    [
+     "obsidian"
+    ]
+   ]
+  },
+  {
+   "id": "q020",
+   "kind": "simple",
+   "q": "Where do I get my Royal Enfield serviced?",
+   "must": [
+    [
+     "sri murugan"
+    ]
+   ]
+  },
+  {
+   "id": "q021",
+   "kind": "simple",
+   "q": "Which game do I play on my PS5?",
+   "must": [
+    [
+     "fifa"
+    ]
+   ]
+  },
+  {
+   "id": "q022",
+   "kind": "simple",
+   "q": "When is our wedding anniversary?",
+   "must": [
+    [
+     "22 nov",
+     "november 22",
+     "22nd november",
+     "22 november"
+    ]
+   ]
+  },
+  {
+   "id": "q023",
+   "kind": "simple",
+   "q": "What is my side project called?",
+   "must": [
+    [
+     "farmlink"
+    ]
+   ]
+  },
+  {
+   "id": "q024",
+   "kind": "simple",
+   "q": "Which car do we have?",
+   "must": [
+    [
+     "creta"
+    ]
+   ]
+  },
+  {
+   "id": "q025",
+   "kind": "simple",
+   "q": "Where is my hometown?",
+   "must": [
+    [
+     "madurai"
+    ]
+   ]
+  },
+  {
+   "id": "q026",
+   "kind": "simple",
+   "q": "What tool do we use for FarmLink tasks?",
+   "must": [
+    [
+     "linear"
+    ]
+   ]
+  },
+  {
+   "id": "q027",
+   "kind": "simple",
+   "q": "Which school does Priya teach at now?",
+   "must": [
+    [
+     "kalakshetra"
+    ]
+   ],
+   "must_not": [
+    "sunrise"
+   ]
+  },
+  {
+   "id": "q028",
+   "kind": "simple",
+   "q": "What do I do on weekday mornings at 6?",
+   "must": [
+    [
+     "walk"
+    ]
+   ]
+  },
+  {
+   "id": "q029",
+   "kind": "simple",
+   "q": "What does Priya love?",
+   "must": [
+    [
+     "jasmine",
+     "malli"
+    ]
+   ]
+  },
+  {
+   "id": "q030",
+   "kind": "simple",
+   "q": "What did I rewrite in Rust?",
+   "must": [
+    [
+     "backup"
+    ]
+   ]
+  },
+  {
+   "id": "q031",
+   "kind": "multi_hop",
+   "q": "When is my wife's birthday?",
+   "must": [
+    [
+     "14 feb",
+     "february 14",
+     "14th february",
+     "14 february"
+    ]
+   ]
+  },
+  {
+   "id": "q032",
+   "kind": "multi_hop",
+   "q": "What subject does my wife teach?",
+   "must": [
+    [
+     "math"
+    ]
+   ]
+  },
+  {
+   "id": "q033",
+   "kind": "multi_hop",
+   "q": "Which school does my daughter go to now?",
+   "must": [
+    [
+     "chettinad"
+    ]
+   ],
+   "must_not": [
+    "green valley"
+   ]
+  },
+  {
+   "id": "q034",
+   "kind": "multi_hop",
+   "q": "Which class is my daughter in?",
+   "must": [
+    [
+     "3",
+     "three"
+    ]
+   ]
+  },
+  {
+   "id": "q035",
+   "kind": "multi_hop",
+   "q": "Where does my son go to kindergarten?",
+   "must": [
+    [
+     "little elly"
+    ]
+   ]
+  },
+  {
+   "id": "q036",
+   "kind": "multi_hop",
+   "q": "What is my father's name?",
+   "must": [
+    [
+     "ramasamy"
+    ]
+   ]
+  },
+  {
+   "id": "q037",
+   "kind": "multi_hop",
+   "q": "Which city do my parents live in?",
+   "must": [
+    [
+     "madurai"
+    ]
+   ]
+  },
+  {
+   "id": "q038",
+   "kind": "multi_hop",
+   "q": "Who is my sister married to?",
+   "must": [
+    [
+     "naveen"
+    ]
+   ]
+  },
+  {
+   "id": "q039",
+   "kind": "multi_hop",
+   "q": "What does my brother-in-law do?",
+   "must": [
+    [
+     "doctor"
+    ]
+   ]
+  },
+  {
+   "id": "q040",
+   "kind": "multi_hop",
+   "q": "What is my nephew's name?",
+   "must": [
+    [
+     "aadhav"
+    ]
+   ]
+  },
+  {
+   "id": "q041",
+   "kind": "multi_hop",
+   "q": "Where does my sister work?",
+   "must": [
+    [
+     "infosys"
+    ]
+   ]
+  },
+  {
+   "id": "q042",
+   "kind": "multi_hop",
+   "q": "What tech stack does my side project use now?",
+   "must": [
+    [
+     "next"
+    ],
+    [
+     "postgres"
+    ]
+   ],
+   "must_not": [
+    "uses firebase"
+   ]
+  },
+  {
+   "id": "q043",
+   "kind": "multi_hop",
+   "q": "Who is building my side project with me?",
+   "must": [
+    [
+     "arjun"
+    ]
+   ]
+  },
+  {
+   "id": "q044",
+   "kind": "multi_hop",
+   "q": "What is Arjun's role in FarmLink now?",
+   "must": [
+    [
+     "cto"
+    ]
+   ]
+  },
+  {
+   "id": "q045",
+   "kind": "multi_hop",
+   "q": "What language is the project I lead at work written in?",
+   "must": [
+    [
+     "go",
+     "golang"
+    ]
+   ]
+  },
+  {
+   "id": "q046",
+   "kind": "multi_hop",
+   "q": "Where does the project I lead at work run?",
+   "must": [
+    [
+     "eks",
+     "aws"
+    ]
+   ]
+  },
+  {
+   "id": "q047",
+   "kind": "multi_hop",
+   "q": "Who is the tech lead on Ledgerly's payments module?",
+   "must": [
+    [
+     "ravi"
+    ]
+   ]
+  },
+  {
+   "id": "q048",
+   "kind": "multi_hop",
+   "q": "Which client went live on the project I lead at work?",
+   "must": [
+    [
+     "kaveri"
+    ]
+   ]
+  },
+  {
+   "id": "q049",
+   "kind": "multi_hop",
+   "q": "Which of my projects use Postgres?",
+   "must": [
+    [
+     "farmlink"
+    ]
+   ]
+  },
+  {
+   "id": "q050",
+   "kind": "multi_hop",
+   "q": "Which farmer collectives use my side project?",
+   "must": [
+    [
+     "pollachi"
+    ],
+    [
+     "udumalpet"
+    ],
+    [
+     "theni"
+    ]
+   ]
+  },
+  {
+   "id": "q051",
+   "kind": "multi_hop",
+   "q": "What does my mother take medicine for?",
+   "must": [
+    [
+     "diabet",
+     "sugar"
+    ]
+   ]
+  },
+  {
+   "id": "q052",
+   "kind": "multi_hop",
+   "q": "Where do my father's tablets come from?",
+   "must": [
+    [
+     "apollo"
+    ]
+   ]
+  },
+  {
+   "id": "q053",
+   "kind": "multi_hop",
+   "q": "Which camera do I use for my photography hobby now?",
+   "must": [
+    [
+     "sony",
+     "a7"
+    ]
+   ],
+   "must_not": [
+    "canon 200d is"
+   ]
+  },
+  {
+   "id": "q054",
+   "kind": "multi_hop",
+   "q": "What does my wife cook that I love?",
+   "must": [
+    [
+     "dosa",
+     "தோசை"
+    ]
+   ]
+  },
+  {
+   "id": "q055",
+   "kind": "multi_hop",
+   "q": "Where is my son's swimming class?",
+   "must": [
+    [
+     "ymca",
+     "nandanam"
+    ]
+   ],
+   "must_not": [
+    "anna nagar"
+   ]
+  },
+  {
+   "id": "q056",
+   "kind": "multi_hop",
+   "q": "On which day is my son's swimming class?",
+   "must": [
+    [
+     "tuesday"
+    ]
+   ]
+  },
+  {
+   "id": "q057",
+   "kind": "multi_hop",
+   "q": "Where will my father's 70th birthday party be?",
+   "must": [
+    [
+     "madurai"
+    ]
+   ]
+  },
+  {
+   "id": "q058",
+   "kind": "multi_hop",
+   "q": "Which company does my manager work for?",
+   "must": [
+    [
+     "tessera"
+    ]
+   ]
+  },
+  {
+   "id": "q059",
+   "kind": "multi_hop",
+   "q": "What instrument was I learning before I moved to Chennai?",
+   "must": [
+    [
+     "veena"
+    ]
+   ]
+  },
+  {
+   "id": "q060",
+   "kind": "multi_hop",
+   "q": "How old is my daughter now?",
+   "must": [
+    [
+     "9",
+     "nine"
+    ]
+   ]
+  },
+  {
+   "id": "q061",
+   "kind": "current",
+   "q": "Where do I live?",
+   "must": [
+    [
+     "adyar",
+     "chennai"
+    ]
+   ],
+   "must_not": [
+    "rs puram",
+    "live in coimbatore"
+   ]
+  },
+  {
+   "id": "q062",
+   "kind": "current",
+   "q": "Where do I work?",
+   "must": [
+    [
+     "tessera"
+    ]
+   ],
+   "must_not": [
+    "work at nimbus"
+   ]
+  },
+  {
+   "id": "q063",
+   "kind": "current",
+   "q": "What is my job title?",
+   "must": [
+    [
+     "engineering manager"
+    ]
+   ]
+  },
+  {
+   "id": "q064",
+   "kind": "current",
+   "q": "Who is my manager?",
+   "must": [
+    [
+     "gopal"
+    ]
+   ],
+   "must_not": [
+    "meena is",
+    "suresh"
+   ]
+  },
+  {
+   "id": "q065",
+   "kind": "current",
+   "q": "Which phone do I use?",
+   "must": [
+    [
+     "pixel"
+    ]
+   ],
+   "must_not": [
+    "iphone 15 is"
+   ]
+  },
+  {
+   "id": "q066",
+   "kind": "current",
+   "q": "What is our monthly household budget?",
+   "must": [
+    [
+     "75,000",
+     "75000",
+     "75k"
+    ]
+   ]
+  },
+  {
+   "id": "q067",
+   "kind": "current",
+   "q": "How much do I put in my SIP each month?",
+   "must": [
+    [
+     "15,000",
+     "15000",
+     "15k"
+    ]
+   ]
+  },
+  {
+   "id": "q068",
+   "kind": "current",
+   "q": "Who is my dentist?",
+   "must": [
+    [
+     "ananya"
+    ]
+   ],
+   "must_not": [
+    "dr. kumar is"
+   ]
+  },
+  {
+   "id": "q069",
+   "kind": "current",
+   "q": "Which day do I play cricket?",
+   "must": [
+    [
+     "saturday"
+    ]
+   ]
+  },
+  {
+   "id": "q070",
+   "kind": "current",
+   "q": "Which cricket club do I play for?",
+   "must": [
+    [
+     "adyar cricket"
+    ]
+   ]
+  },
+  {
+   "id": "q071",
+   "kind": "current",
+   "q": "What does my home lab run on?",
+   "must": [
+    [
+     "nuc"
+    ]
+   ]
+  },
+  {
+   "id": "q072",
+   "kind": "current",
+   "q": "Am I still learning the veena?",
+   "must": [
+    [
+     "stopped",
+     "no longer",
+     "not anymore",
+     "not learning",
+     "discontinued",
+     "not to continue",
+     "not continuing",
+     "gave up",
+     "quit"
+    ]
+   ]
+  },
+  {
+   "id": "q073",
+   "kind": "current",
+   "q": "What is my role at FarmLink?",
+   "must": [
+    [
+     "ceo"
+    ]
+   ]
+  },
+  {
+   "id": "q074",
+   "kind": "current",
+   "q": "Which database does FarmLink use?",
+   "must": [
+    [
+     "postgres"
+    ]
+   ]
+  },
+  {
+   "id": "q075",
+   "kind": "current",
+   "q": "Are we buying a new car this year?",
+   "must": [
+    [
+     "not buy",
+     "not buying",
+     "decided not",
+     "no new car",
+     "won't"
+    ]
+   ]
+  },
+  {
+   "id": "q076",
+   "kind": "past",
+   "q": "Where did I live before Chennai?",
+   "must": [
+    [
+     "coimbatore",
+     "rs puram"
+    ]
+   ]
+  },
+  {
+   "id": "q077",
+   "kind": "past",
+   "q": "Where did I work before Tessera Labs?",
+   "must": [
+    [
+     "nimbus"
+    ]
+   ]
+  },
+  {
+   "id": "q078",
+   "kind": "past",
+   "q": "What was my project at my previous job?",
+   "must": [
+    [
+     "payrail"
+    ]
+   ]
+  },
+  {
+   "id": "q079",
+   "kind": "past",
+   "q": "Who was my boss at Nimbus?",
+   "must": [
+    [
+     "suresh"
+    ]
+   ]
+  },
+  {
+   "id": "q080",
+   "kind": "past",
+   "q": "What phone did I have before the Pixel?",
+   "must": [
+    [
+     "iphone"
+    ]
+   ]
+  },
+  {
+   "id": "q081",
+   "kind": "past",
+   "q": "Which camera did I use before the Sony?",
+   "must": [
+    [
+     "canon"
+    ]
+   ]
+  },
+  {
+   "id": "q082",
+   "kind": "past",
+   "q": "Which database did FarmLink use at first?",
+   "must": [
+    [
+     "firebase"
+    ]
+   ]
+  },
+  {
+   "id": "q083",
+   "kind": "past",
+   "q": "Which school did Anu go to in Coimbatore?",
+   "must": [
+    [
+     "green valley"
+    ]
+   ]
+  },
+  {
+   "id": "q084",
+   "kind": "past",
+   "q": "When did I move to Chennai?",
+   "must": [
+    [
+     "march 2026",
+     "march"
+    ]
+   ]
+  },
+  {
+   "id": "q085",
+   "kind": "past",
+   "q": "Who was my first manager at Tessera?",
+   "must": [
+    [
+     "meena"
+    ]
+   ]
+  },
+  {
+   "id": "q086",
+   "kind": "alias",
+   "q": "When is Priyadharshini's birthday?",
+   "must": [
+    [
+     "14 feb",
+     "february 14",
+     "14th february",
+     "14 february"
+    ]
+   ]
+  },
+  {
+   "id": "q087",
+   "kind": "alias",
+   "q": "Which school does Anushka attend?",
+   "must": [
+    [
+     "chettinad"
+    ]
+   ]
+  },
+  {
+   "id": "q088",
+   "kind": "alias",
+   "q": "How old is Vikram?",
+   "must": [
+    [
+     "5",
+     "five"
+    ]
+   ]
+  },
+  {
+   "id": "q089",
+   "kind": "alias",
+   "q": "Where does Vicky go to school?",
+   "must": [
+    [
+     "little elly"
+    ]
+   ]
+  },
+  {
+   "id": "q090",
+   "kind": "alias",
+   "q": "What is Amma's health issue?",
+   "must": [
+    [
+     "diabet",
+     "sugar"
+    ]
+   ]
+  },
+  {
+   "id": "q091",
+   "kind": "alias",
+   "q": "What is Appa's name?",
+   "must": [
+    [
+     "ramasamy"
+    ]
+   ]
+  },
+  {
+   "id": "q092",
+   "kind": "alias",
+   "q": "What is Lakshmi's relation to me?",
+   "must": [
+    [
+     "mother",
+     "amma",
+     "mom"
+    ]
+   ]
+  },
+  {
+   "id": "q093",
+   "kind": "alias",
+   "q": "Who is Ramasamy?",
+   "must": [
+    [
+     "father",
+     "appa",
+     "dad"
+    ]
+   ]
+  },
+  {
+   "id": "q094",
+   "kind": "alias",
+   "q": "Who is Naveen?",
+   "must": [
+    [
+     "sister",
+     "divya",
+     "brother-in-law"
+    ]
+   ]
+  },
+  {
+   "id": "q095",
+   "kind": "alias",
+   "q": "What is Karthi's blood group?",
+   "must": [
+    [
+     "b positive",
+     "b+",
+     "b +ve"
+    ]
+   ]
+  },
+  {
+   "id": "q096",
+   "kind": "tamil",
+   "q": "என் மனைவியின் பிறந்தநாள் எப்போது?",
+   "must": [
+    [
+     "14",
+     "பிப்ரவரி",
+     "feb"
+    ]
+   ]
+  },
+  {
+   "id": "q097",
+   "kind": "tamil",
+   "q": "நான் இப்போது எங்கே வசிக்கிறேன்?",
+   "must": [
+    [
+     "அடையாறு",
+     "adyar",
+     "சென்னை",
+     "chennai"
+    ]
+   ]
+  },
+  {
+   "id": "q098",
+   "kind": "tamil",
+   "q": "என் அம்மாவுக்கு என்ன உடல்நலப் பிரச்சனை?",
+   "must": [
+    [
+     "சர்க்கரை",
+     "நீரிழிவு",
+     "diabet",
+     "sugar",
+     "டயபிடிஸ்",
+     "டயாபடீஸ்",
+     "டயபெடிஸ்"
+    ]
+   ]
+  },
+  {
+   "id": "q099",
+   "kind": "tamil",
+   "q": "என் மகள் எந்த பள்ளியில் படிக்கிறாள்?",
+   "must": [
+    [
+     "chettinad",
+     "செட்டிநாடு"
+    ]
+   ]
+  },
+  {
+   "id": "q100",
+   "kind": "tamil",
+   "q": "நான் எந்த நிறுவனத்தில் வேலை செய்கிறேன்?",
+   "must": [
+    [
+     "tessera",
+     "டெசரா"
+    ]
+   ]
+  },
+  {
+   "id": "q101",
+   "kind": "tamil",
+   "q": "என் இரத்த வகை என்ன?",
+   "must": [
+    [
+     "b positive",
+     "b+",
+     "b +ve",
+     "பி பாசிட்டிவ்",
+     "பி+"
+    ]
+   ]
+  },
+  {
+   "id": "q102",
+   "kind": "tamil",
+   "q": "எனக்கு எதற்கு ஒவ்வாமை?",
+   "must": [
+    [
+     "peanut",
+     "வேர்க்கடலை",
+     "கடலை"
+    ]
+   ]
+  },
+  {
+   "id": "q103",
+   "kind": "tamil",
+   "q": "ப்ரியா எந்த பள்ளியில் பாடம் நடத்துகிறார்?",
+   "must": [
+    [
+     "kalakshetra",
+     "கலாக்ஷேத்ரா",
+     "கலாச்சேத்ரா",
+     "கலாஷேத்ரா"
+    ]
+   ]
+  },
+  {
+   "id": "q104",
+   "kind": "tamil",
+   "q": "என் அப்பாவின் பெயர் என்ன?",
+   "must": [
+    [
+     "ramasamy",
+     "ராமசாமி"
+    ]
+   ]
+  },
+  {
+   "id": "q105",
+   "kind": "tamil",
+   "q": "எனக்கு எந்த உணவு பிடிக்கும்?",
+   "must": [
+    [
+     "dosa",
+     "தோசை",
+     "filter coffee",
+     "காபி"
+    ]
+   ]
+  },
+  {
+   "id": "q106",
+   "kind": "tamil",
+   "q": "என் போன் எது?",
+   "must": [
+    [
+     "pixel",
+     "பிக்சல்"
+    ]
+   ]
+  },
+  {
+   "id": "q107",
+   "kind": "tamil",
+   "q": "நாங்கள் டிசம்பரில் எங்கே போகிறோம்?",
+   "must": [
+    [
+     "munnar",
+     "மூணார்",
+     "முன்னார்",
+     "மூன்னார்",
+     "മുന്നാ"
+    ]
+   ]
+  },
+  {
+   "id": "q108",
+   "kind": "tamil",
+   "q": "என் மகன் எங்கே நீச்சல் கற்கிறான்?",
+   "must": [
+    [
+     "ymca",
+     "nandanam",
+     "நந்தனம்",
+     "ஒய்எம்சிஏ",
+     "வொய்.எம்.சி.ஏ"
+    ]
+   ]
+  },
+  {
+   "id": "q109",
+   "kind": "tamil",
+   "q": "என் சகோதரி எங்கே வசிக்கிறார்?",
+   "must": [
+    [
+     "bangalore",
+     "bengaluru",
+     "பெங்களூர்",
+     "பங்களூர",
+     "பெங்களூர",
+     "பேங்களூர"
+    ]
+   ]
+  },
+  {
+   "id": "q110",
+   "kind": "tamil",
+   "q": "ப்ரியாவுக்கு எந்த பூ பிடிக்கும்?",
+   "must": [
+    [
+     "jasmine",
+     "malli",
+     "மல்லி"
+    ]
+   ]
+  },
+  {
+   "id": "q111",
+   "kind": "abstain",
+   "q": "What is my wife's blood group?",
+   "abstain": true
+  },
+  {
+   "id": "q112",
+   "kind": "abstain",
+   "q": "What is my car's registration number?",
+   "abstain": true
+  },
+  {
+   "id": "q113",
+   "kind": "abstain",
+   "q": "What is my salary?",
+   "abstain": true
+  },
+  {
+   "id": "q114",
+   "kind": "abstain",
+   "q": "What is Arjun's phone number?",
+   "abstain": true
+  },
+  {
+   "id": "q115",
+   "kind": "abstain",
+   "q": "Which university did I study at?",
+   "abstain": true
+  },
+  {
+   "id": "q116",
+   "kind": "abstain",
+   "q": "What is my mother's birthday?",
+   "abstain": true
+  },
+  {
+   "id": "q117",
+   "kind": "abstain",
+   "q": "Do I speak Japanese?",
+   "abstain": true,
+   "must_not": [
+    "yes, you speak",
+    "you are fluent"
+   ]
+  },
+  {
+   "id": "q118",
+   "kind": "abstain",
+   "q": "What is the name of our dog?",
+   "abstain": true
+  },
+  {
+   "id": "q119",
+   "kind": "abstain",
+   "q": "What is my PAN number?",
+   "abstain": true
+  },
+  {
+   "id": "q120",
+   "kind": "abstain",
+   "q": "Which hospital was Aadhav born in?",
+   "abstain": true
+  },
+  {
+   "id": "q121",
+   "kind": "abstain",
+   "q": "How much did the Sony A7 IV cost?",
+   "abstain": true
+  },
+  {
+   "id": "q122",
+   "kind": "abstain",
+   "q": "What is Gopal's surname?",
+   "abstain": true
+  },
+  {
+   "id": "q123",
+   "kind": "abstain",
+   "q": "Which electric car did I buy?",
+   "abstain": true,
+   "must_not": [
+    "you bought"
+   ]
+  },
+  {
+   "id": "q124",
+   "kind": "abstain",
+   "q": "What time is Vicky's swimming class?",
+   "abstain": true
+  },
+  {
+   "id": "q125",
+   "kind": "abstain",
+   "q": "What is the homestay's name in Munnar?",
+   "abstain": true
+  },
+  {
+   "id": "q126",
+   "kind": "about",
+   "q": "Tell me everything about FarmLink.",
+   "must": [
+    [
+     "farmer"
+    ],
+    [
+     "arjun"
+    ],
+    [
+     "postgres"
+    ],
+    [
+     "pollachi",
+     "udumalpet",
+     "theni",
+     "collective"
+    ],
+    [
+     "ceo",
+     "cto"
+    ]
+   ]
+  },
+  {
+   "id": "q127",
+   "kind": "about",
+   "q": "Tell me about Priya.",
+   "must": [
+    [
+     "wife",
+     "spouse",
+     "married"
+    ],
+    [
+     "math"
+    ],
+    [
+     "kalakshetra"
+    ],
+    [
+     "14 feb",
+     "february 14",
+     "14 february"
+    ]
+   ]
+  },
+  {
+   "id": "q128",
+   "kind": "about",
+   "q": "Tell me about Ledgerly.",
+   "must": [
+    [
+     "lending"
+    ],
+    [
+     "go"
+    ],
+    [
+     "kafka"
+    ],
+    [
+     "kaveri"
+    ]
+   ]
+  },
+  {
+   "id": "q129",
+   "kind": "about",
+   "q": "Tell me about my cricket.",
+   "must": [
+    [
+     "adyar cricket"
+    ],
+    [
+     "saturday"
+    ],
+    [
+     "open"
+    ]
+   ]
+  },
+  {
+   "id": "q130",
+   "kind": "about",
+   "q": "Tell me about my home lab.",
+   "must": [
+    [
+     "nuc"
+    ],
+    [
+     "proxmox"
+    ]
+   ]
+  },
+  {
+   "id": "q131",
+   "kind": "about",
+   "q": "Tell me about Anu.",
+   "must": [
+    [
+     "chettinad"
+    ],
+    [
+     "9",
+     "nine"
+    ],
+    [
+     "3 aug",
+     "august 3",
+     "3 august"
+    ]
+   ]
+  },
+  {
+   "id": "q132",
+   "kind": "about",
+   "q": "Tell me about my money.",
+   "must": [
+    [
+     "hdfc",
+     "home loan"
+    ],
+    [
+     "75,000",
+     "75000",
+     "75k"
+    ],
+    [
+     "15,000",
+     "15000",
+     "15k"
+    ]
+   ]
+  },
+  {
+   "id": "q133",
+   "kind": "about",
+   "q": "Tell me about my December trip.",
+   "must": [
+    [
+     "munnar"
+    ],
+    [
+     "23"
+    ],
+    [
+     "27"
+    ]
+   ]
+  },
+  {
+   "id": "q134",
+   "kind": "about",
+   "q": "Tell me about Divya.",
+   "must": [
+    [
+     "sister",
+     "sibling"
+    ],
+    [
+     "bangalore"
+    ],
+    [
+     "naveen"
+    ],
+    [
+     "aadhav"
+    ]
+   ]
+  },
+  {
+   "id": "q135",
+   "kind": "about",
+   "q": "Tell me about my health.",
+   "must": [
+    [
+     "peanut"
+    ],
+    [
+     "b positive",
+     "b+"
+    ],
+    [
+     "walk"
+    ]
+   ]
+  },
+  {
+   "id": "q136",
+   "kind": "decision",
+   "q": "What did we decide about the home loan?",
+   "must": [
+    [
+     "prepay"
+    ]
+   ]
+  },
+  {
+   "id": "q137",
+   "kind": "decision",
+   "q": "Why did FarmLink move off Firebase?",
+   "must": [
+    [
+     "expensive",
+     "cost"
+    ]
+   ]
+  },
+  {
+   "id": "q138",
+   "kind": "decision",
+   "q": "Why did we move to Chennai?",
+   "must": [
+    [
+     "job",
+     "tessera"
+    ]
+   ]
+  },
+  {
+   "id": "q139",
+   "kind": "decision",
+   "q": "What did I say about learning Japanese?",
+   "must": [
+    [
+     "maybe",
+     "not sure",
+     "might",
+     "consider"
+    ]
+   ],
+   "must_not": [
+    "you are learning japanese"
+   ]
+  },
+  {
+   "id": "q140",
+   "kind": "decision",
+   "q": "What did I decide about buying a car?",
+   "must": [
+    [
+     "not to buy",
+     "not buy",
+     "decided not",
+     "no new car"
+    ]
+   ],
+   "must_not": [
+    "decided to buy"
+   ]
+  }
+ ]
+}

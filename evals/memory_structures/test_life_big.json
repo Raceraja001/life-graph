@@ -1,0 +1,8082 @@
+{
+ "about": "Synthetic test life for the memory-structure bake-off (2026-10-30). Fictional person, every fact invented; no owner data. Messages are what the person says to Jarvis, in date order. Questions are asked 'today' = 2026-10-30. Scoring: an answer passes when every group in 'must' has at least one alternative in the answer (case-insensitive) and no 'must_not' term appears; 'abstain' questions pass only when the answer says it doesn't know and states no value. Alternatives of 3 characters or fewer match as whole words only (so 'go' does not match 'good'). BIG version: the same facts and questions plus 1000 everyday messages (make_big_life.py, seed 20261030); none changes a right answer.",
+ "person": "Karthik Rajan",
+ "today": "2026-10-30",
+ "messages": [
+  {
+   "id": "f0128",
+   "date": "2025-01-02",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0663",
+   "date": "2025-01-02",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0483",
+   "date": "2025-01-03",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0574",
+   "date": "2025-01-03",
+   "kind": "media",
+   "text": "Rewatched Interstellar with the kids."
+  },
+  {
+   "id": "f0191",
+   "date": "2025-01-04",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0988",
+   "date": "2025-01-04",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0516",
+   "date": "2025-01-05",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0575",
+   "date": "2025-01-06",
+   "kind": "cricket",
+   "text": "We won our cricket match by 37 runs today."
+  },
+  {
+   "id": "m01",
+   "date": "2025-01-06",
+   "text": "My name is Karthik Rajan, but everyone calls me Karthi."
+  },
+  {
+   "id": "m02",
+   "date": "2025-01-06",
+   "text": "I live in RS Puram, Coimbatore with my family."
+  },
+  {
+   "id": "m03",
+   "date": "2025-01-07",
+   "text": "My wife Priyadharshini — I call her Priya — teaches maths at Sunrise Matric School."
+  },
+  {
+   "id": "m04",
+   "date": "2025-01-07",
+   "text": "Priya's birthday is on 14 February."
+  },
+  {
+   "id": "f0283",
+   "date": "2025-01-08",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0494",
+   "date": "2025-01-08",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0896",
+   "date": "2025-01-08",
+   "kind": "media",
+   "text": "Rewatched Interstellar with the kids."
+  },
+  {
+   "id": "m05",
+   "date": "2025-01-08",
+   "text": "We have two kids: our daughter Anushka, we call her Anu, is 7, and our son Vikram (Vicky) is 3."
+  },
+  {
+   "id": "m06",
+   "date": "2025-01-08",
+   "text": "Anu's birthday is 3 August."
+  },
+  {
+   "id": "f0099",
+   "date": "2025-01-09",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "m07",
+   "date": "2025-01-09",
+   "text": "Anu studies in class 2 at Green Valley School."
+  },
+  {
+   "id": "m08",
+   "date": "2025-01-10",
+   "text": "My parents live in Madurai, that's my hometown. Appa is Ramasamy and Amma is Lakshmi."
+  },
+  {
+   "id": "m09",
+   "date": "2025-01-10",
+   "text": "My sister Divya lives in Bangalore and works at Infosys."
+  },
+  {
+   "id": "f0124",
+   "date": "2025-01-11",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0569",
+   "date": "2025-01-11",
+   "kind": "outings",
+   "text": "Went to Phoenix mall on Sunday; it was crowded."
+  },
+  {
+   "id": "m10",
+   "date": "2025-01-12",
+   "text": "Our wedding anniversary is 22 November."
+  },
+  {
+   "id": "f0891",
+   "date": "2025-01-13",
+   "kind": "others",
+   "text": "Naveen's hospital is opening a new wing."
+  },
+  {
+   "id": "f0712",
+   "date": "2025-01-14",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "f0535",
+   "date": "2025-01-15",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "m11",
+   "date": "2025-01-15",
+   "text": "I work at Nimbus Soft as a senior backend engineer."
+  },
+  {
+   "id": "m12",
+   "date": "2025-01-15",
+   "text": "At Nimbus my main project is PayRail, a payments service written in Java."
+  },
+  {
+   "id": "f0743",
+   "date": "2025-01-16",
+   "kind": "errands",
+   "text": "Spent 3950 rupees on groceries today."
+  },
+  {
+   "id": "f0240",
+   "date": "2025-01-17",
+   "kind": "media",
+   "text": "Started reading Atomic Habits."
+  },
+  {
+   "id": "f0367",
+   "date": "2025-01-17",
+   "kind": "media",
+   "text": "Watched 96 last night; pretty good."
+  },
+  {
+   "id": "f0916",
+   "date": "2025-01-18",
+   "kind": "work",
+   "text": "Gave a short talk to the team about testing."
+  },
+  {
+   "id": "f0764",
+   "date": "2025-01-19",
+   "kind": "outings",
+   "text": "Had lunch at Saravana Bhavan with friends."
+  },
+  {
+   "id": "f0189",
+   "date": "2025-01-20",
+   "kind": "others",
+   "text": "My neighbour Mr. Iyer drives a Tata Nexon EV."
+  },
+  {
+   "id": "f0868",
+   "date": "2025-01-20",
+   "kind": "small_talk",
+   "text": "What's the weather tomorrow?"
+  },
+  {
+   "id": "m13",
+   "date": "2025-01-20",
+   "text": "My side project is FarmLink, an app that helps farmers sell produce directly. I'm building it with my friend Arjun."
+  },
+  {
+   "id": "m14",
+   "date": "2025-01-20",
+   "text": "FarmLink uses Next.js and Firebase."
+  },
+  {
+   "id": "f0193",
+   "date": "2025-01-21",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "f0443",
+   "date": "2025-01-21",
+   "kind": "work",
+   "text": "Pair-programmed with Deepa on a tricky bug."
+  },
+  {
+   "id": "f0954",
+   "date": "2025-01-21",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0274",
+   "date": "2025-01-22",
+   "kind": "media",
+   "text": "Finished The Pragmatic Programmer; recommended."
+  },
+  {
+   "id": "m15",
+   "date": "2025-01-22",
+   "text": "I also run a home lab on a Raspberry Pi 5 with Proxmox."
+  },
+  {
+   "id": "f0092",
+   "date": "2025-01-23",
+   "kind": "outings",
+   "text": "Visited a bookshop near Marina beach."
+  },
+  {
+   "id": "f0238",
+   "date": "2025-01-23",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0640",
+   "date": "2025-01-24",
+   "kind": "work",
+   "text": "Gave a short talk to the team about system design."
+  },
+  {
+   "id": "f0101",
+   "date": "2025-01-25",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0257",
+   "date": "2025-01-25",
+   "kind": "outings",
+   "text": "Had lunch at Sangeetha with friends."
+  },
+  {
+   "id": "f0605",
+   "date": "2025-01-25",
+   "kind": "work",
+   "text": "Gave a short talk to the team about AI agents."
+  },
+  {
+   "id": "f0052",
+   "date": "2025-01-27",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0115",
+   "date": "2025-01-27",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0791",
+   "date": "2025-01-27",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0967",
+   "date": "2025-01-27",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0368",
+   "date": "2025-01-29",
+   "kind": "work",
+   "text": "Wrote the design doc for the new risk scoring feature."
+  },
+  {
+   "id": "f0703",
+   "date": "2025-01-29",
+   "kind": "cricket",
+   "text": "Scored 3 runs in today's match."
+  },
+  {
+   "id": "f0726",
+   "date": "2025-01-29",
+   "kind": "others",
+   "text": "My school friend Prakash opened a clinic in Madurai."
+  },
+  {
+   "id": "f0834",
+   "date": "2025-01-29",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0783",
+   "date": "2025-01-30",
+   "kind": "media",
+   "text": "Started reading Sapiens."
+  },
+  {
+   "id": "f0208",
+   "date": "2025-02-01",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 19."
+  },
+  {
+   "id": "f0222",
+   "date": "2025-02-01",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0542",
+   "date": "2025-02-01",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0564",
+   "date": "2025-02-01",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "m16",
+   "date": "2025-02-01",
+   "text": "I play cricket every Sunday morning with the Peelamedu Strikers. I'm the opening batsman."
+  },
+  {
+   "id": "f0763",
+   "date": "2025-02-02",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "m17",
+   "date": "2025-02-02",
+   "text": "Photography is my other hobby. I shoot with a Canon 200D."
+  },
+  {
+   "id": "f0329",
+   "date": "2025-02-03",
+   "kind": "media",
+   "text": "Started reading Ponniyin Selvan."
+  },
+  {
+   "id": "f0361",
+   "date": "2025-02-03",
+   "kind": "others",
+   "text": "Ravi is learning Japanese for a trip next year."
+  },
+  {
+   "id": "f0782",
+   "date": "2025-02-03",
+   "kind": "outings",
+   "text": "Went to Marina beach on Sunday; it was crowded."
+  },
+  {
+   "id": "m18",
+   "date": "2025-02-03",
+   "text": "I've started learning the veena from Mrs. Saraswathi on Wednesday evenings."
+  },
+  {
+   "id": "f0282",
+   "date": "2025-02-04",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0622",
+   "date": "2025-02-04",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0798",
+   "date": "2025-02-04",
+   "kind": "others",
+   "text": "Arjun's wife Kavya runs a bakery in Coimbatore."
+  },
+  {
+   "id": "f0851",
+   "date": "2025-02-04",
+   "kind": "others",
+   "text": "My cousin Ramesh got a job at Zoho."
+  },
+  {
+   "id": "f0924",
+   "date": "2025-02-05",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "m19",
+   "date": "2025-02-05",
+   "text": "I play FIFA on my PS5 to relax at night."
+  },
+  {
+   "id": "f0289",
+   "date": "2025-02-07",
+   "kind": "others",
+   "text": "My school friend Prakash opened a clinic in Madurai."
+  },
+  {
+   "id": "f0002",
+   "date": "2025-02-08",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0072",
+   "date": "2025-02-08",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0074",
+   "date": "2025-02-08",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0120",
+   "date": "2025-02-08",
+   "kind": "outings",
+   "text": "Went to the Guindy park on Sunday; it was crowded."
+  },
+  {
+   "id": "f0204",
+   "date": "2025-02-08",
+   "kind": "outings",
+   "text": "Visited a bookshop near the Guindy park."
+  },
+  {
+   "id": "f0381",
+   "date": "2025-02-10",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "m20",
+   "date": "2025-02-10",
+   "text": "My phone is an iPhone 15."
+  },
+  {
+   "id": "m21",
+   "date": "2025-02-10",
+   "text": "For work I use a ThinkPad X1 Carbon."
+  },
+  {
+   "id": "f0561",
+   "date": "2025-02-11",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0148",
+   "date": "2025-02-12",
+   "kind": "outings",
+   "text": "Took the kids to Marina beach this evening."
+  },
+  {
+   "id": "f0792",
+   "date": "2025-02-12",
+   "kind": "others",
+   "text": "Naveen's hospital is opening a new wing."
+  },
+  {
+   "id": "m22",
+   "date": "2025-02-12",
+   "text": "We drive a Hyundai Creta, bought in 2024. I also ride a Royal Enfield Classic 350."
+  },
+  {
+   "id": "f0968",
+   "date": "2025-02-13",
+   "kind": "others",
+   "text": "Kavya's bakery started delivering in Chennai too."
+  },
+  {
+   "id": "f0026",
+   "date": "2025-02-15",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0825",
+   "date": "2025-02-15",
+   "kind": "outings",
+   "text": "Went to Phoenix mall on Sunday; it was crowded."
+  },
+  {
+   "id": "f0934",
+   "date": "2025-02-15",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "m23",
+   "date": "2025-02-15",
+   "text": "We have a home loan with HDFC; the EMI is 42,000 rupees on the 5th of every month."
+  },
+  {
+   "id": "m24",
+   "date": "2025-02-15",
+   "text": "Our monthly household budget is 60,000 rupees."
+  },
+  {
+   "id": "m25",
+   "date": "2025-02-16",
+   "text": "I put 10,000 rupees a month in a Nifty index fund SIP."
+  },
+  {
+   "id": "f0950",
+   "date": "2025-02-17",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0019",
+   "date": "2025-02-18",
+   "kind": "outings",
+   "text": "Had lunch at Saravana Bhavan with friends."
+  },
+  {
+   "id": "f0674",
+   "date": "2025-02-18",
+   "kind": "media",
+   "text": "Watched Interstellar last night; pretty good."
+  },
+  {
+   "id": "f0043",
+   "date": "2025-02-19",
+   "kind": "work",
+   "text": "Pair-programmed with Senthil on a tricky bug."
+  },
+  {
+   "id": "f0064",
+   "date": "2025-02-19",
+   "kind": "work",
+   "text": "Wrote the design doc for the new loan approval feature."
+  },
+  {
+   "id": "m26",
+   "date": "2025-02-20",
+   "text": "I'm allergic to peanuts."
+  },
+  {
+   "id": "m27",
+   "date": "2025-02-20",
+   "text": "My blood group is B positive."
+  },
+  {
+   "id": "f0869",
+   "date": "2025-02-21",
+   "kind": "outings",
+   "text": "Visited a bookshop near Brodie Castle Road."
+  },
+  {
+   "id": "m28",
+   "date": "2025-02-21",
+   "text": "I walk 5 km every morning at 6."
+  },
+  {
+   "id": "f0750",
+   "date": "2025-02-22",
+   "kind": "outings",
+   "text": "Went to Marina beach on Sunday; it was crowded."
+  },
+  {
+   "id": "m29",
+   "date": "2025-02-22",
+   "text": "My dentist is Dr. Kumar at Smile Care, Gandhipuram."
+  },
+  {
+   "id": "f0175",
+   "date": "2025-02-23",
+   "kind": "others",
+   "text": "There's a new designer on my team, also called Priya."
+  },
+  {
+   "id": "f0267",
+   "date": "2025-02-25",
+   "kind": "others",
+   "text": "My colleague Senthil just bought an iPhone 16."
+  },
+  {
+   "id": "f0547",
+   "date": "2025-02-26",
+   "kind": "outings",
+   "text": "Took the kids to Elliot's beach this evening."
+  },
+  {
+   "id": "f0382",
+   "date": "2025-03-01",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "m30",
+   "date": "2025-03-01",
+   "text": "I'm vegetarian."
+  },
+  {
+   "id": "m31",
+   "date": "2025-03-01",
+   "text": "I like filter coffee with no sugar."
+  },
+  {
+   "id": "f0079",
+   "date": "2025-03-02",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "f0286",
+   "date": "2025-03-02",
+   "kind": "work",
+   "text": "Gave a short talk to the team about Kafka."
+  },
+  {
+   "id": "m32",
+   "date": "2025-03-02",
+   "text": "I prefer WhatsApp messages over phone calls."
+  },
+  {
+   "id": "m33",
+   "date": "2025-03-02",
+   "text": "I hate long meetings; 30 minutes is my limit."
+  },
+  {
+   "id": "f0105",
+   "date": "2025-03-03",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "m34",
+   "date": "2025-03-03",
+   "text": "I prefer dark mode on everything."
+  },
+  {
+   "id": "f0837",
+   "date": "2025-03-04",
+   "kind": "outings",
+   "text": "Went to Brodie Castle Road on Sunday; it was crowded."
+  },
+  {
+   "id": "f0893",
+   "date": "2025-03-04",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0637",
+   "date": "2025-03-05",
+   "kind": "media",
+   "text": "Listened to a long podcast about observability on my walk."
+  },
+  {
+   "id": "f0777",
+   "date": "2025-03-05",
+   "kind": "errands",
+   "text": "Spent 4700 rupees on groceries today."
+  },
+  {
+   "id": "m35",
+   "date": "2025-03-05",
+   "text": "Our favourite restaurant is Annalakshmi."
+  },
+  {
+   "id": "f0245",
+   "date": "2025-03-06",
+   "kind": "media",
+   "text": "Rewatched Inception with the kids."
+  },
+  {
+   "id": "f0872",
+   "date": "2025-03-06",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0938",
+   "date": "2025-03-08",
+   "kind": "media",
+   "text": "Finished Atomic Habits; recommended."
+  },
+  {
+   "id": "f0668",
+   "date": "2025-03-09",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0034",
+   "date": "2025-03-10",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0951",
+   "date": "2025-03-10",
+   "kind": "outings",
+   "text": "Took the kids to Phoenix mall this evening."
+  },
+  {
+   "id": "m36",
+   "date": "2025-03-10",
+   "text": "Maybe I'll learn Japanese next year, not sure yet."
+  },
+  {
+   "id": "f0087",
+   "date": "2025-03-11",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0789",
+   "date": "2025-03-11",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0144",
+   "date": "2025-03-12",
+   "kind": "media",
+   "text": "Watched 96 last night; pretty good."
+  },
+  {
+   "id": "m37",
+   "date": "2025-03-12",
+   "text": "What's the weather like today?"
+  },
+  {
+   "id": "m38",
+   "date": "2025-03-12",
+   "text": "Thanks, that helps."
+  },
+  {
+   "id": "f0062",
+   "date": "2025-03-13",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0102",
+   "date": "2025-03-13",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0300",
+   "date": "2025-03-13",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0920",
+   "date": "2025-03-13",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0941",
+   "date": "2025-03-13",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0432",
+   "date": "2025-03-14",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0684",
+   "date": "2025-03-14",
+   "kind": "work",
+   "text": "Long day at work, 46 meetings back to back."
+  },
+  {
+   "id": "f0343",
+   "date": "2025-03-15",
+   "kind": "outings",
+   "text": "Went to Brodie Castle Road on Sunday; it was crowded."
+  },
+  {
+   "id": "f0460",
+   "date": "2025-03-15",
+   "kind": "work",
+   "text": "Wrote the design doc for the new notifications feature."
+  },
+  {
+   "id": "f0691",
+   "date": "2025-03-15",
+   "kind": "work",
+   "text": "Gave a short talk to the team about AI agents."
+  },
+  {
+   "id": "f0796",
+   "date": "2025-03-15",
+   "kind": "media",
+   "text": "Rewatched Inception with the kids."
+  },
+  {
+   "id": "f0697",
+   "date": "2025-03-17",
+   "kind": "media",
+   "text": "Watched Jailer last night; pretty good."
+  },
+  {
+   "id": "f0952",
+   "date": "2025-03-19",
+   "kind": "work",
+   "text": "Wrote the design doc for the new risk scoring feature."
+  },
+  {
+   "id": "f0205",
+   "date": "2025-03-20",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0323",
+   "date": "2025-03-20",
+   "kind": "errands",
+   "text": "Spent 2600 rupees on groceries today."
+  },
+  {
+   "id": "f0477",
+   "date": "2025-03-20",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0125",
+   "date": "2025-03-21",
+   "kind": "work",
+   "text": "Long day at work, 47 meetings back to back."
+  },
+  {
+   "id": "f0277",
+   "date": "2025-03-21",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0363",
+   "date": "2025-03-21",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0502",
+   "date": "2025-03-22",
+   "kind": "media",
+   "text": "Started reading Ponniyin Selvan."
+  },
+  {
+   "id": "f0921",
+   "date": "2025-03-23",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0849",
+   "date": "2025-03-24",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0287",
+   "date": "2025-03-25",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0558",
+   "date": "2025-03-25",
+   "kind": "outings",
+   "text": "Evening walk at Phoenix mall; nice weather."
+  },
+  {
+   "id": "f0562",
+   "date": "2025-03-25",
+   "kind": "cricket",
+   "text": "Scored 44 runs in today's match."
+  },
+  {
+   "id": "f0006",
+   "date": "2025-03-26",
+   "kind": "work",
+   "text": "Long day at work, 21 meetings back to back."
+  },
+  {
+   "id": "f0486",
+   "date": "2025-03-26",
+   "kind": "cricket",
+   "text": "Scored 25 runs in today's match."
+  },
+  {
+   "id": "f0835",
+   "date": "2025-03-26",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0354",
+   "date": "2025-03-27",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0639",
+   "date": "2025-03-27",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0999",
+   "date": "2025-03-27",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0235",
+   "date": "2025-03-28",
+   "kind": "outings",
+   "text": "Visited a bookshop near Marina beach."
+  },
+  {
+   "id": "f0492",
+   "date": "2025-03-28",
+   "kind": "work",
+   "text": "Wrote the design doc for the new risk scoring feature."
+  },
+  {
+   "id": "f0016",
+   "date": "2025-03-29",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0225",
+   "date": "2025-03-29",
+   "kind": "cricket",
+   "text": "We won our cricket match by 16 runs today."
+  },
+  {
+   "id": "f0511",
+   "date": "2025-03-30",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0607",
+   "date": "2025-03-30",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0725",
+   "date": "2025-03-30",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0424",
+   "date": "2025-03-31",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "f0591",
+   "date": "2025-04-02",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "m39",
+   "date": "2025-04-02",
+   "text": "Arjun handles the FarmLink backend; I do the frontend and design."
+  },
+  {
+   "id": "f0237",
+   "date": "2025-04-03",
+   "kind": "cricket",
+   "text": "We won our cricket match by 53 runs today."
+  },
+  {
+   "id": "f0980",
+   "date": "2025-04-04",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "m40",
+   "date": "2025-04-05",
+   "text": "FarmLink's first pilot is with the Pollachi Farmers Collective."
+  },
+  {
+   "id": "f0435",
+   "date": "2025-04-06",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0167",
+   "date": "2025-04-07",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0592",
+   "date": "2025-04-07",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0316",
+   "date": "2025-04-08",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0817",
+   "date": "2025-04-08",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0657",
+   "date": "2025-04-09",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0960",
+   "date": "2025-04-09",
+   "kind": "cricket",
+   "text": "We won our cricket match by 34 runs today."
+  },
+  {
+   "id": "f0023",
+   "date": "2025-04-10",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0630",
+   "date": "2025-04-10",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0801",
+   "date": "2025-04-10",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0121",
+   "date": "2025-04-11",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0170",
+   "date": "2025-04-11",
+   "kind": "outings",
+   "text": "Visited a bookshop near Brodie Castle Road."
+  },
+  {
+   "id": "f0554",
+   "date": "2025-04-11",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0953",
+   "date": "2025-04-11",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0288",
+   "date": "2025-04-12",
+   "kind": "outings",
+   "text": "Visited a bookshop near Marina beach."
+  },
+  {
+   "id": "f0761",
+   "date": "2025-04-12",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0925",
+   "date": "2025-04-12",
+   "kind": "outings",
+   "text": "Evening walk at the Guindy park; nice weather."
+  },
+  {
+   "id": "f0392",
+   "date": "2025-04-13",
+   "kind": "errands",
+   "text": "Spent 4100 rupees on groceries today."
+  },
+  {
+   "id": "f0360",
+   "date": "2025-04-14",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0109",
+   "date": "2025-04-15",
+   "kind": "outings",
+   "text": "Went to Elliot's beach on Sunday; it was crowded."
+  },
+  {
+   "id": "f0243",
+   "date": "2025-04-15",
+   "kind": "small_talk",
+   "text": "What's the weather tomorrow?"
+  },
+  {
+   "id": "f0327",
+   "date": "2025-04-15",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 33."
+  },
+  {
+   "id": "f0468",
+   "date": "2025-04-15",
+   "kind": "media",
+   "text": "Rewatched Vikram Vedha with the kids."
+  },
+  {
+   "id": "f0646",
+   "date": "2025-04-15",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0556",
+   "date": "2025-04-16",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0597",
+   "date": "2025-04-16",
+   "kind": "media",
+   "text": "Watched Oppenheimer last night; pretty good."
+  },
+  {
+   "id": "f0129",
+   "date": "2025-04-18",
+   "kind": "cricket",
+   "text": "Scored 11 runs in today's match."
+  },
+  {
+   "id": "f0231",
+   "date": "2025-04-18",
+   "kind": "others",
+   "text": "Naveen's hospital is opening a new wing."
+  },
+  {
+   "id": "f0314",
+   "date": "2025-04-18",
+   "kind": "others",
+   "text": "Kavya's bakery started delivering in Chennai too."
+  },
+  {
+   "id": "f0337",
+   "date": "2025-04-18",
+   "kind": "others",
+   "text": "Senthil's daughter is learning the violin."
+  },
+  {
+   "id": "f0491",
+   "date": "2025-04-18",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 7."
+  },
+  {
+   "id": "f0625",
+   "date": "2025-04-18",
+   "kind": "work",
+   "text": "Gave a short talk to the team about system design."
+  },
+  {
+   "id": "f0070",
+   "date": "2025-04-19",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0785",
+   "date": "2025-04-19",
+   "kind": "media",
+   "text": "Listened to a long podcast about testing on my walk."
+  },
+  {
+   "id": "f0904",
+   "date": "2025-04-20",
+   "kind": "others",
+   "text": "My school friend Prakash opened a clinic in Madurai."
+  },
+  {
+   "id": "f0096",
+   "date": "2025-04-21",
+   "kind": "small_talk",
+   "text": "Thanks, that's helpful."
+  },
+  {
+   "id": "f0412",
+   "date": "2025-04-21",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0910",
+   "date": "2025-04-21",
+   "kind": "media",
+   "text": "Finished The Pragmatic Programmer; recommended."
+  },
+  {
+   "id": "f0566",
+   "date": "2025-04-22",
+   "kind": "outings",
+   "text": "Visited a bookshop near Elliot's beach."
+  },
+  {
+   "id": "f0393",
+   "date": "2025-04-24",
+   "kind": "work",
+   "text": "Wrote the design doc for the new risk scoring feature."
+  },
+  {
+   "id": "f0196",
+   "date": "2025-04-25",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0485",
+   "date": "2025-04-26",
+   "kind": "cricket",
+   "text": "Scored 39 runs in today's match."
+  },
+  {
+   "id": "f0358",
+   "date": "2025-04-27",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0880",
+   "date": "2025-04-28",
+   "kind": "outings",
+   "text": "Went to Elliot's beach on Sunday; it was crowded."
+  },
+  {
+   "id": "f0481",
+   "date": "2025-04-29",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0667",
+   "date": "2025-04-30",
+   "kind": "media",
+   "text": "Finished Atomic Habits; recommended."
+  },
+  {
+   "id": "f0325",
+   "date": "2025-05-01",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0465",
+   "date": "2025-05-01",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0505",
+   "date": "2025-05-01",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0606",
+   "date": "2025-05-01",
+   "kind": "work",
+   "text": "Long day at work, 36 meetings back to back."
+  },
+  {
+   "id": "f0942",
+   "date": "2025-05-01",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0233",
+   "date": "2025-05-02",
+   "kind": "work",
+   "text": "Wrote the design doc for the new notifications feature."
+  },
+  {
+   "id": "f0321",
+   "date": "2025-05-02",
+   "kind": "small_talk",
+   "text": "What's the weather tomorrow?"
+  },
+  {
+   "id": "f0339",
+   "date": "2025-05-02",
+   "kind": "work",
+   "text": "Pair-programmed with Karthika on a tricky bug."
+  },
+  {
+   "id": "f0979",
+   "date": "2025-05-02",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0387",
+   "date": "2025-05-03",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "f0848",
+   "date": "2025-05-03",
+   "kind": "outings",
+   "text": "Evening walk at Marina beach; nice weather."
+  },
+  {
+   "id": "f0356",
+   "date": "2025-05-04",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0986",
+   "date": "2025-05-05",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0004",
+   "date": "2025-05-07",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0902",
+   "date": "2025-05-08",
+   "kind": "others",
+   "text": "Senthil's daughter is learning the violin."
+  },
+  {
+   "id": "f0935",
+   "date": "2025-05-08",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0961",
+   "date": "2025-05-08",
+   "kind": "media",
+   "text": "Rewatched Super Deluxe with the kids."
+  },
+  {
+   "id": "f0623",
+   "date": "2025-05-09",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0842",
+   "date": "2025-05-09",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0579",
+   "date": "2025-05-10",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "m41",
+   "date": "2025-05-10",
+   "text": "We went to Japan for 10 days — Tokyo and Kyoto. Best trip ever."
+  },
+  {
+   "id": "f0317",
+   "date": "2025-05-11",
+   "kind": "outings",
+   "text": "Had lunch at Sangeetha with friends."
+  },
+  {
+   "id": "f0772",
+   "date": "2025-05-11",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "f0855",
+   "date": "2025-05-13",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0989",
+   "date": "2025-05-13",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0933",
+   "date": "2025-05-14",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0047",
+   "date": "2025-05-17",
+   "kind": "cricket",
+   "text": "Scored 38 runs in today's match."
+  },
+  {
+   "id": "f0045",
+   "date": "2025-05-18",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0228",
+   "date": "2025-05-19",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0731",
+   "date": "2025-05-19",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0156",
+   "date": "2025-05-21",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0613",
+   "date": "2025-05-21",
+   "kind": "errands",
+   "text": "Spent 2750 rupees on groceries today."
+  },
+  {
+   "id": "f0688",
+   "date": "2025-05-21",
+   "kind": "others",
+   "text": "Naveen's hospital is opening a new wing."
+  },
+  {
+   "id": "f0473",
+   "date": "2025-05-22",
+   "kind": "cricket",
+   "text": "Scored 41 runs in today's match."
+  },
+  {
+   "id": "f0581",
+   "date": "2025-05-22",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0239",
+   "date": "2025-05-23",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0362",
+   "date": "2025-05-23",
+   "kind": "work",
+   "text": "Pair-programmed with Senthil on a tricky bug."
+  },
+  {
+   "id": "f0456",
+   "date": "2025-05-23",
+   "kind": "others",
+   "text": "Meena now leads the payments platform team."
+  },
+  {
+   "id": "f0711",
+   "date": "2025-05-23",
+   "kind": "cricket",
+   "text": "Scored 18 runs in today's match."
+  },
+  {
+   "id": "f0348",
+   "date": "2025-05-24",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0671",
+   "date": "2025-05-25",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0005",
+   "date": "2025-05-26",
+   "kind": "others",
+   "text": "Divya's friend Shalini visited them in Bangalore."
+  },
+  {
+   "id": "f0484",
+   "date": "2025-05-26",
+   "kind": "outings",
+   "text": "Had lunch at Sangeetha with friends."
+  },
+  {
+   "id": "f0870",
+   "date": "2025-05-26",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0027",
+   "date": "2025-05-27",
+   "kind": "media",
+   "text": "Watched Jailer last night; pretty good."
+  },
+  {
+   "id": "f0448",
+   "date": "2025-05-27",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0067",
+   "date": "2025-05-28",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0828",
+   "date": "2025-05-28",
+   "kind": "small_talk",
+   "text": "What's the weather tomorrow?"
+  },
+  {
+   "id": "f0426",
+   "date": "2025-05-29",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "f0202",
+   "date": "2025-05-30",
+   "kind": "musings",
+   "text": "Maybe I should start running instead of walking."
+  },
+  {
+   "id": "f0226",
+   "date": "2025-05-30",
+   "kind": "errands",
+   "text": "Spent 3950 rupees on groceries today."
+  },
+  {
+   "id": "f0326",
+   "date": "2025-05-30",
+   "kind": "work",
+   "text": "Wrote the design doc for the new loan approval feature."
+  },
+  {
+   "id": "f0496",
+   "date": "2025-06-01",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "m42",
+   "date": "2025-06-01",
+   "text": "I passed the AWS Solutions Architect Associate exam."
+  },
+  {
+   "id": "f0147",
+   "date": "2025-06-02",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0310",
+   "date": "2025-06-02",
+   "kind": "musings",
+   "text": "Maybe I should start running instead of walking."
+  },
+  {
+   "id": "f0344",
+   "date": "2025-06-02",
+   "kind": "outings",
+   "text": "Evening walk at Marina beach; nice weather."
+  },
+  {
+   "id": "f0440",
+   "date": "2025-06-02",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0618",
+   "date": "2025-06-02",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0923",
+   "date": "2025-06-03",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0029",
+   "date": "2025-06-04",
+   "kind": "outings",
+   "text": "Went to Marina beach on Sunday; it was crowded."
+  },
+  {
+   "id": "f0142",
+   "date": "2025-06-04",
+   "kind": "media",
+   "text": "Rewatched Super Deluxe with the kids."
+  },
+  {
+   "id": "f0898",
+   "date": "2025-06-04",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0689",
+   "date": "2025-06-05",
+   "kind": "outings",
+   "text": "Evening walk at Marina beach; nice weather."
+  },
+  {
+   "id": "f0012",
+   "date": "2025-06-07",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0198",
+   "date": "2025-06-07",
+   "kind": "outings",
+   "text": "Evening walk at Elliot's beach; nice weather."
+  },
+  {
+   "id": "f0422",
+   "date": "2025-06-08",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0441",
+   "date": "2025-06-12",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0075",
+   "date": "2025-06-13",
+   "kind": "cricket",
+   "text": "Scored 30 runs in today's match."
+  },
+  {
+   "id": "f0168",
+   "date": "2025-06-13",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0271",
+   "date": "2025-06-13",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0439",
+   "date": "2025-06-13",
+   "kind": "others",
+   "text": "Divya's friend Shalini visited them in Bangalore."
+  },
+  {
+   "id": "f0103",
+   "date": "2025-06-14",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0389",
+   "date": "2025-06-14",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0495",
+   "date": "2025-06-14",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0994",
+   "date": "2025-06-14",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0407",
+   "date": "2025-06-15",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0450",
+   "date": "2025-06-15",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "m43",
+   "date": "2025-06-15",
+   "text": "My boss at Nimbus is Suresh. He's very supportive."
+  },
+  {
+   "id": "f0713",
+   "date": "2025-06-16",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0899",
+   "date": "2025-06-16",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0577",
+   "date": "2025-06-17",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0881",
+   "date": "2025-06-17",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0200",
+   "date": "2025-06-18",
+   "kind": "others",
+   "text": "Ravi is learning Japanese for a trip next year."
+  },
+  {
+   "id": "f0560",
+   "date": "2025-06-18",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "f0645",
+   "date": "2025-06-18",
+   "kind": "musings",
+   "text": "Might try learning chess this year."
+  },
+  {
+   "id": "f0959",
+   "date": "2025-06-18",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0088",
+   "date": "2025-06-19",
+   "kind": "others",
+   "text": "Anil is moving to Pune for a new job."
+  },
+  {
+   "id": "f0563",
+   "date": "2025-06-20",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0588",
+   "date": "2025-06-20",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0759",
+   "date": "2025-06-20",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0308",
+   "date": "2025-06-22",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0865",
+   "date": "2025-06-22",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0146",
+   "date": "2025-06-23",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0346",
+   "date": "2025-06-23",
+   "kind": "others",
+   "text": "There's a new designer on my team, also called Priya."
+  },
+  {
+   "id": "f0867",
+   "date": "2025-06-23",
+   "kind": "others",
+   "text": "Arjun's wife Kavya runs a bakery in Coimbatore."
+  },
+  {
+   "id": "f0215",
+   "date": "2025-06-24",
+   "kind": "others",
+   "text": "There's a new designer on my team, also called Priya."
+  },
+  {
+   "id": "f0251",
+   "date": "2025-06-24",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0391",
+   "date": "2025-06-24",
+   "kind": "work",
+   "text": "Wrote the design doc for the new loan approval feature."
+  },
+  {
+   "id": "f0459",
+   "date": "2025-06-24",
+   "kind": "others",
+   "text": "Arjun's wife Kavya runs a bakery in Coimbatore."
+  },
+  {
+   "id": "f0779",
+   "date": "2025-06-26",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0195",
+   "date": "2025-06-29",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0683",
+   "date": "2025-06-29",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0840",
+   "date": "2025-06-29",
+   "kind": "media",
+   "text": "Finished Sapiens; recommended."
+  },
+  {
+   "id": "f0224",
+   "date": "2025-06-30",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0501",
+   "date": "2025-06-30",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0596",
+   "date": "2025-06-30",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0371",
+   "date": "2025-07-01",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0373",
+   "date": "2025-07-01",
+   "kind": "work",
+   "text": "Long day at work, 56 meetings back to back."
+  },
+  {
+   "id": "f0680",
+   "date": "2025-07-01",
+   "kind": "outings",
+   "text": "Took the kids to Elliot's beach this evening."
+  },
+  {
+   "id": "f0844",
+   "date": "2025-07-01",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "m44",
+   "date": "2025-07-01",
+   "text": "என் அம்மாவுக்கு சர்க்கரை நோய் இருக்கு, மாத்திரை சாப்பிடுறாங்க."
+  },
+  {
+   "id": "f0263",
+   "date": "2025-07-02",
+   "kind": "work",
+   "text": "Wrote the design doc for the new risk scoring feature."
+  },
+  {
+   "id": "f0648",
+   "date": "2025-07-02",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0852",
+   "date": "2025-07-02",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0089",
+   "date": "2025-07-03",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "m45",
+   "date": "2025-07-03",
+   "text": "Appa's tablets come from Apollo Pharmacy in Madurai every month."
+  },
+  {
+   "id": "f0104",
+   "date": "2025-07-04",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0643",
+   "date": "2025-07-04",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0416",
+   "date": "2025-07-05",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0756",
+   "date": "2025-07-05",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0302",
+   "date": "2025-07-06",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0434",
+   "date": "2025-07-07",
+   "kind": "work",
+   "text": "Pair-programmed with Senthil on a tricky bug."
+  },
+  {
+   "id": "f0633",
+   "date": "2025-07-07",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "f0241",
+   "date": "2025-07-08",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0662",
+   "date": "2025-07-08",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0973",
+   "date": "2025-07-08",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0134",
+   "date": "2025-07-09",
+   "kind": "work",
+   "text": "Wrote the design doc for the new audit log feature."
+  },
+  {
+   "id": "f0590",
+   "date": "2025-07-09",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0699",
+   "date": "2025-07-09",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0117",
+   "date": "2025-07-10",
+   "kind": "work",
+   "text": "Pair-programmed with Karthika on a tricky bug."
+  },
+  {
+   "id": "f0831",
+   "date": "2025-07-11",
+   "kind": "work",
+   "text": "Pair-programmed with Karthika on a tricky bug."
+  },
+  {
+   "id": "f0995",
+   "date": "2025-07-12",
+   "kind": "media",
+   "text": "Started reading Atomic Habits."
+  },
+  {
+   "id": "f0589",
+   "date": "2025-07-14",
+   "kind": "work",
+   "text": "Pair-programmed with Deepa on a tricky bug."
+  },
+  {
+   "id": "f0673",
+   "date": "2025-07-15",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0661",
+   "date": "2025-07-16",
+   "kind": "cricket",
+   "text": "We won our cricket match by 21 runs today."
+  },
+  {
+   "id": "f0033",
+   "date": "2025-07-17",
+   "kind": "work",
+   "text": "Pair-programmed with Karthika on a tricky bug."
+  },
+  {
+   "id": "f0113",
+   "date": "2025-07-17",
+   "kind": "media",
+   "text": "Finished Atomic Habits; recommended."
+  },
+  {
+   "id": "f0584",
+   "date": "2025-07-18",
+   "kind": "media",
+   "text": "Listened to a long podcast about testing on my walk."
+  },
+  {
+   "id": "f0107",
+   "date": "2025-07-19",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0247",
+   "date": "2025-07-19",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0919",
+   "date": "2025-07-20",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0544",
+   "date": "2025-07-21",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0930",
+   "date": "2025-07-21",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0945",
+   "date": "2025-07-21",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0174",
+   "date": "2025-07-22",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 12."
+  },
+  {
+   "id": "f0386",
+   "date": "2025-07-22",
+   "kind": "cricket",
+   "text": "We won our cricket match by 36 runs today."
+  },
+  {
+   "id": "f0049",
+   "date": "2025-07-23",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0063",
+   "date": "2025-07-23",
+   "kind": "work",
+   "text": "Long day at work, 20 meetings back to back."
+  },
+  {
+   "id": "f0171",
+   "date": "2025-07-23",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 26."
+  },
+  {
+   "id": "f0490",
+   "date": "2025-07-23",
+   "kind": "media",
+   "text": "Watched Jailer last night; pretty good."
+  },
+  {
+   "id": "f0850",
+   "date": "2025-07-24",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0015",
+   "date": "2025-07-26",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0519",
+   "date": "2025-07-28",
+   "kind": "outings",
+   "text": "Visited a bookshop near Phoenix mall."
+  },
+  {
+   "id": "f0433",
+   "date": "2025-07-29",
+   "kind": "others",
+   "text": "Naveen's hospital is opening a new wing."
+  },
+  {
+   "id": "f0464",
+   "date": "2025-07-29",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0567",
+   "date": "2025-07-29",
+   "kind": "others",
+   "text": "Naveen's hospital is opening a new wing."
+  },
+  {
+   "id": "f0856",
+   "date": "2025-07-30",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "m46",
+   "date": "2025-08-03",
+   "text": "Anu turned 8 today! We had a party at home."
+  },
+  {
+   "id": "f0304",
+   "date": "2025-08-04",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0621",
+   "date": "2025-08-04",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0232",
+   "date": "2025-08-05",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0946",
+   "date": "2025-08-05",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0292",
+   "date": "2025-08-09",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0957",
+   "date": "2025-08-09",
+   "kind": "media",
+   "text": "Started reading Deep Work."
+  },
+  {
+   "id": "f0050",
+   "date": "2025-08-10",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "m47",
+   "date": "2025-08-10",
+   "text": "Divya got married to Naveen; he's a doctor in Bangalore."
+  },
+  {
+   "id": "f0176",
+   "date": "2025-08-11",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0793",
+   "date": "2025-08-11",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0165",
+   "date": "2025-08-12",
+   "kind": "cricket",
+   "text": "Scored 5 runs in today's match."
+  },
+  {
+   "id": "f0728",
+   "date": "2025-08-12",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0149",
+   "date": "2025-08-13",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0307",
+   "date": "2025-08-14",
+   "kind": "work",
+   "text": "Gave a short talk to the team about system design."
+  },
+  {
+   "id": "f0340",
+   "date": "2025-08-14",
+   "kind": "media",
+   "text": "Listened to a long podcast about system design on my walk."
+  },
+  {
+   "id": "f0415",
+   "date": "2025-08-14",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0672",
+   "date": "2025-08-14",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0499",
+   "date": "2025-08-15",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0888",
+   "date": "2025-08-15",
+   "kind": "work",
+   "text": "Gave a short talk to the team about system design."
+  },
+  {
+   "id": "f0082",
+   "date": "2025-08-17",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0112",
+   "date": "2025-08-17",
+   "kind": "media",
+   "text": "Watched Super Deluxe last night; pretty good."
+  },
+  {
+   "id": "f0451",
+   "date": "2025-08-17",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0471",
+   "date": "2025-08-17",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0886",
+   "date": "2025-08-17",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0913",
+   "date": "2025-08-18",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0169",
+   "date": "2025-08-19",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0275",
+   "date": "2025-08-19",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0650",
+   "date": "2025-08-19",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0517",
+   "date": "2025-08-20",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0738",
+   "date": "2025-08-20",
+   "kind": "media",
+   "text": "Finished Deep Work; recommended."
+  },
+  {
+   "id": "f0749",
+   "date": "2025-08-20",
+   "kind": "outings",
+   "text": "Went to Brodie Castle Road on Sunday; it was crowded."
+  },
+  {
+   "id": "f0357",
+   "date": "2025-08-21",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0385",
+   "date": "2025-08-21",
+   "kind": "work",
+   "text": "Pair-programmed with Imran on a tricky bug."
+  },
+  {
+   "id": "f0297",
+   "date": "2025-08-22",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0402",
+   "date": "2025-08-23",
+   "kind": "small_talk",
+   "text": "What's the weather tomorrow?"
+  },
+  {
+   "id": "f0220",
+   "date": "2025-08-24",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0700",
+   "date": "2025-08-24",
+   "kind": "media",
+   "text": "Listened to a long podcast about testing on my walk."
+  },
+  {
+   "id": "f0677",
+   "date": "2025-08-25",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0838",
+   "date": "2025-08-25",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0056",
+   "date": "2025-08-26",
+   "kind": "others",
+   "text": "My colleague Senthil just bought an iPhone 16."
+  },
+  {
+   "id": "f0152",
+   "date": "2025-08-26",
+   "kind": "errands",
+   "text": "Spent 1550 rupees on groceries today."
+  },
+  {
+   "id": "f0506",
+   "date": "2025-08-27",
+   "kind": "media",
+   "text": "Finished Sapiens; recommended."
+  },
+  {
+   "id": "f0724",
+   "date": "2025-08-27",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0255",
+   "date": "2025-08-29",
+   "kind": "small_talk",
+   "text": "What's the weather tomorrow?"
+  },
+  {
+   "id": "f0071",
+   "date": "2025-08-30",
+   "kind": "cricket",
+   "text": "We won our cricket match by 54 runs today."
+  },
+  {
+   "id": "f0328",
+   "date": "2025-09-01",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0453",
+   "date": "2025-09-01",
+   "kind": "cricket",
+   "text": "Scored 52 runs in today's match."
+  },
+  {
+   "id": "f0509",
+   "date": "2025-09-01",
+   "kind": "others",
+   "text": "Meena now leads the payments platform team."
+  },
+  {
+   "id": "f0539",
+   "date": "2025-09-01",
+   "kind": "errands",
+   "text": "Spent 2900 rupees on groceries today."
+  },
+  {
+   "id": "f0654",
+   "date": "2025-09-01",
+   "kind": "work",
+   "text": "Long day at work, 56 meetings back to back."
+  },
+  {
+   "id": "m48",
+   "date": "2025-09-01",
+   "text": "I'm starting to learn Rust in the evenings."
+  },
+  {
+   "id": "f0758",
+   "date": "2025-09-02",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0955",
+   "date": "2025-09-02",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0077",
+   "date": "2025-09-03",
+   "kind": "errands",
+   "text": "Spent 4250 rupees on groceries today."
+  },
+  {
+   "id": "f0272",
+   "date": "2025-09-04",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0877",
+   "date": "2025-09-04",
+   "kind": "outings",
+   "text": "Evening walk at Elliot's beach; nice weather."
+  },
+  {
+   "id": "f0331",
+   "date": "2025-09-05",
+   "kind": "work",
+   "text": "Pair-programmed with Karthika on a tricky bug."
+  },
+  {
+   "id": "f0455",
+   "date": "2025-09-05",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0570",
+   "date": "2025-09-05",
+   "kind": "media",
+   "text": "Finished Ponniyin Selvan; recommended."
+  },
+  {
+   "id": "f0017",
+   "date": "2025-09-06",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0715",
+   "date": "2025-09-07",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0857",
+   "date": "2025-09-09",
+   "kind": "media",
+   "text": "Listened to a long podcast about observability on my walk."
+  },
+  {
+   "id": "f0039",
+   "date": "2025-09-10",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0647",
+   "date": "2025-09-10",
+   "kind": "others",
+   "text": "Ravi is learning Japanese for a trip next year."
+  },
+  {
+   "id": "f0722",
+   "date": "2025-09-10",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0652",
+   "date": "2025-09-11",
+   "kind": "media",
+   "text": "Listened to a long podcast about Rust on my walk."
+  },
+  {
+   "id": "f0290",
+   "date": "2025-09-13",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "f0454",
+   "date": "2025-09-13",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 22."
+  },
+  {
+   "id": "f0829",
+   "date": "2025-09-13",
+   "kind": "work",
+   "text": "Pair-programmed with Deepa on a tricky bug."
+  },
+  {
+   "id": "f0948",
+   "date": "2025-09-13",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0943",
+   "date": "2025-09-14",
+   "kind": "media",
+   "text": "Watched Inception last night; pretty good."
+  },
+  {
+   "id": "f0512",
+   "date": "2025-09-15",
+   "kind": "small_talk",
+   "text": "What's the weather tomorrow?"
+  },
+  {
+   "id": "f0065",
+   "date": "2025-09-16",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0143",
+   "date": "2025-09-17",
+   "kind": "work",
+   "text": "Long day at work, 19 meetings back to back."
+  },
+  {
+   "id": "f0853",
+   "date": "2025-09-17",
+   "kind": "cricket",
+   "text": "Scored 53 runs in today's match."
+  },
+  {
+   "id": "f0915",
+   "date": "2025-09-17",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0466",
+   "date": "2025-09-18",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0024",
+   "date": "2025-09-19",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0234",
+   "date": "2025-09-19",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0123",
+   "date": "2025-09-20",
+   "kind": "cricket",
+   "text": "Scored 46 runs in today's match."
+  },
+  {
+   "id": "f0140",
+   "date": "2025-09-20",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0739",
+   "date": "2025-09-20",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "m49",
+   "date": "2025-09-20",
+   "text": "I sold my Canon 200D and bought a Sony A7 IV."
+  },
+  {
+   "id": "f0365",
+   "date": "2025-09-21",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0708",
+   "date": "2025-09-21",
+   "kind": "others",
+   "text": "My cousin Ramesh got a job at Zoho."
+  },
+  {
+   "id": "f0187",
+   "date": "2025-09-22",
+   "kind": "media",
+   "text": "Listened to a long podcast about AI agents on my walk."
+  },
+  {
+   "id": "f0213",
+   "date": "2025-09-22",
+   "kind": "outings",
+   "text": "Had lunch at Saravana Bhavan with friends."
+  },
+  {
+   "id": "f0626",
+   "date": "2025-09-23",
+   "kind": "others",
+   "text": "My friend Anil lives in Velachery now."
+  },
+  {
+   "id": "f0409",
+   "date": "2025-09-24",
+   "kind": "work",
+   "text": "Gave a short talk to the team about testing."
+  },
+  {
+   "id": "f0370",
+   "date": "2025-09-25",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0572",
+   "date": "2025-09-25",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0578",
+   "date": "2025-09-27",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "f0014",
+   "date": "2025-09-28",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0135",
+   "date": "2025-09-29",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0428",
+   "date": "2025-09-30",
+   "kind": "cricket",
+   "text": "We won our cricket match by 43 runs today."
+  },
+  {
+   "id": "m50",
+   "date": "2025-10-01",
+   "text": "Big news: I've accepted an offer from Tessera Labs as an engineering manager. I start on 1 December."
+  },
+  {
+   "id": "f0550",
+   "date": "2025-10-02",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0695",
+   "date": "2025-10-02",
+   "kind": "outings",
+   "text": "Had lunch at Saravana Bhavan with friends."
+  },
+  {
+   "id": "f0832",
+   "date": "2025-10-02",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0051",
+   "date": "2025-10-04",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0025",
+   "date": "2025-10-05",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0480",
+   "date": "2025-10-05",
+   "kind": "work",
+   "text": "Wrote the design doc for the new loan approval feature."
+  },
+  {
+   "id": "f0546",
+   "date": "2025-10-05",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0583",
+   "date": "2025-10-05",
+   "kind": "small_talk",
+   "text": "Thanks, that's helpful."
+  },
+  {
+   "id": "f0183",
+   "date": "2025-10-06",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0804",
+   "date": "2025-10-06",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0806",
+   "date": "2025-10-08",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0879",
+   "date": "2025-10-08",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0296",
+   "date": "2025-10-09",
+   "kind": "others",
+   "text": "Divya's friend Shalini visited them in Bangalore."
+  },
+  {
+   "id": "f0949",
+   "date": "2025-10-09",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "f0388",
+   "date": "2025-10-10",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0203",
+   "date": "2025-10-11",
+   "kind": "others",
+   "text": "Arjun's wife Kavya runs a bakery in Coimbatore."
+  },
+  {
+   "id": "f0939",
+   "date": "2025-10-11",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0998",
+   "date": "2025-10-13",
+   "kind": "cricket",
+   "text": "Scored 41 runs in today's match."
+  },
+  {
+   "id": "f0399",
+   "date": "2025-10-14",
+   "kind": "media",
+   "text": "Finished Ponniyin Selvan; recommended."
+  },
+  {
+   "id": "f0545",
+   "date": "2025-10-14",
+   "kind": "media",
+   "text": "Rewatched Interstellar with the kids."
+  },
+  {
+   "id": "f0090",
+   "date": "2025-10-16",
+   "kind": "media",
+   "text": "Finished The Pragmatic Programmer; recommended."
+  },
+  {
+   "id": "f0679",
+   "date": "2025-10-17",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0686",
+   "date": "2025-10-17",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0859",
+   "date": "2025-10-17",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0041",
+   "date": "2025-10-18",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0211",
+   "date": "2025-10-18",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0445",
+   "date": "2025-10-18",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0595",
+   "date": "2025-10-18",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0707",
+   "date": "2025-10-18",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0395",
+   "date": "2025-10-20",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 24."
+  },
+  {
+   "id": "f0824",
+   "date": "2025-10-21",
+   "kind": "outings",
+   "text": "Went to Brodie Castle Road on Sunday; it was crowded."
+  },
+  {
+   "id": "f0922",
+   "date": "2025-10-21",
+   "kind": "outings",
+   "text": "Went to the Guindy park on Sunday; it was crowded."
+  },
+  {
+   "id": "f0081",
+   "date": "2025-10-22",
+   "kind": "outings",
+   "text": "Evening walk at Elliot's beach; nice weather."
+  },
+  {
+   "id": "f0552",
+   "date": "2025-10-22",
+   "kind": "musings",
+   "text": "Maybe I should start running instead of walking."
+  },
+  {
+   "id": "f0559",
+   "date": "2025-10-22",
+   "kind": "others",
+   "text": "My neighbour Mr. Iyer drives a Tata Nexon EV."
+  },
+  {
+   "id": "f0864",
+   "date": "2025-10-22",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0038",
+   "date": "2025-10-24",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0582",
+   "date": "2025-10-24",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0790",
+   "date": "2025-10-25",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "f0813",
+   "date": "2025-10-25",
+   "kind": "media",
+   "text": "Started reading Atomic Habits."
+  },
+  {
+   "id": "f0030",
+   "date": "2025-10-26",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0036",
+   "date": "2025-10-26",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0266",
+   "date": "2025-10-27",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0378",
+   "date": "2025-10-27",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0826",
+   "date": "2025-10-28",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "f0119",
+   "date": "2025-10-29",
+   "kind": "media",
+   "text": "Listened to a long podcast about observability on my walk."
+  },
+  {
+   "id": "f0309",
+   "date": "2025-10-31",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0315",
+   "date": "2025-10-31",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0322",
+   "date": "2025-10-31",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0437",
+   "date": "2025-10-31",
+   "kind": "musings",
+   "text": "Maybe I should start running instead of walking."
+  },
+  {
+   "id": "f0769",
+   "date": "2025-10-31",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0035",
+   "date": "2025-11-02",
+   "kind": "work",
+   "text": "Pair-programmed with Karthika on a tricky bug."
+  },
+  {
+   "id": "f0876",
+   "date": "2025-11-02",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0285",
+   "date": "2025-11-04",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0861",
+   "date": "2025-11-04",
+   "kind": "musings",
+   "text": "Maybe I should start running instead of walking."
+  },
+  {
+   "id": "f0895",
+   "date": "2025-11-04",
+   "kind": "others",
+   "text": "Kavya's bakery started delivering in Chennai too."
+  },
+  {
+   "id": "f0996",
+   "date": "2025-11-06",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0364",
+   "date": "2025-11-07",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0823",
+   "date": "2025-11-07",
+   "kind": "outings",
+   "text": "Evening walk at Phoenix mall; nice weather."
+  },
+  {
+   "id": "f0259",
+   "date": "2025-11-08",
+   "kind": "outings",
+   "text": "Took the kids to Elliot's beach this evening."
+  },
+  {
+   "id": "f0747",
+   "date": "2025-11-09",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0268",
+   "date": "2025-11-10",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0313",
+   "date": "2025-11-11",
+   "kind": "musings",
+   "text": "Might try learning chess this year."
+  },
+  {
+   "id": "f0696",
+   "date": "2025-11-11",
+   "kind": "musings",
+   "text": "Might try learning chess this year."
+  },
+  {
+   "id": "f0133",
+   "date": "2025-11-16",
+   "kind": "work",
+   "text": "Pair-programmed with Senthil on a tricky bug."
+  },
+  {
+   "id": "f0377",
+   "date": "2025-11-16",
+   "kind": "media",
+   "text": "Listened to a long podcast about Rust on my walk."
+  },
+  {
+   "id": "f0410",
+   "date": "2025-11-17",
+   "kind": "media",
+   "text": "Rewatched Super Deluxe with the kids."
+  },
+  {
+   "id": "f0931",
+   "date": "2025-11-18",
+   "kind": "media",
+   "text": "Finished The Pragmatic Programmer; recommended."
+  },
+  {
+   "id": "f0312",
+   "date": "2025-11-19",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0111",
+   "date": "2025-11-20",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0644",
+   "date": "2025-11-21",
+   "kind": "work",
+   "text": "Pair-programmed with Deepa on a tricky bug."
+  },
+  {
+   "id": "f0927",
+   "date": "2025-11-21",
+   "kind": "outings",
+   "text": "Took the kids to Elliot's beach this evening."
+  },
+  {
+   "id": "f0631",
+   "date": "2025-11-22",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0809",
+   "date": "2025-11-24",
+   "kind": "work",
+   "text": "Pair-programmed with Imran on a tricky bug."
+  },
+  {
+   "id": "f0042",
+   "date": "2025-11-26",
+   "kind": "outings",
+   "text": "Had lunch at Sangeetha with friends."
+  },
+  {
+   "id": "f0419",
+   "date": "2025-11-26",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0873",
+   "date": "2025-11-27",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0878",
+   "date": "2025-11-27",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0985",
+   "date": "2025-11-27",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0008",
+   "date": "2025-11-28",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0822",
+   "date": "2025-11-28",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 26."
+  },
+  {
+   "id": "f0100",
+   "date": "2025-11-29",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0106",
+   "date": "2025-11-29",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0324",
+   "date": "2025-11-29",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "f0716",
+   "date": "2025-11-29",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0612",
+   "date": "2025-11-30",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "m51",
+   "date": "2025-11-30",
+   "text": "Last day at Nimbus Soft today."
+  },
+  {
+   "id": "f0551",
+   "date": "2025-12-01",
+   "kind": "work",
+   "text": "Gave a short talk to the team about observability."
+  },
+  {
+   "id": "f0900",
+   "date": "2025-12-01",
+   "kind": "media",
+   "text": "Started reading The Pragmatic Programmer."
+  },
+  {
+   "id": "m52",
+   "date": "2025-12-01",
+   "text": "First day at Tessera Labs. My manager here is Meena."
+  },
+  {
+   "id": "f0586",
+   "date": "2025-12-05",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "m53",
+   "date": "2025-12-05",
+   "text": "At Tessera I lead the Ledgerly team; Ledgerly is a lending platform built with Go and Kafka."
+  },
+  {
+   "id": "f0260",
+   "date": "2025-12-06",
+   "kind": "outings",
+   "text": "Took the kids to Marina beach this evening."
+  },
+  {
+   "id": "f0423",
+   "date": "2025-12-06",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0520",
+   "date": "2025-12-06",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0706",
+   "date": "2025-12-06",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0467",
+   "date": "2025-12-07",
+   "kind": "media",
+   "text": "Watched Interstellar last night; pretty good."
+  },
+  {
+   "id": "f0573",
+   "date": "2025-12-07",
+   "kind": "others",
+   "text": "My neighbour Mr. Iyer drives a Tata Nexon EV."
+  },
+  {
+   "id": "f0800",
+   "date": "2025-12-07",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0060",
+   "date": "2025-12-08",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0118",
+   "date": "2025-12-09",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0150",
+   "date": "2025-12-09",
+   "kind": "outings",
+   "text": "Had lunch at Saravana Bhavan with friends."
+  },
+  {
+   "id": "f0678",
+   "date": "2025-12-09",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0197",
+   "date": "2025-12-10",
+   "kind": "musings",
+   "text": "Maybe I should start running instead of walking."
+  },
+  {
+   "id": "f0221",
+   "date": "2025-12-10",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0429",
+   "date": "2025-12-12",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0538",
+   "date": "2025-12-13",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0132",
+   "date": "2025-12-16",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0528",
+   "date": "2025-12-16",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0610",
+   "date": "2025-12-17",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0719",
+   "date": "2025-12-17",
+   "kind": "outings",
+   "text": "Evening walk at Phoenix mall; nice weather."
+  },
+  {
+   "id": "f0469",
+   "date": "2025-12-18",
+   "kind": "outings",
+   "text": "Evening walk at Phoenix mall; nice weather."
+  },
+  {
+   "id": "f0890",
+   "date": "2025-12-18",
+   "kind": "media",
+   "text": "Finished The Pragmatic Programmer; recommended."
+  },
+  {
+   "id": "f0540",
+   "date": "2025-12-19",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0438",
+   "date": "2025-12-21",
+   "kind": "media",
+   "text": "Started reading Ponniyin Selvan."
+  },
+  {
+   "id": "f0717",
+   "date": "2025-12-21",
+   "kind": "work",
+   "text": "Pair-programmed with Karthika on a tricky bug."
+  },
+  {
+   "id": "f0138",
+   "date": "2025-12-23",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0523",
+   "date": "2025-12-23",
+   "kind": "media",
+   "text": "Listened to a long podcast about system design on my walk."
+  },
+  {
+   "id": "f0164",
+   "date": "2025-12-24",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0810",
+   "date": "2025-12-24",
+   "kind": "outings",
+   "text": "Evening walk at Phoenix mall; nice weather."
+  },
+  {
+   "id": "f0007",
+   "date": "2025-12-25",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0396",
+   "date": "2025-12-25",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0510",
+   "date": "2025-12-25",
+   "kind": "media",
+   "text": "Listened to a long podcast about observability on my walk."
+  },
+  {
+   "id": "f0741",
+   "date": "2025-12-25",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0787",
+   "date": "2025-12-25",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0212",
+   "date": "2025-12-26",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0863",
+   "date": "2025-12-26",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0345",
+   "date": "2025-12-27",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0380",
+   "date": "2025-12-29",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0774",
+   "date": "2025-12-29",
+   "kind": "media",
+   "text": "Finished Atomic Habits; recommended."
+  },
+  {
+   "id": "f0818",
+   "date": "2025-12-29",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0227",
+   "date": "2026-01-01",
+   "kind": "media",
+   "text": "Started reading Ponniyin Selvan."
+  },
+  {
+   "id": "f0400",
+   "date": "2026-01-01",
+   "kind": "media",
+   "text": "Listened to a long podcast about observability on my walk."
+  },
+  {
+   "id": "f0710",
+   "date": "2026-01-01",
+   "kind": "work",
+   "text": "Gave a short talk to the team about testing."
+  },
+  {
+   "id": "f0369",
+   "date": "2026-01-03",
+   "kind": "media",
+   "text": "Started reading Atomic Habits."
+  },
+  {
+   "id": "f0058",
+   "date": "2026-01-04",
+   "kind": "media",
+   "text": "Rewatched Super Deluxe with the kids."
+  },
+  {
+   "id": "f0032",
+   "date": "2026-01-05",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0875",
+   "date": "2026-01-05",
+   "kind": "work",
+   "text": "Wrote the design doc for the new export feature."
+  },
+  {
+   "id": "f0131",
+   "date": "2026-01-07",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0820",
+   "date": "2026-01-07",
+   "kind": "others",
+   "text": "Senthil's daughter is learning the violin."
+  },
+  {
+   "id": "f0066",
+   "date": "2026-01-08",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0658",
+   "date": "2026-01-09",
+   "kind": "outings",
+   "text": "Went to Brodie Castle Road on Sunday; it was crowded."
+  },
+  {
+   "id": "f0078",
+   "date": "2026-01-10",
+   "kind": "work",
+   "text": "Pair-programmed with Senthil on a tricky bug."
+  },
+  {
+   "id": "m54",
+   "date": "2026-01-10",
+   "text": "We've decided to move to Chennai in March because of my new job."
+  },
+  {
+   "id": "f0295",
+   "date": "2026-01-11",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0470",
+   "date": "2026-01-12",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0404",
+   "date": "2026-01-13",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0258",
+   "date": "2026-01-14",
+   "kind": "outings",
+   "text": "Evening walk at Brodie Castle Road; nice weather."
+  },
+  {
+   "id": "f0182",
+   "date": "2026-01-15",
+   "kind": "work",
+   "text": "Wrote the design doc for the new notifications feature."
+  },
+  {
+   "id": "f0685",
+   "date": "2026-01-15",
+   "kind": "media",
+   "text": "Started reading Deep Work."
+  },
+  {
+   "id": "f0742",
+   "date": "2026-01-15",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0765",
+   "date": "2026-01-15",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "m55",
+   "date": "2026-01-15",
+   "text": "We decided to prepay part of the home loan in January next year."
+  },
+  {
+   "id": "f0044",
+   "date": "2026-01-16",
+   "kind": "work",
+   "text": "Wrote the design doc for the new audit log feature."
+  },
+  {
+   "id": "f0819",
+   "date": "2026-01-16",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0709",
+   "date": "2026-01-17",
+   "kind": "media",
+   "text": "Finished Deep Work; recommended."
+  },
+  {
+   "id": "f0965",
+   "date": "2026-01-17",
+   "kind": "outings",
+   "text": "Went to Marina beach on Sunday; it was crowded."
+  },
+  {
+   "id": "f0983",
+   "date": "2026-01-17",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0897",
+   "date": "2026-01-18",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0076",
+   "date": "2026-01-19",
+   "kind": "cricket",
+   "text": "We won our cricket match by 7 runs today."
+  },
+  {
+   "id": "f0083",
+   "date": "2026-01-19",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0366",
+   "date": "2026-01-19",
+   "kind": "media",
+   "text": "Rewatched Super Deluxe with the kids."
+  },
+  {
+   "id": "f0766",
+   "date": "2026-01-19",
+   "kind": "outings",
+   "text": "Went to Elliot's beach on Sunday; it was crowded."
+  },
+  {
+   "id": "f0812",
+   "date": "2026-01-19",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0299",
+   "date": "2026-01-20",
+   "kind": "outings",
+   "text": "Evening walk at the Guindy park; nice weather."
+  },
+  {
+   "id": "f0694",
+   "date": "2026-01-20",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0734",
+   "date": "2026-01-20",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "m56",
+   "date": "2026-01-20",
+   "text": "FarmLink is moving from Firebase to PostgreSQL; Firebase got too expensive."
+  },
+  {
+   "id": "f0011",
+   "date": "2026-01-21",
+   "kind": "others",
+   "text": "My cousin Ramesh got a job at Zoho."
+  },
+  {
+   "id": "f0529",
+   "date": "2026-01-22",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0641",
+   "date": "2026-01-22",
+   "kind": "outings",
+   "text": "Evening walk at Marina beach; nice weather."
+  },
+  {
+   "id": "f0795",
+   "date": "2026-01-23",
+   "kind": "media",
+   "text": "Listened to a long podcast about observability on my walk."
+  },
+  {
+   "id": "f0807",
+   "date": "2026-01-24",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0808",
+   "date": "2026-01-24",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0821",
+   "date": "2026-01-24",
+   "kind": "media",
+   "text": "Rewatched 96 with the kids."
+  },
+  {
+   "id": "f0179",
+   "date": "2026-01-25",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0180",
+   "date": "2026-01-25",
+   "kind": "media",
+   "text": "Rewatched Inception with the kids."
+  },
+  {
+   "id": "f0599",
+   "date": "2026-01-25",
+   "kind": "media",
+   "text": "Finished Deep Work; recommended."
+  },
+  {
+   "id": "f0976",
+   "date": "2026-01-25",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0436",
+   "date": "2026-01-27",
+   "kind": "media",
+   "text": "Listened to a long podcast about testing on my walk."
+  },
+  {
+   "id": "f0209",
+   "date": "2026-01-28",
+   "kind": "outings",
+   "text": "Visited a bookshop near Elliot's beach."
+  },
+  {
+   "id": "f0752",
+   "date": "2026-01-29",
+   "kind": "others",
+   "text": "My cousin Ramesh got a job at Zoho."
+  },
+  {
+   "id": "f0418",
+   "date": "2026-01-30",
+   "kind": "outings",
+   "text": "Visited a bookshop near the Guindy park."
+  },
+  {
+   "id": "f0854",
+   "date": "2026-01-30",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0342",
+   "date": "2026-01-31",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0541",
+   "date": "2026-01-31",
+   "kind": "media",
+   "text": "Rewatched Oppenheimer with the kids."
+  },
+  {
+   "id": "f0757",
+   "date": "2026-01-31",
+   "kind": "media",
+   "text": "Started reading Atomic Habits."
+  },
+  {
+   "id": "f0351",
+   "date": "2026-02-01",
+   "kind": "media",
+   "text": "Finished Atomic Habits; recommended."
+  },
+  {
+   "id": "f0781",
+   "date": "2026-02-01",
+   "kind": "cricket",
+   "text": "We won our cricket match by 21 runs today."
+  },
+  {
+   "id": "f0929",
+   "date": "2026-02-01",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0487",
+   "date": "2026-02-02",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0797",
+   "date": "2026-02-02",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0514",
+   "date": "2026-02-03",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 28."
+  },
+  {
+   "id": "f0219",
+   "date": "2026-02-04",
+   "kind": "others",
+   "text": "My neighbour Mr. Iyer drives a Tata Nexon EV."
+  },
+  {
+   "id": "f0069",
+   "date": "2026-02-05",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0136",
+   "date": "2026-02-06",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0982",
+   "date": "2026-02-06",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0333",
+   "date": "2026-02-07",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0379",
+   "date": "2026-02-08",
+   "kind": "media",
+   "text": "Finished Deep Work; recommended."
+  },
+  {
+   "id": "f0755",
+   "date": "2026-02-09",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0780",
+   "date": "2026-02-11",
+   "kind": "work",
+   "text": "Gave a short talk to the team about testing."
+  },
+  {
+   "id": "f0048",
+   "date": "2026-02-12",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0489",
+   "date": "2026-02-12",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0887",
+   "date": "2026-02-12",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0320",
+   "date": "2026-02-13",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0534",
+   "date": "2026-02-13",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0762",
+   "date": "2026-02-13",
+   "kind": "musings",
+   "text": "Maybe I should start running instead of walking."
+  },
+  {
+   "id": "f0894",
+   "date": "2026-02-13",
+   "kind": "media",
+   "text": "Finished Atomic Habits; recommended."
+  },
+  {
+   "id": "m57",
+   "date": "2026-02-14",
+   "text": "Took Priya to dinner for her birthday at Annalakshmi."
+  },
+  {
+   "id": "f0632",
+   "date": "2026-02-15",
+   "kind": "outings",
+   "text": "Took the kids to Marina beach this evening."
+  },
+  {
+   "id": "f0649",
+   "date": "2026-02-16",
+   "kind": "media",
+   "text": "Finished Atomic Habits; recommended."
+  },
+  {
+   "id": "f0705",
+   "date": "2026-02-16",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0452",
+   "date": "2026-02-18",
+   "kind": "others",
+   "text": "My colleague Senthil just bought an iPhone 16."
+  },
+  {
+   "id": "f0525",
+   "date": "2026-02-19",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0884",
+   "date": "2026-02-20",
+   "kind": "outings",
+   "text": "Had lunch at Sangeetha with friends."
+  },
+  {
+   "id": "f0188",
+   "date": "2026-02-21",
+   "kind": "outings",
+   "text": "Had lunch at Murugan Idli Shop with friends."
+  },
+  {
+   "id": "f0720",
+   "date": "2026-02-21",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0417",
+   "date": "2026-02-22",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0457",
+   "date": "2026-02-22",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "f0928",
+   "date": "2026-02-22",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0991",
+   "date": "2026-02-22",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0461",
+   "date": "2026-02-23",
+   "kind": "outings",
+   "text": "Went to Elliot's beach on Sunday; it was crowded."
+  },
+  {
+   "id": "f0937",
+   "date": "2026-02-23",
+   "kind": "outings",
+   "text": "Took the kids to Phoenix mall this evening."
+  },
+  {
+   "id": "f0269",
+   "date": "2026-02-25",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0403",
+   "date": "2026-02-25",
+   "kind": "work",
+   "text": "Gave a short talk to the team about Kafka."
+  },
+  {
+   "id": "f0871",
+   "date": "2026-02-26",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0892",
+   "date": "2026-02-26",
+   "kind": "cricket",
+   "text": "We won our cricket match by 34 runs today."
+  },
+  {
+   "id": "f0635",
+   "date": "2026-02-27",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0020",
+   "date": "2026-03-01",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0571",
+   "date": "2026-03-01",
+   "kind": "cricket",
+   "text": "Scored 55 runs in today's match."
+  },
+  {
+   "id": "f0966",
+   "date": "2026-03-02",
+   "kind": "outings",
+   "text": "Went to Phoenix mall on Sunday; it was crowded."
+  },
+  {
+   "id": "f0926",
+   "date": "2026-03-03",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0216",
+   "date": "2026-03-04",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0753",
+   "date": "2026-03-05",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0384",
+   "date": "2026-03-06",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0909",
+   "date": "2026-03-06",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "f0311",
+   "date": "2026-03-08",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0474",
+   "date": "2026-03-09",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0533",
+   "date": "2026-03-09",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0548",
+   "date": "2026-03-09",
+   "kind": "media",
+   "text": "Listened to a long podcast about testing on my walk."
+  },
+  {
+   "id": "f0617",
+   "date": "2026-03-09",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0727",
+   "date": "2026-03-09",
+   "kind": "work",
+   "text": "Pair-programmed with Deepa on a tricky bug."
+  },
+  {
+   "id": "f0730",
+   "date": "2026-03-09",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0770",
+   "date": "2026-03-09",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0173",
+   "date": "2026-03-10",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0253",
+   "date": "2026-03-10",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0350",
+   "date": "2026-03-10",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0524",
+   "date": "2026-03-10",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0827",
+   "date": "2026-03-10",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0031",
+   "date": "2026-03-11",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0210",
+   "date": "2026-03-14",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0059",
+   "date": "2026-03-15",
+   "kind": "others",
+   "text": "Divya's friend Shalini visited them in Bangalore."
+  },
+  {
+   "id": "f0963",
+   "date": "2026-03-15",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "m58",
+   "date": "2026-03-15",
+   "text": "We moved! We now live in Adyar, Chennai."
+  },
+  {
+   "id": "f0336",
+   "date": "2026-03-16",
+   "kind": "outings",
+   "text": "Went to Brodie Castle Road on Sunday; it was crowded."
+  },
+  {
+   "id": "f0521",
+   "date": "2026-03-16",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0773",
+   "date": "2026-03-16",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0956",
+   "date": "2026-03-16",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0177",
+   "date": "2026-03-17",
+   "kind": "media",
+   "text": "Watched 96 last night; pretty good."
+  },
+  {
+   "id": "f0249",
+   "date": "2026-03-17",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0261",
+   "date": "2026-03-17",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0805",
+   "date": "2026-03-18",
+   "kind": "outings",
+   "text": "Had lunch at Sangeetha with friends."
+  },
+  {
+   "id": "f0917",
+   "date": "2026-03-18",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0137",
+   "date": "2026-03-19",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "m59",
+   "date": "2026-03-20",
+   "text": "Anu joined class 3 at Chettinad Vidyashram in Chennai."
+  },
+  {
+   "id": "f0270",
+   "date": "2026-03-21",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0504",
+   "date": "2026-03-21",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0675",
+   "date": "2026-03-21",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "f0754",
+   "date": "2026-03-21",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "f0493",
+   "date": "2026-03-22",
+   "kind": "outings",
+   "text": "Evening walk at Marina beach; nice weather."
+  },
+  {
+   "id": "m60",
+   "date": "2026-03-22",
+   "text": "Priya now teaches maths at Kalakshetra School in Chennai."
+  },
+  {
+   "id": "f0729",
+   "date": "2026-03-23",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0964",
+   "date": "2026-03-23",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0627",
+   "date": "2026-03-24",
+   "kind": "musings",
+   "text": "Might try learning chess this year."
+  },
+  {
+   "id": "f0814",
+   "date": "2026-03-24",
+   "kind": "media",
+   "text": "Watched Jailer last night; pretty good."
+  },
+  {
+   "id": "f0318",
+   "date": "2026-03-26",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0214",
+   "date": "2026-03-27",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0580",
+   "date": "2026-03-27",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0786",
+   "date": "2026-03-27",
+   "kind": "work",
+   "text": "Wrote the design doc for the new risk scoring feature."
+  },
+  {
+   "id": "f0745",
+   "date": "2026-03-29",
+   "kind": "errands",
+   "text": "Spent 3050 rupees on groceries today."
+  },
+  {
+   "id": "f0543",
+   "date": "2026-03-31",
+   "kind": "work",
+   "text": "Wrote the design doc for the new notifications feature."
+  },
+  {
+   "id": "f0398",
+   "date": "2026-04-01",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0990",
+   "date": "2026-04-01",
+   "kind": "media",
+   "text": "Started reading Sapiens."
+  },
+  {
+   "id": "m61",
+   "date": "2026-04-01",
+   "text": "Vicky started kindergarten at Little Elly, Adyar."
+  },
+  {
+   "id": "f0568",
+   "date": "2026-04-02",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0246",
+   "date": "2026-04-03",
+   "kind": "work",
+   "text": "Wrote the design doc for the new export feature."
+  },
+  {
+   "id": "f0811",
+   "date": "2026-04-03",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0660",
+   "date": "2026-04-04",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0984",
+   "date": "2026-04-04",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0130",
+   "date": "2026-04-05",
+   "kind": "small_talk",
+   "text": "Thanks, that's helpful."
+  },
+  {
+   "id": "f0698",
+   "date": "2026-04-05",
+   "kind": "work",
+   "text": "Pair-programmed with Senthil on a tricky bug."
+  },
+  {
+   "id": "m62",
+   "date": "2026-04-05",
+   "text": "My new dentist in Chennai is Dr. Ananya at Pearl Dental."
+  },
+  {
+   "id": "f0281",
+   "date": "2026-04-06",
+   "kind": "outings",
+   "text": "Visited a bookshop near Marina beach."
+  },
+  {
+   "id": "f0425",
+   "date": "2026-04-06",
+   "kind": "media",
+   "text": "Finished Ponniyin Selvan; recommended."
+  },
+  {
+   "id": "f0608",
+   "date": "2026-04-06",
+   "kind": "work",
+   "text": "Wrote the design doc for the new loan approval feature."
+  },
+  {
+   "id": "f0771",
+   "date": "2026-04-06",
+   "kind": "media",
+   "text": "Listened to a long podcast about observability on my walk."
+  },
+  {
+   "id": "f0987",
+   "date": "2026-04-09",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0094",
+   "date": "2026-04-10",
+   "kind": "errands",
+   "text": "Spent 1400 rupees on groceries today."
+  },
+  {
+   "id": "f0778",
+   "date": "2026-04-10",
+   "kind": "media",
+   "text": "Finished The Pragmatic Programmer; recommended."
+  },
+  {
+   "id": "f0086",
+   "date": "2026-04-11",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0816",
+   "date": "2026-04-12",
+   "kind": "others",
+   "text": "Anil is moving to Pune for a new job."
+  },
+  {
+   "id": "m63",
+   "date": "2026-04-12",
+   "text": "I've joined the Adyar Cricket Club; we play on Saturday mornings now, not Sundays."
+  },
+  {
+   "id": "f0394",
+   "date": "2026-04-13",
+   "kind": "others",
+   "text": "Gopal's team uses Python for most of their services."
+  },
+  {
+   "id": "f0013",
+   "date": "2026-04-14",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0355",
+   "date": "2026-04-14",
+   "kind": "media",
+   "text": "Rewatched Oppenheimer with the kids."
+  },
+  {
+   "id": "f0522",
+   "date": "2026-04-14",
+   "kind": "media",
+   "text": "Listened to a long podcast about Kafka on my walk."
+  },
+  {
+   "id": "f0723",
+   "date": "2026-04-14",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0775",
+   "date": "2026-04-14",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0122",
+   "date": "2026-04-15",
+   "kind": "others",
+   "text": "Anil is moving to Pune for a new job."
+  },
+  {
+   "id": "f0319",
+   "date": "2026-04-16",
+   "kind": "others",
+   "text": "Arjun's wife Kavya runs a bakery in Coimbatore."
+  },
+  {
+   "id": "f0642",
+   "date": "2026-04-17",
+   "kind": "work",
+   "text": "Pair-programmed with Deepa on a tricky bug."
+  },
+  {
+   "id": "f0958",
+   "date": "2026-04-17",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0602",
+   "date": "2026-04-18",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0057",
+   "date": "2026-04-20",
+   "kind": "outings",
+   "text": "Evening walk at Brodie Castle Road; nice weather."
+  },
+  {
+   "id": "f0411",
+   "date": "2026-04-20",
+   "kind": "work",
+   "text": "Wrote the design doc for the new loan approval feature."
+  },
+  {
+   "id": "f0628",
+   "date": "2026-04-20",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 49."
+  },
+  {
+   "id": "m64",
+   "date": "2026-04-20",
+   "text": "I switched from the iPhone 15 to a Pixel 9."
+  },
+  {
+   "id": "f0372",
+   "date": "2026-04-21",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0401",
+   "date": "2026-04-21",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 46."
+  },
+  {
+   "id": "f0446",
+   "date": "2026-04-21",
+   "kind": "outings",
+   "text": "Evening walk at the Guindy park; nice weather."
+  },
+  {
+   "id": "f0843",
+   "date": "2026-04-21",
+   "kind": "work",
+   "text": "Long day at work, 23 meetings back to back."
+  },
+  {
+   "id": "f0408",
+   "date": "2026-04-22",
+   "kind": "others",
+   "text": "There's a new designer on my team, also called Priya."
+  },
+  {
+   "id": "f0862",
+   "date": "2026-04-24",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0476",
+   "date": "2026-04-25",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0629",
+   "date": "2026-04-25",
+   "kind": "outings",
+   "text": "Went to the Guindy park on Sunday; it was crowded."
+  },
+  {
+   "id": "f0665",
+   "date": "2026-04-25",
+   "kind": "work",
+   "text": "Pair-programmed with Deepa on a tricky bug."
+  },
+  {
+   "id": "f0858",
+   "date": "2026-04-26",
+   "kind": "others",
+   "text": "Ravi is learning Japanese for a trip next year."
+  },
+  {
+   "id": "f0166",
+   "date": "2026-04-27",
+   "kind": "cricket",
+   "text": "Scored 60 runs in today's match."
+  },
+  {
+   "id": "f0604",
+   "date": "2026-04-28",
+   "kind": "cricket",
+   "text": "We won our cricket match by 13 runs today."
+  },
+  {
+   "id": "f0615",
+   "date": "2026-04-28",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0126",
+   "date": "2026-04-29",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0977",
+   "date": "2026-04-29",
+   "kind": "cricket",
+   "text": "We won our cricket match by 5 runs today."
+  },
+  {
+   "id": "f0431",
+   "date": "2026-05-01",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "f0463",
+   "date": "2026-05-01",
+   "kind": "errands",
+   "text": "Spent 2150 rupees on groceries today."
+  },
+  {
+   "id": "m65",
+   "date": "2026-05-01",
+   "text": "I stopped the veena classes after the move."
+  },
+  {
+   "id": "f0157",
+   "date": "2026-05-02",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0376",
+   "date": "2026-05-02",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0061",
+   "date": "2026-05-05",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0199",
+   "date": "2026-05-06",
+   "kind": "media",
+   "text": "Watched 96 last night; pretty good."
+  },
+  {
+   "id": "f0420",
+   "date": "2026-05-06",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0265",
+   "date": "2026-05-07",
+   "kind": "small_talk",
+   "text": "Thanks, that's helpful."
+  },
+  {
+   "id": "f0802",
+   "date": "2026-05-09",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "f0264",
+   "date": "2026-05-10",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0669",
+   "date": "2026-05-10",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0788",
+   "date": "2026-05-10",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "m66",
+   "date": "2026-05-10",
+   "text": "FarmLink is now live with 3 farmer collectives: Pollachi, Udumalpet and Theni."
+  },
+  {
+   "id": "f0009",
+   "date": "2026-05-11",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0488",
+   "date": "2026-05-11",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0885",
+   "date": "2026-05-11",
+   "kind": "media",
+   "text": "Listened to a long podcast about Kafka on my walk."
+  },
+  {
+   "id": "f0906",
+   "date": "2026-05-12",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0098",
+   "date": "2026-05-13",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0184",
+   "date": "2026-05-15",
+   "kind": "work",
+   "text": "Gave a short talk to the team about Kafka."
+  },
+  {
+   "id": "f0206",
+   "date": "2026-05-15",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "m67",
+   "date": "2026-05-15",
+   "text": "Our household budget went up to 75,000 rupees a month in Chennai."
+  },
+  {
+   "id": "f0992",
+   "date": "2026-05-16",
+   "kind": "media",
+   "text": "Rewatched Jailer with the kids."
+  },
+  {
+   "id": "f0397",
+   "date": "2026-05-17",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0600",
+   "date": "2026-05-17",
+   "kind": "cricket",
+   "text": "We won our cricket match by 7 runs today."
+  },
+  {
+   "id": "f0903",
+   "date": "2026-05-20",
+   "kind": "work",
+   "text": "Pair-programmed with Karthika on a tricky bug."
+  },
+  {
+   "id": "f0676",
+   "date": "2026-05-21",
+   "kind": "others",
+   "text": "My colleague Senthil just bought an iPhone 16."
+  },
+  {
+   "id": "f0936",
+   "date": "2026-05-21",
+   "kind": "outings",
+   "text": "Visited a bookshop near Phoenix mall."
+  },
+  {
+   "id": "f0010",
+   "date": "2026-05-22",
+   "kind": "media",
+   "text": "Started reading Sapiens."
+  },
+  {
+   "id": "f0037",
+   "date": "2026-05-22",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0653",
+   "date": "2026-05-22",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0839",
+   "date": "2026-05-22",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0018",
+   "date": "2026-05-24",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0912",
+   "date": "2026-05-24",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0557",
+   "date": "2026-05-27",
+   "kind": "outings",
+   "text": "Evening walk at the Guindy park; nice weather."
+  },
+  {
+   "id": "f0527",
+   "date": "2026-05-28",
+   "kind": "work",
+   "text": "Long day at work, 58 meetings back to back."
+  },
+  {
+   "id": "f0383",
+   "date": "2026-05-30",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0201",
+   "date": "2026-05-31",
+   "kind": "media",
+   "text": "Finished Deep Work; recommended."
+  },
+  {
+   "id": "f0413",
+   "date": "2026-06-01",
+   "kind": "outings",
+   "text": "Visited a bookshop near Brodie Castle Road."
+  },
+  {
+   "id": "f0776",
+   "date": "2026-06-01",
+   "kind": "others",
+   "text": "My friend Anil lives in Velachery now."
+  },
+  {
+   "id": "m68",
+   "date": "2026-06-01",
+   "text": "I increased my SIP to 15,000 rupees a month."
+  },
+  {
+   "id": "f0704",
+   "date": "2026-06-02",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0338",
+   "date": "2026-06-04",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0833",
+   "date": "2026-06-05",
+   "kind": "kids",
+   "text": "Helped Anu with her maths homework."
+  },
+  {
+   "id": "f0097",
+   "date": "2026-06-06",
+   "kind": "small_talk",
+   "text": "What's the weather tomorrow?"
+  },
+  {
+   "id": "f0735",
+   "date": "2026-06-06",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0273",
+   "date": "2026-06-07",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0334",
+   "date": "2026-06-07",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0594",
+   "date": "2026-06-07",
+   "kind": "others",
+   "text": "Divya's friend Shalini visited them in Bangalore."
+  },
+  {
+   "id": "f0040",
+   "date": "2026-06-08",
+   "kind": "small_talk",
+   "text": "Thanks, that's helpful."
+  },
+  {
+   "id": "f0091",
+   "date": "2026-06-08",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0349",
+   "date": "2026-06-08",
+   "kind": "media",
+   "text": "Finished Sapiens; recommended."
+  },
+  {
+   "id": "f0981",
+   "date": "2026-06-08",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0172",
+   "date": "2026-06-10",
+   "kind": "others",
+   "text": "My colleague Senthil just bought an iPhone 16."
+  },
+  {
+   "id": "m69",
+   "date": "2026-06-10",
+   "text": "Ledgerly runs on AWS EKS."
+  },
+  {
+   "id": "f0482",
+   "date": "2026-06-11",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0847",
+   "date": "2026-06-12",
+   "kind": "musings",
+   "text": "Might try learning chess this year."
+  },
+  {
+   "id": "m70",
+   "date": "2026-06-12",
+   "text": "Ravi from my team is the tech lead on Ledgerly's payments module."
+  },
+  {
+   "id": "f0530",
+   "date": "2026-06-13",
+   "kind": "work",
+   "text": "Long day at work, 43 meetings back to back."
+  },
+  {
+   "id": "f0901",
+   "date": "2026-06-14",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0359",
+   "date": "2026-06-16",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0670",
+   "date": "2026-06-16",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0620",
+   "date": "2026-06-17",
+   "kind": "work",
+   "text": "Long day at work, 43 meetings back to back."
+  },
+  {
+   "id": "f0108",
+   "date": "2026-06-18",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0254",
+   "date": "2026-06-18",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0278",
+   "date": "2026-06-18",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0294",
+   "date": "2026-06-18",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0186",
+   "date": "2026-06-20",
+   "kind": "media",
+   "text": "Finished The Pragmatic Programmer; recommended."
+  },
+  {
+   "id": "m93",
+   "date": "2026-06-20",
+   "text": "Vicky turned 5 today."
+  },
+  {
+   "id": "f0055",
+   "date": "2026-06-22",
+   "kind": "others",
+   "text": "Naveen's hospital is opening a new wing."
+  },
+  {
+   "id": "f0405",
+   "date": "2026-06-22",
+   "kind": "media",
+   "text": "Finished The Pragmatic Programmer; recommended."
+  },
+  {
+   "id": "f0414",
+   "date": "2026-06-23",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 16."
+  },
+  {
+   "id": "f0537",
+   "date": "2026-06-24",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0479",
+   "date": "2026-06-25",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0158",
+   "date": "2026-06-26",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0375",
+   "date": "2026-06-27",
+   "kind": "others",
+   "text": "Ravi is learning Japanese for a trip next year."
+  },
+  {
+   "id": "f0908",
+   "date": "2026-06-27",
+   "kind": "errands",
+   "text": "Fixed the leaking kitchen tap myself."
+  },
+  {
+   "id": "f0974",
+   "date": "2026-06-27",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0518",
+   "date": "2026-06-29",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0911",
+   "date": "2026-06-29",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0306",
+   "date": "2026-07-01",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0472",
+   "date": "2026-07-01",
+   "kind": "media",
+   "text": "Rewatched Jailer with the kids."
+  },
+  {
+   "id": "f0914",
+   "date": "2026-07-01",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "m71",
+   "date": "2026-07-01",
+   "text": "Naveen and Divya had a baby boy, Aadhav."
+  },
+  {
+   "id": "f0335",
+   "date": "2026-07-02",
+   "kind": "work",
+   "text": "Wrote the design doc for the new export feature."
+  },
+  {
+   "id": "f0095",
+   "date": "2026-07-03",
+   "kind": "musings",
+   "text": "Maybe I should start running instead of walking."
+  },
+  {
+   "id": "f0185",
+   "date": "2026-07-03",
+   "kind": "cricket",
+   "text": "We won our cricket match by 43 runs today."
+  },
+  {
+   "id": "f0836",
+   "date": "2026-07-03",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "f0947",
+   "date": "2026-07-03",
+   "kind": "others",
+   "text": "Senthil's daughter is learning the violin."
+  },
+  {
+   "id": "f0085",
+   "date": "2026-07-04",
+   "kind": "cricket",
+   "text": "Scored 32 runs in today's match."
+  },
+  {
+   "id": "f0993",
+   "date": "2026-07-04",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 16."
+  },
+  {
+   "id": "f0341",
+   "date": "2026-07-05",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 57."
+  },
+  {
+   "id": "f0458",
+   "date": "2026-07-05",
+   "kind": "musings",
+   "text": "Maybe I should start running instead of walking."
+  },
+  {
+   "id": "m72",
+   "date": "2026-07-05",
+   "text": "எனக்கு ப்ரியா செய்யும் தோசை ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "f0475",
+   "date": "2026-07-06",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0242",
+   "date": "2026-07-07",
+   "kind": "small_talk",
+   "text": "Thanks, that's helpful."
+  },
+  {
+   "id": "f0666",
+   "date": "2026-07-09",
+   "kind": "outings",
+   "text": "Took the kids to Marina beach this evening."
+  },
+  {
+   "id": "f0997",
+   "date": "2026-07-09",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0163",
+   "date": "2026-07-11",
+   "kind": "cricket",
+   "text": "We won our cricket match by 38 runs today."
+  },
+  {
+   "id": "f0280",
+   "date": "2026-07-11",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0305",
+   "date": "2026-07-11",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0659",
+   "date": "2026-07-12",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0693",
+   "date": "2026-07-12",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0748",
+   "date": "2026-07-12",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0162",
+   "date": "2026-07-13",
+   "kind": "outings",
+   "text": "Went to Brodie Castle Road on Sunday; it was crowded."
+  },
+  {
+   "id": "f0352",
+   "date": "2026-07-13",
+   "kind": "work",
+   "text": "Pair-programmed with Deepa on a tricky bug."
+  },
+  {
+   "id": "f0701",
+   "date": "2026-07-14",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0687",
+   "date": "2026-07-17",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0740",
+   "date": "2026-07-17",
+   "kind": "others",
+   "text": "Kavya's bakery started delivering in Chennai too."
+  },
+  {
+   "id": "f0760",
+   "date": "2026-07-19",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0536",
+   "date": "2026-07-20",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0692",
+   "date": "2026-07-20",
+   "kind": "media",
+   "text": "Listened to a long podcast about Rust on my walk."
+  },
+  {
+   "id": "f0768",
+   "date": "2026-07-20",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0860",
+   "date": "2026-07-20",
+   "kind": "others",
+   "text": "Divya's friend Shalini visited them in Bangalore."
+  },
+  {
+   "id": "m73",
+   "date": "2026-07-20",
+   "text": "I'm thinking about buying an electric car, maybe next year."
+  },
+  {
+   "id": "f0587",
+   "date": "2026-07-21",
+   "kind": "media",
+   "text": "Finished Sapiens; recommended."
+  },
+  {
+   "id": "f0250",
+   "date": "2026-07-22",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0746",
+   "date": "2026-07-22",
+   "kind": "musings",
+   "text": "Might try learning chess this year."
+  },
+  {
+   "id": "f0978",
+   "date": "2026-07-22",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "f0192",
+   "date": "2026-07-23",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0303",
+   "date": "2026-07-24",
+   "kind": "outings",
+   "text": "Took the kids to the Guindy park this evening."
+  },
+  {
+   "id": "f0932",
+   "date": "2026-07-24",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0190",
+   "date": "2026-07-25",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0907",
+   "date": "2026-07-25",
+   "kind": "small_talk",
+   "text": "Tell me a joke."
+  },
+  {
+   "id": "f0151",
+   "date": "2026-07-26",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0217",
+   "date": "2026-07-27",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0293",
+   "date": "2026-07-27",
+   "kind": "outings",
+   "text": "Took the kids to Brodie Castle Road this evening."
+  },
+  {
+   "id": "f0001",
+   "date": "2026-07-28",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0262",
+   "date": "2026-07-28",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0970",
+   "date": "2026-07-28",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0276",
+   "date": "2026-07-29",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0444",
+   "date": "2026-07-29",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "f0690",
+   "date": "2026-07-30",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0256",
+   "date": "2026-08-01",
+   "kind": "work",
+   "text": "Pair-programmed with Deepa on a tricky bug."
+  },
+  {
+   "id": "f0638",
+   "date": "2026-08-01",
+   "kind": "media",
+   "text": "Listened to a long podcast about AI agents on my walk."
+  },
+  {
+   "id": "m74",
+   "date": "2026-08-01",
+   "text": "We decided not to buy a new car this year."
+  },
+  {
+   "id": "f0084",
+   "date": "2026-08-03",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "m75",
+   "date": "2026-08-03",
+   "text": "Anu is 9 now."
+  },
+  {
+   "id": "f0347",
+   "date": "2026-08-04",
+   "kind": "others",
+   "text": "Ravi is learning Japanese for a trip next year."
+  },
+  {
+   "id": "f0500",
+   "date": "2026-08-04",
+   "kind": "outings",
+   "text": "Visited a bookshop near Marina beach."
+  },
+  {
+   "id": "f0576",
+   "date": "2026-08-04",
+   "kind": "work",
+   "text": "Long day at work, 51 meetings back to back."
+  },
+  {
+   "id": "f0682",
+   "date": "2026-08-04",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0794",
+   "date": "2026-08-04",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 52."
+  },
+  {
+   "id": "f0507",
+   "date": "2026-08-05",
+   "kind": "cricket",
+   "text": "We won our cricket match by 39 runs today."
+  },
+  {
+   "id": "f0962",
+   "date": "2026-08-05",
+   "kind": "musings",
+   "text": "Considering a standing desk for home."
+  },
+  {
+   "id": "f0161",
+   "date": "2026-08-06",
+   "kind": "media",
+   "text": "Started reading Atomic Habits."
+  },
+  {
+   "id": "f0390",
+   "date": "2026-08-06",
+   "kind": "outings",
+   "text": "Went to the Guindy park on Sunday; it was crowded."
+  },
+  {
+   "id": "f0406",
+   "date": "2026-08-06",
+   "kind": "work",
+   "text": "Long day at work, 57 meetings back to back."
+  },
+  {
+   "id": "f0651",
+   "date": "2026-08-06",
+   "kind": "work",
+   "text": "Long day at work, 56 meetings back to back."
+  },
+  {
+   "id": "f0154",
+   "date": "2026-08-07",
+   "kind": "errands",
+   "text": "Spent 1250 rupees on groceries today."
+  },
+  {
+   "id": "f0732",
+   "date": "2026-08-08",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0073",
+   "date": "2026-08-09",
+   "kind": "small_talk",
+   "text": "Good morning!"
+  },
+  {
+   "id": "f0430",
+   "date": "2026-08-09",
+   "kind": "work",
+   "text": "Gave a short talk to the team about AI agents."
+  },
+  {
+   "id": "f0611",
+   "date": "2026-08-09",
+   "kind": "outings",
+   "text": "Evening walk at Brodie Castle Road; nice weather."
+  },
+  {
+   "id": "f0054",
+   "date": "2026-08-11",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0145",
+   "date": "2026-08-13",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0508",
+   "date": "2026-08-13",
+   "kind": "work",
+   "text": "Gave a short talk to the team about Rust."
+  },
+  {
+   "id": "f0252",
+   "date": "2026-08-14",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "m76",
+   "date": "2026-08-15",
+   "text": "My home lab moved to an Intel NUC; the Raspberry Pi is retired."
+  },
+  {
+   "id": "f0223",
+   "date": "2026-08-16",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0427",
+   "date": "2026-08-16",
+   "kind": "media",
+   "text": "Rewatched 96 with the kids."
+  },
+  {
+   "id": "f0975",
+   "date": "2026-08-16",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0553",
+   "date": "2026-08-17",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0714",
+   "date": "2026-08-17",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0478",
+   "date": "2026-08-18",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0515",
+   "date": "2026-08-18",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0681",
+   "date": "2026-08-18",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0905",
+   "date": "2026-08-18",
+   "kind": "others",
+   "text": "Gopal's team uses Python for most of their services."
+  },
+  {
+   "id": "f0503",
+   "date": "2026-08-21",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 22."
+  },
+  {
+   "id": "f0160",
+   "date": "2026-08-22",
+   "kind": "others",
+   "text": "Anil is moving to Pune for a new job."
+  },
+  {
+   "id": "f0603",
+   "date": "2026-08-22",
+   "kind": "media",
+   "text": "Finished Deep Work; recommended."
+  },
+  {
+   "id": "f0236",
+   "date": "2026-08-23",
+   "kind": "work",
+   "text": "Gave a short talk to the team about Rust."
+  },
+  {
+   "id": "f0181",
+   "date": "2026-08-26",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0841",
+   "date": "2026-08-26",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0153",
+   "date": "2026-08-28",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0846",
+   "date": "2026-08-28",
+   "kind": "outings",
+   "text": "Visited a bookshop near Marina beach."
+  },
+  {
+   "id": "f0972",
+   "date": "2026-08-28",
+   "kind": "work",
+   "text": "Gave a short talk to the team about observability."
+  },
+  {
+   "id": "f0003",
+   "date": "2026-08-29",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0218",
+   "date": "2026-08-29",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f1000",
+   "date": "2026-08-29",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0616",
+   "date": "2026-08-30",
+   "kind": "others",
+   "text": "Anil is moving to Pune for a new job."
+  },
+  {
+   "id": "f0971",
+   "date": "2026-08-30",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0230",
+   "date": "2026-08-31",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0498",
+   "date": "2026-09-01",
+   "kind": "media",
+   "text": "Started reading Deep Work."
+  },
+  {
+   "id": "m77",
+   "date": "2026-09-01",
+   "text": "I finished the Rust book and rewrote my backup tool in Rust."
+  },
+  {
+   "id": "f0565",
+   "date": "2026-09-02",
+   "kind": "media",
+   "text": "Listened to a long podcast about Rust on my walk."
+  },
+  {
+   "id": "f0655",
+   "date": "2026-09-02",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0301",
+   "date": "2026-09-04",
+   "kind": "outings",
+   "text": "Took the kids to Phoenix mall this evening."
+  },
+  {
+   "id": "f0374",
+   "date": "2026-09-04",
+   "kind": "others",
+   "text": "My colleague Senthil just bought an iPhone 16."
+  },
+  {
+   "id": "f0462",
+   "date": "2026-09-04",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0784",
+   "date": "2026-09-04",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "m78",
+   "date": "2026-09-05",
+   "text": "Our client for Ledgerly's first launch is Kaveri Finance."
+  },
+  {
+   "id": "f0068",
+   "date": "2026-09-06",
+   "kind": "media",
+   "text": "Listened to a long podcast about system design on my walk."
+  },
+  {
+   "id": "f0178",
+   "date": "2026-09-06",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0721",
+   "date": "2026-09-06",
+   "kind": "media",
+   "text": "Listened to a long podcast about testing on my walk."
+  },
+  {
+   "id": "f0883",
+   "date": "2026-09-08",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "m79",
+   "date": "2026-09-10",
+   "text": "Ledgerly went live for Kaveri Finance today."
+  },
+  {
+   "id": "f0497",
+   "date": "2026-09-11",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0944",
+   "date": "2026-09-11",
+   "kind": "musings",
+   "text": "Might try learning chess this year."
+  },
+  {
+   "id": "f0593",
+   "date": "2026-09-12",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0619",
+   "date": "2026-09-12",
+   "kind": "work",
+   "text": "Interviewed a candidate for a backend role today."
+  },
+  {
+   "id": "f0116",
+   "date": "2026-09-13",
+   "kind": "errands",
+   "text": "Renewed the internet plan for another year."
+  },
+  {
+   "id": "f0449",
+   "date": "2026-09-13",
+   "kind": "work",
+   "text": "Gave a short talk to the team about observability."
+  },
+  {
+   "id": "m80",
+   "date": "2026-09-15",
+   "text": "We're planning a trip to Munnar for the Christmas holidays."
+  },
+  {
+   "id": "f0767",
+   "date": "2026-09-16",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "f0155",
+   "date": "2026-09-17",
+   "kind": "work",
+   "text": "Spent the day on code cleanup; nothing exciting."
+  },
+  {
+   "id": "f0248",
+   "date": "2026-09-17",
+   "kind": "media",
+   "text": "Watched Inception last night; pretty good."
+  },
+  {
+   "id": "f0532",
+   "date": "2026-09-17",
+   "kind": "outings",
+   "text": "Went to Marina beach on Sunday; it was crowded."
+  },
+  {
+   "id": "f0664",
+   "date": "2026-09-17",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0736",
+   "date": "2026-09-18",
+   "kind": "others",
+   "text": "My cousin Ramesh got a job at Zoho."
+  },
+  {
+   "id": "m81",
+   "date": "2026-09-18",
+   "text": "Appa's 70th birthday party will be on 9 January 2027 in Madurai."
+  },
+  {
+   "id": "m82",
+   "date": "2026-09-20",
+   "text": "Arjun is now FarmLink's CTO; I'm the CEO."
+  },
+  {
+   "id": "f0028",
+   "date": "2026-09-21",
+   "kind": "health_small",
+   "text": "Felt great after the walk this morning."
+  },
+  {
+   "id": "f0093",
+   "date": "2026-09-21",
+   "kind": "health_small",
+   "text": "Slept badly last night."
+  },
+  {
+   "id": "f0353",
+   "date": "2026-09-21",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0447",
+   "date": "2026-09-21",
+   "kind": "small_talk",
+   "text": "How many days until the weekend?"
+  },
+  {
+   "id": "f0555",
+   "date": "2026-09-21",
+   "kind": "health_small",
+   "text": "Skipped my walk today because of rain."
+  },
+  {
+   "id": "f0022",
+   "date": "2026-09-22",
+   "kind": "work",
+   "text": "Wrote the design doc for the new audit log feature."
+  },
+  {
+   "id": "f0799",
+   "date": "2026-09-24",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0874",
+   "date": "2026-09-24",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0298",
+   "date": "2026-09-25",
+   "kind": "media",
+   "text": "Started reading Deep Work."
+  },
+  {
+   "id": "f0733",
+   "date": "2026-09-25",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0330",
+   "date": "2026-09-26",
+   "kind": "others",
+   "text": "Gopal's team uses Python for most of their services."
+  },
+  {
+   "id": "f0702",
+   "date": "2026-09-26",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0940",
+   "date": "2026-09-26",
+   "kind": "others",
+   "text": "Meena now leads the payments platform team."
+  },
+  {
+   "id": "f0889",
+   "date": "2026-09-27",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0969",
+   "date": "2026-09-29",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0751",
+   "date": "2026-10-01",
+   "kind": "health_small",
+   "text": "Mild headache today; drank more water."
+  },
+  {
+   "id": "f0866",
+   "date": "2026-10-01",
+   "kind": "cricket",
+   "text": "We won our cricket match by 4 runs today."
+  },
+  {
+   "id": "m83",
+   "date": "2026-10-01",
+   "text": "Meena moved to another team; my new manager is Gopal."
+  },
+  {
+   "id": "f0442",
+   "date": "2026-10-03",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 23."
+  },
+  {
+   "id": "f0141",
+   "date": "2026-10-04",
+   "kind": "media",
+   "text": "Started reading Deep Work."
+  },
+  {
+   "id": "f0284",
+   "date": "2026-10-04",
+   "kind": "media",
+   "text": "Finished Ponniyin Selvan; recommended."
+  },
+  {
+   "id": "f0609",
+   "date": "2026-10-04",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "f0194",
+   "date": "2026-10-05",
+   "kind": "errands",
+   "text": "Ordered a new water purifier filter."
+  },
+  {
+   "id": "f0229",
+   "date": "2026-10-05",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "m84",
+   "date": "2026-10-05",
+   "text": "Priyavukku eppavum malli poo pudikkum — Priya always loves jasmine flowers."
+  },
+  {
+   "id": "f0918",
+   "date": "2026-10-06",
+   "kind": "cricket",
+   "text": "Lost a close cricket match today; scored 50."
+  },
+  {
+   "id": "f0718",
+   "date": "2026-10-07",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "m85",
+   "date": "2026-10-08",
+   "text": "Can you remind me what time it is?"
+  },
+  {
+   "id": "f0053",
+   "date": "2026-10-09",
+   "kind": "work",
+   "text": "Production had a small incident this morning; fixed by noon."
+  },
+  {
+   "id": "f0624",
+   "date": "2026-10-10",
+   "kind": "outings",
+   "text": "Visited a bookshop near Brodie Castle Road."
+  },
+  {
+   "id": "f0737",
+   "date": "2026-10-10",
+   "kind": "cricket",
+   "text": "We won our cricket match by 8 runs today."
+  },
+  {
+   "id": "m86",
+   "date": "2026-10-10",
+   "text": "I take Vicky to swimming classes at the Anna Nagar pool on Tuesdays."
+  },
+  {
+   "id": "f0110",
+   "date": "2026-10-11",
+   "kind": "outings",
+   "text": "Went to Elliot's beach on Sunday; it was crowded."
+  },
+  {
+   "id": "m87",
+   "date": "2026-10-12",
+   "text": "Actually, the swimming classes are at the YMCA pool in Nandanam, not Anna Nagar."
+  },
+  {
+   "id": "m88",
+   "date": "2026-10-15",
+   "text": "I use Obsidian for my notes and Linear for FarmLink tasks."
+  },
+  {
+   "id": "f0114",
+   "date": "2026-10-16",
+   "kind": "work",
+   "text": "Wrote the design doc for the new audit log feature."
+  },
+  {
+   "id": "f0207",
+   "date": "2026-10-16",
+   "kind": "others",
+   "text": "My school friend Prakash opened a clinic in Madurai."
+  },
+  {
+   "id": "f0585",
+   "date": "2026-10-16",
+   "kind": "others",
+   "text": "Arjun's wife Kavya runs a bakery in Coimbatore."
+  },
+  {
+   "id": "f0046",
+   "date": "2026-10-17",
+   "kind": "work",
+   "text": "Our sprint demo went well today."
+  },
+  {
+   "id": "f0601",
+   "date": "2026-10-17",
+   "kind": "others",
+   "text": "Gopal's team uses Python for most of their services."
+  },
+  {
+   "id": "f0845",
+   "date": "2026-10-18",
+   "kind": "others",
+   "text": "Naveen's hospital is opening a new wing."
+  },
+  {
+   "id": "m89",
+   "date": "2026-10-18",
+   "text": "Remember that my passport expires in June 2027."
+  },
+  {
+   "id": "f0244",
+   "date": "2026-10-19",
+   "kind": "outings",
+   "text": "Had lunch at Sangeetha with friends."
+  },
+  {
+   "id": "f0526",
+   "date": "2026-10-19",
+   "kind": "kids",
+   "text": "Anu won a prize in the drawing competition."
+  },
+  {
+   "id": "f0744",
+   "date": "2026-10-19",
+   "kind": "errands",
+   "text": "Need to pay the electricity bill this week."
+  },
+  {
+   "id": "f0127",
+   "date": "2026-10-20",
+   "kind": "media",
+   "text": "Finished Deep Work; recommended."
+  },
+  {
+   "id": "f0332",
+   "date": "2026-10-20",
+   "kind": "work",
+   "text": "Pair-programmed with Senthil on a tricky bug."
+  },
+  {
+   "id": "f0634",
+   "date": "2026-10-20",
+   "kind": "outings",
+   "text": "Had lunch at Saravana Bhavan with friends."
+  },
+  {
+   "id": "f0803",
+   "date": "2026-10-20",
+   "kind": "kids",
+   "text": "Anu has a science project due next week."
+  },
+  {
+   "id": "m90",
+   "date": "2026-10-20",
+   "text": "My Royal Enfield needs its service; I take it to Sri Murugan Motors."
+  },
+  {
+   "id": "f0531",
+   "date": "2026-10-21",
+   "kind": "small_talk",
+   "text": "Can you summarise the news?"
+  },
+  {
+   "id": "f0549",
+   "date": "2026-10-22",
+   "kind": "musings",
+   "text": "Not sure if I should repaint the living room."
+  },
+  {
+   "id": "f0636",
+   "date": "2026-10-22",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0080",
+   "date": "2026-10-23",
+   "kind": "musings",
+   "text": "Thinking about getting noise-cancelling headphones, maybe the Sony XM6."
+  },
+  {
+   "id": "f0656",
+   "date": "2026-10-23",
+   "kind": "kids",
+   "text": "Vicky drew a picture of our car today."
+  },
+  {
+   "id": "f0279",
+   "date": "2026-10-24",
+   "kind": "work",
+   "text": "The quarterly planning meeting ran over again."
+  },
+  {
+   "id": "f0139",
+   "date": "2026-10-25",
+   "kind": "errands",
+   "text": "Got the car washed."
+  },
+  {
+   "id": "f0291",
+   "date": "2026-10-25",
+   "kind": "small_talk",
+   "text": "What's the weather tomorrow?"
+  },
+  {
+   "id": "f0421",
+   "date": "2026-10-25",
+   "kind": "work",
+   "text": "Wrote the design doc for the new loan approval feature."
+  },
+  {
+   "id": "m91",
+   "date": "2026-10-25",
+   "text": "Kaveri Finance renewed the Ledgerly contract for two years."
+  },
+  {
+   "id": "f0614",
+   "date": "2026-10-26",
+   "kind": "outings",
+   "text": "Evening walk at Brodie Castle Road; nice weather."
+  },
+  {
+   "id": "f0815",
+   "date": "2026-10-26",
+   "kind": "others",
+   "text": "Ravi is learning Japanese for a trip next year."
+  },
+  {
+   "id": "f0830",
+   "date": "2026-10-26",
+   "kind": "cricket",
+   "text": "Cricket practice was rained off."
+  },
+  {
+   "id": "f0159",
+   "date": "2026-10-27",
+   "kind": "errands",
+   "text": "Paid the school bus fees for the term."
+  },
+  {
+   "id": "f0598",
+   "date": "2026-10-28",
+   "kind": "kids",
+   "text": "Vicky learned to ride his cycle without help."
+  },
+  {
+   "id": "m92",
+   "date": "2026-10-28",
+   "text": "We booked a homestay in Munnar from 23 to 27 December."
+  },
+  {
+   "id": "f0021",
+   "date": "2026-10-29",
+   "kind": "work",
+   "text": "Spent the afternoon reviewing pull requests."
+  },
+  {
+   "id": "f0513",
+   "date": "2026-10-29",
+   "kind": "kids",
+   "text": "Vicky's class went on a trip to the zoo."
+  },
+  {
+   "id": "f0882",
+   "date": "2026-10-29",
+   "kind": "outings",
+   "text": "Had lunch at Sangeetha with friends."
+  }
+ ],
+ "questions": [
+  {
+   "id": "q001",
+   "kind": "simple",
+   "q": "What is my name?",
+   "must": [
+    [
+     "karthik"
+    ]
+   ]
+  },
+  {
+   "id": "q002",
+   "kind": "simple",
+   "q": "What do people call me?",
+   "must": [
+    [
+     "karthi"
+    ]
+   ]
+  },
+  {
+   "id": "q003",
+   "kind": "simple",
+   "q": "What is my blood group?",
+   "must": [
+    [
+     "b positive",
+     "b+",
+     "b +ve"
+    ]
+   ]
+  },
+  {
+   "id": "q004",
+   "kind": "simple",
+   "q": "What am I allergic to?",
+   "must": [
+    [
+     "peanut"
+    ]
+   ]
+  },
+  {
+   "id": "q005",
+   "kind": "simple",
+   "q": "Am I vegetarian?",
+   "must": [
+    [
+     "yes",
+     "vegetarian"
+    ]
+   ],
+   "must_not": [
+    "not vegetarian",
+    "non-vegetarian"
+   ]
+  },
+  {
+   "id": "q006",
+   "kind": "simple",
+   "q": "How do I take my coffee?",
+   "must": [
+    [
+     "filter"
+    ],
+    [
+     "no sugar",
+     "without sugar"
+    ]
+   ]
+  },
+  {
+   "id": "q007",
+   "kind": "simple",
+   "q": "Do I prefer calls or messages?",
+   "must": [
+    [
+     "whatsapp",
+     "messages"
+    ]
+   ]
+  },
+  {
+   "id": "q008",
+   "kind": "simple",
+   "q": "How long is too long for a meeting for me?",
+   "must": [
+    [
+     "30"
+    ]
+   ]
+  },
+  {
+   "id": "q009",
+   "kind": "simple",
+   "q": "Which theme do I like on my apps?",
+   "must": [
+    [
+     "dark"
+    ]
+   ]
+  },
+  {
+   "id": "q010",
+   "kind": "simple",
+   "q": "What is our favourite restaurant?",
+   "must": [
+    [
+     "annalakshmi"
+    ]
+   ]
+  },
+  {
+   "id": "q011",
+   "kind": "simple",
+   "q": "How far do I walk in the morning?",
+   "must": [
+    [
+     "5 km",
+     "5km",
+     "five"
+    ]
+   ]
+  },
+  {
+   "id": "q012",
+   "kind": "simple",
+   "q": "What laptop do I use for work?",
+   "must": [
+    [
+     "thinkpad"
+    ]
+   ]
+  },
+  {
+   "id": "q013",
+   "kind": "simple",
+   "q": "What motorbike do I ride?",
+   "must": [
+    [
+     "royal enfield",
+     "classic 350"
+    ]
+   ]
+  },
+  {
+   "id": "q014",
+   "kind": "simple",
+   "q": "Which bank is our home loan with?",
+   "must": [
+    [
+     "hdfc"
+    ]
+   ]
+  },
+  {
+   "id": "q015",
+   "kind": "simple",
+   "q": "How much is the home loan EMI and when is it due?",
+   "must": [
+    [
+     "42,000",
+     "42000",
+     "42k"
+    ],
+    [
+     "5th",
+     "fifth"
+    ]
+   ]
+  },
+  {
+   "id": "q016",
+   "kind": "simple",
+   "q": "When does my passport expire?",
+   "must": [
+    [
+     "june 2027",
+     "2027"
+    ]
+   ]
+  },
+  {
+   "id": "q017",
+   "kind": "simple",
+   "q": "Which certification did I pass in 2025?",
+   "must": [
+    [
+     "aws"
+    ],
+    [
+     "solutions architect"
+    ]
+   ]
+  },
+  {
+   "id": "q018",
+   "kind": "simple",
+   "q": "Where did we travel in May 2025?",
+   "must": [
+    [
+     "japan",
+     "tokyo",
+     "kyoto"
+    ]
+   ]
+  },
+  {
+   "id": "q019",
+   "kind": "simple",
+   "q": "What note-taking app do I use?",
+   "must": [
+    [
+     "obsidian"
+    ]
+   ]
+  },
+  {
+   "id": "q020",
+   "kind": "simple",
+   "q": "Where do I get my Royal Enfield serviced?",
+   "must": [
+    [
+     "sri murugan"
+    ]
+   ]
+  },
+  {
+   "id": "q021",
+   "kind": "simple",
+   "q": "Which game do I play on my PS5?",
+   "must": [
+    [
+     "fifa"
+    ]
+   ]
+  },
+  {
+   "id": "q022",
+   "kind": "simple",
+   "q": "When is our wedding anniversary?",
+   "must": [
+    [
+     "22 nov",
+     "november 22",
+     "22nd november",
+     "22 november"
+    ]
+   ]
+  },
+  {
+   "id": "q023",
+   "kind": "simple",
+   "q": "What is my side project called?",
+   "must": [
+    [
+     "farmlink"
+    ]
+   ]
+  },
+  {
+   "id": "q024",
+   "kind": "simple",
+   "q": "Which car do we have?",
+   "must": [
+    [
+     "creta"
+    ]
+   ]
+  },
+  {
+   "id": "q025",
+   "kind": "simple",
+   "q": "Where is my hometown?",
+   "must": [
+    [
+     "madurai"
+    ]
+   ]
+  },
+  {
+   "id": "q026",
+   "kind": "simple",
+   "q": "What tool do we use for FarmLink tasks?",
+   "must": [
+    [
+     "linear"
+    ]
+   ]
+  },
+  {
+   "id": "q027",
+   "kind": "simple",
+   "q": "Which school does Priya teach at now?",
+   "must": [
+    [
+     "kalakshetra"
+    ]
+   ],
+   "must_not": [
+    "sunrise"
+   ]
+  },
+  {
+   "id": "q028",
+   "kind": "simple",
+   "q": "What do I do on weekday mornings at 6?",
+   "must": [
+    [
+     "walk"
+    ]
+   ]
+  },
+  {
+   "id": "q029",
+   "kind": "simple",
+   "q": "What does Priya love?",
+   "must": [
+    [
+     "jasmine",
+     "malli"
+    ]
+   ]
+  },
+  {
+   "id": "q030",
+   "kind": "simple",
+   "q": "What did I rewrite in Rust?",
+   "must": [
+    [
+     "backup"
+    ]
+   ]
+  },
+  {
+   "id": "q031",
+   "kind": "multi_hop",
+   "q": "When is my wife's birthday?",
+   "must": [
+    [
+     "14 feb",
+     "february 14",
+     "14th february",
+     "14 february"
+    ]
+   ]
+  },
+  {
+   "id": "q032",
+   "kind": "multi_hop",
+   "q": "What subject does my wife teach?",
+   "must": [
+    [
+     "math"
+    ]
+   ]
+  },
+  {
+   "id": "q033",
+   "kind": "multi_hop",
+   "q": "Which school does my daughter go to now?",
+   "must": [
+    [
+     "chettinad"
+    ]
+   ],
+   "must_not": [
+    "green valley"
+   ]
+  },
+  {
+   "id": "q034",
+   "kind": "multi_hop",
+   "q": "Which class is my daughter in?",
+   "must": [
+    [
+     "3",
+     "three"
+    ]
+   ]
+  },
+  {
+   "id": "q035",
+   "kind": "multi_hop",
+   "q": "Where does my son go to kindergarten?",
+   "must": [
+    [
+     "little elly"
+    ]
+   ]
+  },
+  {
+   "id": "q036",
+   "kind": "multi_hop",
+   "q": "What is my father's name?",
+   "must": [
+    [
+     "ramasamy"
+    ]
+   ]
+  },
+  {
+   "id": "q037",
+   "kind": "multi_hop",
+   "q": "Which city do my parents live in?",
+   "must": [
+    [
+     "madurai"
+    ]
+   ]
+  },
+  {
+   "id": "q038",
+   "kind": "multi_hop",
+   "q": "Who is my sister married to?",
+   "must": [
+    [
+     "naveen"
+    ]
+   ]
+  },
+  {
+   "id": "q039",
+   "kind": "multi_hop",
+   "q": "What does my brother-in-law do?",
+   "must": [
+    [
+     "doctor"
+    ]
+   ]
+  },
+  {
+   "id": "q040",
+   "kind": "multi_hop",
+   "q": "What is my nephew's name?",
+   "must": [
+    [
+     "aadhav"
+    ]
+   ]
+  },
+  {
+   "id": "q041",
+   "kind": "multi_hop",
+   "q": "Where does my sister work?",
+   "must": [
+    [
+     "infosys"
+    ]
+   ]
+  },
+  {
+   "id": "q042",
+   "kind": "multi_hop",
+   "q": "What tech stack does my side project use now?",
+   "must": [
+    [
+     "next"
+    ],
+    [
+     "postgres"
+    ]
+   ],
+   "must_not": [
+    "uses firebase"
+   ]
+  },
+  {
+   "id": "q043",
+   "kind": "multi_hop",
+   "q": "Who is building my side project with me?",
+   "must": [
+    [
+     "arjun"
+    ]
+   ]
+  },
+  {
+   "id": "q044",
+   "kind": "multi_hop",
+   "q": "What is Arjun's role in FarmLink now?",
+   "must": [
+    [
+     "cto"
+    ]
+   ]
+  },
+  {
+   "id": "q045",
+   "kind": "multi_hop",
+   "q": "What language is the project I lead at work written in?",
+   "must": [
+    [
+     "go",
+     "golang"
+    ]
+   ]
+  },
+  {
+   "id": "q046",
+   "kind": "multi_hop",
+   "q": "Where does the project I lead at work run?",
+   "must": [
+    [
+     "eks",
+     "aws"
+    ]
+   ]
+  },
+  {
+   "id": "q047",
+   "kind": "multi_hop",
+   "q": "Who is the tech lead on Ledgerly's payments module?",
+   "must": [
+    [
+     "ravi"
+    ]
+   ]
+  },
+  {
+   "id": "q048",
+   "kind": "multi_hop",
+   "q": "Which client went live on the project I lead at work?",
+   "must": [
+    [
+     "kaveri"
+    ]
+   ]
+  },
+  {
+   "id": "q049",
+   "kind": "multi_hop",
+   "q": "Which of my projects use Postgres?",
+   "must": [
+    [
+     "farmlink"
+    ]
+   ]
+  },
+  {
+   "id": "q050",
+   "kind": "multi_hop",
+   "q": "Which farmer collectives use my side project?",
+   "must": [
+    [
+     "pollachi"
+    ],
+    [
+     "udumalpet"
+    ],
+    [
+     "theni"
+    ]
+   ]
+  },
+  {
+   "id": "q051",
+   "kind": "multi_hop",
+   "q": "What does my mother take medicine for?",
+   "must": [
+    [
+     "diabet",
+     "sugar"
+    ]
+   ]
+  },
+  {
+   "id": "q052",
+   "kind": "multi_hop",
+   "q": "Where do my father's tablets come from?",
+   "must": [
+    [
+     "apollo"
+    ]
+   ]
+  },
+  {
+   "id": "q053",
+   "kind": "multi_hop",
+   "q": "Which camera do I use for my photography hobby now?",
+   "must": [
+    [
+     "sony",
+     "a7"
+    ]
+   ],
+   "must_not": [
+    "canon 200d is"
+   ]
+  },
+  {
+   "id": "q054",
+   "kind": "multi_hop",
+   "q": "What does my wife cook that I love?",
+   "must": [
+    [
+     "dosa",
+     "தோசை"
+    ]
+   ]
+  },
+  {
+   "id": "q055",
+   "kind": "multi_hop",
+   "q": "Where is my son's swimming class?",
+   "must": [
+    [
+     "ymca",
+     "nandanam"
+    ]
+   ],
+   "must_not": [
+    "anna nagar"
+   ]
+  },
+  {
+   "id": "q056",
+   "kind": "multi_hop",
+   "q": "On which day is my son's swimming class?",
+   "must": [
+    [
+     "tuesday"
+    ]
+   ]
+  },
+  {
+   "id": "q057",
+   "kind": "multi_hop",
+   "q": "Where will my father's 70th birthday party be?",
+   "must": [
+    [
+     "madurai"
+    ]
+   ]
+  },
+  {
+   "id": "q058",
+   "kind": "multi_hop",
+   "q": "Which company does my manager work for?",
+   "must": [
+    [
+     "tessera"
+    ]
+   ]
+  },
+  {
+   "id": "q059",
+   "kind": "multi_hop",
+   "q": "What instrument was I learning before I moved to Chennai?",
+   "must": [
+    [
+     "veena"
+    ]
+   ]
+  },
+  {
+   "id": "q060",
+   "kind": "multi_hop",
+   "q": "How old is my daughter now?",
+   "must": [
+    [
+     "9",
+     "nine"
+    ]
+   ]
+  },
+  {
+   "id": "q061",
+   "kind": "current",
+   "q": "Where do I live?",
+   "must": [
+    [
+     "adyar",
+     "chennai"
+    ]
+   ],
+   "must_not": [
+    "rs puram",
+    "live in coimbatore"
+   ]
+  },
+  {
+   "id": "q062",
+   "kind": "current",
+   "q": "Where do I work?",
+   "must": [
+    [
+     "tessera"
+    ]
+   ],
+   "must_not": [
+    "work at nimbus"
+   ]
+  },
+  {
+   "id": "q063",
+   "kind": "current",
+   "q": "What is my job title?",
+   "must": [
+    [
+     "engineering manager"
+    ]
+   ]
+  },
+  {
+   "id": "q064",
+   "kind": "current",
+   "q": "Who is my manager?",
+   "must": [
+    [
+     "gopal"
+    ]
+   ],
+   "must_not": [
+    "meena is",
+    "suresh"
+   ]
+  },
+  {
+   "id": "q065",
+   "kind": "current",
+   "q": "Which phone do I use?",
+   "must": [
+    [
+     "pixel"
+    ]
+   ],
+   "must_not": [
+    "iphone 15 is"
+   ]
+  },
+  {
+   "id": "q066",
+   "kind": "current",
+   "q": "What is our monthly household budget?",
+   "must": [
+    [
+     "75,000",
+     "75000",
+     "75k"
+    ]
+   ]
+  },
+  {
+   "id": "q067",
+   "kind": "current",
+   "q": "How much do I put in my SIP each month?",
+   "must": [
+    [
+     "15,000",
+     "15000",
+     "15k"
+    ]
+   ]
+  },
+  {
+   "id": "q068",
+   "kind": "current",
+   "q": "Who is my dentist?",
+   "must": [
+    [
+     "ananya"
+    ]
+   ],
+   "must_not": [
+    "dr. kumar is"
+   ]
+  },
+  {
+   "id": "q069",
+   "kind": "current",
+   "q": "Which day do I play cricket?",
+   "must": [
+    [
+     "saturday"
+    ]
+   ]
+  },
+  {
+   "id": "q070",
+   "kind": "current",
+   "q": "Which cricket club do I play for?",
+   "must": [
+    [
+     "adyar cricket"
+    ]
+   ]
+  },
+  {
+   "id": "q071",
+   "kind": "current",
+   "q": "What does my home lab run on?",
+   "must": [
+    [
+     "nuc"
+    ]
+   ]
+  },
+  {
+   "id": "q072",
+   "kind": "current",
+   "q": "Am I still learning the veena?",
+   "must": [
+    [
+     "stopped",
+     "no longer",
+     "not anymore",
+     "not learning",
+     "discontinued",
+     "not to continue",
+     "not continuing",
+     "gave up",
+     "quit"
+    ]
+   ]
+  },
+  {
+   "id": "q073",
+   "kind": "current",
+   "q": "What is my role at FarmLink?",
+   "must": [
+    [
+     "ceo"
+    ]
+   ]
+  },
+  {
+   "id": "q074",
+   "kind": "current",
+   "q": "Which database does FarmLink use?",
+   "must": [
+    [
+     "postgres"
+    ]
+   ]
+  },
+  {
+   "id": "q075",
+   "kind": "current",
+   "q": "Are we buying a new car this year?",
+   "must": [
+    [
+     "not buy",
+     "not buying",
+     "decided not",
+     "no new car",
+     "won't"
+    ]
+   ]
+  },
+  {
+   "id": "q076",
+   "kind": "past",
+   "q": "Where did I live before Chennai?",
+   "must": [
+    [
+     "coimbatore",
+     "rs puram"
+    ]
+   ]
+  },
+  {
+   "id": "q077",
+   "kind": "past",
+   "q": "Where did I work before Tessera Labs?",
+   "must": [
+    [
+     "nimbus"
+    ]
+   ]
+  },
+  {
+   "id": "q078",
+   "kind": "past",
+   "q": "What was my project at my previous job?",
+   "must": [
+    [
+     "payrail"
+    ]
+   ]
+  },
+  {
+   "id": "q079",
+   "kind": "past",
+   "q": "Who was my boss at Nimbus?",
+   "must": [
+    [
+     "suresh"
+    ]
+   ]
+  },
+  {
+   "id": "q080",
+   "kind": "past",
+   "q": "What phone did I have before the Pixel?",
+   "must": [
+    [
+     "iphone"
+    ]
+   ]
+  },
+  {
+   "id": "q081",
+   "kind": "past",
+   "q": "Which camera did I use before the Sony?",
+   "must": [
+    [
+     "canon"
+    ]
+   ]
+  },
+  {
+   "id": "q082",
+   "kind": "past",
+   "q": "Which database did FarmLink use at first?",
+   "must": [
+    [
+     "firebase"
+    ]
+   ]
+  },
+  {
+   "id": "q083",
+   "kind": "past",
+   "q": "Which school did Anu go to in Coimbatore?",
+   "must": [
+    [
+     "green valley"
+    ]
+   ]
+  },
+  {
+   "id": "q084",
+   "kind": "past",
+   "q": "When did I move to Chennai?",
+   "must": [
+    [
+     "march 2026",
+     "march"
+    ]
+   ]
+  },
+  {
+   "id": "q085",
+   "kind": "past",
+   "q": "Who was my first manager at Tessera?",
+   "must": [
+    [
+     "meena"
+    ]
+   ]
+  },
+  {
+   "id": "q086",
+   "kind": "alias",
+   "q": "When is Priyadharshini's birthday?",
+   "must": [
+    [
+     "14 feb",
+     "february 14",
+     "14th february",
+     "14 february"
+    ]
+   ]
+  },
+  {
+   "id": "q087",
+   "kind": "alias",
+   "q": "Which school does Anushka attend?",
+   "must": [
+    [
+     "chettinad"
+    ]
+   ]
+  },
+  {
+   "id": "q088",
+   "kind": "alias",
+   "q": "How old is Vikram?",
+   "must": [
+    [
+     "5",
+     "five"
+    ]
+   ]
+  },
+  {
+   "id": "q089",
+   "kind": "alias",
+   "q": "Where does Vicky go to school?",
+   "must": [
+    [
+     "little elly"
+    ]
+   ]
+  },
+  {
+   "id": "q090",
+   "kind": "alias",
+   "q": "What is Amma's health issue?",
+   "must": [
+    [
+     "diabet",
+     "sugar"
+    ]
+   ]
+  },
+  {
+   "id": "q091",
+   "kind": "alias",
+   "q": "What is Appa's name?",
+   "must": [
+    [
+     "ramasamy"
+    ]
+   ]
+  },
+  {
+   "id": "q092",
+   "kind": "alias",
+   "q": "What is Lakshmi's relation to me?",
+   "must": [
+    [
+     "mother",
+     "amma",
+     "mom"
+    ]
+   ]
+  },
+  {
+   "id": "q093",
+   "kind": "alias",
+   "q": "Who is Ramasamy?",
+   "must": [
+    [
+     "father",
+     "appa",
+     "dad"
+    ]
+   ]
+  },
+  {
+   "id": "q094",
+   "kind": "alias",
+   "q": "Who is Naveen?",
+   "must": [
+    [
+     "sister",
+     "divya",
+     "brother-in-law"
+    ]
+   ]
+  },
+  {
+   "id": "q095",
+   "kind": "alias",
+   "q": "What is Karthi's blood group?",
+   "must": [
+    [
+     "b positive",
+     "b+",
+     "b +ve"
+    ]
+   ]
+  },
+  {
+   "id": "q096",
+   "kind": "tamil",
+   "q": "என் மனைவியின் பிறந்தநாள் எப்போது?",
+   "must": [
+    [
+     "14",
+     "பிப்ரவரி",
+     "feb"
+    ]
+   ]
+  },
+  {
+   "id": "q097",
+   "kind": "tamil",
+   "q": "நான் இப்போது எங்கே வசிக்கிறேன்?",
+   "must": [
+    [
+     "அடையாறு",
+     "adyar",
+     "சென்னை",
+     "chennai"
+    ]
+   ]
+  },
+  {
+   "id": "q098",
+   "kind": "tamil",
+   "q": "என் அம்மாவுக்கு என்ன உடல்நலப் பிரச்சனை?",
+   "must": [
+    [
+     "சர்க்கரை",
+     "நீரிழிவு",
+     "diabet",
+     "sugar",
+     "டயபிடிஸ்",
+     "டயாபடீஸ்",
+     "டயபெடிஸ்"
+    ]
+   ]
+  },
+  {
+   "id": "q099",
+   "kind": "tamil",
+   "q": "என் மகள் எந்த பள்ளியில் படிக்கிறாள்?",
+   "must": [
+    [
+     "chettinad",
+     "செட்டிநாடு"
+    ]
+   ]
+  },
+  {
+   "id": "q100",
+   "kind": "tamil",
+   "q": "நான் எந்த நிறுவனத்தில் வேலை செய்கிறேன்?",
+   "must": [
+    [
+     "tessera",
+     "டெசரா"
+    ]
+   ]
+  },
+  {
+   "id": "q101",
+   "kind": "tamil",
+   "q": "என் இரத்த வகை என்ன?",
+   "must": [
+    [
+     "b positive",
+     "b+",
+     "b +ve",
+     "பி பாசிட்டிவ்",
+     "பி+"
+    ]
+   ]
+  },
+  {
+   "id": "q102",
+   "kind": "tamil",
+   "q": "எனக்கு எதற்கு ஒவ்வாமை?",
+   "must": [
+    [
+     "peanut",
+     "வேர்க்கடலை",
+     "கடலை"
+    ]
+   ]
+  },
+  {
+   "id": "q103",
+   "kind": "tamil",
+   "q": "ப்ரியா எந்த பள்ளியில் பாடம் நடத்துகிறார்?",
+   "must": [
+    [
+     "kalakshetra",
+     "கலாக்ஷேத்ரா",
+     "கலாச்சேத்ரா",
+     "கலாஷேத்ரா"
+    ]
+   ]
+  },
+  {
+   "id": "q104",
+   "kind": "tamil",
+   "q": "என் அப்பாவின் பெயர் என்ன?",
+   "must": [
+    [
+     "ramasamy",
+     "ராமசாமி"
+    ]
+   ]
+  },
+  {
+   "id": "q105",
+   "kind": "tamil",
+   "q": "எனக்கு எந்த உணவு பிடிக்கும்?",
+   "must": [
+    [
+     "dosa",
+     "தோசை",
+     "filter coffee",
+     "காபி"
+    ]
+   ]
+  },
+  {
+   "id": "q106",
+   "kind": "tamil",
+   "q": "என் போன் எது?",
+   "must": [
+    [
+     "pixel",
+     "பிக்சல்"
+    ]
+   ]
+  },
+  {
+   "id": "q107",
+   "kind": "tamil",
+   "q": "நாங்கள் டிசம்பரில் எங்கே போகிறோம்?",
+   "must": [
+    [
+     "munnar",
+     "மூணார்",
+     "முன்னார்",
+     "மூன்னார்",
+     "മുന്നാ"
+    ]
+   ]
+  },
+  {
+   "id": "q108",
+   "kind": "tamil",
+   "q": "என் மகன் எங்கே நீச்சல் கற்கிறான்?",
+   "must": [
+    [
+     "ymca",
+     "nandanam",
+     "நந்தனம்",
+     "ஒய்எம்சிஏ",
+     "வொய்.எம்.சி.ஏ"
+    ]
+   ]
+  },
+  {
+   "id": "q109",
+   "kind": "tamil",
+   "q": "என் சகோதரி எங்கே வசிக்கிறார்?",
+   "must": [
+    [
+     "bangalore",
+     "bengaluru",
+     "பெங்களூர்",
+     "பங்களூர",
+     "பெங்களூர",
+     "பேங்களூர"
+    ]
+   ]
+  },
+  {
+   "id": "q110",
+   "kind": "tamil",
+   "q": "ப்ரியாவுக்கு எந்த பூ பிடிக்கும்?",
+   "must": [
+    [
+     "jasmine",
+     "malli",
+     "மல்லி"
+    ]
+   ]
+  },
+  {
+   "id": "q111",
+   "kind": "abstain",
+   "q": "What is my wife's blood group?",
+   "abstain": true
+  },
+  {
+   "id": "q112",
+   "kind": "abstain",
+   "q": "What is my car's registration number?",
+   "abstain": true
+  },
+  {
+   "id": "q113",
+   "kind": "abstain",
+   "q": "What is my salary?",
+   "abstain": true
+  },
+  {
+   "id": "q114",
+   "kind": "abstain",
+   "q": "What is Arjun's phone number?",
+   "abstain": true
+  },
+  {
+   "id": "q115",
+   "kind": "abstain",
+   "q": "Which university did I study at?",
+   "abstain": true
+  },
+  {
+   "id": "q116",
+   "kind": "abstain",
+   "q": "What is my mother's birthday?",
+   "abstain": true
+  },
+  {
+   "id": "q117",
+   "kind": "abstain",
+   "q": "Do I speak Japanese?",
+   "abstain": true,
+   "must_not": [
+    "yes, you speak",
+    "you are fluent"
+   ]
+  },
+  {
+   "id": "q118",
+   "kind": "abstain",
+   "q": "What is the name of our dog?",
+   "abstain": true
+  },
+  {
+   "id": "q119",
+   "kind": "abstain",
+   "q": "What is my PAN number?",
+   "abstain": true
+  },
+  {
+   "id": "q120",
+   "kind": "abstain",
+   "q": "Which hospital was Aadhav born in?",
+   "abstain": true
+  },
+  {
+   "id": "q121",
+   "kind": "abstain",
+   "q": "How much did the Sony A7 IV cost?",
+   "abstain": true
+  },
+  {
+   "id": "q122",
+   "kind": "abstain",
+   "q": "What is Gopal's surname?",
+   "abstain": true
+  },
+  {
+   "id": "q123",
+   "kind": "abstain",
+   "q": "Which electric car did I buy?",
+   "abstain": true,
+   "must_not": [
+    "you bought"
+   ]
+  },
+  {
+   "id": "q124",
+   "kind": "abstain",
+   "q": "What time is Vicky's swimming class?",
+   "abstain": true
+  },
+  {
+   "id": "q125",
+   "kind": "abstain",
+   "q": "What is the homestay's name in Munnar?",
+   "abstain": true
+  },
+  {
+   "id": "q126",
+   "kind": "about",
+   "q": "Tell me everything about FarmLink.",
+   "must": [
+    [
+     "farmer"
+    ],
+    [
+     "arjun"
+    ],
+    [
+     "postgres"
+    ],
+    [
+     "pollachi",
+     "udumalpet",
+     "theni",
+     "collective"
+    ],
+    [
+     "ceo",
+     "cto"
+    ]
+   ]
+  },
+  {
+   "id": "q127",
+   "kind": "about",
+   "q": "Tell me about Priya.",
+   "must": [
+    [
+     "wife",
+     "spouse",
+     "married"
+    ],
+    [
+     "math"
+    ],
+    [
+     "kalakshetra"
+    ],
+    [
+     "14 feb",
+     "february 14",
+     "14 february"
+    ]
+   ]
+  },
+  {
+   "id": "q128",
+   "kind": "about",
+   "q": "Tell me about Ledgerly.",
+   "must": [
+    [
+     "lending"
+    ],
+    [
+     "go"
+    ],
+    [
+     "kafka"
+    ],
+    [
+     "kaveri"
+    ]
+   ]
+  },
+  {
+   "id": "q129",
+   "kind": "about",
+   "q": "Tell me about my cricket.",
+   "must": [
+    [
+     "adyar cricket"
+    ],
+    [
+     "saturday"
+    ],
+    [
+     "open"
+    ]
+   ]
+  },
+  {
+   "id": "q130",
+   "kind": "about",
+   "q": "Tell me about my home lab.",
+   "must": [
+    [
+     "nuc"
+    ],
+    [
+     "proxmox"
+    ]
+   ]
+  },
+  {
+   "id": "q131",
+   "kind": "about",
+   "q": "Tell me about Anu.",
+   "must": [
+    [
+     "chettinad"
+    ],
+    [
+     "9",
+     "nine"
+    ],
+    [
+     "3 aug",
+     "august 3",
+     "3 august"
+    ]
+   ]
+  },
+  {
+   "id": "q132",
+   "kind": "about",
+   "q": "Tell me about my money.",
+   "must": [
+    [
+     "hdfc",
+     "home loan"
+    ],
+    [
+     "75,000",
+     "75000",
+     "75k"
+    ],
+    [
+     "15,000",
+     "15000",
+     "15k"
+    ]
+   ]
+  },
+  {
+   "id": "q133",
+   "kind": "about",
+   "q": "Tell me about my December trip.",
+   "must": [
+    [
+     "munnar"
+    ],
+    [
+     "23"
+    ],
+    [
+     "27"
+    ]
+   ]
+  },
+  {
+   "id": "q134",
+   "kind": "about",
+   "q": "Tell me about Divya.",
+   "must": [
+    [
+     "sister",
+     "sibling"
+    ],
+    [
+     "bangalore"
+    ],
+    [
+     "naveen"
+    ],
+    [
+     "aadhav"
+    ]
+   ]
+  },
+  {
+   "id": "q135",
+   "kind": "about",
+   "q": "Tell me about my health.",
+   "must": [
+    [
+     "peanut"
+    ],
+    [
+     "b positive",
+     "b+"
+    ],
+    [
+     "walk"
+    ]
+   ]
+  },
+  {
+   "id": "q136",
+   "kind": "decision",
+   "q": "What did we decide about the home loan?",
+   "must": [
+    [
+     "prepay"
+    ]
+   ]
+  },
+  {
+   "id": "q137",
+   "kind": "decision",
+   "q": "Why did FarmLink move off Firebase?",
+   "must": [
+    [
+     "expensive",
+     "cost"
+    ]
+   ]
+  },
+  {
+   "id": "q138",
+   "kind": "decision",
+   "q": "Why did we move to Chennai?",
+   "must": [
+    [
+     "job",
+     "tessera"
+    ]
+   ]
+  },
+  {
+   "id": "q139",
+   "kind": "decision",
+   "q": "What did I say about learning Japanese?",
+   "must": [
+    [
+     "maybe",
+     "not sure",
+     "might",
+     "consider"
+    ]
+   ],
+   "must_not": [
+    "you are learning japanese"
+   ]
+  },
+  {
+   "id": "q140",
+   "kind": "decision",
+   "q": "What did I decide about buying a car?",
+   "must": [
+    [
+     "not to buy",
+     "not buy",
+     "decided not",
+     "no new car"
+    ]
+   ],
+   "must_not": [
+    "decided to buy"
+   ]
+  }
+ ]
+}
