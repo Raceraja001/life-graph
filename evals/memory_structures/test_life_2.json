@@ -1,0 +1,2182 @@
+{
+ "about": "Synthetic test life no. 2 for the memory-structure bake-off (2026-10-31). Fictional person, every fact invented; no owner data. Messages are what the person says to Jarvis, in date order, in English, Tamil and Tanglish. Questions are asked 'today' = 2026-10-31. Scoring is the same as test_life.json: an answer passes when every group in 'must' has at least one alternative in the answer (case-insensitive) and no 'must_not' term appears; 'abstain' questions pass only when the answer says it doesn't know and states no value. Alternatives of 3 characters or fewer match as whole words only. Kinds as in test_life.json plus 'connected' (needs two facts said far apart) and 'old_fact' (said once, more than six months before today, never repeated). 'gold' is a right answer and 'traps' are wrong answers that must fail; the runner ignores both (scripts/check_memory_eval_data.py checks them).",
+ "person": "Kavitha Murugesan",
+ "today": "2026-10-31",
+ "messages": [
+  {
+   "id": "m001",
+   "date": "2025-03-03",
+   "text": "Hi Jarvis! I'm Kavitha Murugesan. My friends call me Kavi."
+  },
+  {
+   "id": "m002",
+   "date": "2025-03-03",
+   "text": "I live in a rented flat in K.K. Nagar, Madurai, with my husband Senthil, our daughter Nila and our son Ilan."
+  },
+  {
+   "id": "m003",
+   "date": "2025-03-04",
+   "text": "Senthil (Senthilkumar on paper) is a site engineer at L&T Construction."
+  },
+  {
+   "id": "m004",
+   "date": "2025-03-04",
+   "text": "Nila is 6 and in class 1 at Sri Vidya Mandir. Her birthday is 12 June."
+  },
+  {
+   "id": "m005",
+   "date": "2025-03-05",
+   "text": "Ilan was born on 27 January 2024. At home we call him Kutty."
+  },
+  {
+   "id": "m006",
+   "date": "2025-03-06",
+   "text": "En amma peru Mahalakshmi. Naan avangala 'Ma'nu dhaan kooppiduven, avanga friends ellarum 'Maha'nu kooppiduvanga."
+  },
+  {
+   "id": "m007",
+   "date": "2025-03-06",
+   "text": "Ma and Appa live in Palayamkottai, Tirunelveli. Appa, Subramanian, is a retired headmaster."
+  },
+  {
+   "id": "m008",
+   "date": "2025-03-07",
+   "text": "I work at Velan Infotech in Madurai as a QA lead. I've been there since 2019."
+  },
+  {
+   "id": "m009",
+   "date": "2025-03-07",
+   "text": "My project at Velan is MediBill, a hospital billing app. I lead a team of five testers."
+  },
+  {
+   "id": "m010",
+   "date": "2025-03-08",
+   "text": "My manager at Velan is Prakash."
+  },
+  {
+   "id": "m011",
+   "date": "2025-03-10",
+   "text": "My side business is Nila Pickles: homemade pickles and podis that I sell through WhatsApp and Instagram."
+  },
+  {
+   "id": "m012",
+   "date": "2025-03-10",
+   "text": "The heart of Nila Pickles is Ma's narthangai (citron) pickle recipe. I learnt it from her."
+  },
+  {
+   "id": "m013",
+   "date": "2025-03-12",
+   "text": "I play badminton every Tuesday evening at the Gandhi Nagar indoor court."
+  },
+  {
+   "id": "m014",
+   "date": "2025-03-12",
+   "text": "Sorry, I said Tuesday, I meant Thursday. Badminton is on Thursday evenings."
+  },
+  {
+   "id": "m015",
+   "date": "2025-03-14",
+   "text": "My phone is a Redmi Note 12. Senthil uses a Vivo V29 and rides a Bajaj Pulsar."
+  },
+  {
+   "id": "m016",
+   "date": "2025-03-15",
+   "text": "En blood group O negative, adhanala blood donation camp-ku eppavum ennai kooppiduvanga."
+  },
+  {
+   "id": "m017",
+   "date": "2025-03-16",
+   "text": "I don't drink coffee at all. I'm a ginger tea person."
+  },
+  {
+   "id": "m018",
+   "date": "2025-03-17",
+   "text": "My birthday is 18 March."
+  },
+  {
+   "id": "m019",
+   "date": "2025-03-18",
+   "text": "Senthil got me a silver anklet for my birthday today."
+  },
+  {
+   "id": "m020",
+   "date": "2025-03-20",
+   "text": "My best friend from college is Deepa Sekar. She runs a boutique called Deepa Designs on Town Hall Road, Madurai."
+  },
+  {
+   "id": "m021",
+   "date": "2025-03-21",
+   "text": "Thursday night badminton mudichittu late-ah dhaan veetuku varuven, so andha naal dinner Senthil dhaan seivaaru."
+  },
+  {
+   "id": "m022",
+   "date": "2025-03-22",
+   "text": "Our car is a Maruti Baleno. The SBI car loan EMI is 11,500 rupees on the 10th of every month."
+  },
+  {
+   "id": "m023",
+   "date": "2025-03-22",
+   "text": "For short trips I ride my Honda Activa."
+  },
+  {
+   "id": "m024",
+   "date": "2025-03-25",
+   "text": "I'm lactose intolerant, so I avoid milk. Curd is fine for me though."
+  },
+  {
+   "id": "m025",
+   "date": "2025-03-28",
+   "text": "Senthil's amma, Pushpa, lives in her own house in Anna Nagar, Madurai."
+  },
+  {
+   "id": "m026",
+   "date": "2025-04-01",
+   "text": "Started an SIP of 5,000 rupees a month in the Navarasa Flexi Cap fund."
+  },
+  {
+   "id": "m027",
+   "date": "2025-04-02",
+   "text": "I also pay 3,000 a month into a gold savings scheme at Kanaga Jewellers."
+  },
+  {
+   "id": "m028",
+   "date": "2025-04-05",
+   "text": "Our rent in K.K. Nagar is 14,000 a month."
+  },
+  {
+   "id": "m029",
+   "date": "2025-04-12",
+   "text": "Back from Rameswaram: three days, for Ma's prayer at the temple. Ilan loved the beach."
+  },
+  {
+   "id": "m030",
+   "date": "2025-04-15",
+   "text": "My brother Arun lives in Pune and works as a data engineer at Zentrix Systems."
+  },
+  {
+   "id": "m031",
+   "date": "2025-04-15",
+   "text": "Arun just switched to a OnePlus 13. He keeps telling me to get one too, but I'm not buying it."
+  },
+  {
+   "id": "m032",
+   "date": "2025-04-25",
+   "text": "Our neighbour Revathi in K.K. Nagar teaches chemistry at Madurai Kamaraj University."
+  },
+  {
+   "id": "m033",
+   "date": "2025-05-02",
+   "text": "Nila Pickles got its FSSAI registration today!"
+  },
+  {
+   "id": "m034",
+   "date": "2025-05-05",
+   "text": "Ma has thyroid; she takes a Thyronorm tablet every morning."
+  },
+  {
+   "id": "m035",
+   "date": "2025-05-10",
+   "text": "I joined a pottery class at Mann Studio on Saturday mornings."
+  },
+  {
+   "id": "m036",
+   "date": "2025-05-18",
+   "text": "Thinking about learning Hindi, maybe next year. Not sure yet."
+  },
+  {
+   "id": "m037",
+   "date": "2025-05-25",
+   "text": "Senthil plays cricket on Sundays with his office team."
+  },
+  {
+   "id": "m038",
+   "date": "2025-06-01",
+   "text": "My dentist is Dr. Farhana at Pearl Smile Clinic on Bypass Road, Madurai."
+  },
+  {
+   "id": "m039",
+   "date": "2025-06-12",
+   "text": "Nila turned 7 today! Cake, balloons, the full drama."
+  },
+  {
+   "id": "m040",
+   "date": "2025-06-16",
+   "text": "Nila moved up to class 2 at Sri Vidya Mandir this week."
+  },
+  {
+   "id": "m041",
+   "date": "2025-06-25",
+   "text": "நிலாவுக்கு கணக்கு பாடம் ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "m042",
+   "date": "2025-07-01",
+   "text": "Indha maasam Nila Pickles-ku 120 orders vandhuchu!"
+  },
+  {
+   "id": "m043",
+   "date": "2025-07-05",
+   "text": "Deepa, my college friend, wants to stock Nila Pickles in her boutique. We're trying it from August."
+  },
+  {
+   "id": "m044",
+   "date": "2025-07-12",
+   "text": "I don't eat non-veg on Saturdays."
+  },
+  {
+   "id": "m045",
+   "date": "2025-07-20",
+   "text": "Thinking of switching jobs. Velan hasn't given appraisals for two years."
+  },
+  {
+   "id": "m046",
+   "date": "2025-08-02",
+   "text": "Bought a new phone: a Samsung Galaxy S24. My old Redmi went to Ma."
+  },
+  {
+   "id": "m047",
+   "date": "2025-08-10",
+   "text": "For personal stuff I use a MacBook Air M2; at work I have a Dell Latitude."
+  },
+  {
+   "id": "m048",
+   "date": "2025-08-20",
+   "text": "Senthil's anna Murali lives in Dubai and works as an electrician."
+  },
+  {
+   "id": "m049",
+   "date": "2025-08-28",
+   "text": "என் அப்பா தினமும் காலையில 5 மணிக்கு எழுந்து நடக்கப் போவார்."
+  },
+  {
+   "id": "m050",
+   "date": "2025-09-05",
+   "text": "Today is our 10th wedding anniversary!"
+  },
+  {
+   "id": "m051",
+   "date": "2025-09-12",
+   "text": "Oru vishayam: Lakshmi from my college batch works at Thenral Systems in Coimbatore. Avanga QA manager role-ku aal edukkuraanga-nu sonnaanga."
+  },
+  {
+   "id": "m052",
+   "date": "2025-09-20",
+   "text": "Ma's knee pain is worse; Appa is taking her to Dr. Selvaraj at Tirunelveli Medical College."
+  },
+  {
+   "id": "m053",
+   "date": "2025-10-03",
+   "text": "Interview at Thenral Systems went well. Second round next week."
+  },
+  {
+   "id": "m054",
+   "date": "2025-10-15",
+   "text": "Got the offer! Senior QA Manager at Thenral Systems in Coimbatore. Lakshmi referred me. I join on 2 February 2026."
+  },
+  {
+   "id": "m055",
+   "date": "2025-10-16",
+   "text": "Senthil has asked L&T for a transfer to Coimbatore."
+  },
+  {
+   "id": "m056",
+   "date": "2025-10-25",
+   "text": "I stopped the pottery classes. Saturdays are too packed with pickle orders."
+  },
+  {
+   "id": "m057",
+   "date": "2025-10-28",
+   "text": "Deepavali orders were crazy: 300 jars of pickle in two weeks."
+  },
+  {
+   "id": "m058",
+   "date": "2025-11-02",
+   "text": "It's Senthil's birthday today. Got him a Noise smartwatch."
+  },
+  {
+   "id": "m059",
+   "date": "2025-11-20",
+   "text": "Senthil's transfer came through: from February he'll be on the Coimbatore airport expansion project."
+  },
+  {
+   "id": "m060",
+   "date": "2025-11-25",
+   "text": "எனக்கு மல்லிகைப்பூவை விட கனகாம்பரம் தான் ரொம்ப பிடிக்கும்."
+  },
+  {
+   "id": "m061",
+   "date": "2025-12-01",
+   "text": "We've decided to stop shipping Nila Pickles outside Tamil Nadu. Too many glass jars broke in the courier."
+  },
+  {
+   "id": "m062",
+   "date": "2025-12-14",
+   "text": "Ilan has a mild wheeze. His paediatrician, Dr. Anand, gave him an inhaler."
+  },
+  {
+   "id": "m063",
+   "date": "2026-01-05",
+   "text": "Found a flat in Saibaba Colony, Coimbatore. Rent is 22,000 a month. We move on 25 January."
+  },
+  {
+   "id": "m064",
+   "date": "2026-01-10",
+   "text": "What's the weather in Coimbatore this week?"
+  },
+  {
+   "id": "m065",
+   "date": "2026-01-23",
+   "text": "Last day at Velan Infotech today. The MediBill team took me out for a farewell lunch."
+  },
+  {
+   "id": "m066",
+   "date": "2026-01-25",
+   "text": "Moved! We now live in Saibaba Colony, Coimbatore."
+  },
+  {
+   "id": "m067",
+   "date": "2026-01-27",
+   "text": "Ilan turned 2 today."
+  },
+  {
+   "id": "m068",
+   "date": "2026-02-02",
+   "text": "First day at Thenral Systems. My manager is Deepa Iyer."
+  },
+  {
+   "id": "m069",
+   "date": "2026-02-03",
+   "text": "Funny, two Deepas in my life now: Deepa Iyer is my boss, and Deepa Sekar is still my friend with the boutique in Madurai."
+  },
+  {
+   "id": "m070",
+   "date": "2026-02-05",
+   "text": "At Thenral I'm in charge of testing AgriSense, a crop-insurance platform. We use Playwright and k6."
+  },
+  {
+   "id": "m071",
+   "date": "2026-02-08",
+   "text": "Nila joined class 2 at Kovai Public School."
+  },
+  {
+   "id": "m072",
+   "date": "2026-02-10",
+   "text": "Ilan goes to Little Steps daycare near our flat."
+  },
+  {
+   "id": "m073",
+   "date": "2026-02-20",
+   "text": "Senthil started on the airport expansion project this week."
+  },
+  {
+   "id": "m074",
+   "date": "2026-03-01",
+   "text": "Increased my SIP to 8,000 a month with the new salary."
+  },
+  {
+   "id": "m075",
+   "date": "2026-03-02",
+   "text": "No wait, I made it 9,000, not 8,000."
+  },
+  {
+   "id": "m076",
+   "date": "2026-03-08",
+   "text": "Joined the Saibaba Colony Shuttle Club. Badminton is on Sunday mornings now, no more Thursdays."
+  },
+  {
+   "id": "m077",
+   "date": "2026-03-12",
+   "text": "There's another Kavitha on my team, Kavitha Raman, a junior tester. Everyone calls her KR to avoid confusion."
+  },
+  {
+   "id": "m078",
+   "date": "2026-03-18",
+   "text": "Birthday today; the team at Thenral surprised me with a cake."
+  },
+  {
+   "id": "m079",
+   "date": "2026-03-25",
+   "text": "Ma and Appa are visiting us in Coimbatore for two weeks."
+  },
+  {
+   "id": "m080",
+   "date": "2026-04-05",
+   "text": "Nila Pickles now delivers across Coimbatore too, and Deepa Sekar still stocks it in her Madurai boutique."
+  },
+  {
+   "id": "m081",
+   "date": "2026-04-12",
+   "text": "Deepa Iyer uses an iPhone 16 Pro and keeps sending me AirDrop requests I can't accept."
+  },
+  {
+   "id": "m082",
+   "date": "2026-04-20",
+   "text": "Maybe I'll join a gym near Saibaba Colony. Haven't decided."
+  },
+  {
+   "id": "m083",
+   "date": "2026-04-25",
+   "text": "Thanks Jarvis!"
+  },
+  {
+   "id": "m084",
+   "date": "2026-05-01",
+   "text": "Nila Pickles started on 1 May 2023, so three years today!"
+  },
+  {
+   "id": "m085",
+   "date": "2026-05-10",
+   "text": "Summer holidays: Nila is at Ma's place in Palayamkottai for two weeks."
+  },
+  {
+   "id": "m086",
+   "date": "2026-05-20",
+   "text": "Closed the gold scheme at Kanaga Jewellers; their Madurai branch is too far now."
+  },
+  {
+   "id": "m087",
+   "date": "2026-05-25",
+   "text": "இலன் இப்போ 'அம்மா', 'தாத்தா'ன்னு பேச ஆரம்பிச்சிட்டான்."
+  },
+  {
+   "id": "m088",
+   "date": "2026-06-05",
+   "text": "Nila is in class 3 now."
+  },
+  {
+   "id": "m089",
+   "date": "2026-06-12",
+   "text": "Nila turned 8 today."
+  },
+  {
+   "id": "m090",
+   "date": "2026-06-15",
+   "text": "Arun married Swathi in Pune last week. She's a physiotherapist."
+  },
+  {
+   "id": "m091",
+   "date": "2026-06-20",
+   "text": "Ilan's new paediatrician in Coimbatore is Dr. Shanthi at Kidz Care. She says his wheeze is better and he can stop the inhaler."
+  },
+  {
+   "id": "m092",
+   "date": "2026-06-28",
+   "text": "KR bought a TVS Jupiter scooter."
+  },
+  {
+   "id": "m093",
+   "date": "2026-07-01",
+   "text": "Narthangai pickle is still our bestseller, around 40 jars a month."
+  },
+  {
+   "id": "m094",
+   "date": "2026-07-05",
+   "text": "Deepa Iyer kooda ippo ennai Kavi-nu dhaan kooppidraanga; office-la ellarukkum naan Kavi dhaan."
+  },
+  {
+   "id": "m095",
+   "date": "2026-07-15",
+   "text": "Senthil sold his Pulsar and bought a Royal Enfield Hunter 350."
+  },
+  {
+   "id": "m096",
+   "date": "2026-07-20",
+   "text": "I've been thinking about selling Nila Pickles on Amazon. Maybe after Deepavali."
+  },
+  {
+   "id": "m097",
+   "date": "2026-08-01",
+   "text": "From today I also lead QA for Thenral's new product, KisanPay."
+  },
+  {
+   "id": "m098",
+   "date": "2026-08-05",
+   "text": "Senthil-ku kaaram konjam kooda pidikkadhu, aana enakku nalla kaaram dhaan venum."
+  },
+  {
+   "id": "m099",
+   "date": "2026-08-12",
+   "text": "Deepa Iyer worked at Zoho for eight years before she joined Thenral."
+  },
+  {
+   "id": "m100",
+   "date": "2026-08-18",
+   "text": "Took up watercolour painting: an online class with Ms. Rekha every Wednesday night."
+  },
+  {
+   "id": "m101",
+   "date": "2026-08-25",
+   "text": "Correction: Ms. Rekha's class is on Friday nights, not Wednesday."
+  },
+  {
+   "id": "m102",
+   "date": "2026-09-05",
+   "text": "11th anniversary today. Dinner at Kovai Vilas."
+  },
+  {
+   "id": "m103",
+   "date": "2026-09-10",
+   "text": "Swapped my Samsung S24 for a Pixel 10. The Samsung went to Senthil."
+  },
+  {
+   "id": "m104",
+   "date": "2026-09-15",
+   "text": "Ma's thyroid tests came back normal."
+  },
+  {
+   "id": "m105",
+   "date": "2026-09-20",
+   "text": "I've stopped taking sugar in my tea."
+  },
+  {
+   "id": "m106",
+   "date": "2026-09-25",
+   "text": "Nila wants to learn Bharatanatyam, so we enrolled her at Natya Kala Academy. Classes are on Tuesdays and Saturdays."
+  },
+  {
+   "id": "m107",
+   "date": "2026-09-28",
+   "text": "என் காரை ஸ்ரீ கணேஷ் மோட்டார்ஸ்ல தான் சர்வீஸ் பண்ணுவேன்."
+  },
+  {
+   "id": "m108",
+   "date": "2026-10-01",
+   "text": "Lakshmi, the friend who referred me, has moved to Bangalore for a job at Brightloop."
+  },
+  {
+   "id": "m109",
+   "date": "2026-10-03",
+   "text": "Planning the December holiday: maybe Ooty, maybe Yercaud."
+  },
+  {
+   "id": "m110",
+   "date": "2026-10-08",
+   "text": "Can you set a timer for 10 minutes?"
+  },
+  {
+   "id": "m111",
+   "date": "2026-10-10",
+   "text": "Booked a cottage in Yercaud from 20 to 23 December."
+  },
+  {
+   "id": "m112",
+   "date": "2026-10-12",
+   "text": "For Deepavali (8 November) we're going to Palayamkottai, 6 to 9 November."
+  },
+  {
+   "id": "m113",
+   "date": "2026-10-15",
+   "text": "Nila Pickles Deepavali pre-orders: 180 jars so far."
+  },
+  {
+   "id": "m114",
+   "date": "2026-10-18",
+   "text": "I don't use Instagram for Nila Pickles anymore; WhatsApp brings most of the orders."
+  },
+  {
+   "id": "m115",
+   "date": "2026-10-20",
+   "text": "Arun and Swathi might visit us at Christmas, not confirmed."
+  },
+  {
+   "id": "m116",
+   "date": "2026-10-22",
+   "text": "Remind me: Nila's school PTA meeting is on 14 November."
+  },
+  {
+   "id": "m117",
+   "date": "2026-10-25",
+   "text": "Ma-ku next month 65 vayasu aagudhu; avanga birthday 30 November."
+  },
+  {
+   "id": "m118",
+   "date": "2026-10-28",
+   "text": "Senthil's airport project finishes next March. L&T may move him to Chennai after that, nothing confirmed."
+  }
+ ],
+ "questions": [
+  {
+   "id": "t2q001",
+   "kind": "simple",
+   "q": "What is my full name?",
+   "must": [
+    [
+     "kavitha murugesan"
+    ]
+   ],
+   "gold": "Your name is Kavitha Murugesan."
+  },
+  {
+   "id": "t2q002",
+   "kind": "simple",
+   "q": "When is my birthday?",
+   "must": [
+    [
+     "18 march",
+     "march 18",
+     "18th march",
+     "march 18th",
+     "18th of march"
+    ]
+   ],
+   "gold": "Your birthday is 18 March."
+  },
+  {
+   "id": "t2q003",
+   "kind": "simple",
+   "q": "What does Senthil do for a living?",
+   "must": [
+    [
+     "engineer"
+    ],
+    [
+     "l&t",
+     "larsen"
+    ]
+   ],
+   "gold": "Senthil is a site engineer at L&T Construction."
+  },
+  {
+   "id": "t2q004",
+   "kind": "simple",
+   "q": "When is Nila's birthday?",
+   "must": [
+    [
+     "12 june",
+     "june 12",
+     "12th june",
+     "june 12th",
+     "12th of june"
+    ]
+   ],
+   "gold": "Nila's birthday is 12 June."
+  },
+  {
+   "id": "t2q005",
+   "kind": "simple",
+   "q": "When was Ilan born?",
+   "must": [
+    [
+     "27 jan",
+     "january 27",
+     "27th jan",
+     "27th of jan"
+    ],
+    [
+     "2024"
+    ]
+   ],
+   "gold": "Ilan was born on 27 January 2024."
+  },
+  {
+   "id": "t2q006",
+   "kind": "simple",
+   "q": "What is my side business?",
+   "must": [
+    [
+     "nila pickles"
+    ]
+   ],
+   "gold": "Your side business is Nila Pickles, homemade pickles and podis."
+  },
+  {
+   "id": "t2q007",
+   "kind": "simple",
+   "q": "When did I start Nila Pickles?",
+   "must": [
+    [
+     "2023"
+    ]
+   ],
+   "gold": "You started Nila Pickles on 1 May 2023."
+  },
+  {
+   "id": "t2q008",
+   "kind": "simple",
+   "q": "When is our wedding anniversary?",
+   "must": [
+    [
+     "5 sep",
+     "september 5",
+     "5th sep",
+     "sept 5",
+     "5th of sep"
+    ]
+   ],
+   "gold": "Your wedding anniversary is 5 September."
+  },
+  {
+   "id": "t2q009",
+   "kind": "simple",
+   "q": "Which fund is my SIP in?",
+   "must": [
+    [
+     "navarasa"
+    ]
+   ],
+   "gold": "Your SIP is in the Navarasa Flexi Cap fund."
+  },
+  {
+   "id": "t2q010",
+   "kind": "simple",
+   "q": "What car do we have?",
+   "must": [
+    [
+     "baleno"
+    ]
+   ],
+   "gold": "You have a Maruti Baleno."
+  },
+  {
+   "id": "t2q011",
+   "kind": "simple",
+   "q": "How much is my car loan EMI, and on which day?",
+   "must": [
+    [
+     "11,500",
+     "11500"
+    ],
+    [
+     "10th",
+     "10 of",
+     "the 10"
+    ]
+   ],
+   "gold": "The car loan EMI is 11,500 rupees on the 10th of every month."
+  },
+  {
+   "id": "t2q012",
+   "kind": "simple",
+   "q": "Which bank is my car loan with?",
+   "must": [
+    [
+     "sbi",
+     "state bank"
+    ]
+   ],
+   "gold": "Your car loan is with SBI."
+  },
+  {
+   "id": "t2q013",
+   "kind": "simple",
+   "q": "Is there any food I can't take?",
+   "must": [
+    [
+     "lactose",
+     "milk"
+    ]
+   ],
+   "gold": "You're lactose intolerant, so you avoid milk (curd is fine)."
+  },
+  {
+   "id": "t2q014",
+   "kind": "simple",
+   "q": "Do I drink coffee?",
+   "must": [
+    [
+     "no",
+     "don't",
+     "do not",
+     "not"
+    ],
+    [
+     "tea"
+    ]
+   ],
+   "must_not": [
+    "you drink coffee",
+    "you like coffee",
+    "you love coffee"
+   ],
+   "gold": "No, you don't drink coffee at all; you're a ginger tea person.",
+   "traps": [
+    "Yes, you drink coffee every morning."
+   ]
+  },
+  {
+   "id": "t2q015",
+   "kind": "simple",
+   "q": "Which laptop do I use at work?",
+   "must": [
+    [
+     "dell",
+     "latitude"
+    ]
+   ],
+   "gold": "At work you use a Dell Latitude."
+  },
+  {
+   "id": "t2q016",
+   "kind": "simple",
+   "q": "What does AgriSense do?",
+   "must": [
+    [
+     "crop"
+    ],
+    [
+     "insurance"
+    ]
+   ],
+   "gold": "AgriSense is a crop-insurance platform."
+  },
+  {
+   "id": "t2q017",
+   "kind": "simple",
+   "q": "Which testing tools do we use at Thenral?",
+   "must": [
+    [
+     "playwright"
+    ],
+    [
+     "k6"
+    ]
+   ],
+   "gold": "You use Playwright and k6."
+  },
+  {
+   "id": "t2q018",
+   "kind": "simple",
+   "q": "Where is Deepa Sekar's boutique?",
+   "must": [
+    [
+     "town hall",
+     "madurai"
+    ]
+   ],
+   "gold": "Deepa Designs is on Town Hall Road, Madurai."
+  },
+  {
+   "id": "t2q019",
+   "kind": "simple",
+   "q": "What is the name of Deepa Sekar's boutique?",
+   "must": [
+    [
+     "deepa designs"
+    ]
+   ],
+   "gold": "Her boutique is called Deepa Designs."
+  },
+  {
+   "id": "t2q020",
+   "kind": "simple",
+   "q": "Who is Revathi?",
+   "must": [
+    [
+     "neighbour",
+     "neighbor"
+    ],
+    [
+     "chemistry",
+     "madurai kamaraj",
+     "university",
+     "professor",
+     "lecturer",
+     "teach"
+    ]
+   ],
+   "gold": "Revathi was your neighbour in K.K. Nagar; she teaches chemistry at Madurai Kamaraj University."
+  },
+  {
+   "id": "t2q021",
+   "kind": "simple",
+   "q": "How many jars did Nila Pickles sell for Deepavali last year?",
+   "must": [
+    [
+     "300"
+    ]
+   ],
+   "gold": "About 300 jars in two weeks."
+  },
+  {
+   "id": "t2q022",
+   "kind": "simple",
+   "q": "Where are we going for Deepavali?",
+   "must": [
+    [
+     "palayamkottai",
+     "tirunelveli"
+    ]
+   ],
+   "gold": "You're going to Palayamkottai, 6 to 9 November."
+  },
+  {
+   "id": "t2q023",
+   "kind": "simple",
+   "q": "When is Nila's PTA meeting?",
+   "must": [
+    [
+     "14 nov",
+     "november 14",
+     "14th nov",
+     "nov 14",
+     "14th of nov"
+    ]
+   ],
+   "gold": "Nila's PTA meeting is on 14 November."
+  },
+  {
+   "id": "t2q024",
+   "kind": "simple",
+   "q": "When is our Yercaud trip?",
+   "must": [
+    [
+     "20"
+    ],
+    [
+     "23"
+    ],
+    [
+     "december",
+     "dec"
+    ]
+   ],
+   "gold": "You've booked a cottage in Yercaud from 20 to 23 December."
+  },
+  {
+   "id": "t2q025",
+   "kind": "simple",
+   "q": "What did I give Senthil for his birthday last year?",
+   "must": [
+    [
+     "smartwatch",
+     "watch",
+     "noise"
+    ]
+   ],
+   "gold": "You got him a Noise smartwatch."
+  },
+  {
+   "id": "t2q026",
+   "kind": "simple",
+   "q": "When is Senthil's birthday?",
+   "must": [
+    [
+     "2 nov",
+     "november 2",
+     "2nd nov",
+     "nov 2",
+     "2nd of nov"
+    ]
+   ],
+   "gold": "Senthil's birthday is 2 November."
+  },
+  {
+   "id": "t2q027",
+   "kind": "simple",
+   "q": "How many Deepavali pre-orders does Nila Pickles have this year?",
+   "must": [
+    [
+     "180"
+    ]
+   ],
+   "gold": "180 jars so far."
+  },
+  {
+   "id": "t2q028",
+   "kind": "current",
+   "q": "Where do I live now?",
+   "must": [
+    [
+     "saibaba colony",
+     "coimbatore"
+    ]
+   ],
+   "must_not": [
+    "you live in k.k. nagar",
+    "you live in madurai",
+    "you live in kk nagar"
+   ],
+   "gold": "You live in Saibaba Colony, Coimbatore (you moved from K.K. Nagar, Madurai in January 2026).",
+   "traps": [
+    "You live in K.K. Nagar, Madurai."
+   ]
+  },
+  {
+   "id": "t2q029",
+   "kind": "current",
+   "q": "Which company do I work for now?",
+   "must": [
+    [
+     "thenral"
+    ]
+   ],
+   "must_not": [
+    "you work at velan",
+    "you work for velan"
+   ],
+   "gold": "You work at Thenral Systems in Coimbatore.",
+   "traps": [
+    "You work at Velan Infotech in Madurai."
+   ]
+  },
+  {
+   "id": "t2q030",
+   "kind": "current",
+   "q": "What is my job title now?",
+   "must": [
+    [
+     "qa manager"
+    ]
+   ],
+   "must_not": [
+    "you are a qa lead",
+    "you're a qa lead",
+    "title is qa lead"
+   ],
+   "gold": "You're a Senior QA Manager at Thenral Systems.",
+   "traps": [
+    "You're a QA lead at Velan Infotech."
+   ]
+  },
+  {
+   "id": "t2q031",
+   "kind": "current",
+   "q": "Who is my manager now?",
+   "must": [
+    [
+     "deepa iyer"
+    ]
+   ],
+   "must_not": [
+    "manager is prakash",
+    "manager is deepa sekar"
+   ],
+   "gold": "Your manager is Deepa Iyer.",
+   "traps": [
+    "Your manager is Prakash.",
+    "Your manager is Deepa Sekar."
+   ]
+  },
+  {
+   "id": "t2q032",
+   "kind": "current",
+   "q": "What phone do I use now?",
+   "must": [
+    [
+     "pixel"
+    ]
+   ],
+   "must_not": [
+    "you use a samsung",
+    "you use a redmi",
+    "phone is a samsung",
+    "phone is a redmi",
+    "you use the samsung"
+   ],
+   "gold": "You use a Pixel 10 (you swapped your Samsung S24 for it).",
+   "traps": [
+    "You use a Samsung Galaxy S24.",
+    "Your phone is a Redmi Note 12."
+   ]
+  },
+  {
+   "id": "t2q033",
+   "kind": "current",
+   "q": "Which day do I play badminton now?",
+   "must": [
+    [
+     "sunday"
+    ]
+   ],
+   "must_not": [
+    "you play on thursday",
+    "you play on tuesday",
+    "badminton is on thursday"
+   ],
+   "gold": "Sunday mornings, at the Saibaba Colony Shuttle Club.",
+   "traps": [
+    "You play on Thursday evenings."
+   ]
+  },
+  {
+   "id": "t2q034",
+   "kind": "current",
+   "q": "Where do I play badminton now?",
+   "must": [
+    [
+     "saibaba colony shuttle",
+     "shuttle club"
+    ]
+   ],
+   "must_not": [
+    "you play at gandhi nagar",
+    "at the gandhi nagar"
+   ],
+   "gold": "At the Saibaba Colony Shuttle Club.",
+   "traps": [
+    "You play at the Gandhi Nagar indoor court."
+   ]
+  },
+  {
+   "id": "t2q035",
+   "kind": "current",
+   "q": "How much is my SIP now?",
+   "must": [
+    [
+     "9,000",
+     "9000",
+     "9k"
+    ]
+   ],
+   "must_not": [
+    "sip is 8,000",
+    "sip is 5,000",
+    "is 8,000 a month",
+    "is 5,000 a month",
+    "sip is 8000",
+    "sip is 5000"
+   ],
+   "gold": "9,000 rupees a month in the Navarasa Flexi Cap fund.",
+   "traps": [
+    "Your SIP is 8,000 a month.",
+    "Your SIP is 5,000 a month."
+   ]
+  },
+  {
+   "id": "t2q036",
+   "kind": "current",
+   "q": "Which school does Nila go to now?",
+   "must": [
+    [
+     "kovai public"
+    ]
+   ],
+   "must_not": [
+    "goes to sri vidya",
+    "attends sri vidya",
+    "studies at sri vidya"
+   ],
+   "gold": "Nila goes to Kovai Public School.",
+   "traps": [
+    "Nila goes to Sri Vidya Mandir."
+   ]
+  },
+  {
+   "id": "t2q037",
+   "kind": "current",
+   "q": "Which class is Nila in now?",
+   "must": [
+    [
+     "3",
+     "three"
+    ]
+   ],
+   "must_not": [
+    "is in class 2",
+    "is in class 1"
+   ],
+   "gold": "Nila is in class 3.",
+   "traps": [
+    "Nila is in class 2."
+   ]
+  },
+  {
+   "id": "t2q038",
+   "kind": "current",
+   "q": "How old is Nila now?",
+   "must": [
+    [
+     "8",
+     "eight"
+    ]
+   ],
+   "must_not": [
+    "she is 7",
+    "nila is 7",
+    "she's 7",
+    "nila is 6"
+   ],
+   "gold": "Nila is 8.",
+   "traps": [
+    "Nila is 7."
+   ]
+  },
+  {
+   "id": "t2q039",
+   "kind": "current",
+   "q": "How much rent do we pay now?",
+   "must": [
+    [
+     "22,000",
+     "22000",
+     "22k"
+    ]
+   ],
+   "must_not": [
+    "rent is 14,000",
+    "rent is 14000"
+   ],
+   "gold": "22,000 rupees a month for the Saibaba Colony flat.",
+   "traps": [
+    "Your rent is 14,000 a month."
+   ]
+  },
+  {
+   "id": "t2q040",
+   "kind": "current",
+   "q": "Where does Ilan go during the day?",
+   "must": [
+    [
+     "little steps"
+    ]
+   ],
+   "gold": "Ilan goes to Little Steps daycare near your flat."
+  },
+  {
+   "id": "t2q041",
+   "kind": "current",
+   "q": "Who is Ilan's paediatrician now?",
+   "must": [
+    [
+     "shanthi"
+    ]
+   ],
+   "must_not": [
+    "paediatrician is dr. anand",
+    "pediatrician is dr. anand",
+    "is dr. anand"
+   ],
+   "gold": "Dr. Shanthi at Kidz Care in Coimbatore.",
+   "traps": [
+    "Ilan's paediatrician is Dr. Anand."
+   ]
+  },
+  {
+   "id": "t2q042",
+   "kind": "current",
+   "q": "Does Ilan still use his inhaler?",
+   "must": [
+    [
+     "stop",
+     "no longer",
+     "not",
+     "doesn't",
+     "does not"
+    ]
+   ],
+   "must_not": [
+    "he still uses",
+    "yes, he uses"
+   ],
+   "gold": "No; Dr. Shanthi said his wheeze is better and he can stop the inhaler.",
+   "traps": [
+    "Yes, he uses an inhaler for his wheeze."
+   ]
+  },
+  {
+   "id": "t2q043",
+   "kind": "current",
+   "q": "What phone does Senthil use now?",
+   "must": [
+    [
+     "s24",
+     "samsung"
+    ]
+   ],
+   "must_not": [
+    "uses a vivo",
+    "uses the vivo",
+    "phone is a vivo"
+   ],
+   "gold": "Senthil has your old Samsung Galaxy S24.",
+   "traps": [
+    "Senthil uses a Vivo V29."
+   ]
+  },
+  {
+   "id": "t2q044",
+   "kind": "current",
+   "q": "What bike does Senthil ride now?",
+   "must": [
+    [
+     "hunter",
+     "royal enfield"
+    ]
+   ],
+   "must_not": [
+    "rides a bajaj",
+    "rides a pulsar"
+   ],
+   "gold": "A Royal Enfield Hunter 350.",
+   "traps": [
+    "Senthil rides a Bajaj Pulsar."
+   ]
+  },
+  {
+   "id": "t2q045",
+   "kind": "current",
+   "q": "Which project is Senthil working on now?",
+   "must": [
+    [
+     "airport"
+    ]
+   ],
+   "gold": "The Coimbatore airport expansion project for L&T."
+  },
+  {
+   "id": "t2q046",
+   "kind": "current",
+   "q": "Which products do I lead QA for now?",
+   "must": [
+    [
+     "agrisense"
+    ],
+    [
+     "kisanpay"
+    ]
+   ],
+   "gold": "AgriSense and, since August, KisanPay."
+  },
+  {
+   "id": "t2q047",
+   "kind": "current",
+   "q": "Where does Lakshmi work now?",
+   "must": [
+    [
+     "brightloop"
+    ]
+   ],
+   "must_not": [
+    "works at thenral",
+    "she is at thenral"
+   ],
+   "gold": "Lakshmi now works at Brightloop in Bangalore.",
+   "traps": [
+    "Lakshmi works at Thenral Systems."
+   ]
+  },
+  {
+   "id": "t2q048",
+   "kind": "current",
+   "q": "When is my painting class?",
+   "must": [
+    [
+     "friday"
+    ]
+   ],
+   "must_not": [
+    "class is on wednesday",
+    "on wednesday nights",
+    "every wednesday"
+   ],
+   "gold": "Friday nights, online with Ms. Rekha.",
+   "traps": [
+    "Your painting class is every Wednesday night."
+   ]
+  },
+  {
+   "id": "t2q049",
+   "kind": "current",
+   "q": "Where do most Nila Pickles orders come from now?",
+   "must": [
+    [
+     "whatsapp"
+    ]
+   ],
+   "must_not": [
+    "through instagram",
+    "on instagram",
+    "via instagram"
+   ],
+   "gold": "Mostly WhatsApp; you don't use Instagram for it anymore.",
+   "traps": [
+    "Most orders come through Instagram."
+   ]
+  },
+  {
+   "id": "t2q050",
+   "kind": "current",
+   "q": "Do I take sugar in my tea?",
+   "must": [
+    [
+     "no",
+     "not",
+     "stopped",
+     "don't"
+    ]
+   ],
+   "must_not": [
+    "you take sugar",
+    "yes,"
+   ],
+   "gold": "No, you stopped taking sugar in your tea.",
+   "traps": [
+    "Yes, you take sugar in your tea."
+   ]
+  },
+  {
+   "id": "t2q051",
+   "kind": "past",
+   "q": "Where did I live before Coimbatore?",
+   "must": [
+    [
+     "k.k. nagar",
+     "kk nagar",
+     "k k nagar",
+     "madurai"
+    ]
+   ],
+   "gold": "In a rented flat in K.K. Nagar, Madurai."
+  },
+  {
+   "id": "t2q052",
+   "kind": "past",
+   "q": "Where did I work before Thenral Systems?",
+   "must": [
+    [
+     "velan"
+    ]
+   ],
+   "gold": "At Velan Infotech in Madurai (from 2019)."
+  },
+  {
+   "id": "t2q053",
+   "kind": "past",
+   "q": "What was my project at Velan?",
+   "must": [
+    [
+     "medibill"
+    ]
+   ],
+   "gold": "MediBill, a hospital billing app."
+  },
+  {
+   "id": "t2q054",
+   "kind": "past",
+   "q": "Who was my manager at Velan?",
+   "must": [
+    [
+     "prakash"
+    ]
+   ],
+   "gold": "Prakash."
+  },
+  {
+   "id": "t2q055",
+   "kind": "past",
+   "q": "What was my job title at Velan?",
+   "must": [
+    [
+     "qa lead"
+    ]
+   ],
+   "gold": "You were a QA lead."
+  },
+  {
+   "id": "t2q056",
+   "kind": "past",
+   "q": "What phone did I have before the Pixel?",
+   "must": [
+    [
+     "s24",
+     "samsung"
+    ]
+   ],
+   "gold": "A Samsung Galaxy S24."
+  },
+  {
+   "id": "t2q057",
+   "kind": "past",
+   "q": "What phone did I have before the Samsung?",
+   "must": [
+    [
+     "redmi"
+    ]
+   ],
+   "gold": "A Redmi Note 12 (it went to Ma)."
+  },
+  {
+   "id": "t2q058",
+   "kind": "past",
+   "q": "Which day did I play badminton when we lived in Madurai?",
+   "must": [
+    [
+     "thursday"
+    ]
+   ],
+   "must_not": [
+    "played on tuesday",
+    "was on tuesday",
+    "on tuesday evening",
+    "every tuesday"
+   ],
+   "gold": "Thursday evenings (you first said Tuesday, then corrected it).",
+   "traps": [
+    "You played every Tuesday evening."
+   ]
+  },
+  {
+   "id": "t2q059",
+   "kind": "past",
+   "q": "Where did I play badminton in Madurai?",
+   "must": [
+    [
+     "gandhi nagar"
+    ]
+   ],
+   "gold": "At the Gandhi Nagar indoor court."
+  },
+  {
+   "id": "t2q060",
+   "kind": "past",
+   "q": "Which school did Nila go to in Madurai?",
+   "must": [
+    [
+     "sri vidya"
+    ]
+   ],
+   "gold": "Sri Vidya Mandir."
+  },
+  {
+   "id": "t2q061",
+   "kind": "past",
+   "q": "How much was my SIP when I started it?",
+   "must": [
+    [
+     "5,000",
+     "5000",
+     "5k"
+    ]
+   ],
+   "gold": "5,000 rupees a month."
+  },
+  {
+   "id": "t2q062",
+   "kind": "past",
+   "q": "What was our rent in Madurai?",
+   "must": [
+    [
+     "14,000",
+     "14000",
+     "14k"
+    ]
+   ],
+   "gold": "14,000 rupees a month."
+  },
+  {
+   "id": "t2q063",
+   "kind": "past",
+   "q": "Who was Ilan's paediatrician in Madurai?",
+   "must": [
+    [
+     "anand"
+    ]
+   ],
+   "gold": "Dr. Anand."
+  },
+  {
+   "id": "t2q064",
+   "kind": "past",
+   "q": "What bike did Senthil ride before the Royal Enfield?",
+   "must": [
+    [
+     "pulsar",
+     "bajaj"
+    ]
+   ],
+   "gold": "A Bajaj Pulsar."
+  },
+  {
+   "id": "t2q065",
+   "kind": "past",
+   "q": "Which class did I take on Saturday mornings in 2025?",
+   "must": [
+    [
+     "pottery"
+    ]
+   ],
+   "gold": "A pottery class at Mann Studio (you stopped in October 2025)."
+  },
+  {
+   "id": "t2q066",
+   "kind": "past",
+   "q": "Where did Lakshmi work before Brightloop?",
+   "must": [
+    [
+     "thenral"
+    ]
+   ],
+   "gold": "At Thenral Systems in Coimbatore."
+  },
+  {
+   "id": "t2q067",
+   "kind": "past",
+   "q": "Which channels did I use to sell Nila Pickles at first?",
+   "must": [
+    [
+     "whatsapp"
+    ],
+    [
+     "instagram"
+    ]
+   ],
+   "gold": "WhatsApp and Instagram."
+  },
+  {
+   "id": "t2q068",
+   "kind": "past",
+   "q": "What phone did Senthil use before he got my Samsung?",
+   "must": [
+    [
+     "vivo"
+    ]
+   ],
+   "gold": "A Vivo V29."
+  },
+  {
+   "id": "t2q069",
+   "kind": "multi_hop",
+   "q": "Where does my husband work?",
+   "must": [
+    [
+     "l&t",
+     "larsen"
+    ]
+   ],
+   "gold": "Senthil works at L&T Construction, on the Coimbatore airport expansion project."
+  },
+  {
+   "id": "t2q070",
+   "kind": "multi_hop",
+   "q": "What is my mother's name?",
+   "must": [
+    [
+     "mahalakshmi"
+    ]
+   ],
+   "gold": "Mahalakshmi (you call her Ma)."
+  },
+  {
+   "id": "t2q071",
+   "kind": "multi_hop",
+   "q": "Where do my parents live?",
+   "must": [
+    [
+     "palayamkottai",
+     "tirunelveli"
+    ]
+   ],
+   "must_not": [
+    "they live in coimbatore",
+    "live with you"
+   ],
+   "gold": "In Palayamkottai, Tirunelveli.",
+   "traps": [
+    "Your parents live with you in Coimbatore."
+   ]
+  },
+  {
+   "id": "t2q072",
+   "kind": "multi_hop",
+   "q": "What did my father do before he retired?",
+   "must": [
+    [
+     "headmaster",
+     "head master",
+     "principal"
+    ]
+   ],
+   "gold": "He was a headmaster."
+  },
+  {
+   "id": "t2q073",
+   "kind": "multi_hop",
+   "q": "Which tablet does my mother take every morning?",
+   "must": [
+    [
+     "thyronorm"
+    ]
+   ],
+   "gold": "Thyronorm, for her thyroid."
+  },
+  {
+   "id": "t2q074",
+   "kind": "multi_hop",
+   "q": "What health issues does my mother have?",
+   "must": [
+    [
+     "thyroid"
+    ],
+    [
+     "knee"
+    ]
+   ],
+   "must_not": [
+    "you have thyroid",
+    "your thyroid"
+   ],
+   "gold": "Thyroid (tests now normal) and knee pain.",
+   "traps": [
+    "You have thyroid."
+   ]
+  },
+  {
+   "id": "t2q075",
+   "kind": "multi_hop",
+   "q": "What phone does my mother use?",
+   "must": [
+    [
+     "redmi"
+    ]
+   ],
+   "gold": "Your old Redmi Note 12."
+  },
+  {
+   "id": "t2q076",
+   "kind": "multi_hop",
+   "q": "Where does my mother-in-law live?",
+   "must": [
+    [
+     "anna nagar",
+     "madurai"
+    ]
+   ],
+   "must_not": [
+    "lives in coimbatore",
+    "lives with you"
+   ],
+   "gold": "Pushpa lives in her own house in Anna Nagar, Madurai.",
+   "traps": [
+    "She lives with you in Coimbatore."
+   ]
+  },
+  {
+   "id": "t2q077",
+   "kind": "multi_hop",
+   "q": "What is my mother-in-law's name?",
+   "must": [
+    [
+     "pushpa"
+    ]
+   ],
+   "gold": "Pushpa."
+  },
+  {
+   "id": "t2q078",
+   "kind": "multi_hop",
+   "q": "Which city does my brother live in?",
+   "must": [
+    [
+     "pune"
+    ]
+   ],
+   "gold": "Arun lives in Pune."
+  },
+  {
+   "id": "t2q079",
+   "kind": "multi_hop",
+   "q": "Which company does my brother work for?",
+   "must": [
+    [
+     "zentrix"
+    ]
+   ],
+   "gold": "Zentrix Systems, as a data engineer."
+  },
+  {
+   "id": "t2q080",
+   "kind": "multi_hop",
+   "q": "Who is my brother married to?",
+   "must": [
+    [
+     "swathi"
+    ]
+   ],
+   "gold": "Swathi."
+  },
+  {
+   "id": "t2q081",
+   "kind": "multi_hop",
+   "q": "What does my brother's wife do?",
+   "must": [
+    [
+     "physio"
+    ]
+   ],
+   "gold": "Swathi is a physiotherapist."
+  },
+  {
+   "id": "t2q082",
+   "kind": "multi_hop",
+   "q": "Where does my husband's brother live?",
+   "must": [
+    [
+     "dubai"
+    ]
+   ],
+   "gold": "Murali lives in Dubai."
+  },
+  {
+   "id": "t2q083",
+   "kind": "multi_hop",
+   "q": "What does my husband's brother do?",
+   "must": [
+    [
+     "electrician"
+    ]
+   ],
+   "gold": "Murali is an electrician."
+  },
+  {
+   "id": "t2q084",
+   "kind": "multi_hop",
+   "q": "What phone does my brother use?",
+   "must": [
+    [
+     "oneplus",
+     "one plus"
+    ]
+   ],
+   "must_not": [
+    "you use a oneplus",
+    "you bought a oneplus"
+   ],
+   "gold": "A OnePlus 13.",
+   "traps": [
+    "You and Arun both use a OnePlus 13; you bought one too."
+   ]
+  },
+  {
+   "id": "t2q085",
+   "kind": "multi_hop",
+   "q": "Which dance does my daughter learn, and where?",
+   "must": [
+    [
+     "bharatanatyam",
+     "bharathanatyam",
+     "bharatnatyam"
+    ],
+    [
+     "natya kala"
+    ]
+   ],
+   "gold": "Bharatanatyam at Natya Kala Academy."
+  },
+  {
+   "id": "t2q086",
+   "kind": "multi_hop",
+   "q": "On which days are my daughter's dance classes?",
+   "must": [
+    [
+     "tuesday"
+    ],
+    [
+     "saturday"
+    ]
+   ],
+   "gold": "Tuesdays and Saturdays."
+  },
+  {
+   "id": "t2q087",
+   "kind": "multi_hop",
+   "q": "Which school subject does my daughter love?",
+   "must": [
+    [
+     "math"
+    ]
+   ],
+   "gold": "Maths."
+  },
+  {
+   "id": "t2q088",
+   "kind": "multi_hop",
+   "q": "What sport does my husband play on Sundays?",
+   "must": [
+    [
+     "cricket"
+    ]
+   ],
+   "gold": "Cricket, with his office team."
+  },
+  {
+   "id": "t2q089",
+   "kind": "multi_hop",
+   "q": "What kind of food does my husband dislike?",
+   "must": [
+    [
+     "spicy",
+     "kaaram",
+     "spice",
+     "hot food"
+    ]
+   ],
+   "gold": "Spicy food; he doesn't like kaaram at all."
+  },
+  {
+   "id": "t2q090",
+   "kind": "multi_hop",
+   "q": "How old is my son now?",
+   "must": [
+    [
+     "2",
+     "two"
+    ]
+   ],
+   "gold": "Ilan is 2 (born 27 January 2024)."
+  },
+  {
+   "id": "t2q091",
+   "kind": "multi_hop",
+   "q": "Who stocks my pickles in Madurai?",
+   "must": [
+    [
+     "deepa sekar",
+     "deepa designs"
+    ]
+   ],
+   "must_not": [
+    "deepa iyer stocks",
+    "deepa iyer's"
+   ],
+   "gold": "Your college friend Deepa Sekar, in her boutique Deepa Designs.",
+   "traps": [
+    "Deepa Iyer stocks them."
+   ]
+  },
+  {
+   "id": "t2q092",
+   "kind": "multi_hop",
+   "q": "Which doctor treats my mother's knee?",
+   "must": [
+    [
+     "selvaraj"
+    ]
+   ],
+   "gold": "Dr. Selvaraj at Tirunelveli Medical College."
+  },
+  {
+   "id": "t2q093",
+   "kind": "alias",
+   "q": "Who is Maha?",
+   "must": [
+    [
+     "mother",
+     "amma",
+     "mom",
+     "mahalakshmi"
+    ]
+   ],
+   "gold": "Maha is your mother, Mahalakshmi."
+  },
+  {
+   "id": "t2q094",
+   "kind": "alias",
+   "q": "Where does Mahalakshmi live?",
+   "must": [
+    [
+     "palayamkottai",
+     "tirunelveli"
+    ]
+   ],
+   "gold": "In Palayamkottai, Tirunelveli, with Appa."
+  },
+  {
+   "id": "t2q095",
+   "kind": "alias",
+   "q": "When is Ma's birthday?",
+   "must": [
+    [
+     "30 nov",
+     "november 30",
+     "30th nov",
+     "nov 30",
+     "30th of nov"
+    ]
+   ],
+   "gold": "30 November."
+  },
+  {
+   "id": "t2q096",
+   "kind": "alias",
+   "q": "How old is Maha turning this year?",
+   "must": [
+    [
+     "65"
+    ]
+   ],
+   "gold": "She turns 65 on 30 November."
+  },
+  {
+   "id": "t2q097",
+   "kind": "alias",
+   "q": "When was Kutty born?",
+   "must": [
+    [
+     "27 jan",
+     "january 27",
+     "27th jan",
+     "27th of jan"
+    ]
+   ],
+   "gold": "Ilan (Kutty) was born on 27 January 2024."
+  },
+  {
+   "id": "t2q098",
+   "kind": "alias",
+   "q": "Where does Senthilkumar work?",
+   "must": [
+    [
+     "l&t",
+     "larsen"
+    ]
+   ],
+   "gold": "At L&T Construction."
+  },
+  {
+   "id": "t2q099",
+   "kind": "alias",
+   "q": "What is Kavi's blood group?",
+   "must": [
+    [
+     "o negative",
+     "o-",
+     "o -ve",
+     "o neg",
+     "o−"
+    ]
+   ],
+   "gold": "O negative."
+  },
+  {
+   "id": "t2q100",
+   "kind": "alias",
+   "q": "What does KR do?",
+   "must": [
+    [
+     "tester"
+    ]
+   ],
+   "must_not": [
+    "kr is a senior",
+    "she is a senior qa"
+   ],
+   "gold": "KR (Kavitha Raman) is a junior tester on your team.",
+   "traps": [
+    "KR is a Senior QA Manager."
+   ]
+  },
+  {
+   "id": "t2q101",
+   "kind": "alias",
+   "q": "Who is Kavitha Raman?",
+   "must": [
+    [
+     "tester",
+     "colleague",
+     "team"
+    ]
+   ],
+   "must_not": [
+    "that's you",
+    "you are kavitha raman",
+    "that is you"
+   ],
+   "gold": "A junior tester on your team at Thenral, called KR.",
+   "traps": [
+    "That's you."
+   ]
+  },
+  {
+   "id": "t2q102",
+   "kind": "alias",
+   "q": "Which scooter did KR buy?",
+   "must": [
+    [
+     "jupiter"
+    ]
+   ],
+   "must_not": [
+    "you bought"
+   ],
+   "gold": "A TVS Jupiter.",
+   "traps": [
+    "You bought a TVS Jupiter."
+   ]
+  },
+  {
+   "id": "t2q103",
+   "kind": "alias",
+   "q": "Which scooter do I ride?",
+   "must": [
+    [
+     "activa"
+    ]
+   ],
+   "must_not": [
+    "jupiter"
+   ],
+   "gold": "A Honda Activa.",
+   "traps": [
+    "You ride a TVS Jupiter."
+   ]
+  },
+  {
+   "id": "t2q104",
+   "kind": "alias",
+   "q": "Which phone does Deepa Iyer use?",
+   "must": [
+    [
+     "iphone"
+    ]
+   ],
+   "must_not": [
+    "you use an iphone"
+   ],
+   "gold": "An iPhone 16 Pro.",
+   "traps": [
+    "You use an iPhone 16 Pro."
+   ]
+  },
+  {
+   "id": "t2q105",
+   "kind": "alias",
+   "q": "Who is Subramanian?",
+   "must": [
+    [
+     "father",
+     "appa",
+     "dad"
+    ]
+   ],
+   "gold": "Your father (Appa), a retired headmaster."
+  },
+  {
+   "id": "t2q106",
+   "kind": "alias",
+   "q": "Is Deepa Iyer the same person as my friend Deepa?",
+   "must": [
+    [
+     "no",
+     "different",
+     "not"
+    ]
+   ],
+   "must_not": [
+    "yes, she is",
+    "yes, the same",
+    "yes, they are"
+   ],
+   "gold": "No, they're different people: Deepa Iyer is your manager at Thenral; Deepa Sekar is your college friend with the boutique.",
+   "traps": [
+    "Yes, she is the same person."
+   ]
+  },
+  {
+   "id": "t2q107",
+   "kind": "alias",
+   "q": "Which Deepa runs a boutique?",
+   "must": [
+    [
+     "sekar"
+    ]
+   ],
+   "must_not": [
+    "deepa iyer runs"
+   ],
+   "gold": "Deepa Sekar (Deepa Designs, Madurai).",
+   "traps": [
+    "Deepa Iyer runs the boutique."
+   ]
+  }
+ ]
+}
