@@ -146,6 +146,9 @@ _SEGMENT = re.compile(r"[a-z0-9_]+")
 #: these fields, so a changed day or club replaces the old one instead of landing
 #: in a new slot beside it (``hobbies.cricket_day`` then ``hobbies.cricket.day``,
 #: ``hobbies.badminton_club`` then ``hobbies.club``: both stayed current).
+#: Only spellings of ONE field collapse: a practice day, a match day and a club's
+#: day are different facts (review of PR #205: "matches are on Sundays" replaced
+#: "practice is on Tuesdays"). A hobby taken as a class has the class as its day.
 HOBBY_FIELDS = {
     "day": "day",
     "days": "day",
@@ -153,18 +156,30 @@ HOBBY_FIELDS = {
     "weekdays": "day",
     "play_day": "day",
     "playing_day": "day",
-    "practice_day": "day",
-    "match_day": "day",
     "class_day": "day",
     "schedule": "day",
     "when": "day",
+    "practice_day": "practice_day",
+    "practice_days": "practice_day",
+    "training_day": "practice_day",
+    "training_days": "practice_day",
+    "nets_day": "practice_day",
+    "match_day": "match_day",
+    "match_days": "match_day",
+    "matchday": "match_day",
+    "game_day": "match_day",
+    "game_days": "match_day",
+    "fixture_day": "match_day",
     "time": "time",
     "timing": "time",
     "timings": "time",
     "play_time": "time",
-    "practice_time": "time",
     "session_time": "time",
     "class_time": "time",
+    "practice_time": "practice_time",
+    "training_time": "practice_time",
+    "match_time": "match_time",
+    "game_time": "match_time",
     "club": "club",
     "club_name": "club",
     "team": "club",
@@ -294,32 +309,98 @@ def _split_field(segment: str, fields) -> tuple[str, str] | None:
     return None
 
 
+#: Words that say which of a hobby's events a field is about ("practice" day,
+#: "match" time): kept in the field, never dropped.
+_HOBBY_QUALIFIERS = {
+    "practice": "practice",
+    "training": "practice",
+    "nets": "practice",
+    "match": "match",
+    "matches": "match",
+    "game": "match",
+    "games": "match",
+    "fixture": "match",
+    "tournament": "tournament",
+    "class": "class",
+    "classes": "class",
+    "lesson": "class",
+    "lessons": "class",
+    "session": "session",
+    "sessions": "session",
+    "coaching": "coaching",
+}
+#: Words that add nothing to a field: ``club.name`` is the club.
+_HOBBY_FILLER = frozenset({"name", "names", "value", "info", "details", "detail"})
+
+
+def _hobby_field(parts: list[str]) -> str | None:
+    """The one field *parts* spell (``["club", "day"]`` → ``club_day``,
+    ``["practice", "day"]`` → ``practice_day``, ``["club", "name"]`` → ``club``),
+    or None unless every word is a field word, a qualifier or filler and at
+    least one is a field word. Nothing that qualifies the field is dropped."""
+    whole = "_".join(parts)
+    if whole in HOBBY_FIELDS:
+        return HOBBY_FIELDS[whole]
+    words: list[str] = []
+    has_field = False
+    for bit in (b for p in parts for b in p.split("_") if b):
+        if bit in _HOBBY_FILLER:
+            continue
+        if bit in HOBBY_FIELDS:
+            words.append(HOBBY_FIELDS[bit])
+            has_field = True
+        elif bit in _HOBBY_QUALIFIERS:
+            words.append(_HOBBY_QUALIFIERS[bit])
+        else:
+            return None
+    if not has_field:
+        return None
+    joined = "_".join(dict.fromkeys(words))
+    return HOBBY_FIELDS.get(joined, joined)
+
+
+def _split_hobby(segment: str) -> tuple[str, str] | None:
+    """``cricket_day`` → (cricket, day), ``chess_club_day`` → (chess, club_day),
+    ``day_cricket`` → (cricket, day); None when no part of it is a field."""
+    bits = segment.split("_")
+    for i in range(1, len(bits)):
+        head, tail = "_".join(bits[:i]), "_".join(bits[i:])
+        if bits[0] in _HOBBY_QUALIFIERS or _hobby_field([head]):
+            break
+        field = _hobby_field([tail])
+        if field:
+            return head, field
+    for i in range(len(bits) - 1, 0, -1):
+        head, tail = "_".join(bits[:i]), "_".join(bits[i:])
+        field = _hobby_field([head])
+        if field and not _hobby_field([tail]):
+            return tail, field
+    return None
+
+
 def _hobby(fields: list[str], content: str) -> list[str] | None:
     """A hobby slot's fields as ``[activity, field]`` (or ``[activity]``); None when
-    it names a field but no activity and the sentence does not name exactly one."""
-    if len(fields) == 1:
-        (seg,) = fields
-        if seg in HOBBY_FIELDS:
-            act = _activity_in(content) if content else None
-            return [act, HOBBY_FIELDS[seg]] if act else None
-        split = _split_field(seg, HOBBY_FIELDS)
-        if split:
-            return [_activity(split[0]), HOBBY_FIELDS[split[1]]]
-        return [_activity(seg)]
-    act, rest = fields[0], fields[1:]
-    if act in HOBBY_FIELDS and rest and rest[0] not in HOBBY_FIELDS:
+    it names a field but no activity and the sentence does not name exactly one.
+    An unknown field is kept as written (``hobbies.cricket.favourite.player``)."""
+    field = _hobby_field(fields)
+    if field:
+        # hobbies.club.name, hobbies.practice_day: a field with no activity
+        act = _activity_in(content) if content else None
+        return [act, field] if act else None
+    if len(fields) > 1 and _hobby_field([fields[0]]) and not _hobby_field([fields[1]]):
         # hobbies.day.cricket
-        act, rest = rest[0], [act, *rest[1:]]
-    if act in HOBBY_FIELDS:
-        # hobbies.club.name: a field with no activity
-        found = _activity_in(content) if content else None
-        return [found, HOBBY_FIELDS[act]] if found else None
-    split = _split_field(act, HOBBY_FIELDS)
+        fields = [fields[1], fields[0], *fields[2:]]
+    act, rest = fields[0], fields[1:]
+    split = _split_hobby(act)
     if split:
-        # hobbies.cricket_club.name
-        return [_activity(split[0]), HOBBY_FIELDS[split[1]]]
-    joined = "_".join(rest)
-    field = HOBBY_FIELDS.get(joined) or HOBBY_FIELDS.get(rest[-1]) or HOBBY_FIELDS.get(rest[0])
+        # hobbies.cricket_day, hobbies.cricket_club.name
+        act, rest = split[0], [split[1], *rest]
+    if not rest:
+        return [_activity(act)]
+    field = _hobby_field(rest)
+    if field is None and any(_hobby_field([p]) for p in rest):
+        # hobbies.chess.blitz.day: a field with an unknown qualifier, kept whole
+        field = "_".join(rest)
     return [_activity(act), field] if field else [_activity(act), *rest]
 
 
@@ -365,6 +446,8 @@ def plausible(key: str, content: str) -> bool:
     must say something of that kind. Other fields are not checked."""
     field = key.rsplit(".", 1)[-1]
     pattern = _PLAUSIBLE.get(field)
+    if pattern is None and key.startswith("hobbies.") and field.endswith("_day"):
+        pattern = _PLAUSIBLE["day"]  # a practice, match or club day
     return pattern is None or re.search(pattern, content, re.IGNORECASE) is not None
 
 

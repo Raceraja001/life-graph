@@ -86,8 +86,124 @@ _STOP = frozenset(
         "tomorrow",
         "yesterday",
         "jarvis",
+        # Sentence starters and filler: "Remember I call her Ammu" says nothing
+        # of Ammu's full name (review of PR #205, 2026-10-31).
+        "remember",
+        "note",
+        "please",
+        "kindly",
+        "okay",
+        "ok",
+        "yes",
+        "no",
+        "hey",
+        "hi",
+        "hello",
+        "well",
+        "oh",
+        "just",
+        "now",
+        "here",
+        "there",
+        "maybe",
+        "perhaps",
+        "sometimes",
+        "usually",
+        "always",
+        "often",
+        "btw",
+        "fyi",
+        "thanks",
+        "tell",
+        "ask",
+        "save",
+        "keep",
+        "add",
+        "update",
+        "forget",
+        "call",
+        "you",
+        "your",
+        "me",
+        "us",
+        "a",
+        "an",
+        "what",
+        "who",
+        "why",
+        "how",
+        "where",
+        "which",
+        "these",
+        "those",
+        "after",
+        "before",
+        "because",
+        "though",
+        "although",
+        "while",
+        "or",
+        "one",
+        "all",
+        "some",
+        "any",
+        # Negations and nobody-words: "Nobody calls her Lakshmi" names no one.
+        "nobody",
+        "noone",
+        "nothing",
+        "none",
+        "never",
+        "not",
+        "don't",
+        "don’t",
+        "doesn't",
+        "doesn’t",
+        "someone",
+        "somebody",
+        "anyone",
+        "anybody",
+        # Common romanised Tamil words, capitalised at a sentence start.
+        "naan",
+        "nan",
+        "en",
+        "enga",
+        "ennoda",
+        "avan",
+        "aval",
+        "avanga",
+        "ivan",
+        "ival",
+        "inga",
+        "anga",
+        "illa",
+        "illai",
+        "seri",
+        "sari",
+        "romba",
+        "ippo",
+        "appo",
+        "inniki",
+        "innaiku",
+        "nalla",
+        "enna",
+        "yaar",
+        "aama",
     ]
 )
+
+#: A clause that denies what it says: "nobody calls her Maha", "don't call me Karthi".
+_NEGATION = re.compile(
+    r"\b(?:no\s*(?:body|one)|nothing|none|never|not|no longer|stop(?:ped)?)\b|n['’]t\b",
+    re.IGNORECASE,
+)
+_CLAUSE_END = re.compile(r"[.!?;\n]")
+
+
+def _negated(text: str, start: int, end: int) -> bool:
+    """Whether the clause holding ``text[start:end]`` denies it (up to *end*)."""
+    begin = max((m.end() for m in _CLAUSE_END.finditer(text, 0, start)), default=0)
+    return _NEGATION.search(text, begin, end) is not None
+
 
 #: Relationship words, as the owner says them, to the role kept on the entity.
 ROLE_WORDS = {
@@ -107,12 +223,42 @@ ROLE_WORDS = {
     "brother": "brother",
     "friend": "friend",
     "colleague": "colleague",
+    # An in-law is never the parent or sibling (review of PR #205: "Meenakshi is
+    # my mother-in-law" became the owner's mother and was merged with "Meena").
+    # Written with hyphens here; "mother in law" and "motherinlaw" match too.
+    "mother-in-law": "mother_in_law",
+    "mil": "mother_in_law",
+    "mamiyar": "mother_in_law",
+    "maamiyar": "mother_in_law",
+    "father-in-law": "father_in_law",
+    "fil": "father_in_law",
+    "mamanar": "father_in_law",
+    "maamanar": "father_in_law",
+    "sister-in-law": "sister_in_law",
+    "brother-in-law": "brother_in_law",
+    "son-in-law": "son_in_law",
+    "daughter-in-law": "daughter_in_law",
 }
 #: Roles one person holds at a time: two entities with one of these are the same
 #: person when their names fit (:func:`compatible`). Son, sister, friend… are not.
-UNIQUE_ROLES = frozenset({"spouse", "mother", "father", "owner"})
+#: Only the same role links: a mother-in-law never to a mother.
+UNIQUE_ROLES = frozenset({"spouse", "mother", "father", "owner", "mother_in_law", "father_in_law"})
 
-_ROLE = "(?i:" + "|".join(sorted(ROLE_WORDS, key=len, reverse=True)) + ")"
+
+def _role_key(word: str) -> str:
+    return re.sub(r"[\s\-]+", "", word.lower())
+
+
+_ROLE_KEYS = {_role_key(w): role for w, role in ROLE_WORDS.items()}
+_ROLE = (
+    "(?i:"
+    + "|".join(
+        re.escape(w).replace(r"\-", r"[\s\-]*") for w in sorted(ROLE_WORDS, key=len, reverse=True)
+    )
+    + ")"
+)
+#: After a role word: not the start of an in-law ("mother" in "mother-in-law").
+_NOT_IN_LAW = r"\b(?![\s\-]*(?i:in)[\s\-]*(?i:laws?)\b)"
 _MY = r"(?i:my|our|the owner's|the owner’s|owner's)"
 
 _ALIAS_PATTERNS = (
@@ -135,18 +281,21 @@ _ALIAS_PATTERNS = (
     re.compile(rf"(?P<alias>{_NAME}) is short for (?P<full>{_NAME})"),
 )
 # Maha is my wife Mahalakshmi
-_ALIAS_ROLE = re.compile(rf"(?P<alias>{_NAME}) is {_MY} (?P<role>{_ROLE}),? (?P<full>{_NAME})")
+_ALIAS_ROLE = re.compile(
+    rf"(?P<alias>{_NAME}) is {_MY} (?P<role>{_ROLE}){_NOT_IN_LAW},? (?P<full>{_NAME})"
+)
 # "… call her Ma": the person is the one other name in the text.
 _CALL_PRONOUN = re.compile(rf"\bcalls? (?P<who>her|him|me) (?P<alias>{_NAME})")
 
 _ROLE_PATTERNS = (
     # my wife Priyadharshini · our daughter Anushka · my wife is Mahalakshmi
     re.compile(
-        rf"\b{_MY}\s+(?P<role>{_ROLE})(?!['’]s)\s*,?\s+(?:is\s+(?:called\s+)?|named\s+)?(?P<name>{_NAME})",
+        rf"\b{_MY}\s+(?P<role>{_ROLE}){_NOT_IN_LAW}(?!['’]s)\s*,?\s+"
+        rf"(?:is\s+(?:called\s+)?|named\s+)?(?P<name>{_NAME})",
     ),
     # Lakshmi, the owner's mother · Ramasamy is my father · Priya (the owner's wife)
     re.compile(
-        rf"(?P<name>{_NAME})\s*(?:,|\(|\bis\b)\s*{_MY}\s+(?P<role>{_ROLE})\b(?!['’]s)",
+        rf"(?P<name>{_NAME})\s*(?:,|\(|\bis\b)\s*{_MY}\s+(?P<role>{_ROLE}){_NOT_IN_LAW}(?!['’]s)",
     ),
 )
 _OWNER_NAME = re.compile(rf"\b(?i:my|the owner's|the owner’s) (?:full )?name is (?P<name>{_NAME})")
@@ -180,6 +329,10 @@ def clean_name(raw: str) -> str | None:
     return " ".join(words)
 
 
+def _is_role_word(name: str) -> bool:
+    return _role_key(name) in _ROLE_KEYS
+
+
 def _key(name: str) -> str:
     return " ".join(name.lower().split())
 
@@ -189,14 +342,16 @@ def _names_in(text: str) -> list[str]:
     out: list[str] = []
     for m in re.finditer(_NAME, text):
         name = clean_name(m.group(0))
-        if name and name.lower() not in ROLE_WORDS and _key(name) not in map(_key, out):
+        if name and not _is_role_word(name) and _key(name) not in map(_key, out):
             out.append(name)
     return out
 
 
 def parse(text: str) -> tuple[list[AliasClaim], list[RoleClaim]]:
     """The alias and role statements in *text*. Negated text teaches nothing:
-    the caller passes only affirmed, firm facts in the owner's own words."""
+    the caller passes only affirmed, firm facts in the owner's own words, and a
+    denied alias in the clause ("nobody calls her Maha", "don't call me
+    Karthi") is skipped here too."""
     if not text:
         return [], []
     aliases: list[AliasClaim] = []
@@ -206,7 +361,7 @@ def parse(text: str) -> tuple[list[AliasClaim], list[RoleClaim]]:
         full, alias = clean_name(full_raw), clean_name(alias_raw)
         if not full or not alias or _key(full) == _key(alias):
             return
-        if alias.lower() in _STOP or full.lower() in ROLE_WORDS:
+        if alias.lower() in _STOP or _is_role_word(full):
             return
         claim = AliasClaim(full, alias)
         if claim not in aliases:
@@ -214,18 +369,20 @@ def parse(text: str) -> tuple[list[AliasClaim], list[RoleClaim]]:
 
     def add_role(name_raw: str, role_word: str) -> None:
         name = clean_name(name_raw)
-        role = ROLE_WORDS.get(role_word.lower(), role_word.lower())
-        if name and name.lower() not in ROLE_WORDS:
+        role = _ROLE_KEYS.get(_role_key(role_word), role_word.lower())
+        if name and not _is_role_word(name):
             claim = RoleClaim(name, role)
             if claim not in roles:
                 roles.append(claim)
 
     for pattern in _ALIAS_PATTERNS:
         for m in pattern.finditer(text):
-            add_alias(m.group("full"), m.group("alias"))
+            if not _negated(text, m.start(), m.end()):
+                add_alias(m.group("full"), m.group("alias"))
     for m in _ALIAS_ROLE.finditer(text):
-        add_alias(m.group("full"), m.group("alias"))
-        add_role(m.group("full"), m.group("role"))
+        if not _negated(text, m.start(), m.end()):
+            add_alias(m.group("full"), m.group("alias"))
+            add_role(m.group("full"), m.group("role"))
     for pattern in _ROLE_PATTERNS:
         for m in pattern.finditer(text):
             add_role(m.group("name"), m.group("role"))
@@ -236,7 +393,7 @@ def parse(text: str) -> tuple[list[AliasClaim], list[RoleClaim]]:
     claimed = {_key(c.alias) for c in aliases}
     for m in _CALL_PRONOUN.finditer(text):
         alias = clean_name(m.group("alias"))
-        if not alias or _key(alias) in claimed:
+        if not alias or _key(alias) in claimed or _negated(text, m.start(), m.end()):
             continue
         if m.group("who") == "me":
             if owner:
@@ -258,10 +415,25 @@ def compatible(a: str, b: str) -> bool:
 
 
 #: A one-person role named in a question: "my wife", "amma", "அம்மா".
+_IN_LAW = r"[\s\-]*in[\s\-]*law"
 _QUESTION_ROLES = (
     (re.compile(r"\b(?:my|our)\s+(?:wife|husband|spouse)\b|மனைவி|கணவர்", re.I), "spouse"),
-    (re.compile(r"\b(?:my|our)\s+(?:mother|mom|mum)\b|\bamma\b|அம்மா", re.I), "mother"),
-    (re.compile(r"\b(?:my|our)\s+(?:father|dad)\b|\bappa\b|அப்பா", re.I), "father"),
+    (
+        re.compile(rf"\b(?:my|our)\s+(?:mother{_IN_LAW}|mil)\b|\bma+miyar\b|மாமியார்", re.I),
+        "mother_in_law",
+    ),
+    (
+        re.compile(rf"\b(?:my|our)\s+(?:father{_IN_LAW}|fil)\b|\bma+manar\b|மாமனார்", re.I),
+        "father_in_law",
+    ),
+    (
+        re.compile(rf"\b(?:my|our)\s+(?:mother|mom|mum)\b(?!{_IN_LAW})|\bamma\b|அம்மா", re.I),
+        "mother",
+    ),
+    (
+        re.compile(rf"\b(?:my|our)\s+(?:father|dad)\b(?!{_IN_LAW})|\bappa\b|அப்பா", re.I),
+        "father",
+    ),
 )
 
 

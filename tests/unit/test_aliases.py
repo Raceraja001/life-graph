@@ -160,3 +160,65 @@ async def test_the_card_shows_the_other_names(known):
     assert profile_card.render(items).splitlines()[-1] == (
         "- [family · mahalakshmi (Maha, Ma) · birthday] Mahalakshmi's birthday is 4 March."
     )
+
+
+# ── Review of PR #205 (2026-10-31) ─────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Meenakshi is my mother-in-law.",
+        "Kamala, my mother in law, visited.",
+        "My mother-in-law Kamala visited.",
+        "My mother in law, Kamala, visited.",
+        "Kamala, my MIL, visited.",
+        "Kamala is my motherinlaw.",
+        "Kamala is my Mother-In-Law.",
+    ],
+)
+def test_a_mother_in_law_is_never_the_mother(text):
+    roles = aliases.parse(text)[1]
+    assert all(r.role != "mother" for r in roles), roles
+    assert any(r.role == "mother_in_law" for r in roles), roles
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Raman is my father-in-law.",
+        "Raman, my father in law, retired.",
+        "My FIL Raman retired.",
+    ],
+)
+def test_a_father_in_law_is_never_the_father(text):
+    roles = aliases.parse(text)[1]
+    assert all(r.role != "father" for r in roles), roles
+    assert any(r.role == "father_in_law" for r in roles), roles
+
+
+def test_in_laws_are_not_auto_linked_to_a_parent():
+    assert "mother_in_law" != "mother"
+    assert aliases.roles_in_question("When is my mother-in-law's birthday?") == {"mother_in_law"}
+    assert aliases.roles_in_question("When is my mother's birthday?") == {"mother"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Remember I call her Ammu.",
+        "Nobody calls her Lakshmi.",
+        "No one calls him Vicky any more.",
+        "Never call me Karthi.",
+        "Please don't call her Maha.",
+        "Lakshmi doesn't like it when people call her Lachu.",
+        "Okay so we call him Kutty.",
+    ],
+)
+def test_sentence_words_and_negations_name_nobody(text):
+    assert aliases.parse(text)[0] == [], text
+
+
+def test_a_negated_explicit_alias_teaches_nothing():
+    assert aliases.parse("Mahalakshmi — nobody calls her Maha.")[0] == []
+    assert aliases.parse("My name is Karthik, but don't call me Karthi.")[0] == []

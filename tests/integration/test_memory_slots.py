@@ -129,3 +129,52 @@ async def test_a_changed_hobby_day_replaces_an_older_spelling(monkeypatch):
     profile_card.clear_cache()
     card = [c["content"] for c in await profile_card.card_items(TENANT) if tag in c["content"]]
     assert card == [new.content]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_match_day_never_replaces_the_practice_day(monkeypatch):
+    # Review of PR #205: practice_day and match_day both became hobbies.cricket.day,
+    # so "matches are on Sundays" retired "practice is on Tuesdays".
+    tag = uuid.uuid4().hex[:6]
+    (practice,) = await _ingest(
+        monkeypatch,
+        [
+            _fact(
+                f"The owner's cricket practice is on Tuesdays ({tag}).",
+                "hobbies.cricket.practice.day",
+            )
+        ],
+    )
+    (match,) = await _ingest(
+        monkeypatch,
+        [
+            _fact(
+                f"The owner's cricket matches are on Sundays ({tag}).", "hobbies.cricket.match_day"
+            )
+        ],
+    )
+    (club,) = await _ingest(
+        monkeypatch,
+        [_fact(f"The owner's chess club meets on Thursdays ({tag}).", "hobbies.chess.club.day")],
+    )
+    (chess,) = await _ingest(
+        monkeypatch,
+        [_fact(f"The owner plays chess online every Monday ({tag}).", "hobbies.chess.day")],
+    )
+    for m in (practice, match, club, chess):
+        assert (await _row(m.id)).status == "active", m.content
+
+    # A new practice day still replaces the old practice day, and only that.
+    (new,) = await _ingest(
+        monkeypatch,
+        [
+            _fact(
+                f"The owner's cricket training is on Wednesdays now ({tag}).",
+                "hobbies.cricket.practice_day",
+            )
+        ],
+    )
+    was = await _row(practice.id)
+    assert was.status == "superseded" and str(was.superseded_by) == str(new.id)
+    assert (await _row(match.id)).status == "active"

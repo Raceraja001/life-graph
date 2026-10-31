@@ -404,11 +404,11 @@ class MemoryManager:
         # Step 5: Handle contradictions
         auto_supersede_targets = self._resolve_contradictions(contradictions)
 
-        # Step 5a: other names for the same person (services/entities.py,
-        # migration 057), learned only from the owner's own firm words, then a
-        # family slot filed under the name the person is known by, so
-        # family.maha.birthday replaces family.mahalakshmi.birthday.
-        await self._learn_names(fact, trust_tier)
+        # Step 5a: a family slot filed under the name the person is known by
+        # (services/entities.py, migration 057), so family.maha.birthday
+        # replaces family.mahalakshmi.birthday. New names are learned after
+        # the memory is stored, and only when it is active (_learn_names).
+        await self._file_slot(fact)
 
         # Step 6: Store the new memory
         properties: dict[str, Any] = {}
@@ -492,6 +492,9 @@ class MemoryManager:
             importance_tier=tier,
             valid_until=_end_of_day(fact.valid_until),
         )
+
+        # Other names for the same person, from an active memory's own words.
+        await self._learn_names(fact, trust_tier, stored, active=active_now)
 
         # The people, projects and things it mentions (services/entities.py).
         # Best-effort: a failed link never costs the memory.
@@ -592,21 +595,55 @@ class MemoryManager:
                 str(new_id)[:8],
             )
 
-    async def _learn_names(self, fact: ExtractedFact, trust_tier: str | None) -> None:
-        """Learn aliases from *fact* and file its family slot under the known name.
+    async def _file_slot(self, fact: ExtractedFact) -> None:
+        """File *fact*'s family slot under the name its person is known by.
+        Best-effort: a failure keeps the slot as extracted."""
+        if not fact.slot:
+            return
+        from life_graph.services import entities
 
-        Best-effort: a failure costs the alias, never the memory. Outside text
-        (MCP/API) and hedged or negated facts teach nothing ("Maha is not my
-        wife" must not link anyone)."""
+        try:
+            fact.slot = await entities.canonical_slot(get_current_tenant_id(), fact.slot)
+        except Exception:  # noqa: BLE001
+            logger.warning("Filing a slot under the known name failed", exc_info=True)
+
+    async def _learn_names(
+        self, fact: ExtractedFact, trust_tier: str | None, stored: Memory, *, active: bool
+    ) -> None:
+        """Learn aliases and roles from *fact*, once it is stored.
+
+        Only an ACTIVE memory in the owner's own firm words teaches names:
+        outside text (MCP/API), hedged or negated facts and memories waiting
+        for review teach nothing, so a rejected memory never leaves a link
+        behind ("Maha is not my wife" must not link anyone). Only the fact's
+        own sentence is read, never its source message: the extractor's
+        source_text is the whole message, and "I think Ravi is short for
+        Ravindran, not sure. My wife Priya teaches at DAV." stored the firm
+        Priya fact but taught the hedged Ravi alias (review of PR #205).
+
+        Best-effort: a failure costs the alias, never the memory."""
+        if not (
+            active
+            and trust_tier == "self"
+            and fact.polarity != "negate"
+            and fact.certainty != "hedged"
+            and fact.content
+            and not HEDGED.search(fact.content)
+        ):
+            return
         from life_graph.services import entities
 
         try:
             tenant_id = get_current_tenant_id()
-            if trust_tier == "self" and fact.polarity != "negate" and fact.certainty != "hedged":
-                said = " ".join(t for t in (fact.content, fact.source_text) if t)
-                await entities.learn_aliases(tenant_id, said, evidence=fact.content)
-            if fact.slot:
-                fact.slot = await entities.canonical_slot(tenant_id, fact.slot)
+            counts = await entities.learn_aliases(tenant_id, fact.content, evidence=fact.content)
+            if fact.slot and counts.get("linked"):
+                # A name this very fact taught: file its own slot under the known name.
+                filed = await entities.canonical_slot(tenant_id, fact.slot)
+                if filed != fact.slot:
+                    fact.slot = filed
+                    props = {**(stored.properties or {}), "slot": filed}
+                    await self._store.update(stored.id, MemoryUpdate(properties=props))
+                    stored.properties = props
         except Exception:  # noqa: BLE001
             logger.warning("Name learning failed for a fact", exc_info=True)
 
