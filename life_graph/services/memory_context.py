@@ -140,6 +140,18 @@ async def memory_block(
     *,
     used: list[dict] | None = None,
 ) -> str:
+    """The card and the matching memories (see _sections), guessed relations corrected."""
+    out = await _sections(tenant_id, message, history, used=used)
+    return await _relabelled(tenant_id, out) if out else out
+
+
+async def _sections(
+    tenant_id: str,
+    message: str,
+    history: list[dict] | None = None,
+    *,
+    used: list[dict] | None = None,
+) -> str:
     """The block for the system prompt: the owner's profile card (services/profile_card.py),
     then the matching memories or a "nothing (else) matches" note. "" when there is
     no card and memory could not be searched at all (no embedding, any error).
@@ -207,3 +219,16 @@ async def memory_block(
         used.extend({"id": str(m.id), "content": m.content} for m in found[:MAX_MEMORIES])
     block = render([_row(m) for m in found])
     return f"{card_text}\n\n{block}" if card_text else block
+
+
+async def _relabelled(tenant_id: str, block: str) -> str:
+    """*block* with guessed relations corrected from the people table
+    (services/entities.py relabel): "Senthil (the owner's colleague)" was the
+    owner's husband on Kavitha's test life, and every "my husband" question missed."""
+    from life_graph.services import entities
+
+    try:
+        return await entities.relabel(tenant_id, block)
+    except Exception:  # noqa: BLE001 — a label fix never costs the memories
+        logger.warning("Relabelling the memory block failed", exc_info=True)
+        return block
