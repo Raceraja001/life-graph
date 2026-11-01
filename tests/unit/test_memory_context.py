@@ -52,9 +52,10 @@ def _wire(monkeypatch, found, card=()):
     import life_graph.api.dependencies as deps
 
     async def fake_retrieve(question, limit=6, **kw):
+        _Store.limit = limit
         if isinstance(found, Exception):
             raise found
-        return found
+        return found[:limit] if isinstance(found, list) else found
 
     async def fake_card(tenant_id):
         return list(card)
@@ -167,3 +168,16 @@ async def test_the_block_says_the_owner_is_the_person_asking(monkeypatch):
     out = await memory_block("raja", "What is my blood group?")
     assert out.startswith(WHO) and out.count(WHO) == 1
     assert "my blood group" in WHO and "O negative" in out
+
+
+async def test_a_question_about_someone_gets_more_of_their_notes(monkeypatch):
+    # "Tell me about Nila" needs school, class, age and dance at once; six notes cut two.
+    notes = [
+        SimpleNamespace(id=uuid.uuid4(), content=f"Nila fact {n}.", created_at=None)
+        for n in range(10)
+    ]
+    _wire(monkeypatch, notes)
+    out = await memory_block("raja", "Tell me about Nila.")
+    assert _Store.limit == 12 and all(f"Nila fact {n}." in out for n in range(10))
+    out = await memory_block("raja", "Which school does Nila go to now?")
+    assert _Store.limit == 6 and "Nila fact 6." not in out

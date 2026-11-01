@@ -174,7 +174,7 @@ async def retrieve(question: str, limit: int = 6, *, cold: bool = False) -> list
         named = await entities.known_in_text(tenant_id, question)
         if named:
             linked = await entities.memories_for(
-                tenant_id, [eid for eid, _ in named], limit=ENTITY_CANDIDATES
+                tenant_id, [eid for eid, _ in named], limit=max(ENTITY_CANDIDATES, limit)
             )
             known_ids = {m.id for m in candidates}
             candidates += [m for m in linked if m.id not in known_ids]
