@@ -611,6 +611,17 @@ def _count_judge() -> None:
         return out
 
     memory_retrieval.judge = counted
+    search = memory_retrieval.retrieve
+
+    async def searched(question, *a, **k):
+        out = await search(question, *a, **k)
+        # None = memory could not be searched (no embedding): not a real answer.
+        _JUDGE[_CURRENT["key"]]["unsearched"] = (
+            _JUDGE[_CURRENT["key"]].get("unsearched", 0) + (out is None)
+        )
+        return out
+
+    memory_retrieval.retrieve = searched
     memory_retrieval._bakeoff_counted = True
 
 
