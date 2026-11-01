@@ -11,6 +11,7 @@ from life_graph.services.memory_context import (
     HEADER,
     NOTHING_ELSE,
     NOTHING_FOUND,
+    WHO,
     memory_block,
     render,
     search_text,
@@ -76,7 +77,7 @@ async def test_matching_memories_are_shown_and_counted_as_read(monkeypatch):
 
 async def test_nothing_relevant_is_said_not_left_out(monkeypatch):
     _wire(monkeypatch, [])
-    assert await memory_block("raja", "What is my blood group?") == NOTHING_FOUND
+    assert await memory_block("raja", "What is my blood group?") == f"{WHO}\n\n{NOTHING_FOUND}"
     assert _Store.touched is None
 
 
@@ -125,7 +126,7 @@ async def test_the_profile_card_comes_first_and_is_not_repeated(monkeypatch):
     _wire(monkeypatch, [on_card, other], card=CARD)
     used: list[dict] = []
     out = await memory_block("raja", "Which phone case should I buy?", used=used)
-    assert out.startswith(profile_card.HEADER)
+    assert out.startswith(f"{WHO}\n\n{profile_card.HEADER}")
     assert out.count("Realme X2 Pro") == 1
     assert "(your guess) Seems to like short answers." in out
     # Always shown is not read: only the searched memory is touched.
@@ -139,12 +140,30 @@ async def test_the_profile_card_comes_first_and_is_not_repeated(monkeypatch):
 async def test_with_a_card_nothing_found_does_not_contradict_it(monkeypatch):
     _wire(monkeypatch, [], card=CARD)
     out = await memory_block("raja", "What is my blood group?")
-    assert out.startswith(profile_card.HEADER) and out.endswith(NOTHING_ELSE)
+    assert out.startswith(f"{WHO}\n\n{profile_card.HEADER}") and out.endswith(NOTHING_ELSE)
     assert NOTHING_FOUND not in out
 
 
 async def test_the_card_still_shows_when_search_cannot_run(monkeypatch):
     _wire(monkeypatch, None, card=CARD)
-    assert await memory_block("raja", "anything at all here please") == profile_card.render(CARD)
+    assert (
+        await memory_block("raja", "anything at all here please")
+        == f"{WHO}\n\n{profile_card.render(CARD)}"
+    )
     _wire(monkeypatch, RuntimeError("db down"), card=CARD)
-    assert await memory_block("raja", "anything at all here please") == profile_card.render(CARD)
+    assert (
+        await memory_block("raja", "anything at all here please")
+        == f"{WHO}\n\n{profile_card.render(CARD)}"
+    )
+
+
+async def test_the_block_says_the_owner_is_the_person_asking(monkeypatch):
+    # The notes say "the owner"; the question says "my". Without the bridge a local
+    # model left "The owner's blood group is O negative." unused.
+    mem = SimpleNamespace(
+        id=uuid.uuid4(), content="The owner's blood group is O negative.", created_at=None
+    )
+    _wire(monkeypatch, [mem])
+    out = await memory_block("raja", "What is my blood group?")
+    assert out.startswith(WHO) and out.count(WHO) == 1
+    assert "my blood group" in WHO and "O negative" in out

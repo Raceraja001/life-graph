@@ -26,6 +26,14 @@ MAX_CHARS = 300
 #: with the owner's previous message.
 FOLLOW_UP_WORDS = 8
 
+#: Jarvis's prompt speaks of "the user", the notes of "the owner": without this a
+#: local model asked "what is my blood group?" read "The owner's blood group is
+#: O negative." and said it didn't know (bake-off, 2026-11-01).
+WHO = (
+    'The owner in these notes is the person talking to you: their "I", "me" and '
+    '"my" mean the owner, so "my blood group" is the owner\'s blood group.'
+)
+
 HEADER = (
     "## What you remember about the owner\n"
     "Notes kept from earlier conversations that match this message. Use what "
@@ -140,9 +148,12 @@ async def memory_block(
     *,
     used: list[dict] | None = None,
 ) -> str:
-    """The card and the matching memories (see _sections), guessed relations corrected."""
+    """WHO, then the card and the matching memories (see _sections) with guessed
+    relations corrected; "" when there is nothing."""
     out = await _sections(tenant_id, message, history, used=used)
-    return await _relabelled(tenant_id, out) if out else out
+    if not out:
+        return ""
+    return f"{WHO}\n\n{await _relabelled(tenant_id, out)}"
 
 
 async def _sections(
