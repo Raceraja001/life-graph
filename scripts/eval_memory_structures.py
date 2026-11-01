@@ -243,6 +243,9 @@ ABSTAIN = re.compile(
     r"haven'?t (?:told|mentioned|shared)|have not (?:told|mentioned|shared)|no record|"
     r"isn'?t in|is not in|not in (?:my|the) (?:memory|notes|context)|can'?t find|cannot find|"
     r"not (?:explicitly |specifically )?(?:mentioned|provided|specified|stated|given|available|recorded)|do(?:es)? not (?:specify|say|mention|state)|"
+    # Jarvis's own prompt words it "I don't have information about … in my notes"
+    # (answer bench, 2026-11-01): a refusal, scored as one.
+    r"(?:don'?t|do not|don’t) have (?:any )?(?:information|info|details|access|a record|that|the)|"
     r"தெரியாது|தகவல் இல்லை",
     re.I,
 )
