@@ -21,6 +21,9 @@ from life_graph.core import evidence as ev
 logger = logging.getLogger(__name__)
 
 MAX_MEMORIES = 6
+#: "Tell me about Nila" needs her school, class, age and dance class at once: with six
+#: notes, newest first, two of four were cut (Kavitha's test life, 2026-11-01).
+ABOUT_MEMORIES = 12
 MAX_CHARS = 300
 #: A follow-up this short ("what about last year?") is searched together
 #: with the owner's previous message.
@@ -71,7 +74,7 @@ def search_text(message: str, history: list[dict[str, Any]] | None) -> str:
 MAX_EPISODE_CHARS = 900
 
 
-def render(rows: list[tuple]) -> str:
+def render(rows: list[tuple], most: int = MAX_MEMORIES) -> str:
     """rows: (content, created_at[, properties]). Empty string when there is nothing to show.
 
     A fact that changes over time (where the owner lives, their job, the
@@ -84,7 +87,7 @@ def render(rows: list[tuple]) -> str:
     if not rows:
         return ""
     lines = [HEADER]
-    for row in rows[:MAX_MEMORIES]:
+    for row in rows[:most]:
         content, created_at = row[0], row[1]
         props = (row[2] if len(row) > 2 else None) or {}
         episode = props.get("kind") == "episode"
@@ -177,7 +180,9 @@ async def _sections(
     query = search_text(message, history)
     if not query:
         return ""
-    from life_graph.services.memory_retrieval import retrieve
+    from life_graph.services.memory_retrieval import ABOUT, retrieve
+
+    cap = ABOUT_MEMORIES if ABOUT.search(message or "") else MAX_MEMORIES
 
     card = await _card(tenant_id)
     card_text = profile_card.render(card)
@@ -205,7 +210,7 @@ async def _sections(
     found = None
     try:
         with tenant_scope(tenant_id):
-            found = await retrieve(query, limit=MAX_MEMORIES, cold=True)
+            found = await retrieve(query, limit=cap, cold=True)
             if found:
                 # Already on the card: shown once, there.
                 found = [m for m in found if str(m.id) not in on_card]
@@ -215,7 +220,7 @@ async def _sections(
                     # are not touched: always shown is not read, and counting
                     # it would freeze the card's own ranking.
                     await get_store().touch_many([m.id for m in found])
-                    await _strengthen(tenant_id, found[:MAX_MEMORIES])
+                    await _strengthen(tenant_id, found[:cap])
     except Exception as exc:  # noqa: BLE001 — memory is a bonus, never a failed answer
         # Never the message text in the log: it is personal.
         logger.warning("Memory context failed (%d chars): %s", len(query), exc)
@@ -227,8 +232,8 @@ async def _sections(
         # Said, not left out: without it the model fills the gap with a guess.
         return f"{card_text}\n\n{NOTHING_ELSE}" if card_text else NOTHING_FOUND
     if used is not None:
-        used.extend({"id": str(m.id), "content": m.content} for m in found[:MAX_MEMORIES])
-    block = render([_row(m) for m in found])
+        used.extend({"id": str(m.id), "content": m.content} for m in found[:cap])
+    block = render([_row(m) for m in found], cap)
     return f"{card_text}\n\n{block}" if card_text else block
 
 
