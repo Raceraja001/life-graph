@@ -250,6 +250,13 @@ def _role_key(word: str) -> str:
 
 
 _ROLE_KEYS = {_role_key(w): role for w, role in ROLE_WORDS.items()}
+
+
+def role_of_word(word: str) -> str | None:
+    """The role a relationship word names ("husband" → spouse); None for any other word."""
+    return _ROLE_KEYS.get(_role_key(word or ""))
+
+
 _ROLE = (
     "(?i:"
     + "|".join(

@@ -255,6 +255,38 @@ def alias_hint(tenant_id: str, named: list[tuple[uuid.UUID, str]]) -> str:
     return ("Names: " + "; ".join(parts)) if parts else ""
 
 
+#: "Senthil (the owner's colleague)": the extractor names a relation one message at
+#: a time, from that message alone ("Senthil plays cricket with his office team").
+_GLOSS = re.compile(r"\b([A-Z][\w.]*(?: [A-Z][\w.]*)*) \((?:the|from the) owner's ([^)]{1,40})\)")
+
+
+async def relabel(tenant_id: str, text_: str) -> str:
+    """*text_* with each "Name (the owner's X)" corrected to the role the people
+    table holds for Name, when X is a relationship word that disagrees with it.
+    Any other gloss ("from the owner's college batch") is left as written."""
+    from life_graph.core import aliases
+
+    if "owner's" not in text_:
+        return text_
+    rows = await _known(tenant_id)
+    roots = _roots(rows)
+    by_id = {r[1]: r for r in rows}
+    role_of = {}
+    for r in rows:
+        role = by_id[roots[r[1]]][4] or r[4]
+        if role and role != "owner":
+            role_of[r[0]] = role
+
+    def fix(m: re.Match[str]) -> str:
+        role = role_of.get(normalize(m.group(1)))
+        said = aliases.role_of_word(m.group(2).strip())
+        if not role or not said or said == role:
+            return m.group(0)
+        return f"{m.group(1)} (the owner's {role.replace('_', '-')})"
+
+    return _GLOSS.sub(fix, text_)
+
+
 def _slug(key: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "_", key.lower()).strip("_")
 

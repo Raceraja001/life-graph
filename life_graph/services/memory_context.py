@@ -148,9 +148,12 @@ async def memory_block(
     *,
     used: list[dict] | None = None,
 ) -> str:
-    """WHO, then the card and the matching memories (see _sections); "" when there is nothing."""
+    """WHO, then the card and the matching memories (see _sections) with guessed
+    relations corrected; "" when there is nothing."""
     out = await _sections(tenant_id, message, history, used=used)
-    return f"{WHO}\n\n{out}" if out else ""
+    if not out:
+        return ""
+    return f"{WHO}\n\n{await _relabelled(tenant_id, out)}"
 
 
 async def _sections(
@@ -227,3 +230,16 @@ async def _sections(
         used.extend({"id": str(m.id), "content": m.content} for m in found[:MAX_MEMORIES])
     block = render([_row(m) for m in found])
     return f"{card_text}\n\n{block}" if card_text else block
+
+
+async def _relabelled(tenant_id: str, block: str) -> str:
+    """*block* with guessed relations corrected from the people table
+    (services/entities.py relabel): "Senthil (the owner's colleague)" was the
+    owner's husband on Kavitha's test life, and every "my husband" question missed."""
+    from life_graph.services import entities
+
+    try:
+        return await entities.relabel(tenant_id, block)
+    except Exception:  # noqa: BLE001 — a label fix never costs the memories
+        logger.warning("Relabelling the memory block failed", exc_info=True)
+        return block
