@@ -48,6 +48,7 @@ OUT = ROOT / "evals" / "local" / "bakeoff"
 CACHE = OUT / "cache"
 OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
 OLLAMA_CHAT = os.environ.get("BAKEOFF_OLLAMA_URL", "http://localhost:11434/api/chat")
+LOCAL_NUM_CTX = int(os.environ.get("LIFE_GRAPH_LOCAL_LLM_NUM_CTX", "16384"))
 OLLAMA_EMBED = os.environ.get("BAKEOFF_EMBED_URL", "http://localhost:11434/api/embed")
 EMBED_MODEL = "bge-m3"
 DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
@@ -127,7 +128,11 @@ class LLM:
             "messages": messages,
             "stream": False,
             "think": False,
-            "options": {"temperature": 0, "num_predict": max_tokens},
+            # Life Graph's own context size (settings.local_llm_num_ctx): Ollama
+            # reloads a model whose num_ctx changes, and the judge and extractor
+            # send 16384, so the default 32768 here reloaded qwen3:14b twice a
+            # question (139 loads in 15 minutes, 2026-11-02).
+            "options": {"temperature": 0, "num_predict": max_tokens, "num_ctx": LOCAL_NUM_CTX},
         }
         if json_mode:
             body["format"] = "json"
@@ -255,6 +260,10 @@ def _has(alt: str, text: str) -> bool:
     alt = alt.lower()
     if len(alt) <= 3 and re.fullmatch(r"[\w+ ]+", alt):
         return re.search(rf"(?<![\w]){re.escape(alt)}(?![\w])", text) is not None
+    if alt.endswith("்"):
+        # A Tamil case ending replaces the final pulli: "முன்னார்" -> "முன்னாருக்கு"
+        # (to Munnar), "பெங்களூர்" -> "பெங்களூரில்" (in Bangalore).
+        return re.search(re.escape(alt[:-1]) + "[ா-்]", text) is not None
     return alt in text
 
 
@@ -461,8 +470,11 @@ class _RealStore:
     throwaway tenant (database: LIFE_GRAPH_DATABASE_URL, use the test database),
     shared by every R variant of a run. Facts come from the real extractor and
     are cached in evals/local/bakeoff/facts_<data>.json, so variants and re-runs
-    store the same facts. Each memory is dated to its message; the owner is
-    taken to keep every unreviewed fact that is not hedged."""
+    store the same facts. Messages are extracted and stored one at a time, as
+    production does, so the extractor sees who the people already named are
+    (settings.extraction_known_people; those facts go to facts_<data>_known.json).
+    Each memory is dated to its message; the owner is taken to keep every
+    unreviewed fact that is not hedged."""
 
     def __init__(self) -> None:
         self.tenant = f"bakeoff_{datetime.now(UTC):%Y%m%d%H%M%S}"
@@ -478,27 +490,20 @@ class _RealStore:
         from sqlalchemy import text
 
         from life_graph.api.dependencies import get_extraction_pipeline, get_memory_manager
+        from life_graph.config import settings
         from life_graph.core.tenant import tenant_scope
         from life_graph.extraction.rules import ExtractedFact
+        from life_graph.services import entities
         from life_graph.storage.database import async_session
 
-        cache = OUT / f"facts_{Path(data.get('_path', 'test_life')).stem}.json"
+        tag = "_known" if settings.extraction_known_people else ""
+        cache = OUT / f"facts_{Path(data.get('_path', 'test_life')).stem}{tag}.json"
         facts: dict[str, list[dict]] = (
             json.loads(cache.read_text(encoding="utf-8")) if cache.exists() else {}
         )
         msgs = sorted(data["messages"], key=lambda d: (d["date"], d["id"]))
         said_on = _dated_extraction()
         pipeline = get_extraction_pipeline()
-        for n, m in enumerate(msgs, 1):
-            if m["id"] not in facts:
-                said_on.set(m["date"])
-                got = (await pipeline.extract(m["text"], capture=True)).facts
-                facts[m["id"]] = [asdict(f) for f in got]
-                if n % 50 == 0:
-                    cache.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
-        cache.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
-
-        from life_graph.config import settings
 
         # Stored as production stores (facts said together are linked); the
         # variants differ only in how Jarvis reads.
@@ -506,7 +511,14 @@ class _RealStore:
         manager = get_memory_manager()
         known = set(ExtractedFact.__dataclass_fields__)
         with tenant_scope(self.tenant):
-            for m in msgs:
+            for n, m in enumerate(msgs, 1):
+                if m["id"] not in facts:
+                    said_on.set(m["date"])
+                    entities._cache.pop(self.tenant, None)  # the people stored so far
+                    got = (await pipeline.extract(m["text"], capture=True)).facts
+                    facts[m["id"]] = [asdict(f) for f in got]
+                    if n % 50 == 0:
+                        cache.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
                 batch = [
                     ExtractedFact(**{k: v for k, v in f.items() if k in known})
                     for f in facts[m["id"]]
@@ -535,6 +547,7 @@ class _RealStore:
                         },
                     )
                     await s.commit()
+        cache.write_text(json.dumps(facts, ensure_ascii=False), encoding="utf-8")
         async with async_session() as s:
             # The owner keeps what is not hedged (a stand-in for reviewing it).
             await s.execute(
@@ -640,8 +653,8 @@ def _dated_extraction():
     said_on = contextvars.ContextVar("said_on", default=None)
     original = lg_llm._user_message
 
-    def dated(text, *, schema_in_prompt):
-        msg = original(text, schema_in_prompt=schema_in_prompt)
+    def dated(text, *, schema_in_prompt, **kw):
+        msg = original(text, schema_in_prompt=schema_in_prompt, **kw)
         d = said_on.get()
         if d:
             day = _date.fromisoformat(d)

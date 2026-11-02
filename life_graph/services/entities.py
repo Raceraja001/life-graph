@@ -255,6 +255,30 @@ def alias_hint(tenant_id: str, named: list[tuple[uuid.UUID, str]]) -> str:
     return ("Names: " + "; ".join(parts)) if parts else ""
 
 
+def without_longer_names(
+    tenant_id: str, named: list[tuple[uuid.UUID, str]], text_: str
+) -> list[tuple[uuid.UUID, str]]:
+    """*named* without the people *text_* names only inside a longer proper name:
+    "Nila Pickles" (the owner's company) is not Nila (the owner's daughter), and
+    telling the extractor it was made "Nila (the owner's daughter) is no longer
+    shipped outside Tamil Nadu" (2026-11-02). A person also named on their own,
+    or brought by a role word ("my husband"), stays. Reads only the cache that
+    :func:`known_in_text` has just filled: never a query."""
+    hit = _cache.get(tenant_id)
+    if not hit or not named:
+        return named
+    roots = _roots(hit[1])
+    inside: set[uuid.UUID] = set()
+    alone: set[uuid.UUID] = set()
+    for eid, name in named:
+        spots = list(re.finditer(rf"(?<!\w){re.escape(name)}(?!\w)", text_, re.I))
+        for spot in spots:
+            longer = re.match(r" [A-Z]\w", text_[spot.end() :])
+            (inside if longer else alone).add(roots.get(eid, eid))
+    drop = inside - alone
+    return [(eid, name) for eid, name in named if roots.get(eid, eid) not in drop]
+
+
 #: "Senthil (the owner's colleague)": the extractor names a relation one message at
 #: a time, from that message alone ("Senthil plays cricket with his office team").
 _GLOSS = re.compile(r"\b([A-Z][\w.]*(?: [A-Z][\w.]*)*) \((?:the|from the) owner's ([^)]{1,40})\)")
