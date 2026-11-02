@@ -97,7 +97,36 @@ NOT_ENTITIES = frozenset(
         "yesterday",
         "week",
         "month",
+        # Seen in the prod people table on 2026-11-02.
+        "backend",
+        "frontend",
+        "endpoint",
+        "endpoints",
+        "search",
+        "connector",
+        "connectors",
+        "http",
+        "https",
+        "html",
+        "url",
+        "ui",
+        "key",
+        "api key",
+        "bearer api key",
     ]
+)
+#: Shapes of an extracted "entity" that name no one and nothing in particular:
+#: a date or time, a count ("20 tools"), a URL or domain, a path, a file, a
+#: header name. Checked on the name as written, before normalize() flattens it.
+_NOT_A_NAME = re.compile(
+    r"^\d{4}-\d{2}(-\d{2})?([ T].*)?$"  # 2026-10-26, 2026-10-26 09:00
+    r"|^\d{1,2}:\d{2}"  # 09:30
+    r"|^\d+\s+[a-z]"  # 20 tools, 3 days
+    r"|://|^www\.|\.(com|net|org|io|dev)(/|$)"  # URLs, domains
+    r"|^[~/.]|\\|^\S*/\S*/"  # ~/keys, /mnt/x, C:\x, a/b/c
+    r"|^\S+\.(key|pem|py|ts|tsx|js|json|md|txt|log|ya?ml|env|sh|csv|sql|html?|css)$"
+    r"|^X-[A-Za-z][\w-]*$",  # X-Tenant-ID
+    re.IGNORECASE,
 )
 MAX_KEY = 200
 _CACHE_SECONDS = 60.0
@@ -123,12 +152,18 @@ def is_entity(key: str) -> bool:
     return len(key) >= 2 and not key.isdigit() and key not in NOT_ENTITIES
 
 
+def names_a_thing(name: str) -> bool:
+    """Whether *name*, as written, can be a person or a named thing: not a date,
+    count, URL, path, file or header name (:data:`_NOT_A_NAME`)."""
+    return not _NOT_A_NAME.search((name or "").strip())
+
+
 async def link(tenant_id: str, memory_id: uuid.UUID, names: list[str]) -> int:
     """Record that *memory_id* mentions *names*; return how many new links were made."""
     seen: dict[str, str] = {}
     for name in names or []:
         key = normalize(str(name))
-        if is_entity(key) and key not in seen:
+        if is_entity(key) and names_a_thing(str(name)) and key not in seen:
             seen[key] = str(name).strip()[:MAX_KEY]
     if not seen:
         return 0
