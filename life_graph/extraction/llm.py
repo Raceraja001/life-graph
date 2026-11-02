@@ -201,10 +201,11 @@ Rules:
 """
 
 
-def _user_message(text: str, *, schema_in_prompt: bool) -> str:
+def _user_message(text: str, *, schema_in_prompt: bool, known: str = "") -> str:
     """The extraction request. The schema is pasted in only when the runtime is
     not enforcing it — with constrained decoding it is redundant, and it is
-    exactly what small models copy back instead of answering."""
+    exactly what small models copy back instead of answering. *known* is who the
+    people named in *text* already are (:func:`known_people`)."""
     # Today's date, so "until Friday" or "next month" can become a valid_until.
     from datetime import datetime
 
@@ -215,6 +216,15 @@ def _user_message(text: str, *, schema_in_prompt: bool) -> str:
         f"Today is {today:%A %Y-%m-%d}. Extract facts from the following text:"
         f"\n\n---\n{text}\n---\n\n"
     )
+    if known:
+        # Relations only: worded as "already known", it made the model drop new
+        # facts about these people ("Ma's name is Mahalakshmi" was not kept).
+        message += (
+            f"Who these people are to the owner, from earlier messages: {known}."
+            " Use these relations instead of guessing one. This is not a fact to"
+            " extract, and it changes nothing else: still keep every fact in the"
+            " text.\n\n"
+        )
     if schema_in_prompt:
         return (
             message
@@ -238,6 +248,7 @@ def build_extraction_messages(
     text: str,
     *,
     structured: bool,
+    known: str = "",
 ) -> list[dict[str, str]]:
     """The exact messages an extraction sends.
 
@@ -258,9 +269,34 @@ def build_extraction_messages(
             {"role": "assistant", "content": json.dumps(example["output"], ensure_ascii=False)}
         )
     messages.append(
-        {"role": "user", "content": _user_message(text, schema_in_prompt=not structured)}
+        {
+            "role": "user",
+            "content": _user_message(text, schema_in_prompt=not structured, known=known),
+        }
     )
     return messages
+
+
+async def known_people(tenant_id: str | None, text: str) -> str:
+    """Who the people named in *text* already are, from the people table:
+    "Senthil (the owner's husband); Kavitha (the owner)". Each message is
+    extracted on its own, so without this the model guesses a relation from that
+    one message ("Senthil plays cricket with his office team" -> colleague).
+    "" when off, outside a tenant, or nobody named is known. Best-effort."""
+    from life_graph.config import settings
+
+    if not (settings.extraction_known_people and tenant_id and text):
+        return ""
+    from life_graph.services import entities
+
+    try:
+        named = await entities.known_in_text(tenant_id, text)
+        named = entities.without_longer_names(tenant_id, named, text)
+        hint = entities.alias_hint(tenant_id, named)
+    except Exception:  # noqa: BLE001
+        logger.warning("Known people lookup failed; extracting without it", exc_info=True)
+        return ""
+    return hint.removeprefix("Names: ")
 
 
 def response_format_for(structured: bool) -> dict[str, Any]:
@@ -323,7 +359,12 @@ class LLMExtractor:
         return await self._extract_cloud(text)
 
     async def _local_chat(
-        self, text: str, *, structured: bool, prompt: ResolvedPrompt | None = None
+        self,
+        text: str,
+        *,
+        structured: bool,
+        prompt: ResolvedPrompt | None = None,
+        known: str = "",
     ) -> str:
         """One local extraction request, constrained (json_schema) or not."""
         from life_graph.config import settings
@@ -333,7 +374,9 @@ class LLMExtractor:
         # Local only: this is the owner's own words. chat() goes to the cloud
         # chain whenever use_hybrid_llm is switched on.
         return await self._lm_client.chat_local_only(
-            messages=build_extraction_messages(prompt_text, few_shot, text, structured=structured),
+            messages=build_extraction_messages(
+                prompt_text, few_shot, text, structured=structured, known=known
+            ),
             model=settings.lm_extraction_model,
             temperature=0.1,
             max_tokens=self._max_tokens,
@@ -360,12 +403,15 @@ class LLMExtractor:
         # loop has deployed one; otherwise the built-in prompt.
         tenant_id = current_tenant_or_none()
         prompt = await resolve_prompt(tenant_id, TASK_TYPE, _SYSTEM_PROMPT)
+        known = await known_people(tenant_id, text)
 
         raw_content = ""
         started = time.monotonic()
         try:
             if settings.lm_structured_output:
-                raw_content = await self._local_chat(text, structured=True, prompt=prompt)
+                raw_content = await self._local_chat(
+                    text, structured=True, prompt=prompt, known=known
+                )
                 if not raw_content:
                     logger.warning(
                         "Local runtime returned nothing for a json_schema request; "
@@ -373,7 +419,9 @@ class LLMExtractor:
                         "if this runtime does not support structured output)"
                     )
             if not raw_content:
-                raw_content = await self._local_chat(text, structured=False, prompt=prompt)
+                raw_content = await self._local_chat(
+                    text, structured=False, prompt=prompt, known=known
+                )
         except Exception:
             logger.exception("Local LLM extraction failed")
             return []

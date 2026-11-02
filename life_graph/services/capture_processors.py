@@ -169,6 +169,12 @@ class CaptureProcessors:
                 facts: list[ExtractedFact] = []
                 try:
                     from life_graph.api.dependencies import get_extraction_pipeline
+                    from life_graph.core.tenant import has_tenant_context, set_tenant_context
+
+                    # The extractor reads the tenant's people table (who "Senthil"
+                    # is); outside a request the tenant contextvar is unset.
+                    if tenant_id and not has_tenant_context():
+                        set_tenant_context(tenant_id, "system")
 
                     # The shared pipeline, not a fresh ExtractionPipeline(): a
                     # bare one builds an LLMExtractor with no local client and a

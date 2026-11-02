@@ -210,6 +210,9 @@ class Settings(BaseSettings):
     extraction_language_guard: bool = True  # skip English NER on non-Latin text
     extraction_tag_only_entities: bool = True  # entities/tech become tags, not memories
     extraction_min_confidence: float = 0.45  # drop facts below this before storing
+    # The extractor is told who the people a message names already are, from the
+    # people table (extraction/llm.py known_people), instead of guessing.
+    extraction_known_people: bool = True
     extraction_llm_min_words: int = 20  # legacy 3-tier LLM gate (non-capture callers)
     extraction_llm_confidence_threshold: float = 0.5  # legacy 3-tier LLM gate
 
