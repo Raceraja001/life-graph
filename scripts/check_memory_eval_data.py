@@ -44,7 +44,7 @@ LIFE_KEYS = {"about", "person", "today", "messages", "questions"}
 MESSAGE_KEYS = {"id", "date", "text", "kind"}
 QUESTION_KEYS = {"id", "kind", "q", "must", "must_not", "abstain", "gold", "traps"}
 CASE_KEYS = {"id", "cat", "text", "expect", "never", "none", "note"}
-EXPECT_KEYS = {"about", "must", "negate", "hedged", "reason", "correction"}
+EXPECT_KEYS = {"about", "must", "negate", "hedged", "reason", "correction", "not_types"}
 
 
 def _runner():
@@ -181,6 +181,8 @@ def check_cases(path: Path) -> tuple[list[str], dict]:
             _groups(e.get("must"), where, errs)
             if "reason" in e:
                 _groups(e["reason"], where + " reason", errs)
+            if not all(isinstance(t, str) and t for t in e.get("not_types", [])):
+                errs.append(f"{where}: bad not_types")
         if not all(isinstance(t, str) and t for t in c.get("never", [])):
             errs.append(f"{where}: bad never")
     return errs, {"cases": len(data["cases"])}

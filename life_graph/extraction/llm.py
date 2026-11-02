@@ -142,6 +142,14 @@ suggestion. Keep what it reveals about what they want:
   wants to sell school management as their first product.
 - "whatever needs third party details, build with stub and ask me at end"
   -> preference: The owner wants third-party details stubbed and asked for at the end.
+A question is at most an intention, never a preference or decision: the owner is
+still choosing. When it weighs options or asks which way is best, keep it as a
+hedged intention with the specifics, never a vaguer idea or its opposite:
+- "we can keep the docs in Notion and link them here? that is best way?"
+  -> intention, hedged: The owner is considering keeping the docs in Notion, linked here.
+- "we don't need to close old tickets - we can tag them stale instead?"
+  -> preference: The owner does not want old tickets closed. And intention, hedged:
+  The owner is considering tagging old tickets stale instead of closing them.
 
 Do NOT keep:
 - a question that only asks for information or an opinion ("what else can we
