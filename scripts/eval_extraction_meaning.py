@@ -81,6 +81,9 @@ def check(case: dict, facts: list) -> dict:
                 why.append("lost the reason")
         if exp.get("correction") and not getattr(f, "correction", False):
             why.append("correction not flagged")
+        if f.fact_type in exp.get("not_types", []):
+            # Thinking aloud ("we can use n8n…?") stored as a settled preference.
+            why.append(f"stored as a {f.fact_type}")
         # Kept without review although the owner only said "maybe". (Facts about
         # other people the owner told us may be kept; the subject field keeps them
         # from being read as the owner's.)

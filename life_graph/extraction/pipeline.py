@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,6 +23,20 @@ from life_graph.extraction.nlp import SpacyExtractor
 from life_graph.extraction.rules import ExtractedFact, RuleBasedExtractor
 
 logger = logging.getLogger(__name__)
+
+#: Blocks in a message that are not the owner speaking: text they pasted along
+#: (a spec for a coding agent became 8 "decisions" of the owner's on 2026-10-29)
+#: and messages from tools and other agents (task notifications, agent replies).
+_NOT_THE_OWNER = re.compile(
+    r"<(pasted_content|task-notification|agent-message|cross-session-message|"
+    r"persisted-output|system-reminder|think)\b[^>]*>.*?</\1\s*>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def not_the_owners_words(text: str) -> str:
+    """*text* without pasted blocks and tool or agent messages."""
+    return _NOT_THE_OWNER.sub(" ", text or "")
 
 
 @dataclass
@@ -115,7 +130,7 @@ class ExtractionPipeline:
         Returns:
             ExtractionResult with deduplicated facts and tier counts.
         """
-        text = text.strip()
+        text = not_the_owners_words(text).strip()
         if not text:
             return ExtractionResult()
 
