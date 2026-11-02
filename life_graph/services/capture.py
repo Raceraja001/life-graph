@@ -39,6 +39,25 @@ def without_nul(value: Any) -> Any:
     return value
 
 
+def captured_at(properties: dict | None) -> datetime | None:
+    """When the client captured the event (``properties.captured_at``, ISO 8601),
+    never later than now; None when absent or unreadable.
+
+    The Claude Code hook stamps it but sends no ``occurred_at``, so a capture
+    delivered late from its offline queue was dated on arrival: the 2,844 held
+    back from 2026-10-13 all read 2026-11-02."""
+    raw = (properties or {}).get("captured_at")
+    if not isinstance(raw, str):
+        return None
+    try:
+        at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    return min(at, datetime.now(UTC))
+
+
 class CaptureService:
     """Manages capture event ingestion, dedup, corrections, and queries.
 
@@ -73,7 +92,8 @@ class CaptureService:
             surface: Source surface identifier.
             content: Raw content string.
             modality: Content modality (text, voice, image, structured).
-            occurred_at: Explicit timestamp; defaults to UTC now.
+            occurred_at: Explicit timestamp; defaults to ``properties.captured_at``
+                (:func:`captured_at`), else UTC now.
             properties: Arbitrary JSONB metadata.
             trust_tier: Provenance trust tier. When ``None`` it is derived from
                 ``surface`` (default-deny). Callers handling raw web bodies
@@ -88,17 +108,20 @@ class CaptureService:
         )
         content = without_nul(content)
         properties = without_nul(properties)
-        now = occurred_at or datetime.now(UTC)
+        now = occurred_at or captured_at(properties) or datetime.now(UTC)
         content_hash = hashlib.sha256(content.encode()).hexdigest()
 
-        # Dedup: same hash + same surface within 10 minutes
-        window = now - timedelta(minutes=10)
+        # Dedup: same hash + same surface within 10 minutes either side. Both
+        # bounds matter for a late delivery dated in the past: "proceed" from
+        # 13 Oct is not a duplicate of every "proceed" said since.
+        window = timedelta(minutes=10)
         existing = await self.session.execute(
             select(CaptureEvent).where(
                 CaptureEvent.tenant_id == tenant_id,
                 CaptureEvent.content_hash == content_hash,
                 CaptureEvent.surface == surface,
-                CaptureEvent.occurred_at >= window,
+                CaptureEvent.occurred_at >= now - window,
+                CaptureEvent.occurred_at <= now + window,
             )
         )
         if dup := existing.scalars().first():
