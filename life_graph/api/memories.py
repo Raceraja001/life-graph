@@ -235,6 +235,33 @@ async def _settle_contradictions(memory_id: uuid.UUID, *, approved: bool) -> Non
         logger.warning("Failed to settle contradictions for %s", memory_id, exc_info=True)
 
 
+async def _learn_names(row: Memory) -> None:
+    """Learn other names and roles ("my wife Priya") from a memory the owner
+    has just approved. At storage time only active facts in the owner's own
+    words teach names (MemoryManager._learn_names), and most captured facts wait
+    for review, so the people table never learned a role in real use (prod,
+    2026-11-02: 0 of 41 entities had one). The owner has now read and kept this
+    exact sentence. Hedged or negated memories still teach nothing.
+    Best-effort: a failure costs the alias, never the approval."""
+    from life_graph.core.memory_manager import HEDGED
+
+    props = row.properties or {}
+    content = row.content or ""
+    if (
+        not content
+        or props.get("polarity") == "negate"
+        or props.get("certainty") == "hedged"
+        or HEDGED.search(content)
+    ):
+        return
+    from life_graph.services import entities
+
+    try:
+        await entities.learn_aliases(row.tenant_id, content, evidence=content)
+    except Exception:  # noqa: BLE001
+        logger.warning("Name learning failed for approved memory %s", row.id, exc_info=True)
+
+
 async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemoryStore) -> Memory:
     """Move a memory between pending/rejected/active, emitting the matching event.
 
@@ -254,6 +281,7 @@ async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemorySt
             raise HTTPException(status_code=409, detail=f"Cannot approve a {row.status} memory")
         updated = await store.update(memory_id, MemoryUpdate(status="active"))
         await _settle_contradictions(memory_id, approved=True)
+        await _learn_names(row)
         try:
             await event_bus.emit(
                 EventType.MEMORY_APPROVED,
