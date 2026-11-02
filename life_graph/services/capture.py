@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
@@ -21,6 +21,22 @@ from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def without_nul(value: Any) -> Any:
+    """*value* with NUL characters removed from every string in it, keys included.
+
+    PostgreSQL text and JSONB cannot hold U+0000, so one tool output containing it
+    made the insert fail with a 500. The Claude Code hook spools a 5xx and
+    retries in order, so that single row blocked its whole queue: 2,844 captures
+    waited from 2026-10-13 to 2026-11-02."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {without_nul(k): without_nul(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [without_nul(v) for v in value]
+    return value
 
 
 class CaptureService:
@@ -70,6 +86,8 @@ class CaptureService:
         resolved_tier = (
             coerce_tier(trust_tier) if trust_tier is not None else classify_surface(surface)
         )
+        content = without_nul(content)
+        properties = without_nul(properties)
         now = occurred_at or datetime.now(UTC)
         content_hash = hashlib.sha256(content.encode()).hexdigest()
 
