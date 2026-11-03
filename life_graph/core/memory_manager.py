@@ -20,9 +20,11 @@ import hashlib
 import logging
 import re
 import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from life_graph.core.evidence import UNKNOWN_SOURCE
+from life_graph.core.said_at import said_at
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryUpdate
@@ -276,6 +278,45 @@ class MemoryManager:
             reason,
         )
 
+    async def _older_and_newer(
+        self, targets: list[tuple[str, str]], said: datetime
+    ) -> tuple[list[tuple[str, str]], list[str]]:
+        """The supersede *targets* said before *said* (still replaced) and the ids
+        of those said after it (kept: a late old value is their history)."""
+        older: list[tuple[str, str]] = []
+        newer: list[str] = []
+        for old_id, reason in targets:
+            row = await self._store.retrieve(uuid.UUID(str(old_id)))
+            at = getattr(row, "created_at", None)
+            if at is not None and at.tzinfo is None:
+                at = at.replace(tzinfo=UTC)
+            if at is not None and at > said:
+                newer.append(str(old_id))
+            else:
+                older.append((old_id, reason))
+        return older, newer
+
+    async def _as_said(self, stored: Memory, said: datetime, *, history_of: str | None) -> None:
+        """Date *stored* when it was said; with *history_of*, it is already
+        replaced by that newer memory (superseded, as any replaced value is)."""
+        from sqlalchemy import update
+
+        from life_graph.storage.database import async_session
+
+        values: dict[str, Any] = {"created_at": said, "updated_at": said, "last_accessed": said}
+        if history_of:
+            values |= {"status": "superseded", "superseded_by": uuid.UUID(history_of)}
+        async with async_session() as session:
+            await session.execute(
+                update(Memory)
+                .where(Memory.id == stored.id)
+                .where(Memory.tenant_id == get_current_tenant_id())
+                .values(**values)
+            )
+            await session.commit()
+        for key, value in values.items():
+            setattr(stored, key, value)
+
     async def generate_embedding(self, text: str) -> list[float] | None:
         """Public wrapper for embedding generation (used by fallback persistence paths)."""
         return await self._generate_embedding(text)
@@ -460,6 +501,15 @@ class MemoryManager:
         slot_ids = {old for old, _ in same_slot}
         other_clashes = [t for t in auto_supersede_targets if str(t[0]) not in slot_ids]
         auto_supersede_targets = other_clashes + same_slot
+        # Said earlier than it arrived (core/said_at.py): what it clashes with
+        # may be newer, and an old value never replaces a newer one.
+        said = said_at.get()
+        newer: list[str] = []
+        if said and auto_supersede_targets:
+            auto_supersede_targets, newer = await self._older_and_newer(
+                auto_supersede_targets, said
+            )
+            other_clashes = [t for t in other_clashes if t in auto_supersede_targets]
         kept_because = _auto_approved(fact, trust_tier, contradicts=bool(other_clashes))
         active_now = kept_because is not None
         if kept_because:
@@ -493,8 +543,11 @@ class MemoryManager:
             valid_until=_end_of_day(fact.valid_until),
         )
 
+        if said:
+            await self._as_said(stored, said, history_of=newer[0] if newer else None)
+
         # Other names for the same person, from an active memory's own words.
-        await self._learn_names(fact, trust_tier, stored, active=active_now)
+        await self._learn_names(fact, trust_tier, stored, active=active_now and not newer)
 
         # The people, projects and things it mentions (services/entities.py).
         # Best-effort: a failed link never costs the memory.
