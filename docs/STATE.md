@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-02 12:15 UTC` from `master` @ `df56fb9`
+Generated `2026-11-03 04:48 UTC` from `master` @ `658aa9d`
 
 ---
 
@@ -24,9 +24,9 @@ Generated `2026-11-02 12:15 UTC` from `master` @ `df56fb9`
 | Agent tools | **14** |
 | Scheduled jobs | **34** |
 | Config settings | **278** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4071** in 470 files |
+| Test functions | **4073** in 471 files |
 | Dashboard pages | **22** |
-| Python | 449 files, 117,434 lines |
+| Python | 449 files, 117,506 lines |
 
 ---
 
@@ -516,10 +516,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 356 | 3236 |
+| `tests/unit/` | 357 | 3238 |
 | `tests/integration/` | 113 | 823 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **470** | **4071** |
+| **total** | **471** | **4073** |
 
 ---
 
