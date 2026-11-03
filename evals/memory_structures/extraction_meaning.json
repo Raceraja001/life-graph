@@ -228,6 +228,12 @@
     {"id": "k13", "cat": "thinking", "text": "never auto-delete anything without asking me first", "expect": [{"about": "owner", "must": [["delete"]]}]},
     {"id": "k14", "cat": "thinking", "text": "maybe we can try gpt-oss instead of qwen for the judge? check it", "expect": [{"about": "owner", "must": [["gpt-oss"]], "hedged": true, "not_types": ["preference", "decision"]}]},
     {"id": "k15", "cat": "thinking", "text": "i want the dashboard to feel like an app, not an admin panel", "expect": [{"about": "owner", "must": [["dashboard", "admin panel"]]}]},
-    {"id": "k16", "cat": "thinking", "text": "we can reverse engineer some coding agents for learning? maybe i will build my own one later", "expect": [{"about": "owner", "must": [["reverse engineer", "reverse-engineer"]], "hedged": true, "not_types": ["decision"]}]}
+    {"id": "k16", "cat": "thinking", "text": "we can reverse engineer some coding agents for learning? maybe i will build my own one later", "expect": [{"about": "owner", "must": [["reverse engineer", "reverse-engineer"]], "hedged": true, "not_types": ["decision"]}]},
+    {"id": "o01", "cat": "self", "text": "Hi Jarvis! I'm Priya Raman. My friends call me Pri.", "expect": [{"about": "owner", "must": [["priya raman"], ["owner"]]}], "never": ["owner's friend", "owner's colleague", "owner's sister"]},
+    {"id": "o02", "cat": "self", "text": "Myself Deepak, from Trichy. I work as a pharmacist.", "expect": [{"about": "owner", "must": [["deepak"], ["owner"]]}], "never": ["owner's friend", "deepak works as a pharmacist"]},
+    {"id": "o03", "cat": "self", "text": "This is Anitha here, I just installed you on my phone.", "expect": [{"about": "owner", "must": [["anitha"], ["owner"]]}], "never": ["owner's friend", "owner's colleague"]},
+    {"id": "o04", "cat": "self", "text": "I am Karthikeyan, but everyone calls me Karthi.", "expect": [{"about": "owner", "must": [["karthikeyan"], ["owner"]]}], "never": ["owner's friend", "owner's brother"]},
+    {"id": "o05", "cat": "self", "text": "என் பெயர் சுதா. நான் கோவையில் இருக்கிறேன்.", "expect": [{"about": "owner", "must": [["sudha", "சுதா"], ["owner"]]}], "never": ["owner's friend"]},
+    {"id": "o06", "cat": "self", "text": "My friend Kavya and I started a bakery last year.", "expect": [{"about": "Kavya", "must": [["kavya"], ["bakery"]]}], "never": ["owner's name is kavya"]}
   ]
 }

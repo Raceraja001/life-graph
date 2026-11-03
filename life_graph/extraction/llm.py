@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from life_graph.extraction.rules import ExtractedFact
@@ -285,6 +286,75 @@ def build_extraction_messages(
     return messages
 
 
+#: A capitalised name of one to three words (core/aliases.py _NAME).
+_NAME = r"[A-Z][a-zA-Z'’\-]+(?: [A-Z][a-zA-Z'’\-]+){0,2}"
+_INTRO = re.compile(
+    rf"\b(?i:i['’]?m|i am|myself|my (?:full )?name is)\s+(?P<name>{_NAME})"
+    rf"|\b(?i:this is)\s+(?P<here>{_NAME})\s+(?i:here)\b"
+)
+#: Capitalised words after "I'm" that are not a name ("I'm Fine", "I'm Going").
+_NOT_A_NAME_AFTER_IM = frozenset(
+    [
+        "sorry",
+        "fine",
+        "good",
+        "great",
+        "ok",
+        "okay",
+        "back",
+        "done",
+        "here",
+        "not",
+        "sure",
+        "ready",
+        "glad",
+        "happy",
+        "very",
+        "also",
+        "just",
+        "going",
+        "working",
+        "planning",
+        "thinking",
+        "trying",
+        "looking",
+        "feeling",
+        "tired",
+        "busy",
+        "home",
+        "still",
+        "now",
+        "new",
+        "so",
+        "using",
+        "building",
+        "writing",
+        "in",
+        "at",
+        "on",
+        "from",
+        "with",
+        "the",
+        "a",
+        "an",
+    ]
+)
+
+
+def self_introduction(text: str) -> str:
+    """ "Priya Raman (the owner)" when the owner introduces themselves ("I'm Priya
+    Raman", "myself Deepak", "this is Anitha here"); "" otherwise. Told to the
+    extractor like a known person: a prompt rule for this cost 6-10 cases elsewhere
+    in the meaning eval, while this changes only the messages that need it
+    ("Hi Jarvis! I'm Priya Raman. My friends call me Pri" was stored as "the
+    owner's friend")."""
+    for m in _INTRO.finditer(text or ""):
+        name = m.group("name") or m.group("here")
+        if name.split()[0].lower() not in _NOT_A_NAME_AFTER_IM:
+            return f"{name} (the owner)"
+    return ""
+
+
 async def known_people(tenant_id: str | None, text: str) -> str:
     """Who the people named in *text* already are, from the people table:
     "Senthil (the owner's husband); Kavitha (the owner)". Each message is
@@ -411,7 +481,9 @@ class LLMExtractor:
         # loop has deployed one; otherwise the built-in prompt.
         tenant_id = current_tenant_or_none()
         prompt = await resolve_prompt(tenant_id, TASK_TYPE, _SYSTEM_PROMPT)
-        known = await known_people(tenant_id, text)
+        known = "; ".join(
+            p for p in (self_introduction(text), await known_people(tenant_id, text)) if p
+        )
 
         raw_content = ""
         started = time.monotonic()
