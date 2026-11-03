@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from life_graph.config import settings
 from life_graph.core.events import Event, EventBus, EventType, event_bus
+from life_graph.core.said_at import late, said_at
 from life_graph.services import claude_code_sessions, saved_by_tool
 from life_graph.storage.database import async_session
 
@@ -114,6 +115,15 @@ class CaptureProcessors:
         self._subscribed = False
 
     async def _on_capture_received(self, event: Event) -> None:
+        """Process a newly captured event, with ``said_at`` cleared afterwards: a
+        late capture's date must not leak into the next one handled here."""
+        token = said_at.set(None)
+        try:
+            await self._process_capture(event)
+        finally:
+            said_at.reset(token)
+
+    async def _process_capture(self, event: Event) -> None:
         """Process a newly captured event — extract, detect decisions, update yield."""
         payload = event.payload
         capture_event_id = payload.get("capture_event_id")
@@ -164,6 +174,9 @@ class CaptureProcessors:
 
                 content = capture_evt.content
                 yield_count = 0
+                # Delivered late (the hook's offline queue): extracted and stored as
+                # said then, not now (core/said_at.py).
+                said_at.set(late(getattr(capture_evt, "occurred_at", None)))
 
                 # ── 1. Run extraction pipeline ──────────────────────
                 facts: list[ExtractedFact] = []

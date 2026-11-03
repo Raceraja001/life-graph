@@ -215,12 +215,15 @@ def _user_message(text: str, *, schema_in_prompt: bool, known: str = "") -> str:
     not enforcing it — with constrained decoding it is redundant, and it is
     exactly what small models copy back instead of answering. *known* is who the
     people named in *text* already are (:func:`known_people`)."""
-    # Today's date, so "until Friday" or "next month" can become a valid_until.
+    # Today's date, so "until Friday" or "next month" can become a valid_until:
+    # the day it was said, for a capture delivered late (core/said_at.py).
     from datetime import datetime
 
     from life_graph.connectors.tools import user_tz
+    from life_graph.core.said_at import said_at
 
-    today = datetime.now(user_tz())
+    when = said_at.get()
+    today = when.astimezone(user_tz()) if when else datetime.now(user_tz())
     message = (
         f"Today is {today:%A %Y-%m-%d}. Extract facts from the following text:"
         f"\n\n---\n{text}\n---\n\n"
