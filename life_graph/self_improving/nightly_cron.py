@@ -107,7 +107,9 @@ async def nightly_self_heal(
                         result["gate"] = details.get("gate") or details.get("reason")
                     if outcome["status"] == "deployed":
                         counts["deployed"] += 1
-                    await _record_outcome(session_factory, suite.id, outcome["status"] == "error")
+                    await _record_outcome(
+                        session_factory, tenant_id, suite.id, outcome["status"] == "error"
+                    )
                     if outcome["status"] == "error":
                         overall = "partial"
             except Exception as exc:
@@ -137,12 +139,15 @@ async def nightly_self_heal(
     return {"status": overall, **summary}
 
 
-async def _record_outcome(session_factory, suite_id: uuid.UUID, errored: bool) -> None:
+async def _record_outcome(
+    session_factory, tenant_id: str, suite_id: uuid.UUID, errored: bool
+) -> None:
     """Count consecutive *errors*; any clean run (deployed or not) resets."""
+    from life_graph.core.tenant import get_scoped
     from life_graph.self_improving.models import EvalSuite
 
     async with session_factory() as session:
-        suite = await session.get(EvalSuite, suite_id)
+        suite = await get_scoped(session, EvalSuite, suite_id, tenant_id)
         if suite is not None:
             suite.consecutive_failures = suite.consecutive_failures + 1 if errored else 0
             await session.commit()

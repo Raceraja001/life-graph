@@ -40,8 +40,18 @@ def build_app() -> Starlette:
 
     # The tools call the API over HTTP; inside the API that is this process.
     mcp_server.API_BASE = settings.mcp_http_self_url
-    return mcp_server.mcp.http_app(
-        path="/",
-        stateless_http=True,
-        allowed_hosts=allowed_hosts(),
-    )
+    if hasattr(mcp_server.mcp, "streamable_http_app"):
+        app = mcp_server.mcp.streamable_http_app()
+    elif hasattr(mcp_server.mcp, "http_app"):
+        app = mcp_server.mcp.http_app(
+            path="/",
+            stateless_http=True,
+            allowed_hosts=allowed_hosts(),
+        )
+    elif hasattr(mcp_server.mcp, "sse_app"):
+        app = mcp_server.mcp.sse_app(mount_path="/")
+    else:
+        raise RuntimeError("FastMCP has no supported ASGI app method")
+    if not hasattr(app, "lifespan"):
+        app.lifespan = getattr(getattr(app, "router", None), "lifespan_context", None)
+    return app

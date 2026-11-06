@@ -332,7 +332,7 @@ class ApprovalFilingMixin:
             from life_graph.services.local_merge import pr_mode
 
             # In local mode approving is the merge (services/approvals.py), so say that.
-            local = await pr_mode(session, project_id) == "local"
+            local = await pr_mode(session, project_id, tenant_id) == "local"
             action = "Merge" if local else "Open PR"
             title_prefix = action if verified else f"{action} (UNVERIFIED)"
             base = landing.get("base_branch") or "(unknown base)"
@@ -425,7 +425,7 @@ class ApprovalFilingMixin:
         from life_graph.services.github_pr import PullRequestError, open_pull_request
         from life_graph.services.local_merge import pr_mode
 
-        if await pr_mode(session, project_id) == "local":
+        if await pr_mode(session, project_id, appr.tenant_id) == "local":
             # In local mode, approving driver_pr merges: never unattended.
             logger.info(
                 "Auto-open PR skipped for %s: local mode merges only on approval", driver_name

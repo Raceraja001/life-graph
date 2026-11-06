@@ -115,17 +115,18 @@ async def merge_locally(payload: dict[str, Any]) -> dict[str, Any]:
     return {"merged": True, "merge_commit": merge_commit, "base_branch": base, "existing": False}
 
 
-async def pr_mode(session: Any, project_id: Any) -> str:
+async def pr_mode(session: Any, project_id: Any, tenant_id: str) -> str:
     """The project's ``pr_mode``: "local" or "github" (the default)."""
     import uuid
 
+    from life_graph.core.tenant import get_scoped
     from life_graph.models.db import Project
 
     if not project_id:
         return "github"
     try:
-        project = await session.get(Project, uuid.UUID(str(project_id)))
-    except (ValueError, TypeError):
+        project = await get_scoped(session, Project, uuid.UUID(str(project_id)), tenant_id)
+    except (ValueError, TypeError, LookupError):
         return "github"
     mode = ((project.scan_metadata or {}).get("pr_mode") if project else None) or "github"
     return "local" if str(mode).strip().lower() == "local" else "github"

@@ -19,7 +19,7 @@ from typing import Any
 LlmFn = Callable[[str, str], Awaitable[tuple[str, int, int, Decimal]]]
 
 
-def _extraction_llm_fn() -> LlmFn:
+def _extraction_llm_fn(tenant_id: str) -> LlmFn:
     from life_graph.config import settings
     from life_graph.extraction.llm import (
         build_extraction_messages,
@@ -36,7 +36,7 @@ def _extraction_llm_fn() -> LlmFn:
 
         prompt = prompts.get(prompt_version_id)
         if prompt is None:
-            prompt = await load_version(prompt_version_id, default_prompt())
+            prompt = await load_version(prompt_version_id, default_prompt(), tenant_id)
             prompts[prompt_version_id] = prompt
 
         client = get_lm_client()
@@ -71,15 +71,15 @@ def _extraction_llm_fn() -> LlmFn:
     return run
 
 
-_RUNNERS: dict[str, Callable[[], LlmFn]] = {
+_RUNNERS: dict[str, Callable[[str], LlmFn]] = {
     "capture_extraction": _extraction_llm_fn,
 }
 
 
-def llm_fn_for(task_type: str) -> LlmFn | None:
-    """A fresh runner for *task_type*, or None if the task has none."""
+def llm_fn_for(task_type: str, tenant_id: str) -> LlmFn | None:
+    """A fresh runner for *task_type* under *tenant_id*, or None if the task has none."""
     factory = _RUNNERS.get(task_type)
-    return factory() if factory else None
+    return factory(tenant_id) if factory else None
 
 
 def optimizable_task_types() -> list[str]:

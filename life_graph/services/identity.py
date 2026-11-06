@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import or_, select
 
-from life_graph.core.tenant import get_current_tenant_id
+from life_graph.core.tenant import get_current_tenant_id, get_scoped
 from life_graph.models.db import Memory
 
 if TYPE_CHECKING:
@@ -154,7 +154,10 @@ class IdentityService:
 
         mid = uuid.UUID(memory_id)
         async with self._session_factory() as session:
-            mem = await session.get(Memory, mid)
+            try:
+                mem = await get_scoped(session, Memory, mid)
+            except LookupError:
+                mem = None
             if mem is None:
                 raise ValueError(f"Memory {memory_id} not found")
 
@@ -243,7 +246,10 @@ class IdentityService:
         now = datetime.now(UTC)
 
         async with self._session_factory() as session:
-            mem = await session.get(Memory, mid)
+            try:
+                mem = await get_scoped(session, Memory, mid)
+            except LookupError:
+                mem = None
             if mem is None:
                 raise ValueError(f"Memory {memory_id} not found")
 
@@ -261,6 +267,7 @@ class IdentityService:
                 mem.updated_at = now
 
                 new_mem = Memory(
+                    tenant_id=mem.tenant_id,
                     content=f"[Superseded] {mem.content}",
                     reasoning=f"Superseded memory {memory_id} after belief challenge",
                     tags=mem.tags,

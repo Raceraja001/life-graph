@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select, update
 
 from life_graph.core.events import EventType, event_bus
+from life_graph.core.tenant import get_scoped
 from life_graph.models.db import Approval, Memory, Project
 from life_graph.self_improving.models import OptimizationRun, PromptVersion
 
@@ -239,7 +240,10 @@ class ApprovalService:
         from life_graph.services.github_pr import PullRequestError, open_pull_request
         from life_graph.services.local_merge import merge_locally, pr_mode
 
-        if await pr_mode(self.session, (appr.payload or {}).get("project_id")) == "local":
+        if (
+            await pr_mode(self.session, (appr.payload or {}).get("project_id"), appr.tenant_id)
+            == "local"
+        ):
             # No remote to open a PR on: this approval is the merge, into the
             # local base branch (services/local_merge.py). One decision, made
             # by the user — local mode never merges on its own.
@@ -408,8 +412,10 @@ class ApprovalService:
         if not project_id:
             return
         try:
-            project = await self.session.get(Project, uuid.UUID(str(project_id)))
-        except (ValueError, TypeError):
+            project = await get_scoped(
+                self.session, Project, uuid.UUID(str(project_id)), merge_appr.tenant_id
+            )
+        except (ValueError, TypeError, LookupError):
             project = None
         if project is None:
             return
@@ -621,8 +627,8 @@ class ApprovalService:
             )
 
         try:
-            project = await self.session.get(Project, uuid.UUID(str(project_id)))
-        except (ValueError, TypeError):
+            project = await get_scoped(self.session, Project, uuid.UUID(str(project_id)), tenant_id)
+        except (ValueError, TypeError, LookupError):
             project = None
         if project is None:
             raise ApprovalActionError(f"project {project_id} no longer exists")
@@ -741,8 +747,8 @@ class ApprovalService:
         if not ref:
             return
         try:
-            run = await self.session.get(OptimizationRun, uuid.UUID(ref))
-        except (ValueError, TypeError):
+            run = await get_scoped(self.session, OptimizationRun, uuid.UUID(ref), tenant_id)
+        except (ValueError, TypeError, LookupError):
             run = None
         now = datetime.now(UTC)
 
@@ -763,21 +769,24 @@ class ApprovalService:
         )
 
         if candidate_id and task_type:
-            # One active version per (tenant, task_type): deactivate first.
-            await self.session.execute(
-                update(PromptVersion)
-                .where(
-                    PromptVersion.tenant_id == tenant_id,
-                    PromptVersion.task_type == task_type,
-                    PromptVersion.is_active.is_(True),
-                )
-                .values(is_active=False, deactivated_at=now)
-            )
             try:
-                candidate = await self.session.get(PromptVersion, uuid.UUID(str(candidate_id)))
-            except (ValueError, TypeError):
+                candidate = await get_scoped(
+                    self.session, PromptVersion, uuid.UUID(str(candidate_id)), tenant_id
+                )
+            except (ValueError, TypeError, LookupError):
                 candidate = None
             if candidate is not None:
+                # One active version per (tenant, task_type): deactivate first.
+                # Only with a usable candidate, or the tenant is left with none.
+                await self.session.execute(
+                    update(PromptVersion)
+                    .where(
+                        PromptVersion.tenant_id == tenant_id,
+                        PromptVersion.task_type == task_type,
+                        PromptVersion.is_active.is_(True),
+                    )
+                    .values(is_active=False, deactivated_at=now)
+                )
                 candidate.is_active = True
                 candidate.activated_at = now
 

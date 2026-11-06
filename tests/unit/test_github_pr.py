@@ -338,7 +338,7 @@ async def test_a_local_mode_approval_says_it_merges(setup):
 
     class _LocalProjectSession(_NestedSession):
         async def get(self, model, key):
-            return SimpleNamespace(scan_metadata={"pr_mode": "local"})
+            return SimpleNamespace(tenant_id="raja", scan_metadata={"pr_mode": "local"})
 
     session = _LocalProjectSession()
     dispatcher = TaskDispatcher.__new__(TaskDispatcher)

@@ -192,7 +192,7 @@ class EvalService:
             async with self._sf() as session:
                 suite = await session.get(EvalSuite, suite_id)
             if suite is not None:
-                llm_fn = llm_fn_for(suite.task_type)
+                llm_fn = llm_fn_for(suite.task_type, tenant_id)
             if llm_fn is None:
                 logger.warning("No task runner for suite %s — dry run with empty output", suite_id)
 
