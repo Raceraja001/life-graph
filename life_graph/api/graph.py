@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.storage.graph import LABEL_PATTERN, graph_available
+from life_graph.config import settings
+from life_graph.storage.graph import DEFAULT_GRAPH_TENANT, LABEL_PATTERN, graph_available
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,14 @@ async def get_entity(name: str):
     summary="Execute a Cypher query",
 )
 async def execute_cypher(body: CypherQuery):
+    """Execute a raw Cypher query against the knowledge graph."""
+    current_tenant = get_current_tenant_id()
+    if current_tenant != DEFAULT_GRAPH_TENANT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Raw Cypher execution is restricted to the administrative tenant.",
+        )
+
     """Execute a raw Cypher query against the knowledge graph.
 
     **Admin-level endpoint** — allows arbitrary read queries.

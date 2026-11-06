@@ -358,3 +358,20 @@ class TestApi:
         response = await client.request(method, url, headers={"X-Tenant-ID": "A"}, **kwargs)
 
         assert response.status_code == 422
+
+    async def test_cypher_query_rejected_for_non_admin_tenant(self, client):
+        response = await client.post(
+            "/api/v1/graph/query",
+            json={"cypher": "MATCH (n) RETURN n"},
+            headers={"X-Tenant-ID": "tenant-b"},
+        )
+        assert response.status_code == 403
+        assert "restricted to the administrative tenant" in response.json()["detail"]
+
+    async def test_cypher_query_allowed_for_admin_tenant(self, client):
+        response = await client.post(
+            "/api/v1/graph/query",
+            json={"cypher": "MATCH (n) RETURN n"},
+            headers={"X-Tenant-ID": "default"},
+        )
+        assert response.status_code == 200
