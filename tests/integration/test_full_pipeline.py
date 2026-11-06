@@ -19,19 +19,8 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-
-def _service_up(port: int) -> bool:
-    """True if something is listening on localhost:port."""
-    import socket
-
-    with socket.socket() as s:
-        s.settimeout(0.3)
-        return s.connect_ex(("127.0.0.1", port)) == 0
-
-
-
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, minio_available, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test-pipeline-tenant",
@@ -169,8 +158,7 @@ class TestIngestionPipeline:
     @skip_on_db_error
     async def test_ingest_empty_text(self, client):
         r = await client.post("/api/v1/admin/ingest", json={"text": ""})
-        # Empty text should return 201 with empty list or 422
-        assert r.status_code in (201, 422)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -297,8 +285,7 @@ class TestSearch:
     @skip_on_db_error
     async def test_search_empty_query(self, client):
         r = await client.post("/api/v1/search/", json={"query": "", "limit": 5})
-        # Should return 422 or empty results
-        assert r.status_code in (200, 422)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -317,20 +304,19 @@ class TestSearch:
 
 
 class TestGraphEndpoints:
-    """Test graph API endpoints (may return empty if AGE not configured)."""
+    """Test graph API endpoints (200 with empty data if AGE is not installed)."""
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_entities(self, client):
         r = await client.get("/api/v1/graph/entities")
-        # Expect 200 or 503 if AGE not available
-        assert r.status_code in (200, 500, 503)
+        assert_ok(r, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_entity_detail(self, client):
         r = await client.get("/api/v1/graph/entity/Python")
-        assert r.status_code in (200, 404, 500, 503)
+        assert_ok(r, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -342,8 +328,7 @@ class TestGraphEndpoints:
                 "columns": ["n"],
             },
         )
-        # 200 if AGE works, 400 if query validation fails, 500/503 if not configured
-        assert r.status_code in (200, 400, 500, 503)
+        assert_ok(r, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -355,7 +340,7 @@ class TestGraphEndpoints:
                 "to_name": "PostgreSQL",
             },
         )
-        assert r.status_code in (200, 404, 500, 503)
+        assert_ok(r, 200)
 
 
 # ── Multi-Modal Endpoints ─────────────────────────────────────
@@ -386,19 +371,15 @@ class TestMultiModalEndpoints:
     @skip_on_db_error
     async def test_document_text_file(self, client):
         """Upload a simple text file as a document."""
+        if not minio_available():
+            pytest.skip("document ingest needs MinIO (docker compose up minio)")
         content = (
             f"This is a test document about machine learning. "
             f"I prefer PyTorch over TensorFlow. Test-{uuid.uuid4().hex[:8]}"
         )
         files = {"file": ("test.txt", content.encode(), "text/plain")}
         r = await client.post("/api/v1/ingest/document", files=files)
-        if r.status_code == 500 and not _service_up(9000):
-            pytest.skip(
-                "document ingest needs MinIO on :9000 (docker compose up minio); "
-                "the endpoint surfaces the connection failure as 500 rather "
-                "than 503, which is worth fixing separately"
-            )
-        assert r.status_code in (200, 201, 503)
+        assert_ok(r, 200)
 
 
 # ── Event Bus ──────────────────────────────────────────────────

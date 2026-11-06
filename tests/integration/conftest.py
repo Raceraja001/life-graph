@@ -193,6 +193,31 @@ def skip_on_db_error(func):
     return wrapper
 
 
+def assert_ok(response, expected_status: int | None = None) -> Any:
+    """Return *response*'s JSON body, or fail with the status and full body.
+
+    With no *expected_status* any 2xx passes; otherwise the status must match
+    exactly. A 5xx never passes, even if named: a route that crashed is not
+    a result to assert on. A success with no content (204) returns None.
+
+    Raises AssertionError rather than calling pytest.fail(), whose exception
+    is a BaseException — ``skip_on_db_error`` would never see it, and a run
+    with no database would fail instead of skipping.
+    """
+    status = response.status_code
+    if expected_status is None:
+        ok = 200 <= status < 300
+    else:
+        ok = status == expected_status and status < 500
+    if not ok:
+        wanted = "2xx" if expected_status is None else expected_status
+        raise AssertionError(
+            f"{response.request.method} {response.request.url} returned {status}, "
+            f"expected {wanted}\n{response.text}"
+        )
+    return response.json() if response.content else None
+
+
 # ── Built-in personas ─────────────────────────────────────────
 #
 # The app seeds built-in personas during lifespan startup, but the
