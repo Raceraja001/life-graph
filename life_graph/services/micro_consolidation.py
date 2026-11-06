@@ -337,6 +337,7 @@ class MicroConsolidator:
                             "memory_ids": [str(mem.id)],
                             "last_seen": mem.created_at.isoformat() if mem.created_at else None,
                         },
+                        tenant_id=mem.tenant_id,
                     )
                     canonical_names.append(name)
                     entities_created += 1
@@ -357,6 +358,7 @@ class MicroConsolidator:
                                 properties={
                                     "source_memory": str(mem.id),
                                 },
+                                tenant_id=mem.tenant_id,
                             )
                             edges_created += 1
                         except Exception:

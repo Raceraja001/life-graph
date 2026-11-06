@@ -25,11 +25,23 @@ from typing import Any
 import asyncpg
 
 from life_graph.config import settings
+from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
 
 logger = logging.getLogger(__name__)
 
 # Graph name used throughout the application
 GRAPH_NAME = "life_graph"
+
+# Tenant used when a caller passes none and no tenant context is set.
+DEFAULT_GRAPH_TENANT = "default"
+
+# Labels are spliced into the Cypher text, because AGE cannot parameterise them.
+# Anything looser lets ``Entity) RETURN n //`` comment out the tenant filter.
+LABEL_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+
+# A $param outside a string literal. Literals are matched first so that text
+# already in the query (edge properties, say) is never read as a placeholder.
+_PLACEHOLDER = re.compile(r"'(?:\\.|[^'\\])*'|\$(\w+)")
 
 
 # ── Process-wide pool + availability probe ────────────────────
@@ -77,6 +89,76 @@ def _parse_agtype(raw: str) -> Any:
         return json.loads(cleaned)
     except (json.JSONDecodeError, TypeError):
         return str(raw)
+
+
+def _resolve_tenant(tenant_id: str | None) -> str:
+    """The given tenant, else the current context's, else the default."""
+    if tenant_id is not None:
+        return tenant_id
+    return get_current_tenant_id() if has_tenant_context() else DEFAULT_GRAPH_TENANT
+
+
+def _safe_label(label: str) -> str:
+    """Return ``label`` if it is a bare identifier.
+
+    Raises:
+        ValueError: The label could alter the query it is spliced into.
+    """
+    if not re.fullmatch(LABEL_PATTERN, label):
+        raise ValueError(f"Invalid graph label: {label!r}")
+    return label
+
+
+def _cypher_literal(value: Any) -> str:
+    """Render a parameter value as a Cypher literal."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        # Escape single quotes for Cypher string literals
+        safe_val = value.replace("\\", "\\\\").replace("'", "\\'")
+        return f"'{safe_val}'"
+    if isinstance(value, (int, float)):
+        return str(value)
+    safe_val = json.dumps(value).replace("'", "\\'")
+    return f"'{safe_val}'"
+
+
+def _dollar_tag(text: str) -> str:
+    """A dollar-quote tag that does not occur in ``text``.
+
+    A plain ``$$`` wrapper would be closed by a value containing ``$$``, and
+    everything after it would run as SQL.
+    """
+    tag = "$cypher$"
+    while tag in text:
+        tag = f"{tag[:-1]}q$"
+    return tag
+
+
+def _hop_chain(
+    hops: int,
+    from_label: str,
+    to_label: str | None = None,
+    edge_label: str | None = None,
+) -> tuple[str, str]:
+    """Build a fixed-length pattern and a tenant filter covering every vertex.
+
+    Traversals are spelled out hop by hop because AGE 1.5 has no way to filter
+    the inside of a ``[*1..n]`` match: ``ALL(x IN nodes(p) ...)`` and list
+    comprehensions are syntax errors there. Filtering only the endpoints would
+    let a walk pass through another tenant's vertex.
+
+    Returns:
+        ``(pattern, where)``, binding the endpoints as ``a`` and ``b`` and
+        comparing each vertex to ``$tid``.
+    """
+    names = ["a", *(f"n{i}" for i in range(1, hops)), "b"]
+    vertices = [f"({name})" for name in names]
+    vertices[0] = f"(a:{_safe_label(from_label)})"
+    if to_label:
+        vertices[-1] = f"(b:{_safe_label(to_label)})"
+    rel = f"-[:{_safe_label(edge_label)}]-" if edge_label else "-[]-"
+    return rel.join(vertices), " AND ".join(f"{name}.tenant_id = $tid" for name in names)
 
 
 def _to_cypher_props(props: dict[str, Any]) -> str:
@@ -272,26 +354,19 @@ class GraphStore:
 
         col_spec = ", ".join(f"{c} agtype" for c in columns)
 
-        # AGE doesn't support $-params in Cypher — inject safely
+        # AGE doesn't support $-params in Cypher — inject safely, in one pass so
+        # that a value containing "$tid" is not expanded by the next parameter.
         resolved_cypher = cypher
         if params:
-            for key, value in params.items():
-                placeholder = f"${key}"
-                if isinstance(value, str):
-                    # Escape single quotes for Cypher string literals
-                    safe_val = value.replace("\\", "\\\\").replace("'", "\\'")
-                    resolved_cypher = resolved_cypher.replace(placeholder, f"'{safe_val}'")
-                elif isinstance(value, (int, float)):
-                    resolved_cypher = resolved_cypher.replace(placeholder, str(value))
-                elif isinstance(value, bool):
-                    resolved_cypher = resolved_cypher.replace(
-                        placeholder, "true" if value else "false"
-                    )
-                else:
-                    safe_val = json.dumps(value).replace("'", "\\'")
-                    resolved_cypher = resolved_cypher.replace(placeholder, f"'{safe_val}'")
+            resolved_cypher = _PLACEHOLDER.sub(
+                lambda m: (
+                    _cypher_literal(params[m.group(1)]) if m.group(1) in params else m.group(0)
+                ),
+                cypher,
+            )
 
-        sql = f"SELECT * FROM cypher('{GRAPH_NAME}', $$ {resolved_cypher} $$) AS ({col_spec})"
+        tag = _dollar_tag(resolved_cypher)
+        sql = f"SELECT * FROM cypher('{GRAPH_NAME}', {tag} {resolved_cypher} {tag}) AS ({col_spec})"
 
         # Short-circuit *before* touching the pool: ``_get_pool`` is not inside
         # the try/except below, so a connection failure here would escape as an
@@ -325,39 +400,53 @@ class GraphStore:
 
     # ── Vertex Operations ─────────────────────────────────────
 
-    async def create_vertex(self, label: str, properties: dict[str, Any]) -> str:
+    async def create_vertex(
+        self, label: str, properties: dict[str, Any], tenant_id: str | None = None
+    ) -> str:
         """Create a vertex with the given label and properties.
 
         Args:
             label: Vertex label (e.g. ``Technology``, ``Person``).
             properties: Key-value properties for the vertex.
+            tenant_id: Owning tenant. Defaults to the current tenant, and
+                overrides any ``tenant_id`` in ``properties``.
 
         Returns:
             String representation of the vertex's graph ID.
         """
-        props_cypher = _to_cypher_props(properties)
-        cypher = f"CREATE (n:{label} {props_cypher}) RETURN id(n)"
+        props_cypher = _to_cypher_props({**properties, "tenant_id": _resolve_tenant(tenant_id)})
+        cypher = f"CREATE (n:{_safe_label(label)} {props_cypher}) RETURN id(n)"
         results = await self.execute_cypher(cypher)
         if results:
             return str(results[0]["v"])
         return ""
 
-    async def get_vertex(self, label: str, name: str) -> dict[str, Any] | None:
-        """Find a vertex by label and name property.
+    async def get_vertex(
+        self, label: str, name: str, tenant_id: str | None = None
+    ) -> dict[str, Any] | None:
+        """Find a tenant's vertex by label and name property.
 
         Returns:
             Vertex data dict or None if not found.
         """
-        cypher = "MATCH (n:{label}) WHERE n.name = $name RETURN n".replace("{label}", label)
-        results = await self.execute_cypher(cypher, params={"name": name})
+        cypher = (
+            f"MATCH (n:{_safe_label(label)}) WHERE n.name = $name AND n.tenant_id = $tid RETURN n"
+        )
+        results = await self.execute_cypher(
+            cypher, params={"name": name, "tid": _resolve_tenant(tenant_id)}
+        )
         if results:
             return results[0]["v"]
         return None
 
     async def upsert_vertex(
-        self, label: str, name: str, properties: dict[str, Any] | None = None
+        self,
+        label: str,
+        name: str,
+        properties: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
     ) -> str:
-        """Create a vertex if it doesn't exist, or return existing.
+        """Create a vertex if the tenant doesn't have it, or return existing.
 
         AGE doesn't support MERGE natively in all versions, so we
         check existence first.
@@ -365,7 +454,8 @@ class GraphStore:
         Returns:
             String representation of the vertex's graph ID.
         """
-        existing = await self.get_vertex(label, name)
+        tenant_id = _resolve_tenant(tenant_id)
+        existing = await self.get_vertex(label, name, tenant_id=tenant_id)
         if existing:
             vertex_id = existing.get("id", "")
             return str(vertex_id)
@@ -373,7 +463,7 @@ class GraphStore:
         props = {"name": name}
         if properties:
             props.update(properties)
-        return await self.create_vertex(label, props)
+        return await self.create_vertex(label, props, tenant_id=tenant_id)
 
     # ── Edge Operations ───────────────────────────────────────
 
@@ -385,8 +475,9 @@ class GraphStore:
         to_name: str,
         edge_label: str,
         properties: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
     ) -> str:
-        """Create an edge between two vertices identified by label+name.
+        """Create an edge between two of a tenant's vertices, by label+name.
 
         Args:
             from_label: Source vertex label.
@@ -395,22 +486,30 @@ class GraphStore:
             to_name: Target vertex name.
             edge_label: Relationship type.
             properties: Optional edge properties.
+            tenant_id: Tenant both vertices must belong to. Defaults to the
+                current tenant.
 
         Returns:
-            String representation of the edge's graph ID.
+            String representation of the edge's graph ID, or ``""`` when either
+            vertex is missing from this tenant.
         """
         props_str = _to_cypher_props(properties) if properties else ""
         edge_props = f" {props_str}" if props_str else ""
 
         cypher = (
-            f"MATCH (a:{from_label}), (b:{to_label}) "
-            f"WHERE a.name = $from_name AND b.name = $to_name "
-            f"CREATE (a)-[e:{edge_label}{edge_props}]->(b) "
+            f"MATCH (a:{_safe_label(from_label)}), (b:{_safe_label(to_label)}) "
+            f"WHERE a.name = $from_name AND a.tenant_id = $tid "
+            f"AND b.name = $to_name AND b.tenant_id = $tid "
+            f"CREATE (a)-[e:{_safe_label(edge_label)}{edge_props}]->(b) "
             f"RETURN id(e)"
         )
         results = await self.execute_cypher(
             cypher,
-            params={"from_name": from_name, "to_name": to_name},
+            params={
+                "from_name": from_name,
+                "to_name": to_name,
+                "tid": _resolve_tenant(tenant_id),
+            },
         )
         if results:
             return str(results[0]["v"])
@@ -424,34 +523,39 @@ class GraphStore:
         vertex_label: str = "Entity",
         edge_label: str | None = None,
         depth: int = 1,
+        tenant_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Get neighbors of a vertex up to a given depth.
+        """Get a tenant's neighbors of a vertex up to a given depth.
 
         Args:
             vertex_name: Name property of the source vertex.
             vertex_label: Label of the source vertex.
             edge_label: Optional filter on edge label.
             depth: Maximum traversal depth (1–5).
+            tenant_id: Tenant every vertex on the walk must belong to.
+                Defaults to the current tenant.
 
         Returns:
             List of dicts with neighbor info and relationship type.
         """
         depth = min(max(depth, 1), 5)
-
-        rel = f"[r:{edge_label}*1..{depth}]" if edge_label else f"[r*1..{depth}]"
-
-        cypher = f"MATCH (a:{vertex_label})-{rel}-(b) WHERE a.name = $name RETURN b"
-        results = await self.execute_cypher(cypher, params={"name": vertex_name})
+        tenant_id = _resolve_tenant(tenant_id)
 
         neighbors: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for row in results:
-            v = row.get("v")
-            if v and isinstance(v, dict):
-                name = v.get("properties", {}).get("name", "")
-                if name and name not in seen:
-                    seen.add(name)
-                    neighbors.append(v)
+        for hops in range(1, depth + 1):
+            pattern, scope = _hop_chain(hops, vertex_label, edge_label=edge_label)
+            results = await self.execute_cypher(
+                f"MATCH {pattern} WHERE a.name = $name AND {scope} RETURN b",
+                params={"name": vertex_name, "tid": tenant_id},
+            )
+            for row in results:
+                v = row.get("v")
+                if v and isinstance(v, dict):
+                    name = v.get("properties", {}).get("name", "")
+                    if name and name not in seen:
+                        seen.add(name)
+                        neighbors.append(v)
 
         return neighbors
 
@@ -462,37 +566,40 @@ class GraphStore:
         to_label: str,
         to_name: str,
         max_depth: int = 5,
+        tenant_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Find a path between two vertices.
+        """Find a path between two vertices, staying inside one tenant.
 
-        Uses variable-length relationship matching to find any
-        connecting path up to ``max_depth`` hops.
+        Tries each length up to ``max_depth`` hops in turn, so the path
+        returned is a shortest one.
 
         Returns:
             List of vertices along the path, or empty if no path exists.
         """
         max_depth = min(max(max_depth, 1), 10)
-        cypher = (
-            f"MATCH p = (a:{from_label})-[*1..{max_depth}]-(b:{to_label}) "
-            f"WHERE a.name = $from_name AND b.name = $to_name "
-            f"RETURN p"
-        )
-        results = await self.execute_cypher(
-            cypher,
-            params={"from_name": from_name, "to_name": to_name},
-            columns=["p"],
-        )
+        tenant_id = _resolve_tenant(tenant_id)
 
-        if not results:
-            return []
+        for hops in range(1, max_depth + 1):
+            pattern, scope = _hop_chain(hops, from_label, to_label)
+            results = await self.execute_cypher(
+                f"MATCH p = {pattern} "
+                f"WHERE a.name = $from_name AND b.name = $to_name AND {scope} "
+                f"RETURN p",
+                params={"from_name": from_name, "to_name": to_name, "tid": tenant_id},
+                columns=["p"],
+            )
+            if not results:
+                continue
 
-        # Parse the path — AGE returns it as a nested structure
-        path_data = results[0].get("p")
-        if isinstance(path_data, list):
-            return path_data
-        if isinstance(path_data, dict):
-            return [path_data]
-        return [{"raw": str(path_data)}]
+            # Parse the path — AGE returns it as a nested structure
+            path_data = results[0].get("p")
+            if isinstance(path_data, list):
+                return path_data
+            if isinstance(path_data, dict):
+                return [path_data]
+            return [{"raw": str(path_data)}]
+
+        return []
 
     # ── Search ────────────────────────────────────────────────
 
@@ -500,29 +607,27 @@ class GraphStore:
         self,
         query: str,
         label: str | None = None,
+        tenant_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Search for entities by name using case-insensitive substring match.
+        """Search a tenant's entities by case-insensitive substring match on name.
 
         Args:
             query: Search term to match against entity names.
             label: Optional vertex label filter.
+            tenant_id: Tenant to search. Defaults to the current tenant.
 
         Returns:
             List of matching vertex dicts.
         """
-        target_label = label if label else "Entity"
-
-        # Search across the specific label or all labels if Entity
-        if label and label != "Entity":
-            cypher = f"MATCH (n:{target_label}) WHERE n.name =~ $pattern RETURN n"
-        else:
-            # Search all vertices — use the base Entity label
-            # but also check all specific labels
-            cypher = "MATCH (n) WHERE n.name =~ $pattern RETURN n"
+        # Search the specific label, or every vertex when the label is Entity
+        match = f"MATCH (n:{_safe_label(label)})" if label and label != "Entity" else "MATCH (n)"
+        cypher = f"{match} WHERE n.name =~ $pattern AND n.tenant_id = $tid RETURN n"
 
         # AGE uses =~ for regex matching (case-insensitive)
         pattern = f"(?i).*{re.escape(query)}.*"
-        results = await self.execute_cypher(cypher, params={"pattern": pattern})
+        results = await self.execute_cypher(
+            cypher, params={"pattern": pattern, "tid": _resolve_tenant(tenant_id)}
+        )
 
         entities: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -536,15 +641,18 @@ class GraphStore:
 
         return entities
 
-    async def get_all_entities(self, label: str | None = None) -> list[dict[str, Any]]:
-        """List all entities, optionally filtered by label.
+    async def get_all_entities(
+        self, label: str | None = None, tenant_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """List a tenant's entities, optionally filtered by label.
 
         Returns:
             List of vertex dicts.
         """
-        cypher = f"MATCH (n:{label}) RETURN n" if label else "MATCH (n) RETURN n"
+        match = f"MATCH (n:{_safe_label(label)})" if label else "MATCH (n)"
+        cypher = f"{match} WHERE n.tenant_id = $tid RETURN n"
 
-        results = await self.execute_cypher(cypher)
+        results = await self.execute_cypher(cypher, params={"tid": _resolve_tenant(tenant_id)})
 
         entities: list[dict[str, Any]] = []
         for row in results:
@@ -599,6 +707,7 @@ class GraphStore:
                         "choice": choice,
                         "confidence": confidence,
                     },
+                    tenant_id=tenant_id,
                 )
             logger.debug("Graph: preference node %s upserted", preference_id)
         except Exception:
@@ -631,6 +740,7 @@ class GraphStore:
                     "stance": stance,
                     "strength": strength,
                 },
+                tenant_id=tenant_id,
             )
             # Link to parent preference
             edge_label = stance.upper()

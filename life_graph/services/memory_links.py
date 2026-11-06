@@ -85,7 +85,7 @@ async def create_link(
         await session.refresh(link)
 
     # Sync to AGE graph (best-effort)
-    await _sync_link_to_graph(source_id, target_id, link_type, strength)
+    await _sync_link_to_graph(source_id, target_id, link_type, strength, tenant_id)
 
     return link
 
@@ -304,6 +304,7 @@ async def _sync_link_to_graph(
     target_id: uuid.UUID,
     link_type: str,
     strength: float,
+    tenant_id: str,
 ) -> None:
     """Best-effort sync of a memory link to the Apache AGE graph."""
     try:
@@ -314,11 +315,13 @@ async def _sync_link_to_graph(
             label="Memory",
             name=str(source_id),
             properties={"memory_id": str(source_id)},
+            tenant_id=tenant_id,
         )
         await graph.upsert_vertex(
             label="Memory",
             name=str(target_id),
             properties={"memory_id": str(target_id)},
+            tenant_id=tenant_id,
         )
         await graph.create_edge(
             from_label="Memory",
@@ -327,6 +330,7 @@ async def _sync_link_to_graph(
             to_name=str(target_id),
             edge_label=link_type,
             properties={"strength": strength},
+            tenant_id=tenant_id,
         )
     except Exception:
         logger.debug("Graph store not available for link sync", exc_info=True)
