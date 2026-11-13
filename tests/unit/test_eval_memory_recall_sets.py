@@ -79,3 +79,44 @@ async def test_a_tamil_copy_keeps_the_answer_and_the_english(ev):
 async def test_recall_refuses_a_pool_it_cannot_read(ev):
     with pytest.raises(ValueError, match="active memories only"):
         await ev.mod._search("recall", "anything", 10, "archived")
+
+
+async def test_run_tracks_temporal_as_of_excluded_ids_and_metadata(ev, monkeypatch):
+    cases = [
+        {
+            "q": "Where did I live in 2024?",
+            "memory_id": "m_old",
+            "as_of": "2024-06-01T00:00:00Z",
+            "excluded_memory_ids": ["m_deleted"],
+        },
+        {
+            "q": "Do I own a submarine?",
+            "memory_id": None,
+            "excluded_memory_ids": ["m_deleted"],
+        },
+    ]
+    (ev.dir / "t_p1.json").write_text(json.dumps({"tenant": "t", "version": "v1", "cases": cases}))
+
+    seen_as_of = []
+
+    async def fake_search(method, query, k, pool, as_of=None):
+        seen_as_of.append(as_of)
+        if as_of is not None:
+            return ["m_old"]
+        return []
+
+    monkeypatch.setattr(ev.mod, "_search", fake_search)
+    report = await ev.mod.run("t", "p1", ["recall"], 5, "active")
+
+    assert len(seen_as_of) == 2
+    assert seen_as_of[0] is not None and seen_as_of[0].year == 2024
+    assert seen_as_of[1] is None
+    assert report["recall"]["temporal_cases"] == 1
+    assert report["recall"]["temporal_hit@1"] == 1.0
+    assert report["recall"]["excluded_clean"] == "2/2"
+    assert report["recall"]["abstained_on_unanswerable"] == "1/1"
+
+    runs = (ev.dir / "t_p1_runs.jsonl").read_text().strip().splitlines()
+    last = json.loads(runs[-1])
+    assert last["set_version"] == "v1"
+    assert "metadata" in last and "git_sha" in last["metadata"]

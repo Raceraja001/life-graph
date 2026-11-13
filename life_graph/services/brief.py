@@ -34,6 +34,38 @@ logger = logging.getLogger(__name__)
 BRIEF_KIND = "daily_brief"
 
 
+def build_brief_evidence(
+    *,
+    held: list[Any],
+    questions: list[dict[str, Any]],
+    capture_summary: dict[str, Any],
+    watcher_summary: Any,
+    big_decisions: list[Any],
+    approvals_line: str | None = None,
+    memory_lines: list[str] | None = None,
+    night_shift: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Build 'why am I seeing this?' evidence items for the daily brief (P3 §3.13)."""
+    evidence: list[dict[str, Any]] = []
+    if held:
+        evidence.append({"section": "held_notifications", "count": len(held), "why": "Unread high-priority notifications since last brief"})
+    if questions:
+        evidence.append({"section": "interview_questions", "count": len(questions), "why": "Daily memory-gap questions scheduled for user review"})
+    if capture_summary.get("total"):
+        evidence.append({"section": "captures", "count": capture_summary["total"], "why": "New captures recorded in the last 24 hours"})
+    if watcher_summary:
+        evidence.append({"section": "watchers", "count": len(watcher_summary) if isinstance(watcher_summary, (list, dict)) else 1, "why": "Background watcher activity in the last 24 hours"})
+    if big_decisions:
+        evidence.append({"section": "decisions", "count": len(big_decisions), "why": "High-impact decisions logged in the last 24 hours"})
+    if approvals_line:
+        evidence.append({"section": "approvals", "count": 1, "why": "Pending approval items awaiting sign-off"})
+    if memory_lines:
+        evidence.append({"section": "memory", "count": len(memory_lines), "why": "Memory yield and review-queue updates"})
+    if night_shift:
+        evidence.append({"section": "night_shift", "count": len(night_shift), "why": "Overnight automated tasks completed or queued"})
+    return evidence
+
+
 class BriefComposer:
     """Composes and stores the daily brief for a tenant."""
 
@@ -139,6 +171,16 @@ class BriefComposer:
             # the full local rendering from the metadata below.
             body = f"{connector_sections['external']['text']}\n\n{body}".strip()
         title = f"Daily Brief — {now.date().isoformat()}"
+        evidence = build_brief_evidence(
+            held=held,
+            questions=question_data,
+            capture_summary=capture_summary,
+            watcher_summary=watcher_summary,
+            big_decisions=big_decisions,
+            approvals_line=approvals_line,
+            memory_lines=memory_lines,
+            night_shift=night_shift,
+        )
 
         async with self._session_factory() as session:
             notif = Notification(
@@ -156,6 +198,7 @@ class BriefComposer:
                     "watcher_summary": watcher_summary,
                     "big_decisions": big_decisions,
                     "connectors": connector_sections["local"] if connector_sections else None,
+                    "evidence": evidence,
                 },
                 source_type="brief",
             )
@@ -186,6 +229,7 @@ class BriefComposer:
             "title": title,
             "body": body,
             "questions": question_data,
+            "evidence": evidence,
         }
 
     # ── Read ──────────────────────────────────────────────────

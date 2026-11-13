@@ -8,6 +8,8 @@ gaps can be surfaced.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import logging
 import time
 import uuid
@@ -115,6 +117,16 @@ class AskRequest(BaseModel):
             "disclosure. Off by default to keep the existing response shape."
         ),
     )
+    as_of: datetime | None = Field(
+        default=None,
+        description="Optional UTC timestamp to answer as of a historical point in time.",
+    )
+    min_confidence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Minimum memory confidence required; below this, abstain without hallucinating.",
+    )
 
 
 class AskResponse(BaseModel):
@@ -138,6 +150,12 @@ class AskResponse(BaseModel):
     # Echoed back like SearchResult.search_mode: the mode actually used.
     result_mode: str = "full"
     index: list[MemoryIndexItem] = []
+    abstained: bool = False
+    abstention_reason: str | None = None
+    as_of: datetime | None = None
+    knowledge_gaps: list[str] = Field(default_factory=list)
+    domains_covered: dict[str, int] = Field(default_factory=dict)
+    challenge_prompts: list[str] = Field(default_factory=list)
 
 
 # ── Projection helpers ───────────────────────────────────────
@@ -490,6 +508,79 @@ async def mid_session_recall(
     "/ask",
     summary="Ask a question — get a synthesized answer from memories",
 )
+def summarize_cross_domain(memories: list[Any]) -> dict[str, int]:
+    """Summarize which memory domains/categories contributed evidence (P2 §3.9)."""
+    counts: dict[str, int] = {}
+    for m in memories:
+        key = str(
+            getattr(m, "category", None)
+            or getattr(m, "memory_type", None)
+            or getattr(m, "source_type", None)
+            or "general"
+        ).lower()
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def detect_challenge_prompts(
+    memories: list[Any],
+    *,
+    now: datetime | None = None,
+    stale_days: int = 90,
+) -> list[str]:
+    """Flag old, rarely revisited preferences/assumptions for user review (P2 §3.12)."""
+    from datetime import UTC, datetime
+
+    ref = now or datetime.now(UTC)
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=UTC)
+    prompts: list[str] = []
+    for m in memories:
+        mtype = str(getattr(m, "memory_type", "") or "").lower()
+        cat = str(getattr(m, "category", "") or "").lower()
+        if mtype not in ("preference", "decision") and cat != "preference":
+            continue
+        ts = getattr(m, "updated_at", None) or getattr(m, "created_at", None)
+        if ts is None:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        age_days = (ref - ts).total_seconds() / 86400.0
+        uses = int(getattr(m, "access_count", 0) or 0)
+        if age_days >= stale_days and uses <= 2:
+            prompts.append(
+                f"Old {cat or mtype} ({int(age_days)}d old) surfaced — confirm whether this preference/assumption still holds."
+            )
+            break
+    return prompts
+
+
+def detect_knowledge_gaps(
+    memories: list[Any],
+    *,
+    abstained: bool,
+    abstention_reason: str | None,
+) -> list[str]:
+    """Identify missing, low-confidence, stale, or lower-trust evidence gaps (P2 §3.11)."""
+    gaps: list[str] = []
+    if abstained:
+        if abstention_reason == "no_matching_memories":
+            gaps.append("No matching memories found — clarify or record the missing detail.")
+        elif abstention_reason == "low_confidence":
+            gaps.append("Matching memories are below the confidence threshold — confirm if still accurate.")
+        return gaps
+    if not memories:
+        return gaps
+    max_conf = max((float(getattr(m, "confidence", 0.5) or 0.5) for m in memories), default=0.0)
+    if max_conf < 0.55:
+        gaps.append("Retrieved evidence has low confidence — confirm whether this is still current.")
+    if any(str(getattr(m, "status", "") or "").lower() in ("superseded", "archived") for m in memories):
+        gaps.append("Includes historical or superseded memories — confirm the current state.")
+    if any(float(getattr(m, "trust_score", 0.5) or 0.5) < 0.4 for m in memories):
+        gaps.append("Includes lower-trust sources — verify against primary records if critical.")
+    return gaps
+
+
 async def ask_brain(
     body: AskRequest,
     store: PostgresMemoryStore = Depends(get_store),
@@ -519,7 +610,7 @@ async def ask_brain(
     # 89.2% judged, on the owner's memories).
     from life_graph.services.memory_retrieval import retrieve
 
-    rows = await retrieve(body.question, limit=body.limit)
+    rows = await retrieve(body.question, limit=body.limit, as_of=body.as_of)
     if rows is None:
         return AskResponse(
             answer="Embedding service is unavailable. Cannot search memories.",
@@ -537,13 +628,45 @@ async def ask_brain(
         embedding=embedding,
     )
 
-    # Synthesize answer
+    # Deterministic calibrated abstention when evidence is absent or below min_confidence
+    if not memories:
+        return AskResponse(
+            answer="I don't have enough stored evidence to answer that.",
+            answered=False,
+            abstained=True,
+            abstention_reason="no_matching_memories",
+            knowledge_gaps=detect_knowledge_gaps([], abstained=True, abstention_reason="no_matching_memories"),
+            source_count=0,
+            query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
+            result_mode="index" if body.index_only else "full",
+            as_of=body.as_of,
+        )
+    if body.min_confidence > 0 and max_confidence < body.min_confidence:
+        return AskResponse(
+            answer=f"Stored memories are below the required confidence threshold ({max_confidence:.2f} < {body.min_confidence:.2f}).",
+            answered=False,
+            abstained=True,
+            abstention_reason="low_confidence",
+            knowledge_gaps=detect_knowledge_gaps(memories, abstained=True, abstention_reason="low_confidence"),
+            source_count=len(memories),
+            memories=[] if body.index_only else memories,
+            query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
+            result_mode="index" if body.index_only else "full",
+            index=_to_index_items([(r, 0.0) for r in rows]) if body.index_only else [],
+            as_of=body.as_of,
+        )
+
+    # Synthesize answer (include provenance & temporal validity metadata)
     memory_dicts = [
         {
             "id": str(m.id),
             "content": m.content,
             "tags": m.tags,
             "importance": m.importance,
+            "confidence": m.confidence,
+            "source_type": m.source_type,
+            "valid_from": str(m.valid_from) if getattr(m, "valid_from", None) else None,
+            "valid_until": str(m.valid_until) if getattr(m, "valid_until", None) else None,
             "created_at": str(m.created_at) if m.created_at else "unknown",
         }
         for m in memories
@@ -565,6 +688,10 @@ async def ask_brain(
         query_time_ms=round(query_time_ms, 2),
         result_mode="index" if body.index_only else "full",
         index=_to_index_items([(r, 0.0) for r in rows]) if body.index_only else [],
+        as_of=body.as_of,
+        knowledge_gaps=detect_knowledge_gaps(memories, abstained=False, abstention_reason=None),
+        domains_covered=summarize_cross_domain(memories),
+        challenge_prompts=detect_challenge_prompts(memories),
     )
     full = (
         AskResponse(

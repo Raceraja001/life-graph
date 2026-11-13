@@ -279,9 +279,14 @@ class LMStudioClient:
                 input=text,
             )
             return response.data[0].embedding
-        except Exception:
-            logger.exception("LM Studio embedding failed (model=%s)", model)
-            return []
+        except Exception as exc:
+            logger.warning("LM Studio embedding failed (model=%s): %s; trying Ollama fallback", model, exc)
+            try:
+                vectors = await self._ollama_embed([text])
+                return vectors[0] if vectors else []
+            except Exception:
+                logger.exception("Ollama embedding fallback failed (model=%s)", model)
+                return []
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Generate embeddings for multiple texts (always local)."""
@@ -310,8 +315,14 @@ class LMStudioClient:
                 input=texts,
             )
             return [item.embedding for item in response.data]
-        except Exception:
-            logger.exception("LM Studio batch embedding failed (model=%s)", model)
+        except Exception as exc:
+            logger.warning("LM Studio batch embedding failed (model=%s): %s; trying Ollama fallback", model, exc)
+            try:
+                vectors = await self._ollama_embed(texts)
+                if len(vectors) == len(texts):
+                    return vectors
+            except Exception:
+                logger.exception("Ollama batch embedding fallback failed (model=%s)", model)
             return [[] for _ in texts]
 
     def list_models(self) -> list[str]:
