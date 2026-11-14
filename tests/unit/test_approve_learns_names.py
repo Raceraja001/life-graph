@@ -24,7 +24,7 @@ class _Store:
     async def retrieve(self, memory_id):
         return self.row
 
-    async def update(self, memory_id, update):
+    async def update(self, memory_id, update, *, server_side: bool = False):
         self.row = SimpleNamespace(**{**vars(self.row), "status": update.status})
         return self.row
 
