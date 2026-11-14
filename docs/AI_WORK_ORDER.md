@@ -237,7 +237,7 @@ from any row whose remaining gap is operational.
 ```text
 Date: 2026-11-14
 Remote base commit: a9f35c97ad4c39bd8a6bc9d174b398306c9d6213 (origin/master == local HEAD at session start)
-Working commit: see "Commit(s) pushed" below
+Working commit: b597fa2b73db6e550b93ae50c7d974960a679720
 Tasks inspected: section 2 (P0 exact-bound approval), section 4 (P1 durable
   authorization), section 5 (P1 historical relative-date episodes). Sections 3,
   6, 7 and 8 were read but not implemented this session.
@@ -424,7 +424,9 @@ Remaining risks / blockers:
   - 26 pre-existing unit-test failures in this working tree remain
     unaddressed; they are environmental and predate this work.
 
-Commit(s) pushed: see the session's completion report.
+Commit(s) pushed: none yet. Committed locally as b597fa2b73db on
+  feat/work-order-p0-p1; pushing is held for the owner, who has not been
+  asked for it in this session.
 ```
 
 ### Entry template
