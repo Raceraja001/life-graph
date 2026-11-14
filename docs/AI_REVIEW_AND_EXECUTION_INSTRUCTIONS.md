@@ -385,3 +385,9 @@ A feature is not done merely because its schema, API endpoint or service exists.
 | **P0.4** | Completed | `life_graph/services/memory_retrieval.py` (`provenance_score`, `provenance_tiebreak_order` with 2% near-tie band, `explain_retrieval_selection`) | `tests/unit/test_provenance_retrieval.py`, `scripts/eval_memory_recall.py --tenant raja --set live --methods recall` (`hit@1=0.692`, `abstained=15/15`) |
 | **P0.5** | Completed | `life_graph/services/judgment.py` (`trace_causal_chain`, `get_causal_chain`), `life_graph/services/outcome_resolver.py` (`record_evidence_backed_outcome`, `evidence_backed` tagging) | `tests/unit/test_causal_memory.py` |
 | **P0.6** | Completed | `life_graph/services/episodes.py` (`link_experience_to_decision`), `life_graph/api/procedures.py` (`build_procedure_candidate`, `verify_procedure_candidate`, `can_auto_execute_side_effects`) | `tests/unit/test_episodic_procedural_learning.py` |
+| **Workstream 7** | Completed | `tests/unit/test_p0_end_to_end_scenarios.py` (cross-cutting Section 5 scenarios: bitemporal correction & historical `as_of`/`recorded_as_of`, explicit vs inferred + conflict uncertainty, causal chain + bounded episode link + safe procedure) | `tests/unit/test_p0_end_to_end_scenarios.py` + full 11-module unit suite (`55 passed`) + `scripts/eval_memory_recall.py --tenant raja --set live --methods recall` |
+
+### Recorded Baseline (`eval_memory_recall.py`)
+- **Dataset**: `raja` / `live` (`answerable=13`, `unanswerable=15`)
+- **Method**: `recall` (hybrid RRF + provenance near-tie 2% tiebreak + relevance judge)
+- **Metrics**: `hit@1 = 0.692`, `hit@5 = 0.692`, `mrr = 0.692`, `abstained_on_unanswerable = 15/15`, `ms_per_query = 3216`
