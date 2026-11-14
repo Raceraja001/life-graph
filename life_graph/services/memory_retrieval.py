@@ -120,23 +120,106 @@ async def _with_neighbours(tenant_id: str, candidates: list[Any]) -> list[Any]:
 
 
 def provenance_score(m: Any) -> float:
-    """Bounded provenance score in [0.0, 1.0] from trust_score, confidence, and source/tier."""
+    """Bounded provenance score in [0.0, 1.0] using evidence kind, trust, confidence, and corroboration."""
+    from life_graph.core.evidence import DOCUMENT, INFERRED, OBSERVED, OUTSIDE, SAID, evidence_of
+
+    props = getattr(m, "properties", None) or {}
+    if not isinstance(props, dict):
+        props = {}
     trust = float(getattr(m, "trust_score", 0.5) or 0.5)
     conf = float(getattr(m, "confidence", 0.5) or 0.5)
     tier = str(getattr(m, "trust_tier", "") or "").lower()
     src_type = str(getattr(m, "source_type", "") or "").lower()
+    ev_kind = evidence_of(src_type, tier, props)
+
     bonus = 0.0
-    if tier in ("verified", "owner", "canonical") or src_type in ("user_explicit", "manual"):
-        bonus = 0.15
-    elif tier in ("inferred", "unverified"):
+    if ev_kind == SAID or tier in ("self", "verified", "owner", "canonical") or src_type in ("user_explicit", "manual"):
+        bonus = 0.18
+    elif ev_kind == DOCUMENT:
+        bonus = 0.12
+    elif ev_kind == OBSERVED:
+        bonus = 0.10
+    elif ev_kind == INFERRED or tier in ("inferred", "unverified"):
+        bonus = -0.08
+    elif ev_kind == OUTSIDE:
         bonus = -0.05
-    raw = 0.5 * trust + 0.5 * conf + bonus
+
+    corrob = props.get("corroboration_count", 0)
+    try:
+        corrob_n = max(0, int(corrob))
+    except (TypeError, ValueError):
+        corrob_n = 0
+    bonus += min(0.08, 0.02 * corrob_n)
+
+    raw = 0.45 * trust + 0.45 * conf + bonus
     return max(0.0, min(1.0, raw))
 
 
 def provenance_order(hits: list[tuple[Any, float]]) -> list[tuple[Any, float]]:
     """Apply a bounded +/-10% provenance tie-breaker to hybrid search hits."""
     return sorted(hits, key=lambda h: -h[1] * (0.90 + 0.20 * provenance_score(h[0])))
+
+
+def provenance_tiebreak_order(
+    hits: list[tuple[Any, float]],
+    *,
+    score_tolerance: float = 0.02,
+) -> list[tuple[Any, float]]:
+    """Break near-ties in relevance score using provenance without overriding clear relevance winners."""
+    if len(hits) <= 1:
+        return list(hits)
+    ordered = sorted(hits, key=lambda h: -float(h[1]))
+    result: list[tuple[Any, float]] = []
+    cluster: list[tuple[Any, float]] = [ordered[0]]
+    cluster_top = float(ordered[0][1])
+
+    for item in ordered[1:]:
+        score = float(item[1])
+        if (cluster_top - score) <= max(1e-9, abs(cluster_top) * score_tolerance):
+            cluster.append(item)
+        else:
+            cluster.sort(key=lambda h: (-provenance_score(h[0]), -float(h[1])))
+            result.extend(cluster)
+            cluster = [item]
+            cluster_top = score
+
+    cluster.sort(key=lambda h: (-provenance_score(h[0]), -float(h[1])))
+    result.extend(cluster)
+    return result
+
+
+def explain_retrieval_selection(
+    candidates: list[Any],
+    picked: list[Any],
+    *,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Explain why retrieval candidates were selected or dropped."""
+    from life_graph.core.evidence import evidence_of
+
+    picked_ids = {getattr(m, "id", None) for m in picked}
+    final_ids = {getattr(m, "id", None) for m in (picked[:limit] if limit is not None else picked)}
+    trace: list[dict[str, Any]] = []
+    for m in candidates:
+        mid = getattr(m, "id", None)
+        props = getattr(m, "properties", None) or {}
+        ev = evidence_of(getattr(m, "source_type", None), getattr(m, "trust_tier", None), props if isinstance(props, dict) else {})
+        if mid in final_ids:
+            decision, reason = "selected", "relevant_and_valid"
+        elif mid in picked_ids:
+            decision, reason = "truncated", "exceeded_limit"
+        else:
+            decision, reason = "rejected", "filtered_or_not_selected_by_judge"
+        trace.append(
+            {
+                "memory_id": str(mid) if mid is not None else None,
+                "decision": decision,
+                "reason": reason,
+                "evidence_kind": ev,
+                "provenance_score": round(provenance_score(m), 4),
+            }
+        )
+    return trace
 
 
 def _ensure_utc(dt: datetime) -> datetime:
@@ -223,6 +306,7 @@ async def retrieve(
     )
     if by_strength:
         hits = strength_order(hits)[:CANDIDATES]
+    hits = provenance_tiebreak_order(hits)
     candidates = [m for m, _ in hits]
     # A question that names a known person, project or thing also gets the
     # memories linked to it (services/entities.py): search finds what is worded
