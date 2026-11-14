@@ -362,6 +362,16 @@ class Settings(BaseSettings):
     # spend invisibly.
     spend_unknown_model_input_per_mtok: float = 0.50
     spend_unknown_model_output_per_mtok: float = 1.50
+    # Per-tenant ceiling over the tracker's accounting window (process
+    # lifetime, like the per-task cap). 0 disables it, which is the right
+    # default for the single-tenant self-host; a shared deployment sets it so
+    # one tenant cannot eat the whole monthly cap.
+    per_tenant_spend_cap_usd: float = 0.0
+    # How long an in-flight spend reservation may live before it is treated as
+    # orphaned (a crashed or abandoned worker) and its headroom returned. Must
+    # exceed the slowest cloud call's timeout, or a long call's own reservation
+    # is reclaimed while it is still running.
+    spend_reservation_ttl_seconds: float = 900.0
 
     # ── Shadow Mode: dry-run rung on the autonomy ladder (D7.4) ──
     # New autonomous actors record 'would-have-done' reports instead of acting,

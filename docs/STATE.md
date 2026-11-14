@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-14 09:02 UTC` from `feat/trustworthy-p2-browser-sandbox` @ `c9f2757`
+Generated `2026-11-14 10:40 UTC` from `feat/trustworthy-p3-atomic-spend` @ `5997533`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-14 09:02 UTC` from `feat/trustworthy-p2-browser-sandbox` @ `c
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **34** |
-| Config settings | **285** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4394** in 487 files |
+| Config settings | **287** (prefix `LIFE_GRAPH_`) |
+| Test functions | **4439** in 487 files |
 | Dashboard pages | **22** |
-| Python | 459 files, 123,828 lines |
+| Python | 459 files, 124,316 lines |
 
 ---
 
@@ -1014,16 +1014,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 372 | 3557 |
+| `tests/unit/` | 372 | 3602 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **487** | **4394** |
+| **total** | **487** | **4439** |
 
 ---
 
 ## Configuration
 
-285 settings, all overridable by environment variable.
+287 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1136,6 +1136,8 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_PER_TASK_SPEND_CAP_USD` | `0.5` |
 | `LIFE_GRAPH_SPEND_UNKNOWN_MODEL_INPUT_PER_MTOK` | `0.5` |
 | `LIFE_GRAPH_SPEND_UNKNOWN_MODEL_OUTPUT_PER_MTOK` | `1.5` |
+| `LIFE_GRAPH_PER_TENANT_SPEND_CAP_USD` | `0.0` |
+| `LIFE_GRAPH_SPEND_RESERVATION_TTL_SECONDS` | `900.0` |
 | `LIFE_GRAPH_SHADOW_MODE_ENABLED` | `True` |
 | `LIFE_GRAPH_SHADOW_MIN_DAYS` | `14` |
 | `LIFE_GRAPH_SHADOW_MIN_SAMPLES` | `5` |

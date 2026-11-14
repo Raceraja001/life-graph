@@ -14,7 +14,12 @@ import logging
 from typing import Any
 
 from life_graph.config import settings
-from life_graph.services.spend_guardrails import SpendCapExceededError, get_spend_tracker
+from life_graph.services.spend_guardrails import (
+    SpendCapExceededError,
+    current_task_key,
+    current_tenant_id,
+    get_spend_tracker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +154,17 @@ class LMStudioClient:
     ) -> str:
         """Chat via the resilient cloud chain (OpenRouter/Gemini/... with failover).
 
-        Gated by the spend tracker: refused before it is sent if it would cross a
-        cap (raising ``SpendCapExceededError``, which ``chat()`` turns into a
-        local fallback), and booked against the month and task afterwards.
+        Gated by the spend tracker's two-phase reservation: a conservative
+        ceiling for the call (the whole ``max_tokens`` budget) is *reserved*
+        atomically before the request leaves, so concurrent callers cannot each
+        pass the same balance check and overspend it between them. A reservation
+        that does not fit raises ``SpendCapExceededError``, which ``chat()``
+        turns into a local fallback.
+
+        On the way back the reservation is reconciled down to the cost implied
+        by the reply that actually arrived; if the call fails it is released, so
+        a provider error, timeout or cancellation returns the headroom instead
+        of stranding it.
 
         Cost is attributed to the model we *asked* for. The resilient chain may
         fail over to another model mid-call and does not report which one it
@@ -161,19 +174,33 @@ class LMStudioClient:
         # The wrapper's own default when the caller passes None, so the estimate
         # is priced against the model that will actually run.
         priced_model = model or settings.llm_model_cheap
-        tracker.check_budget(
-            priced_model,
-            tracker.estimate_call_cost(priced_model, messages, max_tokens),
-        )
+        estimated_usd = tracker.estimate_call_cost(priced_model, messages, max_tokens)
 
-        reply = await get_resilient_llm().chat(
-            messages,
-            model=model,  # None -> wrapper picks the tier default
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format=response_format,
+        reservation = tracker.reserve(
+            priced_model,
+            estimated_usd,
+            task_key=current_task_key(),
+            tenant_id=current_tenant_id(),
         )
-        tracker.record_text_usage(priced_model, messages, reply)
+        try:
+            reply = await get_resilient_llm().chat(
+                messages,
+                model=model,  # None -> wrapper picks the tier default
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
+        except BaseException:
+            # BaseException, not Exception: a cancelled task must not leak its
+            # reservation either.
+            tracker.release(reservation.id)
+            raise
+
+        tracker.reconcile(
+            reservation.id,
+            actual_cost_usd=tracker.estimate_reply_cost(priced_model, messages, reply),
+            model=priced_model,
+        )
         return reply
 
     async def _local_chat(
