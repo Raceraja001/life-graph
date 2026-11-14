@@ -109,7 +109,10 @@ class OutcomeResolver:
         prediction.outcome = outcome
         prediction.resolved_at = now
         prediction.resolution_source = source
-        prediction.resolution_evidence = evidence or {}
+        ev_payload = dict(evidence) if isinstance(evidence, dict) else {}
+        if ev_payload:
+            ev_payload.setdefault("evidence_backed", True)
+        prediction.resolution_evidence = ev_payload
         prediction.actual_vs_predicted = 1.0 if outcome == "correct" else 0.0
 
         if self.event_bus:
@@ -132,6 +135,31 @@ class OutcomeResolver:
             source,
         )
         return prediction
+
+
+    async def record_evidence_backed_outcome(
+        self,
+        tenant_id: str,
+        prediction_id: uuid.UUID,
+        outcome: str,
+        source: str,
+        evidence: dict,
+    ) -> Prediction:
+        """Resolve a prediction only when concrete supporting evidence is provided."""
+        if not isinstance(evidence, dict) or not any(
+            evidence.get(k) for k in ("source_ref", "observation", "artifact", "summary", "capture_event_id")
+        ):
+            raise ValueError(
+                "Evidence-backed outcome requires non-empty supporting evidence "
+                "(source_ref, observation, artifact, summary, or capture_event_id)."
+            )
+        return await self.resolve_prediction(
+            tenant_id=tenant_id,
+            prediction_id=prediction_id,
+            outcome=outcome,
+            source=source,
+            evidence=evidence,
+        )
 
     async def check_expired_predictions(self, tenant_id: str) -> list[InterviewQuestion]:
         """Find predictions past their resolve_by date and escalate.

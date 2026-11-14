@@ -18,6 +18,8 @@ for rows written before that.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -96,3 +98,274 @@ PROMPT_LABEL = {
     SUMMARY: "day summary",
     OUTSIDE: "unverified",
 }
+
+
+def _clean_str(value: Any, *, max_len: int = 240) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text[:max_len] if text else None
+
+
+def normalize_lineage(
+    properties: Mapping[str, Any] | None = None,
+    *,
+    capture_event_id: Any = None,
+    source_type: str | None = None,
+    supersedes: Any = None,
+) -> dict[str, Any]:
+    """Normalize source, extraction, span, and derivation lineage into a bounded dict."""
+    props = dict(properties or {})
+    raw_lineage = props.get("lineage")
+    base = dict(raw_lineage) if isinstance(raw_lineage, dict) else {}
+
+    cap_id = capture_event_id or base.get("capture_event_id") or props.get("capture_event_id")
+    trace_id = base.get("extraction_trace_id") or props.get("extraction_trace_id")
+    fact_idx = base.get("extraction_fact_index", props.get("extraction_fact_index"))
+    if not isinstance(fact_idx, int) or isinstance(fact_idx, bool) or fact_idx < 0:
+        fact_idx = None
+
+    excerpt = _clean_str(base.get("excerpt") or props.get("source_excerpt") or props.get("excerpt"))
+    location = base.get("location") or props.get("source_location") or props.get("source_span")
+    if not isinstance(location, dict):
+        location = {"ref": _clean_str(location)} if _clean_str(location) else None
+
+    raw_derived = base.get("derived_from") or props.get("derived_from") or props.get("inferred_from")
+    derived_from: list[str] = []
+    if isinstance(raw_derived, (list, tuple)):
+        derived_from = [str(x) for x in raw_derived if x is not None and str(x).strip()]
+    elif raw_derived is not None and str(raw_derived).strip():
+        derived_from = [str(raw_derived).strip()]
+
+    lineage: dict[str, Any] = {
+        "source_type": _clean_str(base.get("source_type") or source_type, max_len=64),
+        "capture_event_id": str(cap_id) if cap_id is not None and str(cap_id).strip() else None,
+        "extraction_trace_id": str(trace_id) if trace_id is not None and str(trace_id).strip() else None,
+        "extraction_fact_index": fact_idx,
+        "excerpt": excerpt,
+        "location": location,
+        "derived_from": derived_from,
+        "supersedes": str(supersedes or base.get("supersedes")) if (supersedes or base.get("supersedes")) else None,
+    }
+    return {k: v for k, v in lineage.items() if v not in (None, [], {})}
+
+
+def resolve_memory_lineage(
+    memory: Any,
+    *,
+    source_available: bool = True,
+    ancestors: list[Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve a memory's origin, extraction trace, span, and derivation ancestry without fabricating."""
+    if isinstance(memory, dict):
+        mid = memory.get("id")
+        props = memory.get("properties") or {}
+        source_type = memory.get("source_type")
+        trust_tier = memory.get("trust_tier")
+        cap_id = memory.get("capture_event_id")
+        supersedes = memory.get("supersedes")
+    else:
+        mid = getattr(memory, "id", None)
+        props = getattr(memory, "properties", None) or {}
+        source_type = getattr(memory, "source_type", None)
+        trust_tier = getattr(memory, "trust_tier", None)
+        cap_id = getattr(memory, "capture_event_id", None)
+        supersedes = getattr(memory, "supersedes", None)
+
+    ev_kind = evidence_of(source_type, trust_tier, props if isinstance(props, dict) else {})
+    lineage = normalize_lineage(
+        props if isinstance(props, dict) else {},
+        capture_event_id=cap_id,
+        source_type=source_type,
+        supersedes=supersedes,
+    )
+    ancestry = [
+        str(a.get("id") if isinstance(a, dict) else getattr(a, "id", a))
+        for a in (ancestors or [])
+        if a is not None
+    ]
+    has_source = bool(
+        lineage.get("capture_event_id")
+        or lineage.get("extraction_trace_id")
+        or lineage.get("excerpt")
+        or lineage.get("location")
+        or lineage.get("derived_from")
+    )
+    return {
+        "memory_id": str(mid) if mid is not None else None,
+        "evidence_kind": ev_kind,
+        "source_available": bool(source_available) if has_source else False,
+        "lineage": lineage,
+        "ancestry": ancestry,
+    }
+
+
+def extract_claim_evidence(answer: str, memories: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Map synthesized answer sentences to their cited memory lineage; uncited claims are marked unsupported."""
+    import re
+
+    if not answer or not answer.strip():
+        return []
+    tag_re = re.compile(r"\[Memory\s+(\d+)\]")
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", answer.strip()) if s.strip()]
+    claims: list[dict[str, Any]] = []
+    for sent in sentences:
+        cited_indices = [int(m.group(1)) - 1 for m in tag_re.finditer(sent)]
+        supporting: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for idx in cited_indices:
+            if 0 <= idx < len(memories):
+                mem = memories[idx]
+                mid = str(mem.get("id") or "")
+                if mid and mid not in seen_ids:
+                    seen_ids.add(mid)
+                    supporting.append(resolve_memory_lineage(mem))
+        breakdowns = [
+            decompose_memory_confidence(memories[idx])
+            for idx in cited_indices
+            if 0 <= idx < len(memories)
+        ]
+        # Weakest-link claim confidence: one strong citation cannot validate a weak co-cited claim.
+        claim_conf = round(min((b["calibrated_confidence"] for b in breakdowns), default=0.0), 4)
+        claims.append(
+            {
+                "claim": sent,
+                "supported": bool(supporting),
+                "memory_ids": [s["memory_id"] for s in supporting if s.get("memory_id")],
+                "evidence": supporting,
+                "confidence_breakdown": breakdowns,
+                "claim_confidence": claim_conf,
+                "claim_uncertainty": round(1.0 - claim_conf, 4),
+            }
+        )
+    return claims
+
+
+_TRUST_SCORES = {
+    "self": 0.98,
+    "core": 0.95,
+    "verified": 0.95,
+    "standard": 0.78,
+    "normal": 0.78,
+    "unverified": 0.40,
+    "quarantined": 0.15,
+}
+
+_EVIDENCE_PRIORS = {
+    SAID: 0.95,
+    DOCUMENT: 0.90,
+    OBSERVED: 0.88,
+    SUMMARY: 0.72,
+    INFERRED: 0.55,
+    OUTSIDE: 0.35,
+}
+
+
+def _parse_dt(val: Any) -> datetime | None:
+    if isinstance(val, datetime):
+        return val if val.tzinfo is not None else val.replace(tzinfo=timezone.utc)
+    if isinstance(val, str) and val.strip():
+        try:
+            dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+            return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def decompose_memory_confidence(
+    memory: Any,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Decompose confidence into extraction, trust, freshness, and evidence components.
+
+    Vector similarity is intentionally excluded so retrieval rank never masquerades as truth.
+    """
+    get = (lambda k, d=None: memory.get(k, d)) if isinstance(memory, dict) else (lambda k, d=None: getattr(memory, k, d))
+    props = get("properties") or {}
+    if not isinstance(props, dict):
+        props = {}
+
+    raw_ext = get("confidence")
+    if raw_ext is None:
+        raw_ext = props.get("extraction_confidence", 0.5)
+    try:
+        extraction_conf = max(0.0, min(1.0, float(raw_ext)))
+    except (TypeError, ValueError):
+        extraction_conf = 0.5
+
+    trust_tier = str(get("trust_tier") or "standard").lower()
+    trust_score = _TRUST_SCORES.get(trust_tier, 0.70)
+
+    ev_kind = evidence_of(get("source_type"), trust_tier, props)
+    explicit_vs_inferred = "inferred" if is_guess(ev_kind) else "explicit"
+    prior = _EVIDENCE_PRIORS.get(ev_kind, 0.65)
+
+    ref_now = now or datetime.now(timezone.utc)
+    if ref_now.tzinfo is None:
+        ref_now = ref_now.replace(tzinfo=timezone.utc)
+
+    valid_to = _parse_dt(get("valid_to"))
+    if valid_to is not None and valid_to < ref_now:
+        freshness = 0.20
+    else:
+        ts = _parse_dt(get("updated_at")) or _parse_dt(get("recorded_at")) or _parse_dt(get("created_at"))
+        if ts is None:
+            freshness = 0.75
+        else:
+            age_days = max(0.0, (ref_now - ts).total_seconds() / 86400.0)
+            freshness = round(1.0 / (1.0 + age_days / 180.0), 4)
+
+    calibrated = round(
+        max(0.0, min(1.0, 0.35 * extraction_conf + 0.25 * trust_score + 0.25 * prior + 0.15 * freshness)),
+        4,
+    )
+    return {
+        "extraction_confidence": round(extraction_conf, 4),
+        "trust_score": round(trust_score, 4),
+        "freshness_score": round(freshness, 4),
+        "evidence_kind": ev_kind,
+        "explicit_vs_inferred": explicit_vs_inferred,
+        "calibrated_confidence": calibrated,
+        "uncertainty": round(1.0 - calibrated, 4),
+    }
+
+
+def evaluate_confidence_calibration(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute Brier score and calibration summary overall and by evidence_kind."""
+    if not samples:
+        return {
+            "count": 0,
+            "brier_score": 0.0,
+            "mean_confidence": 0.0,
+            "accuracy": 0.0,
+            "calibration_gap": 0.0,
+            "by_evidence_kind": {},
+        }
+
+    buckets: dict[str, list[tuple[float, float]]] = {}
+    all_pairs: list[tuple[float, float]] = []
+    for item in samples:
+        conf = max(0.0, min(1.0, float(item.get("confidence", 0.0))))
+        y = 1.0 if item.get("correct") else 0.0
+        kind = str(item.get("evidence_kind") or "unknown")
+        all_pairs.append((conf, y))
+        buckets.setdefault(kind, []).append((conf, y))
+
+    def _stats(pairs: list[tuple[float, float]]) -> dict[str, Any]:
+        n = len(pairs)
+        brier = sum((c - y) ** 2 for c, y in pairs) / n
+        mean_c = sum(c for c, _ in pairs) / n
+        acc = sum(y for _, y in pairs) / n
+        return {
+            "count": n,
+            "brier_score": round(brier, 4),
+            "mean_confidence": round(mean_c, 4),
+            "accuracy": round(acc, 4),
+            "calibration_gap": round(mean_c - acc, 4),
+        }
+
+    summary = _stats(all_pairs)
+    summary["by_evidence_kind"] = {k: _stats(v) for k, v in sorted(buckets.items())}
+    return summary

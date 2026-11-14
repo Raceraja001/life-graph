@@ -120,17 +120,38 @@ async def _with_neighbours(tenant_id: str, candidates: list[Any]) -> list[Any]:
 
 
 def provenance_score(m: Any) -> float:
-    """Bounded provenance score in [0.0, 1.0] from trust_score, confidence, and source/tier."""
+    """Bounded provenance score in [0.0, 1.0] using evidence kind, trust, confidence, and corroboration."""
+    from life_graph.core.evidence import DOCUMENT, INFERRED, OBSERVED, OUTSIDE, SAID, evidence_of
+
+    props = getattr(m, "properties", None) or {}
+    if not isinstance(props, dict):
+        props = {}
     trust = float(getattr(m, "trust_score", 0.5) or 0.5)
     conf = float(getattr(m, "confidence", 0.5) or 0.5)
     tier = str(getattr(m, "trust_tier", "") or "").lower()
     src_type = str(getattr(m, "source_type", "") or "").lower()
+    ev_kind = evidence_of(src_type, tier, props)
+
     bonus = 0.0
-    if tier in ("verified", "owner", "canonical") or src_type in ("user_explicit", "manual"):
-        bonus = 0.15
-    elif tier in ("inferred", "unverified"):
+    if ev_kind == SAID or tier in ("self", "verified", "owner", "canonical") or src_type in ("user_explicit", "manual"):
+        bonus = 0.18
+    elif ev_kind == DOCUMENT:
+        bonus = 0.12
+    elif ev_kind == OBSERVED:
+        bonus = 0.10
+    elif ev_kind == INFERRED or tier in ("inferred", "unverified"):
+        bonus = -0.08
+    elif ev_kind == OUTSIDE:
         bonus = -0.05
-    raw = 0.5 * trust + 0.5 * conf + bonus
+
+    corrob = props.get("corroboration_count", 0)
+    try:
+        corrob_n = max(0, int(corrob))
+    except (TypeError, ValueError):
+        corrob_n = 0
+    bonus += min(0.08, 0.02 * corrob_n)
+
+    raw = 0.45 * trust + 0.45 * conf + bonus
     return max(0.0, min(1.0, raw))
 
 
@@ -139,13 +160,75 @@ def provenance_order(hits: list[tuple[Any, float]]) -> list[tuple[Any, float]]:
     return sorted(hits, key=lambda h: -h[1] * (0.90 + 0.20 * provenance_score(h[0])))
 
 
+def provenance_tiebreak_order(
+    hits: list[tuple[Any, float]],
+    *,
+    score_tolerance: float = 0.02,
+) -> list[tuple[Any, float]]:
+    """Break near-ties in relevance score using provenance without overriding clear relevance winners."""
+    if len(hits) <= 1:
+        return list(hits)
+    ordered = sorted(hits, key=lambda h: -float(h[1]))
+    result: list[tuple[Any, float]] = []
+    cluster: list[tuple[Any, float]] = [ordered[0]]
+    cluster_top = float(ordered[0][1])
+
+    for item in ordered[1:]:
+        score = float(item[1])
+        if (cluster_top - score) <= max(1e-9, abs(cluster_top) * score_tolerance):
+            cluster.append(item)
+        else:
+            cluster.sort(key=lambda h: (-provenance_score(h[0]), -float(h[1])))
+            result.extend(cluster)
+            cluster = [item]
+            cluster_top = score
+
+    cluster.sort(key=lambda h: (-provenance_score(h[0]), -float(h[1])))
+    result.extend(cluster)
+    return result
+
+
+def explain_retrieval_selection(
+    candidates: list[Any],
+    picked: list[Any],
+    *,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Explain why retrieval candidates were selected or dropped."""
+    from life_graph.core.evidence import evidence_of
+
+    picked_ids = {getattr(m, "id", None) for m in picked}
+    final_ids = {getattr(m, "id", None) for m in (picked[:limit] if limit is not None else picked)}
+    trace: list[dict[str, Any]] = []
+    for m in candidates:
+        mid = getattr(m, "id", None)
+        props = getattr(m, "properties", None) or {}
+        ev = evidence_of(getattr(m, "source_type", None), getattr(m, "trust_tier", None), props if isinstance(props, dict) else {})
+        if mid in final_ids:
+            decision, reason = "selected", "relevant_and_valid"
+        elif mid in picked_ids:
+            decision, reason = "truncated", "exceeded_limit"
+        else:
+            decision, reason = "rejected", "filtered_or_not_selected_by_judge"
+        trace.append(
+            {
+                "memory_id": str(mid) if mid is not None else None,
+                "decision": decision,
+                "reason": reason,
+                "evidence_kind": ev,
+                "provenance_score": round(provenance_score(m), 4),
+            }
+        )
+    return trace
+
+
 def _ensure_utc(dt: datetime) -> datetime:
     from datetime import UTC
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
 def is_valid_at(memory: Any, ref_time: datetime) -> bool:
-    """Bitemporal validity check: valid_from <= ref_time < valid_until."""
+    """Valid-time check: valid_from <= ref_time < valid_until."""
     ref = _ensure_utc(ref_time)
     v_from = getattr(memory, "valid_from", None)
     if v_from is not None and _ensure_utc(v_from) > ref:
@@ -156,8 +239,30 @@ def is_valid_at(memory: Any, ref_time: datetime) -> bool:
     return True
 
 
+def is_bitemporally_valid(
+    memory: Any,
+    *,
+    valid_at: datetime | None = None,
+    recorded_at: datetime | None = None,
+) -> bool:
+    """Full bitemporal check: valid time AND transaction time (created_at <= recorded_at)."""
+    if valid_at is not None and not is_valid_at(memory, valid_at):
+        return False
+    if recorded_at is not None:
+        rec = _ensure_utc(recorded_at)
+        created = getattr(memory, "created_at", None)
+        if created is not None and _ensure_utc(created) > rec:
+            return False
+    return True
+
+
 async def retrieve(
-    question: str, limit: int = 6, *, cold: bool = False, as_of: datetime | None = None
+    question: str,
+    limit: int = 6,
+    *,
+    cold: bool = False,
+    as_of: datetime | None = None,
+    recorded_as_of: datetime | None = None,
 ) -> list[Any] | None:
     """Memories of the current tenant that help answer *question*, best first.
 
@@ -189,10 +294,10 @@ async def retrieve(
     dated: list[Any] = []
     window = episodes.time_window(question, datetime.now(episodes._tz()).date())
     if window is not None:
-        dated = await episodes.episodes_between(tenant_id, *window, limit=limit)
+        dated = [m for m in await episodes.episodes_between(tenant_id, *window, limit=limit) if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_as_of)]
 
     by_strength = settings.memory_strength_rank
-    search_statuses = ("active", "superseded", "archived") if as_of is not None else ("active",)
+    search_statuses = ("active", "superseded", "archived") if (as_of is not None or recorded_as_of is not None) else ("active",)
     hits = await get_store().hybrid_search(
         embedding=embedding,
         query_text=question,
@@ -201,6 +306,7 @@ async def retrieve(
     )
     if by_strength:
         hits = strength_order(hits)[:CANDIDATES]
+    hits = provenance_tiebreak_order(hits)
     candidates = [m for m, _ in hits]
     # A question that names a known person, project or thing also gets the
     # memories linked to it (services/entities.py): search finds what is worded
@@ -231,7 +337,7 @@ async def retrieve(
         # Dify by construction, and the judge dropped the one that mattered
         # ("Life Graph does NOT use … Dify", 2026-10-23). They go first, unjudged.
         ref_ = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
-        current = [m for m in linked if is_valid_at(m, ref_)]
+        current = [m for m in linked if is_bitemporally_valid(m, valid_at=ref_, recorded_at=recorded_as_of)]
         return (dated + current)[:limit]
     if settings.memory_links and candidates:
         candidates = await _with_neighbours(tenant_id, candidates)
@@ -244,7 +350,7 @@ async def retrieve(
         m
         for m in candidates
         if m.id not in seen
-        and is_valid_at(m, ref_time)
+        and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_as_of)
         # Asked about a time: other days' summaries only blur the answer.
         and not (window is not None and (m.properties or {}).get("kind") == episodes.KIND)
     ]
@@ -253,18 +359,18 @@ async def retrieve(
     if past:
         # "Where did I work before?": how things were is in the cold tier.
         known = {m.id for m in memories} | seen
-        memories += [m for m in await _cold(embedding, question) if m.id not in known]
+        memories += [m for m in await _cold(embedding, question) if m.id not in known and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_as_of)]
     picked = await _judged(asked, memories) if memories else []
     if picked is None:
         logger.warning("Memory relevance judge gave no answer; using the search order")
         # Unjudged, so active ones only: an unjudged cold hit is a guess, and
         # being returned would reawaken it (services/memory_tiers.py).
-        warm = memories if as_of is not None else [m for m in memories if getattr(m, "status", "active") == "active"]
+        warm = memories if (as_of is not None or recorded_as_of is not None) else [m for m in memories if getattr(m, "status", "active") == "active"]
         return (dated + warm)[:limit]
     if not picked and not dated and cold_too and not past:
         # Nothing warm answers: older memories might (nothing is forgotten).
-        cold = await _cold(embedding, question)
-        picked = (await _judged(asked, cold) or []) if cold else []
+        cold_rows = [m for m in await _cold(embedding, question) if is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_as_of)]
+        picked = (await _judged(asked, cold_rows) or []) if cold_rows else []
     return (dated + picked)[:limit]
 
 

@@ -228,3 +228,54 @@ async def match_procedures(
         procedures = result.scalars().all()
 
     return success_response(data=[ProcedureResponse.model_validate(p) for p in procedures])
+
+
+def build_procedure_candidate(
+    *,
+    trigger: str,
+    steps: list[str],
+    prerequisites: list[str] | None = None,
+    verification_checks: list[str] | None = None,
+    failure_recovery: list[str] | None = None,
+    has_side_effects: bool = False,
+) -> dict[str, Any]:
+    """Construct a procedural learning candidate with safety and verification metadata."""
+    return {
+        "trigger": trigger.strip(),
+        "steps": [s.strip() for s in steps if s and s.strip()],
+        "prerequisites": [p.strip() for p in (prerequisites or []) if p and p.strip()],
+        "verification_checks": [v.strip() for v in (verification_checks or []) if v and v.strip()],
+        "failure_recovery": [f.strip() for f in (failure_recovery or []) if f and f.strip()],
+        "has_side_effects": bool(has_side_effects),
+        "grants_side_effect_permission": False,
+        "verified": False,
+    }
+
+
+def verify_procedure_candidate(
+    candidate: dict[str, Any],
+    *,
+    observed_outcomes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Verify a procedure candidate only when prerequisites, checks, recovery, and observed pass exist."""
+    updated = dict(candidate)
+    has_structure = bool(
+        updated.get("steps")
+        and updated.get("prerequisites")
+        and updated.get("verification_checks")
+        and updated.get("failure_recovery")
+    )
+    passed_observed = any(bool(o.get("passed")) and bool(o.get("observed_evidence")) for o in (observed_outcomes or []))
+    updated["verified"] = bool(has_structure and passed_observed)
+    updated["observed_outcomes"] = list(observed_outcomes or [])
+    updated["grants_side_effect_permission"] = False
+    return updated
+
+
+def can_auto_execute_side_effects(
+    procedure: Any,
+    *,
+    explicit_action_approval: bool = False,
+) -> bool:
+    """Past procedure success never grants permanent permission for side effects."""
+    return bool(explicit_action_approval)
