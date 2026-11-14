@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy.orm import defer
 
-from life_graph.core.evidence import UNKNOWN_SOURCE, evidence_of
+from life_graph.core.evidence import UNKNOWN_SOURCE, evidence_of, normalize_lineage
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, coerce_tier
 from life_graph.models.db import CaptureEvent, Memory, MemorySession, Session
@@ -184,6 +184,13 @@ class PostgresMemoryStore:
         # provenance; a client-sent "evidence" is ignored.
         properties.pop("evidence", None)
         properties["evidence"] = evidence_of(source_type, tier_value, properties)
+        lineage = normalize_lineage(
+            properties,
+            capture_event_id=capture_event_id,
+            source_type=source_type,
+        )
+        if lineage:
+            properties["lineage"] = lineage
 
         row = Memory(
             content=memory.content,

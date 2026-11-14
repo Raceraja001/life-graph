@@ -156,6 +156,7 @@ class AskResponse(BaseModel):
     knowledge_gaps: list[str] = Field(default_factory=list)
     domains_covered: dict[str, int] = Field(default_factory=dict)
     challenge_prompts: list[str] = Field(default_factory=list)
+    claim_evidence: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ── Projection helpers ───────────────────────────────────────
@@ -692,6 +693,7 @@ async def ask_brain(
         knowledge_gaps=detect_knowledge_gaps(memories, abstained=False, abstention_reason=None),
         domains_covered=summarize_cross_domain(memories),
         challenge_prompts=detect_challenge_prompts(memories),
+        claim_evidence=result.get("claim_evidence") or [],
     )
     full = (
         AskResponse(

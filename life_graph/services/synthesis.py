@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from life_graph.config import settings
+from life_graph.core.evidence import extract_claim_evidence
 from life_graph.services.llm_client import LMStudioClient
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,7 @@ class SynthesisService:
                 "source_count": 0,
                 "model": None,
                 "citations": [],
+                "claim_evidence": [],
                 "answered": False,
             }
 
@@ -165,6 +167,7 @@ class SynthesisService:
                 "source_count": 0,
                 "model": None,
                 "citations": [],
+                "claim_evidence": [],
                 "answered": False,
             }
 
@@ -220,12 +223,15 @@ class SynthesisService:
         # fallback never emits [Memory N] tags, so `citations` is naturally
         # [] and `answer` passes through unchanged on that path.
         answer, citations = renumber_citations(answer, memory_ids)
+        by_id = {str(m.get("id")): m for m in memories}
+        cited_memories = [by_id[mid] for mid in citations if mid in by_id]
 
         return {
             "answer": answer,
             "source_count": len(memories),
             "model": model_used,
             "citations": citations,
+            "claim_evidence": extract_claim_evidence(answer, cited_memories),
             # Compared on the normalised sentence rather than searched for as a
             # substring: an answer that *mentions* not having enough memories
             # while going on to answer anyway is an answer, and a model that
