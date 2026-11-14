@@ -139,6 +139,7 @@ async def run(
     start_url: str = START,
     allowed_origins: list[str] | None = None,
     capability_id: str | None = None,
+    errand_id: str | None = None,
 ) -> tuple[dict, FakeBrowser, FakeSession]:
     """Call the tool with a fake browser and a fake session; parse its JSON."""
     browser = browser if browser is not None else FakeBrowser()
@@ -151,6 +152,7 @@ async def run(
         steps=steps,
         allowed_origins=[BANK] if allowed_origins is None else allowed_origins,
         capability_id=capability_id,
+        errand_id=errand_id,
     )
     return json.loads(out), browser, session
 
@@ -451,20 +453,116 @@ async def test_a_second_tap_authorises_nothing_further():
 
 
 async def test_an_approved_capability_is_what_lets_the_errand_through(monkeypatch):
-    """The whole loop: paused, tapped, resumed."""
-    card = _card()
+    """The whole loop: paused, tapped, resumed — with the server's own card.
+
+    Not a hand-written card any more. The approval is bound to the run, the
+    step, the element and a digest of the action
+    (``autonomy/approvals/capability.py``), so the only thing that can redeem
+    it is the run that paused, replaying the plan that paused — which means
+    the test has to go through the pause to get a card that works. That is
+    the point: a card assembled by hand does not authorise anything.
+    """
+    plan = [{"kind": "click", "selector": "e9"}]
+
+    paused, first, session = await run(monkeypatch, steps=plan)
+    assert paused["status"] == "needs_approval"
+    assert first.kinds == ["navigate"]
+    [card] = session.added
+
     await _tap(card, "approve")
 
-    out, browser, session = await run(
+    out, browser, resumed = await run(
         monkeypatch,
-        steps=[{"kind": "click", "selector": "e9"}],
+        steps=plan,
         capability_id=card.extra_metadata["capability_id"],
+        errand_id=paused["errand_id"],
     )
 
     assert out["status"] == "done"
     assert browser.kinds == ["navigate", "click"]
     # Nothing more to ask.
-    assert session.added == []
+    assert resumed.added == []
+
+
+async def test_an_approval_cannot_be_redeemed_by_a_different_run(monkeypatch):
+    """The tap authorised one errand. A second run presenting it is refused.
+
+    Resuming without naming the run that paused mints a fresh errand id, and
+    the capability is bound to the old one — so the model's obvious mistake
+    and the attacker's obvious move get the same refusal.
+    """
+    plan = [{"kind": "click", "selector": "e9"}]
+    paused, _first, session = await run(monkeypatch, steps=plan)
+    [card] = session.added
+    await _tap(card, "approve")
+
+    out, browser, _session = await run(
+        monkeypatch,
+        steps=plan,
+        capability_id=card.extra_metadata["capability_id"],
+        errand_id="errand_someone-elses-run",
+    )
+
+    assert out["status"] == "failed"
+    assert out["error"] == approvals.capability.ERRAND_MISMATCH
+    # The start page was opened — navigating is read-only and needs no
+    # mandate at all, which is the separation these bindings are meant to
+    # keep (contrast test_a_capability_for_one_origin_does_not_travel, where
+    # the origin is wrong and so even the navigate is refused). What did not
+    # happen is the thing the approval was about.
+    assert "click" not in browser.kinds
+
+    # The run it was approved for can still have it: the refusal above did
+    # not burn the owner's tap.
+    good, ran, _ = await run(
+        monkeypatch,
+        steps=plan,
+        capability_id=card.extra_metadata["capability_id"],
+        errand_id=paused["errand_id"],
+    )
+    assert good["status"] == "done"
+    assert ran.kinds == ["navigate", "click"]
+
+
+async def test_an_approval_is_spent_by_the_click_it_authorised(monkeypatch):
+    """One tap, one click. Replaying the resumed run does nothing."""
+    plan = [{"kind": "click", "selector": "e9"}]
+    paused, _first, session = await run(monkeypatch, steps=plan)
+    [card] = session.added
+    await _tap(card, "approve")
+    resume = {
+        "capability_id": card.extra_metadata["capability_id"],
+        "errand_id": paused["errand_id"],
+    }
+
+    done, _ran, _ = await run(monkeypatch, steps=plan, **resume)
+    replay, replayed, _ = await run(monkeypatch, steps=plan, **resume)
+
+    assert done["status"] == "done"
+    assert replay["status"] == "failed"
+    assert replay["error"] == approvals.capability.ALREADY_CONSUMED
+    assert "click" not in replayed.kinds
+
+
+async def test_an_approved_click_does_not_authorise_a_different_button(monkeypatch):
+    """Same run, same step, re-pointed selector: not the action on the card."""
+    paused, _first, session = await run(monkeypatch, steps=[{"kind": "click", "selector": "e9"}])
+    [card] = session.added
+    await _tap(card, "approve")
+
+    out, browser, _session = await run(
+        monkeypatch,
+        steps=[{"kind": "click", "selector": "transfer-everything"}],
+        capability_id=card.extra_metadata["capability_id"],
+        errand_id=paused["errand_id"],
+    )
+
+    assert out["status"] == "failed"
+    assert out["error"] in {
+        approvals.capability.SELECTOR_MISMATCH,
+        approvals.capability.PARAMETERS_MISMATCH,
+    }
+    assert "click" not in browser.kinds
 
 
 async def test_a_capability_for_one_origin_does_not_travel(monkeypatch):

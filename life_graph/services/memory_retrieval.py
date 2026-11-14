@@ -389,8 +389,25 @@ async def retrieve(
     # "What did we talk about yesterday?": that period's day summaries,
     # fetched by date, first (services/episodes.py). Search cannot tell which
     # days "last week" means.
+    #
+    # "Yesterday" is relative to *when the question is being asked about*, not
+    # to when it is being asked. An as_of query is a question about an earlier
+    # present — "on 15 June, what had we talked about yesterday?" — so the
+    # anchor is as_of's own calendar day and the window is 14 June. Anchoring
+    # to the wall clock instead silently answered a different question, and
+    # answered it with real memories, which is the worst kind of wrong: the
+    # reply looked sourced.
+    #
+    # The tenant's timezone both ways (episodes._tz), because a calendar day
+    # is a local thing: 15 June 00:30 UTC is still 14 June in New York, and
+    # the day summaries are written per local day.
     dated: list[Any] = []
-    window = episodes.time_window(question, datetime.now(episodes._tz()).date())
+    reference_date = (
+        _ensure_utc(as_of).astimezone(episodes._tz()).date()
+        if as_of is not None
+        else datetime.now(episodes._tz()).date()
+    )
+    window = episodes.time_window(question, reference_date)
     if window is not None:
         dated = [m for m in await episodes.episodes_between(tenant_id, *window, limit=limit) if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_ref)]
 

@@ -113,6 +113,19 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
 
     Moved out of ``lifespan`` unchanged on 2026-10-29, in the order it ran.
     """
+    # The owner's authority moves into Postgres before anything that can
+    # issue or verify a mandate runs. Attaching is unconditional once the
+    # setting is on and needs no probe: each operation reconnects and fails
+    # closed on its own (autonomy/approvals/durable_store.py), so a database
+    # that is down at boot does not leave this process minting in-memory
+    # capabilities that no other worker can resolve.
+    if settings.durable_authorization:
+        with startup_step(report, "durable_authorization"):
+            from life_graph.autonomy.approvals.durable_store import attach_durable_stores
+
+            attach_durable_stores()
+            logger.info("Authorization store: durable (capabilities, standing_rules)")
+
     # Startup — register agent tools (import triggers @tool decorator)
     with startup_step(report, "agent_tools"):
         from life_graph.tools.load import register_all

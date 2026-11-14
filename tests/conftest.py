@@ -125,6 +125,34 @@ def _no_pr_description_model_calls(monkeypatch):
     monkeypatch.setattr(settings, "driver_pr_description_enabled", False)
 
 
+@pytest.fixture(autouse=True)
+def _authorization_stores_stay_in_memory():
+    """Put the process-wide authorisation stores back in memory after each test.
+
+    ``capability_store`` and ``standing_rule_store`` are process-wide by
+    design (autonomy/approvals/capability.py), and the app's startup attaches
+    a Postgres backend to both when ``durable_authorization`` is on, which it
+    is by default. Several tests boot the app — proving that wiring — and
+    without this the *next* test to call ``capability_store.issue`` would
+    quietly be talking to a database instead of a dict, which is how
+    ``len(store._issued) == 1`` became ``0`` with nothing in the output to say
+    why.
+
+    Detaching afterwards rather than forbidding the attachment on purpose: a
+    test that starts the app should attach, because that is the behaviour
+    under test. The tests that exercise the durable store itself build their
+    own (tests/unit/test_exact_bound_capabilities.py) and are unaffected.
+    """
+    from life_graph.autonomy.approvals.capability import capability_store, standing_rule_store
+
+    before = (capability_store.durable, standing_rule_store._durable)
+    try:
+        yield
+    finally:
+        capability_store.attach_durable(before[0])
+        standing_rule_store.attach_durable(before[1])
+
+
 def fake_request(*, device_id: str | None = None, api_key: str | None = None):
     """The least of a ``Request`` that ``api/auth.py ingress_for`` reads.
 

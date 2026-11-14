@@ -202,8 +202,17 @@ async def build_errand(
     allowed_origins: list[str] | None,
     *,
     capability_id: str | None = None,
+    errand_id: str | None = None,
 ) -> tuple[BrowserErrand, str]:
     """``(the errand, its id)`` from the model's plan, or :class:`PlanError`.
+
+    *errand_id* resumes a run the owner has since approved: the capability
+    minted from that approval is bound to it, so a resumed run has to be the
+    same run. A fresh id is minted when none is given. Supplying someone
+    else's id buys nothing — the step index, the element and the parameter
+    digest are bound too, so claiming the approved run's id while doing
+    something else is just a different denial
+    (``autonomy/approvals/capability.py``).
 
     Every destination — ``start_url`` and each ``navigate`` step's ``url`` —
     is put through ``services/destination_validator.py`` here, before a driver
@@ -277,9 +286,15 @@ async def build_errand(
         )
     # No owner_request: see the module docstring. capability_id is the only
     # authority an errand gets, and the policy re-verifies it against this
-    # tenant, task, action type and origin at every single step.
-    errand = be.BrowserErrand(steps=tuple(built), capability_id=_text(capability_id, limit=120))
-    return errand, f"errand_{uuid.uuid4().hex[:16]}"
+    # tenant, task, action type, origin, run, step, element and parameter
+    # digest at every single step.
+    run_id = _text(errand_id, limit=120) or f"errand_{uuid.uuid4().hex[:16]}"
+    errand = be.BrowserErrand(
+        steps=tuple(built),
+        capability_id=_text(capability_id, limit=120),
+        id=run_id,
+    )
+    return errand, run_id
 
 
 # ── Asking the owner ─────────────────────────────────────────────────────
@@ -323,6 +338,14 @@ def approval_notification(
     carries only what the policy itself was allowed to read — the action type
     and the origin — plus the owner's own goal; no page text, and nothing a
     verdict rested on that the owner cannot see.
+
+    It also carries the exact identity of the step: which run, which position
+    in it, which element, and a digest of the whole action. Tapping Approve
+    mints a capability bound to all four
+    (``services/notification_actions.py``), so the tap authorises that one
+    action and not the next plan that ends in a similar-looking click. The
+    digest is not the value — nothing the owner typed or the vault holds is
+    in this metadata.
     """
     from life_graph.models.db import Notification
 
@@ -342,6 +365,8 @@ def approval_notification(
             "step_index": step.index,
             "action_type": step.action_type,
             "target_origin": step.target_origin,
+            "target_selector": step.target_selector,
+            "parameters_hash": step.parameters_hash,
             "goal": goal,
             "reasons": list(step.reasons),
             # Whether this run had already read outside content when it wrote
@@ -439,6 +464,14 @@ def _tainted() -> bool:
                 "description": "Only when resuming an errand the user approved"
                 " on their phone: the capability_id from that notification.",
             },
+            "errand_id": {
+                "type": "string",
+                "description": (
+                    "Only when resuming an approved errand: the errand_id this"
+                    " tool returned when it paused. An approval is bound to"
+                    " that run, so resuming without it is refused."
+                ),
+            },
         },
         "required": ["goal", "start_url", "steps"],
     },
@@ -452,6 +485,7 @@ async def run_browser_errand(
     steps: list[dict[str, Any]] | None = None,
     allowed_origins: list[str] | None = None,
     capability_id: str | None = None,
+    errand_id: str | None = None,
 ) -> str:
     """Run one browser errand for the current tenant (JSON). Never raises."""
     from life_graph.autonomy.approvals import (
@@ -487,7 +521,12 @@ async def run_browser_errand(
 
     try:
         errand, errand_id = await build_errand(
-            goal, start_url, steps, allowed_origins, capability_id=capability_id
+            goal,
+            start_url,
+            steps,
+            allowed_origins,
+            capability_id=capability_id,
+            errand_id=errand_id,
         )
     except PlanError as exc:
         return json.dumps({"error": str(exc), "goal": goal})

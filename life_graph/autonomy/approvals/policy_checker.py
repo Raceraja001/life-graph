@@ -406,6 +406,21 @@ def request_from_payload(
     return request, tuple(sorted(both))
 
 
+def _as_text(value: Any) -> str | None:
+    """A bound identifier from ``structured_params``, or ``None`` for "not asserted"."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _as_step(value: Any) -> int | None:
+    """A step index from ``structured_params``. A non-integer is not step zero."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
 def _as_amount(value: Any) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
@@ -569,9 +584,29 @@ class ActionPolicyChecker:
         The tenant and the task come from this checker's own context, never
         from *request*: a payload that could name its own tenant would satisfy
         the tenant binding by stating it.
+
+        The exact-action bindings — which errand run, which step of it, which
+        element, which parameters — are read out of ``structured_params``,
+        which is where the caller that is about to perform the action puts its
+        own description of it (``services/browser_errand.py`` builds them from
+        the step it is holding). A capability that carries one of these and is
+        presented against a different one is refused here, before the action
+        is reached, and refused again atomically when
+        :meth:`CapabilityStore.consume` spends it. Describing an action is not
+        being allowed to take it: a payload that lies about which step it is
+        on only changes which denial it gets, because the record's bindings
+        are the server's and the consume re-reads the real step.
+
+        *spec.read_only* is passed through: navigating and reading need no
+        mandate at all, so a handle presented alongside them is checked for
+        being a good credential for this tenant and origin, but not for being
+        the one unspent approval of one exact step. Without that, an errand
+        that spent its approval on the click it was approved for could not
+        read the page that came back.
         """
         if not self._tenant_id:
             return None, CAPABILITY_WITHOUT_TENANT
+        params = request.structured_params
         amount = (
             _as_amount(request.structured_params.get(spec.amount_param))
             if spec.amount_param
@@ -584,6 +619,11 @@ class ActionPolicyChecker:
             target_origin=origin,
             task_id=self._task_id,
             amount=amount,
+            errand_id=_as_text(params.get("errand_id")),
+            step_index=_as_step(params.get("step_index")),
+            target_selector=_as_text(params.get("target")),
+            parameters_hash=_as_text(params.get("parameters_hash")),
+            read_only=spec.read_only,
         )
         if not check.ok:
             return None, check.reason

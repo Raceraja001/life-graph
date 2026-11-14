@@ -221,13 +221,213 @@ The coding agent must append concise entries here. Do not erase prior entries; a
 
 ### Current status
 
-- P0 exact-step-bound approval: **Needs verification**
-- P0 isolated browser integration: **Needs verification**
-- P1 durable authorization: **Needs verification**
-- P1 historical episode retrieval: **Needs verification**
-- P1 evidence/confidence evaluation: **Needs verification**
-- P1 adversarial end-to-end testing: **Needs verification**
-- P2 operations documentation: **Needs verification**
+Labels are the ones defined in section 9. "Complete" is deliberately absent
+from any row whose remaining gap is operational.
+
+- P0 exact-step-bound approval: **Implemented, Integrated, Unit-tested, Adversarially tested** — not operationally verified (no deployed run exercised yet)
+- P0 isolated browser integration: **Needs verification** (not started this session; still the highest-priority incomplete item)
+- P1 durable authorization: **Implemented, Integrated, Unit-tested** — multi-worker consistency proven with 16 concurrent threads against real Postgres; not yet exercised across separate OS processes or a real restart in a deployed environment
+- P1 historical episode retrieval: **Implemented, Integrated, Unit-tested**
+- P1 evidence/confidence evaluation: **Needs verification** (not started this session)
+- P1 adversarial end-to-end testing: **Partially addressed** — replay, cross-errand, cross-step, cross-tenant, re-pointed selector, edited value, forged handle, tampered approval payload and store-outage scenarios are covered for the authorization path; browser/network scenarios depend on P0 §3 and remain open
+- P2 operations documentation: **Needs verification** (not started this session)
+
+### 2026-11-14 — P0 exact-bound approvals, P1 durable authorization, P1 historical episodes
+
+```text
+Date: 2026-11-14
+Remote base commit: a9f35c97ad4c39bd8a6bc9d174b398306c9d6213 (origin/master == local HEAD at session start)
+Working commit: b597fa2b73db6e550b93ae50c7d974960a679720
+Tasks inspected: section 2 (P0 exact-bound approval), section 4 (P1 durable
+  authorization), section 5 (P1 historical relative-date episodes). Sections 3,
+  6, 7 and 8 were read but not implemented this session.
+
+Findings (verified against the code, not assumed):
+  - Section 2 was still open. AuthorizationCapability bound tenant, task,
+    action_types, target_origins, expiry and an amount ceiling — and nothing
+    else. There was no errand, step, selector or parameter binding, no
+    consumption state and no consume() at all, so one tap on an approval card
+    authorised any step of any later errand run that happened to be the same
+    action type on the same origin, for the full 30-minute TTL, any number of
+    times.
+  - BrowserErrand carried no id, so there was nothing to bind an errand to.
+    run_browser_errand minted a fresh errand_id on every call, including a
+    resumed one.
+  - Section 4 was open: CapabilityStore and StandingRuleStore were in-process
+    dicts behind a threading.Lock.
+  - Section 5 was open and the bug was exactly as described:
+    memory_retrieval.retrieve passed datetime.now() to episodes.time_window
+    regardless of as_of, so a historical query was answered with today's day
+    summaries. episodes.time_window itself was correct relative to whatever
+    anchor it was given (pinned by tests/unit/test_episodes_and_validity.py);
+    the defect was only the anchor.
+  - Two defects found while building, both in new code, both fixed before
+    this entry: (a) StandingRule spells "any origin" as an *empty* frozenset,
+    not None, so the durable rule store's first version silently persisted no
+    rows for the owner's broadest rule; (b) StandingRule.max_amount has no
+    column, and storing a rule without its ceiling is a widening — it is now
+    refused with a ValueError rather than dropped.
+
+Changes made:
+  - life_graph/autonomy/approvals/capability.py — AuthorizationCapability
+    gains errand_id, approval_id, step_index, target_selector,
+    parameters_hash, one_use and consumed_at; new denial reasons
+    ALREADY_CONSUMED, ERRAND_MISMATCH, STEP_MISMATCH, SELECTOR_MISMATCH,
+    PARAMETERS_MISMATCH, STORE_UNAVAILABLE (all added to CHECK_REASONS);
+    check_bindings() as the strict binding test; check() takes the bindings
+    plus read_only; CapabilityStore.issue() records them; new
+    CapabilityStore.consume() spends a one-use capability atomically; the
+    store gained an optional durable backend that every method routes
+    through (DurableBackend / DurableRuleBackend protocols).
+  - life_graph/autonomy/approvals/policy_checker.py — _capability_for passes
+    the exact bindings (read from structured_params, which the executor fills
+    from the step it is holding) and spec.read_only through to verify().
+  - life_graph/autonomy/approvals/durable_store.py (new) —
+    DurableCapabilityStore and DurableStandingRuleStore over a synchronous
+    psycopg2 engine; consumption is one UPDATE … WHERE consumed_at IS NULL …
+    RETURNING. Insert raises on outage, reads return None, consume returns
+    STORE_UNAVAILABLE: three fail-closed shapes, each chosen for its caller.
+  - alembic/versions/059_durable_capabilities_and_standing_rules.py (new) —
+    capabilities and standing_rules, with the indexes the work order lists
+    plus (tenant_id, task_id) for revoke-all and expires_at for the purge.
+  - life_graph/models/authorization.py (new) + models/db.py re-exports —
+    Capability and StandingRuleRecord, so Base.metadata and docs/STATE.md
+    tell the truth about the two tables. `alembic check` reports no drift for
+    either (the rest of its output is pre-existing, unrelated drift).
+  - life_graph/services/browser_errand.py — BrowserErrand.id; step_target()
+    and canonical_parameters_hash(); CAPABILITY_GATED = (fill_field, click);
+    StepResult carries target_selector/parameters_hash/errand_id; the
+    executor consumes the capability atomically before touching the browser
+    and aborts the step with the specific denial reason if it cannot.
+  - life_graph/tools/errand.py — build_errand and run_browser_errand take
+    errand_id so a resumed run is the same run; the approval card records
+    target_selector and parameters_hash.
+  - life_graph/services/notification_actions.py — _errand() binds the minted
+    capability to errand_id, approval_id (the notification's own id),
+    step_index, target_selector and parameters_hash, one-use; a card that
+    cannot name its run and step is refused rather than widened.
+  - life_graph/config.py + main.py — durable_authorization (default True) and
+    the startup step that attaches the durable stores.
+  - life_graph/services/memory_retrieval.py — the episode window is anchored
+    to as_of's own calendar day in the tenant's timezone, and to today only
+    when as_of is absent.
+  - tests/conftest.py — an autouse fixture that returns the process-wide
+    authorization stores to memory after each test. Several tests boot the
+    app, which now attaches a Postgres backend to a module-global; without
+    this the next test to call capability_store.issue() was quietly talking
+    to a database. This was caught by the full-suite run, not in isolation.
+  - tests/unit/test_exact_bound_capabilities.py (new, 59 tests),
+    tests/unit/test_historical_episodes.py (new, 28 tests),
+    tests/unit/test_jarvis_errands.py (the resume test now goes through a
+    real pause to get a card that works, plus three new binding tests).
+
+Tests run (exact commands):
+  python -m alembic upgrade head                       # life_graph_dev, 057 -> 059
+  LIFE_GRAPH_DATABASE_URL_SYNC=…/life_graph_dev_test python -m alembic upgrade head
+  LIFE_GRAPH_DATABASE_URL_SYNC=…/life_graph_dev_test python -m alembic downgrade 058
+  LIFE_GRAPH_DATABASE_URL_SYNC=…/life_graph_dev_test python -m alembic upgrade head
+  python -m alembic check                              # drift review (see Findings)
+  pytest tests/unit/test_exact_bound_capabilities.py tests/unit/test_historical_episodes.py \
+         tests/unit/test_jarvis_errands.py tests/unit/test_trustworthy_execution_eval.py -v
+  pytest tests/unit/ -q                                # before and after, compared
+  ruff check life_graph/ ; ruff format --check <changed files>
+
+Results:
+  - Required four-file set: 130 passed, 0 failed.
+  - Full unit suite: 5,167 passed, 26 failed, 5 skipped. The 26 failures are
+    byte-identical to the list this working tree produces on the unmodified
+    base commit (config model defaults, cron registration, graph tenant
+    scoping, multimodal, MCP server config, ruff-on-PATH in the sandboxed
+    verifier). They come from this machine's .env and from untracked
+    work-in-progress files, not from these changes. The comparison was made
+    by running the same suite on a clean worktree of a9f35c9 with the same
+    .env and untracked files copied in, and diffing the FAILED lists.
+  - The new suites are genuine regression tests, not tautologies: reverting
+    the one-line anchor fix in memory_retrieval.py fails 6 of the 28
+    historical-episode tests.
+  - Postgres-backed tests ran (not skipped): 0 skips in
+    test_exact_bound_capabilities.py.
+
+Acceptance criteria met (section 2 "Tests"):
+  - Capability cannot be replayed after consumption — ALREADY_CONSUMED, at
+    both the policy check and the atomic consume, and end to end through
+    run_browser_errand.
+  - Two concurrent attempts cannot both consume — 16 threads on a barrier,
+    in-process and against Postgres with 16 separate store objects; exactly
+    one VALID, fifteen ALREADY_CONSUMED, both times.
+  - Cross-errand, cross-step, cross-tenant, cross-origin, cross-action,
+    cross-selector and cross-parameter reuse each denied with their own
+    reason; a refusal does not burn the approval.
+  - Expired and revoked fail closed; revocation is checked before
+    consumption, so a kill switch reads as "the owner stopped this".
+  - A changed page target or changed form value invalidates the approval.
+  - Read-only operations acquire no side-effect authority: a navigate or a
+    page read needs no capability, spends none, and still works after the
+    errand's one approval has been spent.
+  - Approval payload tampering cannot broaden authority: a card that cannot
+    name its run and step mints nothing, and a card claiming a different step
+    mints a mandate for *that* step, which the engine will not present.
+  Section 4: restart/multi-worker (a second store object resolves and spends a
+  capability the first issued), concurrent consumption, revocation, expiry,
+  retention purge, cross-tenant isolation, migration up and down, and
+  database-unavailable fail-closed behaviour are all covered.
+  Section 5: historical and current retrieval, day/week/month/year and leap
+  boundaries, the tenant timezone (including a UTC instant that is the next
+  local day), a naive as_of, late-arriving captures, and valid-time versus
+  recorded-time queries.
+
+Which checks were which:
+  - Unit: everything in the two new files and the errand/notification wiring.
+  - Integration-tested: partially. The durable store was exercised against a
+    real Postgres (migration 059, real transactions, real concurrency) from
+    within the unit suite; the app's startup wiring is asserted, not booted.
+  - Adversarially tested: replay, race, forged handle, lifted handle in
+    another run, re-pointed selector, edited value, tampered approval
+    metadata, cross-tenant spend, store outage.
+  - Operationally verified: nothing. No deployed run.
+
+Skipped tests: none. The Postgres-backed tests carry a skipif for an
+  unreachable capabilities table so the suite still runs without a database;
+  they were not skipped in this session's runs, and every property they check
+  is also checked against the in-process store, which always runs.
+
+Remaining risks / blockers:
+  - P0 section 3 (isolated browser runtime) is untouched and is now the
+    highest-priority incomplete item. Everything above binds *authority* to
+    one action; none of it constrains what the browser can reach.
+  - Durability is proven across threads and store objects, not across OS
+    processes or a restart in a deployed environment. The statement that
+    serialises consumption is a single conditional UPDATE, so the property
+    does not depend on being in one process — but that is an argument, not
+    evidence, until it runs under uvicorn plus an ARQ worker.
+  - durable_authorization defaults to True, so a deployment whose database is
+    unreachable will refuse to issue capabilities rather than falling back to
+    in-memory ones. That is the intended fail-closed behaviour and it means
+    an approval outage is now a database outage. Not yet observed in a
+    deployed run; monitoring for STORE_UNAVAILABLE denials is section 8 work.
+  - Standing rules with a max_amount cannot be persisted durably (the column
+    does not exist and dropping the ceiling would widen the rule), so
+    set_rules now raises for them. No caller passes one today; if the owner's
+    rules screen ever needs ceilings, the table needs a column first.
+  - episodes.time_window still returns no window for "last year" or "this
+    month". Those terms fall through to semantic search, which does honour
+    as_of and recorded_as_of, so nothing is mis-anchored — but they are not
+    anchored either. Deliberately not added: episodes_between is LIMIT-ed and
+    ordered by date ascending, so a year-wide window would return the oldest
+    eight day summaries of that year, which is worse than the search it
+    would replace. Widening the terms needs a sampling strategy first.
+  - A fill_field step binds target_selector from step.field, because
+    build_errand routes a fill's target there and a click's to step.selector.
+    step_target() reads both. Noted because section 2 names
+    "target_selector=step.selector", which would have left every fill
+    unbound.
+  - 26 pre-existing unit-test failures in this working tree remain
+    unaddressed; they are environmental and predate this work.
+
+Commit(s) pushed: none yet. Committed locally as b597fa2b73db on
+  feat/work-order-p0-p1; pushing is held for the owner, who has not been
+  asked for it in this session.
+```
 
 ### Entry template
 
