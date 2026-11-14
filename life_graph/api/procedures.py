@@ -230,6 +230,35 @@ async def match_procedures(
     return success_response(data=[ProcedureResponse.model_validate(p) for p in procedures])
 
 
+#: Verified runs a procedure needs before it is described as reliable.
+#:
+#: One success is an anecdote. It can succeed because of the day's state — a
+#: warm cache, a branch that happened to be clean, a service that happened to
+#: be up — and a procedure promoted off that single run then gets replayed
+#: into a different world. Two independently verified outcomes are the
+#: cheapest evidence that the steps, not the circumstances, did the work. The
+#: owner saying so outright is the other way in.
+MIN_VERIFIED_OUTCOMES = 2
+
+
+def _clean_list(values: list[str] | None) -> list[str]:
+    return [v.strip() for v in (values or []) if v and v.strip()]
+
+
+def _count_verified_outcomes(outcomes: list[dict[str, Any]] | None) -> int:
+    """How many runs both passed *and* left evidence that they passed.
+
+    A run that reports ``passed`` with nothing to show for it is the agent's
+    own say-so about its own work, which is exactly the claim that needs
+    backing; it does not count towards promotion.
+    """
+    return sum(
+        1
+        for o in (outcomes or [])
+        if isinstance(o, dict) and bool(o.get("passed")) and bool(o.get("observed_evidence"))
+    )
+
+
 def build_procedure_candidate(
     *,
     trigger: str,
@@ -237,18 +266,33 @@ def build_procedure_candidate(
     prerequisites: list[str] | None = None,
     verification_checks: list[str] | None = None,
     failure_recovery: list[str] | None = None,
+    failure_modes: list[str] | None = None,
+    tool_versions: dict[str, Any] | None = None,
     has_side_effects: bool = False,
 ) -> dict[str, Any]:
-    """Construct a procedural learning candidate with safety and verification metadata."""
+    """Construct a procedural learning candidate — a candidate, never a procedure.
+
+    Everything a replay would need to know whether it is even in the same
+    situation is recorded here: what must be true first, how to tell it
+    worked, how it is known to fail, and which tool versions it was learned
+    against. Nothing built here is reliable: that is
+    :func:`verify_procedure_candidate`'s to grant, and only on evidence.
+    """
     return {
         "trigger": trigger.strip(),
-        "steps": [s.strip() for s in steps if s and s.strip()],
-        "prerequisites": [p.strip() for p in (prerequisites or []) if p and p.strip()],
-        "verification_checks": [v.strip() for v in (verification_checks or []) if v and v.strip()],
-        "failure_recovery": [f.strip() for f in (failure_recovery or []) if f and f.strip()],
+        "steps": _clean_list(steps),
+        "prerequisites": _clean_list(prerequisites),
+        "verification_checks": _clean_list(verification_checks),
+        "failure_recovery": _clean_list(failure_recovery),
+        "failure_modes": _clean_list(failure_modes),
+        "tool_versions": dict(tool_versions or {}),
         "has_side_effects": bool(has_side_effects),
         "grants_side_effect_permission": False,
+        "status": "candidate",
         "verified": False,
+        "verified_outcomes_count": 0,
+        "owner_confirmed": False,
+        "is_reliable": False,
     }
 
 
@@ -256,8 +300,22 @@ def verify_procedure_candidate(
     candidate: dict[str, Any],
     *,
     observed_outcomes: list[dict[str, Any]],
+    owner_confirmed: bool = False,
 ) -> dict[str, Any]:
-    """Verify a procedure candidate only when prerequisites, checks, recovery, and observed pass exist."""
+    """Score a candidate against its observed runs; promote only on real evidence.
+
+    Two gates, deliberately separate:
+
+    * ``verified`` — the candidate is *well-formed and has worked once*: it
+      records its prerequisites, checks and recovery, and at least one run
+      passed with evidence.
+    * ``is_reliable`` — it may be presented as a procedure to follow. That
+      needs :data:`MIN_VERIFIED_OUTCOMES` independently verified runs, or the
+      owner confirming it themselves. A one-off success stays a candidate.
+
+    Neither gate ever grants side-effect permission: see
+    :func:`can_auto_execute_side_effects`.
+    """
     updated = dict(candidate)
     has_structure = bool(
         updated.get("steps")
@@ -265,8 +323,14 @@ def verify_procedure_candidate(
         and updated.get("verification_checks")
         and updated.get("failure_recovery")
     )
-    passed_observed = any(bool(o.get("passed")) and bool(o.get("observed_evidence")) for o in (observed_outcomes or []))
-    updated["verified"] = bool(has_structure and passed_observed)
+    verified_count = _count_verified_outcomes(observed_outcomes)
+    updated["verified"] = bool(has_structure and verified_count >= 1)
+    updated["verified_outcomes_count"] = verified_count
+    updated["owner_confirmed"] = bool(owner_confirmed)
+    updated["is_reliable"] = bool(
+        updated["verified"] and (verified_count >= MIN_VERIFIED_OUTCOMES or owner_confirmed)
+    )
+    updated["status"] = "reliable" if updated["is_reliable"] else "candidate"
     updated["observed_outcomes"] = list(observed_outcomes or [])
     updated["grants_side_effect_permission"] = False
     return updated

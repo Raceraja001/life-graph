@@ -82,3 +82,126 @@ def test_extract_claim_evidence_separates_supported_and_unsupported_claims():
     assert claims[0]["evidence"][0]["lineage"]["excerpt"] == "Uses Realme X2 Pro."
     assert claims[1]["supported"] is False
     assert claims[1]["memory_ids"] == []
+
+
+# ── P5.2 Claim entailment: a citation marker is not proof ────────────────
+
+
+def _cited(mid: str, text: str, **over):
+    """A retrieved memory as the answer synthesizer sees it, with readable source text."""
+    row = {
+        "id": mid,
+        "source_type": "chat",
+        "trust_tier": "self",
+        "capture_event_id": f"cap-{mid}",
+        "content": text,
+        "properties": {},
+    }
+    row.update(over)
+    return row
+
+
+def test_p5_2_citation_marker_alone_is_not_support():
+    """[Memory 1] pointing at unrelated text must not make a claim supported."""
+    memories = [_cited("m1", "Likes painting watercolours on weekends.")]
+
+    claims = extract_claim_evidence("You live in London [Memory 1].", memories)
+    assert len(claims) == 1
+    claim = claims[0]
+    assert claim["support_status"] == "unsupported"
+    assert claim["supported"] is False
+    assert claim["memory_ids"] == []  # an irrelevant citation earns no lineage
+    assert claim["entailment_score"] == 0.0
+
+    # The per-citation detail says which citation failed and why.
+    (detail,) = claim["citation_support"]
+    assert detail["citation"] == 1
+    assert detail["memory_id"] == "m1"
+    assert detail["support_status"] == "unsupported"
+    assert detail["detail"] == "Citation does not entail claim"
+
+    # The same marker over text that does say it comes back supported.
+    ok = extract_claim_evidence(
+        "You live in London [Memory 1].", [_cited("m1", "Raja lives in London, UK.")]
+    )
+    assert ok[0]["support_status"] == "supported"
+    assert ok[0]["supported"] is True
+    assert ok[0]["memory_ids"] == ["m1"]
+    assert ok[0]["entailment_score"] >= 0.45
+
+
+def test_p5_2_contradictory_citation_is_marked_contradicted():
+    """Cited text that asserts a different value for the same fact disagrees."""
+    memories = [
+        _cited("m1", "Raja lives in Chennai, Tamil Nadu."),
+        _cited("m2", "Raja does not drink coffee."),
+    ]
+
+    conflicting_value = extract_claim_evidence("You live in London [Memory 1].", memories)[0]
+    assert conflicting_value["support_status"] == "contradicted"
+    assert conflicting_value["supported"] is False
+    assert conflicting_value["citation_support"][0]["detail"].startswith("Citation contradicts claim")
+
+    opposite_polarity = extract_claim_evidence("You drink coffee [Memory 2].", memories)[0]
+    assert opposite_polarity["support_status"] == "contradicted"
+    assert opposite_polarity["supported"] is False
+
+    # Contradiction is more severe than support: a good co-citation cannot
+    # launder a claim that one of its own sources disagrees with.
+    mixed = extract_claim_evidence(
+        "You live in London [Memory 1][Memory 3].",
+        [*memories, _cited("m3", "Raja lives in London for work.")],
+    )[0]
+    assert mixed["support_status"] == "contradicted"
+    assert mixed["supported"] is False
+
+
+def test_p5_2_unresolvable_citation_is_marked_unresolved_source():
+    """A reference string is not a source: the source has to actually resolve."""
+    memories = [_cited("m1", "Raja lives in Chennai.")]
+
+    # Out of range: the answer cited a memory that was never retrieved.
+    dangling = extract_claim_evidence("You live in Chennai [Memory 7].", memories)[0]
+    assert dangling["support_status"] == "unresolved_source"
+    assert dangling["supported"] is False
+    assert dangling["citation_support"][0]["detail"] == "Cited source could not be resolved"
+    assert dangling["confidence_breakdown"] == []  # nothing to decompose
+
+    # Resolves to a tombstone: the row is there, the source is gone.
+    deleted = extract_claim_evidence(
+        "You live in Chennai [Memory 1].",
+        [_cited("m1", "Raja lives in Chennai.", status="deleted")],
+    )[0]
+    assert deleted["support_status"] == "unresolved_source"
+    assert deleted["supported"] is False
+
+    # Resolves, but carries no text at all: honestly reported as unverified
+    # context rather than as either support or a false accusation.
+    textless = extract_claim_evidence(
+        "You live in Chennai [Memory 1].",
+        [{"id": "m1", "source_type": "chat", "trust_tier": "self", "properties": {}}],
+    )[0]
+    assert textless["support_status"] == "context"
+    assert textless["entailment_score"] is None
+    assert "entailment not verified" in textless["citation_support"][0]["detail"]
+
+
+def test_p5_2_entailment_scorer_is_injectable_and_failures_do_not_grant_support():
+    """A semantic scorer can replace the lexical proxy; a broken one must not help."""
+    from life_graph.core.evidence import verify_claim_support
+
+    memory = _cited("m1", "Enjoys watercolour painting.")
+
+    # A semantic model sees the paraphrase the lexical proxy misses.
+    semantic = verify_claim_support("You paint with watercolours", memory, scorer=lambda c, s: 0.91)
+    assert semantic["support_status"] == "supported"
+    assert semantic["entailment_score"] == 0.91
+
+    # A scorer that raises falls back to the lexical proxy; it never defaults
+    # to "supported" just because the check could not be run.
+    def _broken(claim, source):
+        raise RuntimeError("model unavailable")
+
+    unrelated = verify_claim_support("You live in London", memory, scorer=_broken)
+    assert unrelated["support_status"] == "unsupported"
+    assert unrelated["entailment_score"] == 0.0

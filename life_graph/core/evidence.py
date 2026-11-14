@@ -30,6 +30,7 @@ only after the owner said so themselves (:func:`confirm_from_owner`).
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -371,45 +372,404 @@ def resolve_memory_lineage(
     }
 
 
-def extract_claim_evidence(answer: str, memories: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Map synthesized answer sentences to their cited memory lineage; uncited claims are marked unsupported."""
-    import re
+# ── Claim support (5.2) ───────────────────────────────────────────────────
+#
+# A ``[Memory 3]`` marker is a pointer, not a proof. The local model writes
+# those markers while synthesizing an answer, and it mis-attributes: it will
+# cite the memory it was *looking at* rather than the one that carries the
+# fact, so "You live in London [Memory 1]" can arrive with Memory 1 reading
+# "likes painting". Treating the marker as support is what lets an answer
+# claim a citation it does not have. Every citation is therefore checked
+# against the cited text before it counts.
 
+#: The citation entails the claim: the cited text actually says it.
+SUPPORTED = "supported"
+#: The cited text asserts something incompatible with the claim.
+CONTRADICTED = "contradicted"
+#: The cited text is about something else; the marker proves nothing.
+UNSUPPORTED = "unsupported"
+#: The citation points at nothing we can read — out of range, or a tombstone.
+UNRESOLVED_SOURCE = "unresolved_source"
+#: The citation resolves, but carries no text to compare, so entailment was
+#: never assessed. Related, not proof — reported honestly rather than as support.
+CONTEXT = "context"
+
+#: Worst-first. A claim takes the most severe status among its citations: one
+#: good citation must not launder a contradicted or unresolvable co-citation.
+_STATUS_SEVERITY = (CONTRADICTED, UNRESOLVED_SOURCE, UNSUPPORTED, CONTEXT, SUPPORTED)
+
+#: Statuses that let a claim stand. ``CONTEXT`` is included because an
+#: unreadable-but-present source is a gap in *our* records, not a false claim;
+#: the confidence breakdown still reports it.
+_STANDS = frozenset({SUPPORTED, CONTEXT})
+
+#: Overlap at or above this counts as the cited text saying the claim.
+ENTAILMENT_THRESHOLD = 0.45
+#: Below this the two texts share nothing, so a value conflict between them is
+#: coincidence rather than contradiction (a claim about an idea and a memory
+#: about a job both match the "is a …" frame without disagreeing).
+_CONTRADICTION_FLOOR = 0.25
+
+#: Function words, plus the auxiliaries that make negation work ("does not"),
+#: so overlap is measured on the words that carry the claim.
+_STOPWORDS = frozenset(
+    [
+        "a", "an", "the", "this", "that", "these", "those", "there", "here",
+        "and", "or", "but", "if", "then", "else", "so", "as", "of", "in", "on",
+        "at", "to", "for", "from", "by", "with", "about", "into", "over",
+        "under", "between", "during", "within", "is", "are", "was", "were",
+        "be", "been", "being", "am", "do", "does", "did", "done", "has",
+        "have", "had", "having", "will", "would", "shall", "should", "can",
+        "could", "may", "might", "must", "i", "me", "my", "mine", "you",
+        "your", "yours", "he", "him", "his", "she", "her", "hers", "it", "its",
+        "we", "us", "our", "ours", "they", "them", "their", "theirs", "who",
+        "whom", "whose", "which", "what", "when", "where", "why", "how", "all",
+        "any", "both", "each", "few", "more", "most", "other", "some", "such",
+        "only", "own", "same", "than", "too", "very", "just", "now", "also",
+        "still", "really", "quite", "s", "t",
+    ]
+)
+
+#: Polarity markers. Dropped from the content tokens (so "drinks coffee" and
+#: "does not drink coffee" overlap fully) and compared separately.
+_NEGATIONS = frozenset(
+    [
+        "not", "no", "never", "none", "cannot", "cant", "dont", "doesnt",
+        "didnt", "isnt", "arent", "wasnt", "werent", "wont", "havent",
+        "hasnt", "hadnt", "nor", "neither", "nothing", "nowhere", "without",
+        "nope",
+    ]
+)
+
+#: Whatever follows a frame's verb, up to the end of the clause.
+_FRAME_TAIL = r"([a-z0-9 ,'&./-]+)"
+
+#: Single-valued predicate frames. When the claim and the cited text both fill
+#: the same frame with values that share nothing, they are not merely failing
+#: to overlap — they disagree, and the claim is contradicted.
+_FRAMES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("location", re.compile(r"\b(?:lives?|living|lived|resides?|residing|based|located|stays?|staying)\s+(?:in|at)\s+" + _FRAME_TAIL)),
+    ("employer", re.compile(r"\b(?:works?|working|worked|employed)\s+(?:at|for)\s+" + _FRAME_TAIL)),
+    ("preference", re.compile(r"\b(?:prefers?|preferred|favours?|favors?)\s+" + _FRAME_TAIL)),
+    ("tool", re.compile(r"\b(?:uses?|using|used|owns?|owned|drives?|runs?)\s+(?:a|an|the)?\s*" + _FRAME_TAIL)),
+    ("role", re.compile(r"\b(?:is|was|am|are)\s+(?:a|an|the)\s+" + _FRAME_TAIL)),
+)
+
+
+def _stem(word: str) -> str:
+    """Crude suffix strip so "lives"/"living"/"lived" meet at "liv"-ish forms.
+
+    Deliberately not a real stemmer: it only has to make plural and simple
+    verb inflections of the *same* word match, and must never merge two
+    different words (hence the length floors).
+    """
+    for suffix, floor in (("ing", 6), ("ies", 5), ("ed", 5), ("s", 4)):
+        if len(word) >= floor and word.endswith(suffix):
+            word = word[: -len(suffix)] + ("y" if suffix == "ies" else "")
+            break
+    # One more pass so the whole family lands on one form: "live", "lives"
+    # ("liv" + "e" after the "s" came off) and "living" all become "liv".
+    return word[:-1] if len(word) >= 4 and word.endswith("e") else word
+
+
+def _normalize_text(text: str) -> str:
+    return (text or "").replace("'", "").replace("’", "").lower()
+
+
+def _content_tokens(text: str) -> set[str]:
+    """The claim-bearing words of *text*, stemmed; function and polarity words out."""
+    words = re.findall(r"[a-z0-9]+", _normalize_text(text))
+    return {
+        _stem(w)
+        for w in words
+        if w not in _STOPWORDS and w not in _NEGATIONS and (len(w) > 1 or w.isdigit())
+    }
+
+
+def _is_negated(text: str) -> bool:
+    norm = _normalize_text(text)
+    if "no longer" in norm or "used to" in norm:
+        return True
+    return bool(_NEGATIONS & set(re.findall(r"[a-z]+", norm)))
+
+
+def _frame_conflict(claim: str, source: str) -> str | None:
+    """The name of a predicate frame both texts fill with disjoint values, if any."""
+    for name, pattern in _FRAMES:
+        claim_match = pattern.search(_normalize_text(claim))
+        source_match = pattern.search(_normalize_text(source))
+        if not (claim_match and source_match):
+            continue
+        claim_val = _content_tokens(claim_match.group(1))
+        source_val = _content_tokens(source_match.group(1))
+        if claim_val and source_val and not (claim_val & source_val):
+            return name
+    return None
+
+
+def lexical_entailment_score(claim: str, source: str) -> float:
+    """How much of *claim*'s content the *source* text actually accounts for, 0–1.
+
+    The default entailment signal: a share of the claim's content words found
+    in the cited text. It is a proxy, not a judgement about meaning — pass a
+    ``scorer`` to :func:`verify_claim_support` to put a real entailment model
+    (or an embedding similarity) in front of it.
+    """
+    claim_tokens = _content_tokens(claim)
+    source_tokens = _content_tokens(source)
+    if not claim_tokens or not source_tokens:
+        return 0.0
+    return round(len(claim_tokens & source_tokens) / len(claim_tokens), 4)
+
+
+def citation_text(memory: Any) -> str:
+    """Everything of a cited memory we are allowed to check a claim against.
+
+    The memory's own content first, then the preserved source span: a memory
+    distilled down to a short statement keeps the words it came from in
+    ``properties["source_excerpt"]`` (:func:`normalize_lineage`), and that span
+    is often the only text that carries the fact.
+    """
+    if memory is None:
+        return ""
+    get = (lambda k: memory.get(k)) if isinstance(memory, dict) else (lambda k: getattr(memory, k, None))
+    props = get("properties") or {}
+    if not isinstance(props, dict):
+        props = {}
+    lineage = props.get("lineage") if isinstance(props.get("lineage"), dict) else {}
+    parts = [
+        get("content"),
+        get("summary"),
+        props.get("source_excerpt"),
+        props.get("excerpt"),
+        props.get("text"),
+        lineage.get("excerpt"),
+    ]
+    seen: list[str] = []
+    for part in parts:
+        if isinstance(part, str) and part.strip() and part.strip() not in seen:
+            seen.append(part.strip())
+    return " ".join(seen)
+
+
+def _is_tombstone(memory: Any) -> bool:
+    """True when the cited row exists only as a marker that its source is gone."""
+    if memory is None:
+        return True
+    get = (lambda k: memory.get(k)) if isinstance(memory, dict) else (lambda k: getattr(memory, k, None))
+    if get("deleted") or get("missing"):
+        return True
+    return str(get("status") or "").lower() in ("deleted", "purged", "missing", "unavailable")
+
+
+def verify_claim_support(
+    claim: str,
+    memory: Any,
+    *,
+    scorer: Any = None,
+) -> dict[str, Any]:
+    """Check one citation against one claim; never take the marker's word for it.
+
+    *scorer*, when given, is called as ``scorer(claim, source_text)`` and must
+    return a 0–1 entailment score; it replaces the lexical proxy. Returns the
+    per-citation support detail that goes into the claim's breakdown.
+    """
+    mem_id = None
+    if memory is not None:
+        mem_id = memory.get("id") if isinstance(memory, dict) else getattr(memory, "id", None)
+    detail: dict[str, Any] = {
+        "memory_id": str(mem_id) if mem_id is not None else None,
+        "support_status": UNRESOLVED_SOURCE,
+        "entailment_score": None,
+        "detail": "Cited source could not be resolved",
+    }
+    if _is_tombstone(memory):
+        return detail
+
+    source_text = citation_text(memory)
+    if not source_text:
+        detail.update(
+            support_status=CONTEXT,
+            detail="Cited memory carries no readable text; entailment not verified",
+        )
+        return detail
+
+    if scorer is not None:
+        try:
+            score = round(max(0.0, min(1.0, float(scorer(claim, source_text)))), 4)
+        except Exception:  # noqa: BLE001 — a failing scorer must not fabricate support
+            score = lexical_entailment_score(claim, source_text)
+    else:
+        score = lexical_entailment_score(claim, source_text)
+    detail["entailment_score"] = score
+
+    conflict = _frame_conflict(claim, source_text)
+    polarity_clash = _is_negated(claim) != _is_negated(source_text)
+    if score >= _CONTRADICTION_FLOOR and (conflict or (polarity_clash and score >= 0.5)):
+        detail.update(
+            support_status=CONTRADICTED,
+            detail=f"Citation contradicts claim ({conflict or 'opposite polarity'})",
+        )
+    elif score >= ENTAILMENT_THRESHOLD:
+        detail.update(support_status=SUPPORTED, detail=f"Citation entails claim (score {score})")
+    else:
+        detail.update(support_status=UNSUPPORTED, detail="Citation does not entail claim")
+    return detail
+
+
+def _worst_status(statuses: list[str]) -> str:
+    for status in _STATUS_SEVERITY:
+        if status in statuses:
+            return status
+    return UNSUPPORTED
+
+
+def extract_claim_evidence(
+    answer: str,
+    memories: list[dict[str, Any]],
+    *,
+    scorer: Any = None,
+) -> list[dict[str, Any]]:
+    """Map answer sentences to the lineage they cite, keeping only citations that hold up.
+
+    Each claim reports the lineage behind it *and* whether the cited text
+    actually says it: a sentence whose only citation is irrelevant comes back
+    ``unsupported``, and one whose citation disagrees comes back
+    ``contradicted``. Both leave ``supported`` false, which is what gives the
+    caller something to abstain on (:func:`decide_claim_action`).
+    """
     if not answer or not answer.strip():
         return []
     tag_re = re.compile(r"\[Memory\s+(\d+)\]")
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", answer.strip()) if s.strip()]
     claims: list[dict[str, Any]] = []
     for sent in sentences:
-        cited_indices = [int(m.group(1)) - 1 for m in tag_re.finditer(sent)]
+        cited_indices: list[int] = []
+        for match in tag_re.finditer(sent):
+            idx = int(match.group(1)) - 1
+            if idx not in cited_indices:
+                cited_indices.append(idx)
+        # The claim is what the sentence asserts; the markers are bookkeeping
+        # and would otherwise count as content words shared with nothing.
+        claim_text = tag_re.sub(" ", sent).strip()
+
         supporting: list[dict[str, Any]] = []
+        support_details: list[dict[str, Any]] = []
+        breakdowns: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
         for idx in cited_indices:
-            if 0 <= idx < len(memories):
-                mem = memories[idx]
-                mid = str(mem.get("id") or "")
-                if mid and mid not in seen_ids:
-                    seen_ids.add(mid)
-                    supporting.append(resolve_memory_lineage(mem))
-        breakdowns = [
-            decompose_memory_confidence(memories[idx])
-            for idx in cited_indices
-            if 0 <= idx < len(memories)
-        ]
-        # Weakest-link claim confidence: one strong citation cannot validate a weak co-cited claim.
+            mem = memories[idx] if 0 <= idx < len(memories) else None
+            support = verify_claim_support(claim_text, mem, scorer=scorer)
+            support["citation"] = idx + 1
+            support_details.append(support)
+            if mem is None:
+                continue
+            breakdowns.append(decompose_memory_confidence(mem, support_status=support["support_status"]))
+            mid = str(mem.get("id") or "") if isinstance(mem, dict) else str(getattr(mem, "id", "") or "")
+            if support["support_status"] in _STANDS and mid and mid not in seen_ids:
+                seen_ids.add(mid)
+                supporting.append(resolve_memory_lineage(mem))
+
+        if support_details:
+            status = _worst_status([s["support_status"] for s in support_details])
+        else:
+            status = UNSUPPORTED  # uncited: nothing was offered as evidence
+        scores = [s["entailment_score"] for s in support_details if s["entailment_score"] is not None]
+        # Weakest-link, on both axes: one strong citation cannot validate a
+        # claim that also rests on a weak or wrong one.
         claim_conf = round(min((b["calibrated_confidence"] for b in breakdowns), default=0.0), 4)
         claims.append(
             {
                 "claim": sent,
-                "supported": bool(supporting),
+                "supported": bool(supporting) and status in _STANDS,
+                "support_status": status,
+                "entailment_score": round(min(scores), 4) if scores else None,
+                "citation_support": support_details,
                 "memory_ids": [s["memory_id"] for s in supporting if s.get("memory_id")],
                 "evidence": supporting,
                 "confidence_breakdown": breakdowns,
                 "claim_confidence": claim_conf,
                 "claim_uncertainty": round(1.0 - claim_conf, 4),
+                "recommended_action": decide_claim_action(claim_conf if status in _STANDS else 0.0),
             }
         )
     return claims
+
+
+# ── Causal rationale (5.4) ───────────────────────────────────────────────
+
+#: Decision sources that mean the reasoning came out of the owner's own mouth.
+#: Anything else — a challenge, a distillation, a watcher — produced a
+#: rationale *we* deduced, and a deduced "why" must never be replayed to the
+#: owner as something they said.
+STATED_RATIONALE_SOURCES = frozenset({"explicit", "conversation", "user", "owner"})
+
+#: The owner stated the reasoning.
+EXPLICIT = "explicit"
+#: Life Graph deduced the reasoning.
+RATIONALE_INFERRED = "inferred"
+
+
+def rationale_type(
+    source: str | None,
+    properties: Mapping[str, Any] | None = None,
+) -> str:
+    """``"explicit"`` when the owner stated the rationale, ``"inferred"`` when we deduced it.
+
+    Derived from the server-side decision ``source``, never from a stamp in
+    ``properties`` — the one exception is a recorded owner confirmation, which
+    :func:`owner_confirmed` only honours when an authenticated owner path
+    wrote it.
+    """
+    if owner_confirmed(properties):
+        return EXPLICIT
+    return EXPLICIT if (source or "").strip().lower() in STATED_RATIONALE_SOURCES else RATIONALE_INFERRED
+
+
+# ── Confidence calibration and action thresholds (5.3) ───────────────────
+
+#: What to do with a claim at a given calibrated confidence, highest first.
+#: Thresholds, not calibrated probabilities: they are where the *behaviour*
+#: changes, and :func:`evaluate_confidence_calibration` is what says whether
+#: the numbers feeding them deserve to be believed.
+ANSWER = "answer"
+QUALIFY = "qualify"
+ASK = "ask"
+ABSTAIN = "abstain"
+
+ACTION_THRESHOLDS: tuple[tuple[float, str], ...] = ((0.85, ANSWER), (0.60, QUALIFY), (0.40, ASK))
+
+
+def decide_claim_action(confidence: float) -> str:
+    """Answer, qualify it, ask the owner, or say nothing — from one confidence.
+
+    ``>= 0.85`` state it; ``0.60–0.85`` state it hedged; ``0.40–0.60`` ask the
+    owner rather than guess; below ``0.40`` abstain. A confidence that is not a
+    number at all abstains: an unreadable signal is not permission to answer.
+    """
+    try:
+        conf = float(confidence)
+    except (TypeError, ValueError):
+        return ABSTAIN
+    if conf != conf:  # NaN
+        return ABSTAIN
+    for floor, action in ACTION_THRESHOLDS:
+        if conf >= floor:
+            return action
+    return ABSTAIN
+
+
+#: What a citation that failed verification costs the memory behind it.
+#: Support is a property of the *claim*, so it multiplies the memory's own four
+#: components rather than hiding inside them — ``base_confidence`` stays
+#: readable next to the penalised figure.
+SUPPORT_PENALTY: dict[str, float] = {
+    SUPPORTED: 1.0,
+    CONTEXT: 1.0,  # entailment unassessed: no support to credit, none to punish
+    UNSUPPORTED: 0.55,
+    UNRESOLVED_SOURCE: 0.50,
+    CONTRADICTED: 0.30,
+}
 
 
 _TRUST_SCORES = {
@@ -448,10 +808,26 @@ def decompose_memory_confidence(
     memory: Any,
     *,
     now: datetime | None = None,
+    support_status: str | None = None,
 ) -> dict[str, Any]:
-    """Decompose confidence into extraction, trust, freshness, and evidence components.
+    """Decompose confidence into extraction, trust, evidence-prior, and freshness components.
 
-    Vector similarity is intentionally excluded so retrieval rank never masquerades as truth.
+    The four components answer four different questions and are kept apart in
+    the result, because collapsing them is how a confident-sounding number
+    gets built out of nothing: *extraction* is how sure the parser was it read
+    the fact correctly, *trust* is how much the ingress path earns, *evidence
+    prior* is what the kind of evidence is worth at all (the owner's own words
+    versus a distilled guess), and *freshness* is how long ago we last saw it
+    confirmed.
+
+    Vector similarity is excluded on purpose, so retrieval rank never
+    masquerades as truth.
+
+    *support_status*, when a caller has checked this memory against a specific
+    claim (:func:`verify_claim_support`), applies the penalty for a
+    contradicted, unsupported or unresolvable citation on top. It multiplies
+    rather than folds in: ``base_confidence`` stays readable beside the
+    penalised ``calibrated_confidence``.
     """
     get = (lambda k, d=None: memory.get(k, d)) if isinstance(memory, dict) else (lambda k, d=None: getattr(memory, k, d))
     props = get("properties") or {}
@@ -488,18 +864,25 @@ def decompose_memory_confidence(
             age_days = max(0.0, (ref_now - ts).total_seconds() / 86400.0)
             freshness = round(1.0 / (1.0 + age_days / 180.0), 4)
 
-    calibrated = round(
+    base = round(
         max(0.0, min(1.0, 0.35 * extraction_conf + 0.25 * trust_score + 0.25 * prior + 0.15 * freshness)),
         4,
     )
+    penalty = SUPPORT_PENALTY.get(support_status, 1.0) if support_status else 1.0
+    calibrated = round(max(0.0, min(1.0, base * penalty)), 4)
     return {
         "extraction_confidence": round(extraction_conf, 4),
         "trust_score": round(trust_score, 4),
+        "evidence_prior": round(prior, 4),
         "freshness_score": round(freshness, 4),
         "evidence_kind": ev_kind,
         "explicit_vs_inferred": explicit_vs_inferred,
+        "support_status": support_status,
+        "support_penalty": round(penalty, 4),
+        "base_confidence": base,
         "calibrated_confidence": calibrated,
         "uncertainty": round(1.0 - calibrated, 4),
+        "recommended_action": decide_claim_action(calibrated),
     }
 
 

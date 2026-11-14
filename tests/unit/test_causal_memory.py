@@ -101,3 +101,85 @@ async def test_p0_5_record_evidence_backed_outcome_rejects_missing_evidence_and_
     assert resolved.outcome == "correct"
     assert resolved.resolution_evidence["evidence_backed"] is True
     assert resolved.resolution_evidence["source_ref"] == "commit:abc123"
+
+
+# ── P5.4 Causal memory: stated vs deduced rationale, alternatives kept ───
+
+
+def test_p5_4_rationale_type_separates_stated_from_deduced():
+    from life_graph.core.evidence import rationale_type
+
+    # The owner said why.
+    assert rationale_type("explicit") == "explicit"
+    assert rationale_type("conversation") == "explicit"
+    assert rationale_type("user") == "explicit"
+    assert rationale_type("OWNER") == "explicit"
+
+    # We worked out why. A belief challenge, a distillation and a missing
+    # source are all our own reasoning and must not be replayed as the
+    # owner's words.
+    assert rationale_type("challenge") == "inferred"
+    assert rationale_type("distillation") == "inferred"
+    assert rationale_type(None) == "inferred"
+    assert rationale_type("") == "inferred"
+
+    # A model cannot stamp its own rationale as the owner's: only a
+    # confirmation an authenticated owner path recorded counts.
+    assert rationale_type("challenge", {"rationale_type": "explicit"}) == "inferred"
+    assert rationale_type("challenge", {"owner_confirmed": True}) == "inferred"
+    assert (
+        rationale_type("challenge", {"owner_confirmed": {"actor": "raja", "at": "2026-11-14"}})
+        == "explicit"
+    )
+
+
+def test_p5_4_causal_chain_reports_rationale_type_and_keeps_alternatives():
+    decision = SimpleNamespace(
+        id=uuid.uuid4(),
+        title="Pick a connection pool",
+        status="decided",
+        source="explicit",
+        reasoning="asyncpg gave the most burst headroom in the bake-off",
+        chosen_option="asyncpg",
+        capture_event_id=uuid.uuid4(),
+        properties={},
+        options=[
+            {"label": "asyncpg"},
+            {"label": "psycopg3", "rejected_because": "slower under burst in our bake-off"},
+            "pgbouncer only",
+        ],
+    )
+    chain = trace_causal_chain(decision, [])
+
+    assert chain["rationale_type"] == "explicit"
+    assert chain["rationale_origin"] == "user_stated"  # the P0.5 key still works
+
+    # Every option weighed is preserved, and the losers keep their reason.
+    assert [o["option"] for o in chain["options_considered"]] == [
+        "asyncpg",
+        "psycopg3",
+        "pgbouncer only",
+    ]
+    assert [o["option"] for o in chain["rejected_options"]] == ["psycopg3", "pgbouncer only"]
+    rejected = {o["option"]: o["rejected_because"] for o in chain["rejected_options"]}
+    assert rejected["psycopg3"] == "slower under burst in our bake-off"
+    # Not knowing why an option lost is recorded as not knowing, never invented.
+    assert rejected["pgbouncer only"] is None
+
+    # A deduced decision with no options recorded says so, both ways.
+    inferred = trace_causal_chain(
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            title="Owner prefers evening digests",
+            status="candidate",
+            source="challenge",
+            reasoning="Inferred from recent read timestamps",
+            chosen_option=None,
+            properties={},
+            options=[],
+        ),
+        [],
+    )
+    assert inferred["rationale_type"] == "inferred"
+    assert inferred["rationale_origin"] == "model_inferred"
+    assert inferred["options_considered"] == []
