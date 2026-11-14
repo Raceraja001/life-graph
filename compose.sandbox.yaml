@@ -1,0 +1,134 @@
+# ── NOD errand sandbox ───────────────────────────────────────
+# The isolation chassis for errands (life_graph/services/sandbox.py). This
+# stack is separate from docker-compose.yml on purpose: that one runs the
+# application *with* its secrets, this one runs untrusted work *without*
+# them, and nothing here should ever be merged into the app's compose file.
+#
+#   docker compose -f compose.sandbox.yaml build
+#   docker compose -f compose.sandbox.yaml up -d
+#   docker compose -f compose.sandbox.yaml down -v
+#
+# Five invariants hold for every service below, and
+# tests/unit/test_sandbox_isolation.py asserts them against this very file:
+#
+#   1. No host bind mount and no docker/podman socket. Writable space is
+#      tmpfs only, so nothing an errand produces outlives the container
+#      unless the application copies it out explicitly.
+#   2. No LLM provider key, no LIFE_GRAPH_* variable, nothing whose name or
+#      value looks like a credential. A compromised errand finds no key to
+#      spend and no token to replay.
+#   3. Non-root user, read-only root filesystem, all capabilities dropped,
+#      no-new-privileges.
+#   4. Memory, CPU and pid ceilings, so a runaway page or script cannot take
+#      the host down.
+#   5. An internal-only network: the containers can reach each other and
+#      nothing else. Egress is NOT quietly enabled here — a browser errand
+#      that must reach a real site gets an explicit allowlisting proxy on a
+#      second network, reviewed on its own. Default-closed means a
+#      misconfiguration fails the errand instead of leaking.
+#
+# `restart: "no"` throughout: a sandbox is throwaway. If it died, the errand
+# failed and the application decides what happens next.
+name: life-graph-sandbox
+
+services:
+  # ── Headless Chromium, driven over Playwright's browser server ──
+  browser:
+    build:
+      context: .
+      dockerfile: Dockerfile.browser
+    image: life-graph-sandbox-browser:dev
+    init: true
+    # pwuser from the Playwright base image. Pinned here too so an image
+    # rebuild cannot silently promote this container to root.
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      # The Chromium profile, crash dumps and HOME all live here and die
+      # with the container. nosuid/nodev: nothing fetched becomes a setuid
+      # binary or a device node. exec is left on — Chromium re-execs its own
+      # helper processes.
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+      # Chromium needs a real /dev/shm; 64m (the docker default) makes
+      # renderers crash on heavy pages.
+      - /dev/shm:rw,nosuid,nodev,size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Only what the browser needs to find itself. No credentials, no app config.
+    environment:
+      HOME: /tmp
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      SANDBOX_BROWSER_PORT: "9222"
+      SANDBOX_ROLE: browser
+      TZ: UTC
+    # `expose`, not `ports`: the browser server is reachable on the internal
+    # network, never published to the host or the LAN. A browser control
+    # endpoint is a remote-code-execution handle on the browser.
+    expose:
+      - "9222"
+    networks:
+      - sandbox_internal
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 1.0
+    pids_limit: 512
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket;socket.create_connection(('127.0.0.1',9222),timeout=3).close()"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # ── Minimal scratch workspace ──────────────────────────────
+  workspace:
+    build:
+      context: .
+      dockerfile: Dockerfile.workspace
+    image: life-graph-sandbox-workspace:dev
+    init: true
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      # noexec on the work area: an errand that downloads a binary here
+      # cannot run it. Scripts the application hands in run from /tmp.
+      # uid/gid/mode are not decoration: a tmpfs is mounted root-owned 0755
+      # by default, which leaves the pinned non-root user unable to write to
+      # its own work directory. 0700 keeps it to that one user.
+      - /work:rw,nosuid,nodev,noexec,size=256m,uid=65534,gid=65534,mode=0700
+      - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      HOME: /tmp
+      LANG: C.UTF-8
+      SANDBOX_ROLE: workspace
+      # Where the browser answers on the internal network. A location, not a
+      # credential — the endpoint is unreachable from anywhere else.
+      SANDBOX_BROWSER_WS_URL: ws://browser:9222/
+      TZ: UTC
+    working_dir: /work
+    networks:
+      - sandbox_internal
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    pids_limit: 128
+    restart: "no"
+
+# `internal: true` is the whole point: docker attaches no gateway, so these
+# containers have no route off this bridge. They can talk to each other by
+# service name and to nothing else — not the internet, not the host, not the
+# application's postgres on the other compose network.
+networks:
+  sandbox_internal:
+    name: life_graph_sandbox_internal
+    driver: bridge
+    internal: true
+
+# No top-level `volumes:` stanza, and no service declares one. Writable
+# state is tmpfs or it does not exist.

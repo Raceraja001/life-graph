@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-14 06:33 UTC` from `feat/nod-phase4-cost-guardrails` @ `3cc7cdf`
+Generated `2026-11-14 06:59 UTC` from `feat/nod-phase3a-sandbox-infra` @ `7341452`
 
 ---
 
@@ -24,9 +24,9 @@ Generated `2026-11-14 06:33 UTC` from `feat/nod-phase4-cost-guardrails` @ `3cc7c
 | Agent tools | **14** |
 | Scheduled jobs | **34** |
 | Config settings | **284** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4259** in 485 files |
+| Test functions | **4308** in 486 files |
 | Dashboard pages | **22** |
-| Python | 455 files, 120,628 lines |
+| Python | 455 files, 121,205 lines |
 
 ---
 
@@ -517,10 +517,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 370 | 3422 |
+| `tests/unit/` | 371 | 3471 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **485** | **4259** |
+| **total** | **486** | **4308** |
 
 ---
 

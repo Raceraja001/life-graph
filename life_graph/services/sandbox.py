@@ -27,6 +27,18 @@ agent controls the worktree.
 Anything that stops the sandbox from running is reported as
 :class:`SandboxUnavailableError`, which verifiers turn into *inconclusive*: a
 check that did not run is never a pass.
+
+The second half of this module is the **errand sandbox chassis**: a
+:class:`SandboxSpec` describing a container, a :func:`validate_spec` that
+refuses any spec which would hand an errand a way out (a host mount, the
+docker socket, privileged or host networking, anything credential-shaped in
+the environment), and a :class:`SandboxManager` that starts, stops and
+inspects those containers through an injectable runner. The two images it
+describes live in ``Dockerfile.browser`` and ``Dockerfile.workspace``, and
+``compose.sandbox.yaml`` declares the same two containers for a human to
+bring up by hand; :func:`compose_violations` checks that file against the
+very same policy, so the reviewed-by-hand path and the programmatic path
+cannot drift apart.
 """
 
 from __future__ import annotations
@@ -35,10 +47,12 @@ import asyncio
 import hashlib
 import logging
 import os
+import re
 import shutil
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from life_graph.config import settings
 
@@ -792,3 +806,566 @@ async def run(
     if res.returncode in (125, 126, 127) and not res.stdout:
         raise SandboxUnavailableError(f"sandbox could not start: {res.stderr.strip()[-400:]}")
     return res
+
+
+# ── Errand sandbox chassis ───────────────────────────────────
+# Everything below is about containers that run *errands* (a browser session,
+# a scratch shell), not verifier checks. It is deliberately pure Python: a
+# spec is built and validated without docker being installed, so the policy
+# is testable and is checked before anything is started.
+
+SANDBOX_COMPOSE_FILE = "compose.sandbox.yaml"
+SANDBOX_NETWORK = "life_graph_sandbox_internal"
+BROWSER_IMAGE = "life-graph-sandbox-browser:dev"
+WORKSPACE_IMAGE = "life-graph-sandbox-workspace:dev"
+BROWSER_WS_PORT = 9222
+WORKSPACE_DIR = "/work"
+SANDBOX_LABEL = "life-graph.sandbox"
+
+# Variables prefixed this way are the application's own configuration. None
+# of it belongs in a sandbox, secret or not: a sandbox that knows the
+# database URL is a sandbox that can be asked to reach it.
+APP_ENV_PREFIX = "LIFE_GRAPH_"
+
+# Names that are credential-shaped. Matched as substrings, case-insensitively,
+# so KEY/MY_KEY/api_key_2 all land. False positives (a legitimate variable
+# with "key" in the name) are the intended bias: the fix is to rename it or
+# not to pass it.
+_SECRET_NAME = re.compile(
+    r"key|secret|token|password|passwd|credential|cookie|private|auth|session",
+    re.I,
+)
+
+# Values that look like a provider key even if the variable is named
+# innocently. Prefix-anchored to the issuing provider's own format.
+_KEY_SHAPED = re.compile(
+    r"^(sk-|sk_live_|sk_test_|xox[bpas]-|ghp_|gho_|github_pat_|hf_|AIza|AKIA|glpat-|"
+    r"nvapi-|gsk_|tvly-|or-v1-|Bearer\s)",
+)
+
+# A container runtime socket under any of its usual names. Handing this in is
+# equivalent to handing over root on the host.
+_RUNTIME_SOCKET = re.compile(
+    r"(docker|podman|containerd|crio)[^\s:]*\.sock|/run/(docker|podman)", re.I
+)
+
+# Anything a container runtime would read as a path on the host, rather than
+# as the name of a managed volume.
+_HOST_PATH = re.compile(r"^\s*(/|~|\.{1,2}/|\$|[A-Za-z]:[\\/]|\\\\)")
+
+_DOCKER_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$")
+
+# network_mode values that defeat the point: the host's own stack, or the
+# default bridge, which has a route off the machine.
+_HOST_NETWORK_MODES = ("host", "bridge", "default")
+
+_MEMORY_LIMIT = re.compile(r"^\d+(\.\d+)?[bkmgKMG]?$")
+
+# security_opt values that switch a protection off rather than on.
+_UNCONFINED = re.compile(r"unconfined|:unconfined|=unconfined", re.I)
+
+# A configured value shorter than this is ignored when matching the
+# environment against settings: an empty or placeholder setting would
+# otherwise make every spec invalid.
+_MIN_SECRET_LEN = 8
+
+
+class SandboxPolicyError(ValueError):
+    """A sandbox spec (or ``compose.sandbox.yaml``) breaks an isolation rule.
+
+    Carries every violation found, not just the first: a half-fixed spec that
+    passes on the second attempt is worse than a spec that reports all of it
+    at once.
+    """
+
+    def __init__(self, target: str, violations: list[str]) -> None:
+        self.target = target
+        self.violations = list(violations)
+        super().__init__(f"{target}: " + "; ".join(self.violations))
+
+
+@dataclass(frozen=True)
+class SandboxSpec:
+    """A container an errand may run in, plus every restriction it runs under.
+
+    The defaults are the safe ones — a bare ``SandboxSpec(name=..., image=...)``
+    already passes :func:`validate_spec`. Loosening a field is what takes a
+    deliberate argument, which is the direction the asymmetry should run.
+
+    ``mounts`` takes docker ``-v`` arguments for *named volumes only*
+    (``cache:/cache:ro``); anything that reads as a host path is rejected.
+    Writable space normally comes from ``tmpfs`` instead, so the sandbox
+    leaves nothing behind.
+    """
+
+    name: str
+    image: str
+    role: str = "workspace"
+    command: tuple[str, ...] = ()
+    entrypoint: str | None = None
+    # nobody:nogroup. Never 0; validated below.
+    user: str = "65534:65534"
+    network: str = SANDBOX_NETWORK
+    network_mode: str | None = None
+    privileged: bool = False
+    read_only_root: bool = True
+    cap_drop: tuple[str, ...] = ("ALL",)
+    cap_add: tuple[str, ...] = ()
+    security_opt: tuple[str, ...] = ("no-new-privileges:true",)
+    pids_limit: int = 128
+    memory: str = "512m"
+    cpus: str = "0.5"
+    tmpfs: tuple[str, ...] = ("/tmp:rw,nosuid,nodev,size=256m,mode=1777",)
+    mounts: tuple[str, ...] = ()
+    env: dict[str, str] = field(default_factory=dict)
+    working_dir: str = WORKSPACE_DIR
+    # Wall-clock ceiling for the docker CLI calls this spec produces.
+    timeout: int = 120
+
+
+def _settings_secret_values() -> set[str]:
+    """Every credential-shaped value currently configured on the app.
+
+    Read straight off :class:`~life_graph.config.Settings` by field name
+    rather than from a hand-kept list, so a provider added to ``config.py``
+    tomorrow is covered without anyone remembering to update this module.
+    """
+    found: set[str] = set()
+    for name in type(settings).model_fields:
+        if not _SECRET_NAME.search(name):
+            continue
+        value = getattr(settings, name, None)
+        if not isinstance(value, str):
+            continue
+        # service_api_keys is a comma-separated list; each element counts.
+        for part in value.split(","):
+            part = part.strip()
+            if len(part) >= _MIN_SECRET_LEN:
+                found.add(part)
+    return found
+
+
+def _env_violations(env: dict[str, str]) -> list[str]:
+    bad: list[str] = []
+    secrets = _settings_secret_values()
+    for raw_name, raw_value in env.items():
+        name = str(raw_name)
+        value = "" if raw_value is None else str(raw_value)
+        if not name or "=" in name or name != name.strip():
+            bad.append(f"env {name!r} is not a usable variable name")
+        if name.upper().startswith(APP_ENV_PREFIX):
+            bad.append(f"env {name} passes app configuration into the sandbox")
+        if _SECRET_NAME.search(name):
+            bad.append(f"env {name} is credential-shaped")
+        if _KEY_SHAPED.search(value):
+            bad.append(f"env {name} holds a value shaped like a provider key")
+        if value.strip() and value.strip() in secrets:
+            bad.append(f"env {name} holds a configured credential from settings")
+        if _RUNTIME_SOCKET.search(value):
+            bad.append(f"env {name} points at a container runtime socket")
+        if "\n" in value or "\x00" in value:
+            bad.append(f"env {name} holds a newline or NUL")
+    return bad
+
+
+def spec_violations(spec: SandboxSpec) -> list[str]:
+    """Every isolation rule *spec* breaks, as readable sentences. Empty = clean."""
+    bad: list[str] = []
+
+    if not _DOCKER_NAME.match(spec.name or ""):
+        bad.append(f"name {spec.name!r} is not a safe container name")
+    if not spec.image or spec.image.startswith("-"):
+        bad.append(f"image {spec.image!r} is empty or reads as a CLI flag")
+    if _RUNTIME_SOCKET.search(spec.image):
+        bad.append("image name mentions a container runtime socket")
+
+    # ── The ways out ──
+    if spec.privileged:
+        bad.append("privileged mode is never allowed")
+    # "none" is stricter than ours (no network at all) and allowed; every
+    # other network_mode borrows a stack that is not the internal bridge.
+    mode = (spec.network_mode or "").strip().lower()
+    if mode in _HOST_NETWORK_MODES or mode.startswith(("container:", "service:")):
+        bad.append(f"network_mode {spec.network_mode!r} leaves the internal sandbox network")
+    elif mode and mode != "none":
+        bad.append(f"network_mode {spec.network_mode!r} is not the internal sandbox network")
+    if mode != "none" and spec.network != SANDBOX_NETWORK:
+        bad.append(
+            f"network {spec.network!r} is not the internal sandbox network {SANDBOX_NETWORK}"
+        )
+
+    for mount in spec.mounts:
+        text = str(mount)
+        if _RUNTIME_SOCKET.search(text):
+            bad.append(f"mount {text!r} exposes a container runtime socket")
+        elif _HOST_PATH.match(text):
+            bad.append(f"mount {text!r} binds a host path into the sandbox")
+        elif ":" not in text:
+            bad.append(f"mount {text!r} is an anonymous volume, not a named one")
+
+    for entry in spec.tmpfs:
+        target = str(entry).split(":", 1)[0]
+        if not target.startswith("/") or target == "/":
+            bad.append(f"tmpfs {entry!r} must target an absolute path below /")
+        if "suid" in str(entry) and "nosuid" not in str(entry):
+            bad.append(f"tmpfs {entry!r} allows setuid binaries")
+
+    # ── The restrictions that must stay on ──
+    if not spec.read_only_root:
+        bad.append("root filesystem must be read-only")
+    if "ALL" not in {c.upper() for c in spec.cap_drop}:
+        bad.append("capabilities must be dropped with cap_drop ALL")
+    if spec.cap_add:
+        bad.append(f"capabilities added back: {', '.join(spec.cap_add)}")
+    if "no-new-privileges:true" not in {str(o).lower() for o in spec.security_opt}:
+        bad.append("security_opt must include no-new-privileges:true")
+    for opt in spec.security_opt:
+        if _UNCONFINED.search(str(opt)):
+            bad.append(f"security_opt {opt!r} switches a protection off")
+    if spec.user.split(":")[0] in ("", "0", "root"):
+        bad.append(f"user {spec.user!r} would run as root")
+
+    # ── The ceilings ──
+    if not isinstance(spec.pids_limit, int) or not 0 < spec.pids_limit <= 4096:
+        bad.append(f"pids_limit {spec.pids_limit!r} must be between 1 and 4096")
+    if not _MEMORY_LIMIT.match(str(spec.memory or "")):
+        bad.append(f"memory {spec.memory!r} is not a docker memory limit")
+    try:
+        if not 0 < float(spec.cpus) <= 8:
+            raise ValueError
+    except (TypeError, ValueError):
+        bad.append(f"cpus {spec.cpus!r} must be a share between 0 and 8")
+
+    bad.extend(_env_violations(spec.env))
+    return bad
+
+
+def validate_spec(spec: SandboxSpec) -> SandboxSpec:
+    """Return *spec* unchanged, or raise :class:`SandboxPolicyError`.
+
+    Called by every builder below and again by :meth:`SandboxManager.start`,
+    because a spec can be edited after it was built.
+    """
+    violations = spec_violations(spec)
+    if violations:
+        raise SandboxPolicyError(f"sandbox spec {spec.name!r}", violations)
+    return spec
+
+
+def browser_spec(
+    name: str | None = None,
+    *,
+    port: int = BROWSER_WS_PORT,
+    memory: str = "1g",
+    cpus: str = "1.0",
+    image: str = BROWSER_IMAGE,
+) -> SandboxSpec:
+    """A headless-Chromium sandbox, driven from outside over Playwright's
+    browser-server protocol (``chromium.connect("ws://<name>:9222/")``).
+
+    The port is only reachable on the internal network — nothing is published
+    to the host, because a browser control endpoint is remote code execution
+    on the browser.
+    """
+    return validate_spec(
+        SandboxSpec(
+            name=name or f"lg-sbx-browser-{uuid.uuid4().hex[:8]}",
+            image=image,
+            role="browser",
+            user="1000:1000",  # pwuser, from the Playwright base image
+            memory=memory,
+            cpus=cpus,
+            pids_limit=512,
+            tmpfs=(
+                "/tmp:rw,nosuid,nodev,size=512m,mode=1777",
+                "/dev/shm:rw,nosuid,nodev,size=256m,mode=1777",
+            ),
+            env={
+                "HOME": "/tmp",
+                "PLAYWRIGHT_BROWSERS_PATH": "/ms-playwright",
+                "SANDBOX_BROWSER_PORT": str(port),
+                "SANDBOX_ROLE": "browser",
+                "TZ": "UTC",
+            },
+            working_dir="/tmp",
+        )
+    )
+
+
+def workspace_spec(
+    name: str | None = None,
+    *,
+    command: tuple[str, ...] = ("sleep", "infinity"),
+    memory: str = "512m",
+    cpus: str = "0.5",
+    image: str = WORKSPACE_IMAGE,
+    browser: str | None = None,
+) -> SandboxSpec:
+    """A minimal scratch box. With *browser* (a container name), it is told
+    where that browser's endpoint answers — a location, not a credential."""
+    uid = 65534  # nobody; owns nothing in the image and nothing on the host
+    env = {
+        "HOME": "/tmp",
+        "LANG": "C.UTF-8",
+        "SANDBOX_ROLE": "workspace",
+        "TZ": "UTC",
+    }
+    if browser:
+        env["SANDBOX_BROWSER_WS_URL"] = f"ws://{browser}:{BROWSER_WS_PORT}/"
+    return validate_spec(
+        SandboxSpec(
+            name=name or f"lg-sbx-workspace-{uuid.uuid4().hex[:8]}",
+            image=image,
+            role="workspace",
+            command=command,
+            user=f"{uid}:{uid}",
+            memory=memory,
+            cpus=cpus,
+            tmpfs=(
+                # A tmpfs is root-owned 0755 unless told otherwise, which
+                # would leave the non-root user unable to write to its own
+                # work directory.
+                f"/work:rw,nosuid,nodev,noexec,size=256m,uid={uid},gid={uid},mode=0700",
+                "/tmp:rw,nosuid,nodev,size=256m,mode=1777",
+            ),
+            env=env,
+        )
+    )
+
+
+def docker_run_argv(spec: SandboxSpec, *, detach: bool = True) -> list[str]:
+    """The ``docker run`` argv for *spec*, validated first.
+
+    With *detach* the container outlives the call and the manager removes it;
+    otherwise ``--rm`` cleans up when the command exits. Detached containers
+    are not auto-removed so that a crashed errand can still be inspected.
+    """
+    validate_spec(spec)
+    argv = [
+        "docker",
+        "run",
+        "--name",
+        spec.name,
+        "--init",
+        "--label",
+        f"{SANDBOX_LABEL}=1",
+        "--label",
+        f"{SANDBOX_LABEL}.role={spec.role}",
+    ]
+    argv.append("--detach" if detach else "--rm")
+    argv += ["--network", "none" if spec.network_mode == "none" else spec.network]
+    if spec.read_only_root:
+        argv.append("--read-only")
+    for cap in spec.cap_drop:
+        argv += ["--cap-drop", cap]
+    for opt in spec.security_opt:
+        argv += ["--security-opt", opt]
+    argv += [
+        "--pids-limit",
+        str(spec.pids_limit),
+        "--memory",
+        spec.memory,
+        # Equal to --memory: no swap, so the ceiling is a real ceiling.
+        "--memory-swap",
+        spec.memory,
+        "--cpus",
+        spec.cpus,
+        "--user",
+        spec.user,
+    ]
+    for entry in spec.tmpfs:
+        argv += ["--tmpfs", entry]
+    for mount in spec.mounts:
+        argv += ["-v", mount]
+    for key in sorted(spec.env):
+        argv += ["-e", f"{key}={spec.env[key]}"]
+    argv += ["-w", spec.working_dir]
+    if spec.entrypoint:
+        argv += ["--entrypoint", spec.entrypoint]
+    argv.append(spec.image)
+    argv += list(spec.command)
+    return argv
+
+
+class SandboxRunner(Protocol):
+    """How :class:`SandboxManager` reaches a container runtime.
+
+    One async call, so a test injects a plain function and the suite never
+    needs docker installed.
+    """
+
+    async def __call__(self, argv: list[str], *, timeout: int) -> SandboxResult: ...
+
+
+async def docker_cli_runner(argv: list[str], *, timeout: int) -> SandboxResult:
+    """The default runner: shells out to the docker CLI."""
+    return await _exec(argv, timeout=timeout)
+
+
+class SandboxManager:
+    """Start, stop and inspect errand sandboxes.
+
+    Every container it starts is validated first, so a caller cannot reach a
+    running container through an unsafe spec even by building one by hand.
+    """
+
+    def __init__(self, runner: SandboxRunner | None = None) -> None:
+        self._run: SandboxRunner = runner or docker_cli_runner
+
+    async def start(self, spec: SandboxSpec) -> str:
+        """Run *spec* detached and return the container id.
+
+        Raises:
+            SandboxPolicyError: the spec breaks an isolation rule.
+            SandboxUnavailableError: the runtime refused or could not start it.
+        """
+        argv = docker_run_argv(spec, detach=True)
+        res = await self._run(argv, timeout=spec.timeout)
+        if res.returncode != 0:
+            raise SandboxUnavailableError(
+                f"sandbox {spec.name} did not start: {res.stderr.strip()[-400:]}"
+            )
+        container = res.stdout.strip().splitlines()[-1] if res.stdout.strip() else spec.name
+        logger.info("sandbox started role=%s name=%s id=%s", spec.role, spec.name, container[:12])
+        return container
+
+    async def stop(self, name: str, *, timeout: int = 10) -> bool:
+        """Stop and remove the sandbox *name*. True if it is gone afterwards.
+
+        Removal is forced and unconditional: a sandbox nobody is waiting on
+        is a sandbox that should not still be running.
+        """
+        if not _DOCKER_NAME.match(name or ""):
+            raise SandboxPolicyError(f"sandbox {name!r}", ["not a safe container name"])
+        await self._run(["docker", "stop", "--time", str(timeout), name], timeout=timeout + 15)
+        res = await self._run(["docker", "rm", "--force", "--volumes", name], timeout=30)
+        gone = res.returncode == 0 or "no such container" in res.stderr.lower()
+        if not gone:
+            logger.warning("sandbox %s could not be removed: %s", name, res.stderr.strip()[-200:])
+        return gone
+
+    async def status(self, name: str) -> str:
+        """Docker's state for *name* (``running``, ``exited``, ...), or ``absent``."""
+        if not _DOCKER_NAME.match(name or ""):
+            raise SandboxPolicyError(f"sandbox {name!r}", ["not a safe container name"])
+        res = await self._run(
+            ["docker", "inspect", "--format", "{{.State.Status}}", name], timeout=30
+        )
+        if res.returncode != 0:
+            return "absent"
+        return res.stdout.strip() or "absent"
+
+
+# ── compose.sandbox.yaml, held to the same policy ────────────
+# Compose keys that hand a container something this chassis refuses to hand
+# it. Mapped to the sentence reported when they appear.
+_FORBIDDEN_COMPOSE_KEYS = {
+    "env_file": "reads an env file (the app's .env carries every provider key)",
+    "ports": "publishes a port to the host",
+    "devices": "maps a host device",
+    "device_cgroup_rules": "widens device access",
+    "cgroup_parent": "escapes its cgroup",
+    "privileged": "runs privileged",
+    "userns_mode": "overrides the user namespace",
+    "sysctls": "sets kernel parameters",
+    "cap_add": "adds capabilities back",
+    "extra_hosts": "overrides name resolution",
+    "secrets": "mounts a compose secret",
+    "volumes_from": "inherits another container's mounts",
+}
+_FORBIDDEN_HOST_SHARING = {"pid": "host", "ipc": "host", "network_mode": "host", "uts": "host"}
+
+
+def compose_path() -> Path:
+    """Path to ``compose.sandbox.yaml`` at the repository root."""
+    return Path(__file__).resolve().parents[2] / SANDBOX_COMPOSE_FILE
+
+
+def _compose_env(raw: object) -> dict[str, str]:
+    """Normalise compose's two environment forms into a dict."""
+    if isinstance(raw, dict):
+        return {str(k): "" if v is None else str(v) for k, v in raw.items()}
+    env: dict[str, str] = {}
+    for item in raw or []:  # type: ignore[union-attr]
+        name, _, value = str(item).partition("=")
+        env[name] = value
+    return env
+
+
+def spec_from_compose(name: str, service: dict, networks: dict | None = None) -> SandboxSpec:
+    """Build a :class:`SandboxSpec` out of one compose service definition.
+
+    Only the fields the policy cares about are carried over; the point is to
+    run :func:`spec_violations` against the file a human actually brings up,
+    instead of trusting that it matches the Python defaults.
+    """
+    attached = list(service.get("networks") or [])
+    # A compose network's real name comes from its `name:` key when it has
+    # one, which is what the container is actually attached to.
+    declared = (networks or {}).get(attached[0] if attached else "", {}) or {}
+    network = str(declared.get("name") or (attached[0] if attached else ""))
+    return SandboxSpec(
+        name=f"compose-{name}",
+        image=str(service.get("image") or ""),
+        role=name,
+        user=str(service.get("user") or ""),
+        network=network,
+        network_mode=service.get("network_mode"),
+        privileged=bool(service.get("privileged", False)),
+        read_only_root=bool(service.get("read_only", False)),
+        cap_drop=tuple(str(c) for c in service.get("cap_drop") or ()),
+        cap_add=tuple(str(c) for c in service.get("cap_add") or ()),
+        security_opt=tuple(str(o) for o in service.get("security_opt") or ()),
+        pids_limit=int(service.get("pids_limit") or 0),
+        memory=str(service.get("mem_limit") or ""),
+        cpus=str(service.get("cpus") or ""),
+        tmpfs=tuple(str(t) for t in service.get("tmpfs") or ()),
+        mounts=tuple(str(v) for v in service.get("volumes") or ()),
+        env=_compose_env(service.get("environment")),
+        working_dir=str(service.get("working_dir") or WORKSPACE_DIR),
+    )
+
+
+def compose_violations(path: Path | None = None) -> dict[str, list[str]]:
+    """Check ``compose.sandbox.yaml`` against the sandbox policy.
+
+    Returns service name -> violations (plus the pseudo-service ``"compose"``
+    for file-level problems). An empty dict means the file is clean.
+    """
+    import yaml
+
+    target = path or compose_path()
+    document = yaml.safe_load(target.read_text()) or {}
+    services = document.get("services") or {}
+    networks = document.get("networks") or {}
+    found: dict[str, list[str]] = {}
+
+    file_level: list[str] = []
+    if document.get("volumes"):
+        file_level.append("declares named volumes at the top level")
+    if not services:
+        file_level.append("declares no services")
+    for net_name, net in networks.items():
+        if not (net or {}).get("internal"):
+            file_level.append(f"network {net_name} is not internal-only")
+    if file_level:
+        found["compose"] = file_level
+
+    for name, service in services.items():
+        service = service or {}
+        bad = [
+            f"{name} {reason}"
+            for key, reason in _FORBIDDEN_COMPOSE_KEYS.items()
+            if service.get(key)
+        ]
+        bad += [
+            f"{name} shares the host's {key} namespace"
+            for key, value in _FORBIDDEN_HOST_SHARING.items()
+            if str(service.get(key) or "").lower().startswith(value)
+        ]
+        if not service.get("networks"):
+            bad.append(f"{name} is on the default network, not the internal sandbox network")
+        bad += spec_violations(spec_from_compose(name, service, networks))
+        if bad:
+            found[name] = bad
+    return found
