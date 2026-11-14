@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-14 10:40 UTC` from `feat/trustworthy-p3-atomic-spend` @ `5997533`
+Generated `2026-11-14 12:42 UTC` from `feat/trustworthy-p6-p7-eval-docs` @ `18e4201`
 
 ---
 
@@ -24,9 +24,9 @@ Generated `2026-11-14 10:40 UTC` from `feat/trustworthy-p3-atomic-spend` @ `5997
 | Agent tools | **14** |
 | Scheduled jobs | **34** |
 | Config settings | **287** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4439** in 487 files |
+| Test functions | **4484** in 488 files |
 | Dashboard pages | **22** |
-| Python | 459 files, 124,316 lines |
+| Python | 459 files, 125,198 lines |
 
 ---
 
@@ -1014,10 +1014,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 372 | 3602 |
+| `tests/unit/` | 373 | 3647 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **487** | **4439** |
+| **total** | **488** | **4484** |
 
 ---
 
