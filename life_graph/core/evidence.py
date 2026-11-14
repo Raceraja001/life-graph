@@ -18,6 +18,8 @@ for rows written before that.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -218,12 +220,152 @@ def extract_claim_evidence(answer: str, memories: list[dict[str, Any]]) -> list[
                 if mid and mid not in seen_ids:
                     seen_ids.add(mid)
                     supporting.append(resolve_memory_lineage(mem))
+        breakdowns = [
+            decompose_memory_confidence(memories[idx])
+            for idx in cited_indices
+            if 0 <= idx < len(memories)
+        ]
+        # Weakest-link claim confidence: one strong citation cannot validate a weak co-cited claim.
+        claim_conf = round(min((b["calibrated_confidence"] for b in breakdowns), default=0.0), 4)
         claims.append(
             {
                 "claim": sent,
                 "supported": bool(supporting),
                 "memory_ids": [s["memory_id"] for s in supporting if s.get("memory_id")],
                 "evidence": supporting,
+                "confidence_breakdown": breakdowns,
+                "claim_confidence": claim_conf,
+                "claim_uncertainty": round(1.0 - claim_conf, 4),
             }
         )
     return claims
+
+
+_TRUST_SCORES = {
+    "self": 0.98,
+    "core": 0.95,
+    "verified": 0.95,
+    "standard": 0.78,
+    "normal": 0.78,
+    "unverified": 0.40,
+    "quarantined": 0.15,
+}
+
+_EVIDENCE_PRIORS = {
+    SAID: 0.95,
+    DOCUMENT: 0.90,
+    OBSERVED: 0.88,
+    SUMMARY: 0.72,
+    INFERRED: 0.55,
+    OUTSIDE: 0.35,
+}
+
+
+def _parse_dt(val: Any) -> datetime | None:
+    if isinstance(val, datetime):
+        return val if val.tzinfo is not None else val.replace(tzinfo=timezone.utc)
+    if isinstance(val, str) and val.strip():
+        try:
+            dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+            return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def decompose_memory_confidence(
+    memory: Any,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Decompose confidence into extraction, trust, freshness, and evidence components.
+
+    Vector similarity is intentionally excluded so retrieval rank never masquerades as truth.
+    """
+    get = (lambda k, d=None: memory.get(k, d)) if isinstance(memory, dict) else (lambda k, d=None: getattr(memory, k, d))
+    props = get("properties") or {}
+    if not isinstance(props, dict):
+        props = {}
+
+    raw_ext = get("confidence")
+    if raw_ext is None:
+        raw_ext = props.get("extraction_confidence", 0.5)
+    try:
+        extraction_conf = max(0.0, min(1.0, float(raw_ext)))
+    except (TypeError, ValueError):
+        extraction_conf = 0.5
+
+    trust_tier = str(get("trust_tier") or "standard").lower()
+    trust_score = _TRUST_SCORES.get(trust_tier, 0.70)
+
+    ev_kind = evidence_of(get("source_type"), trust_tier, props)
+    explicit_vs_inferred = "inferred" if is_guess(ev_kind) else "explicit"
+    prior = _EVIDENCE_PRIORS.get(ev_kind, 0.65)
+
+    ref_now = now or datetime.now(timezone.utc)
+    if ref_now.tzinfo is None:
+        ref_now = ref_now.replace(tzinfo=timezone.utc)
+
+    valid_to = _parse_dt(get("valid_to"))
+    if valid_to is not None and valid_to < ref_now:
+        freshness = 0.20
+    else:
+        ts = _parse_dt(get("updated_at")) or _parse_dt(get("recorded_at")) or _parse_dt(get("created_at"))
+        if ts is None:
+            freshness = 0.75
+        else:
+            age_days = max(0.0, (ref_now - ts).total_seconds() / 86400.0)
+            freshness = round(1.0 / (1.0 + age_days / 180.0), 4)
+
+    calibrated = round(
+        max(0.0, min(1.0, 0.35 * extraction_conf + 0.25 * trust_score + 0.25 * prior + 0.15 * freshness)),
+        4,
+    )
+    return {
+        "extraction_confidence": round(extraction_conf, 4),
+        "trust_score": round(trust_score, 4),
+        "freshness_score": round(freshness, 4),
+        "evidence_kind": ev_kind,
+        "explicit_vs_inferred": explicit_vs_inferred,
+        "calibrated_confidence": calibrated,
+        "uncertainty": round(1.0 - calibrated, 4),
+    }
+
+
+def evaluate_confidence_calibration(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute Brier score and calibration summary overall and by evidence_kind."""
+    if not samples:
+        return {
+            "count": 0,
+            "brier_score": 0.0,
+            "mean_confidence": 0.0,
+            "accuracy": 0.0,
+            "calibration_gap": 0.0,
+            "by_evidence_kind": {},
+        }
+
+    buckets: dict[str, list[tuple[float, float]]] = {}
+    all_pairs: list[tuple[float, float]] = []
+    for item in samples:
+        conf = max(0.0, min(1.0, float(item.get("confidence", 0.0))))
+        y = 1.0 if item.get("correct") else 0.0
+        kind = str(item.get("evidence_kind") or "unknown")
+        all_pairs.append((conf, y))
+        buckets.setdefault(kind, []).append((conf, y))
+
+    def _stats(pairs: list[tuple[float, float]]) -> dict[str, Any]:
+        n = len(pairs)
+        brier = sum((c - y) ** 2 for c, y in pairs) / n
+        mean_c = sum(c for c, _ in pairs) / n
+        acc = sum(y for _, y in pairs) / n
+        return {
+            "count": n,
+            "brier_score": round(brier, 4),
+            "mean_confidence": round(mean_c, 4),
+            "accuracy": round(acc, 4),
+            "calibration_gap": round(mean_c - acc, 4),
+        }
+
+    summary = _stats(all_pairs)
+    summary["by_evidence_kind"] = {k: _stats(v) for k, v in sorted(buckets.items())}
+    return summary
