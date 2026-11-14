@@ -58,6 +58,16 @@ class Settings(BaseSettings):
     # ── Authentication (Service-to-Service) ────────────
     api_key: str | None = None  # Legacy single key (dev mode)
     service_api_keys: str = ""  # Comma-separated: "key1,key2,key3"
+    # The subset of service keys that belong to the owner's *own* surfaces —
+    # the dashboard and the CLI. Holding a service key proves a caller is
+    # configured, not that it is the owner: the same list is handed to MCP
+    # servers, watchers and integrations, which is why core/trust.py grades
+    # those surfaces EXTERNAL. A key named here (plus a paired phone's own
+    # device token) is what lets an ingress claim a first-party source_type
+    # (api/auth.py ingress_for, core/trust.py classify_ingress). Unset in
+    # production means no HTTP caller is the owner and every privileged
+    # provenance claim is floored at EXTERNAL — fail closed, by design.
+    owner_api_keys: str = ""  # Comma-separated: LIFE_GRAPH_OWNER_API_KEYS
     # A paired phone's token stops working after this many days unused
     # (services/devices.py authenticate; re-pair to get a new one). 0 = never.
     device_token_idle_days: int = Field(default=60, ge=0)
@@ -808,6 +818,13 @@ class Settings(BaseSettings):
         if not self.service_api_keys:
             return []
         return [k.strip() for k in self.service_api_keys.split(",") if k.strip()]
+
+    @property
+    def owner_api_keys_list(self) -> list[str]:
+        """Parse comma-separated owner API keys (see :attr:`owner_api_keys`)."""
+        if not self.owner_api_keys:
+            return []
+        return [k.strip() for k in self.owner_api_keys.split(",") if k.strip()]
 
     @property
     def tenant_plans_dict(self) -> dict[str, str]:

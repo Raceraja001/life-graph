@@ -29,6 +29,7 @@ only after the owner said so themselves (:func:`confirm_from_owner`).
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
@@ -130,12 +131,16 @@ def evidence_of(
 def owner_confirmed(properties: Mapping[str, Any] | None = None) -> bool:
     """True when the owner themselves kept this memory (:func:`confirm_from_owner`).
 
-    Only the server's own record counts — a mapping naming who confirmed and
-    when. A bare ``True`` is not a confirmation: it is the shape a client
-    would guess at, and the mark exists to say *who* decided.
+    Only the server's own record counts — a mapping naming who confirmed. A
+    bare ``True`` is not a confirmation: it is the shape a client would guess
+    at, and the mark exists to say *who* decided. ``by`` is read as well as
+    ``actor`` because rows stamped before the record grew its audit fields
+    carry only the old name.
     """
     mark = (properties or {}).get(OWNER_CONFIRMED)
-    return isinstance(mark, Mapping) and bool(mark.get("by"))
+    if not isinstance(mark, Mapping):
+        return False
+    return bool(mark.get("actor") or mark.get("by"))
 
 
 def confirm_from_owner(
@@ -143,19 +148,61 @@ def confirm_from_owner(
     *,
     by: str,
     at: datetime | None = None,
+    target_id: str | None = None,
+    evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """*properties* with the owner's explicit confirmation recorded.
 
-    Only the server calls this, from the path where a person acted (approving
-    a pending memory): it is what lets outside-origin content be stated as
-    true. ``by`` is who confirmed, so a wrong card entry can be traced back.
+    Only the server calls this, and only from the path where a person acted —
+    an owner-authenticated approve of a pending memory
+    (api/memories.py ``approve_memory``, which refuses the request outright
+    when the ingress is not the owner's). It is what lets outside-origin
+    content be stated as the owner's own fact, so the record it writes is an
+    audit record and not a flag:
+
+    * ``actor`` — how the server recognised the caller (``device:<id>``,
+      ``owner:api_key``), so a wrong card entry can be traced back to a
+      credential rather than to the word "owner".
+    * ``confirmed_at`` — when, in UTC.
+    * ``target_id`` — what was confirmed, so the record stands alone if it is
+      ever copied out of the row.
+    * ``evidence`` — what the owner was actually looking at: the row's
+      provenance and a hash of the exact text. A later edit to the content no
+      longer matches the hash, which is the difference between "the owner
+      confirmed something" and "the owner confirmed *this*".
     """
     if not by or not str(by).strip():
         raise ValueError("owner confirmation needs who confirmed it")
     when = at or datetime.now(UTC)
+    record: dict[str, Any] = {
+        "actor": str(by).strip()[:120],
+        "confirmed_at": when.isoformat(),
+    }
+    if target_id is not None:
+        record["target_id"] = str(target_id)[:120]
+    if evidence is not None:
+        record["evidence"] = dict(evidence)
+    return {**dict(properties or {}), OWNER_CONFIRMED: record}
+
+
+def confirmation_evidence(
+    content: str | None,
+    source_type: str | None,
+    trust_tier: str | None,
+    properties: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """What a memory's own row says, for :func:`confirm_from_owner`'s record.
+
+    The content is hashed, not copied: the record has to be able to say
+    *which* text the owner read without becoming a second copy of it.
+    """
+    text = content or ""
     return {
-        **dict(properties or {}),
-        OWNER_CONFIRMED: {"by": str(by).strip()[:120], "at": when.isoformat()},
+        "source_type": source_type,
+        "trust_tier": trust_tier,
+        "evidence_kind": evidence_of(source_type, trust_tier, properties),
+        "content_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "content_chars": len(text),
     }
 
 

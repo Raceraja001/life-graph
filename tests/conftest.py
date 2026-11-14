@@ -123,3 +123,25 @@ def _no_pr_description_model_calls(monkeypatch):
     from life_graph.config import settings
 
     monkeypatch.setattr(settings, "driver_pr_description_enabled", False)
+
+
+def fake_request(*, device_id: str | None = None, api_key: str | None = None):
+    """The least of a ``Request`` that ``api/auth.py ingress_for`` reads.
+
+    Provenance and owner confirmation are now decided from the authenticated
+    ingress (core/trust.py ``classify_ingress``), so the endpoints that make
+    those decisions take a ``Request``. Unit tests call them as functions, and
+    what they need to vary is who the server says is calling: pass
+    ``device_id`` for a paired phone, ``api_key`` for a key, neither for an
+    unverified third party.
+    """
+    from types import SimpleNamespace
+
+    from starlette.datastructures import Headers, QueryParams
+
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    return SimpleNamespace(
+        state=SimpleNamespace(device_id=device_id),
+        headers=Headers(headers),
+        query_params=QueryParams(),
+    )

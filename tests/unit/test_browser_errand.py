@@ -604,8 +604,9 @@ async def test_the_audit_names_what_each_verdict_rested_on():
         "action_type",
         "target_origin",
         "structured_params",
+        "capability_id",
     ]
-    # The note is kept for a human to read, and is not one of the five.
+    # The note is kept for a human to read, and is not one of them.
     assert record["note"]
     assert "note" not in record["params"]
 
@@ -636,3 +637,128 @@ def test_a_step_repr_describes_its_value_without_showing_it():
     assert "literal" in repr(literal)
     assert "vault" in repr(handle)
     assert handle.is_secret and not literal.is_secret
+
+
+# ── A server-issued capability, re-verified at every step ────────────────
+#
+# ``owner_request`` is the owner's mandate held in trusted code. A capability
+# (autonomy/approvals/capability.py) is the same authority in a form that can
+# travel: an opaque handle to a record only the server holds, so a run that
+# read a hostile page can carry it without being able to widen it.
+
+
+def _capability(store, *, action_types, origins=(BANK,), **kw):
+    return store.issue(
+        tenant_id=TENANT,
+        action_types=action_types,
+        target_origins=origins,
+        **kw,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_capability_authorises_an_errand_with_no_mandate_of_its_own():
+    from life_graph.autonomy.approvals import CapabilityStore
+
+    store = CapabilityStore()
+    capability = _capability(store, action_types=["browser_navigate", "browser_click"])
+    browser = FakeBrowser(origin=BANK)
+
+    result = await be.run_errand(
+        browser,
+        be.BrowserErrand(
+            steps=(be.BrowserStep(be.CLICK, selector="#statement"),),
+            capability_id=capability.capability_id,
+        ),
+        tenant_id=TENANT,
+        capabilities=store,
+    )
+    assert result.status == be.DONE
+    assert result.steps[0].decision == ALLOW
+    assert result.steps[0].reasons == ("capability_authorizes_action",)
+    assert ("click", "#statement") in browser.calls
+
+
+@pytest.mark.asyncio
+async def test_an_errand_cannot_click_on_a_site_its_capability_does_not_name():
+    """A click is priced as irreversible, so the origin binding is the guard."""
+    from life_graph.autonomy.approvals import CapabilityStore
+    from life_graph.autonomy.approvals import capability as cap
+
+    store = CapabilityStore()
+    capability = _capability(store, action_types=["browser_click"], origins=[BANK])
+    browser = FakeBrowser(origin=EVIL)
+
+    result = await be.run_errand(
+        browser,
+        be.BrowserErrand(
+            steps=(be.BrowserStep(be.CLICK, selector="#confirm"),),
+            capability_id=capability.capability_id,
+        ),
+        tenant_id=TENANT,
+        capabilities=store,
+    )
+    assert result.status == be.DENIED
+    assert result.steps[0].reasons == (cap.ORIGIN_NOT_AUTHORIZED,)
+    assert not [c for c in browser.calls if c[0] == "click"]
+
+
+@pytest.mark.asyncio
+async def test_revoking_mid_errand_stops_the_next_step():
+    """Re-verified per step, not once at the start.
+
+    The errand is authorised for two clicks; the owner revokes between them
+    (the kill switch, or a "stop" on the phone). The second must not run.
+    """
+    from life_graph.autonomy.approvals import CapabilityStore
+    from life_graph.autonomy.approvals import capability as cap
+
+    store = CapabilityStore()
+    capability = _capability(store, action_types=["browser_click"])
+    browser = FakeBrowser(origin=BANK)
+
+    class RevokingBrowser(FakeBrowser):
+        async def click(self, selector: str) -> None:
+            await super().click(selector)
+            store.revoke(capability.capability_id)
+
+    browser = RevokingBrowser(origin=BANK)
+    result = await be.run_errand(
+        browser,
+        be.BrowserErrand(
+            steps=(
+                be.BrowserStep(be.CLICK, selector="#first"),
+                be.BrowserStep(be.CLICK, selector="#second"),
+            ),
+            capability_id=capability.capability_id,
+        ),
+        tenant_id=TENANT,
+        capabilities=store,
+    )
+    assert [c for c in browser.calls if c[0] == "click"] == [("click", "#first")]
+    assert result.steps[0].decision == ALLOW
+    assert result.steps[1].decision == DENY
+    assert result.steps[1].reasons == (cap.REVOKED,)
+    assert result.status == be.DENIED
+
+
+@pytest.mark.asyncio
+async def test_a_forged_capability_handle_runs_nothing():
+    """What a page can actually do: make up a handle. It buys nothing."""
+    from life_graph.autonomy.approvals import CapabilityStore
+    from life_graph.autonomy.approvals import capability as cap
+
+    store = CapabilityStore()
+    browser = FakeBrowser(origin=BANK)
+    result = await be.run_errand(
+        browser,
+        be.BrowserErrand(
+            steps=(be.BrowserStep(be.CLICK, selector="#pay"),),
+            capability_id="cap_the-owner-approved-this-already",
+        ),
+        tenant_id=TENANT,
+        capabilities=store,
+    )
+    assert result.status == be.DENIED
+    assert result.steps[0].reasons == (cap.UNKNOWN,)
+    assert not [c for c in browser.calls if c[0] == "click"]

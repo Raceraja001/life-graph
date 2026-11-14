@@ -9,7 +9,7 @@ tools by refusing outright once a run has read outside content. This module
 answers it for the approval queue: the decision is computed from five
 structured inputs and the raw bodies are not among them.
 
-The five, and nothing else (:data:`CONSIDERED_FIELDS`):
+The inputs, and nothing else (:data:`CONSIDERED_FIELDS`):
 
 * ``owner_request`` — what the owner themselves asked for, as an
   :class:`OwnerRequest` of action types and limits. Its ``text`` is carried
@@ -23,6 +23,26 @@ The five, and nothing else (:data:`CONSIDERED_FIELDS`):
   like ``core/trust.py``: anything not a first-party owner surface is outside.
 * ``structured_params`` — scalars only, bounded in count and length
   (:func:`normalise_params`). Amounts and identifiers, not paragraphs.
+* ``capability_id`` — an opaque handle to a mandate this server itself issued
+  (``approvals/capability.py``).
+
+**Structure is not authority.** The first two of those *are* the owner's
+permission, and for a while :func:`request_from_payload` parsed them out of
+whatever payload it was handed — so an agent that had just read a hostile page
+could assemble ``{"owner_request": {"action_types": ["transfer_money"]}}`` and
+the checker would read the page's own permission slip. Deciding from structure
+stops a page arguing its way to a verdict; it does not stop a page *supplying*
+the structure. So the two authority fields (:data:`AUTHORITY_FIELDS`) are now
+set only by trusted, owner-authenticated code building an
+:class:`ActionRequest` directly, and are dropped from every payload.
+
+What a payload may carry instead is ``capability_id``: a handle into a
+server-side record bound to tenant, task, action types, origins, expiry and
+amount. Holding the string is not holding the mandate — an id this server did
+not issue, or one that has expired, been revoked, or was scoped to another
+tenant, task, action or origin, denies the action. That is what makes the
+authority unforgeable rather than merely well-shaped, and it is why a later
+model response cannot widen what an earlier approval allowed.
 
 Any other key a caller passes is dropped and named in
 ``PolicyDecision.ignored`` (:func:`request_from_payload`), so "the body was
@@ -35,8 +55,11 @@ The table, in order. The first row that matches decides:
 ====================================================  =================
 unknown ``action_type``                               DENY
 a standing rule denies this action for this origin    DENY
+a ``capability_id`` was presented and did not verify  DENY
 read-only action                                      ALLOW
 amount over the owner's or the rule's limit           REQUIRE_APPROVAL
+a standing rule says to ask                           REQUIRE_APPROVAL
+a valid capability authorises this action here        ALLOW
 the owner asked for this action type                  ALLOW
 a standing rule allows it, origin is outside,         REQUIRE_APPROVAL
 and the action cannot be undone
@@ -47,14 +70,20 @@ reaches other people
 nothing from the owner mandates it                    REQUIRE_APPROVAL
 ====================================================  =================
 
-Pure policy: no DB, no I/O, no model call.
+Pure policy apart from the capability lookup: no DB, no model call.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from life_graph.autonomy.approvals.capability import (
+        AuthorizationCapability,
+        CapabilityStore,
+    )
 
 # ── Decisions ────────────────────────────────────────────────────────────
 
@@ -63,6 +92,11 @@ REQUIRE_APPROVAL = "require_approval"
 DENY = "deny"
 
 DECISIONS = (ALLOW, REQUIRE_APPROVAL, DENY)
+
+#: A capability was presented to a checker that does not know which tenant it
+#: is judging for, so the tenant binding cannot be tested. A misconfiguration,
+#: and one that fails closed rather than skipping the check.
+CAPABILITY_WITHOUT_TENANT = "capability_tenant_unknown"
 
 #: The only inputs any decision rests on. Named here so the audit trail on
 #: every decision says what was looked at, and nothing outside this tuple is
@@ -73,7 +107,17 @@ CONSIDERED_FIELDS = (
     "action_type",
     "target_origin",
     "structured_params",
+    "capability_id",
 )
+
+#: The two fields that *are* authority. They may be set only by trusted,
+#: owner-authenticated code constructing an :class:`ActionRequest` directly —
+#: never by :func:`request_from_payload`, which drops them (see its
+#: docstring). ``capability_id`` is the one piece of authority that may travel
+#: in a payload, because it is opaque: it is a handle into a server-side
+#: record, and an id this server did not issue buys nothing
+#: (``approvals/capability.py``).
+AUTHORITY_FIELDS = ("owner_request", "standing_rules")
 
 #: Fields that exist on the request object but are deliberately not read:
 #: free text the owner (or something quoting the owner) wrote.
@@ -249,13 +293,26 @@ class StandingRule:
 
 @dataclass(frozen=True, slots=True)
 class ActionRequest:
-    """One action to judge, holding only the five structured inputs."""
+    """One action to judge, holding only the structured inputs.
+
+    ``owner_request`` and ``standing_rules`` are authority
+    (:data:`AUTHORITY_FIELDS`) and are set only by trusted code;
+    :func:`request_from_payload` never fills them.
+
+    ``capability_id`` is a handle into the server's own capability store
+    (``approvals/capability.py``), and the one authority a payload may carry,
+    because holding the string is not the same as holding the mandate: the
+    record it names is the server's, and an id that was never issued — or has
+    expired, been revoked, or was issued for another tenant, task, action or
+    origin — denies the action.
+    """
 
     action_type: str
     target_origin: str | None = None
     owner_request: OwnerRequest | None = None
     standing_rules: tuple[StandingRule, ...] = ()
     structured_params: Mapping[str, Any] = field(default_factory=dict)
+    capability_id: str | None = None
 
     def __post_init__(self) -> None:
         params, _ = normalise_params(self.structured_params)
@@ -274,6 +331,9 @@ class PolicyDecision:
     considered: tuple[str, ...] = CONSIDERED_FIELDS
     #: Keys the caller passed that the policy refused to look at.
     ignored: tuple[str, ...] = ()
+    #: The capability this decision was taken under, if one verified. For the
+    #: audit trail: it names which mandate let an action through.
+    capability_id: str | None = None
 
     @property
     def verdict(self) -> tuple[str, tuple[str, ...]]:
@@ -291,9 +351,11 @@ class PolicyDecision:
 
 # ── Building a request from an untrusted payload ─────────────────────────
 
-#: The only keys taken from a loosely-shaped payload. Everything else — a page
-#: body, a mail body, an agent's own narration — is dropped and named back.
-PAYLOAD_FIELDS = frozenset(CONSIDERED_FIELDS)
+#: The only keys taken from a loosely-shaped payload. Deliberately *not*
+#: :data:`CONSIDERED_FIELDS`: the two authority fields are missing. Everything
+#: else — a page body, a mail body, an agent's own narration — is dropped and
+#: named back.
+PAYLOAD_FIELDS = frozenset({"action_type", "target_origin", "structured_params", "capability_id"})
 
 
 def request_from_payload(
@@ -302,68 +364,46 @@ def request_from_payload(
     """``(an ActionRequest, the keys dropped)`` from an arbitrary payload.
 
     This is the boundary: a caller assembling an action from a run that read
-    the web hands over whatever it has, and only the five structured fields
-    cross. Nothing here parses, scans or sanitises text — dropping it needs no
+    the web hands over whatever it has, and only the target fields cross —
+    what to do, to what, with which bounded scalars, under which capability
+    handle. Nothing here parses, scans or sanitises text; dropping it needs no
     cleverness and cannot be worded around.
+
+    **Authority does not cross.** ``owner_request`` and ``standing_rules``
+    (:data:`AUTHORITY_FIELDS`) are dropped like any other unrecognised key and
+    named in the returned tuple. They used to be parsed out of the payload,
+    which meant a hostile page could have an agent assemble
+    ``{"owner_request": {"action_types": ["transfer_money"]}}`` or
+    ``{"standing_rules": [{"action_type": "send_email", "effect": "allow"}]}``
+    and the checker would read its own permission slip — a structurally valid
+    owner request is not proof the owner asked. A mandate now exists only as a
+    server-side record (``approvals/capability.py``); what a payload may carry
+    is the opaque ``capability_id`` that names one, which is useless unless
+    this server issued it.
+
+    Trusted, owner-authenticated code that really does hold the owner's
+    request builds an :class:`ActionRequest` directly. There is no flag here
+    to re-enable the old behaviour, because a flag is the thing an attacker
+    would reach for next.
     """
     data = dict(payload or {})
     dropped = tuple(sorted(str(k) for k in data if k not in PAYLOAD_FIELDS))
 
-    owner = data.get("owner_request")
-    if isinstance(owner, Mapping):
-        types = owner.get("action_types") or ()
-        origins = owner.get("origins")
-        owner = OwnerRequest(
-            action_types=frozenset(str(t) for t in _as_iterable(types)),
-            text=owner.get("text") if isinstance(owner.get("text"), str) else None,
-            max_amount=_as_amount(owner.get("max_amount")),
-            origins=(
-                None
-                if origins is None
-                else frozenset(str(o).strip().lower() for o in _as_iterable(origins))
-            ),
-        )
-    elif not isinstance(owner, OwnerRequest):
-        owner = None
-
-    rules: list[StandingRule] = []
-    for raw in _as_iterable(data.get("standing_rules") or ()):
-        if isinstance(raw, StandingRule):
-            rules.append(raw)
-        elif isinstance(raw, Mapping) and raw.get("action_type"):
-            rules.append(
-                StandingRule(
-                    action_type=str(raw["action_type"]),
-                    effect=str(raw.get("effect") or ALLOW),
-                    origins=frozenset(
-                        str(o).strip().lower() for o in _as_iterable(raw.get("origins") or ())
-                    ),
-                    max_amount=_as_amount(raw.get("max_amount")),
-                    note=raw.get("note") if isinstance(raw.get("note"), str) else None,
-                )
-            )
-
     params = data.get("structured_params")
     clean, dropped_params = normalise_params(params if isinstance(params, Mapping) else None)
+    handle = data.get("capability_id")
     request = ActionRequest(
         action_type=str(data.get("action_type") or "").strip(),
         target_origin=(
             str(data["target_origin"]) if data.get("target_origin") is not None else None
         ),
-        owner_request=owner,
-        standing_rules=tuple(rules),
+        owner_request=None,
+        standing_rules=(),
         structured_params=clean,
+        capability_id=str(handle)[:200] if isinstance(handle, str) and handle.strip() else None,
     )
     both = dropped + tuple(f"structured_params.{k}" for k in dropped_params)
     return request, tuple(sorted(both))
-
-
-def _as_iterable(value: Any) -> Iterable[Any]:
-    if isinstance(value, (str, bytes, Mapping)):
-        return ()
-    if isinstance(value, Iterable):
-        return value
-    return ()
 
 
 def _as_amount(value: Any) -> float | None:
@@ -384,15 +424,38 @@ class ActionPolicyChecker:
     Stateless apart from the owner's configured *standing_rules* and the
     action *catalogue*, both of which are the owner's own configuration, not
     anything a run read. Rules passed on a request are appended to these.
+
+    *standing_rules* must come from somewhere trusted — tenant configuration,
+    or ``capability.rules_from_config(tenant_id)``, which is the store trusted
+    code writes. They are never read out of a request payload
+    (:func:`request_from_payload`).
+
+    *tenant_id* and *task_id* are the server's own context for this run, held
+    here rather than on the request so that the thing a payload can write can
+    never be the thing a capability is checked against. *capabilities* is the
+    store a presented ``capability_id`` is resolved in; it defaults to the
+    process-wide one. A capability presented to a checker with no *tenant_id*
+    is refused (:data:`CAPABILITY_WITHOUT_TENANT`) rather than waved through.
     """
 
     def __init__(
         self,
         standing_rules: Iterable[StandingRule] = (),
         catalogue: Mapping[str, ActionType] | None = None,
+        *,
+        tenant_id: str | None = None,
+        task_id: str | None = None,
+        capabilities: CapabilityStore | None = None,
     ) -> None:
         self._rules = tuple(standing_rules)
         self._catalogue = dict(catalogue if catalogue is not None else ACTION_TYPES)
+        self._tenant_id = tenant_id
+        self._task_id = task_id
+        if capabilities is None:
+            from life_graph.autonomy.approvals.capability import capability_store
+
+            capabilities = capability_store
+        self._capabilities = capabilities
 
     # -- public API -------------------------------------------------------
 
@@ -401,6 +464,7 @@ class ActionPolicyChecker:
         action_type = (request.action_type or "").strip()
         origin = request.target_origin
         spec = self._catalogue.get(action_type)
+        under: str | None = None
 
         def decided(decision: str, *reasons: str) -> PolicyDecision:
             return PolicyDecision(
@@ -409,6 +473,7 @@ class ActionPolicyChecker:
                 action_type=action_type,
                 target_origin=origin,
                 ignored=ignored,
+                capability_id=under,
             )
 
         if spec is None:
@@ -418,7 +483,20 @@ class ActionPolicyChecker:
         rules = self._rules + tuple(request.standing_rules)
         matching = [r for r in rules if r.applies_to(action_type, origin)]
         if any(r.effect == DENY for r in matching):
+            # An explicit "never" outranks a mandate: the owner wrote the rule
+            # to cover the case where they would otherwise have said yes.
             return decided(DENY, "standing_rule_denies")
+
+        capability = None
+        if request.capability_id:
+            capability, reason = self._capability_for(request, spec, action_type, origin)
+            if capability is None:
+                # A handle was presented and did not verify — unknown, expired,
+                # revoked, or scoped to something else. That is a credential
+                # being offered and refused, so it denies the action outright
+                # rather than falling through to the rules below.
+                return decided(DENY, reason)
+            under = capability.capability_id
 
         if spec.read_only:
             # Changes nothing, reaches no one: the origin cannot make reading
@@ -438,6 +516,11 @@ class ActionPolicyChecker:
             return decided(REQUIRE_APPROVAL, "standing_rule_requires_approval")
 
         outside = is_outside_origin(origin)
+        if capability is not None:
+            # The owner issued this, for this tenant, this action and this
+            # origin, and it has not expired or been revoked. That is the
+            # strongest thing there is to go on.
+            return decided(ALLOW, "capability_authorizes_action")
         if asked:
             return decided(ALLOW, "owner_asked_for_this_action")
         if allowing:
@@ -456,12 +539,55 @@ class ActionPolicyChecker:
         return decided(REQUIRE_APPROVAL, "no_owner_mandate")
 
     def evaluate_payload(self, payload: Mapping[str, Any] | None) -> PolicyDecision:
-        """Judge a loosely-shaped payload: the five fields cross, the rest is
-        dropped and named in ``PolicyDecision.ignored``."""
+        """Judge a loosely-shaped payload.
+
+        Only what to do, to what, with which scalars and under which
+        capability handle crosses; the two authority fields and everything
+        else are dropped and named in ``PolicyDecision.ignored``
+        (:func:`request_from_payload`). So an action assembled out of a run
+        that read the web arrives here with no mandate of its own, and gets
+        one only if the owner issued a capability for it.
+        """
         request, ignored = request_from_payload(payload)
         return self.evaluate(request, ignored=ignored)
 
+    def issued_capability(self, capability_id: str | None) -> AuthorizationCapability | None:
+        """The record behind a handle, for an audit trail. No verification."""
+        return self._capabilities.get(capability_id)
+
     # -- internals --------------------------------------------------------
+
+    def _capability_for(
+        self,
+        request: ActionRequest,
+        spec: ActionType,
+        action_type: str,
+        origin: str | None,
+    ) -> tuple[AuthorizationCapability | None, str]:
+        """``(the verified capability, "")`` or ``(None, why it was refused)``.
+
+        The tenant and the task come from this checker's own context, never
+        from *request*: a payload that could name its own tenant would satisfy
+        the tenant binding by stating it.
+        """
+        if not self._tenant_id:
+            return None, CAPABILITY_WITHOUT_TENANT
+        amount = (
+            _as_amount(request.structured_params.get(spec.amount_param))
+            if spec.amount_param
+            else None
+        )
+        capability, check = self._capabilities.verify(
+            request.capability_id,
+            tenant_id=self._tenant_id,
+            action_type=action_type,
+            target_origin=origin,
+            task_id=self._task_id,
+            amount=amount,
+        )
+        if not check.ok:
+            return None, check.reason
+        return capability, ""
 
     @staticmethod
     def _over_limit(

@@ -8,11 +8,13 @@ Tenant identity comes from `X-Tenant-ID` header (set by the SaaS app).
 from __future__ import annotations
 
 import logging
+from secrets import compare_digest
 from typing import Any
 
 from fastapi import HTTPException, Request, status
 
 from life_graph.config import settings
+from life_graph.core.trust import UNVERIFIED, Ingress
 
 logger = logging.getLogger(__name__)
 
@@ -124,3 +126,61 @@ def verify_service_key(request: Request) -> str | None:
         )
 
     return api_key
+
+
+# ── Who is calling, as the server sees it ─────────────────────────────────
+
+
+def _is_owner_key(api_key: str | None) -> bool:
+    """True when *api_key* is one the deployment named as the owner's own.
+
+    Compared with :func:`secrets.compare_digest` rather than ``in``: this is
+    the check that decides whether a caller may claim the owner's provenance,
+    and an early-exit comparison leaks the key a character at a time.
+    """
+    if not api_key:
+        return False
+    return any(compare_digest(api_key, key) for key in settings.owner_api_keys_list)
+
+
+def _auth_is_off() -> bool:
+    """True on a local dev stack with no credential configured at all.
+
+    The same condition :func:`verify_service_key` uses to wave a request
+    through. Anyone who can reach the port is already unauthenticated-admin
+    there, so treating that caller as the owner changes nothing about who can
+    do what — and without it the developer's own dashboard, which holds a key
+    only when one exists, could not write a note in its own words.
+    """
+    return (
+        settings.is_development
+        and not settings.service_api_keys_list
+        and not settings.api_key
+        and not settings.owner_api_keys_list
+    )
+
+
+def ingress_for(request: Request) -> Ingress:
+    """The authenticated :class:`~life_graph.core.trust.Ingress` for *request*.
+
+    Derived from server-side state only — the device identity
+    ``AuthMiddleware`` established, and the key the request actually
+    presented. Nothing here reads the body, the ``X-User-ID`` header or any
+    other field a caller can write, because the whole point is to have one
+    statement about the caller that the caller did not author.
+
+    Anything unrecognised comes back :data:`~life_graph.core.trust.UNVERIFIED`,
+    so a path that forgets to establish an ingress fails closed.
+    """
+    device_id = getattr(request.state, "device_id", None)
+    if device_id:
+        # A phone paired with a one-time code, calling with its own token
+        # (services/devices.py). Its tenant comes from the pairing too.
+        return Ingress(actor=f"device:{device_id}", owner_verified=True, device_id=str(device_id))
+
+    api_key = extract_api_key(request.headers, request.query_params)
+    if _is_owner_key(api_key):
+        return Ingress(actor="owner:api_key", owner_verified=True)
+    if _auth_is_off():
+        return Ingress(actor="owner:local", owner_verified=True)
+    return UNVERIFIED

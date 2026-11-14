@@ -18,6 +18,7 @@ import pytest
 
 from life_graph.core.trust import TrustTier, classify_surface
 from life_graph.models.schemas import MemoryCreate
+from tests.conftest import fake_request
 
 # ── The map itself ────────────────────────────────────────────
 
@@ -64,6 +65,11 @@ def _mocks():
     [("manual", "self"), ("inferred", "verified"), (None, "external"), ("scraped", "external")],
 )
 async def test_structured_create_stores_the_source_derived_tier(source_type, expected):
+    """The owner's own path: a paired device may claim a first-party source.
+
+    What the *same* bodies get from an unverified caller — EXTERNAL, whatever
+    they declare — is pinned in tests/unit/test_untrusted_boundary_and_checker.py.
+    """
     from life_graph.api.memories import create_memory
 
     manager, store = _mocks()
@@ -74,7 +80,7 @@ async def test_structured_create_stores_the_source_derived_tier(source_type, exp
         source_type=source_type,
     )
     with patch("life_graph.api.memories.MemoryResponse"):
-        await create_memory(body=body, manager=manager, store=store)
+        await create_memory(fake_request(device_id="phone-1"), body=body, manager=manager, store=store)
 
     assert store.store.await_args.kwargs["trust_tier"] == expected
 
@@ -90,7 +96,7 @@ async def test_freeform_create_passes_the_tier_into_the_pipeline():
         source_type=None,
     )
     with patch("life_graph.api.memories.MemoryResponse"):
-        await create_memory(body=body, manager=manager, store=store)
+        await create_memory(fake_request(device_id="phone-1"), body=body, manager=manager, store=store)
 
     assert manager.ingest.await_args.kwargs["trust_tier"] == "external"
 
@@ -111,7 +117,7 @@ async def test_the_nothing_extracted_fallback_is_not_a_hole():
         source_type="scraped",
     )
     with patch("life_graph.api.memories.MemoryResponse"):
-        await create_memory(body=body, manager=manager, store=store)
+        await create_memory(fake_request(device_id="phone-1"), body=body, manager=manager, store=store)
 
     assert store.store.await_args.kwargs["trust_tier"] == "external"
 
@@ -128,7 +134,7 @@ async def test_a_prompt_injection_over_the_api_is_not_stored_as_trusted():
         source_type="uploaded_pdf",
     )
     with patch("life_graph.api.memories.MemoryResponse"):
-        await create_memory(body=body, manager=manager, store=store)
+        await create_memory(fake_request(device_id="phone-1"), body=body, manager=manager, store=store)
 
     tier = store.store.await_args.kwargs["trust_tier"]
     assert is_untrusted(tier), f"prompt injection stored as trusted tier {tier!r}"
