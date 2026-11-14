@@ -14,7 +14,7 @@ import logging
 import re
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
@@ -91,10 +91,38 @@ def trace_causal_chain(
     memories: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Build an inspectable causal chain connecting a decision, its predictions, outcomes, and evidence."""
-    from life_graph.core.evidence import evidence_of
+    from life_graph.core.evidence import evidence_of, rationale_type
 
     source = str(getattr(decision, "source", "") or "").lower()
-    rationale_origin = "user_stated" if source in ("explicit", "conversation", "user") else "model_inferred"
+    props = getattr(decision, "properties", None)
+    # Two names for one distinction, because they are read by different
+    # callers: rationale_type is the vocabulary core/evidence.py uses for
+    # "did the owner say this, or did we work it out?", rationale_origin is
+    # the key the causal-chain API has returned since P0.5.
+    r_type = rationale_type(source, props if isinstance(props, dict) else None)
+    rationale_origin = "user_stated" if r_type == "explicit" else "model_inferred"
+
+    # The options that were weighed, and why the losers lost: a decision
+    # without them can be replayed but not re-judged.
+    raw_options = getattr(decision, "options", None)
+    chosen = getattr(decision, "chosen_option", None)
+    options_considered: list[dict[str, Any]] = []
+    for opt in raw_options if isinstance(raw_options, (list, tuple)) else []:
+        if isinstance(opt, dict):
+            label = opt.get("label") or opt.get("name") or opt.get("option") or opt.get("title")
+            why_not = opt.get("rejected_because") or opt.get("why_not") or opt.get("tradeoff")
+        else:
+            label, why_not = opt, None
+        if label is None or not str(label).strip():
+            continue
+        label = str(label).strip()
+        options_considered.append(
+            {
+                "option": label,
+                "chosen": bool(chosen) and label == str(chosen).strip(),
+                "rejected_because": str(why_not).strip() if why_not else None,
+            }
+        )
 
     pred_rows: list[dict[str, Any]] = []
     for p in predictions or []:
@@ -132,8 +160,11 @@ def trace_causal_chain(
         "title": getattr(decision, "title", ""),
         "status": getattr(decision, "status", ""),
         "rationale_origin": rationale_origin,
+        "rationale_type": r_type,
         "reasoning": getattr(decision, "reasoning", None),
         "chosen_option": getattr(decision, "chosen_option", None),
+        "options_considered": options_considered,
+        "rejected_options": [o for o in options_considered if not o["chosen"]],
         "capture_event_id": str(getattr(decision, "capture_event_id", "")) if getattr(decision, "capture_event_id", None) else None,
         "predictions": pred_rows,
         "supporting_memories": mem_rows,

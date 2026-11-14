@@ -240,3 +240,160 @@ def test_p0_2_bitemporal_valid_and_transaction_time():
         valid_at=datetime(2026, 6, 15, tzinfo=UTC),
         recorded_at=datetime(2026, 7, 15, tzinfo=UTC),
     )
+
+
+# ── P5.1 True bitemporal history ─────────────────────────────────────────
+
+
+def _bitemporal_mem(**over):
+    """A memory row with both timelines set explicitly, as SQLAlchemy would hand it over."""
+    base = {
+        "valid_from": datetime(2026, 1, 1, tzinfo=UTC),
+        "valid_until": None,
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "properties": {},
+    }
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+def test_p5_1_supersession_reconstructs_the_belief_that_was_current_then():
+    """A corrected memory must come back for the window it was still believed in."""
+    from life_graph.services.memory_retrieval import is_bitemporally_valid, is_known_at
+
+    # "Raja lives in Bangalore", recorded Jan 1, corrected away on Jun 1.
+    old_belief = _bitemporal_mem(
+        properties={"superseded_at": datetime(2026, 6, 1, tzinfo=UTC)},
+    )
+
+    # Before the correction landed, this WAS what the system believed.
+    assert is_known_at(old_belief, datetime(2026, 3, 1, tzinfo=UTC)) is True
+    assert is_bitemporally_valid(
+        old_belief,
+        valid_at=datetime(2026, 3, 1, tzinfo=UTC),
+        recorded_at=datetime(2026, 3, 1, tzinfo=UTC),
+    )
+
+    # The instant the correction landed, and ever after, it is history — not
+    # current belief — even though its valid window never closed.
+    assert is_known_at(old_belief, datetime(2026, 6, 1, tzinfo=UTC)) is False
+    assert is_known_at(old_belief, datetime(2026, 9, 1, tzinfo=UTC)) is False
+    assert not is_bitemporally_valid(
+        old_belief,
+        valid_at=datetime(2026, 9, 1, tzinfo=UTC),
+        recorded_at=datetime(2026, 9, 1, tzinfo=UTC),
+    )
+
+    # Without a transaction-time anchor, supersession is not a constraint:
+    # ordinary retrieval asks only "was this true in the world?".
+    assert is_bitemporally_valid(old_belief, valid_at=datetime(2026, 9, 1, tzinfo=UTC))
+
+
+def test_p5_1_superseded_at_read_from_attribute_as_well_as_properties():
+    from life_graph.services.memory_retrieval import is_known_at
+
+    on_attr = _bitemporal_mem(superseded_at=datetime(2026, 6, 1, tzinfo=UTC))
+    assert is_known_at(on_attr, datetime(2026, 5, 1, tzinfo=UTC)) is True
+    assert is_known_at(on_attr, datetime(2026, 7, 1, tzinfo=UTC)) is False
+
+
+def test_p5_1_recorded_at_wins_over_created_at_for_in_place_edits():
+    """created_at is not transaction time: an edited row keeps its original one."""
+    from life_graph.services.memory_retrieval import is_known_at, recorded_time_of
+
+    # Row created Jan 1, then corrected in place on Aug 1; the correction's
+    # recorded_at is the only honest answer to "when did we know this?".
+    edited = _bitemporal_mem(
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        properties={"recorded_at": "2026-08-01T00:00:00Z"},
+    )
+    assert recorded_time_of(edited) == datetime(2026, 8, 1, tzinfo=UTC)
+    # created_at alone would wrongly claim we knew this in March.
+    assert is_known_at(edited, datetime(2026, 3, 1, tzinfo=UTC)) is False
+    assert is_known_at(edited, datetime(2026, 9, 1, tzinfo=UTC)) is True
+
+    # With no recorded_at anywhere, created_at is still the fallback.
+    plain = _bitemporal_mem(created_at=datetime(2026, 8, 1, tzinfo=UTC))
+    assert recorded_time_of(plain) == datetime(2026, 8, 1, tzinfo=UTC)
+    assert is_known_at(plain, datetime(2026, 3, 1, tzinfo=UTC)) is False
+
+
+def test_p5_1_normalizes_naive_iso_and_offset_timestamps_to_utc():
+    from datetime import timezone
+
+    from life_graph.services.memory_retrieval import is_bitemporally_valid, is_valid_at
+
+    # A naive column (SQLite, or a row built in a test) is read as UTC.
+    naive = _bitemporal_mem(
+        valid_from=datetime(2026, 6, 1),
+        valid_until=datetime(2026, 7, 1),
+        created_at=datetime(2026, 6, 1),
+    )
+    assert is_valid_at(naive, datetime(2026, 6, 15, tzinfo=UTC)) is True
+    assert is_valid_at(naive, datetime(2026, 7, 15, tzinfo=UTC)) is False
+
+    # ISO strings out of JSONB, including a non-UTC offset, land on the same line.
+    ist = timezone(timedelta(hours=5, minutes=30))
+    from_json = _bitemporal_mem(
+        valid_from=None,
+        properties={
+            "valid_from": "2026-06-01T05:30:00+05:30",  # == 2026-06-01T00:00Z
+            "superseded_at": "2026-07-01T05:30:00+05:30",
+        },
+    )
+    assert is_valid_at(from_json, datetime(2026, 6, 1, tzinfo=UTC)) is True
+    assert is_valid_at(from_json, datetime(2026, 5, 31, 23, 59, tzinfo=UTC)) is False
+    # A query asked in IST must get the same answer as the same instant in UTC.
+    assert not is_bitemporally_valid(
+        from_json, recorded_at=datetime(2026, 7, 1, 5, 30, tzinfo=ist)
+    )
+    assert is_bitemporally_valid(
+        from_json, recorded_at=datetime(2026, 7, 1, 5, 29, tzinfo=ist)
+    )
+
+    # A timestamp that is not a timestamp is ignored, not guessed at.
+    junk = _bitemporal_mem(properties={"superseded_at": "not a date"})
+    assert is_bitemporally_valid(junk, recorded_at=datetime(2026, 9, 1, tzinfo=UTC))
+
+
+def test_p5_1_three_historical_question_forms():
+    """The three questions bitemporality exists to answer, on one fact's history."""
+    from life_graph.services.memory_retrieval import is_bitemporally_valid
+
+    # What we recorded in March: "Raja is in Chennai from Jan, indefinitely".
+    # On Jun 1 we learned he had actually left in May, so the Jan fact was
+    # superseded and a corrected one recorded in its place.
+    march_belief = _bitemporal_mem(
+        valid_from=datetime(2026, 1, 1, tzinfo=UTC),
+        valid_until=None,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        properties={"superseded_at": datetime(2026, 6, 1, tzinfo=UTC)},
+    )
+    correction = _bitemporal_mem(
+        valid_from=datetime(2026, 1, 1, tzinfo=UTC),
+        valid_until=datetime(2026, 5, 1, tzinfo=UTC),
+        created_at=datetime(2026, 6, 1, tzinfo=UTC),
+        properties={"recorded_at": datetime(2026, 6, 1, tzinfo=UTC)},
+    )
+    now = datetime(2026, 11, 14, tzinfo=UTC)
+
+    # 1. "What did we believe on March 1?" — the original, not the correction.
+    march = datetime(2026, 3, 1, tzinfo=UTC)
+    assert is_bitemporally_valid(march_belief, recorded_at=march)
+    assert not is_bitemporally_valid(correction, recorded_at=march)
+
+    # 2. "What do we NOW believe was true on July 1?" — neither: the corrected
+    #    fact ended in May, and the original is no longer believed at all.
+    july = datetime(2026, 7, 1, tzinfo=UTC)
+    assert not is_bitemporally_valid(march_belief, valid_at=july, recorded_at=now)
+    assert not is_bitemporally_valid(correction, valid_at=july, recorded_at=now)
+    # ... and on April 1 we now believe only the correction.
+    april = datetime(2026, 4, 1, tzinfo=UTC)
+    assert is_bitemporally_valid(correction, valid_at=april, recorded_at=now)
+    assert not is_bitemporally_valid(march_belief, valid_at=april, recorded_at=now)
+
+    # 3. "What did we believe on March 1 was true on July 1?" — the original,
+    #    which back then still claimed to run indefinitely. Reconstructing
+    #    March's answer must not leak June's knowledge.
+    assert is_bitemporally_valid(march_belief, valid_at=july, recorded_at=march)
+    assert not is_bitemporally_valid(correction, valid_at=july, recorded_at=march)

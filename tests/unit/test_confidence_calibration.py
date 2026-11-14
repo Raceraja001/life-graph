@@ -98,3 +98,78 @@ def test_p0_3_evaluate_confidence_calibration_brier_and_buckets():
     assert 0.0 <= report["brier_score"] < 0.25
     assert SAID in report["by_evidence_kind"]
     assert INFERRED in report["by_evidence_kind"]
+
+# ── P5.3 Action thresholds and support penalties ─────────────────────────
+
+
+def test_p5_3_decide_claim_action_covers_all_four_ranges():
+    from life_graph.core.evidence import decide_claim_action
+
+    # answer: >= 0.85
+    assert decide_claim_action(1.0) == "answer"
+    assert decide_claim_action(0.85) == "answer"
+    # qualify: 0.60 <= c < 0.85 (hedge it)
+    assert decide_claim_action(0.8499) == "qualify"
+    assert decide_claim_action(0.60) == "qualify"
+    # ask: 0.40 <= c < 0.60 (ask the owner rather than guess)
+    assert decide_claim_action(0.5999) == "ask"
+    assert decide_claim_action(0.40) == "ask"
+    # abstain: < 0.40
+    assert decide_claim_action(0.3999) == "abstain"
+    assert decide_claim_action(0.0) == "abstain"
+
+    # A confidence that is not a number is not permission to answer.
+    assert decide_claim_action(None) == "abstain"
+    assert decide_claim_action("high") == "abstain"
+    assert decide_claim_action(float("nan")) == "abstain"
+
+
+def test_p5_3_contradicted_and_unresolved_citations_cost_confidence():
+    """The four components stay separate; failed support multiplies on top."""
+    memory = {"id": "m1", "source_type": "chat", "trust_tier": "self", "confidence": 0.9}
+
+    clean = decompose_memory_confidence(memory)
+    supported = decompose_memory_confidence(memory, support_status="supported")
+    unsupported = decompose_memory_confidence(memory, support_status="unsupported")
+    unresolved = decompose_memory_confidence(memory, support_status="unresolved_source")
+    contradicted = decompose_memory_confidence(memory, support_status="contradicted")
+
+    # Extraction, source trust, evidence prior and freshness are reported
+    # independently, and the penalty touches none of them.
+    for part in ("extraction_confidence", "trust_score", "evidence_prior", "freshness_score"):
+        assert clean[part] == contradicted[part]
+        assert 0.0 <= clean[part] <= 1.0
+    assert clean["base_confidence"] == contradicted["base_confidence"]
+
+    # A verified citation costs nothing; a failed one costs, worst last.
+    assert supported["calibrated_confidence"] == clean["base_confidence"]
+    assert unresolved["calibrated_confidence"] < unsupported["calibrated_confidence"]
+    assert contradicted["calibrated_confidence"] < unresolved["calibrated_confidence"]
+
+    # And the penalty is enough to move the decision, not just the number.
+    assert clean["recommended_action"] in ("answer", "qualify")
+    assert contradicted["recommended_action"] == "abstain"
+    assert abs(contradicted["calibrated_confidence"] + contradicted["uncertainty"] - 1.0) < 1e-3
+
+
+def test_p5_3_unsupported_claim_recommends_abstention_not_a_hedge():
+    """A strong memory cited for something it does not say still gets no answer."""
+    memories = [
+        {
+            "id": "m1",
+            "source_type": "chat",
+            "trust_tier": "self",
+            "confidence": 0.98,
+            "capture_event_id": "cap-1",
+            "content": "Raja likes painting watercolours.",
+        }
+    ]
+    claims = extract_claim_evidence(
+        "You live in London [Memory 1]. You like painting [Memory 1].", memories
+    )
+    assert claims[0]["support_status"] == "unsupported"
+    assert claims[0]["recommended_action"] == "abstain"
+    # The same high-trust memory, cited for what it actually says, is usable.
+    assert claims[1]["support_status"] == "supported"
+    assert claims[1]["recommended_action"] in ("answer", "qualify")
+    assert claims[1]["claim_confidence"] > claims[0]["claim_confidence"]

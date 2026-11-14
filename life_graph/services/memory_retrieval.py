@@ -17,6 +17,7 @@ import json
 import logging
 import math
 import re
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -88,8 +89,6 @@ def strength_order(hits: list[tuple[Any, float]]) -> list[tuple[Any, float]]:
     and how recently used or said a memory is. The match still leads: strength
     moves a memory by at most +/-15%, so it settles near-ties, never overrules
     a clearly better match."""
-    from datetime import UTC, datetime
-
     now = datetime.now(UTC)
 
     def strength(m: Any) -> float:
@@ -223,20 +222,102 @@ def explain_retrieval_selection(
 
 
 def _ensure_utc(dt: datetime) -> datetime:
-    from datetime import UTC
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
+def _as_utc(value: Any) -> datetime | None:
+    """*value* as an aware UTC datetime, or None when it is not a usable timestamp.
+
+    Timestamps reach us three ways: as a column (already a ``datetime``, aware
+    or — for a naive SQLite/SimpleNamespace row — not), as an ISO string out of
+    the JSONB ``properties`` column, or as an epoch number. A naive datetime is
+    read as UTC: every writer in the system stores UTC.
+    """
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return datetime.fromtimestamp(float(value), UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+    return None
+
+
+def _temporal(memory: Any, *names: str) -> datetime | None:
+    """The first of *names* carried by *memory* as an attribute or in ``properties``.
+
+    ``recorded_at`` and ``superseded_at`` have no columns of their own
+    (models/memory.py): consolidation and correction write them into the JSONB
+    ``properties``. Reading both places keeps one predicate for either shape.
+    """
+    props = getattr(memory, "properties", None)
+    if not isinstance(props, dict):
+        props = memory.get("properties") if isinstance(memory, dict) else None
+        if not isinstance(props, dict):
+            props = {}
+    for name in names:
+        raw = getattr(memory, name, None)
+        if raw is None and isinstance(memory, dict):
+            raw = memory.get(name)
+        if raw is None:
+            raw = props.get(name)
+        found = _as_utc(raw)
+        if found is not None:
+            return found
+    return None
+
+
 def is_valid_at(memory: Any, ref_time: datetime) -> bool:
-    """Valid-time check: valid_from <= ref_time < valid_until."""
+    """Valid-time check: was the fact true in the world at *ref_time*?
+
+    The window is half-open — ``valid_from <= ref_time < valid_until`` — so a
+    fact and its replacement never both answer for the instant they meet.
+    ``valid_to`` is accepted as an alias for ``valid_until``
+    (core/evidence.py's confidence decomposition uses that name).
+    """
     ref = _ensure_utc(ref_time)
-    v_from = getattr(memory, "valid_from", None)
-    if v_from is not None and _ensure_utc(v_from) > ref:
-        return False
-    v_until = getattr(memory, "valid_until", None)
-    if v_until is not None and _ensure_utc(v_until) <= ref:
-        return False
-    return True
+    v_from = _temporal(memory, "valid_from")
+    v_until = _temporal(memory, "valid_until", "valid_to")
+    started = v_from is None or v_from <= ref
+    not_ended = v_until is None or ref < v_until
+    return started and not_ended
+
+
+def recorded_time_of(memory: Any) -> datetime | None:
+    """When the system *learned* the fact (transaction time), or None if unknown.
+
+    ``created_at`` is only the last fallback: a row that was corrected in place
+    keeps its original ``created_at``, so an explicit ``recorded_at`` (written
+    by whichever path recorded or re-recorded the fact) is the one that tells
+    the truth about when we knew.
+    """
+    return _temporal(memory, "recorded_at", "created_at")
+
+
+def is_known_at(memory: Any, recorded_at: datetime) -> bool:
+    """Transaction-time check: did the system hold this as a *current* belief then?
+
+    Two edges, and they are different questions:
+
+    * Had we recorded it yet? ``recorded_at`` before the memory's own recorded
+      time means we did not know it (a late-arriving or backdated capture is
+      invisible to a query about an earlier state of knowledge).
+    * Had we replaced it yet? Before ``superseded_at`` the memory *was* the
+      active belief and must be reconstructed as such; at or after it, the
+      correction had landed and this row is history, not current belief.
+    """
+    rec = _ensure_utc(recorded_at)
+    known_from = recorded_time_of(memory)
+    superseded_at = _temporal(memory, "superseded_at", "replaced_at")
+    recorded_yet = known_from is None or known_from <= rec
+    still_believed = superseded_at is None or rec < superseded_at
+    return recorded_yet and still_believed
 
 
 def is_bitemporally_valid(
@@ -245,15 +326,22 @@ def is_bitemporally_valid(
     valid_at: datetime | None = None,
     recorded_at: datetime | None = None,
 ) -> bool:
-    """Full bitemporal check: valid time AND transaction time (created_at <= recorded_at)."""
+    """Both timelines: true in the world at *valid_at*, and believed at *recorded_at*.
+
+    The two axes are independent, which is what makes the three historical
+    questions expressible:
+
+    * ``recorded_at=X`` — what did we believe on X (about any time)?
+    * ``valid_at=Y, recorded_at=now`` — what do we *now* believe was true on Y?
+    * ``valid_at=Y, recorded_at=X`` — what did we believe on X was true on Y?
+
+    A ``None`` axis is no constraint on that axis, so the plain
+    ``is_bitemporally_valid(m, valid_at=now)`` of ordinary retrieval keeps
+    asking only about real-world validity.
+    """
     if valid_at is not None and not is_valid_at(memory, valid_at):
         return False
-    if recorded_at is not None:
-        rec = _ensure_utc(recorded_at)
-        created = getattr(memory, "created_at", None)
-        if created is not None and _ensure_utc(created) > rec:
-            return False
-    return True
+    return recorded_at is None or is_known_at(memory, recorded_at)
 
 
 async def retrieve(
@@ -276,8 +364,6 @@ async def retrieve(
     cannot answer, so a model outage costs precision, never the memories
     themselves.
     """
-    from datetime import UTC, datetime
-
     from life_graph.api.dependencies import get_memory_manager, get_store
     from life_graph.config import settings
     from life_graph.core.tenant import get_current_tenant_id
@@ -288,13 +374,25 @@ async def retrieve(
         return None
     tenant_id = get_current_tenant_id()
 
+    # A valid-time question with no transaction time given is the common
+    # "what do we *now* believe was true on date Y?": anchor transaction time
+    # to now, so the superseded rows that as_of lets into search_statuses
+    # below are read as the history they are, not as current belief. Asking
+    # for both (recorded_as_of) is the other question — what we believed then.
+    if recorded_as_of is not None:
+        recorded_ref: datetime | None = _ensure_utc(recorded_as_of)
+    elif as_of is not None:
+        recorded_ref = datetime.now(UTC)
+    else:
+        recorded_ref = None
+
     # "What did we talk about yesterday?": that period's day summaries,
     # fetched by date, first (services/episodes.py). Search cannot tell which
     # days "last week" means.
     dated: list[Any] = []
     window = episodes.time_window(question, datetime.now(episodes._tz()).date())
     if window is not None:
-        dated = [m for m in await episodes.episodes_between(tenant_id, *window, limit=limit) if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_as_of)]
+        dated = [m for m in await episodes.episodes_between(tenant_id, *window, limit=limit) if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_ref)]
 
     by_strength = settings.memory_strength_rank
     search_statuses = ("active", "superseded", "archived") if (as_of is not None or recorded_as_of is not None) else ("active",)
@@ -337,7 +435,7 @@ async def retrieve(
         # Dify by construction, and the judge dropped the one that mattered
         # ("Life Graph does NOT use … Dify", 2026-10-23). They go first, unjudged.
         ref_ = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
-        current = [m for m in linked if is_bitemporally_valid(m, valid_at=ref_, recorded_at=recorded_as_of)]
+        current = [m for m in linked if is_bitemporally_valid(m, valid_at=ref_, recorded_at=recorded_ref)]
         return (dated + current)[:limit]
     if settings.memory_links and candidates:
         candidates = await _with_neighbours(tenant_id, candidates)
@@ -350,7 +448,7 @@ async def retrieve(
         m
         for m in candidates
         if m.id not in seen
-        and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_as_of)
+        and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)
         # Asked about a time: other days' summaries only blur the answer.
         and not (window is not None and (m.properties or {}).get("kind") == episodes.KIND)
     ]
@@ -359,7 +457,7 @@ async def retrieve(
     if past:
         # "Where did I work before?": how things were is in the cold tier.
         known = {m.id for m in memories} | seen
-        memories += [m for m in await _cold(embedding, question) if m.id not in known and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_as_of)]
+        memories += [m for m in await _cold(embedding, question) if m.id not in known and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)]
     picked = await _judged(asked, memories) if memories else []
     if picked is None:
         logger.warning("Memory relevance judge gave no answer; using the search order")
@@ -369,7 +467,7 @@ async def retrieve(
         return (dated + warm)[:limit]
     if not picked and not dated and cold_too and not past:
         # Nothing warm answers: older memories might (nothing is forgotten).
-        cold_rows = [m for m in await _cold(embedding, question) if is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_as_of)]
+        cold_rows = [m for m in await _cold(embedding, question) if is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)]
         picked = (await _judged(asked, cold_rows) or []) if cold_rows else []
     return (dated + picked)[:limit]
 
