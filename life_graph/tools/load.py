@@ -17,6 +17,7 @@ MODULES = (
     "life_graph.tools.code",
     "life_graph.tools.datetime_tool",
     "life_graph.tools.delegate",
+    "life_graph.tools.errand",
     "life_graph.tools.filesystem",
     "life_graph.tools.git",
     "life_graph.tools.memory_search",

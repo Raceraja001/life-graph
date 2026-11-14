@@ -9,6 +9,13 @@
   reminder. Rows written before ``item_id`` was stored are "other", without
   buttons: there is nothing for a button to find.
 * the daily brief (services/brief.py, ``source_type="brief"``): "Listen".
+* a paused browser errand (tools/errand.py, ``source_type="errand_approval"``):
+  "Approve" / "Reject". This one is not a reminder about something — it is the
+  owner's own say-so, and the only thing that widens an errand. Approving
+  issues an ``AuthorizationCapability`` (autonomy/approvals/capability.py)
+  for that one action type on that one origin; the errand is resumed by
+  handing its ``capability_id`` back to ``run_browser_errand``. Nothing is
+  resumed from here: a tap authorises, it does not act.
 
 An action is taken once: it is recorded in the notification's metadata
 (``action``), and a second tap gets "Already done." Listen is the exception:
@@ -24,7 +31,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-ITEM_KINDS = ("bill", "task", "document", "reminder")
+ITEM_KINDS = ("bill", "task", "document", "reminder", "errand_approval")
+#: A browser errand waiting on the owner (tools/errand.py).
+ERRAND_APPROVAL = "errand_approval"
 SNOOZE_DAY_HOUR = 9  # "Tomorrow" means 09:00 tomorrow, in the owner's day
 
 #: Per kind, the buttons in the order the phone shows them (at most 3).
@@ -34,11 +43,21 @@ ACTIONS: dict[str, list[tuple[str, str]]] = {
     "task": [("snooze_1d", "Tomorrow")],
     "document": [],
     "brief": [("listen", "Listen")],
+    # A browser errand paused on a step the policy will not authorise alone.
+    "errand_approval": [("approve", "Approve"), ("reject", "Reject")],
     # Something the owner said they would do (services/nudges.py).
     "nudge": [("done", "Done"), ("snooze_1d", "Tomorrow"), ("drop", "Drop")],
     "other": [],
 }
 LISTEN_RESULT = "Open Jarvis to listen."
+APPROVED_RESULT = "Approved: Jarvis is continuing the errand."
+REJECTED_RESULT = "Rejected: Jarvis stopped the errand."
+#: How long an errand approval stays good for. See :func:`_errand`.
+ERRAND_CAPABILITY_TTL = timedelta(minutes=30)
+#: Read-only browser actions an approved capability also names, so the handle
+#: does not deny the steps that get the errand back to its page. See
+#: :func:`_errand` for why this grants nothing.
+ERRAND_RESUME_ACTIONS = ("browser_navigate", "read_page")
 ALREADY_DONE = "Already done."
 NOT_OFFERED = "That button isn't offered for this notification."
 
@@ -64,6 +83,10 @@ def kind_of(source_type: str | None, meta: dict[str, Any] | None) -> str:
         return "brief"
     if source_type == "nudge" and meta.get("item_id"):
         return "nudge"
+    # Matched on either, because the card is written once with both set and
+    # read back by rows that may predate one of them.
+    if source_type == ERRAND_APPROVAL or meta.get("item") == ERRAND_APPROVAL:
+        return ERRAND_APPROVAL
     if source_type == SOURCE_TYPE and meta.get("item") in ITEM_KINDS and meta.get("item_id"):
         return meta["item"]
     return "other"
@@ -96,6 +119,10 @@ def result_for(action: str, *, at: datetime | None, now: datetime, tz: Any) -> s
     """The plain sentence the phone shows in place of the notification."""
     from life_graph.services.reminders import say_when
 
+    if action == "approve":
+        return APPROVED_RESULT
+    if action == "reject":
+        return REJECTED_RESULT
     if action == "paid":
         return "Marked paid."
     if action == "drop":
@@ -126,7 +153,9 @@ async def perform(
     if taken(meta):
         raise ActionRefusedError(ALREADY_DONE)
     at = None
-    if kind == "nudge":
+    if kind == ERRAND_APPROVAL:
+        meta = _errand(tenant_id, meta, action, now)
+    elif kind == "nudge":
         from life_graph.services import nudges
 
         row = await nudges.act(session, tenant_id, meta["item_id"], action, now, tz)
@@ -146,6 +175,55 @@ async def perform(
     notification.extra_metadata = meta  # a new dict, so the JSONB change is saved
     notification.is_read = True
     return result_for(action, at=at, now=now, tz=tz)
+
+
+def _errand(tenant_id: str, meta: dict[str, Any], action: str, now: datetime) -> dict[str, Any]:
+    """Approve or reject a paused browser errand. Returns the new metadata.
+
+    Approving does not resume anything — it *authorises*. It mints an
+    :class:`~life_graph.autonomy.approvals.AuthorizationCapability` for the one
+    action type on the one origin the card named, and leaves its id in the
+    metadata; ``run_browser_errand`` resumes the errand by presenting that id,
+    and the policy re-verifies it against the tenant, task, action type and
+    origin at every step (autonomy/approvals/policy_checker.py). Nothing here
+    touches a browser, so a tap can never itself be the action.
+
+    The scope comes from the card, which was written by the server from what
+    the policy itself read — not from anything the model said at approval
+    time. An unnamed action or origin is refused rather than widened: a
+    capability for "any origin" is not what the owner was shown.
+    """
+    from life_graph.autonomy.approvals import capability_store
+
+    if action == "reject":
+        meta["rejected"] = True
+        return meta
+    action_type = str(meta.get("action_type") or "").strip()
+    origin = str(meta.get("target_origin") or "").strip()
+    if not action_type or not origin:
+        raise ActionRefusedError("I can't tell what this would approve. Ask Jarvis again.")
+    capability = capability_store.issue(
+        tenant_id=tenant_id,
+        # The step's own action type, plus the two read-only ones a resumed
+        # errand needs to get back to the page it paused on. That is not a
+        # widening: a presented handle is verified *before* the read-only
+        # shortcut (autonomy/approvals/policy_checker.py), so a capability for
+        # the click alone would make the handle itself deny the navigate that
+        # has to come first — while navigating and reading are allowed with no
+        # capability at all. Naming them here adds no authority, it only stops
+        # the mandate getting in the way of what was already permitted.
+        action_types=[action_type, *ERRAND_RESUME_ACTIONS],
+        target_origins=[origin],
+        # ERRAND_CAPABILITY_TTL, not the 15-minute default: the owner may tap
+        # this while the phone is in their pocket and Jarvis resumes on its
+        # next turn. Still far short of MAX_TTL, and still one action on one
+        # origin — it is a mandate for this errand, not a standing permission.
+        ttl=ERRAND_CAPABILITY_TTL,
+        now=now,
+    )
+    meta["capability_id"] = capability.capability_id
+    meta["capability_expires_at"] = capability.expires_at.isoformat()
+    return meta
 
 
 async def _paid(session: AsyncSession, tenant_id: str, item_id: str, now: datetime) -> None:

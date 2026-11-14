@@ -28,6 +28,7 @@ KEYS = {
     "mail_waiting",
     "work",
     "study_due",
+    "errands",
     "learnt",
 }
 
@@ -212,6 +213,7 @@ async def test_collect_survives_every_source_raising(monkeypatch, caplog):
         "_night_run",
         "_down",
         "_study_due",
+        "_errands",
         "_learnt",
     ):
         monkeypatch.setattr(jt, name, boom)
@@ -245,6 +247,7 @@ async def test_collect_passes_the_tenant_to_every_source(monkeypatch):
         "_night_run",
         "_down",
         "_study_due",
+        "_errands",
         "_learnt",
     ):
         monkeypatch.setattr(jt, name, spy(name))

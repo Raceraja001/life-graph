@@ -689,6 +689,13 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
             "money_checkin",
             "app_health",
             "research_web",
+            # Granted where run_command is not, and for the opposite reason to
+            # the comment above: an errand's every step is judged from
+            # structure alone (services/browser_errand.py), so page text
+            # cannot authorise one. Reading a page runs; typing or clicking
+            # comes back as an Approve/Reject card on the phone
+            # (tools/errand.py). Injected text can at most get Jarvis to ask.
+            "run_browser_errand",
             "delegate_to_persona",
         ],
     },
