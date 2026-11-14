@@ -119,6 +119,11 @@ This could allow cross-tenant access or mutation if IDs are known or exposed. Ve
 
 **Relevant file:** `life_graph/api/procedures.py`
 
+**Resolution status (verified):**
+- Fixed on `fix/p0-s1-procedure-tenant-isolation` (`life_graph/core/tenant.py` `get_scoped()` + `life_graph/api/procedures.py` `_load_procedure()` and `tenant_id=get_current_tenant_id()` in `create_procedure()`).
+- Cross-tenant `get`/`update`/`delete`/`apply` now return `404` without disclosing ownership; `list`/`match` remain tenant-scoped.
+- Adjacent `session.get` scan in `life_graph/api/`: `jarvis.py` (116, 578, 1733) and `kernel.py` (864) explicitly verify `row.tenant_id != tenant_id`; `admin.py` (324, 347, 404, 443, 494, 530, 567) is admin-scoped (`TenantWebhook`/`TenantConfig`); `llm_offers.py` (46) is global instance model (`LlmOffer`).
+
 Treat this as the first task because authorization defects take precedence over feature work.
 
 ---
