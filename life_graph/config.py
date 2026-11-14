@@ -334,6 +334,25 @@ class Settings(BaseSettings):
     monthly_budget_usd: float = 10.0
     budget_soft_threshold: float = 0.8
 
+    # ── Cloud API spend guardrails (NOD P4) ──────────────
+    # A hard ceiling on *cloud* LLM spend, measured at the call site from token
+    # counts (services/spend_guardrails.py). Distinct from the Governor above:
+    # the Governor arbitrates between autonomous spenders against a ledger in
+    # Postgres, this is a cheap in-process backstop that every cloud chat passes
+    # through — when it trips, the call degrades to local inference instead of
+    # failing. Local runtimes (LM Studio / Ollama) cost $0.00 and are never
+    # gated. Set either cap to 0 to disable that scope's enforcement.
+    monthly_spend_cap_usd: float = 10.0
+    # Per-task ceiling, enforced only for calls made inside a kernel task (or an
+    # explicit SpendTracker.task_scope); ambient calls count toward the monthly
+    # total only, so no long-lived process can starve itself.
+    per_task_spend_cap_usd: float = 0.50
+    # Price assumed for a cloud model missing from the price table, USD per 1M
+    # tokens (input, output) — deliberately non-zero so an unknown model cannot
+    # spend invisibly.
+    spend_unknown_model_input_per_mtok: float = 0.50
+    spend_unknown_model_output_per_mtok: float = 1.50
+
     # ── Shadow Mode: dry-run rung on the autonomy ladder (D7.4) ──
     # New autonomous actors record 'would-have-done' reports instead of acting,
     # until they soak long enough and are graded well enough to graduate.
