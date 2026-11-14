@@ -79,8 +79,8 @@ async def resolve_prompt(
     return version or default
 
 
-async def load_version(version_id: str, default_text: str) -> ResolvedPrompt:
-    """Load a specific version by id (``"default"`` means the built-in prompt).
+async def load_version(version_id: str, default_text: str, tenant_id: str) -> ResolvedPrompt:
+    """Load one of *tenant_id*'s versions by id (``"default"`` means the built-in prompt).
 
     Used by evals, which must run a candidate that is not active.
     """
@@ -89,11 +89,15 @@ async def load_version(version_id: str, default_text: str) -> ResolvedPrompt:
 
     import uuid
 
+    from life_graph.core.tenant import get_scoped
     from life_graph.self_improving.models import PromptVersion
     from life_graph.storage.database import async_session
 
-    async with async_session() as session:
-        row = await session.get(PromptVersion, uuid.UUID(str(version_id)))
+    try:
+        async with async_session() as session:
+            row = await get_scoped(session, PromptVersion, uuid.UUID(str(version_id)), tenant_id)
+    except LookupError:
+        row = None
     if row is None:
         raise ValueError(f"prompt version {version_id} not found")
     return ResolvedPrompt(str(row.id), row.prompt_text, list(row.few_shot_examples or []))

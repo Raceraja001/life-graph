@@ -18,7 +18,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test_persona_tenant",
@@ -64,13 +64,10 @@ class TestCreatePersona:
                 "icon": "🔬",
             },
         )
-        assert response.status_code in (201, 500)
-
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert data["name"] == pname
-            assert data["is_builtin"] is False
-            assert data["is_active"] is True
+        data = assert_ok(response, 201)["data"]
+        assert data["name"] == pname
+        assert data["is_builtin"] is False
+        assert data["is_active"] is True
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -85,7 +82,7 @@ class TestCreatePersona:
                 "system_prompt": "You are a test agent.",
             },
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -100,7 +97,7 @@ class TestCreatePersona:
                 "name": "no_prompt_persona",
             },
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -117,14 +114,13 @@ class TestCreatePersona:
             "/api/v1/kernel/personas",
             json=payload,
         )
-        if first.status_code != 201:
-            pytest.skip("DB unavailable")
+        assert_ok(first, 201)
 
         second = await client.post(
             "/api/v1/kernel/personas",
             json=payload,
         )
-        assert second.status_code in (409, 500)
+        assert_ok(second, 409)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -144,14 +140,11 @@ class TestCreatePersona:
                 ],
             },
         )
-        assert response.status_code in (201, 500)
-
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert data["allowed_tools"] == [
-                "file_read",
-                "web_search",
-            ]
+        data = assert_ok(response, 201)["data"]
+        assert data["allowed_tools"] == [
+            "file_read",
+            "web_search",
+        ]
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -168,7 +161,7 @@ class TestCreatePersona:
                 "temperature": 5.0,
             },
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
 
 # ── List Personas ────────────────────────────────────────────
@@ -185,15 +178,12 @@ class TestListPersonas:
     ):
         """Listing personas returns 200 with total count."""
         response = await client.get("/api/v1/kernel/personas")
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            data = body["data"]
-            assert "personas" in data
-            assert "total" in data
-            assert isinstance(data["personas"], list)
+        body = assert_ok(response, 200)
+        assert "data" in body
+        data = body["data"]
+        assert "personas" in data
+        assert "total" in data
+        assert isinstance(data["personas"], list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -206,7 +196,7 @@ class TestListPersonas:
             "/api/v1/kernel/personas",
             params={"include_inactive": "true"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -219,17 +209,14 @@ class TestListPersonas:
         an editable card from this one list call, with no per-persona detail
         fetch, so both fields must be present here."""
         response = await client.get("/api/v1/kernel/personas")
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            personas = body["data"]["personas"]
-            if personas:
-                first = personas[0]
-                assert "temperature" in first
-                assert "max_tokens" in first
-                assert isinstance(first["temperature"], float)
-                assert isinstance(first["max_tokens"], int)
+        body = assert_ok(response, 200)
+        personas = body["data"]["personas"]
+        if personas:
+            first = personas[0]
+            assert "temperature" in first
+            assert "max_tokens" in first
+            assert isinstance(first["temperature"], float)
+            assert isinstance(first["max_tokens"], int)
 
 
 # ── Get Persona Detail ───────────────────────────────────────
@@ -249,7 +236,7 @@ class TestGetPersona:
         response = await client.get(
             f"/api/v1/kernel/personas/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -261,7 +248,7 @@ class TestGetPersona:
         response = await client.get(
             "/api/v1/kernel/personas/not-a-uuid",
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -280,15 +267,11 @@ class TestGetPersona:
                 "icon": "🧪",
             },
         )
-        if create_resp.status_code != 201:
-            pytest.skip("DB unavailable")
-
-        pid = create_resp.json()["data"]["id"]
+        pid = assert_ok(create_resp, 201)["data"]["id"]
         detail = await client.get(
             f"/api/v1/kernel/personas/{pid}",
         )
-        assert detail.status_code in (200, 500)
-        data = detail.json()["data"]
+        data = assert_ok(detail, 200)["data"]
         assert data["name"] == pname
         assert data["system_prompt"] == "Detail test prompt."
         assert data["icon"] == "🧪"
@@ -314,7 +297,7 @@ class TestUpdatePersona:
             f"/api/v1/kernel/personas/{fake_id}",
             json={"temperature": 0.5},
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -330,16 +313,12 @@ class TestUpdatePersona:
                 "system_prompt": "Update test.",
             },
         )
-        if create_resp.status_code != 201:
-            pytest.skip("DB unavailable")
-
-        pid = create_resp.json()["data"]["id"]
+        pid = assert_ok(create_resp, 201)["data"]["id"]
         update_resp = await client.patch(
             f"/api/v1/kernel/personas/{pid}",
             json={"temperature": 0.9},
         )
-        assert update_resp.status_code in (200, 500)
-        data = update_resp.json()["data"]
+        data = assert_ok(update_resp, 200)["data"]
         assert "updated_at" in data
         assert "message" in data
         assert "next task spawn" in data["message"]
@@ -358,10 +337,7 @@ class TestUpdatePersona:
                 "system_prompt": "Original prompt.",
             },
         )
-        if create_resp.status_code != 201:
-            pytest.skip("DB unavailable")
-
-        pid = create_resp.json()["data"]["id"]
+        pid = assert_ok(create_resp, 201)["data"]["id"]
         await client.patch(
             f"/api/v1/kernel/personas/{pid}",
             json={"system_prompt": "Updated prompt."},
@@ -371,8 +347,7 @@ class TestUpdatePersona:
         detail = await client.get(
             f"/api/v1/kernel/personas/{pid}",
         )
-        assert detail.status_code in (200, 500)
-        assert detail.json()["data"]["system_prompt"] == "Updated prompt."
+        assert assert_ok(detail, 200)["data"]["system_prompt"] == "Updated prompt."
 
 
 # ── Delete Persona ───────────────────────────────────────────
@@ -392,7 +367,7 @@ class TestDeletePersona:
         response = await client.delete(
             f"/api/v1/kernel/personas/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -409,15 +384,11 @@ class TestDeletePersona:
                 "system_prompt": "Will be deleted.",
             },
         )
-        if create_resp.status_code != 201:
-            pytest.skip("DB unavailable")
-
-        pid = create_resp.json()["data"]["id"]
+        pid = assert_ok(create_resp, 201)["data"]["id"]
         del_resp = await client.delete(
             f"/api/v1/kernel/personas/{pid}",
         )
-        assert del_resp.status_code in (200, 500)
-        data = del_resp.json()["data"]
+        data = assert_ok(del_resp, 200)["data"]
         assert data["message"] == "Persona deactivated"
         assert data["name"] == pname
 

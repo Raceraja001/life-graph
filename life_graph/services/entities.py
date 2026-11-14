@@ -527,7 +527,7 @@ async def _root_of(session: Any, entity: Any) -> Any:
     node, hops = entity, 0
     while node.canonical_id and hops < MAX_HOPS:
         parent = await session.get(Entity, node.canonical_id)
-        if parent is None:
+        if parent is None or parent.tenant_id != entity.tenant_id:
             break
         node, hops = parent, hops + 1
     return node

@@ -31,12 +31,15 @@ import ast
 import contextlib
 import importlib
 import pathlib
+import uuid
 import warnings
+from types import SimpleNamespace
 
 import pytest
 
 import life_graph.models.db
-from life_graph.models.db import Base
+from life_graph.core.tenant import get_scoped, tenant_scope
+from life_graph.models.db import Base, Project
 
 _ROOT = pathlib.Path(life_graph.models.db.__file__).resolve().parents[1]
 
@@ -107,6 +110,9 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     ("services/telegram_binding.py", "purge_expired_codes"): (
         "housekeeping sweep of expired codes across every tenant, like the crons above"
     ),
+    ("self_improving/optimizer_service.py", "_finish"): (
+        "run_id is always the row optimize() created for its tenant, never caller input"
+    ),
 }
 
 
@@ -132,11 +138,19 @@ def tenanted_models() -> set[str]:
 def _queried_models(fn: ast.AST, tenanted: set[str]) -> set[str]:
     found: set[str] = set()
     for node in ast.walk(fn):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id in ("select", "update", "delete")
+        if not isinstance(node, ast.Call):
+            continue
+        # session.get(Model, pk) looks up by primary key alone, so it is never scoped.
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id in tenanted
         ):
+            found.add(node.args[0].id)
+            continue
+        if not (isinstance(node.func, ast.Name) and node.func.id in ("select", "update", "delete")):
             continue
         for arg in node.args:
             if isinstance(arg, ast.Name) and arg.id in tenanted:
@@ -148,6 +162,100 @@ def _queried_models(fn: ast.AST, tenanted: set[str]) -> set[str]:
             ):
                 found.add(arg.value.id)
     return found
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "async def f(session, pk): return await session.get(Memory, pk)",
+        "async def f(self, pk): return await self.session.get(Memory, pk)",
+        "async def f(db, pk): return await db.get(Memory, pk)",
+    ],
+)
+def test_primary_key_lookups_count_as_queries(source):
+    assert _queried_models(ast.parse(source), {"Memory"}) == {"Memory"}
+
+
+def test_a_get_on_an_unscoped_model_or_a_dict_is_not_a_query():
+    source = "def f(session, d, pk): return session.get(Other, pk), d.get('Memory', pk)"
+    assert _queried_models(ast.parse(source), {"Memory"}) == set()
+
+
+class _FakeSession:
+    def __init__(self, record):
+        self.record = record
+        self.executed = 0
+
+    async def get(self, model, pk):
+        return self.record
+
+    async def execute(self, stmt):
+        self.executed += 1
+
+
+class _Untenanted:
+    """A model with no tenant_id column."""
+
+
+class TestGetScoped:
+    async def test_returns_the_tenants_own_record(self):
+        record = SimpleNamespace(tenant_id="a")
+        assert await get_scoped(_FakeSession(record), Project, uuid.uuid4(), "a") is record
+
+    async def test_another_tenants_record_raises(self):
+        session = _FakeSession(SimpleNamespace(tenant_id="b"))
+        with pytest.raises(LookupError):
+            await get_scoped(session, Project, uuid.uuid4(), "a")
+
+    async def test_a_missing_record_is_none(self):
+        assert await get_scoped(_FakeSession(None), Project, uuid.uuid4(), "a") is None
+
+    async def test_defaults_to_the_current_tenant(self):
+        session = _FakeSession(SimpleNamespace(tenant_id="b"))
+        with tenant_scope("b"):
+            assert await get_scoped(session, Project, uuid.uuid4()) is session.record
+        with tenant_scope("a"), pytest.raises(LookupError):
+            await get_scoped(session, Project, uuid.uuid4())
+
+    async def test_an_explicit_tenant_beats_the_current_one(self):
+        session = _FakeSession(SimpleNamespace(tenant_id="b"))
+        with tenant_scope("a"):
+            assert await get_scoped(session, Project, uuid.uuid4(), "b") is session.record
+
+    async def test_no_tenant_anywhere_fails_closed(self):
+        session = _FakeSession(SimpleNamespace(tenant_id="b"))
+        with pytest.raises(RuntimeError):
+            await get_scoped(session, Project, uuid.uuid4())
+
+    async def test_a_model_without_tenancy_is_unchecked(self):
+        record = _Untenanted()
+        assert await get_scoped(_FakeSession(record), _Untenanted, 1, "a") is record
+
+
+async def test_another_tenants_project_never_sets_pr_mode():
+    from life_graph.services.local_merge import pr_mode
+
+    project = SimpleNamespace(tenant_id="b", scan_metadata={"pr_mode": "local"})
+    assert await pr_mode(_FakeSession(project), str(uuid.uuid4()), "b") == "local"
+    assert await pr_mode(_FakeSession(project), str(uuid.uuid4()), "a") == "github"
+
+
+async def test_promotion_ignores_another_tenants_candidate():
+    """It must neither activate the foreign prompt nor retire the tenant's live one."""
+    from life_graph.services.approvals import ApprovalService
+
+    candidate = SimpleNamespace(tenant_id="b", is_active=False)
+    session = _FakeSession(candidate)
+    appr = SimpleNamespace(
+        source_ref=str(uuid.uuid4()),
+        payload={"candidate_version_id": str(uuid.uuid4()), "task_type": "t"},
+        resolution_note=None,
+    )
+
+    await ApprovalService(session)._apply_promotion("a", appr, True, "owner")
+
+    assert candidate.is_active is False
+    assert session.executed == 0
 
 
 def test_tenant_scoped_queries_consider_tenancy(tenanted_models):

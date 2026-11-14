@@ -153,7 +153,7 @@ class FewShotOptimizerService:
                     "details": "suite not found",
                 }
             task_type = suite.task_type
-            if llm_fn_for(task_type) is None:
+            if llm_fn_for(task_type, tenant_id) is None:
                 return {
                     "status": "skipped",
                     "optimization_run_id": None,

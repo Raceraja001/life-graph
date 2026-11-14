@@ -17,7 +17,9 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from life_graph.api.responses import success_response
-from life_graph.storage.graph import graph_available
+from life_graph.core.tenant import get_current_tenant_id
+from life_graph.config import settings
+from life_graph.storage.graph import DEFAULT_GRAPH_TENANT, LABEL_PATTERN, graph_available
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +63,7 @@ class GraphSearchRequest(BaseModel):
     """Body for hybrid graph+vector search."""
 
     query: str = Field(..., min_length=1, description="Natural language query")
-    label: str | None = Field(None, description="Filter by entity label")
+    label: str | None = Field(None, pattern=LABEL_PATTERN, description="Filter by entity label")
     limit: int = Field(10, ge=1, le=100, description="Max results")
     min_importance: float | None = Field(
         None, ge=0.0, le=1.0, description="Minimum importance threshold"
@@ -110,7 +112,7 @@ def _get_hybrid_engine():
     summary="List all graph entities",
 )
 async def list_entities(
-    label: str | None = Query(None, description="Filter by vertex label"),
+    label: str | None = Query(None, pattern=LABEL_PATTERN, description="Filter by vertex label"),
 ):
     """List all entities in the knowledge graph.
 
@@ -124,7 +126,7 @@ async def list_entities(
 
     store = _get_graph_store()
     try:
-        raw = await store.get_all_entities(label=label)
+        raw = await store.get_all_entities(label=label, tenant_id=get_current_tenant_id())
     except Exception as exc:
         logger.exception("Failed to list graph entities")
         raise HTTPException(
@@ -167,6 +169,14 @@ async def get_entity(name: str):
     summary="Execute a Cypher query",
 )
 async def execute_cypher(body: CypherQuery):
+    """Execute a raw Cypher query against the knowledge graph."""
+    current_tenant = get_current_tenant_id()
+    if current_tenant != DEFAULT_GRAPH_TENANT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Raw Cypher execution is restricted to the administrative tenant.",
+        )
+
     """Execute a raw Cypher query against the knowledge graph.
 
     **Admin-level endpoint** — allows arbitrary read queries.
@@ -214,8 +224,8 @@ async def execute_cypher(body: CypherQuery):
 async def find_path(
     from_name: str = Query(..., description="Source entity name"),
     to_name: str = Query(..., description="Target entity name"),
-    from_label: str = Query("Entity", description="Source vertex label"),
-    to_label: str = Query("Entity", description="Target vertex label"),
+    from_label: str = Query("Entity", pattern=LABEL_PATTERN, description="Source vertex label"),
+    to_label: str = Query("Entity", pattern=LABEL_PATTERN, description="Target vertex label"),
     max_depth: int = Query(5, ge=1, le=10, description="Maximum path depth"),
 ):
     """Find a connecting path between two entities in the knowledge graph.
@@ -237,6 +247,7 @@ async def find_path(
             to_label=to_label,
             to_name=to_name,
             max_depth=max_depth,
+            tenant_id=get_current_tenant_id(),
         )
     except Exception as exc:
         logger.exception("Path query failed")

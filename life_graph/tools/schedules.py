@@ -110,11 +110,17 @@ async def _session_of(ctx) -> tuple[str | None, str | None]:
     """The chat this run belongs to (so each answer lands there) and its origin."""
     if ctx is None:
         return None, None
+    from life_graph.core.tenant import get_scoped
     from life_graph.models.db import AgentTask
     from life_graph.storage.database import async_session
 
-    async with async_session() as session:
-        task = await session.get(AgentTask, ctx.root_task_id or ctx.task_id)
+    try:
+        async with async_session() as session:
+            task = await get_scoped(
+                session, AgentTask, ctx.root_task_id or ctx.task_id, ctx.tenant_id
+            )
+    except LookupError:
+        return None, None
     if task is None:
         return None, None
     return (str(task.session_id) if task.session_id else None), (task.input or {}).get("origin")
