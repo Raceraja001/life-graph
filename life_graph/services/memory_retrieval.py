@@ -119,7 +119,46 @@ async def _with_neighbours(tenant_id: str, candidates: list[Any]) -> list[Any]:
     return candidates + [m for m in linked if m.id not in known]
 
 
-async def retrieve(question: str, limit: int = 6, *, cold: bool = False) -> list[Any] | None:
+def provenance_score(m: Any) -> float:
+    """Bounded provenance score in [0.0, 1.0] from trust_score, confidence, and source/tier."""
+    trust = float(getattr(m, "trust_score", 0.5) or 0.5)
+    conf = float(getattr(m, "confidence", 0.5) or 0.5)
+    tier = str(getattr(m, "trust_tier", "") or "").lower()
+    src_type = str(getattr(m, "source_type", "") or "").lower()
+    bonus = 0.0
+    if tier in ("verified", "owner", "canonical") or src_type in ("user_explicit", "manual"):
+        bonus = 0.15
+    elif tier in ("inferred", "unverified"):
+        bonus = -0.05
+    raw = 0.5 * trust + 0.5 * conf + bonus
+    return max(0.0, min(1.0, raw))
+
+
+def provenance_order(hits: list[tuple[Any, float]]) -> list[tuple[Any, float]]:
+    """Apply a bounded +/-10% provenance tie-breaker to hybrid search hits."""
+    return sorted(hits, key=lambda h: -h[1] * (0.90 + 0.20 * provenance_score(h[0])))
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    from datetime import UTC
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
+
+
+def is_valid_at(memory: Any, ref_time: datetime) -> bool:
+    """Bitemporal validity check: valid_from <= ref_time < valid_until."""
+    ref = _ensure_utc(ref_time)
+    v_from = getattr(memory, "valid_from", None)
+    if v_from is not None and _ensure_utc(v_from) > ref:
+        return False
+    v_until = getattr(memory, "valid_until", None)
+    if v_until is not None and _ensure_utc(v_until) <= ref:
+        return False
+    return True
+
+
+async def retrieve(
+    question: str, limit: int = 6, *, cold: bool = False, as_of: datetime | None = None
+) -> list[Any] | None:
     """Memories of the current tenant that help answer *question*, best first.
 
     Active memories first; archived and replaced ones (services/memory_tiers.py)
@@ -153,11 +192,12 @@ async def retrieve(question: str, limit: int = 6, *, cold: bool = False) -> list
         dated = await episodes.episodes_between(tenant_id, *window, limit=limit)
 
     by_strength = settings.memory_strength_rank
+    search_statuses = ("active", "superseded", "archived") if as_of is not None else ("active",)
     hits = await get_store().hybrid_search(
         embedding=embedding,
         query_text=question,
         limit=CANDIDATES * 2 if by_strength else CANDIDATES,
-        statuses=("active",),
+        statuses=search_statuses,
     )
     if by_strength:
         hits = strength_order(hits)[:CANDIDATES]
@@ -190,23 +230,21 @@ async def retrieve(question: str, limit: int = 6, *, cold: bool = False) -> list
         # "Tell me everything about Dify": the memories linked to Dify are about
         # Dify by construction, and the judge dropped the one that mattered
         # ("Life Graph does NOT use … Dify", 2026-10-23). They go first, unjudged.
-        now_ = datetime.now(UTC)
-        current = [
-            m for m in linked if getattr(m, "valid_until", None) is None or m.valid_until > now_
-        ]
+        ref_ = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
+        current = [m for m in linked if is_valid_at(m, ref_)]
         return (dated + current)[:limit]
     if settings.memory_links and candidates:
         candidates = await _with_neighbours(tenant_id, candidates)
 
-    now = datetime.now(UTC)
+    ref_time = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
     seen = {m.id for m in dated}
     # A fact with an end date that has passed is no longer true ("in Chennai
-    # until Friday"); it stays stored, but it does not answer questions.
+    # until Friday"); when as_of is given, reconstruct validity at that point in time.
     memories = [
         m
         for m in candidates
         if m.id not in seen
-        and (getattr(m, "valid_until", None) is None or m.valid_until > now)
+        and is_valid_at(m, ref_time)
         # Asked about a time: other days' summaries only blur the answer.
         and not (window is not None and (m.properties or {}).get("kind") == episodes.KIND)
     ]
@@ -221,7 +259,7 @@ async def retrieve(question: str, limit: int = 6, *, cold: bool = False) -> list
         logger.warning("Memory relevance judge gave no answer; using the search order")
         # Unjudged, so active ones only: an unjudged cold hit is a guess, and
         # being returned would reawaken it (services/memory_tiers.py).
-        warm = [m for m in memories if getattr(m, "status", "active") == "active"]
+        warm = memories if as_of is not None else [m for m in memories if getattr(m, "status", "active") == "active"]
         return (dated + warm)[:limit]
     if not picked and not dated and cold_too and not past:
         # Nothing warm answers: older memories might (nothing is forgotten).

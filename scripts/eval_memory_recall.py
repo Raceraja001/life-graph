@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime
@@ -213,7 +214,42 @@ async def translate(tenant: str, name: str, n: int) -> Path:
     return path
 
 
-async def _search(method: str, query: str, k: int, pool: str) -> list[str]:
+def _parse_as_of(value: str | datetime | None) -> datetime | None:
+    if value is None or isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _experiment_metadata() -> dict:
+    from life_graph.config import settings
+
+    git_sha = None
+    try:
+        res = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if res.returncode == 0:
+            git_sha = res.stdout.strip() or None
+    except Exception:
+        pass
+    return {
+        "git_sha": git_sha,
+        "llm_model": getattr(settings, "local_llm_model", None) or getattr(settings, "llm_model", None),
+        "embedding_model": getattr(settings, "embedding_model", None),
+    }
+
+
+async def _search(
+    method: str,
+    query: str,
+    k: int,
+    pool: str,
+    as_of: datetime | None = None,
+) -> list[str]:
     """Ids in rank order for one method."""
     if method == "recall" and pool != "active":
         raise ValueError("recall reads active memories only; use judge for other pools")
@@ -244,7 +280,11 @@ async def _search(method: str, query: str, k: int, pool: str) -> list[str]:
     if method == "recall":
         from life_graph.services.memory_retrieval import retrieve
 
-        found = await retrieve(query, limit=k)
+        found = (
+            await retrieve(query, limit=k, as_of=as_of)
+            if as_of is not None
+            else await retrieve(query, limit=k)
+        )
         return [str(m.id) for m in found or []]
     raise ValueError(method)
 
@@ -252,26 +292,43 @@ async def _search(method: str, query: str, k: int, pool: str) -> list[str]:
 async def run(tenant: str, name: str, methods: list[str], k: int, pool: str) -> dict:
     from life_graph.core.tenant import tenant_scope
 
-    cases = _load(tenant, name)["cases"]
+    data = _load(tenant, name)
+    cases = data["cases"]
     if not cases:
         print(f"no set {_path(tenant, name)}: build it first")
         return {}
     report: dict = {}
     with tenant_scope(tenant):
         for method in methods:
-            ranks, empty_on_unanswerable, unanswerable, started = [], 0, 0, time.monotonic()
+            ranks, empty_on_unanswerable, unanswerable = [], 0, 0
+            excluded_checked, excluded_clean = 0, 0
+            temporal_ranks: list[int | None] = []
+            started = time.monotonic()
             for case in cases:
-                ids = await _search(method, case["q"], k, pool)
+                as_of = _parse_as_of(case.get("as_of"))
+                ids = (
+                    await _search(method, case["q"], k, pool, as_of=as_of)
+                    if as_of is not None
+                    else await _search(method, case["q"], k, pool)
+                )
+                excluded = set(case.get("excluded_memory_ids") or [])
+                if excluded:
+                    excluded_checked += 1
+                    if not (excluded & set(ids)):
+                        excluded_clean += 1
                 if case["memory_id"] is None:
                     unanswerable += 1
                     empty_on_unanswerable += not ids
                     continue
-                ranks.append(ids.index(case["memory_id"]) + 1 if case["memory_id"] in ids else None)
+                rank = ids.index(case["memory_id"]) + 1 if case["memory_id"] in ids else None
+                ranks.append(rank)
+                if as_of is not None:
+                    temporal_ranks.append(rank)
             n = len(ranks)
             hit1 = sum(1 for r in ranks if r == 1)
             hit5 = sum(1 for r in ranks if r and r <= 5)
             mrr = sum(1 / r for r in ranks if r) / n if n else 0.0
-            report[method] = {
+            entry = {
                 "answerable": n,
                 "hit@1": round(hit1 / n, 3) if n else 0,
                 "hit@5": round(hit5 / n, 3) if n else 0,
@@ -279,10 +336,24 @@ async def run(tenant: str, name: str, methods: list[str], k: int, pool: str) -> 
                 "abstained_on_unanswerable": f"{empty_on_unanswerable}/{unanswerable}",
                 "ms_per_query": round((time.monotonic() - started) * 1000 / max(len(cases), 1)),
             }
+            if excluded_checked:
+                entry["excluded_clean"] = f"{excluded_clean}/{excluded_checked}"
+            if temporal_ranks:
+                t_hit1 = sum(1 for r in temporal_ranks if r == 1)
+                entry["temporal_cases"] = len(temporal_ranks)
+                entry["temporal_hit@1"] = round(t_hit1 / len(temporal_ranks), 3)
+            report[method] = entry
             print(method, report[method], flush=True)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     with (OUT_DIR / f"{tenant}_{name}_runs.jsonl").open("a") as f:
-        line = {"at": datetime.now(UTC).isoformat(), "pool": pool, "k": k, "report": report}
+        line = {
+            "at": datetime.now(UTC).isoformat(),
+            "pool": pool,
+            "k": k,
+            "set_version": data.get("version"),
+            "metadata": _experiment_metadata(),
+            "report": report,
+        }
         f.write(json.dumps(line) + "\n")
     return report
 

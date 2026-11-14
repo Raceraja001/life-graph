@@ -60,6 +60,39 @@ def _kind_filter():
     return AgentTask.properties["kind"].astext == KIND
 
 
+def build_checkpoint(
+    task: AgentTask,
+    *,
+    stage: str,
+    completed_steps: list[str] | None = None,
+    artifacts: list[str] | None = None,
+    resume_instructions: str | None = None,
+) -> dict[str, Any]:
+    """Build a durable task checkpoint for restart/resume continuity (P3 §3.14)."""
+    props = dict(task.properties or {})
+    existing = dict(props.get("checkpoint") or {})
+    instr = str(props.get("instruction") or getattr(task, "title", "") or "")
+    idem = existing.get("idempotency_key") or f"{task.id}:{instruction_key(instr)}"
+    return {
+        "idempotency_key": idem,
+        "checkpoint_at": datetime.now(UTC).isoformat(),
+        "stage": stage,
+        "completed_steps": list(completed_steps if completed_steps is not None else existing.get("completed_steps") or []),
+        "artifacts": list(artifacts if artifacts is not None else existing.get("artifacts") or []),
+        "interrupt_requeues": int(props.get("interrupt_requeues") or 0),
+        "resume_instructions": resume_instructions or existing.get("resume_instructions") or "Recheck preconditions before resuming.",
+    }
+
+
+def can_safely_resume(task: AgentTask, *, precondition_ok: bool = True) -> tuple[bool, str]:
+    """Recheck preconditions before resuming an interrupted task (P3 §3.14)."""
+    if not precondition_ok:
+        return False, "precondition_failed"
+    if getattr(task, "status", None) not in ("queued", "running"):
+        return False, f"invalid_status:{getattr(task, 'status', None)}"
+    return True, "ok"
+
+
 def _history(task: AgentTask, status: str, note: str | None = None) -> list:
     entry = {"status": status, "at": datetime.now(UTC).isoformat()}
     if note:
@@ -695,6 +728,11 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
             if done < INTERRUPT_REQUEUES:
                 props["interrupt_requeues"] = done + 1
                 props["run_mode"] = QUEUE_MODE
+                props["checkpoint"] = build_checkpoint(
+                    task,
+                    stage="interrupted_restart",
+                    resume_instructions="Recheck worktree/branch state and resume without duplicating side effects.",
+                )
                 # Routed to the cloud for that run only: route it afresh.
                 if props.get("routed_from"):
                     task.assigned_agent = props.pop("routed_from")
