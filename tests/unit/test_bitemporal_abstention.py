@@ -214,3 +214,29 @@ def test_p3_durable_task_checkpoint_and_resume_guard():
     assert cp["interrupt_requeues"] == 1
     assert can_safely_resume(task, precondition_ok=True) == (True, "ok")
     assert can_safely_resume(task, precondition_ok=False) == (False, "precondition_failed")
+
+
+def test_p0_2_bitemporal_valid_and_transaction_time():
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+    from life_graph.services.memory_retrieval import is_bitemporally_valid
+
+    # Fact was valid in June 2026 (valid_from=Jun 1, valid_until=Jul 1),
+    # but was only recorded on Aug 1 (late correction / past effective date).
+    mem = SimpleNamespace(
+        valid_from=datetime(2026, 6, 1, tzinfo=UTC),
+        valid_until=datetime(2026, 7, 1, tzinfo=UTC),
+        created_at=datetime(2026, 8, 1, tzinfo=UTC),
+    )
+    # Valid in June if queried from today's transaction knowledge (recorded_at=Sep 1)
+    assert is_bitemporally_valid(
+        mem,
+        valid_at=datetime(2026, 6, 15, tzinfo=UTC),
+        recorded_at=datetime(2026, 9, 1, tzinfo=UTC),
+    )
+    # NOT known as of July 15 transaction time (before Aug 1 recording)
+    assert not is_bitemporally_valid(
+        mem,
+        valid_at=datetime(2026, 6, 15, tzinfo=UTC),
+        recorded_at=datetime(2026, 7, 15, tzinfo=UTC),
+    )

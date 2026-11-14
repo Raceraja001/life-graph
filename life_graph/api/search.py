@@ -121,6 +121,10 @@ class AskRequest(BaseModel):
         default=None,
         description="Optional UTC timestamp to answer as of a historical point in time.",
     )
+    recorded_as_of: datetime | None = Field(
+        None,
+        description="Optional transaction-time timestamp; evaluates memories known/recorded by this point in time.",
+    )
     min_confidence: float = Field(
         default=0.0,
         ge=0.0,
@@ -153,6 +157,7 @@ class AskResponse(BaseModel):
     abstained: bool = False
     abstention_reason: str | None = None
     as_of: datetime | None = None
+    recorded_as_of: datetime | None = None
     knowledge_gaps: list[str] = Field(default_factory=list)
     domains_covered: dict[str, int] = Field(default_factory=dict)
     challenge_prompts: list[str] = Field(default_factory=list)
@@ -611,7 +616,11 @@ async def ask_brain(
     # 89.2% judged, on the owner's memories).
     from life_graph.services.memory_retrieval import retrieve
 
-    rows = await retrieve(body.question, limit=body.limit, as_of=body.as_of)
+    rows = (
+        await retrieve(body.question, limit=body.limit, as_of=body.as_of, recorded_as_of=body.recorded_as_of)
+        if body.recorded_as_of is not None
+        else await retrieve(body.question, limit=body.limit, as_of=body.as_of)
+    )
     if rows is None:
         return AskResponse(
             answer="Embedding service is unavailable. Cannot search memories.",
@@ -641,6 +650,7 @@ async def ask_brain(
             query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
             result_mode="index" if body.index_only else "full",
             as_of=body.as_of,
+        recorded_as_of=body.recorded_as_of,
         )
     if body.min_confidence > 0 and max_confidence < body.min_confidence:
         return AskResponse(
@@ -655,6 +665,7 @@ async def ask_brain(
             result_mode="index" if body.index_only else "full",
             index=_to_index_items([(r, 0.0) for r in rows]) if body.index_only else [],
             as_of=body.as_of,
+        recorded_as_of=body.recorded_as_of,
         )
 
     # Synthesize answer (include provenance & temporal validity metadata)
@@ -690,6 +701,7 @@ async def ask_brain(
         result_mode="index" if body.index_only else "full",
         index=_to_index_items([(r, 0.0) for r in rows]) if body.index_only else [],
         as_of=body.as_of,
+        recorded_as_of=body.recorded_as_of,
         knowledge_gaps=detect_knowledge_gaps(memories, abstained=False, abstention_reason=None),
         domains_covered=summarize_cross_domain(memories),
         challenge_prompts=detect_challenge_prompts(memories),

@@ -145,7 +145,7 @@ def _ensure_utc(dt: datetime) -> datetime:
 
 
 def is_valid_at(memory: Any, ref_time: datetime) -> bool:
-    """Bitemporal validity check: valid_from <= ref_time < valid_until."""
+    """Valid-time check: valid_from <= ref_time < valid_until."""
     ref = _ensure_utc(ref_time)
     v_from = getattr(memory, "valid_from", None)
     if v_from is not None and _ensure_utc(v_from) > ref:
@@ -156,8 +156,30 @@ def is_valid_at(memory: Any, ref_time: datetime) -> bool:
     return True
 
 
+def is_bitemporally_valid(
+    memory: Any,
+    *,
+    valid_at: datetime | None = None,
+    recorded_at: datetime | None = None,
+) -> bool:
+    """Full bitemporal check: valid time AND transaction time (created_at <= recorded_at)."""
+    if valid_at is not None and not is_valid_at(memory, valid_at):
+        return False
+    if recorded_at is not None:
+        rec = _ensure_utc(recorded_at)
+        created = getattr(memory, "created_at", None)
+        if created is not None and _ensure_utc(created) > rec:
+            return False
+    return True
+
+
 async def retrieve(
-    question: str, limit: int = 6, *, cold: bool = False, as_of: datetime | None = None
+    question: str,
+    limit: int = 6,
+    *,
+    cold: bool = False,
+    as_of: datetime | None = None,
+    recorded_as_of: datetime | None = None,
 ) -> list[Any] | None:
     """Memories of the current tenant that help answer *question*, best first.
 
@@ -189,10 +211,10 @@ async def retrieve(
     dated: list[Any] = []
     window = episodes.time_window(question, datetime.now(episodes._tz()).date())
     if window is not None:
-        dated = await episodes.episodes_between(tenant_id, *window, limit=limit)
+        dated = [m for m in await episodes.episodes_between(tenant_id, *window, limit=limit) if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_as_of)]
 
     by_strength = settings.memory_strength_rank
-    search_statuses = ("active", "superseded", "archived") if as_of is not None else ("active",)
+    search_statuses = ("active", "superseded", "archived") if (as_of is not None or recorded_as_of is not None) else ("active",)
     hits = await get_store().hybrid_search(
         embedding=embedding,
         query_text=question,
@@ -231,7 +253,7 @@ async def retrieve(
         # Dify by construction, and the judge dropped the one that mattered
         # ("Life Graph does NOT use … Dify", 2026-10-23). They go first, unjudged.
         ref_ = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
-        current = [m for m in linked if is_valid_at(m, ref_)]
+        current = [m for m in linked if is_bitemporally_valid(m, valid_at=ref_, recorded_at=recorded_as_of)]
         return (dated + current)[:limit]
     if settings.memory_links and candidates:
         candidates = await _with_neighbours(tenant_id, candidates)
@@ -244,7 +266,7 @@ async def retrieve(
         m
         for m in candidates
         if m.id not in seen
-        and is_valid_at(m, ref_time)
+        and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_as_of)
         # Asked about a time: other days' summaries only blur the answer.
         and not (window is not None and (m.properties or {}).get("kind") == episodes.KIND)
     ]
@@ -253,18 +275,18 @@ async def retrieve(
     if past:
         # "Where did I work before?": how things were is in the cold tier.
         known = {m.id for m in memories} | seen
-        memories += [m for m in await _cold(embedding, question) if m.id not in known]
+        memories += [m for m in await _cold(embedding, question) if m.id not in known and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_as_of)]
     picked = await _judged(asked, memories) if memories else []
     if picked is None:
         logger.warning("Memory relevance judge gave no answer; using the search order")
         # Unjudged, so active ones only: an unjudged cold hit is a guess, and
         # being returned would reawaken it (services/memory_tiers.py).
-        warm = memories if as_of is not None else [m for m in memories if getattr(m, "status", "active") == "active"]
+        warm = memories if (as_of is not None or recorded_as_of is not None) else [m for m in memories if getattr(m, "status", "active") == "active"]
         return (dated + warm)[:limit]
     if not picked and not dated and cold_too and not past:
         # Nothing warm answers: older memories might (nothing is forgotten).
-        cold = await _cold(embedding, question)
-        picked = (await _judged(asked, cold) or []) if cold else []
+        cold_rows = [m for m in await _cold(embedding, question) if is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_as_of)]
+        picked = (await _judged(asked, cold_rows) or []) if cold_rows else []
     return (dated + picked)[:limit]
 
 
