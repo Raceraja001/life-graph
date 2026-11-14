@@ -33,6 +33,7 @@ from life_graph.models.agents import (
     WorkflowStep,
     WorkflowStepRun,
 )
+from life_graph.models.authorization import Capability, StandingRuleRecord
 from life_graph.models.base import _EMBED_DIM, Base, _utcnow
 from life_graph.models.judgment import (
     CalibrationSnapshot,
@@ -71,6 +72,8 @@ from life_graph.models.tenancy import (
 from life_graph.models.vault import VaultSecret
 
 __all__ = [
+    "Capability",
+    "StandingRuleRecord",
     "Base",
     "_EMBED_DIM",
     "_utcnow",

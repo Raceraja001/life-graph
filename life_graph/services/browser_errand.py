@@ -52,6 +52,7 @@ not the attacker's to choose.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import logging
 import re
@@ -98,6 +99,13 @@ FILL_FIELD = "fill_field"
 CLICK = "click"
 
 STEP_KINDS = (NAVIGATE, READ_PAGE, FILL_FIELD, CLICK)
+
+#: The kinds that have an effect outside this process — they type into a form
+#: or press a button on someone else's page. A capability that authorises one
+#: of these is spent by performing it (:meth:`CapabilityStore.consume`), so
+#: the owner's one tap cannot be redeemed twice. Navigating and reading are
+#: deliberately not here: they need no mandate, so there is none to spend.
+CAPABILITY_GATED = (FILL_FIELD, CLICK)
 
 #: Browser actions, added to the shared catalogue. A reading step reuses the
 #: catalogue's existing ``read_page``, so a standing rule the owner wrote
@@ -146,6 +154,21 @@ MAX_ERRAND_STEPS = 50
 #: The refusal an over-long errand gets. A fixed phrase, like every other
 #: ``detail`` here.
 STEP_LIMIT_REFUSED = "maximum step limit exceeded"
+
+#: The refusal a step gets when the owner's approval could not be spent on it
+#: — already redeemed, or bound to a different run, step, element or value.
+#: The specific reason follows it (``capability_already_consumed`` and the
+#: rest, from ``autonomy/approvals/capability.py``).
+CAPABILITY_NOT_CONSUMED = "approval could not be spent on this step"
+
+#: Domain separator for :func:`canonical_parameters_hash`. Versioned, so a
+#: later change to what the digest covers cannot be mistaken for a match.
+PARAMETERS_HASH_VERSION = "life-graph/errand-step/v1"
+
+#: Separator inside the canonical form: a unit separator cannot appear in a
+#: selector (``_FORBIDDEN_SELECTOR_CHARS`` rejects it) so two different steps
+#: cannot canonicalise to one string by moving the boundary.
+_HASH_SEP = "\x1f"
 
 #: Longest a selector or field name may be, matching ``structured_params``.
 SELECTOR_CHARS = PARAM_CHARS
@@ -291,10 +314,52 @@ class BrowserErrand:
     owner_request: OwnerRequest | None = None
     standing_rules: tuple[StandingRule, ...] = ()
     capability_id: str | None = None
+    #: This run's own id, minted by ``tools/errand.py`` and carried back into
+    #: the resumed run. A capability approved inside one errand is bound to
+    #: this id, so the same approval presented by a *different* run — a second
+    #: plan that happens to end in the same click — does not verify.
+    id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "steps", tuple(self.steps))
         object.__setattr__(self, "standing_rules", tuple(self.standing_rules))
+
+
+def step_target(step: BrowserStep) -> str | None:
+    """The element a step acts on, whichever field the plan put it in.
+
+    ``click`` names it ``selector`` and ``fill_field`` names it ``field``
+    (``tools/errand.py`` accepts either and sorts them out), so a single
+    "which element was approved" binding has to read both. ``None`` for the
+    kinds that act on the page as a whole.
+    """
+    return (step.selector or "").strip() or (step.field or "").strip() or None
+
+
+def canonical_parameters_hash(step: BrowserStep) -> str:
+    """A SHA-256 over the one action *step* performs, for binding an approval.
+
+    What the owner approved was a specific thing: this kind of action, on this
+    element, with this value. Any of those changing after the card was written
+    — a re-pointed selector, an edited amount, a ``fill_field`` turned into a
+    ``click`` — gives a different digest, so the approval stops covering it
+    (``capability_parameters_mismatch``).
+
+    ``step.value`` is safe to hash here and only here: at plan time a secret
+    is a ``vault://`` handle, never a plaintext (the vault resolves it later,
+    against the origin the browser is actually on), so no password reaches
+    this function. The digest itself is stored and compared, never shown.
+    """
+    canonical = _HASH_SEP.join(
+        (
+            PARAMETERS_HASH_VERSION,
+            (step.kind or "").strip(),
+            step_target(step) or "",
+            (step.url or "").strip(),
+            (step.value or "").strip(),
+        )
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def normalise_origin_entry(entry: str) -> str:
@@ -379,6 +444,15 @@ class StepResult:
     #: For a ``REQUIRE_APPROVAL`` step: the structured request to queue. Holds
     #: only what the policy itself read.
     approval: Mapping[str, Any] | None = None
+    #: The element this step acts on (:func:`step_target`), and a digest of
+    #: the whole action (:func:`canonical_parameters_hash`). Carried on the
+    #: result so the approval card can bind the owner's tap to this exact
+    #: step without the notification layer re-deriving either of them.
+    target_selector: str | None = None
+    parameters_hash: str | None = None
+    #: The run this step belonged to, so a capability minted from the card
+    #: cannot be redeemed by a different run.
+    errand_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -513,6 +587,17 @@ class BrowserErrandExecutor:
             task_id=task_id,
             capabilities=capabilities,
         )
+        #: The same store the checker verifies against, held here too because
+        #: spending a capability is the executor's job, not the policy's: the
+        #: policy says the owner approved this step, and consuming says this
+        #: run is the one that gets to perform it.
+        if capabilities is None:
+            from life_graph.autonomy.approvals.capability import capability_store
+
+            capabilities = capability_store
+        self._capabilities = capabilities
+        #: The run currently being executed, set by :meth:`run`.
+        self._errand_id: str | None = None
         self._secrets: set[str] = set()
         self._audit: list[dict[str, Any]] = []
 
@@ -528,6 +613,7 @@ class BrowserErrandExecutor:
         An errand carrying more than :data:`MAX_ERRAND_STEPS` steps is refused
         whole, before the first one runs.
         """
+        self._errand_id = (errand.id or "").strip() or None
         if len(errand.steps) > MAX_ERRAND_STEPS:
             logger.warning(
                 "Browser errand refused: %s steps, limit %s",
@@ -602,7 +688,7 @@ class BrowserErrandExecutor:
                 target_origin=origin or None,
                 owner_request=errand.owner_request,
                 standing_rules=errand.standing_rules,
-                structured_params=self._params(kind, step, origin),
+                structured_params=self._params(kind, step, origin, index),
                 capability_id=errand.capability_id,
             )
         )
@@ -610,6 +696,35 @@ class BrowserErrandExecutor:
             return self._record(index, step, decision, DENIED)
         if decision.decision == REQUIRE_APPROVAL:
             return self._record(index, step, decision, NEEDS_APPROVAL)
+
+        # The owner's approval is spent here, before the browser is touched,
+        # and in one atomic step. Only for the kinds that have an effect
+        # outside this process, and only when the verdict actually rested on a
+        # capability: a click the owner's own standing rule allows has no
+        # mandate to spend, and a navigate needs none. Consuming before
+        # performing is deliberate — two workers racing on the same approved
+        # click must not both reach the page, and a capability burned by a
+        # step that then failed is the safe way round for an action that may
+        # have half-happened.
+        if kind in CAPABILITY_GATED and decision.capability_id:
+            spend = self._capabilities.consume(
+                decision.capability_id,
+                tenant_id=self._tenant_id or "",
+                errand_id=self._errand_id,
+                step_index=index,
+                target_selector=step_target(step),
+                parameters_hash=canonical_parameters_hash(step),
+            )[1]
+            if not spend.ok:
+                logger.warning("Browser errand step %s (%s) refused: %s", index, kind, spend.reason)
+                return self._record(
+                    index,
+                    step,
+                    decision,
+                    DENIED,
+                    detail=CAPABILITY_NOT_CONSUMED,
+                    reasons=(spend.reason,),
+                )
 
         try:
             data = await self._perform(kind, step, here, destination)
@@ -735,15 +850,37 @@ class BrowserErrandExecutor:
 
     # -- params, scrubbing, audit -----------------------------------------
 
-    def _params(self, kind: str, step: BrowserStep, origin: str) -> dict[str, Any]:
+    def _params(
+        self, kind: str, step: BrowserStep, origin: str, index: int | None = None
+    ) -> dict[str, Any]:
         """The step's bounded scalars — and never its page, note or plaintext.
 
         A fill's value is absent even when it is a literal: the policy has no
         use for it, and a value is the one field a page's text could have been
         copied into. Not even a length for a secret — a length narrows a guess
-        at a PIN (``vault.to_dict`` omits it for the same reason).
+        at a PIN (``vault.to_dict`` omits it for the same reason). What is here
+        instead is a *digest* of the whole action
+        (:func:`canonical_parameters_hash`), which is what an approval is
+        bound to: it tells the policy whether this is the step the owner saw
+        without telling it what was typed.
+
+        ``errand_id``, ``step_index``, ``target`` and ``parameters_hash`` are
+        this executor's own description of the step it is holding, and the
+        capability's exact-action bindings are checked against them
+        (``autonomy/approvals/policy_checker.py``). They also travel into the
+        approval card, so the owner is shown which run, which step and which
+        element they are being asked about.
         """
         params: dict[str, Any] = {"origin": origin}
+        if self._errand_id:
+            params["errand_id"] = self._errand_id
+        if index is not None:
+            params["step_index"] = index
+        target = step_target(step)
+        if target is not None:
+            params["target"] = _short(target)
+        if kind in CAPABILITY_GATED:
+            params["parameters_hash"] = canonical_parameters_hash(step)
         if kind == NAVIGATE:
             params["url_origin"] = origin
         elif kind == FILL_FIELD:
@@ -776,6 +913,7 @@ class BrowserErrandExecutor:
         action_type: str | None = None,
         data: str | None = None,
         detail: str | None = None,
+        reasons: tuple[str, ...] | None = None,
     ) -> StepResult:
         """Build the step's result and append its audit record.
 
@@ -787,7 +925,7 @@ class BrowserErrandExecutor:
         # "was this allowed", not "is there one". Compare to None.
         resolved_type = decision.action_type if decision is not None else (action_type or "")
         target = decision.target_origin if decision is not None else None
-        params = self._params(kind, step, target or "") if kind in STEP_KINDS else {}
+        params = self._params(kind, step, target or "", index) if kind in STEP_KINDS else {}
         verdict = decision.decision if decision is not None else ""
         if decision is None and status == DENIED:
             verdict = DENY
@@ -808,11 +946,18 @@ class BrowserErrandExecutor:
             action_type=resolved_type,
             target_origin=target,
             decision=verdict,
-            reasons=decision.reasons if decision is not None else (),
+            reasons=(
+                reasons
+                if reasons is not None
+                else (decision.reasons if decision is not None else ())
+            ),
             status=status,
             data=data,
             detail=self._scrub(detail),
             approval=approval,
+            target_selector=step_target(step) if kind in STEP_KINDS else None,
+            parameters_hash=(canonical_parameters_hash(step) if kind in CAPABILITY_GATED else None),
+            errand_id=self._errand_id,
         )
         record: dict[str, Any] = {
             "step": index,
@@ -876,6 +1021,8 @@ async def run_errand(
 
 __all__ = [
     "BROWSER_ACTION_TYPES",
+    "CAPABILITY_GATED",
+    "CAPABILITY_NOT_CONSUMED",
     "CLICK",
     "DENIED",
     "DONE",
@@ -891,6 +1038,7 @@ __all__ = [
     "SKIPPED",
     "STEP_ACTION_TYPES",
     "STEP_KINDS",
+    "PARAMETERS_HASH_VERSION",
     "STEP_LIMIT_REFUSED",
     "BrowserDriver",
     "BrowserErrand",
@@ -899,8 +1047,10 @@ __all__ = [
     "ErrandResult",
     "StepRefusedError",
     "StepResult",
+    "canonical_parameters_hash",
     "errand_mandate",
     "errand_rule",
     "normalise_origin_entry",
     "run_errand",
+    "step_target",
 ]

@@ -46,7 +46,7 @@ import secrets
 import threading
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from life_graph.autonomy.approvals.policy_checker import StandingRule
 
@@ -73,6 +73,19 @@ ACTION_NOT_AUTHORIZED = "capability_action_not_authorized"
 ORIGIN_NOT_AUTHORIZED = "capability_origin_not_authorized"
 AMOUNT_OVER_CAPABILITY = "capability_amount_exceeded"
 
+# The exact-action bindings. A capability is proof the owner approved *one*
+# action, so each of these is a way the action being attempted is not that
+# one — a replay, a re-numbered step, a swapped button, an edited value.
+ALREADY_CONSUMED = "capability_already_consumed"
+ERRAND_MISMATCH = "capability_errand_mismatch"
+STEP_MISMATCH = "capability_step_mismatch"
+SELECTOR_MISMATCH = "capability_selector_mismatch"
+PARAMETERS_MISMATCH = "capability_parameters_mismatch"
+
+#: The durable store could not be reached. A denial, not an error: an
+#: authorisation decision that cannot be made is not an authorisation.
+STORE_UNAVAILABLE = "capability_store_unavailable"
+
 #: Every reason a capability check can give. The failures are all denials:
 #: there is no "probably fine" for a credential.
 CHECK_REASONS = (
@@ -85,6 +98,12 @@ CHECK_REASONS = (
     ACTION_NOT_AUTHORIZED,
     ORIGIN_NOT_AUTHORIZED,
     AMOUNT_OVER_CAPABILITY,
+    ALREADY_CONSUMED,
+    ERRAND_MISMATCH,
+    STEP_MISMATCH,
+    SELECTOR_MISMATCH,
+    PARAMETERS_MISMATCH,
+    STORE_UNAVAILABLE,
 )
 
 
@@ -130,10 +149,80 @@ class AuthorizationCapability:
     revoked: bool = False
     max_amount: float | None = None
     actor: str = "owner"
+    #: The errand run this was approved inside, if any. A capability minted
+    #: for errand A does not authorise the identical-looking step of errand B:
+    #: the owner saw one run's plan, not every run that could ask the same.
+    errand_id: str | None = None
+    #: The notification the owner actually tapped. Recorded so an audit trail
+    #: can name the card, and so one card cannot mint twice.
+    approval_id: str | None = None
+    #: The position in that errand's step list. A plan whose steps were
+    #: re-ordered after approval is not the plan that was approved.
+    step_index: int | None = None
+    #: The element the owner was shown — the stable selector, not the label.
+    target_selector: str | None = None
+    #: SHA-256 over the canonicalised parameters of the one action approved
+    #: (see ``services.browser_errand.canonical_parameters_hash``). An edited
+    #: form value changes the digest, so the approval no longer covers it.
+    parameters_hash: str | None = None
+    #: Spent by its first successful use. The default, because the actions
+    #: these gate are outward and irreversible.
+    one_use: bool = True
+    #: When it was spent. ``None`` until :meth:`CapabilityStore.consume`
+    #: succeeds, and only that method ever sets it.
+    consumed_at: datetime | None = None
 
     def is_expired(self, now: datetime | None = None) -> bool:
         """True once :attr:`expires_at` has passed."""
         return _utc(now or datetime.now(UTC)) >= _utc(self.expires_at)
+
+    @property
+    def is_consumed(self) -> bool:
+        """True once a one-use capability has been spent."""
+        return self.one_use and self.consumed_at is not None
+
+    def check_bindings(
+        self,
+        *,
+        tenant_id: str,
+        errand_id: str | None = None,
+        step_index: int | None = None,
+        target_selector: str | None = None,
+        parameters_hash: str | None = None,
+        now: datetime | None = None,
+    ) -> CapabilityCheck:
+        """The bindings that identify *one exact action*, re-tested.
+
+        Separate from :meth:`check` because consumption has no action type or
+        origin to test — those were settled by the policy before anything got
+        this far — and because the ordering matters: a capability that is
+        revoked, expired or already spent is refused as a credential before
+        anything is said about which action was attempted.
+
+        A binding the capability does not carry is not tested. ``None`` on the
+        record means "not scoped to one of these", which is how a mandate for
+        a non-errand action (a transfer the owner authorised directly) is
+        still usable. A binding the record *does* carry is compared strictly,
+        so a caller that fails to assert it is refused rather than waved
+        through: ``None != "errand_x"``.
+        """
+        if self.revoked:
+            return CapabilityCheck(False, REVOKED)
+        if self.is_expired(now):
+            return CapabilityCheck(False, EXPIRED)
+        if self.tenant_id != tenant_id:
+            return CapabilityCheck(False, TENANT_MISMATCH)
+        if self.is_consumed:
+            return CapabilityCheck(False, ALREADY_CONSUMED)
+        if self.errand_id is not None and errand_id != self.errand_id:
+            return CapabilityCheck(False, ERRAND_MISMATCH)
+        if self.step_index is not None and step_index != self.step_index:
+            return CapabilityCheck(False, STEP_MISMATCH)
+        if self.target_selector is not None and target_selector != self.target_selector:
+            return CapabilityCheck(False, SELECTOR_MISMATCH)
+        if self.parameters_hash is not None and parameters_hash != self.parameters_hash:
+            return CapabilityCheck(False, PARAMETERS_MISMATCH)
+        return _VALID_CHECK
 
     def authorizes(self, action_type: str, target_origin: str | None = None) -> bool:
         """True when this mandate covers *action_type* against *target_origin*.
@@ -155,6 +244,11 @@ class AuthorizationCapability:
         target_origin: str | None = None,
         task_id: str | None = None,
         amount: float | None = None,
+        errand_id: str | None = None,
+        step_index: int | None = None,
+        target_selector: str | None = None,
+        parameters_hash: str | None = None,
+        read_only: bool = False,
         now: datetime | None = None,
     ) -> CapabilityCheck:
         """Verify every binding. Fails closed, and says which binding failed.
@@ -163,6 +257,16 @@ class AuthorizationCapability:
         itself (revoked, expired, wrong tenant) come before the ones about the
         action being attempted, so an audit trail of refusals reads as "this
         credential is no good" rather than "this action was not covered".
+
+        *read_only* says the action being judged changes nothing and reaches
+        no one — a navigate, a page read. Those need no mandate at all, so the
+        exact-action bindings (step, selector, parameters, consumption) are not
+        tested for them: an errand that spent its capability on the click it
+        was approved for must still be able to read the page that came back,
+        and a resumed errand must be able to navigate to the step it paused
+        on. What is still tested is that the credential itself is good and is
+        this tenant's — a handle refused for the origin refuses the whole
+        errand, including its first navigate.
         """
         if self.revoked:
             return CapabilityCheck(False, REVOKED)
@@ -180,6 +284,17 @@ class AuthorizationCapability:
             (target_origin or "").strip().lower() not in self.target_origins
         ):
             return CapabilityCheck(False, ORIGIN_NOT_AUTHORIZED)
+        if not read_only:
+            bindings = self.check_bindings(
+                tenant_id=tenant_id,
+                errand_id=errand_id,
+                step_index=step_index,
+                target_selector=target_selector,
+                parameters_hash=parameters_hash,
+                now=now,
+            )
+            if not bindings.ok:
+                return bindings
         if self.max_amount is not None and amount is not None and amount > self.max_amount:
             return CapabilityCheck(False, AMOUNT_OVER_CAPABILITY)
         return _VALID_CHECK
@@ -200,6 +315,81 @@ def _origins(values: Iterable[str] | None) -> frozenset[str] | None:
     return frozenset((str(v) or "").strip().lower() for v in values if str(v).strip())
 
 
+# ── What a durable backend has to be able to do ──────────────────────────
+
+
+class DurableBackend(Protocol):
+    """A table :class:`CapabilityStore` writes through to.
+
+    Narrow on purpose, and in terms of whole records rather than SQL, so the
+    in-process store stays the reference implementation of the semantics and
+    the durable one (``approvals/durable_store.py``) only has to be the same
+    semantics in a transaction. Every method is synchronous: the calls happen
+    inside :meth:`ActionPolicyChecker.evaluate`, which is sync and is on the
+    hot path of every action, so an implementation uses a sync driver rather
+    than reaching for the app's async engine from inside a running loop.
+
+    Every method fails closed. A read that cannot reach the database returns
+    ``None`` (which the caller reads as :data:`UNKNOWN`), a consume returns
+    :data:`STORE_UNAVAILABLE`, and an insert raises — because an issue that
+    silently did not persist would tell the owner their tap worked.
+    """
+
+    def insert(self, capability: AuthorizationCapability) -> None:
+        """Write a newly minted capability. Raises if it cannot."""
+        ...
+
+    def select(self, capability_id: str) -> AuthorizationCapability | None:
+        """The record with this id, or ``None`` (unknown *or* unreachable)."""
+        ...
+
+    def consume(
+        self,
+        capability_id: str,
+        *,
+        tenant_id: str,
+        errand_id: str | None = None,
+        step_index: int | None = None,
+        target_selector: str | None = None,
+        parameters_hash: str | None = None,
+        now: datetime,
+    ) -> tuple[AuthorizationCapability | None, CapabilityCheck]:
+        """Spend it in one atomic conditional update, or say why not."""
+        ...
+
+    def revoke(self, capability_id: str) -> bool:
+        """End one capability. True if this call was the one that ended it."""
+        ...
+
+    def revoke_all(self, *, tenant_id: str, task_id: str | None = None) -> int:
+        """Revoke a tenant's (optionally one task's) live capabilities."""
+        ...
+
+    def purge_expired(self, now: datetime) -> int:
+        """Delete expired rows. Housekeeping; never changes a decision."""
+        ...
+
+    def clear(self) -> None:
+        """Delete every row. For tests and deliberate full revocation."""
+        ...
+
+
+class DurableRuleBackend(Protocol):
+    """The same arrangement for standing rules (:class:`StandingRuleStore`)."""
+
+    def replace_rules(self, tenant_id: str, rules: tuple[StandingRule, ...]) -> None:
+        """Make *rules* the whole of *tenant_id*'s set. Raises if it cannot."""
+        ...
+
+    def rules_for(self, tenant_id: str) -> tuple[StandingRule, ...]:
+        """*tenant_id*'s rules. ``()`` when unreachable — which is default-deny."""
+        ...
+
+    def clear(self, tenant_id: str | None = None) -> None:
+        """Forget one tenant's rules, or every tenant's."""
+        ...
+
+
 # ── The store ────────────────────────────────────────────────────────────
 
 
@@ -215,9 +405,28 @@ class CapabilityStore:
     because it only ever calls :meth:`verify`.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, durable: DurableBackend | None = None) -> None:
         self._lock = threading.Lock()
         self._issued: dict[str, AuthorizationCapability] = {}
+        self._durable: DurableBackend | None = durable
+
+    # -- the durable backend ----------------------------------------------
+
+    @property
+    def durable(self) -> DurableBackend | None:
+        """The table this store writes through to, or ``None`` for in-process."""
+        return self._durable
+
+    def attach_durable(self, backend: DurableBackend | None) -> None:
+        """Route every operation through *backend* (or back to memory with ``None``).
+
+        Called once from the app's startup (``main.py``) so that the
+        process-wide :data:`capability_store` every caller already imports
+        becomes the durable one without any of them changing. Tests attach
+        their own, or none.
+        """
+        with self._lock:
+            self._durable = backend
 
     # -- issuing (trusted callers only) -----------------------------------
 
@@ -228,6 +437,12 @@ class CapabilityStore:
         action_types: Iterable[str],
         target_origins: Iterable[str] | None = None,
         task_id: str | None = None,
+        errand_id: str | None = None,
+        approval_id: str | None = None,
+        step_index: int | None = None,
+        target_selector: str | None = None,
+        parameters_hash: str | None = None,
+        one_use: bool = True,
         ttl: timedelta | None = None,
         max_amount: float | None = None,
         actor: str = "owner",
@@ -270,7 +485,20 @@ class CapabilityStore:
             expires_at=_utc(now or datetime.now(UTC)) + span,
             max_amount=_as_amount(max_amount),
             actor=actor,
+            errand_id=_binding(errand_id),
+            approval_id=_binding(approval_id),
+            step_index=_step(step_index),
+            target_selector=_binding(target_selector, limit=255),
+            parameters_hash=_binding(parameters_hash, limit=64),
+            one_use=bool(one_use),
         )
+        backend = self._durable
+        if backend is not None:
+            # Fails closed by raising: a mandate that was not written down is
+            # not a mandate, and handing back an id that no worker can resolve
+            # would look like success to the owner.
+            backend.insert(capability)
+            return capability
         with self._lock:
             self._issued[capability.capability_id] = capability
         return capability
@@ -281,6 +509,9 @@ class CapabilityStore:
         """The capability with this id, or ``None`` if this server never issued it."""
         if not capability_id:
             return None
+        backend = self._durable
+        if backend is not None:
+            return backend.select(str(capability_id))
         with self._lock:
             return self._issued.get(str(capability_id))
 
@@ -293,6 +524,11 @@ class CapabilityStore:
         target_origin: str | None = None,
         task_id: str | None = None,
         amount: float | None = None,
+        errand_id: str | None = None,
+        step_index: int | None = None,
+        target_selector: str | None = None,
+        parameters_hash: str | None = None,
+        read_only: bool = False,
         now: datetime | None = None,
     ) -> tuple[AuthorizationCapability | None, CapabilityCheck]:
         """``(the capability, the verdict)`` for an id presented with an action.
@@ -311,8 +547,81 @@ class CapabilityStore:
             target_origin=target_origin,
             task_id=task_id,
             amount=amount,
+            errand_id=errand_id,
+            step_index=step_index,
+            target_selector=target_selector,
+            parameters_hash=parameters_hash,
+            read_only=read_only,
             now=now,
         )
+
+    # -- consuming (one use, once, by one caller) --------------------------
+
+    def consume(
+        self,
+        capability_id: str | None,
+        *,
+        tenant_id: str,
+        errand_id: str | None = None,
+        step_index: int | None = None,
+        target_selector: str | None = None,
+        parameters_hash: str | None = None,
+        now: datetime | None = None,
+    ) -> tuple[AuthorizationCapability | None, CapabilityCheck]:
+        """Spend the capability on *this exact action*, or refuse it.
+
+        ``(the capability as it now is, the verdict)``. The check and the
+        write are one step — under the lock here, a single conditional
+        ``UPDATE`` in the durable backend — so two workers racing to perform
+        the same approved click cannot both win. Exactly one gets
+        :data:`VALID`; the other gets :data:`ALREADY_CONSUMED`, and the second
+        of the two is told which capability it lost so an audit trail can say
+        what was replayed.
+
+        A refusal leaves the record untouched: a mismatched selector does not
+        burn the owner's approval, so the real step can still run.
+
+        No action type or origin here on purpose. Those are the policy's
+        question and were answered before execution began
+        (``policy_checker.ActionPolicyChecker.evaluate``); this is the
+        narrower one of whether *this* run, at *this* step, with *these*
+        parameters, is the thing the owner tapped.
+        """
+        if not capability_id:
+            return None, CapabilityCheck(False, UNKNOWN)
+        when = _utc(now or datetime.now(UTC))
+        backend = self._durable
+        if backend is not None:
+            return backend.consume(
+                str(capability_id),
+                tenant_id=tenant_id,
+                errand_id=errand_id,
+                step_index=step_index,
+                target_selector=target_selector,
+                parameters_hash=parameters_hash,
+                now=when,
+            )
+        with self._lock:
+            existing = self._issued.get(str(capability_id))
+            if existing is None:
+                return None, CapabilityCheck(False, UNKNOWN)
+            check = existing.check_bindings(
+                tenant_id=tenant_id,
+                errand_id=errand_id,
+                step_index=step_index,
+                target_selector=target_selector,
+                parameters_hash=parameters_hash,
+                now=when,
+            )
+            if not check.ok:
+                return existing, check
+            if not existing.one_use:
+                # Re-usable within its expiry: nothing to spend, so nothing is
+                # written and a concurrent caller is not blocked.
+                return existing, check
+            spent = replace(existing, consumed_at=when)
+            self._issued[spent.capability_id] = spent
+        return spent, check
 
     # -- revoking ---------------------------------------------------------
 
@@ -320,6 +629,9 @@ class CapabilityStore:
         """End one capability. True if it existed and was not already revoked."""
         if not capability_id:
             return False
+        backend = self._durable
+        if backend is not None:
+            return backend.revoke(str(capability_id))
         with self._lock:
             existing = self._issued.get(str(capability_id))
             if existing is None or existing.revoked:
@@ -333,6 +645,9 @@ class CapabilityStore:
         What the kill switch and "stop this task" call: a task that is being
         abandoned should not leave a live mandate behind it.
         """
+        backend = self._durable
+        if backend is not None:
+            return backend.revoke_all(tenant_id=tenant_id, task_id=task_id)
         count = 0
         with self._lock:
             for key, cap in list(self._issued.items()):
@@ -354,6 +669,9 @@ class CapabilityStore:
         changes a decision.
         """
         when = _utc(now or datetime.now(UTC))
+        backend = self._durable
+        if backend is not None:
+            return backend.purge_expired(when)
         with self._lock:
             gone = [k for k, c in self._issued.items() if c.is_expired(when)]
             for key in gone:
@@ -362,8 +680,34 @@ class CapabilityStore:
 
     def clear(self) -> None:
         """Forget everything. For tests and for a deliberate full revocation."""
+        backend = self._durable
+        if backend is not None:
+            backend.clear()
         with self._lock:
             self._issued.clear()
+
+
+def _binding(value: object, limit: int = 120) -> str | None:
+    """A bound identifier, trimmed and bounded, or ``None`` for "not scoped".
+
+    Empty string becomes ``None`` deliberately: a caller passing ``""`` has no
+    binding to assert, and storing it would make every later comparison
+    against a real value a mismatch for no reason.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text[:limit] if text else None
+
+
+def _step(value: object) -> int | None:
+    """A step index, or ``None``. A non-integer is no binding, not step zero."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _as_amount(value: object) -> float | None:
@@ -397,6 +741,11 @@ class StandingRuleStore:
     """
 
     _rules: dict[str, tuple[StandingRule, ...]] = field(default_factory=dict)
+    _durable: DurableRuleBackend | None = None
+
+    def attach_durable(self, backend: DurableRuleBackend | None) -> None:
+        """Route reads and writes through *backend*, mirroring the capability store."""
+        self._durable = backend
 
     def set_rules(self, tenant_id: str, rules: Iterable[StandingRule]) -> None:
         """Replace *tenant_id*'s rules. Trusted callers only."""
@@ -404,18 +753,28 @@ class StandingRuleStore:
         if not tenant:
             raise ValueError("standing rules must be tenant-scoped")
         kept = tuple(r for r in rules if isinstance(r, StandingRule))
+        if self._durable is not None:
+            self._durable.replace_rules(tenant, kept)
+            return
         self._rules[tenant] = kept
 
     def rules_for(self, tenant_id: str | None) -> tuple[StandingRule, ...]:
         """*tenant_id*'s rules, or none at all for an unknown tenant.
 
         Default-deny in the sense that matters here: no rules means nothing is
-        pre-authorised, so an action falls through to needing the owner.
+        pre-authorised, so an action falls through to needing the owner. That
+        is also what a database outage gives, which is why the durable
+        backend is allowed to answer ``()`` rather than raise.
         """
-        return self._rules.get((tenant_id or "").strip(), ())
+        tenant = (tenant_id or "").strip()
+        if self._durable is not None:
+            return self._durable.rules_for(tenant)
+        return self._rules.get(tenant, ())
 
     def clear(self, tenant_id: str | None = None) -> None:
         """Forget one tenant's rules, or every tenant's."""
+        if self._durable is not None:
+            self._durable.clear(tenant_id)
         if tenant_id is None:
             self._rules.clear()
         else:
@@ -437,13 +796,19 @@ def rules_from_config(tenant_id: str | None) -> tuple[StandingRule, ...]:
 
 __all__ = [
     "ACTION_NOT_AUTHORIZED",
+    "ALREADY_CONSUMED",
     "AMOUNT_OVER_CAPABILITY",
     "CHECK_REASONS",
     "DEFAULT_TTL",
+    "ERRAND_MISMATCH",
     "EXPIRED",
     "MAX_TTL",
     "ORIGIN_NOT_AUTHORIZED",
+    "PARAMETERS_MISMATCH",
     "REVOKED",
+    "SELECTOR_MISMATCH",
+    "STEP_MISMATCH",
+    "STORE_UNAVAILABLE",
     "TASK_MISMATCH",
     "TENANT_MISMATCH",
     "UNKNOWN",
@@ -451,6 +816,8 @@ __all__ = [
     "AuthorizationCapability",
     "CapabilityCheck",
     "CapabilityStore",
+    "DurableBackend",
+    "DurableRuleBackend",
     "StandingRuleStore",
     "capability_store",
     "rules_from_config",

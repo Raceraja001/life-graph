@@ -154,7 +154,7 @@ async def perform(
         raise ActionRefusedError(ALREADY_DONE)
     at = None
     if kind == ERRAND_APPROVAL:
-        meta = _errand(tenant_id, meta, action, now)
+        meta = _errand(tenant_id, notification, meta, action, now)
     elif kind == "nudge":
         from life_graph.services import nudges
 
@@ -177,21 +177,34 @@ async def perform(
     return result_for(action, at=at, now=now, tz=tz)
 
 
-def _errand(tenant_id: str, meta: dict[str, Any], action: str, now: datetime) -> dict[str, Any]:
+def _errand(
+    tenant_id: str, notification: Any, meta: dict[str, Any], action: str, now: datetime
+) -> dict[str, Any]:
     """Approve or reject a paused browser errand. Returns the new metadata.
 
     Approving does not resume anything — it *authorises*. It mints an
     :class:`~life_graph.autonomy.approvals.AuthorizationCapability` for the one
-    action type on the one origin the card named, and leaves its id in the
-    metadata; ``run_browser_errand`` resumes the errand by presenting that id,
-    and the policy re-verifies it against the tenant, task, action type and
-    origin at every step (autonomy/approvals/policy_checker.py). Nothing here
-    touches a browser, so a tap can never itself be the action.
+    action the card named, and leaves its id in the metadata;
+    ``run_browser_errand`` resumes the errand by presenting that id, and the
+    policy re-verifies every binding at every step
+    (autonomy/approvals/policy_checker.py). Nothing here touches a browser, so
+    a tap can never itself be the action.
+
+    "The one action" is meant exactly. The capability is bound to the tenant,
+    the action type, the origin, *and* the run it paused in, the step's
+    position in that run, the element it acts on and a digest of the whole
+    action (``services/browser_errand.canonical_parameters_hash``). It is also
+    one-use, so performing it spends it. So the tap authorises the step the
+    owner was shown on the card and nothing else: not the same click in a
+    later plan, not a re-numbered step, not the same button with an edited
+    value, and not twice.
 
     The scope comes from the card, which was written by the server from what
     the policy itself read — not from anything the model said at approval
     time. An unnamed action or origin is refused rather than widened: a
-    capability for "any origin" is not what the owner was shown.
+    capability for "any origin" is not what the owner was shown. The run and
+    the step are required for the same reason — a capability with nothing to
+    pin it to one action is not what the card described.
     """
     from life_graph.autonomy.approvals import capability_store
 
@@ -201,6 +214,12 @@ def _errand(tenant_id: str, meta: dict[str, Any], action: str, now: datetime) ->
     action_type = str(meta.get("action_type") or "").strip()
     origin = str(meta.get("target_origin") or "").strip()
     if not action_type or not origin:
+        raise ActionRefusedError("I can't tell what this would approve. Ask Jarvis again.")
+    errand_id = str(meta.get("item_id") or "").strip()
+    step_index = meta.get("step_index")
+    if not errand_id or not isinstance(step_index, int) or isinstance(step_index, bool):
+        # A card that cannot say which run and which step it is about cannot
+        # be turned into a mandate for one action. Refused, not widened.
         raise ActionRefusedError("I can't tell what this would approve. Ask Jarvis again.")
     capability = capability_store.issue(
         tenant_id=tenant_id,
@@ -219,6 +238,17 @@ def _errand(tenant_id: str, meta: dict[str, Any], action: str, now: datetime) ->
         # next turn. Still far short of MAX_TTL, and still one action on one
         # origin — it is a mandate for this errand, not a standing permission.
         ttl=ERRAND_CAPABILITY_TTL,
+        # The exact action, as the card described it. The selector and the
+        # digest come from the engine's own reading of the step
+        # (tools/errand.py wrote them into this metadata), never from a model.
+        errand_id=errand_id,
+        approval_id=str(getattr(notification, "id", "") or "") or None,
+        step_index=step_index,
+        target_selector=meta.get("target_selector"),
+        parameters_hash=meta.get("parameters_hash"),
+        # Spent by performing it: an approval for an outward, irreversible
+        # action is not a budget to draw on twice.
+        one_use=True,
         now=now,
     )
     meta["capability_id"] = capability.capability_id

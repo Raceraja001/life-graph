@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-14 13:32 UTC` from `feat/jarvis-autonomous-errands` @ `f2fed3f`
+Generated `2026-11-14 15:52 UTC` from `feat/work-order-p0-p1` @ `a9f35c9`
 
 ---
 
@@ -17,16 +17,16 @@ Generated `2026-11-14 13:32 UTC` from `feat/jarvis-autonomous-errands` @ `f2fed3
 | | |
 |---|---|
 | HTTP operations | **390** across 338 paths, 45 tags |
-| Database tables | **86** |
-| Migrations | **58** (head: `058_vault_secrets`) |
+| Database tables | **88** |
+| Migrations | **59** (head: `059_durable_capabilities_and_standing_rules`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
-| Config settings | **287** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4510** in 489 files |
+| Config settings | **288** (prefix `LIFE_GRAPH_`) |
+| Test functions | **4570** in 491 files |
 | Dashboard pages | **22** |
-| Python | 459 files, 125,535 lines |
+| Python | 465 files, 128,534 lines |
 
 ---
 
@@ -653,7 +653,7 @@ Generated `2026-11-14 13:32 UTC` from `feat/jarvis-autonomous-errands` @ `f2fed3
 
 ## Database tables
 
-86 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+88 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -670,6 +670,7 @@ Generated `2026-11-14 13:32 UTC` from `feat/jarvis-autonomous-errands` @ `f2fed3
 | `auto_actions` | 31 | ✓ | `018_autonomous_ai` |
 | `autonomy_levels` | 28 | ✓ | `018_autonomous_ai` |
 | `budget_spend` | 6 | ✓ | `023_budget_spend` |
+| `capabilities` | 18 | ✓ | `059_durable_capabilities_and_standing_rules` |
 | `connector_accounts` | 18 | ✓ | `039_connectors` |
 | `connector_items` | 25 | ✓ | `039_connectors` |
 | `conversation_messages` | 8 | ✓ | `027_conversations` |
@@ -725,6 +726,7 @@ Generated `2026-11-14 13:32 UTC` from `feat/jarvis-autonomous-errands` @ `f2fed3
 | `shadow_enrollments` | 9 | ✓ | `024_shadow_mode` |
 | `shadow_runs` | 14 | ✓ | `024_shadow_mode` |
 | `shared_context` | 17 | ✓ | `017_agent_networks` |
+| `standing_rules` | 6 | ✓ | `059_durable_capabilities_and_standing_rules` |
 | `study_reviews` | 10 | ✓ | `056_study_upgrade` |
 | `tech_radar` | 13 | ✓ | `016_ambient_ai` |
 | `telegram_bindings` | 9 | ✓ | `037_telegram_bridge` |
@@ -1003,9 +1005,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-58 revisions, head `058_vault_secrets`.
+59 revisions, head `059_durable_capabilities_and_standing_rules`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules`
 
 ---
 
@@ -1015,16 +1017,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 374 | 3673 |
+| `tests/unit/` | 376 | 3733 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **489** | **4510** |
+| **total** | **491** | **4570** |
 
 ---
 
 ## Configuration
 
-287 settings, all overridable by environment variable.
+288 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1313,5 +1315,6 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_INVOICE_SELLER_DETAILS` | `''` |
 | `LIFE_GRAPH_VAULT_KEY` | `''` |
 | `LIFE_GRAPH_VAULT_KEY_FILE` | `'~/.config/life-graph/vault.key'` |
+| `LIFE_GRAPH_DURABLE_AUTHORIZATION` | `True` |
 | `LIFE_GRAPH_SEED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_PLAN_LIMITS` | `{'free': {'requests_per_min': 60, 'max_memories': 1000, '…` |

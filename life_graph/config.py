@@ -807,6 +807,19 @@ class Settings(BaseSettings):
     vault_key: str = ""
     vault_key_file: str = "~/.config/life-graph/vault.key"
 
+    # ── Durable authorisation (autonomy/approvals/durable_store.py) ─────────
+    # Keep issued capabilities and the owner's standing rules in Postgres
+    # (migration 059) instead of in one process's memory. On, because the
+    # approval queue is real: a capability minted by the API when the owner
+    # taps Approve on their phone has to be resolvable by the ARQ worker that
+    # resumes the errand, and "one use" has to mean once across the whole
+    # deployment rather than once per process.
+    #
+    # Turning it off is a single-process fallback, not a performance knob: an
+    # in-memory mandate is invisible to every other worker, so an errand
+    # resumed anywhere else is denied.
+    durable_authorization: bool = True
+
     # ── Startup Seeding ─────────────────────────────────
     # Which tenants get the built-in personas, ambient jobs and safety rules at
     # startup. This was the literal "default" in three places, so every other
