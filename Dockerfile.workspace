@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1
+# ── NOD sandbox image: minimal workspace ─────────────────────
+# The other half of the errand sandbox chassis (compose.sandbox.yaml,
+# life_graph/services/sandbox.py): a scratch Linux box an errand can be
+# handed to unpack a download, reshape a file or run a short script, with
+# nothing of the host in it.
+#
+# Deliberately thin. Every tool added here is a tool an errand can turn on
+# whatever it just fetched, so the list stays at "shell, coreutils, a CA
+# bundle" and grows only with a reason written next to it. In particular
+# there is no git, no package manager credential store, no ssh client and no
+# python toolchain: fetching and publishing are the application's job, on the
+# host side of the boundary, where policy is checked.
+#
+# Build:  docker build -t life-graph-sandbox-workspace:dev -f Dockerfile.workspace .
+#         (or: docker compose -f compose.sandbox.yaml build workspace)
+FROM debian:bookworm-slim
+
+# ca-certificates: so that *if* an egress proxy is ever attached to this
+# container, TLS verification works rather than being switched off.
+# tini is not needed — compose.sandbox.yaml sets `init: true`.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /work \
+    && chown 65534:65534 /work
+
+ENV HOME=/tmp \
+    LANG=C.UTF-8 \
+    SANDBOX_ROLE=workspace
+
+# uid 65534 (nobody) owns no file in the image, so errand code cannot modify
+# the image's own contents even before the read-only root filesystem is
+# applied. /work and /tmp are tmpfs at run time; nothing survives the
+# container, by design.
+USER 65534:65534
+WORKDIR /work
+
+# Idles until something is exec'd into it. The sandbox manager starts the
+# container, runs the errand's commands inside it, then destroys it; an idle
+# default means a failed command does not take the sandbox down with it.
+CMD ["sleep", "infinity"]
