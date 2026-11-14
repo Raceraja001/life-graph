@@ -10,7 +10,9 @@ Connector items use the LOCAL rendering (connectors/exposure.py), amounts
 and titles shown, after ``phone_rows``: a ``local_only`` account's items show
 when and what kind only, as its due notifications do.
 
-Insights are fixed rules, no model: a bill due tomorrow (with "Mark paid",
+Insights are fixed rules, no model: a browser errand waiting on the owner
+(tools/errand.py, with "Approve"/"Reject" — first, because it is the only one
+that is actually blocked on them), a bill due tomorrow (with "Mark paid",
 ``POST /jarvis/bills/{item_id}/paid``), a document expiring within
 INSIGHT_DOC_DAYS, a contact's birthday tomorrow.
 """
@@ -37,6 +39,8 @@ LEARNT_KEPT_HOURS = 48  # "Jarvis learnt" shows memories kept this recently
 MAX_MAIL_WAITING = 100
 MAX_BRIEF_HEADINGS = 6
 BILL_KINDS = ("bill", "renewal")
+MAX_ERRANDS = 5
+ERRAND_DAYS = 3  # How far back the errands section looks
 
 
 async def _read(name: str, fn: Callable[[], Awaitable[Any]]) -> Any:
@@ -219,6 +223,60 @@ async def _down(tenant_id: str) -> list[dict[str, Any]]:
     ]
 
 
+async def _errands(tenant_id: str, now: datetime) -> list[dict[str, Any]]:
+    """Browser errands that asked the owner something recently, newest first.
+
+    The rows ``tools/errand.py`` writes when an errand pauses on a step the
+    policy will not authorise on its own. A row the owner has not tapped yet
+    is ``pending`` — those are the ones with buttons, and the ones
+    :func:`insights` puts at the top of the screen; a tapped one is kept for
+    ERRAND_DAYS so the screen can say what became of it.
+
+    No page text and no verdict reasoning: the title, the origin and what was
+    asked for, which is what the owner was shown on the notification.
+    """
+    from life_graph.models.db import Notification
+    from life_graph.services.notification_actions import ERRAND_APPROVAL
+    from life_graph.storage.database import async_session
+
+    since = now - timedelta(days=ERRAND_DAYS)
+    query = (
+        select(Notification)
+        .where(
+            Notification.tenant_id == tenant_id,
+            Notification.source_type == ERRAND_APPROVAL,
+            Notification.created_at >= since,
+        )
+        .order_by(Notification.created_at.desc())
+        .limit(MAX_ERRANDS)
+    )
+    async with async_session() as session:
+        rows = (await session.execute(query)).scalars().all()
+    return [_errand_row(r) for r in rows]
+
+
+def _errand_row(row: Any) -> dict[str, Any]:
+    """One errand card's row. ``status`` is what the owner did, not what ran."""
+    meta = getattr(row, "extra_metadata", None) or {}
+    taken = meta.get("action") or {}
+    status = "pending"
+    if taken.get("id") == "approve":
+        status = "approved"
+    elif taken.get("id") == "reject":
+        status = "rejected"
+    created = getattr(row, "created_at", None)
+    return {
+        "id": str(row.id),
+        "goal": meta.get("goal"),
+        "step": meta.get("step_index"),
+        "action_type": meta.get("action_type"),
+        "origin": meta.get("target_origin"),
+        "status": status,
+        "title": row.title,
+        "created_at": created.isoformat() if created else None,
+    }
+
+
 async def _study_due(tenant_id: str, today: date) -> int:
     from life_graph.services import study
     from life_graph.storage.database import async_session
@@ -294,6 +352,7 @@ async def collect(tenant_id: str, now: datetime | None = None) -> dict[str, Any]
         "mail_waiting": await _read("mail_waiting", lambda: _mail_waiting(tenant_id, now)),
         "night_run": await _read("night_run", lambda: _night_run(tenant_id)),
         "down": await _read("down", lambda: _down(tenant_id)),
+        "errands": await _read("errands", lambda: _errands(tenant_id, now)),
         "study_due": await _read("study_due", lambda: _study_due(tenant_id, today)),
         "learnt": await _read("learnt", lambda: _learnt(tenant_id, now)),
     }
@@ -429,6 +488,23 @@ def insights(src: dict[str, Any], today: date) -> list[dict[str, Any]]:
     from life_graph.services.due_notifications import document_text, short_amount
 
     out: list[dict[str, Any]] = []
+    for e in src.get("errands") or []:
+        if e.get("status") != "pending":
+            continue
+        where = e.get("origin") or "a page"
+        out.append(
+            {
+                "id": f"errand_approval:{e['id']}",
+                "kind": "errand_approval",
+                "item_id": e["id"],
+                "title": f"Jarvis is waiting on you: {e.get('goal') or 'a browser errand'}",
+                "body": f"It paused before {e.get('action_type') or 'a step'} on {where}.",
+                "actions": [
+                    {"id": "approve", "label": "Approve"},
+                    {"id": "reject", "label": "Reject"},
+                ],
+            }
+        )
     tomorrow = (today + timedelta(days=1)).isoformat()
     for b in src.get("bills") or []:
         if b.get("kind") not in BILL_KINDS or b.get("due") != tomorrow or b.get("autopay"):
@@ -515,6 +591,9 @@ def assemble(src: dict[str, Any], now: datetime, today: date) -> dict[str, Any]:
             "down": src.get("down") or [],
         },
         "study_due": src.get("study_due"),
+        # Browser errands the owner was asked about (tools/errand.py). The
+        # pending ones are also insight cards, with their buttons.
+        "errands": src.get("errands") or [],
         "learnt": src.get("learnt") or [],
     }
 

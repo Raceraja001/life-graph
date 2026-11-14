@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-14 12:42 UTC` from `feat/trustworthy-p6-p7-eval-docs` @ `18e4201`
+Generated `2026-11-14 13:32 UTC` from `feat/jarvis-autonomous-errands` @ `f2fed3f`
 
 ---
 
@@ -21,12 +21,12 @@ Generated `2026-11-14 12:42 UTC` from `feat/trustworthy-p6-p7-eval-docs` @ `18e4
 | Migrations | **58** (head: `058_vault_secrets`) |
 | Event types | **79** |
 | Built-in personas | **13** |
-| Agent tools | **14** |
+| Agent tools | **15** |
 | Scheduled jobs | **34** |
 | Config settings | **287** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4484** in 488 files |
+| Test functions | **4510** in 489 files |
 | Dashboard pages | **22** |
-| Python | 459 files, 125,198 lines |
+| Python | 459 files, 125,535 lines |
 
 ---
 
@@ -851,13 +851,13 @@ Generated `2026-11-14 12:42 UTC` from `feat/trustworthy-p6-p7-eval-docs` @ `18e4
 | ~~assistant~~ (retired) — Answers the user's everyday questions from their own data and the web. | `—` | — | — | 20 |
 | **support-desk** — Answers customer questions about one of the user's apps from its docs. | `—` | — | — | 3 |
 | ~~swe-lead~~ (retired) — Coordinates cody/ops/rex on engineering work that needs more than one specialist. | `—` | — | `tests_pass`, `diff_within_scope` | 6 |
-| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 33 |
+| **jarvis** — The user's assistant and the lead: the one persona the user talks to. | `—` | — | — | 34 |
 
 ---
 
 ## Agent tools
 
-14 tools registered via the `@tool` decorator.
+15 tools registered via the `@tool` decorator.
 
 | Tool | Description |
 |---|---|
@@ -873,6 +873,7 @@ Generated `2026-11-14 12:42 UTC` from `feat/trustworthy-p6-p7-eval-docs` @ `18e4
 | `git_status` | Get the current git status of a repository. Shows modified, staged, and untracked files. |
 | `inspect_system` | Read-only system inspection. `check` must be one of: disk, docker_logs, docker_ps, git_status, memory, systemctl_status, uptime. Optional `target` names a container/service where relevant. Cannot modify anything. |
 | `research_web` | Research a question on the web: reads several result pages and returns an answer in short claims, each citing the pages that state it. Slower than web_search; use it for questions that need more than one page (comparisons, 'what is the latest on'). Do not put personal details in the question. |
+| `run_browser_errand` | Run a short errand in a real browser: go to a page, read it, fill a field, click something. Use for things no API offers — checking a balance on a portal, downloading a statement, submitting a form the user asked you to submit. `steps` is a list of objects, each {kind, ...}: 'navigate' {url}, 'read_page' {}, 'fill_field' {field, value, is_secret}, 'click' {selector}. `field`/`selector` name an element from the last read_page. For a password or OTP set is_secret:true and put the vault handle (not the secret) in `value`. `allowed_origins` restricts where the errand may go, e.g. ['https://netbanking.hdfcbank.com']. Reading pages runs straight away. Anything that types or clicks needs the user's tap: the result comes back status='needs_approval' and they get a notification with Approve and Reject. Tell them to check their phone; do not retry. |
 | `run_command` | Execute a shell command on the host system and return the output. Use for: checking system status, running scripts, git operations, docker commands, file listing, etc. Commands time out after 30 seconds. DANGEROUS: Only use when explicitly asked by the user. |
 | `web_search` | Search the web for current information. Returns titles, URLs and snippets; cite the URLs you rely on. |
 
@@ -1014,10 +1015,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 373 | 3647 |
+| `tests/unit/` | 374 | 3673 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **488** | **4484** |
+| **total** | **489** | **4510** |
 
 ---
 
