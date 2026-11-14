@@ -16,6 +16,7 @@ from life_graph.services.spend_guardrails import (
     ModelPrice,
     SpendCapExceededError,
     SpendTracker,
+    current_tenant_id,
     estimate_cost_usd,
     estimate_message_tokens,
     estimate_tokens,
@@ -510,3 +511,546 @@ async def test_per_task_cap_stops_a_runaway_loop(cloud_client, monkeypatch):
 
     assert "local reply" in replies  # the cap bit before the sixth call
     assert calls["cloud"] < 6
+
+
+# ── Two-phase reservations ────────────────────────────────────────────
+
+
+def test_reserve_then_reconcile_books_actual_spend(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 0.40)
+
+    assert res.id and res.model == GPT_4O_MINI
+    assert res.estimated_usd == pytest.approx(0.40)
+    assert res.month == SpendTracker._month()
+    assert tracker.reserved_total() == pytest.approx(0.40)
+    # Nothing is booked until the call comes back.
+    assert tracker.monthly_total() == 0.0
+
+    booked = tracker.reconcile(res.id, actual_cost_usd=0.12)
+
+    assert booked == pytest.approx(0.12)
+    assert tracker.monthly_total() == pytest.approx(0.12)
+    assert tracker.reserved_total() == 0.0
+    assert tracker.active_reservations() == ()
+    assert tracker.snapshot().calls == 1
+
+
+def test_reconcile_derives_cost_from_tokens_when_none_is_reported(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 0.40)
+    booked = tracker.reconcile(res.id, prompt_tokens=10**6, completion_tokens=0)
+    assert booked == pytest.approx(0.15)  # priced off the reservation's model
+    assert tracker.monthly_total() == pytest.approx(0.15)
+
+
+def test_reconcile_clamps_a_negative_reported_cost(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 0.40)
+    assert tracker.reconcile(res.id, actual_cost_usd=-5.0) == 0.0
+    assert tracker.monthly_total() == 0.0
+
+
+def test_reserve_then_release_books_nothing(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 0.40)
+    assert tracker.reserved_total() == pytest.approx(0.40)
+
+    tracker.release(res.id)
+
+    assert tracker.reserved_total() == 0.0
+    assert tracker.monthly_total() == 0.0
+    assert tracker.active_reservations() == ()
+    # A released call never happened, so it is not counted as one.
+    assert tracker.snapshot().calls == 0
+
+
+def test_release_is_idempotent_and_safe_after_reconcile(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 0.40)
+    tracker.reconcile(res.id, actual_cost_usd=0.10)
+    tracker.release(res.id)  # no-op: already settled
+    tracker.release(res.id)
+    tracker.release("never-existed")
+    assert tracker.monthly_total() == pytest.approx(0.10)
+
+
+def test_reservation_holds_headroom_against_a_second_reserve(tracker):
+    """The whole point: an in-flight estimate is committed, not just pencilled in."""
+    tracker.reserve(GPT_4O_MINI, 9.5)
+    with pytest.raises(SpendCapExceededError) as exc:
+        tracker.reserve(GPT_4O_MINI, 1.0)
+    assert exc.value.scope == "monthly"
+    assert exc.value.spent_usd == pytest.approx(9.5)  # committed, not booked
+
+
+def test_reserve_reports_the_task_scope_when_the_task_cap_binds(tracker):
+    with SpendTracker.task_scope("hot-loop"):
+        tracker.reserve(GPT_4O_MINI, 0.49)
+        with pytest.raises(SpendCapExceededError) as exc:
+            tracker.reserve(GPT_4O_MINI, 0.05)
+    assert exc.value.scope == "task"
+    assert exc.value.task_key == "hot-loop"
+
+
+def test_reserve_captures_the_ambient_task_key(tracker):
+    with SpendTracker.task_scope("task-a"):
+        res = tracker.reserve(GPT_4O_MINI, 0.10)
+    assert res.task_key == "task-a"
+
+
+def test_reconcile_books_to_the_reservations_task_not_the_current_one(tracker):
+    """A call can outlive its task context; the money still lands in its bucket."""
+    with SpendTracker.task_scope("task-a"):
+        res = tracker.reserve(GPT_4O_MINI, 0.10)
+    # Settled outside the scope entirely.
+    tracker.reconcile(res.id, actual_cost_usd=0.07)
+    assert tracker.task_total("task-a") == pytest.approx(0.07)
+    assert tracker.monthly_total() == pytest.approx(0.07)
+
+
+def test_reconcile_books_to_the_reservations_month(tracker):
+    from dataclasses import replace
+
+    res = tracker.reserve(GPT_4O_MINI, 0.10)
+    # Pretend the reservation was taken out last month and the clock rolled over
+    # mid-call: the spend belongs to the month the call started in.
+    tracker._active_reservations[res.id] = replace(res, month="1999-01")
+    tracker.reconcile(res.id, actual_cost_usd=0.07)
+    assert tracker.monthly_total(month="1999-01") == pytest.approx(0.07)
+    assert tracker.monthly_total() == 0.0
+
+
+def test_reconciling_an_unknown_id_still_books_the_cost(tracker, caplog):
+    """Money that left the account is booked even if the claim is gone — and warned about."""
+    with caplog.at_level("WARNING"):
+        booked = tracker.reconcile("no-such-reservation", actual_cost_usd=0.33)
+    assert booked == pytest.approx(0.33)
+    assert tracker.monthly_total() == pytest.approx(0.33)
+    assert "unknown spend reservation" in caplog.text
+
+
+def test_free_and_local_reservations_are_zero_cost_and_ungated(tracker):
+    tracker.reserve(GPT_4O_MINI, 9.99)  # month effectively committed
+    for model in ("ollama/qwen3:14b", "openrouter/openai/gpt-oss-20b:free"):
+        res = tracker.reserve(model, 999.0)
+        assert res.estimated_usd == 0.0
+        tracker.reconcile(res.id, actual_cost_usd=0.0)
+    assert tracker.monthly_total() == 0.0
+    # The cloud reservation still holds its own headroom.
+    assert tracker.reserved_total() == pytest.approx(9.99)
+
+
+def test_reserving_an_unknown_model_consumes_budget(tracker):
+    """An unpriced cloud model must reserve real dollars, not slip through free."""
+    estimate = tracker.estimate_call_cost("mystery/brand-new-model", _msgs("a" * 4000), 1000)
+    assert estimate > 0
+
+    res = tracker.reserve("mystery/brand-new-model", estimate)
+
+    assert res.estimated_usd == pytest.approx(estimate)
+    assert tracker.reserved_total() == pytest.approx(estimate)
+
+
+def test_unknown_model_price_logs_a_warning(caplog):
+    from life_graph.services import spend_guardrails
+
+    spend_guardrails._warned_unknown_models.discard("mystery/warn-me-once")
+    with caplog.at_level("WARNING"):
+        price_for("mystery/warn-me-once")
+        price_for("mystery/warn-me-once")  # second call must not re-warn
+    assert caplog.text.count("No price table entry") == 1
+
+
+def test_non_positive_caps_do_not_gate_reservations():
+    tracker = SpendTracker(monthly_cap_usd=0.0, per_task_cap_usd=0.0)
+    with SpendTracker.task_scope("task-a"):
+        tracker.reserve(GPT_4O_MINI, 10_000.0)
+        tracker.reserve(GPT_4O_MINI, 10_000.0)
+
+
+def test_check_budget_counts_in_flight_reservations(tracker):
+    """The older check-then-record path cannot be waved through on promised headroom."""
+    tracker.reserve(GPT_4O_MINI, 9.9)
+    with pytest.raises(SpendCapExceededError):
+        tracker.check_budget(GPT_4O_MINI, 0.2)
+
+
+def test_snapshot_reports_reservations_separately_from_spend(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 2.0)
+    tracker.reconcile(res.id, actual_cost_usd=1.0)
+    tracker.reserve(GPT_4O_MINI, 3.0)
+
+    snap = tracker.snapshot()
+
+    assert snap.monthly_usd == pytest.approx(1.0)
+    assert snap.reserved_usd == pytest.approx(3.0)
+    assert snap.active_reservations == 1
+    # Headroom is net of what is already promised to the call in flight.
+    assert snap.monthly_remaining_usd == pytest.approx(6.0)
+
+
+# ── Concurrency: the property a bare check cannot hold ────────────────
+
+
+def _race(fn, threads: int):
+    """Run *fn* on *threads* threads released together; return (results, refusals)."""
+    import threading
+
+    barrier = threading.Barrier(threads)
+    results: list[object] = []
+    refused: list[SpendCapExceededError] = []
+    guard = threading.Lock()
+
+    def run() -> None:
+        barrier.wait()
+        try:
+            value = fn()
+        except SpendCapExceededError as exc:
+            with guard:
+                refused.append(exc)
+        else:
+            with guard:
+                results.append(value)
+
+    workers = [threading.Thread(target=run) for _ in range(threads)]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=10)
+    assert not any(w.is_alive() for w in workers), "reserve() deadlocked"
+    return results, refused
+
+
+def test_three_threads_cannot_all_reserve_the_last_ten_cents():
+    """$0.10 left, $0.04 each: two fit, the third is refused."""
+    tracker = SpendTracker(monthly_cap_usd=0.10, per_task_cap_usd=0.0)
+
+    granted, refused = _race(lambda: tracker.reserve(GPT_4O_MINI, 0.04), threads=3)
+
+    assert len(granted) == 2
+    assert len(refused) == 1
+    assert refused[0].scope == "monthly"
+    assert tracker.reserved_total() == pytest.approx(0.08)
+
+
+def test_total_reservations_can_never_exceed_the_cap_under_contention():
+    """Many callers racing for a small budget: the sum granted stays inside the cap."""
+    tracker = SpendTracker(monthly_cap_usd=0.10, per_task_cap_usd=0.0)
+
+    granted, refused = _race(lambda: tracker.reserve(GPT_4O_MINI, 0.04), threads=32)
+
+    assert len(granted) == 2
+    assert len(refused) == 30
+    assert sum(r.estimated_usd for r in granted) <= 0.10
+
+
+def test_concurrent_reservations_respect_already_booked_spend():
+    tracker = SpendTracker(monthly_cap_usd=1.0, per_task_cap_usd=0.0)
+    tracker.record_usage(GPT_4O_MINI, cost_usd=0.90)  # $0.10 left
+
+    granted, _refused = _race(lambda: tracker.reserve(GPT_4O_MINI, 0.04), threads=16)
+
+    assert len(granted) == 2
+    assert tracker.monthly_total() + tracker.reserved_total() <= 1.0
+
+
+def test_releases_during_contention_return_headroom_to_later_callers():
+    tracker = SpendTracker(monthly_cap_usd=0.10, per_task_cap_usd=0.0)
+
+    def reserve_and_release():
+        res = tracker.reserve(GPT_4O_MINI, 0.04)
+        tracker.release(res.id)
+        return res
+
+    _granted, _refused = _race(reserve_and_release, threads=8)
+
+    assert tracker.reserved_total() == 0.0
+    # Budget fully recovered: a fresh pair of reservations still fits.
+    tracker.reserve(GPT_4O_MINI, 0.04)
+    tracker.reserve(GPT_4O_MINI, 0.04)
+
+
+# ── Failure paths: reservation_scope ─────────────────────────────────
+
+
+def test_reservation_scope_releases_when_the_body_raises(tracker):
+    with (
+        pytest.raises(RuntimeError, match="provider exploded"),
+        tracker.reservation_scope(GPT_4O_MINI, 9.5),
+    ):
+        raise RuntimeError("provider exploded")
+
+    assert tracker.reserved_total() == 0.0
+    assert tracker.monthly_total() == 0.0
+    # The headroom came back, so an identically sized call now fits.
+    tracker.reserve(GPT_4O_MINI, 9.5)
+
+
+def test_reservation_scope_releases_an_unreconciled_reservation(tracker):
+    """A body that simply forgets to reconcile must not strand the headroom."""
+    with tracker.reservation_scope(GPT_4O_MINI, 9.5) as res:
+        assert res.estimated_usd == pytest.approx(9.5)
+        assert tracker.reserved_total() == pytest.approx(9.5)
+
+    assert tracker.reserved_total() == 0.0
+    assert tracker.monthly_total() == 0.0
+
+
+def test_reservation_scope_does_not_double_book_a_reconciled_call(tracker):
+    with tracker.reservation_scope(GPT_4O_MINI, 9.5) as res:
+        tracker.reconcile(res.id, actual_cost_usd=0.25)
+
+    assert tracker.monthly_total() == pytest.approx(0.25)
+    assert tracker.reserved_total() == 0.0
+    assert tracker.snapshot().calls == 1
+
+
+def test_reservation_scope_prices_the_call_when_no_estimate_is_given(tracker):
+    with tracker.reservation_scope(GPT_4O_MINI, messages=_msgs("a" * 4000), max_tokens=1000) as res:
+        expected = (1000 * 0.15 + 1000 * 0.60) / TOKENS_PER_MTOK
+        assert res.estimated_usd == pytest.approx(expected)
+
+
+def test_reservation_scope_refuses_a_call_that_does_not_fit(tracker):
+    tracker.record_usage(GPT_4O_MINI, cost_usd=9.9)
+    with pytest.raises(SpendCapExceededError), tracker.reservation_scope(GPT_4O_MINI, 0.5):
+        pytest.fail("the body must not run")
+
+
+def test_a_cap_exceeded_reservation_leaves_nothing_in_flight(tracker):
+    tracker.record_usage(GPT_4O_MINI, cost_usd=9.9)
+    with pytest.raises(SpendCapExceededError):
+        tracker.reserve(GPT_4O_MINI, 0.5)
+    assert tracker.reserved_total() == 0.0
+    assert tracker.active_reservations() == ()
+
+
+# ── Recovering orphaned reservations ─────────────────────────────────
+
+
+def _age(tracker: SpendTracker, reservation, seconds: float) -> None:
+    """Backdate a stored reservation, as if its worker had hung that long ago."""
+    import time as _time
+    from dataclasses import replace
+
+    tracker._active_reservations[reservation.id] = replace(
+        reservation, created_at=_time.time() - seconds
+    )
+
+
+def test_purge_stale_reservations_recovers_the_budget(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 9.5)
+    with pytest.raises(SpendCapExceededError):
+        tracker.reserve(GPT_4O_MINI, 1.0)
+
+    _age(tracker, res, 600.0)
+    assert tracker.purge_stale_reservations(max_age_seconds=300.0) == 1
+
+    assert tracker.reserved_total() == 0.0
+    assert tracker.monthly_total() == 0.0  # purging books nothing
+    tracker.reserve(GPT_4O_MINI, 9.5)  # headroom recovered
+
+
+def test_purge_spares_reservations_inside_the_age_threshold(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 1.0)
+    _age(tracker, res, 100.0)
+    assert tracker.purge_stale_reservations(max_age_seconds=300.0) == 0
+    assert tracker.reserved_total() == pytest.approx(1.0)
+
+
+def test_purge_with_a_non_positive_threshold_is_disabled(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 1.0)
+    _age(tracker, res, 10_000.0)
+    assert tracker.purge_stale_reservations(max_age_seconds=0.0) == 0
+    assert tracker.reserved_total() == pytest.approx(1.0)
+
+
+def test_reserve_reclaims_stale_reservations_automatically(tracker, monkeypatch):
+    """The self-healing path: no scheduled sweep needed to recover from a dead worker."""
+    monkeypatch.setattr(settings, "spend_reservation_ttl_seconds", 300.0)
+    orphan = tracker.reserve(GPT_4O_MINI, 9.5)
+    _age(tracker, orphan, 600.0)
+
+    res = tracker.reserve(GPT_4O_MINI, 9.5)  # would not fit beside the orphan
+
+    assert tracker.reserved_total() == pytest.approx(9.5)
+    assert [r.id for r in tracker.active_reservations()] == [res.id]
+
+
+def test_reserve_does_not_reclaim_when_the_ttl_is_disabled(tracker, monkeypatch):
+    monkeypatch.setattr(settings, "spend_reservation_ttl_seconds", 0.0)
+    orphan = tracker.reserve(GPT_4O_MINI, 9.5)
+    _age(tracker, orphan, 10_000.0)
+    with pytest.raises(SpendCapExceededError):
+        tracker.reserve(GPT_4O_MINI, 1.0)
+
+
+def test_reservation_age_is_reported(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 1.0)
+    assert 0.0 <= res.age_seconds < 5.0
+    _age(tracker, res, 42.0)
+    assert tracker.active_reservations()[0].age_seconds >= 42.0
+
+
+# ── Per-tenant accounting ────────────────────────────────────────────
+
+
+def test_reconcile_books_spend_against_the_tenant(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 0.20, tenant_id="tenant-1")
+    assert res.tenant_id == "tenant-1"
+
+    tracker.reconcile(res.id, actual_cost_usd=0.05)
+
+    assert tracker.tenant_total("tenant-1") == pytest.approx(0.05)
+    assert tracker.tenant_total("tenant-2") == 0.0
+    assert tracker.monthly_total() == pytest.approx(0.05)
+
+
+def test_tenant_cap_refuses_a_reservation_that_crosses_it():
+    tracker = SpendTracker(monthly_cap_usd=100.0, per_task_cap_usd=0.0, per_tenant_cap_usd=0.10)
+    tracker.reserve(GPT_4O_MINI, 0.04, tenant_id="tenant-1")
+    tracker.reserve(GPT_4O_MINI, 0.04, tenant_id="tenant-1")
+
+    with pytest.raises(SpendCapExceededError) as exc:
+        tracker.reserve(GPT_4O_MINI, 0.04, tenant_id="tenant-1")
+
+    assert exc.value.scope == "tenant"
+    assert exc.value.tenant_id == "tenant-1"
+    assert "tenant tenant-1" in str(exc.value)
+    # A different tenant has its own ceiling.
+    tracker.reserve(GPT_4O_MINI, 0.04, tenant_id="tenant-2")
+
+
+def test_tenant_cap_is_disabled_by_default(tracker):
+    """The single-tenant self-host must not acquire a new ceiling by surprise."""
+    assert tracker.per_tenant_cap == 0.0
+    for _ in range(5):
+        tracker.reserve(GPT_4O_MINI, 1.0, tenant_id="tenant-1")
+
+
+def test_ambient_calls_have_no_tenant_bucket(tracker):
+    res = tracker.reserve(GPT_4O_MINI, 0.20)
+    assert res.tenant_id is None
+    tracker.reconcile(res.id, actual_cost_usd=0.05)
+    assert tracker.tenant_total("tenant-1") == 0.0
+    assert tracker.monthly_total() == pytest.approx(0.05)
+
+
+def test_tenant_context_supplies_the_tenant_id(tracker):
+    from life_graph.core.tenant import tenant_scope
+
+    with tenant_scope("tenant-ctx"):
+        assert current_tenant_id() == "tenant-ctx"
+        res = tracker.reserve(GPT_4O_MINI, 0.20)
+    tracker.reconcile(res.id, actual_cost_usd=0.05)
+
+    assert res.tenant_id == "tenant-ctx"
+    assert tracker.tenant_total("tenant-ctx") == pytest.approx(0.05)
+
+
+def test_current_tenant_id_is_none_without_a_tenant_context():
+    """Workers and CLI runs have no tenant; spend accounting must not raise there."""
+    assert current_tenant_id() is None
+
+
+def test_reset_clears_tenants_and_reservations(tracker):
+    tracker.reserve(GPT_4O_MINI, 1.0, tenant_id="tenant-1")
+    res = tracker.reserve(GPT_4O_MINI, 1.0, tenant_id="tenant-1")
+    tracker.reconcile(res.id, actual_cost_usd=0.5)
+
+    tracker.reset()
+
+    assert tracker.tenant_total("tenant-1") == 0.0
+    assert tracker.reserved_total() == 0.0
+    assert tracker.active_reservations() == ()
+
+
+# ── LMStudioClient wiring: the reservation must not leak ─────────────
+
+
+async def test_cloud_chat_reserves_and_reconciles(cloud_client, monkeypatch):
+    client, calls, tracker = cloud_client
+    monkeypatch.setattr(settings, "monthly_spend_cap_usd", 10.0)
+    monkeypatch.setattr(settings, "per_task_spend_cap_usd", 0.0)
+
+    reply = await client.chat(_msgs("a" * 4000), max_tokens=4096)
+
+    assert reply.startswith("cloud reply")
+    assert calls == {"cloud": 1, "local": 0}
+    # Reconciled: booked, with nothing left in flight.
+    assert tracker.monthly_total() > 0
+    assert tracker.reserved_total() == 0.0
+    assert tracker.snapshot().active_reservations == 0
+
+
+async def test_cloud_chat_reconciles_below_the_reserved_ceiling(cloud_client, monkeypatch):
+    """The pre-flight estimate assumes the whole max_tokens; the reply used less."""
+    client, _calls, tracker = cloud_client
+    monkeypatch.setattr(settings, "monthly_spend_cap_usd", 10.0)
+    monkeypatch.setattr(settings, "per_task_spend_cap_usd", 0.0)
+    ceiling = tracker.estimate_call_cost(GPT_4O_MINI, _msgs("a" * 4000), 4096)
+
+    await client.chat(_msgs("a" * 4000), max_tokens=4096)
+
+    assert 0 < tracker.monthly_total() < ceiling
+
+
+async def test_cloud_chat_releases_the_reservation_when_the_provider_fails(
+    cloud_client, monkeypatch
+):
+    client, calls, tracker = cloud_client
+    monkeypatch.setattr(settings, "monthly_spend_cap_usd", 10.0)
+
+    from life_graph.services import llm_client as llm_client_module
+
+    class ExplodingResilient:
+        async def chat(self, messages, **kwargs):
+            calls["cloud"] += 1
+            raise RuntimeError("provider down")
+
+    monkeypatch.setattr(llm_client_module, "get_resilient_llm", lambda: ExplodingResilient())
+
+    assert await client.chat(_msgs("a" * 4000)) == "local reply"
+
+    assert calls == {"cloud": 1, "local": 1}
+    assert tracker.reserved_total() == 0.0  # released, not stranded
+    assert tracker.monthly_total() == 0.0  # a failed call costs nothing
+
+
+async def test_cloud_chat_releases_the_reservation_when_cancelled(cloud_client, monkeypatch):
+    """Cancellation is not an Exception; it must still return the headroom."""
+    import asyncio
+
+    client, _calls, tracker = cloud_client
+    monkeypatch.setattr(settings, "monthly_spend_cap_usd", 10.0)
+
+    from life_graph.services import llm_client as llm_client_module
+
+    class CancelledResilient:
+        async def chat(self, messages, **kwargs):
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(llm_client_module, "get_resilient_llm", lambda: CancelledResilient())
+
+    with pytest.raises(asyncio.CancelledError):
+        await client.chat(_msgs("a" * 4000))
+
+    assert tracker.reserved_total() == 0.0
+    assert tracker.monthly_total() == 0.0
+
+
+async def test_repeated_failures_do_not_exhaust_the_budget(cloud_client, monkeypatch):
+    """Released reservations must not accumulate into a phantom spend ceiling."""
+    client, _calls, tracker = cloud_client
+    monkeypatch.setattr(settings, "monthly_spend_cap_usd", 1.0)
+    monkeypatch.setattr(settings, "per_task_spend_cap_usd", 0.0)
+
+    from life_graph.services import llm_client as llm_client_module
+
+    class ExplodingResilient:
+        async def chat(self, messages, **kwargs):
+            raise RuntimeError("provider down")
+
+    monkeypatch.setattr(llm_client_module, "get_resilient_llm", lambda: ExplodingResilient())
+    for _ in range(50):
+        assert await client.chat(_msgs("a" * 4000)) == "local reply"
+
+    assert tracker.reserved_total() == 0.0
+    # The budget is untouched, so a real cloud call is still allowed.
+    tracker.reserve(GPT_4O_MINI, 0.9)
