@@ -370,3 +370,18 @@ A feature is not done merely because its schema, API endpoint or service exists.
 
 **Primary roadmap:** `docs/LIFE_GRAPH_EVOLUTION_ROADMAP.md`  
 **First action:** Verify and fix P0-S1 tenant isolation in `life_graph/api/procedures.py`, add regression tests, and report the result before moving to evidence lineage.
+
+
+---
+
+## 9. Verified Execution Status (P0-S1, P0.1–P0.6)
+
+| Workstream | Status | Key Implementation | Verification |
+|---|---|---|---|
+| **P0-S1** | Completed & Merged (PR #227) | `life_graph/core/tenant.py` (`get_scoped`), `life_graph/api/procedures.py` (`_load_procedure`, `create_procedure` tenant scoping) | `tests/unit/test_procedure_tenant_isolation.py`, `tests/unit/test_tenant_scoping.py` |
+| **P0.1** | Completed | `life_graph/core/evidence.py` (`normalize_lineage`, `resolve_memory_lineage`, `extract_claim_evidence`), `life_graph/storage/postgres.py`, `life_graph/services/synthesis.py`, `life_graph/api/search.py` (`claim_evidence`) | `tests/unit/test_evidence_lineage.py` |
+| **P0.2** | Completed | `life_graph/services/memory_retrieval.py` (`is_bitemporally_valid`, `recorded_as_of` across all retrieval branches), `life_graph/api/search.py` (`AskRequest.recorded_as_of`, `AskResponse.recorded_as_of`) | `tests/unit/test_bitemporal_abstention.py`, `tests/unit/test_memory_retrieval.py` |
+| **P0.3** | Completed | `life_graph/core/evidence.py` (`decompose_memory_confidence`, `evaluate_confidence_calibration`, per-claim `confidence_breakdown` & `claim_uncertainty` in `extract_claim_evidence`) | `tests/unit/test_confidence_calibration.py` |
+| **P0.4** | Completed | `life_graph/services/memory_retrieval.py` (`provenance_score`, `provenance_tiebreak_order` with 2% near-tie band, `explain_retrieval_selection`) | `tests/unit/test_provenance_retrieval.py`, `scripts/eval_memory_recall.py --tenant raja --set live --methods recall` (`hit@1=0.692`, `abstained=15/15`) |
+| **P0.5** | Completed | `life_graph/services/judgment.py` (`trace_causal_chain`, `get_causal_chain`), `life_graph/services/outcome_resolver.py` (`record_evidence_backed_outcome`, `evidence_backed` tagging) | `tests/unit/test_causal_memory.py` |
+| **P0.6** | Completed | `life_graph/services/episodes.py` (`link_experience_to_decision`), `life_graph/api/procedures.py` (`build_procedure_candidate`, `verify_procedure_candidate`, `can_auto_execute_side_effects`) | `tests/unit/test_episodic_procedural_learning.py` |
