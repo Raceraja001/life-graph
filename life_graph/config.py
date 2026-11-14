@@ -760,6 +760,14 @@ class Settings(BaseSettings):
     invoice_seller_name: str = ""  # shown on invoices and signed under emails
     invoice_seller_details: str = ""  # address, tax id… separated by "|"
 
+    # ── Vault (services/vault.py — secrets the agent fills in) ──────────────
+    # The key that encrypts vault_secrets. Urlsafe-base64 or hex, 32 bytes.
+    # Never in git: set LIFE_GRAPH_VAULT_KEY, or leave empty and a key is
+    # generated once into vault_key_file (mode 600) so a self-host works out
+    # of the box. Losing the key loses the secrets — nothing can decrypt them.
+    vault_key: str = ""
+    vault_key_file: str = "~/.config/life-graph/vault.key"
+
     # ── Startup Seeding ─────────────────────────────────
     # Which tenants get the built-in personas, ambient jobs and safety rules at
     # startup. This was the literal "default" in three places, so every other

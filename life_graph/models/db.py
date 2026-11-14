@@ -68,6 +68,7 @@ from life_graph.models.tenancy import (
     TenantUsage,
     TenantWebhook,
 )
+from life_graph.models.vault import VaultSecret
 
 __all__ = [
     "Base",
@@ -119,6 +120,7 @@ __all__ = [
     "Prediction",
     "CalibrationSnapshot",
     "Challenge",
+    "VaultSecret",
 ]
 
 # NOTE: The Era-8 autonomy models (AutoAction, ApprovalQueueEntry, AuditLogEntry,

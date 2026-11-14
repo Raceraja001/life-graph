@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-13 08:31 UTC` from `master` @ `0e3c8f5`
+Generated `2026-11-14 06:21 UTC` from `feat/nod-phase2-vault` @ `cdde78f`
 
 ---
 
@@ -17,16 +17,16 @@ Generated `2026-11-13 08:31 UTC` from `master` @ `0e3c8f5`
 | | |
 |---|---|
 | HTTP operations | **65** across 56 paths, 14 tags |
-| Database tables | **68** |
-| Migrations | **57** (head: `057_entity_aliases`) |
+| Database tables | **69** |
+| Migrations | **58** (head: `058_vault_secrets`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **34** |
-| Config settings | **278** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4078** in 473 files |
+| Config settings | **280** (prefix `LIFE_GRAPH_`) |
+| Test functions | **4179** in 483 files |
 | Dashboard pages | **22** |
-| Python | 450 files, 117,606 lines |
+| Python | 453 files, 119,311 lines |
 
 ---
 
@@ -173,7 +173,7 @@ Generated `2026-11-13 08:31 UTC` from `master` @ `0e3c8f5`
 
 ## Database tables
 
-68 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+69 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -237,6 +237,7 @@ Generated `2026-11-13 08:31 UTC` from `master` @ `0e3c8f5`
 | `tenant_usage` | 7 | ✓ | `003_multi_tenancy` |
 | `tenant_webhooks` | 9 | ✓ | `004_webhooks_tenants_dedup` |
 | `trust_scores` | 22 | ✓ | `018_autonomous_ai` |
+| `vault_secrets` | 14 | ✓ | `058_vault_secrets` |
 | `watch_configs` | 13 | ✓ | `016_ambient_ai` |
 | `watch_events` | 11 | ✓ | `016_ambient_ai` |
 | `watcher_notifications` | 15 | ✓ | `016_ambient_ai` |
@@ -504,9 +505,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-57 revisions, head `057_entity_aliases`.
+58 revisions, head `058_vault_secrets`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets`
 
 ---
 
@@ -516,16 +517,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 358 | 3241 |
+| `tests/unit/` | 368 | 3342 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **473** | **4078** |
+| **total** | **483** | **4179** |
 
 ---
 
 ## Configuration
 
-278 settings, all overridable by environment variable.
+280 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -805,5 +806,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_TTS_FORMAT` | `'mp3'` |
 | `LIFE_GRAPH_INVOICE_SELLER_NAME` | `''` |
 | `LIFE_GRAPH_INVOICE_SELLER_DETAILS` | `''` |
+| `LIFE_GRAPH_VAULT_KEY` | `''` |
+| `LIFE_GRAPH_VAULT_KEY_FILE` | `'~/.config/life-graph/vault.key'` |
 | `LIFE_GRAPH_SEED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_PLAN_LIMITS` | `{'free': {'requests_per_min': 60, 'max_memories': 1000, '…` |
