@@ -68,12 +68,21 @@ def invalidate(tenant_id: str) -> None:
 
 
 def belongs(m: Any, now: datetime) -> bool:
-    """True when *m* is a lasting fact the owner said or a document states."""
+    """True when *m* is a lasting fact the owner said or a document states.
+
+    The card is the one block in front of every answer, so the
+    learn-only-from-owner boundary is enforced here with the single gate every
+    such caller uses (``evidence.may_state_as_owner_truth``): a page an agent
+    read, an email or an external MCP write never becomes who the owner is on
+    its own, whatever it labels itself as, and only the owner's own
+    confirmation lets such a memory in.
+    """
     props = getattr(m, "properties", None) or {}
     if props.get("kind") == "episode":
         return False
-    kind = ev.evidence_of(getattr(m, "source_type", None), getattr(m, "trust_tier", None), props)
-    if kind not in (ev.SAID, ev.DOCUMENT):
+    if not ev.may_state_as_owner_truth(
+        getattr(m, "source_type", None), getattr(m, "trust_tier", None), props
+    ):
         return False
     until = getattr(m, "valid_until", None)
     if until is not None and until <= now:

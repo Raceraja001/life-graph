@@ -12,6 +12,14 @@ a JSON snapshot (overwritten each run) — a durable, reprocessable backup.
 The marker is advanced on every run (even a no-op) so the idle cron cannot
 re-enqueue the same conversation forever; a new chat message bumps
 ``updated_at`` and re-makes it eligible.
+
+Only the owner's own words are distilled. A user turn can carry text the
+owner shared from another app or a page an agent read, fenced as data
+(core/trust.py ``with_shared`` / ``fence_untrusted``); Jarvis reads it as
+information, and :func:`owner_words` takes it out before extraction so it
+cannot cross into memory as the owner's word and reach the always-loaded
+profile card (core/evidence.py, learn-only-from-owner). A turn that was
+nothing but shared text distils nothing.
 """
 
 from __future__ import annotations
@@ -25,7 +33,7 @@ from sqlalchemy import select
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.core.trust import classify_surface
+from life_graph.core.trust import classify_surface, strip_fenced
 from life_graph.models.db import Conversation, ConversationMessage, _utcnow
 from life_graph.models.schemas import MemoryUpdate
 from life_graph.services.conversation import ConversationNotFoundError
@@ -57,6 +65,22 @@ def build_snapshot(conv: Any, messages: list[Any], distilled_memory_ids: list[uu
         "distilled_memory_ids": [str(m) for m in distilled_memory_ids],
     }
     return json.dumps(doc, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def owner_words(turns: list[Any]) -> tuple[str, int]:
+    """``(the owner's own words from *turns*, how many carried outside text)``.
+
+    The fenced blocks are dropped turn by turn, so a turn that mixed a
+    question with a pasted email still contributes the question.
+    """
+    kept: list[str] = []
+    fenced = 0
+    for turn in turns:
+        text, removed = strip_fenced(getattr(turn, "content", None))
+        fenced += 1 if removed else 0
+        if text:
+            kept.append(text)
+    return "\n".join(kept), fenced
 
 
 class ConversationDistiller:
@@ -102,7 +126,21 @@ class ConversationDistiller:
                 return {"new_facts": 0, "archived": False, "skipped": True}
 
             # Tier 1: extract new facts (pending, deduped) with provenance.
-            text = "\n".join(t.content for t in new_user_turns)
+            # The owner's own words only — never the text a turn quoted.
+            text, fenced_turns = owner_words(new_user_turns)
+            if fenced_turns:
+                logger.info(
+                    "Distilling conversation %s: outside text dropped from %d of %d turns",
+                    conversation_id,
+                    fenced_turns,
+                    len(new_user_turns),
+                )
+            if not text.strip():
+                # Every new turn was shared text: there is nothing the owner
+                # said to learn from, and the marker still advances.
+                conv.last_distilled_at = _utcnow()
+                await session.commit()
+                return {"new_facts": 0, "archived": False, "skipped": True}
             memories = await self._manager.ingest(
                 text,
                 context={"conversation_id": str(conversation_id)},

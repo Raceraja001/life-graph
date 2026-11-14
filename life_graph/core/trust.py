@@ -210,3 +210,38 @@ def with_shared(message: str, shared: str | None) -> str:
         return message
     body = _SHARED_TAG.sub("[shared]", shared)
     return f"{message}\n\n{SHARED_PREAMBLE}\n<shared>\n{body}\n</shared>"
+
+
+#: Either fence name, spelt as tolerantly as ``_SHARED_TAG`` reads a tag
+#: dressed up to look like text (spaces, invisible characters).
+_FENCE_NAME = r"(?:" + _GAP.join("shared") + r"|" + _GAP.join("untrusted") + r")"
+#: The tag's tail: an attribute, a self-closing slash, a fullwidth bracket.
+_TAG_TAIL = r"(?![a-z0-9_])[^<>＜＞﹤﹥\n]{0,40}[>＞﹥]"
+#: An opened fence and everything up to its closing tag: the shared or
+#: untrusted block itself. An opening with no close takes the rest of the
+#: text — outside content that forgets to close its fence is still outside
+#: content.
+_FENCED_BLOCK = re.compile(
+    rf"[<＜﹤]{_GAP}{_FENCE_NAME}{_TAG_TAIL}"
+    rf".*?(?:[<＜﹤]{_GAP}[/／]{_GAP}{_FENCE_NAME}{_TAG_TAIL}|\Z)",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def strip_fenced(text: str | None) -> tuple[str, bool]:
+    """``(the owner's own words, outside text was removed)``.
+
+    A turn can carry both: what the owner typed, then a fenced block of text
+    they shared from another app or a page an agent read
+    (:func:`with_shared`, :func:`fence_untrusted`). Anything that learns from
+    a turn must learn from the first part only — the fence says someone else
+    wrote the rest, and that does not stop being true because the text is on
+    its way into memory (core/evidence.py, learn-only-from-owner).
+    """
+    if not text or not text.strip():
+        return "", False
+    stripped = _FENCED_BLOCK.sub(" ", text)
+    for preamble in (SHARED_PREAMBLE, UNTRUSTED_PREAMBLE):
+        stripped = stripped.replace(preamble, " ")
+    removed = stripped != text
+    return "\n".join(line for line in (ln.strip() for ln in stripped.splitlines()) if line), removed

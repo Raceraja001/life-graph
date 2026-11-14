@@ -14,16 +14,24 @@ API, and the real guesses (failure_mining) carried the same label.
 Pure policy: no DB, no I/O. ``evidence_of`` is computed at write time
 (PostgresMemoryStore.store puts it in ``properties["evidence"]``) and on read
 for rows written before that.
+
+The owner boundary (2026-11-14). The stamp is server-side provenance, but
+``PATCH /memories/{id}`` takes a whole ``properties`` object from the caller,
+so an MCP client or a watcher could send ``{"evidence": "said"}`` and have its
+own page text read back as the owner's word on the always-loaded profile card
+(services/profile_card.py). So a stamp is now only honoured when it is no
+stronger than what the row's own ``source_type`` and ``trust_tier`` derive
+(:func:`derive_evidence`): a stamp may be more careful than the provenance,
+never more confident. :func:`may_state_as_owner_truth` is the one gate every
+"is this the owner's own fact?" caller asks, and OUTSIDE content passes it
+only after the owner said so themselves (:func:`confirm_from_owner`).
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any
 
 SAID = "said"  # the owner's own words, through a first-party surface
 DOCUMENT = "document"  # read from one of the owner's documents
@@ -51,16 +59,30 @@ INFERRED_SOURCES = frozenset(
 UNKNOWN_SOURCE = "unknown"
 
 
-def evidence_of(
+#: How much a kind lets Jarvis claim, highest first. Used to refuse a stamp
+#: that claims more than the row's own provenance earns (see the module note).
+AUTHORITY = {SAID: 4, DOCUMENT: 4, OBSERVED: 3, SUMMARY: 2, INFERRED: 1, OUTSIDE: 0}
+
+#: The kinds that are the owner's own account of their life. The profile card
+#: and the owner's form are built from these and nothing else.
+OWNER_KINDS = frozenset({SAID, DOCUMENT})
+
+#: ``properties`` keys that are server-side provenance: a caller that could
+#: write them could promote its own text to the owner's word. Kept out of
+#: every client-supplied patch (:func:`merge_client_properties`).
+SERVER_ONLY_PROPS = ("evidence", "owner_confirmed", "lineage")
+
+#: Where in ``properties`` an explicit owner confirmation is recorded.
+OWNER_CONFIRMED = "owner_confirmed"
+
+
+def derive_evidence(
     source_type: str | None,
     trust_tier: str | None,
     properties: Mapping[str, Any] | None = None,
 ) -> str:
-    """The evidence kind of a memory, from what its row already records."""
+    """The evidence kind the row's own provenance earns, ignoring any stamp."""
     props = properties or {}
-    stamped = props.get("evidence")
-    if stamped in KINDS:
-        return stamped
     source = (source_type or "").lower()
     if props.get("kind") == "episode" or source == "episode":
         return SUMMARY
@@ -82,6 +104,108 @@ def evidence_of(
     if trust_tier == "verified":
         return OBSERVED
     return OUTSIDE
+
+
+def evidence_of(
+    source_type: str | None,
+    trust_tier: str | None,
+    properties: Mapping[str, Any] | None = None,
+) -> str:
+    """The evidence kind of a memory, from what its row already records.
+
+    A stamped ``properties["evidence"]`` is honoured only while it claims no
+    more than :func:`derive_evidence` does from the row's own provenance: the
+    stamp is written server-side at store time, but ``properties`` as a whole
+    is patchable by whoever can call the API, and "said" is the one label that
+    puts a memory in front of every answer.
+    """
+    props = properties or {}
+    derived = derive_evidence(source_type, trust_tier, props)
+    stamped = props.get("evidence")
+    if stamped in KINDS and AUTHORITY[stamped] <= AUTHORITY[derived]:
+        return stamped
+    return derived
+
+
+def owner_confirmed(properties: Mapping[str, Any] | None = None) -> bool:
+    """True when the owner themselves kept this memory (:func:`confirm_from_owner`).
+
+    Only the server's own record counts — a mapping naming who confirmed and
+    when. A bare ``True`` is not a confirmation: it is the shape a client
+    would guess at, and the mark exists to say *who* decided.
+    """
+    mark = (properties or {}).get(OWNER_CONFIRMED)
+    return isinstance(mark, Mapping) and bool(mark.get("by"))
+
+
+def confirm_from_owner(
+    properties: Mapping[str, Any] | None = None,
+    *,
+    by: str,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """*properties* with the owner's explicit confirmation recorded.
+
+    Only the server calls this, from the path where a person acted (approving
+    a pending memory): it is what lets outside-origin content be stated as
+    true. ``by`` is who confirmed, so a wrong card entry can be traced back.
+    """
+    if not by or not str(by).strip():
+        raise ValueError("owner confirmation needs who confirmed it")
+    when = at or datetime.now(UTC)
+    return {
+        **dict(properties or {}),
+        OWNER_CONFIRMED: {"by": str(by).strip()[:120], "at": when.isoformat()},
+    }
+
+
+def may_state_as_owner_truth(
+    source_type: str | None,
+    trust_tier: str | None,
+    properties: Mapping[str, Any] | None = None,
+) -> bool:
+    """True when a memory may be stated as the owner's own, lasting fact.
+
+    The learn-only-from-owner boundary. A web page, an email or an external
+    MCP write is content Jarvis *read*, not something the owner told it, so it
+    never becomes who the owner is on its own — however the text labels
+    itself. The owner can still keep such a memory by hand
+    (:func:`confirm_from_owner`); that decision is theirs, not the page's.
+    """
+    props = properties or {}
+    from life_graph.core.trust import is_excluded_from_agents, is_untrusted
+
+    if is_excluded_from_agents(trust_tier):
+        # Written by someone else outright (a forwarded message): trust.py
+        # keeps it out of every acting agent's packet, so it certainly does
+        # not become who the owner is. Not even the owner's own confirmation
+        # moves this one — they can retype the fact instead.
+        return False
+    if owner_confirmed(props):
+        return True
+    if is_untrusted(trust_tier):
+        # Second gate, independent of the stamp: an untrusted-origin row is
+        # not the owner's word even if its derived kind somehow says so.
+        return False
+    return evidence_of(source_type, trust_tier, props) in OWNER_KINDS
+
+
+def merge_client_properties(
+    existing: Mapping[str, Any] | None,
+    incoming: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """*incoming* properties with server-side provenance kept from *existing*.
+
+    A client patching ``properties`` replaces the whole object, which would
+    drop — or forge — the provenance the server stamped at store time. The
+    caller's own keys are taken as given; :data:`SERVER_ONLY_PROPS` are not.
+    """
+    out = dict(incoming or {})
+    for key in SERVER_ONLY_PROPS:
+        out.pop(key, None)
+        if existing and key in existing:
+            out[key] = existing[key]
+    return out
 
 
 def is_guess(evidence: str) -> bool:
@@ -263,11 +387,11 @@ _EVIDENCE_PRIORS = {
 
 def _parse_dt(val: Any) -> datetime | None:
     if isinstance(val, datetime):
-        return val if val.tzinfo is not None else val.replace(tzinfo=timezone.utc)
+        return val if val.tzinfo is not None else val.replace(tzinfo=UTC)
     if isinstance(val, str) and val.strip():
         try:
             dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
-            return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+            return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
         except ValueError:
             return None
     return None
@@ -302,9 +426,9 @@ def decompose_memory_confidence(
     explicit_vs_inferred = "inferred" if is_guess(ev_kind) else "explicit"
     prior = _EVIDENCE_PRIORS.get(ev_kind, 0.65)
 
-    ref_now = now or datetime.now(timezone.utc)
+    ref_now = now or datetime.now(UTC)
     if ref_now.tzinfo is None:
-        ref_now = ref_now.replace(tzinfo=timezone.utc)
+        ref_now = ref_now.replace(tzinfo=UTC)
 
     valid_to = _parse_dt(get("valid_to"))
     if valid_to is not None and valid_to < ref_now:

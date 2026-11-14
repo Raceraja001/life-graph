@@ -12,7 +12,7 @@ import hashlib
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from life_graph.api.dependencies import get_memory_manager, get_recall_engine, get_store
@@ -209,6 +209,20 @@ class BulkApprovalBody(BaseModel):
     reject: list[uuid.UUID] = []
 
 
+class ApproveBody(BaseModel):
+    """Optional extras when keeping a memory.
+
+    ``confirm_as_owner_fact`` is the owner saying, of a memory that came from
+    outside — a page an agent read, an email, an external MCP write — "yes,
+    this is my own fact": the one way such content reaches the always-loaded
+    profile card (core/evidence.py, learn-only-from-owner). It defaults to
+    off, so an ordinary approve keeps a memory usable without ever promoting
+    outside text to the owner's word.
+    """
+
+    confirm_as_owner_fact: bool = False
+
+
 async def _settle_contradictions(memory_id: uuid.UUID, *, approved: bool) -> None:
     """Apply (approve) or close (reject) the memory's deferred supersedes.
 
@@ -262,7 +276,13 @@ async def _learn_names(row: Memory) -> None:
         logger.warning("Name learning failed for approved memory %s", row.id, exc_info=True)
 
 
-async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemoryStore) -> Memory:
+async def _transition(
+    memory_id: uuid.UUID,
+    action: str,
+    store: PostgresMemoryStore,
+    *,
+    confirm_as_owner_fact: bool = False,
+) -> Memory:
     """Move a memory between pending/rejected/active, emitting the matching event.
 
     Idempotent when already in the target status; 404 if missing; 409 if the
@@ -279,7 +299,23 @@ async def _transition(memory_id: uuid.UUID, action: str, store: PostgresMemorySt
             return row  # idempotent
         if row.status not in ("pending", "rejected"):
             raise HTTPException(status_code=409, detail=f"Cannot approve a {row.status} memory")
-        updated = await store.update(memory_id, MemoryUpdate(status="active"))
+        if confirm_as_owner_fact:
+            # The owner read this in the review queue and says it is their own
+            # fact. Stamped server-side (``server_side=True``, never from a
+            # properties patch) so it records who confirmed, and only here:
+            # nothing promotes outside content to the owner's word on its own.
+            from life_graph.core import evidence as ev
+
+            updated = await store.update(
+                memory_id,
+                MemoryUpdate(
+                    status="active",
+                    properties=ev.confirm_from_owner(row.properties or {}, by="owner"),
+                ),
+                server_side=True,
+            )
+        else:
+            updated = await store.update(memory_id, MemoryUpdate(status="active"))
         await _settle_contradictions(memory_id, approved=True)
         await _learn_names(row)
         try:
@@ -351,10 +387,16 @@ async def bulk_approvals(
 )
 async def approve_memory(
     memory_id: uuid.UUID,
+    body: ApproveBody | None = Body(None),
     store: PostgresMemoryStore = Depends(get_store),
 ):
     """Approve a pending (or rejected) memory — it becomes active/usable."""
-    row = await _transition(memory_id, "approve", store)
+    row = await _transition(
+        memory_id,
+        "approve",
+        store,
+        confirm_as_owner_fact=bool(body and body.confirm_as_owner_fact),
+    )
     return success_response(data=MemoryResponse.model_validate(row))
 
 

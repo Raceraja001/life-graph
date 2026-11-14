@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy.orm import defer
 
-from life_graph.core.evidence import UNKNOWN_SOURCE, evidence_of, normalize_lineage
+from life_graph.core.evidence import (
+    UNKNOWN_SOURCE,
+    evidence_of,
+    merge_client_properties,
+    normalize_lineage,
+)
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, coerce_tier
 from life_graph.models.db import CaptureEvent, Memory, MemorySession, Session
@@ -309,8 +314,22 @@ class PostgresMemoryStore:
 
     # ── Update ────────────────────────────────────────────────
 
-    async def update(self, memory_id: uuid.UUID, updates: MemoryUpdate) -> Memory:
+    async def update(
+        self,
+        memory_id: uuid.UUID,
+        updates: MemoryUpdate,
+        *,
+        server_side: bool = False,
+    ) -> Memory:
         """Apply a partial update and return the refreshed instance.
+
+        A ``properties`` patch replaces the whole object, so by default the
+        server-side provenance keys are taken from the row as it stands and
+        not from the patch (``evidence.merge_client_properties``): a caller
+        that could stamp ``{"evidence": "said"}`` on a page it posted would
+        have it read back as the owner's own word (core/evidence.py).
+        ``server_side=True`` is for the paths that *are* the provenance — the
+        owner's own approval — and is never reachable from a request body.
 
         Raises:
             ValueError: If the memory does not exist.
@@ -328,6 +347,8 @@ class PostgresMemoryStore:
                 raise ValueError(f"Memory {memory_id} not found")
 
             patch = updates.model_dump(exclude_unset=True)
+            if "properties" in patch and not server_side:
+                patch["properties"] = merge_client_properties(row.properties, patch["properties"])
             for field, value in patch.items():
                 setattr(row, field, value)
 
