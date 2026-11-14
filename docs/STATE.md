@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-14 06:48 UTC` from `feat/nod-phase3b-browser-errand` @ `7341452`
+Generated `2026-11-14 07:01 UTC` from `feat/nod-phase3b-browser-errand` @ `bc4bd88`
 
 ---
 
@@ -24,9 +24,9 @@ Generated `2026-11-14 06:48 UTC` from `feat/nod-phase3b-browser-errand` @ `73414
 | Agent tools | **14** |
 | Scheduled jobs | **34** |
 | Config settings | **284** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4282** in 486 files |
+| Test functions | **4331** in 487 files |
 | Dashboard pages | **22** |
-| Python | 456 files, 121,301 lines |
+| Python | 456 files, 121,884 lines |
 
 ---
 
@@ -517,10 +517,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 371 | 3445 |
+| `tests/unit/` | 372 | 3494 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **486** | **4282** |
+| **total** | **487** | **4331** |
 
 ---
 

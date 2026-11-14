@@ -1,0 +1,66 @@
+# syntax=docker/dockerfile:1
+# ── NOD sandbox image: headless Chromium ─────────────────────
+# One half of the errand sandbox chassis (compose.sandbox.yaml,
+# life_graph/services/sandbox.py). A browser errand drives a page the owner
+# did not write, so the browser never runs on the host and never runs beside
+# the application's credentials: it runs here, as a non-root user, on an
+# internal-only network, with no host path mounted in.
+#
+# The base image already carries Chromium and its system libraries under
+# /ms-playwright, owned by root, so errand code running as pwuser cannot
+# rewrite the binary it is driving. It carries no Python client, so the
+# matching one is installed below.
+#
+# Build:  docker build -t life-graph-sandbox-browser:dev -f Dockerfile.browser .
+#         (or: docker compose -f compose.sandbox.yaml build browser)
+FROM mcr.microsoft.com/playwright/python:v1.52.0-noble
+
+# The client version MUST equal the image tag above: the browser bundles
+# baked into the image are the ones that release expects, and a mismatch
+# makes Playwright go looking for a revision that is not there.
+ARG PLAYWRIGHT_VERSION=1.52.0
+
+# HOME is a tmpfs at run time (the root filesystem is read-only): Chromium
+# insists on a writable profile and crash-handler directory.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HOME=/tmp \
+    SANDBOX_ROLE=browser \
+    SANDBOX_BROWSER_PORT=9222
+
+# --break-system-packages: this is a single-purpose container, there is no
+# other Python application in it to break. No browser download follows the
+# install — PLAYWRIGHT_BROWSERS_PATH already points at the baked-in bundles.
+RUN pip install --no-cache-dir --break-system-packages \
+        "playwright==${PLAYWRIGHT_VERSION}"
+
+# Nothing else is installed on purpose: no Life Graph source, no API client,
+# no credential helper. The only thing reachable from inside this container
+# is a browser, and it is driven from outside.
+
+# Playwright's own browser server rather than Chromium's DevTools port.
+# Chromium binds --remote-debugging-port to loopback regardless of
+# --remote-debugging-address (verified on this image's chromium-1169, both
+# chrome and headless_shell), so a DevTools endpoint would need a relay in
+# front of it and would then be refused for sending a non-IP Host header.
+# The browser server has neither problem: it binds where it is told and
+# speaks Playwright's own protocol over a websocket, which a client reaches
+# with `chromium.connect("ws://browser:9222/")`.
+#
+# The port is only reachable on the internal compose network; nothing is
+# published to the host. A browser control endpoint is remote code execution
+# on the browser, so it is treated like one.
+CMD ["sh", "-c", "exec python3 -m playwright run-server --host 0.0.0.0 --port ${SANDBOX_BROWSER_PORT}"]
+
+# A websocket endpoint, so this checks that the port accepts a connection
+# rather than trying to speak HTTP to it.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+    CMD python3 -c "import os,socket;socket.create_connection(('127.0.0.1',int(os.environ['SANDBOX_BROWSER_PORT'])),timeout=3).close()" || exit 1
+
+# pwuser (uid 1000) ships with the base image and owns nothing under
+# /ms-playwright. Never root: compose pins `user:` explicitly as well, so an
+# image rebuild that lost this line still could not run privileged.
+USER pwuser
+WORKDIR /tmp
+EXPOSE 9222
