@@ -15,9 +15,10 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.api.responses import success_response
-from life_graph.core.tenant import get_current_tenant_id
+from life_graph.core.tenant import get_current_tenant_id, get_scoped
 from life_graph.models.db import Procedure
 from life_graph.models.schemas import ProcedureCreate, ProcedureResponse, ProcedureUpdate
 from life_graph.storage.database import async_session
@@ -25,6 +26,20 @@ from life_graph.storage.database import async_session
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/procedures", tags=["procedures"])
+
+
+async def _load_procedure(db: AsyncSession, procedure_id: uuid.UUID) -> Procedure:
+    """The current tenant's procedure; another tenant's id reads as a 404."""
+    try:
+        proc = await get_scoped(db, Procedure, procedure_id)
+    except LookupError:
+        proc = None
+    if proc is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Procedure {procedure_id} not found",
+        )
+    return proc
 
 
 # ── CRUD ──────────────────────────────────────────────────────
@@ -41,6 +56,7 @@ async def create_procedure(body: ProcedureCreate):
     Stores a trigger condition, ordered steps, and optional metadata.
     """
     proc = Procedure(
+        tenant_id=get_current_tenant_id(),
         trigger=body.trigger,
         steps=body.steps,
         description=body.description,
@@ -94,12 +110,7 @@ async def list_procedures(
 async def get_procedure(procedure_id: uuid.UUID):
     """Retrieve a single procedure."""
     async with async_session() as db:
-        proc = await db.get(Procedure, procedure_id)
-        if proc is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Procedure {procedure_id} not found",
-            )
+        proc = await _load_procedure(db, procedure_id)
     return success_response(data=ProcedureResponse.model_validate(proc))
 
 
@@ -122,12 +133,7 @@ async def update_procedure(procedure_id: uuid.UUID, body: ProcedureUpdate):
         )
 
     async with async_session() as db:
-        proc = await db.get(Procedure, procedure_id)
-        if proc is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Procedure {procedure_id} not found",
-            )
+        proc = await _load_procedure(db, procedure_id)
         for k, v in updates.items():
             setattr(proc, k, v)
         await db.commit()
@@ -144,12 +150,7 @@ async def update_procedure(procedure_id: uuid.UUID, body: ProcedureUpdate):
 async def delete_procedure(procedure_id: uuid.UUID):
     """Soft-delete a procedure by setting status to 'archived'."""
     async with async_session() as db:
-        proc = await db.get(Procedure, procedure_id)
-        if proc is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Procedure {procedure_id} not found",
-            )
+        proc = await _load_procedure(db, procedure_id)
         proc.status = "archived"
         await db.commit()
 
@@ -174,12 +175,7 @@ async def apply_procedure(
     Recalculates confidence based on success rate.
     """
     async with async_session() as db:
-        proc = await db.get(Procedure, procedure_id)
-        if proc is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Procedure {procedure_id} not found",
-            )
+        proc = await _load_procedure(db, procedure_id)
         proc.times_applied += 1
         if success:
             proc.success_count += 1

@@ -10,10 +10,14 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+T = TypeVar("T")
 
 # ── Context Variables ──────────────────────────────────
 # Set per-request by TenantMiddleware, read by storage layer.
@@ -94,3 +98,30 @@ def has_tenant_context() -> bool:
         return True
     except LookupError:
         return False
+
+
+async def get_scoped(
+    session: AsyncSession, model: type[T], pk: Any, tenant_id: str | None = None
+) -> T | None:
+    """``session.get`` that refuses another tenant's row.
+
+    ``session.get`` looks up by primary key alone, so it never filters by
+    tenant. Pass ``tenant_id`` explicitly where there is no tenant context
+    (crons, the dispatcher); otherwise the current tenant is expected.
+
+    Returns:
+        The record, or None if no row has this key. Models without a
+        ``tenant_id`` column are returned unchecked.
+
+    Raises:
+        LookupError: The row belongs to another tenant. The message matches a
+            missing row, so callers can report both the same way.
+        RuntimeError: No ``tenant_id`` was given and no tenant context is set.
+    """
+    record = await session.get(model, pk)
+    if record is None or not hasattr(model, "tenant_id"):
+        return record
+    expected = tenant_id if tenant_id is not None else get_current_tenant_id()
+    if record.tenant_id != expected:
+        raise LookupError(f"{model.__name__} {pk} not found")
+    return record
