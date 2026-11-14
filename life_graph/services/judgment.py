@@ -82,6 +82,67 @@ def detect_big_decision(title: str | None, reasoning: str | None = None) -> tupl
     return bool(matched), matched
 
 
+
+
+def trace_causal_chain(
+    decision: Any,
+    predictions: list[Any] | None = None,
+    *,
+    memories: list[Any] | None = None,
+) -> dict[str, Any]:
+    """Build an inspectable causal chain connecting a decision, its predictions, outcomes, and evidence."""
+    from life_graph.core.evidence import evidence_of
+
+    source = str(getattr(decision, "source", "") or "").lower()
+    rationale_origin = "user_stated" if source in ("explicit", "conversation", "user") else "model_inferred"
+
+    pred_rows: list[dict[str, Any]] = []
+    for p in predictions or []:
+        ev = getattr(p, "resolution_evidence", None) or {}
+        pred_rows.append(
+            {
+                "prediction_id": str(getattr(p, "id", "")),
+                "statement": getattr(p, "statement", ""),
+                "confidence": getattr(p, "confidence", None),
+                "outcome": getattr(p, "outcome", "pending"),
+                "resolution_source": getattr(p, "resolution_source", None),
+                "resolution_evidence": ev,
+                "evidence_backed": bool(ev and (ev.get("evidence_backed", True) if isinstance(ev, dict) else True)),
+                "resolved_at": getattr(p, "resolved_at", None).isoformat() if getattr(p, "resolved_at", None) else None,
+            }
+        )
+
+    mem_rows: list[dict[str, Any]] = []
+    for m in memories or []:
+        props = getattr(m, "properties", None) or {}
+        mem_rows.append(
+            {
+                "memory_id": str(getattr(m, "id", "")),
+                "content": getattr(m, "content", ""),
+                "evidence_kind": evidence_of(
+                    getattr(m, "source_type", None),
+                    getattr(m, "trust_tier", None),
+                    props if isinstance(props, dict) else {},
+                ),
+            }
+        )
+
+    return {
+        "decision_id": str(getattr(decision, "id", "")),
+        "title": getattr(decision, "title", ""),
+        "status": getattr(decision, "status", ""),
+        "rationale_origin": rationale_origin,
+        "reasoning": getattr(decision, "reasoning", None),
+        "chosen_option": getattr(decision, "chosen_option", None),
+        "capture_event_id": str(getattr(decision, "capture_event_id", "")) if getattr(decision, "capture_event_id", None) else None,
+        "predictions": pred_rows,
+        "supporting_memories": mem_rows,
+        "has_evidence_backed_outcome": any(
+            r["outcome"] != "pending" and r["evidence_backed"] for r in pred_rows
+        ),
+    }
+
+
 class JudgmentService:
     """Core service for decisions and predictions.
 
@@ -426,6 +487,18 @@ class JudgmentService:
             stmt = stmt.where(Prediction.resolve_by <= due_before)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_causal_chain(
+        self,
+        tenant_id: str,
+        decision_id: uuid.UUID,
+        *,
+        memories: list[Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return the full causal chain for a decision, its predictions, and resolved outcomes."""
+        decision = await self.get_decision(tenant_id, decision_id)
+        preds = await self.get_predictions_for_decision(tenant_id, decision_id)
+        return trace_causal_chain(decision, preds, memories=memories)
 
     async def get_predictions_for_decision(
         self,
