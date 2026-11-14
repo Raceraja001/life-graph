@@ -364,3 +364,25 @@ async def episodes_between(tenant_id: str, start: date, end: date, limit: int = 
             .all()
         )
     return list(rows)
+
+
+def link_experience_to_decision(
+    episode_props: dict[str, Any],
+    *,
+    decision_id: str,
+    decision_title: str | None = None,
+    outcome: str | None = None,
+    max_links: int = 5,
+) -> dict[str, Any]:
+    """Attach a bounded decision-outcome link to an episode properties dict."""
+    props = dict(episode_props or {})
+    links = list(props.get("decision_links") or [])
+    entry = {
+        "decision_id": str(decision_id),
+        "decision_title": (decision_title or "")[:120],
+        "outcome": outcome or "pending",
+    }
+    links = [l for l in links if l.get("decision_id") != entry["decision_id"]]
+    links.append(entry)
+    props["decision_links"] = links[-max(1, max_links) :]
+    return props
