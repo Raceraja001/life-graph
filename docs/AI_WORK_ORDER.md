@@ -424,7 +424,7 @@ Remaining risks / blockers:
   - 26 pre-existing unit-test failures in this working tree remain
     unaddressed; they are environmental and predate this work.
 
-Commit(s) pushed: none yet. Committed locally as b597fa2b73db on
+Commit(s) pushed: 3ab59b9 (PR #243 merged to origin/master; working commits b597fa2, 5e2c803)
   feat/work-order-p0-p1; pushing is held for the owner, who has not been
   asked for it in this session.
 ```
