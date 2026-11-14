@@ -27,6 +27,16 @@ whoever writes the next driver:
 3. **What comes back is untrusted input.** Page text is wrapped by
    :func:`~life_graph.core.trust.fence_untrusted` before it is returned, so
    the model reads it as data behind a labelled fence.
+4. **Where it is going is untrusted too.** A ``navigate`` step's URL is judged
+   by :mod:`~life_graph.services.destination_validator` before any driver sees
+   it, so ``file:///etc/passwd``, ``javascript:`` and
+   ``http://169.254.169.254/`` are refused here rather than opened by the
+   browser and handed back as page text.
+5. **The page can move while a step is being authorised.** Every verdict —
+   and the vault's origin check — rests on an origin read a moment earlier. So
+   an interactive step re-reads :meth:`BrowserDriver.current_origin` at the
+   instant it acts, and a page that redirected in between ends the errand
+   instead of receiving a click or a password meant for somewhere else.
 
 The browser itself is behind the :class:`BrowserDriver` ``Protocol`` — five
 methods, no Playwright import — so the policy, the vault handling and the
@@ -44,6 +54,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -62,6 +73,12 @@ from life_graph.autonomy.approvals import (
 from life_graph.autonomy.approvals.policy_checker import OWNER_ORIGINS, PARAM_CHARS
 from life_graph.core.trust import fence_untrusted
 from life_graph.services import vault
+from life_graph.services.destination_validator import (
+    Destination,
+    DestinationRefusedError,
+    resolve_destination_async,
+    split_destination,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -117,6 +134,42 @@ MAX_PAGE_CHARS = 6000
 #: Stands in for a secret anywhere a string is emitted. Belt and braces: the
 #: plaintext is not put into these strings in the first place.
 REDACTED = "[redacted]"
+
+#: Most steps one errand may carry. A plan is written by a model, and a model
+#: that has read a page telling it to "keep clicking Next until it works" can
+#: write a very long one. Fifty is far more than a login-and-download errand
+#: needs and far less than a loop; an errand over the limit is refused whole,
+#: before the browser is touched, rather than trimmed — a plan whose tail was
+#: silently dropped is not the plan that was judged.
+MAX_ERRAND_STEPS = 50
+
+#: The refusal an over-long errand gets. A fixed phrase, like every other
+#: ``detail`` here.
+STEP_LIMIT_REFUSED = "maximum step limit exceeded"
+
+#: Longest a selector or field name may be, matching ``structured_params``.
+SELECTOR_CHARS = PARAM_CHARS
+
+#: Characters a selector may not contain. A NUL truncates in anything with a C
+#: string underneath it, and a newline or a line separator is how one value
+#: becomes two in a protocol that is line-delimited — which the CDP and
+#: Playwright wire formats are not, but the drivers in between keep logs.
+_FORBIDDEN_SELECTOR_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+
+#: Markers that mean the "selector" is a payload. A selector names an element;
+#: a driver that evaluates what it is handed (a CDP ``Runtime.evaluate``, a
+#: Playwright ``page.$eval``) turns one of these into code running on the
+#: page, with the errand's own session.
+_SELECTOR_PAYLOAD_MARKERS = (
+    "javascript:",
+    "vbscript:",
+    "data:text/html",
+    "<script",
+    "</script",
+    "onerror=",
+    "onload=",
+    "expression(",
+)
 
 
 # ── Step outcomes ────────────────────────────────────────────────────────
@@ -358,6 +411,59 @@ def _short(value: Any, limit: int = PARAM_CHARS) -> Any:
     return value
 
 
+def _check_selector(value: str | None, what: str) -> None:
+    """Refuse anything that is not plausibly a selector.
+
+    A selector arrives in a plan a model wrote, often after reading a page, so
+    it is attacker-influenced text that a driver will act on. What it is
+    *allowed* to be is narrow — an element on a page has a name, and the name
+    has no NULs, no newlines and no ``<script>`` in it — so it is checked
+    against that rather than against a list of attacks.
+
+    The refusal does not quote the value: it is already in the step's audit
+    record, bounded, and a refusal message is read by a model.
+    """
+    raw = value or ""
+    # Before stripping: ``str.strip`` removes U+2028 and friends, so a trailing
+    # line separator would be tidied away rather than noticed.
+    if _FORBIDDEN_SELECTOR_CHARS.search(raw):
+        raise StepRefusedError(f"unsafe {what}: control characters")
+    text = raw.strip()
+    if not text:
+        raise StepRefusedError(f"a step with no {what} has nothing to act on")
+    if len(text) > SELECTOR_CHARS:
+        raise StepRefusedError(f"unsafe {what}: longer than {SELECTOR_CHARS} characters")
+    lowered = text.lower()
+    if any(marker in lowered for marker in _SELECTOR_PAYLOAD_MARKERS):
+        raise StepRefusedError(f"unsafe {what}: reads as script, not as a selector")
+
+
+def _check_step_shape(kind: str, step: BrowserStep) -> Destination | None:
+    """Refuse a step whose own fields are malformed, before it is judged.
+
+    Everything here is decidable from the step alone and costs nothing — no
+    database, no DNS, no driver — so it happens first: a step that could never
+    run should not produce a policy verdict, a lookup or an audit record
+    claiming it was allowed.
+
+    Returns the parsed destination for a ``navigate``, which is both what the
+    step is judged against and what the driver is eventually handed, so the
+    origin the policy saw and the URL that is opened come from one parse.
+    """
+    if kind == CLICK:
+        _check_selector(step.selector, "selector")
+    elif kind == FILL_FIELD:
+        _check_selector(step.field, "field")
+    elif kind == NAVIGATE:
+        # Structure only — the scheme, the authority and an address written as
+        # an address. Resolving the name waits until the step is allowed.
+        try:
+            return split_destination(str(step.url or ""))
+        except DestinationRefusedError as exc:
+            raise StepRefusedError(f"destination refused: {exc!s:.120}") from exc
+    return None
+
+
 # ── The executor ─────────────────────────────────────────────────────────
 
 
@@ -418,18 +524,40 @@ class BrowserErrandExecutor:
         A denied or approval-needing step does not run, and neither do the
         steps after it: they were planned on the assumption it had happened,
         so running them would act on a page the errand never reached.
+
+        An errand carrying more than :data:`MAX_ERRAND_STEPS` steps is refused
+        whole, before the first one runs.
         """
+        if len(errand.steps) > MAX_ERRAND_STEPS:
+            logger.warning(
+                "Browser errand refused: %s steps, limit %s",
+                len(errand.steps),
+                MAX_ERRAND_STEPS,
+            )
+            refused = self._record(
+                0, errand.steps[0], None, FAILED, action_type="", detail=STEP_LIMIT_REFUSED
+            )
+            return ErrandResult(status=FAILED, steps=(refused,), audit=tuple(self._audit))
+
         results: list[StepResult] = []
         status = DONE
-        for index, step in enumerate(errand.steps):
-            if status != DONE:
-                results.append(self._record(index, step, None, SKIPPED, action_type=""))
-                continue
-            result = await self._run_step(index, step, errand)
-            results.append(result)
-            if result.status != DONE:
-                status = result.status
-        return ErrandResult(status=status, steps=tuple(results), audit=tuple(self._audit))
+        try:
+            for index, step in enumerate(errand.steps):
+                if status != DONE:
+                    results.append(self._record(index, step, None, SKIPPED, action_type=""))
+                    continue
+                result = await self._run_step(index, step, errand)
+                results.append(result)
+                if result.status != DONE:
+                    status = result.status
+            return ErrandResult(status=status, steps=tuple(results), audit=tuple(self._audit))
+        finally:
+            # The plaintexts were held only so they could be scrubbed out of
+            # the results and audit records built above. Those are built now,
+            # so the executor stops holding them: a caller that keeps the
+            # executor around (to read its audit, say) is not keeping the
+            # owner's passwords in memory with it.
+            self._secrets.clear()
 
     # -- one step ---------------------------------------------------------
 
@@ -442,6 +570,13 @@ class BrowserErrandExecutor:
                 index, step, None, DENIED, action_type="", detail=f"unknown step kind {kind!r:.40}"
             )
 
+        try:
+            destination = _check_step_shape(kind, step)
+        except StepRefusedError as exc:
+            # Malformed, not merely unauthorised: refused like an unknown kind,
+            # before the policy, the vault or the driver is involved at all.
+            return self._record(index, step, None, DENIED, action_type="", detail=str(exc))
+
         # The origin is the driver's, read once and used for both the verdict
         # and the vault: whatever we judged is where the secret goes. A
         # navigate is judged against where it is going instead, since the
@@ -452,7 +587,10 @@ class BrowserErrandExecutor:
             return self._record(
                 index, step, None, FAILED, action_type="", detail=f"origin unavailable: {exc!s:.80}"
             )
-        origin = normalise_origin_entry(step.url or "") if kind == NAVIGATE else here
+        # A navigate's origin comes from the parsed destination rather than
+        # from the raw string, so ``https://BANK.com.:443/x`` is judged as the
+        # one origin it is and a mandate naming the bank covers it.
+        origin = destination.origin if destination is not None else here
 
         action_type = STEP_ACTION_TYPES[kind]
         if kind == FILL_FIELD and step.is_secret:
@@ -474,7 +612,7 @@ class BrowserErrandExecutor:
             return self._record(index, step, decision, NEEDS_APPROVAL)
 
         try:
-            data = await self._perform(kind, step, here)
+            data = await self._perform(kind, step, here, destination)
         except StepRefusedError as exc:
             return self._record(index, step, decision, FAILED, detail=str(exc))
         except Exception as exc:  # noqa: BLE001 — one bad step ends the errand, not the process
@@ -490,11 +628,18 @@ class BrowserErrandExecutor:
             return self._record(index, step, decision, FAILED, detail=detail)
         return self._record(index, step, decision, DONE, data=data)
 
-    async def _perform(self, kind: str, step: BrowserStep, here: str) -> str | None:
+    async def _perform(
+        self, kind: str, step: BrowserStep, here: str, destination: Destination | None
+    ) -> str | None:
         """Do the step. The only place a plaintext secret exists."""
         if kind == NAVIGATE:
-            await _call(self._driver.navigate(str(step.url or "")))
+            if destination is None:  # _check_step_shape returns one or raises
+                raise StepRefusedError("destination refused: no destination")
+            await _call(self._driver.navigate(await self._destination(destination)))
             return None
+        # Every other kind acts on the page the browser is on *now*, so that
+        # is re-read here rather than trusted from a moment ago.
+        await self._still_here(here)
         if kind == CLICK:
             await _call(self._driver.click(str(step.selector or "")))
             return None
@@ -508,8 +653,57 @@ class BrowserErrandExecutor:
         value = step.value or ""
         if step.is_secret:
             value = await self._resolve(value, here)
-        await _call(self._driver.fill_field(str(step.field or ""), value))
+        try:
+            await _call(self._driver.fill_field(str(step.field or ""), value))
+        finally:
+            # The plaintext stops being a local the moment the driver has it.
+            # Python cannot wipe a string, so this is about reach rather than
+            # memory: no frame of a later traceback holds it, and nothing
+            # below returns, logs or records it. The copy ``_secrets`` keeps
+            # for scrubbing is dropped at the end of ``run``.
+            value = ""
         return None
+
+    async def _destination(self, destination: Destination) -> str:
+        """The canonical URL to navigate to, or a refusal.
+
+        The name is resolved here rather than when the step was judged, so a
+        denied or approval-needing step makes no DNS query: a lookup is an
+        outbound signal, and a destination that was never going to be opened
+        should not tell its owner that an errand considered it.
+
+        What the driver is handed is the canonicalised URL, not the string the
+        model wrote — the same host, spelt the one way, so the thing that was
+        checked is the thing that is opened.
+        """
+        try:
+            return await resolve_destination_async(destination)
+        except DestinationRefusedError as exc:
+            raise StepRefusedError(f"destination refused: {exc!s:.120}") from exc
+
+    async def _still_here(self, authorized: str) -> None:
+        """Refuse unless the browser is still where this step was authorised for.
+
+        The verdict — and, for a secret, the vault's origin check — was
+        computed from an origin read a moment earlier. A redirect, a meta
+        refresh or a script navigation in the gap leaves a step authorised for
+        one site and about to happen on another: the click lands on a page
+        nobody judged, and the password goes to whoever is now in the address
+        bar. That is the time-of-check/time-of-use gap, and the only way to
+        close it from here is to look again at the point of use.
+
+        A changed origin ends the errand rather than being re-judged: the
+        steps after this one were planned for a page the browser is no longer
+        on, so there is nothing safe left to do.
+        """
+        try:
+            now = normalise_origin_entry(str(await _call(self._driver.current_origin()) or ""))
+        except Exception as exc:  # noqa: BLE001 — a driver that cannot say where it is
+            raise StepRefusedError("origin unavailable at the point of use") from exc
+        if now != authorized:
+            raise StepRefusedError(
+                f"origin changed mid-errand: {(authorized or '-')[:60]} -> {(now or '-')[:60]}"
+            )
 
     async def _resolve(self, handle: str, here: str) -> str:
         """The plaintext behind *handle* for the origin the driver is on.
@@ -687,14 +881,17 @@ __all__ = [
     "DONE",
     "FAILED",
     "FILL_FIELD",
+    "MAX_ERRAND_STEPS",
     "MAX_PAGE_CHARS",
     "NAVIGATE",
     "NEEDS_APPROVAL",
     "READ_PAGE",
     "REDACTED",
+    "SELECTOR_CHARS",
     "SKIPPED",
     "STEP_ACTION_TYPES",
     "STEP_KINDS",
+    "STEP_LIMIT_REFUSED",
     "BrowserDriver",
     "BrowserErrand",
     "BrowserErrandExecutor",
