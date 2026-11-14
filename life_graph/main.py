@@ -631,6 +631,7 @@ if settings.is_full_profile:
     from life_graph.api import procedures
     from life_graph.api import push as push_api
     from life_graph.api import research as research_api
+    from life_graph.api import vault as vault_api
     from life_graph.api import watchers as watchers_api
     from life_graph.api import web_research as web_research_api
     from life_graph.autonomy.router import router as autonomy_router
@@ -668,6 +669,7 @@ if settings.is_full_profile:
     v1_router.include_router(web_research_api.router)
     v1_router.include_router(devices_api.router)
     v1_router.include_router(jarvis_api.router)
+    v1_router.include_router(vault_api.router)
 
 app.include_router(v1_router)
 
