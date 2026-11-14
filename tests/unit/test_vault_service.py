@@ -10,16 +10,19 @@ another tenant neither resolves nor decrypts.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import Update
 
 from life_graph.models.vault import VaultSecret
 from life_graph.services import vault
-from tests.unit.fakes import FakeSession, sql
+from tests.unit.fakes import FakeResult, FakeSession, sql
 
 TENANT = "t1"
 OTHER = "t2"
@@ -146,6 +149,21 @@ def test_metadata_marks_a_spent_one_use_secret():
         ("http://localhost:3000", "http://localhost:3000"),
         ("", ""),
         ("   ", ""),
+        # A default port is not part of the origin; any other port is.
+        ("https://bank.com:443", "https://bank.com"),
+        ("http://bank.com:80", "http://bank.com"),
+        ("https://bank.com:8443", "https://bank.com:8443"),
+        ("bank.com:8443", "https://bank.com:8443"),  # a bare host with a port
+        ("localhost:3000", "https://localhost:3000"),
+        ("//bank.com", "https://bank.com"),  # protocol-relative
+        # One place, one spelling: the DNS root dot, the case and the port all go.
+        ("https://BANK.com.:443/login", "https://bank.com"),
+        # Addresses are canonicalised too, so the spellings a resolver accepts
+        # do not read as three different hosts.
+        ("https://0x7f.1", "https://127.0.0.1"),
+        ("https://2130706433", "https://127.0.0.1"),
+        ("https://[0:0:0:0:0:0:0:1]:8080", "https://[::1]:8080"),
+        ("https://bänk.com", "https://xn--bnk-qla.com"),  # IDNA, not two hosts
     ],
 )
 def test_origin_normalisation(raw, expected):
@@ -161,8 +179,25 @@ def test_origin_normalisation(raw, expected):
         (["http://localhost:3000"], "http://localhost:3000", True),
         (["*.bank.com"], "https://login.bank.com", True),
         (["*.bank.com"], "https://bank.com", True),
+        (["*.bank.com"], "https://a.b.bank.com", True),  # any depth
         (["*.bank.com"], "https://bank.com.evil.io", False),
         (["*.bank.com"], "https://notbank.com", False),
+        # The dot is a boundary, not a character that happens to be in there.
+        (["*.bank.com"], "https://evilbank.com", False),
+        (["*.bank.com"], "https://xbank.com", False),
+        (["*.bank.com"], "https://.bank.com", False),  # not a host at all
+        (["*.bank.com"], "http://login.bank.com", False),  # https unless asked
+        (["http://*.bank.com"], "http://login.bank.com", True),
+        # A pattern's port is part of it, on both sides.
+        (["https://*.bank.com:8443"], "https://login.bank.com:8443", True),
+        (["https://*.bank.com:8443"], "https://login.bank.com", False),
+        (["https://*.bank.com:8443"], "http://login.bank.com:8443", False),
+        (["https://*.bank.com"], "https://login.bank.com:8443", False),
+        (["https://bank.com"], "https://bank.com:443", True),  # the default port
+        (["https://bank.com:443"], "https://bank.com", True),
+        # One entry out of several is enough, and a bad one is not fatal.
+        (["evil.io", "*.bank.com"], "https://login.bank.com", True),
+        (["https://bank.com/login", "https://bank.com"], "https://bank.com", True),
         (["https://bank.com"], "https://bank.com:8443", False),  # a port is part of an origin
         (["https://bank.com"], "https://evil.io", False),
         ([], "https://bank.com", False),
@@ -172,6 +207,108 @@ def test_origin_normalisation(raw, expected):
 )
 def test_which_origins_a_secret_may_go_to(allowed, target, ok):
     assert vault.origin_allowed(allowed, target) is ok
+
+
+# ── Origins that are not origins ───────────────────────
+#
+# Every one of these reads as a familiar site to a person and means something
+# else to a parser, which is exactly the shape of the attack the vault exists
+# to stop: a handle is safe to hand around only because the origin check
+# cannot be talked around.
+
+
+@pytest.mark.parametrize(
+    ("raw", "why"),
+    [
+        ("https://user:pass@bank.com", "userinfo: the host is bank.com, the credentials are not"),
+        ("https://bank.com@evil.io", "reads as the bank, resolves evil.io"),
+        ("https://bank.com\\@evil.io", "a browser reads the backslash as a slash"),
+        ("file:///etc/passwd", "not a web origin"),
+        ("data:text/html,<h1>bank</h1>", "a document, not a place"),
+        ("javascript:alert(1)", "code, not a place"),
+        ("ftp://bank.com", "not a scheme a password is typed into"),
+        ("vault://h4ndl3", "a handle is not an origin"),
+        ("https://bank.com:99999", "not a port"),
+        ("https://bank.com:0", "not a port"),
+        ("https://bank.com:https", "not a port"),
+        ("https://bank .com", "a space means the authority never ended where it reads"),
+        ("https://bank .com", "a line separator in the host"),
+        ("https://bank.com\x00.evil.io", "a NUL byte truncates differently in every parser"),
+        ("https://", "no host"),
+        ("https:bank.com", "no authority"),
+        ("https://bank..com", "an empty label"),
+        ("https://*.bank.com", "a wildcard is the owner's to write, not a page's to claim"),
+        ("https://" + "x" * 300 + ".com", "longer than any origin"),
+    ],
+)
+def test_a_malformed_origin_is_refused_rather_than_guessed_at(raw, why):
+    with pytest.raises(vault.MalformedOriginError):
+        vault.normalize_origin(raw)
+    # And it matches nothing, by any route: the bool-returning door fails closed
+    # rather than passing the refusal to a caller who might not catch it.
+    assert vault.origin_allowed(["https://bank.com", "*.bank.com"], raw) is False
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "https://bank.com/login",
+        "https://bank.com?next=/x",
+        "https://bank.com/#@evil.io",  # the deceptive one: reads as evil.io's page
+        "https://evil.io/https://bank.com",
+    ],
+)
+def test_an_allowed_origin_may_not_carry_a_path(raw):
+    """A path on an entry promises path scoping the vault does not do.
+
+    For a *page's* origin the same path is stripped — that is the shape a
+    browser reports — so the two readings are separate arguments.
+    """
+    with pytest.raises(vault.MalformedOriginError):
+        vault.normalize_origin(raw, origin_only=True)
+    assert "/" not in vault.normalize_origin(raw).removeprefix("https://")
+
+
+def test_a_deceptive_path_is_read_as_the_host_it_really_names():
+    """``https://evil.io/https://bank.com`` is evil.io. Nothing else."""
+    assert vault.normalize_origin("https://evil.io/https://bank.com") == "https://evil.io"
+    assert vault.origin_allowed(["https://bank.com"], "https://evil.io/https://bank.com") is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "entry",
+    ["https://user@bank.com", "file:///etc/passwd", "bank.com:99999", "https://bank.com/login"],
+)
+async def test_store_refuses_an_origin_that_is_not_one(entry):
+    session = FakeSession()
+    with pytest.raises(vault.MalformedOriginError):
+        await vault.store(session, TENANT, "l", "hunter2", [entry])
+    assert session.added == []
+    # A VaultError too, so the API's one handler still answers 400 for it.
+    assert issubclass(vault.MalformedOriginError, vault.VaultError)
+
+
+@pytest.mark.asyncio
+async def test_a_wildcard_entry_is_stored_the_way_a_match_reads_it():
+    session = FakeSession()
+    row = await vault.store(session, TENANT, "l", "hunter2", ["*.BANK.com", "*.bank.com"])
+
+    assert row.allowed_origins == ["https://*.bank.com"]  # canonical, de-duplicated
+    assert vault.origin_allowed(row.allowed_origins, "https://login.bank.com") is True
+    assert vault.origin_allowed(row.allowed_origins, "https://notbank.com") is False
+
+
+def test_a_stored_entry_that_is_no_longer_an_origin_allows_nothing():
+    """Defence in depth: entries are validated at store, and again at match.
+
+    A row written by an older build, by hand or by a migration is not trusted
+    to be well-formed; an entry that does not parse is skipped, not guessed at.
+    """
+    assert vault.origin_allowed(["https://bank.com@evil.io"], "https://evil.io") is False
+    assert vault.origin_allowed(["*"], "https://bank.com") is False
+    assert vault.origin_allowed(["https://*"], "https://bank.com") is False
+    assert vault.origin_allowed([""], "https://bank.com") is False
 
 
 # ── Resolving ──────────────────────────────────────────
@@ -267,7 +404,269 @@ async def test_a_revoked_secret_resolves_to_nothing():
         )
 
 
+# ── Spending a one-use secret exactly once ─────────────
+#
+# The Python-level ``row.used_at is not None`` check is the cheap half. Two
+# requests that both read the row before either wrote it both pass that check,
+# so what actually decides the winner is the conditional UPDATE: the claim and
+# the test of whether it is still claimable are one statement. These tests
+# exercise the half that matters, which means the fake has to behave like a
+# database rather than like a dict.
+
+
+class RacingSession:
+    """A session that lets two resolves interleave, and claims like Postgres.
+
+    ``execute`` suspends at every statement, so two tasks genuinely read the
+    row before either updates it — the race a dict-backed fake cannot produce.
+    The UPDATE then lands once: a statement carrying ``used_at IS NULL``
+    affects no rows if the secret has already been claimed, exactly as the
+    real ``WHERE`` clause would.
+    """
+
+    def __init__(self, row: VaultSecret):
+        self._row = row
+        self._claimed = row.used_at is not None
+        self.claims = 0
+        self.statements: list[object] = []
+
+    async def execute(self, stmt, *_a, **_k) -> FakeResult:
+        self.statements.append(stmt)
+        await asyncio.sleep(0)  # the point: the other task runs here
+        if not isinstance(stmt, Update):
+            return FakeResult([self._row])
+        if "used_at IS NULL" in sql(stmt) and self._claimed:
+            return FakeResult([], rowcount=0)  # somebody else got there first
+        self._claimed = True
+        self.claims += 1
+        return FakeResult([], rowcount=1)
+
+    async def flush(self) -> None:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_two_racing_resolves_spend_a_one_use_secret_exactly_once():
+    row = make_row(value="123456", origins=["https://bank.com"], one_use=True)
+    session = RacingSession(row)
+
+    results = await asyncio.gather(
+        vault.resolve_for_origin(session, TENANT, "h4ndl3", "https://bank.com"),
+        vault.resolve_for_origin(session, TENANT, "h4ndl3", "https://bank.com"),
+        return_exceptions=True,
+    )
+
+    values = [r for r in results if isinstance(r, str)]
+    refusals = [r for r in results if isinstance(r, Exception)]
+    assert values == ["123456"], "the OTP came back twice"
+    assert [type(r) for r in refusals] == [vault.SecretSpentError]
+    assert session.claims == 1
+    # And the row says it went once, to the one origin.
+    assert row.use_count == 1
+    assert row.used_at is not None
+    assert row.last_used_origin == "https://bank.com"
+
+
+@pytest.mark.asyncio
+async def test_a_third_resolve_after_the_race_is_still_refused():
+    row = make_row(value="123456", origins=["https://bank.com"], one_use=True)
+    session = RacingSession(row)
+
+    await vault.resolve_for_origin(session, TENANT, "h4ndl3", "https://bank.com")
+    with pytest.raises(vault.SecretSpentError):
+        await vault.resolve_for_origin(session, TENANT, "h4ndl3", "https://bank.com")
+    assert session.claims == 1
+
+
+@pytest.mark.asyncio
+async def test_the_claim_is_one_conditional_statement_not_a_read_then_a_write():
+    """The property the concurrency rests on, asserted on the SQL itself."""
+    row = make_row(value="123456", origins=["https://bank.com"], one_use=True)
+    session = FakeSession(row)
+
+    await vault.resolve_for_origin(session, TENANT, "h4ndl3", "https://bank.com")
+
+    select_sql, update_sql = (sql(stmt) for stmt in session.statements[:2])
+    assert "FOR UPDATE" in select_sql  # the lock serialises the ordinary case
+    assert update_sql.startswith("UPDATE vault_secrets")
+    assert "used_at IS NULL" in update_sql  # …and this still holds if it does not
+    assert "use_count + 1" in update_sql  # counted in the database, not in Python
+    assert f"tenant_id = '{TENANT}'" in update_sql
+    assert "revoked_at IS NULL" in update_sql
+
+
+@pytest.mark.asyncio
+async def test_a_reusable_secret_is_claimed_without_the_one_use_guard():
+    row = make_row(value="hunter2", origins=["https://bank.com"])
+    session = FakeSession(row)
+
+    await vault.resolve_for_origin(session, TENANT, "h4ndl3", "https://bank.com")
+
+    update_sql = sql(session.statements[1])
+    assert "used_at IS NULL" not in update_sql
+    assert "use_count + 1" in update_sql
+
+
+@pytest.mark.asyncio
+async def test_a_secret_claimed_by_another_request_is_spent_not_served():
+    """The row read clean, the claim found nothing: another request won."""
+    row = make_row(value="123456", origins=["https://bank.com"], one_use=True)
+    session = FakeSession(row, FakeResult([], rowcount=0))
+
+    with pytest.raises(vault.SecretSpentError):
+        await vault.resolve_for_origin(session, TENANT, "h4ndl3", "https://bank.com")
+
+
+@pytest.mark.asyncio
+async def test_a_secret_revoked_between_the_read_and_the_claim_is_not_found():
+    row = make_row(value="hunter2", origins=["https://bank.com"])
+    session = FakeSession(row, FakeResult([], rowcount=0))
+
+    with pytest.raises(vault.SecretNotFoundError):
+        await vault.resolve_for_origin(session, TENANT, "h4ndl3", "https://bank.com")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("row_kwargs", "origin", "expected"),
+    [
+        ({}, "https://evil.io", vault.OriginNotAllowedError),
+        ({"tenant_id": OTHER}, "https://bank.com", vault.SecretNotFoundError),
+    ],
+)
+async def test_nothing_is_decrypted_until_the_origin_and_the_claim_are_settled(
+    monkeypatch, row_kwargs, origin, expected
+):
+    """A refused resolve must never have held the plaintext in the first place."""
+    calls: list[tuple] = []
+
+    def spy(tenant_id, handle, blob):
+        calls.append((tenant_id, handle))
+        return "hunter2"
+
+    monkeypatch.setattr(vault, "decrypt", spy)
+    row = make_row(value="hunter2", origins=["https://bank.com"], one_use=True, **row_kwargs)
+    session = FakeSession(row)
+
+    with pytest.raises(expected):
+        await vault.resolve_for_origin(session, TENANT, "h4ndl3", origin)
+    assert calls == []
+
+    # On the way through, it is called once — after the claim.
+    await vault.resolve_for_origin(session, row.tenant_id, "h4ndl3", "https://bank.com")
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_target_origin_is_refused_before_anything_is_read():
+    session = FakeSession(make_row())
+    with pytest.raises(vault.MalformedOriginError):
+        await vault.resolve_for_origin(
+            session, TENANT, "vault://h4ndl3", "https://bank.com@evil.io"
+        )
+    assert session.statements == []
+
+
+# ── Plaintext does not leak, by any route ──────────────
+
+
+@pytest.mark.asyncio
+async def test_no_refusal_or_success_ever_mentions_the_plaintext(caplog):
+    """Every path through the service, checked for the one string that matters.
+
+    A secret that shows up in an exception message reaches a traceback, a log
+    line, an error response and the agent's own transcript — which is the
+    whole thing the vault is for.
+    """
+    caplog.set_level(logging.DEBUG)
+    secret = "c0rrect-horse-battery-staple"
+    seen: list[str] = []
+
+    async def attempt(coro):
+        try:
+            seen.append(repr(await coro))
+        except Exception as exc:  # noqa: BLE001 — the message is what is under test
+            seen.append(f"{exc!r} {exc!s}")
+            cause = exc.__cause__
+            while cause is not None:
+                seen.append(f"{cause!r} {cause!s}")
+                cause = cause.__cause__
+
+    # Stored, listed, revoked, resolved, refused, spent, cross-tenant, tampered.
+    store_session = FakeSession()
+    stored = await vault.store(store_session, TENANT, "HDFC net banking", secret, ["bank.com"])
+    seen += [repr(stored), repr(vault.to_dict(stored)), json.dumps(vault.to_dict(stored))]
+    await attempt(vault.resolve_for_origin(FakeSession(stored), TENANT, stored.handle, "bank.com"))
+    await attempt(
+        vault.resolve_for_origin(FakeSession(stored), TENANT, stored.handle, "https://evil.io")
+    )
+    await attempt(vault.resolve_for_origin(FakeSession(stored), OTHER, stored.handle, "bank.com"))
+
+    one_use = make_row(value=secret, origins=["https://bank.com"], one_use=True)
+    one_use.used_at = datetime.now(UTC)
+    await attempt(vault.resolve_for_origin(FakeSession(one_use), TENANT, "h4ndl3", "bank.com"))
+
+    tampered = make_row(value=secret)
+    tampered.encrypted_value = tampered.encrypted_value[:-1] + bytes([0])
+    await attempt(
+        vault.resolve_for_origin(FakeSession(tampered), TENANT, "h4ndl3", "netbanking.hdfcbank.com")
+    )
+    # A blob that authenticates and then decrypts to bytes that are not text:
+    # the UnicodeDecodeError quotes the byte it tripped on, and that byte is
+    # plaintext, so it must not be chained onto the refusal.
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    nonce = b"n" * 12
+    not_text = nonce + AESGCM(vault._key()).encrypt(nonce, b"\xff\xfe", vault._aad(TENANT, "h"))
+    with pytest.raises(vault.SecretNotFoundError) as refused:
+        vault.decrypt(TENANT, "h", not_text)
+    assert refused.value.__cause__ is None
+    seen.append(f"{refused.value!r} {refused.value!s}")
+
+    # The one place the plaintext is allowed is the return value of a resolve.
+    assert seen[3] == repr(secret), "the allowed resolve should have returned it"
+    for text in seen[:3] + seen[4:]:
+        assert secret not in text, text
+    assert secret not in caplog.text
+    assert "HDFC net banking" in caplog.text  # the label is what a log line names
+
+
+def test_a_revoked_secret_is_gone_rather_than_flagged():
+    row = make_row(value="hunter2")
+    row.revoked_at = datetime.now(UTC)
+    row.encrypted_value = b""
+
+    with pytest.raises(vault.SecretNotFoundError):
+        vault.decrypt(TENANT, row.handle, row.encrypted_value)
+    assert "hunter2" not in repr(row)
+    assert "hunter2" not in json.dumps(vault.to_dict(row))
+
+
 # ── Tenant isolation ───────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_holding_another_tenants_handle_is_not_enough_to_resolve_it():
+    """The handle is the whole of what leaks; it is not the whole of what is checked.
+
+    Tenant B stores a secret, tenant A learns its handle — from a shared log,
+    a copied plan, a guess. A's resolve is scoped to A, so the row is not
+    found; and even handed the row, the ciphertext is bound to B, so there is
+    nothing in it for A.
+    """
+    store_session = FakeSession()
+    theirs = await vault.store(store_session, OTHER, "their bank", "hunter2", ["bank.com"])
+
+    # A's query names A's tenant, so B's row is simply not there.
+    session = FakeSession(None)
+    with pytest.raises(vault.SecretNotFoundError):
+        await vault.resolve_for_origin(session, TENANT, theirs.handle, "https://bank.com")
+    assert f"'{TENANT}'" in sql(session.statements[0])
+    assert f"'{OTHER}'" not in sql(session.statements[0])
+    # And the ciphertext itself is B's: the AAD is the tenant.
+    with pytest.raises(vault.SecretNotFoundError):
+        vault.decrypt(TENANT, theirs.handle, theirs.encrypted_value)
+    assert vault.decrypt(OTHER, theirs.handle, theirs.encrypted_value) == "hunter2"
 
 
 @pytest.mark.asyncio

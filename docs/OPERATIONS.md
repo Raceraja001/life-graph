@@ -150,6 +150,93 @@ account picks its method; the form suggests one.
   get counts only.
 - Checks: `GET /api/v1/connectors` (status, last error, item counts per account).
 
+## The Secret Vault Key (`vault_secrets`)
+
+Secrets the browser agent fills in — a net-banking password, an OTP, a card —
+live in `vault_secrets` as ciphertext only. Everything else in the system
+carries `vault://<handle>`, which is useless without the key. The key is
+therefore the one piece of state that is **not** in the database and **not**
+in the database backups. Code: `life_graph/services/vault.py`.
+
+| | |
+|---|---|
+| Algorithm | AES-256-GCM, fresh 12-byte nonce per secret, stored `nonce \|\| ciphertext+tag` |
+| Bound to | `tenant_id:handle` as additional authenticated data — a row copied to another tenant, or a handle repointed at another row, does not decrypt |
+| Key | 32 bytes, from `LIFE_GRAPH_VAULT_KEY` (urlsafe base64 or hex) |
+| Fallback | `LIFE_GRAPH_VAULT_KEY_FILE` → `~/.config/life-graph/vault.key`, mode 0600 |
+| Read back | only `vault.resolve_for_origin()`, in-process, against an origin the owner listed for that secret. There is no endpoint, no admin screen and no bulk-decrypt tool |
+
+### Provisioning
+
+```bash
+# Generate a key and put it where the app will read it
+python -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+# → .env as LIFE_GRAPH_VAULT_KEY=…, or the secret store the stack reads
+```
+
+With neither the env var nor the key file set, the app **generates** a key
+into `~/.config/life-graph/vault.key` (0600) on first use and logs
+`Generated a new vault key at … — back it up`. That keeps a fresh self-host
+working, and it means that until somebody backs that file up the secrets exist
+on exactly one disk. For the production stack, set the env var explicitly: a
+container that regenerates the key on each new volume silently loses every
+stored secret.
+
+A key that is set but does not decode to 32 bytes fails **loudly**
+(`VaultKeyMissingError`) the first time a secret is stored or resolved, with
+the generate-one command in the message. It is not silently replaced.
+
+### Backup and recovery
+
+- Back the key up **separately from the database dump**. A backup that holds
+  both is a backup that holds the plaintext, which is the thing the encryption
+  was for. A password manager entry or a sealed secret is enough — it is 44
+  characters.
+- On a restore, put the key back **before** the app comes up. Restoring a dump
+  without the key leaves every vault secret permanently unreadable; the API
+  answers "secret not found" for each one, which is correct but easy to
+  misread as data loss elsewhere.
+- Losing the key loses every secret in it, by design. Recovery is re-entering
+  them; nothing else can.
+
+### Rotation
+
+There is no bulk re-wrap function, on purpose: a tool that decrypted every row
+at once would be a second route back to plaintext, and `resolve_for_origin`
+being the only one is what makes a leaked handle harmless. So rotation is
+manual and visible:
+
+1. Store the new key (`LIFE_GRAPH_VAULT_KEY`), keeping the old one to hand.
+2. Restart the app — the key is cached per process.
+3. In the dashboard, revoke each vault secret and re-enter it. Revoking blanks
+   the ciphertext, so the old value is not recoverable from a later backup.
+4. Update anything holding an old `vault://` handle: re-storing mints a new
+   handle. (Standing browser errands and saved steps are the usual holders.)
+5. Destroy the old key once nothing refuses to resolve.
+
+Skipping step 3 leaves old rows undecryptable — they refuse as "secret not
+found", not as an error naming the key — so rotate deliberately, not as a
+routine hygiene task.
+
+### Checks
+
+```bash
+# Secrets exist and no plaintext column does
+docker compose -f docker-compose.production.yml exec postgres \
+  psql -U life_graph -c "\d vault_secrets" | grep -E 'encrypted_value|allowed_origins'
+
+# The key file, if that is what the deployment uses
+stat -c '%a %n' ~/.config/life-graph/vault.key   # expect 600
+```
+
+- `GET /api/v1/vault` lists secrets as metadata only — label, type, allowed
+  origins, use count. There is no field in that response that could carry a
+  value, not even a length (a length narrows a guess at a PIN).
+- Logs name a secret by **label**, never by value. A log line reading
+  `Vault: refused <label> … is not an allowed origin` is the origin check
+  doing its job: a handle was used on a page the owner did not list for it.
+  Repeated ones are worth looking at.
+
 ## Disaster Recovery
 
 ```bash
@@ -162,7 +249,10 @@ docker compose -f docker-compose.production.yml run --rm backup \
 
 # 3. If restoring from off-site: restic restore latest --target /restore first
 
-# 4. Bring the rest up and smoke-test
+# 4. Put the vault key back BEFORE the app starts (it is not in the dump)
+#    — LIFE_GRAPH_VAULT_KEY in the env, or ~/.config/life-graph/vault.key (0600)
+
+# 5. Bring the rest up and smoke-test
 docker compose -f docker-compose.production.yml up -d
 curl -fsS http://localhost/health
 ```
@@ -173,3 +263,4 @@ curl -fsS http://localhost/health
 - [ ] `job_runs` shows a `restore_drill` success for Sunday
 - [ ] Off-site repo (`restic snapshots`) grew this week
 - [ ] Backup volume disk usage under control (`ls -lh /backups`)
+- [ ] The vault key is still backed up somewhere other than the database dump
