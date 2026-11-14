@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-13 08:31 UTC` from `master` @ `0e3c8f5`
+Generated `2026-11-14 06:21 UTC` from `feat/nod-phase4-cost-guardrails` @ `cdde78f`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-13 08:31 UTC` from `master` @ `0e3c8f5`
 | Built-in personas | **13** |
 | Agent tools | **14** |
 | Scheduled jobs | **34** |
-| Config settings | **278** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4078** in 473 files |
+| Config settings | **282** (prefix `LIFE_GRAPH_`) |
+| Test functions | **4203** in 483 files |
 | Dashboard pages | **22** |
-| Python | 450 files, 117,606 lines |
+| Python | 451 files, 119,162 lines |
 
 ---
 
@@ -516,16 +516,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 358 | 3241 |
+| `tests/unit/` | 368 | 3366 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **473** | **4078** |
+| **total** | **483** | **4203** |
 
 ---
 
 ## Configuration
 
-278 settings, all overridable by environment variable.
+282 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -633,6 +633,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_RESEARCH_CONFIDENCE_THRESHOLD` | `0.7` |
 | `LIFE_GRAPH_MONTHLY_BUDGET_USD` | `10.0` |
 | `LIFE_GRAPH_BUDGET_SOFT_THRESHOLD` | `0.8` |
+| `LIFE_GRAPH_MONTHLY_SPEND_CAP_USD` | `10.0` |
+| `LIFE_GRAPH_PER_TASK_SPEND_CAP_USD` | `0.5` |
+| `LIFE_GRAPH_SPEND_UNKNOWN_MODEL_INPUT_PER_MTOK` | `0.5` |
+| `LIFE_GRAPH_SPEND_UNKNOWN_MODEL_OUTPUT_PER_MTOK` | `1.5` |
 | `LIFE_GRAPH_SHADOW_MODE_ENABLED` | `True` |
 | `LIFE_GRAPH_SHADOW_MIN_DAYS` | `14` |
 | `LIFE_GRAPH_SHADOW_MIN_SAMPLES` | `5` |

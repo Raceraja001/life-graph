@@ -14,6 +14,7 @@ import logging
 from typing import Any
 
 from life_graph.config import settings
+from life_graph.services.spend_guardrails import SpendCapExceededError, get_spend_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,10 @@ class LMStudioClient:
                 return await self._cloud_chat(
                     messages, model, temperature, max_tokens, response_format
                 )
+            except SpendCapExceededError as exc:
+                # Out of money, not out of options: local inference is free, so
+                # a tripped cap degrades quality instead of failing the call.
+                logger.warning("Cloud spend cap reached, using local LLM: %s", exc)
             except Exception:
                 logger.warning(
                     "Resilient cloud chat exhausted, falling back to local LLM",
@@ -142,14 +147,34 @@ class LMStudioClient:
         max_tokens: int,
         response_format: dict | None,
     ) -> str:
-        """Chat via the resilient cloud chain (OpenRouter/Gemini/... with failover)."""
-        return await get_resilient_llm().chat(
+        """Chat via the resilient cloud chain (OpenRouter/Gemini/... with failover).
+
+        Gated by the spend tracker: refused before it is sent if it would cross a
+        cap (raising ``SpendCapExceededError``, which ``chat()`` turns into a
+        local fallback), and booked against the month and task afterwards.
+
+        Cost is attributed to the model we *asked* for. The resilient chain may
+        fail over to another model mid-call and does not report which one it
+        used, so the figure is an estimate — see ``spend_guardrails``.
+        """
+        tracker = get_spend_tracker()
+        # The wrapper's own default when the caller passes None, so the estimate
+        # is priced against the model that will actually run.
+        priced_model = model or settings.llm_model_cheap
+        tracker.check_budget(
+            priced_model,
+            tracker.estimate_call_cost(priced_model, messages, max_tokens),
+        )
+
+        reply = await get_resilient_llm().chat(
             messages,
             model=model,  # None -> wrapper picks the tier default
             temperature=temperature,
             max_tokens=max_tokens,
             response_format=response_format,
         )
+        tracker.record_text_usage(priced_model, messages, reply)
+        return reply
 
     async def _local_chat(
         self,
