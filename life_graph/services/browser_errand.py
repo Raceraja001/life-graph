@@ -68,6 +68,8 @@ if TYPE_CHECKING:
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from life_graph.autonomy.approvals.capability import CapabilityStore
+
 logger = logging.getLogger(__name__)
 
 
@@ -218,16 +220,24 @@ class BrowserStep:
 
 @dataclass(frozen=True, slots=True)
 class BrowserErrand:
-    """Steps to run, plus the only two things that can authorise them.
+    """Steps to run, plus the only things that can authorise them.
 
     ``owner_request`` is what the owner themselves asked for and
-    ``standing_rules`` their lasting rules; together they are the entire
-    mandate. Nothing an agent read on the way here is part of this object.
+    ``standing_rules`` their lasting rules; both may be set only by trusted,
+    owner-authenticated code building this object (they are authority, and
+    ``request_from_payload`` drops them from any payload). ``capability_id``
+    is a handle to a mandate the server issued
+    (``autonomy/approvals/capability.py``), re-verified against the tenant,
+    task, action type and origin at every single step rather than once at the
+    start — so an errand cannot be widened part-way through, and revoking the
+    capability stops the next step. Nothing an agent read on the way here is
+    part of this object.
     """
 
     steps: tuple[BrowserStep, ...] = ()
     owner_request: OwnerRequest | None = None
     standing_rules: tuple[StandingRule, ...] = ()
+    capability_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "steps", tuple(self.steps))
@@ -366,6 +376,12 @@ class BrowserErrandExecutor:
     :data:`BROWSER_ACTION_TYPES` (or a superset) — one built over the default
     catalogue does not know the browser action types and would default-deny
     every step as ``unknown_action_type``.
+
+    *task_id* and *capabilities* are what an errand's ``capability_id`` is
+    verified against. They are held here, on the executor, and not taken from
+    the errand: the tenant and task are the server's own context, and a
+    mandate checked against a tenant the caller named would be no mandate at
+    all.
     """
 
     def __init__(
@@ -376,6 +392,8 @@ class BrowserErrandExecutor:
         tenant_id: str | None = None,
         standing_rules: Iterable[StandingRule] = (),
         checker: ActionPolicyChecker | None = None,
+        task_id: str | None = None,
+        capabilities: CapabilityStore | None = None,
     ) -> None:
         self._driver = driver
         self._session = session
@@ -383,7 +401,11 @@ class BrowserErrandExecutor:
         #: A checker over the browser catalogue. One built elsewhere would not
         #: know the browser action types and would deny every step as unknown.
         self._checker = checker or ActionPolicyChecker(
-            standing_rules=standing_rules, catalogue=BROWSER_ACTION_TYPES
+            standing_rules=standing_rules,
+            catalogue=BROWSER_ACTION_TYPES,
+            tenant_id=tenant_id,
+            task_id=task_id,
+            capabilities=capabilities,
         )
         self._secrets: set[str] = set()
         self._audit: list[dict[str, Any]] = []
@@ -443,6 +465,7 @@ class BrowserErrandExecutor:
                 owner_request=errand.owner_request,
                 standing_rules=errand.standing_rules,
                 structured_params=self._params(kind, step, origin),
+                capability_id=errand.capability_id,
             )
         )
         if decision.decision == DENY:
@@ -637,6 +660,8 @@ async def run_errand(
     session: AsyncSession | None = None,
     tenant_id: str | None = None,
     standing_rules: Iterable[StandingRule] = (),
+    task_id: str | None = None,
+    capabilities: CapabilityStore | None = None,
 ) -> ErrandResult:
     """Run one errand with a fresh executor. The caller commits the session.
 
@@ -645,7 +670,12 @@ async def run_errand(
     that is rolled back has not burned the owner's OTP.
     """
     executor = BrowserErrandExecutor(
-        driver, session=session, tenant_id=tenant_id, standing_rules=standing_rules
+        driver,
+        session=session,
+        tenant_id=tenant_id,
+        standing_rules=standing_rules,
+        task_id=task_id,
+        capabilities=capabilities,
     )
     return await executor.run(errand)
 

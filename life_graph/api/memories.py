@@ -12,9 +12,10 @@ import hashlib
 import logging
 import uuid
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
+from life_graph.api.auth import ingress_for
 from life_graph.api.dependencies import get_memory_manager, get_recall_engine, get_store
 from life_graph.api.openapi_examples import MEMORY_CREATED
 from life_graph.api.responses import encode_cursor, paginated_response, success_response
@@ -23,7 +24,7 @@ from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.core.trust import classify_surface
+from life_graph.core.trust import classify_ingress
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryResponse, MemoryUpdate
 from life_graph.services.recall import RecallEngine
@@ -67,6 +68,7 @@ async def _store_verbatim(
     responses=MEMORY_CREATED,
 )
 async def create_memory(
+    request: Request,
     body: MemoryCreate,
     manager: MemoryManager = Depends(get_memory_manager),
     store: PostgresMemoryStore = Depends(get_store),
@@ -78,13 +80,15 @@ async def create_memory(
     contradiction detection → storage). Otherwise, the memory is
     stored directly.
     """
-    # Provenance is decided server-side from the declared source, never taken
-    # from the client. An unrecognised or absent source_type falls to EXTERNAL
-    # (default-deny in classify_surface), so content arriving over the API
-    # without a first-party source is fenced when an agent reads it. Omitting
-    # this let PostgresMemoryStore.store() apply its "verified" default, which
-    # marked arbitrary third-party text as trusted.
-    tier = classify_surface(body.source_type).value
+    # Provenance is decided server-side, from the declared source *checked
+    # against who the server says is calling*. An unrecognised or absent
+    # source_type falls to EXTERNAL (default-deny in classify_surface), and a
+    # privileged one — "explicit", "manual", "chat", "jarvis_app",
+    # "telegram", "bulk_import" — is honoured only for an owner-authenticated
+    # ingress (api/auth.py ingress_for). Classifying the body's own string
+    # alone let any caller that could reach this endpoint label a web page as
+    # the owner's own word and have it loaded in front of every answer.
+    tier = classify_ingress(body.source_type, ingress_for(request)).value
 
     # Heuristic: if tags/properties already provided and content is short,
     # treat as structured input and store directly.
@@ -218,6 +222,11 @@ class ApproveBody(BaseModel):
     profile card (core/evidence.py, learn-only-from-owner). It defaults to
     off, so an ordinary approve keeps a memory usable without ever promoting
     outside text to the owner's word.
+
+    Setting it needs an owner-authenticated ingress — a paired phone's own
+    token, or a key the deployment named as the owner's. Anyone else asking
+    for it gets 403 rather than a quiet downgrade: a caller that believes it
+    is confirming an owner fact should be told it is not.
     """
 
     confirm_as_owner_fact: bool = False
@@ -282,6 +291,7 @@ async def _transition(
     store: PostgresMemoryStore,
     *,
     confirm_as_owner_fact: bool = False,
+    actor: str | None = None,
 ) -> Memory:
     """Move a memory between pending/rejected/active, emitting the matching event.
 
@@ -304,14 +314,23 @@ async def _transition(
             # fact. Stamped server-side (``server_side=True``, never from a
             # properties patch) so it records who confirmed, and only here:
             # nothing promotes outside content to the owner's word on its own.
+            # ``actor`` is how the server recognised the caller, so the record
+            # names a credential rather than the bare word "owner" — the
+            # endpoint has already refused any ingress that is not the
+            # owner's, and this is the audit trail of which one it was.
             from life_graph.core import evidence as ev
 
+            confirmed = ev.confirm_from_owner(
+                row.properties or {},
+                by=actor or "owner",
+                target_id=str(memory_id),
+                evidence=ev.confirmation_evidence(
+                    row.content, row.source_type, row.trust_tier, row.properties
+                ),
+            )
             updated = await store.update(
                 memory_id,
-                MemoryUpdate(
-                    status="active",
-                    properties=ev.confirm_from_owner(row.properties or {}, by="owner"),
-                ),
+                MemoryUpdate(status="active", properties=confirmed),
                 server_side=True,
             )
         else:
@@ -386,16 +405,37 @@ async def bulk_approvals(
     summary="Approve a memory",
 )
 async def approve_memory(
+    request: Request,
     memory_id: uuid.UUID,
     body: ApproveBody | None = Body(None),
     store: PostgresMemoryStore = Depends(get_store),
 ):
-    """Approve a pending (or rejected) memory — it becomes active/usable."""
+    """Approve a pending (or rejected) memory — it becomes active/usable.
+
+    ``confirm_as_owner_fact`` is the one field here that grants authority, so
+    it is checked against the authenticated ingress and not against anything
+    in the body: a third party, or an agent posting on behalf of a page it
+    read, is refused (403) rather than obeyed.
+    """
+    confirm = bool(body and body.confirm_as_owner_fact)
+    actor: str | None = None
+    if confirm:
+        ingress = ingress_for(request)
+        if not ingress.is_owner:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Only an owner-authenticated caller may confirm a memory as an "
+                    "owner fact. Approve without confirm_as_owner_fact instead."
+                ),
+            )
+        actor = ingress.actor
     row = await _transition(
         memory_id,
         "approve",
         store,
-        confirm_as_owner_fact=bool(body and body.confirm_as_owner_fact),
+        confirm_as_owner_fact=confirm,
+        actor=actor,
     )
     return success_response(data=MemoryResponse.model_validate(row))
 

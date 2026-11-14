@@ -18,6 +18,7 @@ import pytest
 
 from life_graph.api.memories import create_memory
 from life_graph.models.schemas import MemoryCreate
+from tests.conftest import fake_request
 
 _VECTOR = [0.1] * 8
 
@@ -61,7 +62,7 @@ def _structured(content: str = "Prefers tea") -> MemoryCreate:
 async def test_structured_input_is_embedded():
     manager, store = _fakes()
 
-    await create_memory(_structured(), manager=manager, store=store)
+    await create_memory(fake_request(device_id="phone-1"), _structured(), manager=manager, store=store)
 
     manager.ingest.assert_not_awaited()  # structured input skips extraction
     manager.generate_embedding.assert_awaited_once_with("Prefers tea")
@@ -75,7 +76,7 @@ async def test_structured_duplicate_returns_existing_row():
     existing = _row("Prefers tea")
     manager, store = _fakes(duplicate=existing)
 
-    await create_memory(_structured(), manager=manager, store=store)
+    await create_memory(fake_request(device_id="phone-1"), _structured(), manager=manager, store=store)
 
     store.store.assert_not_awaited()
     manager.generate_embedding.assert_not_awaited()  # no wasted embedding call
@@ -89,7 +90,7 @@ async def test_extraction_fallback_still_embeds():
         content="an unparseable scrap of text with no clear facts", source_type="manual"
     )
 
-    await create_memory(body, manager=manager, store=store)
+    await create_memory(fake_request(device_id="phone-1"), body, manager=manager, store=store)
 
     manager.ingest.assert_awaited_once()
     assert store.store.await_args.kwargs["embedding"] == _VECTOR

@@ -17,6 +17,7 @@ It is the only place the surface→tier map and the fence text live.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from enum import StrEnum
 
 
@@ -140,6 +141,66 @@ def classify_surface(surface: str | None) -> TrustTier:
     if not surface:
         return TrustTier.EXTERNAL
     return _SURFACE_TIER.get(surface, TrustTier.EXTERNAL)
+
+
+#: The surfaces whose tier outranks EXTERNAL. Claiming one of these is
+#: claiming the owner's own hand or our own pipeline, and ``source_type``
+#: arrives in a request body, so the claim is the caller's to make freely.
+#: Derived from the map itself so the two cannot drift apart.
+PRIVILEGED_SURFACES: frozenset[str] = frozenset(
+    name for name, tier in _SURFACE_TIER.items() if _ORDER[tier] < _ORDER[TrustTier.EXTERNAL]
+)
+
+
+@dataclass(frozen=True, slots=True)
+class Ingress:
+    """Who the *server* says is calling — never what the request body claims.
+
+    Built from authenticated context only (api/auth.py ``ingress_for``): a
+    paired phone's own device token, or a service key the deployment named as
+    the owner's. ``actor`` is the string that goes into an audit record, so it
+    says *how* the caller was recognised, not what it called itself.
+
+    The default — no device, nothing verified — is an unverified caller, which
+    is what every third party and every unauthenticated path gets.
+    """
+
+    actor: str = "unverified"
+    owner_verified: bool = False
+    device_id: str | None = None
+
+    @property
+    def is_owner(self) -> bool:
+        """True when the server itself vouches that this is the owner calling."""
+        return bool(self.owner_verified or self.device_id)
+
+
+#: An ingress the server could not vouch for. The default for any path that
+#: does not establish one, so forgetting to pass an ingress fails closed.
+UNVERIFIED = Ingress()
+
+
+def classify_ingress(surface: str | None, ingress: Ingress | None = None) -> TrustTier:
+    """The tier a *declared* surface earns given the *authenticated* caller.
+
+    ``source_type`` is a field in a JSON body: anyone who can reach the API
+    can write ``"explicit"``, ``"jarvis_app"``, ``"telegram"`` or
+    ``"bulk_import"`` there, and :func:`classify_surface` alone would hand
+    that content SELF or VERIFIED — the owner's own word, loaded in front of
+    every answer. So a privileged claim is honoured only when the server can
+    say the owner is the one calling; otherwise it is floored at
+    :data:`TrustTier.EXTERNAL`.
+
+    This only ever lowers trust. A surface that is already untrusted stays
+    exactly where the map put it — an owner-authenticated request declaring
+    ``"whatsapp"`` is still text someone else wrote.
+    """
+    declared = classify_surface(surface)
+    if _ORDER[declared] >= _ORDER[TrustTier.EXTERNAL]:
+        return declared
+    if ingress is not None and ingress.is_owner:
+        return declared
+    return TrustTier.EXTERNAL
 
 
 def coerce_tier(
