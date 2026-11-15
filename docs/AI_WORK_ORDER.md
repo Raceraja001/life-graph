@@ -225,7 +225,7 @@ Labels are the ones defined in section 9. "Complete" is deliberately absent
 from any row whose remaining gap is operational.
 
 - P0 exact-step-bound approval: **Implemented, Integrated, Unit-tested, Adversarially tested** — not operationally verified (no deployed run exercised yet)
-- P0 isolated browser integration: **Needs verification** (not started this session; still the highest-priority incomplete item)
+- P0 isolated browser integration: **Designed, partially Implemented** — sandbox chassis exists, but the active `MCPBrowserDriver` path is not integrated with it; egress proxy, authenticated control channel, and fail-closed runtime selection remain unverified.
 - P1 durable authorization: **Implemented, Integrated, Unit-tested** — multi-worker consistency proven with 16 concurrent threads against real Postgres; not yet exercised across separate OS processes or a real restart in a deployed environment
 - P1 historical episode retrieval: **Implemented, Integrated, Unit-tested**
 - P1 evidence/confidence evaluation: **Needs verification** (not started this session)
@@ -462,3 +462,133 @@ At the end of each work session, report:
 9. Updated status in this file.
 
 **Do not claim the whole work order is complete until every P0 and P1 item has been verified to its stated standard.**
+
+### 2026-11-15 — P0 isolated browser runtime: implementation assignment
+
+```text
+Date: 2026-11-15
+Remote base commit: fe514e1a31467fd77ba15d5fd20a05745718c7f9
+Tasks inspected: section 3 (P0 isolated browser integration), current
+  `life_graph/tools/errand.py`, `life_graph/services/browser_errand.py`,
+  `life_graph/services/sandbox.py`, `life_graph/services/mcp_bridge.py`,
+  `compose.sandbox.yaml`, and `Dockerfile.browser`.
+
+Verified starting state:
+  - `life_graph/tools/errand.py` currently selects `MCPBrowserDriver`
+    when `mcp_playwright_browser_navigate` is registered.
+  - That driver sends browser operations through the generic bridged MCP
+    registry. It does not, by itself, prove that the request reaches the
+    isolated browser container.
+  - `compose.sandbox.yaml` describes a non-root browser container and a
+    workspace container on an internal-only network. This is a chassis,
+    not proof that the real errand path uses it.
+  - The sandbox browser service exposes a Playwright browser-server
+    WebSocket on the internal network. Treat that endpoint as a privileged
+    remote-control interface, not as a generally reachable service.
+  - The reviewed files do not establish a deployed egress proxy with
+    redirect-aware destination checks and network-layer DNS pinning.
+  - Do not remove or bypass the existing destination validator, owner
+    approval policy, vault origin checks, or exact-action capability checks.
+
+Priority: P0. This assignment supersedes feature work until the real errand
+  execution path is demonstrably isolated.
+
+Required implementation:
+  1. Trace the complete production path from `run_browser_errand` through
+     `get_driver()`, MCP registration, container startup, browser context
+     creation, navigation, redirects, downloads, and cleanup. Record the
+     actual process/container boundaries before changing code.
+  2. Implement a concrete isolated BrowserDriver adapter using the existing
+     BrowserDriver protocol. The adapter must connect only to the dedicated
+     browser runtime, never silently fall back to the generic host/MCP browser.
+  3. Give the browser-control endpoint an authenticated, tenant/errand-scoped
+     control channel. Do not expose an unauthenticated Playwright WebSocket
+     to the workspace, arbitrary MCP clients, other tenants, or public
+     interfaces. Prefer a narrow broker that owns the browser session over
+     distributing a reusable browser-server credential.
+  4. Integrate lifecycle management: provision a fresh isolated browser
+     context per errand (or a rigorously isolated reusable context), enforce
+     time/resource limits, close it on success/failure/cancellation/timeout,
+     and remove cookies, storage, downloads, and temporary data according
+     to an explicit cleanup policy.
+  5. Implement default-deny browser egress. All browser-originated traffic
+     must traverse an explicit proxy/firewall policy; direct TCP, UDP, DNS,
+     WebRTC, QUIC, alternate protocols, and proxy bypass attempts must not
+     provide an escape route. Permit only the public destinations required
+     by the errand policy.
+  6. Enforce destination policy at the network boundary. Resolve and pin
+     permitted addresses for each connection; reject loopback, private,
+     link-local, reserved, multicast, IPv4-mapped IPv6, IPv6 local ranges,
+     cloud metadata, internal service names, and unsafe ports. Re-check every
+     redirect and new connection. Application-level preflight validation
+     remains defense in depth, not the only SSRF control.
+  7. Ensure the browser container has no host mounts, Docker socket,
+     application/database credentials, vault key, or unnecessary network
+     route. Keep the control plane separate from browser egress. Review
+     whether workspace-to-browser network reachability should be removed
+     entirely or mediated by an authenticated broker.
+  8. Keep the vault secret flow safe: resolve a secret only for the live,
+     validated destination origin; do not expose plaintext to the model,
+     logs, browser snapshots, or approval metadata. Do not allow navigation
+     between validation and action to change the destination unnoticed.
+  9. Make runtime unavailability, proxy failure, authentication failure,
+     policy uncertainty, and cleanup failure explicit closed failures.
+     No fallback to the existing generic MCP browser for an errand requiring
+     isolation or owner-approved side effects.
+  10. Update deployment configuration, health checks, settings, migrations
+      if truly needed, security docs, and generated state/inventory only
+      where the implementation changes them. Do not add unused compose
+      services or claim integration based on configuration presence alone.
+
+Acceptance tests (must exercise the real errand entry point):
+  - The actual `run_browser_errand` path reports/records that it used the
+    isolated runtime; tests must fail if the generic MCP driver is selected.
+  - No browser service port is published to host/LAN/public interfaces.
+  - Unauthenticated, wrong-tenant, wrong-errand, expired, and replayed
+    control requests are denied.
+  - Browser and workspace cannot reach application DB, host services,
+    Docker socket, internal control-plane endpoints, or cloud metadata.
+  - Direct egress and proxy-bypass attempts fail for TCP, UDP, DNS, QUIC,
+    WebRTC/STUN, and alternate URL schemes as applicable to the chosen
+    runtime/network architecture.
+  - Public HTTP/HTTPS navigation works only through the approved proxy.
+  - Redirects to blocked/private destinations are blocked before the
+    redirected request reaches the destination.
+  - DNS rebinding / answer changes cannot cause a connection to a prohibited
+    address after a hostname was initially approved.
+  - Test IPv4, IPv6, IPv4-mapped IPv6, integer/hex/octal/short IP forms,
+    localhost aliases, private/link-local/reserved ranges, metadata IPs,
+    and internal DNS names.
+  - Two tenants/errands cannot read each other's cookies, storage, downloads,
+    browser snapshots, or control messages.
+  - Context/container cleanup occurs after success, denial, exception,
+    cancellation, timeout, and process shutdown.
+  - Proxy, broker, browser, or durable policy store outage fails closed;
+    no unsafe driver fallback is attempted.
+  - Owner approval remains exact-action-bound and one-use after integration.
+  - Existing browser policy, vault, destination-validator, and approval tests
+    remain passing; do not weaken existing assertions.
+
+Required evidence:
+  - Exact files changed and architecture/data-flow diagram.
+  - Exact commands and results for focused, full relevant, and container/
+    network integration tests.
+  - Evidence from a real Docker/Compose run, including network inspection
+    and attempted prohibited connections. Unit tests and static YAML checks
+    alone are insufficient.
+  - State clearly which controls are implemented, integrated, unit-tested,
+    integration-tested, adversarially tested, and operationally verified.
+  - Record any environment-dependent tests not run and why. Do not label the
+    browser path production-safe or complete until the network and runtime
+    isolation tests pass in the deployed configuration.
+
+Scope discipline:
+  - First deliver a short architecture trace and threat model, then implement
+    the smallest coherent vertical slice from errand entry point to isolated
+    browser to egress enforcement.
+  - Do not spend this session on confidence calibration, unrelated memory
+    features, UI redesign, or broad refactoring.
+  - If a genuine architectural blocker prevents safe integration, stop before
+    weakening isolation; report the blocker and the smallest viable design.
+```
+
