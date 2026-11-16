@@ -453,7 +453,26 @@ _FRAMES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("preference", re.compile(r"\b(?:prefers?|preferred|favours?|favors?)\s+" + _FRAME_TAIL)),
     ("tool", re.compile(r"\b(?:uses?|using|used|owns?|owned|drives?|runs?)\s+(?:a|an|the)?\s*" + _FRAME_TAIL)),
     ("role", re.compile(r"\b(?:is|was|am|are)\s+(?:a|an|the)\s+" + _FRAME_TAIL)),
+    ("branch", re.compile(r"\b(?:on\s+branch|branch)\s+" + _FRAME_TAIL)),
 )
+
+#: Antonym pairs whose presence across claim and source indicates direct state contradiction.
+_ANTONYM_PAIRS: tuple[tuple[str, str], ...] = (
+    ("activ", "inactiv"),
+    ("runn", "stopp"),
+    ("enabl", "disabl"),
+    ("fre", "paid"),
+    ("onlin", "offlin"),
+    ("open", "clos"),
+    ("succes", "failur"),
+)
+
+
+def _has_antonym_conflict(claim_tokens: set[str], source_tokens: set[str]) -> str | None:
+    for a, b in _ANTONYM_PAIRS:
+        if (a in claim_tokens and b in source_tokens) or (b in claim_tokens and a in source_tokens):
+            return f"{a}_vs_{b}"
+    return None
 
 
 def _stem(word: str) -> str:
@@ -604,11 +623,13 @@ def verify_claim_support(
     detail["entailment_score"] = score
 
     conflict = _frame_conflict(claim, source_text)
+    antonym_clash = _has_antonym_conflict(_content_tokens(claim), _content_tokens(source_text))
     polarity_clash = _is_negated(claim) != _is_negated(source_text)
-    if score >= _CONTRADICTION_FLOOR and (conflict or (polarity_clash and score >= 0.5)):
+    if score >= _CONTRADICTION_FLOOR and (conflict or antonym_clash or (polarity_clash and score >= 0.5)):
+        clash_reason = conflict or antonym_clash or 'opposite polarity'
         detail.update(
             support_status=CONTRADICTED,
-            detail=f"Citation contradicts claim ({conflict or 'opposite polarity'})",
+            detail=f"Citation contradicts claim ({clash_reason})",
         )
     elif score >= ENTAILMENT_THRESHOLD:
         detail.update(support_status=SUPPORTED, detail=f"Citation entails claim (score {score})")
@@ -629,6 +650,7 @@ def extract_claim_evidence(
     memories: list[dict[str, Any]],
     *,
     scorer: Any = None,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Map answer sentences to the lineage they cite, keeping only citations that hold up.
 
@@ -664,7 +686,7 @@ def extract_claim_evidence(
             support_details.append(support)
             if mem is None:
                 continue
-            breakdowns.append(decompose_memory_confidence(mem, support_status=support["support_status"]))
+            breakdowns.append(decompose_memory_confidence(mem, now=now, support_status=support["support_status"]))
             mid = str(mem.get("id") or "") if isinstance(mem, dict) else str(getattr(mem, "id", "") or "")
             if support["support_status"] in _STANDS and mid and mid not in seen_ids:
                 seen_ids.add(mid)
@@ -886,40 +908,186 @@ def decompose_memory_confidence(
     }
 
 
-def evaluate_confidence_calibration(samples: list[dict[str, Any]]) -> dict[str, Any]:
-    """Compute Brier score and calibration summary overall and by evidence_kind."""
+def evaluate_confidence_calibration(
+    samples: list[dict[str, Any]],
+    *,
+    num_bins: int = 10,
+    decision_threshold: float = 0.5,
+    abstain_threshold: float = 0.4,
+) -> dict[str, Any]:
+    """Compute Brier score, ECE, MCE, and calibration summary overall and by evidence_kind.
+
+    Args:
+        samples: List of sample dicts containing 'confidence' and 'correct' (bool/float).
+            May optionally include 'evidence_kind', 'contradiction_predicted',
+            and 'contradiction_ground_truth'.
+        num_bins: Number of equal-width bins for ECE calculation (default 10).
+        decision_threshold: Confidence threshold for predicting positive (default 0.5).
+        abstain_threshold: Confidence threshold below which the system abstains (default 0.4).
+
+    Returns:
+        Dict with Brier score, ECE, MCE, precision, recall, F1, abstention quality,
+        reliability bins, and breakdown by evidence_kind.
+    """
     if not samples:
         return {
             "count": 0,
             "brier_score": 0.0,
+            "ece": 0.0,
+            "mce": 0.0,
             "mean_confidence": 0.0,
             "accuracy": 0.0,
             "calibration_gap": 0.0,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "abstention_rate": 0.0,
+            "abstention_precision": 0.0,
+            "answering_accuracy": 0.0,
+            "bins": [],
             "by_evidence_kind": {},
         }
 
-    buckets: dict[str, list[tuple[float, float]]] = {}
-    all_pairs: list[tuple[float, float]] = []
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    normalized_samples: list[dict[str, Any]] = []
     for item in samples:
         conf = max(0.0, min(1.0, float(item.get("confidence", 0.0))))
         y = 1.0 if item.get("correct") else 0.0
         kind = str(item.get("evidence_kind") or "unknown")
-        all_pairs.append((conf, y))
-        buckets.setdefault(kind, []).append((conf, y))
+        entry: dict[str, Any] = {
+            "confidence": conf,
+            "correct": y,
+            "evidence_kind": kind,
+        }
+        if "contradiction_predicted" in item:
+            entry["contradiction_predicted"] = bool(item["contradiction_predicted"])
+        if "contradiction_ground_truth" in item:
+            entry["contradiction_ground_truth"] = bool(item["contradiction_ground_truth"])
+        normalized_samples.append(entry)
+        buckets.setdefault(kind, []).append(entry)
 
-    def _stats(pairs: list[tuple[float, float]]) -> dict[str, Any]:
-        n = len(pairs)
-        brier = sum((c - y) ** 2 for c, y in pairs) / n
-        mean_c = sum(c for c, _ in pairs) / n
-        acc = sum(y for _, y in pairs) / n
-        return {
+    def _stats(items: list[dict[str, Any]]) -> dict[str, Any]:
+        n = len(items)
+        if n == 0:
+            return {
+                "count": 0,
+                "brier_score": 0.0,
+                "ece": 0.0,
+                "mce": 0.0,
+                "mean_confidence": 0.0,
+                "accuracy": 0.0,
+                "calibration_gap": 0.0,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+                "abstention_rate": 0.0,
+                "abstention_precision": 0.0,
+                "answering_accuracy": 0.0,
+                "bins": [],
+            }
+
+        confs = [it["confidence"] for it in items]
+        ys = [it["correct"] for it in items]
+
+        brier = sum((c - y) ** 2 for c, y in zip(confs, ys)) / n
+        mean_c = sum(confs) / n
+        acc = sum(ys) / n
+        gap = mean_c - acc
+
+        # Reliability bins and Expected Calibration Error (ECE / MCE)
+        bin_records = []
+        ece_acc = 0.0
+        mce_val = 0.0
+        for b_idx in range(num_bins):
+            b_lower = b_idx / num_bins
+            b_upper = (b_idx + 1) / num_bins
+            if b_idx == num_bins - 1:
+                in_bin = [it for it in items if b_lower <= it["confidence"] <= b_upper]
+            else:
+                in_bin = [it for it in items if b_lower <= it["confidence"] < b_upper]
+            b_count = len(in_bin)
+            if b_count > 0:
+                b_conf = sum(it["confidence"] for it in in_bin) / b_count
+                b_acc = sum(it["correct"] for it in in_bin) / b_count
+                b_gap = abs(b_acc - b_conf)
+                ece_acc += (b_count / n) * b_gap
+                if b_gap > mce_val:
+                    mce_val = b_gap
+            else:
+                b_conf = (b_lower + b_upper) / 2.0
+                b_acc = 0.0
+                b_gap = 0.0
+            bin_records.append(
+                {
+                    "bin": b_idx,
+                    "range": (round(b_lower, 2), round(b_upper, 2)),
+                    "count": b_count,
+                    "mean_confidence": round(b_conf, 4),
+                    "accuracy": round(b_acc, 4),
+                    "gap": round(b_gap, 4),
+                }
+            )
+
+        # Classification metrics at decision_threshold
+        tp = sum(1 for c, y in zip(confs, ys) if c >= decision_threshold and y == 1.0)
+        fp = sum(1 for c, y in zip(confs, ys) if c >= decision_threshold and y == 0.0)
+        fn = sum(1 for c, y in zip(confs, ys) if c < decision_threshold and y == 1.0)
+        tn = sum(1 for c, y in zip(confs, ys) if c < decision_threshold and y == 0.0)
+
+        precision = (tp / (tp + fp)) if (tp + fp) > 0 else 0.0
+        recall = (tp / (tp + fn)) if (tp + fn) > 0 else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+        # Abstention quality at abstain_threshold
+        abstained = [it for it in items if it["confidence"] < abstain_threshold]
+        answered = [it for it in items if it["confidence"] >= abstain_threshold]
+        abstention_rate = len(abstained) / n
+        abstention_precision = (
+            sum(1 for it in abstained if it["correct"] == 0.0) / len(abstained)
+            if abstained
+            else 0.0
+        )
+        answering_acc = (
+            sum(it["correct"] for it in answered) / len(answered)
+            if answered
+            else 0.0
+        )
+
+        res: dict[str, Any] = {
             "count": n,
             "brier_score": round(brier, 4),
+            "ece": round(ece_acc, 4),
+            "mce": round(mce_val, 4),
             "mean_confidence": round(mean_c, 4),
             "accuracy": round(acc, 4),
-            "calibration_gap": round(mean_c - acc, 4),
+            "calibration_gap": round(gap, 4),
+            "precision": round(precision, 4),
+            "recall": round(recall, 4),
+            "f1": round(f1, 4),
+            "abstention_rate": round(abstention_rate, 4),
+            "abstention_precision": round(abstention_precision, 4),
+            "answering_accuracy": round(answering_acc, 4),
+            "bins": bin_records,
         }
 
-    summary = _stats(all_pairs)
+        # Contradiction metrics when ground truth is supplied
+        contr_items = [it for it in items if "contradiction_predicted" in it and "contradiction_ground_truth" in it]
+        if contr_items:
+            c_tp = sum(1 for it in contr_items if it["contradiction_predicted"] and it["contradiction_ground_truth"])
+            c_fp = sum(1 for it in contr_items if it["contradiction_predicted"] and not it["contradiction_ground_truth"])
+            c_fn = sum(1 for it in contr_items if not it["contradiction_predicted"] and it["contradiction_ground_truth"])
+            c_prec = (c_tp / (c_tp + c_fp)) if (c_tp + c_fp) > 0 else 0.0
+            c_rec = (c_tp / (c_tp + c_fn)) if (c_tp + c_fn) > 0 else 0.0
+            c_f1 = (2 * c_prec * c_rec / (c_prec + c_rec)) if (c_prec + c_rec) > 0 else 0.0
+            res["contradiction_detection"] = {
+                "count": len(contr_items),
+                "precision": round(c_prec, 4),
+                "recall": round(c_rec, 4),
+                "f1": round(c_f1, 4),
+            }
+
+        return res
+
+    summary = _stats(normalized_samples)
     summary["by_evidence_kind"] = {k: _stats(v) for k, v in sorted(buckets.items())}
     return summary

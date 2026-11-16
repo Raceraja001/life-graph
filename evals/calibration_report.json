@@ -1,0 +1,3205 @@
+{
+  "metadata": {
+    "evaluated_at": "2026-11-16T08:52:05.887948+00:00",
+    "dataset_path": "evals/confidence_calibration_dataset.json",
+    "bins": 10,
+    "decision_threshold": 0.5,
+    "abstain_threshold": 0.4
+  },
+  "splits": {
+    "calibration_set": {
+      "summary": {
+        "count": 60,
+        "brier_score": 0.1238,
+        "ece": 0.1891,
+        "mce": 0.5183,
+        "mean_confidence": 0.6232,
+        "accuracy": 0.4833,
+        "calibration_gap": 0.1398,
+        "precision": 0.7714,
+        "recall": 0.931,
+        "f1": 0.8438,
+        "abstention_rate": 0.2667,
+        "abstention_precision": 1.0,
+        "answering_accuracy": 0.6591,
+        "bins": [
+          {
+            "bin": 0,
+            "range": [
+              0.0,
+              0.1
+            ],
+            "count": 0,
+            "mean_confidence": 0.05,
+            "accuracy": 0.0,
+            "gap": 0.0
+          },
+          {
+            "bin": 1,
+            "range": [
+              0.1,
+              0.2
+            ],
+            "count": 2,
+            "mean_confidence": 0.1685,
+            "accuracy": 0.0,
+            "gap": 0.1685
+          },
+          {
+            "bin": 2,
+            "range": [
+              0.2,
+              0.3
+            ],
+            "count": 10,
+            "mean_confidence": 0.2676,
+            "accuracy": 0.0,
+            "gap": 0.2676
+          },
+          {
+            "bin": 3,
+            "range": [
+              0.3,
+              0.4
+            ],
+            "count": 4,
+            "mean_confidence": 0.3541,
+            "accuracy": 0.0,
+            "gap": 0.3541
+          },
+          {
+            "bin": 4,
+            "range": [
+              0.4,
+              0.5
+            ],
+            "count": 9,
+            "mean_confidence": 0.4614,
+            "accuracy": 0.2222,
+            "gap": 0.2392
+          },
+          {
+            "bin": 5,
+            "range": [
+              0.5,
+              0.6
+            ],
+            "count": 4,
+            "mean_confidence": 0.5183,
+            "accuracy": 0.0,
+            "gap": 0.5183
+          },
+          {
+            "bin": 6,
+            "range": [
+              0.6,
+              0.7
+            ],
+            "count": 2,
+            "mean_confidence": 0.6871,
+            "accuracy": 1.0,
+            "gap": 0.3129
+          },
+          {
+            "bin": 7,
+            "range": [
+              0.7,
+              0.8
+            ],
+            "count": 3,
+            "mean_confidence": 0.7324,
+            "accuracy": 0.3333,
+            "gap": 0.399
+          },
+          {
+            "bin": 8,
+            "range": [
+              0.8,
+              0.9
+            ],
+            "count": 13,
+            "mean_confidence": 0.8473,
+            "accuracy": 0.8462,
+            "gap": 0.0011
+          },
+          {
+            "bin": 9,
+            "range": [
+              0.9,
+              1.0
+            ],
+            "count": 13,
+            "mean_confidence": 0.9344,
+            "accuracy": 1.0,
+            "gap": 0.0656
+          }
+        ],
+        "contradiction_detection": {
+          "count": 60,
+          "precision": 1.0,
+          "recall": 0.75,
+          "f1": 0.8571
+        },
+        "by_evidence_kind": {
+          "document": {
+            "count": 10,
+            "brier_score": 0.1302,
+            "ece": 0.1922,
+            "mce": 0.4978,
+            "mean_confidence": 0.7426,
+            "accuracy": 0.6,
+            "calibration_gap": 0.1426,
+            "precision": 0.8571,
+            "recall": 1.0,
+            "f1": 0.9231,
+            "abstention_rate": 0.1,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.6667,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 0,
+                "mean_confidence": 0.15,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 1,
+                "mean_confidence": 0.2772,
+                "accuracy": 0.0,
+                "gap": 0.2772
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 0,
+                "mean_confidence": 0.35,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 2,
+                "mean_confidence": 0.4978,
+                "accuracy": 0.0,
+                "gap": 0.4978
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 0,
+                "mean_confidence": 0.55,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 0,
+                "mean_confidence": 0.75,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 4,
+                "mean_confidence": 0.8503,
+                "accuracy": 0.75,
+                "gap": 0.1003
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 3,
+                "mean_confidence": 0.9173,
+                "accuracy": 1.0,
+                "gap": 0.0827
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.6667
+            }
+          },
+          "inferred": {
+            "count": 10,
+            "brier_score": 0.1449,
+            "ece": 0.3665,
+            "mce": 0.518,
+            "mean_confidence": 0.4818,
+            "accuracy": 0.3,
+            "calibration_gap": 0.1818,
+            "precision": 0.6,
+            "recall": 1.0,
+            "f1": 0.75,
+            "abstention_rate": 0.3,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.4286,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 1,
+                "mean_confidence": 0.199,
+                "accuracy": 0.0,
+                "gap": 0.199
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 1,
+                "mean_confidence": 0.2655,
+                "accuracy": 0.0,
+                "gap": 0.2655
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 1,
+                "mean_confidence": 0.3727,
+                "accuracy": 0.0,
+                "gap": 0.3727
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 2,
+                "mean_confidence": 0.434,
+                "accuracy": 0.0,
+                "gap": 0.434
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 2,
+                "mean_confidence": 0.518,
+                "accuracy": 0.0,
+                "gap": 0.518
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 2,
+                "mean_confidence": 0.6871,
+                "accuracy": 1.0,
+                "gap": 0.3129
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 1,
+                "mean_confidence": 0.7021,
+                "accuracy": 1.0,
+                "gap": 0.2979
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 0,
+                "mean_confidence": 0.85,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 0,
+                "mean_confidence": 0.95,
+                "accuracy": 0.0,
+                "gap": 0.0
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.6667
+            }
+          },
+          "observed": {
+            "count": 10,
+            "brier_score": 0.1074,
+            "ece": 0.235,
+            "mce": 0.785,
+            "mean_confidence": 0.7346,
+            "accuracy": 0.6,
+            "calibration_gap": 0.1346,
+            "precision": 0.75,
+            "recall": 1.0,
+            "f1": 0.8571,
+            "abstention_rate": 0.2,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.75,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 0,
+                "mean_confidence": 0.15,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 2,
+                "mean_confidence": 0.2777,
+                "accuracy": 0.0,
+                "gap": 0.2777
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 0,
+                "mean_confidence": 0.35,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 0,
+                "mean_confidence": 0.45,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 1,
+                "mean_confidence": 0.5073,
+                "accuracy": 0.0,
+                "gap": 0.5073
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 1,
+                "mean_confidence": 0.785,
+                "accuracy": 0.0,
+                "gap": 0.785
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 1,
+                "mean_confidence": 0.8675,
+                "accuracy": 1.0,
+                "gap": 0.1325
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 5,
+                "mean_confidence": 0.9261,
+                "accuracy": 1.0,
+                "gap": 0.0739
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0
+            }
+          },
+          "outside": {
+            "count": 10,
+            "brier_score": 0.1445,
+            "ece": 0.1856,
+            "mce": 0.348,
+            "mean_confidence": 0.3507,
+            "accuracy": 0.2,
+            "calibration_gap": 0.1507,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "abstention_rate": 0.6,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.5,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 1,
+                "mean_confidence": 0.138,
+                "accuracy": 0.0,
+                "gap": 0.138
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 2,
+                "mean_confidence": 0.2497,
+                "accuracy": 0.0,
+                "gap": 0.2497
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 3,
+                "mean_confidence": 0.348,
+                "accuracy": 0.0,
+                "gap": 0.348
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 4,
+                "mean_confidence": 0.4563,
+                "accuracy": 0.5,
+                "gap": 0.0437
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 0,
+                "mean_confidence": 0.55,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 0,
+                "mean_confidence": 0.75,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 0,
+                "mean_confidence": 0.85,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 0,
+                "mean_confidence": 0.95,
+                "accuracy": 0.0,
+                "gap": 0.0
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.6667
+            }
+          },
+          "said": {
+            "count": 10,
+            "brier_score": 0.1156,
+            "ece": 0.2036,
+            "mce": 0.5298,
+            "mean_confidence": 0.7566,
+            "accuracy": 0.6,
+            "calibration_gap": 0.1566,
+            "precision": 0.75,
+            "recall": 1.0,
+            "f1": 0.8571,
+            "abstention_rate": 0.2,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.75,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 0,
+                "mean_confidence": 0.15,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 2,
+                "mean_confidence": 0.2855,
+                "accuracy": 0.0,
+                "gap": 0.2855
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 0,
+                "mean_confidence": 0.35,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 0,
+                "mean_confidence": 0.45,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 1,
+                "mean_confidence": 0.5298,
+                "accuracy": 0.0,
+                "gap": 0.5298
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 0,
+                "mean_confidence": 0.75,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 2,
+                "mean_confidence": 0.85,
+                "accuracy": 0.5,
+                "gap": 0.35
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 5,
+                "mean_confidence": 0.953,
+                "accuracy": 1.0,
+                "gap": 0.047
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0
+            }
+          },
+          "summary": {
+            "count": 10,
+            "brier_score": 0.1003,
+            "ece": 0.2636,
+            "mce": 0.71,
+            "mean_confidence": 0.6727,
+            "accuracy": 0.6,
+            "calibration_gap": 0.0727,
+            "precision": 0.8571,
+            "recall": 1.0,
+            "f1": 0.9231,
+            "abstention_rate": 0.2,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.75,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 0,
+                "mean_confidence": 0.15,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 2,
+                "mean_confidence": 0.2539,
+                "accuracy": 0.0,
+                "gap": 0.2539
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 0,
+                "mean_confidence": 0.35,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 1,
+                "mean_confidence": 0.4639,
+                "accuracy": 0.0,
+                "gap": 0.4639
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 0,
+                "mean_confidence": 0.55,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 1,
+                "mean_confidence": 0.71,
+                "accuracy": 0.0,
+                "gap": 0.71
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 6,
+                "mean_confidence": 0.8409,
+                "accuracy": 1.0,
+                "gap": 0.1591
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 0,
+                "mean_confidence": 0.95,
+                "accuracy": 0.0,
+                "gap": 0.0
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0
+            }
+          }
+        }
+      },
+      "samples": [
+        {
+          "id": "cal-said-01",
+          "scenario": "owner_explicit_current_location",
+          "claim": "You live in Chennai.",
+          "support_status": "supported",
+          "confidence": 0.9676,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-said-02",
+          "scenario": "owner_explicit_preference",
+          "claim": "You prefer dark roast coffee.",
+          "support_status": "supported",
+          "confidence": 0.95,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-said-03",
+          "scenario": "owner_explicit_editor",
+          "claim": "You use Neovim as your primary editor.",
+          "support_status": "supported",
+          "confidence": 0.9645,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-said-04",
+          "scenario": "owner_explicit_project_goal",
+          "claim": "Life Graph is designed for personal memory.",
+          "support_status": "supported",
+          "confidence": 0.943,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-said-05",
+          "scenario": "owner_explicit_routine",
+          "claim": "You start morning workouts at 6:30 AM.",
+          "support_status": "supported",
+          "confidence": 0.9401,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-said-06",
+          "scenario": "owner_explicit_older_hardware",
+          "claim": "Your secondary workstation has 64GB RAM.",
+          "support_status": "supported",
+          "confidence": 0.8725,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-said-07",
+          "scenario": "owner_frame_contradiction_location",
+          "claim": "You live in London.",
+          "support_status": "contradicted",
+          "confidence": 0.2871,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-said-08",
+          "scenario": "owner_polarity_contradiction_diet",
+          "claim": "You eat dairy products regularly.",
+          "support_status": "contradicted",
+          "confidence": 0.284,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-said-09",
+          "scenario": "owner_stale_expired_temporary_lease",
+          "claim": "You currently rent a desk at the co-working hub.",
+          "support_status": "supported",
+          "confidence": 0.8275,
+          "recommended_action": "qualify",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-said-10",
+          "scenario": "owner_unsupported_citation",
+          "claim": "You won first place in a local badminton tournament.",
+          "support_status": "unsupported",
+          "confidence": 0.5298,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-doc-01",
+          "scenario": "owner_doc_employment_contract",
+          "claim": "Your title is Senior Systems Architect.",
+          "support_status": "supported",
+          "confidence": 0.9177,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-doc-02",
+          "scenario": "owner_doc_tax_id",
+          "claim": "Your registered business is located in Chennai, Tamil Nadu.",
+          "support_status": "supported",
+          "confidence": 0.918,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-doc-03",
+          "scenario": "owner_doc_spec_architecture",
+          "claim": "Life Graph database uses PostgreSQL with pgvector.",
+          "support_status": "supported",
+          "confidence": 0.9162,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-doc-04",
+          "scenario": "owner_doc_vehicle_registration",
+          "claim": "You own a blue Yamaha motorcycle.",
+          "support_status": "supported",
+          "confidence": 0.8915,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-doc-05",
+          "scenario": "owner_doc_insurance_policy",
+          "claim": "Health insurance policy renews on June 15.",
+          "support_status": "supported",
+          "confidence": 0.8675,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-doc-06",
+          "scenario": "owner_doc_older_certificate",
+          "claim": "You earned the Certified Kubernetes Administrator certification in 2023.",
+          "support_status": "supported",
+          "confidence": 0.8348,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-doc-07",
+          "scenario": "doc_frame_contradiction_employer",
+          "claim": "You work at MegaCorp International.",
+          "support_status": "contradicted",
+          "confidence": 0.2772,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-doc-08",
+          "scenario": "doc_frame_contradiction_tool",
+          "claim": "You use an Apple MacBook Pro as your main laptop.",
+          "support_status": "unsupported",
+          "confidence": 0.498,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-doc-09",
+          "scenario": "doc_expired_nda",
+          "claim": "Consulting engagement NDA is currently active.",
+          "support_status": "supported",
+          "confidence": 0.8075,
+          "recommended_action": "qualify",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-doc-10",
+          "scenario": "doc_unsupported_citation",
+          "claim": "You published an academic paper on distributed consensus.",
+          "support_status": "unsupported",
+          "confidence": 0.4975,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-obs-01",
+          "scenario": "system_observed_git_commit",
+          "claim": "You committed changes to master today.",
+          "support_status": "supported",
+          "confidence": 0.9399,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-obs-02",
+          "scenario": "system_observed_active_port",
+          "claim": "Port 8000 is listening for local web traffic.",
+          "support_status": "supported",
+          "confidence": 0.9222,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-obs-03",
+          "scenario": "system_observed_docker_container",
+          "claim": "Postgres container is running on port 5432.",
+          "support_status": "supported",
+          "confidence": 0.9287,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-obs-04",
+          "scenario": "system_observed_pytest_run",
+          "claim": "All unit tests passed in the latest CI pipeline run.",
+          "support_status": "supported",
+          "confidence": 0.9348,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-obs-05",
+          "scenario": "system_observed_storage_pool",
+          "claim": "Storage pool utilized capacity is around 45 percent.",
+          "support_status": "supported",
+          "confidence": 0.9047,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-obs-06",
+          "scenario": "system_observed_older_backup",
+          "claim": "Encrypted storage snapshot backup completed successfully.",
+          "support_status": "supported",
+          "confidence": 0.8675,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-obs-07",
+          "scenario": "obs_contradiction_service_status",
+          "claim": "Redis service is active and running.",
+          "support_status": "contradicted",
+          "confidence": 0.2788,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-obs-08",
+          "scenario": "obs_contradiction_branch",
+          "claim": "Working tree is on branch staging.",
+          "support_status": "contradicted",
+          "confidence": 0.2767,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-obs-09",
+          "scenario": "obs_expired_session_lock",
+          "claim": "Maintenance window lock is currently active.",
+          "support_status": "supported",
+          "confidence": 0.785,
+          "recommended_action": "qualify",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-obs-10",
+          "scenario": "obs_unsupported_citation",
+          "claim": "The server has four high-end GPUs installed.",
+          "support_status": "unsupported",
+          "confidence": 0.5073,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-sum-01",
+          "scenario": "day_summary_recent_discussion",
+          "claim": "You reviewed browser sandbox security and DNS pinning.",
+          "support_status": "supported",
+          "confidence": 0.8642,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-sum-02",
+          "scenario": "day_summary_meeting_topic",
+          "claim": "Discussed roadmap milestones and calibration metrics.",
+          "support_status": "supported",
+          "confidence": 0.8528,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-sum-03",
+          "scenario": "day_summary_troubleshooting",
+          "claim": "Troubleshot Docker network routing between egress and browser.",
+          "support_status": "supported",
+          "confidence": 0.845,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-sum-04",
+          "scenario": "day_summary_learning_session",
+          "claim": "Investigated Expected Calibration Error and Brier score.",
+          "support_status": "supported",
+          "confidence": 0.8582,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-sum-05",
+          "scenario": "day_summary_older_planning",
+          "claim": "Outlined life graph charter invariants and security gates.",
+          "support_status": "supported",
+          "confidence": 0.8255,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-sum-06",
+          "scenario": "day_summary_historical_sprint",
+          "claim": "Completed phase zero baseline and trust tier separation.",
+          "support_status": "supported",
+          "confidence": 0.8,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-sum-07",
+          "scenario": "summary_contradiction_topic",
+          "claim": "Conversation focused on frontend CSS styling.",
+          "support_status": "contradicted",
+          "confidence": 0.2537,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-sum-08",
+          "scenario": "summary_contradiction_deployment",
+          "claim": "The production release build was a success.",
+          "support_status": "contradicted",
+          "confidence": 0.254,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-sum-09",
+          "scenario": "summary_expired_trial",
+          "claim": "Cloud VM trial is currently active.",
+          "support_status": "supported",
+          "confidence": 0.71,
+          "recommended_action": "qualify",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-sum-10",
+          "scenario": "summary_unsupported_citation",
+          "claim": "You reserved flights to Tokyo for December.",
+          "support_status": "unsupported",
+          "confidence": 0.4639,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-inf-01",
+          "scenario": "inferred_style_preference_true",
+          "claim": "You often format code with 100 character line length.",
+          "support_status": "supported",
+          "confidence": 0.7021,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-inf-02",
+          "scenario": "inferred_work_hours_true",
+          "claim": "You are typically active during mornings and early afternoons.",
+          "support_status": "supported",
+          "confidence": 0.681,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-inf-03",
+          "scenario": "inferred_language_preference_true",
+          "claim": "You seem to prefer Python for scripts and backend tasks.",
+          "support_status": "supported",
+          "confidence": 0.6931,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-inf-04",
+          "scenario": "inferred_incorrect_guess_keyboard",
+          "claim": "You prefer the Dvorak keyboard layout.",
+          "support_status": "supported",
+          "confidence": 0.5236,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-inf-05",
+          "scenario": "inferred_incorrect_guess_music",
+          "claim": "You listen to classical jazz during deep work.",
+          "support_status": "supported",
+          "confidence": 0.5125,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-inf-06",
+          "scenario": "inferred_older_guess",
+          "claim": "You are actively learning the Rust language.",
+          "support_status": "supported",
+          "confidence": 0.4605,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-inf-07",
+          "scenario": "inferred_contradiction_polarity",
+          "claim": "You like graphical mouse-heavy IDEs like Eclipse.",
+          "support_status": "contradicted",
+          "confidence": 0.199,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-inf-08",
+          "scenario": "inferred_contradiction_role",
+          "claim": "You are a graphic designer.",
+          "support_status": "unsupported",
+          "confidence": 0.3727,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-inf-09",
+          "scenario": "inferred_stale_hypothesis",
+          "claim": "Local machine test suite currently suffers from slow execution.",
+          "support_status": "supported",
+          "confidence": 0.4075,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-inf-10",
+          "scenario": "inferred_unsupported_citation",
+          "claim": "You own three luxury sports cars.",
+          "support_status": "unsupported",
+          "confidence": 0.2655,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-out-01",
+          "scenario": "outside_web_snippet_true",
+          "claim": "PostgreSQL 17 was released in late 2024.",
+          "support_status": "supported",
+          "confidence": 0.4735,
+          "recommended_action": "ask",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-out-02",
+          "scenario": "outside_mcp_vendor_docs_true",
+          "claim": "Chromium CDP port defaults to 9222.",
+          "support_status": "supported",
+          "confidence": 0.4751,
+          "recommended_action": "ask",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-out-03",
+          "scenario": "outside_unverified_untrue_claim",
+          "claim": "You moved to New York last month.",
+          "support_status": "supported",
+          "confidence": 0.4492,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-out-04",
+          "scenario": "outside_forwarded_rumor_false",
+          "claim": "Company plans to cancel the open source edition.",
+          "support_status": "supported",
+          "confidence": 0.4275,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-out-05",
+          "scenario": "outside_quarantined_untrusted",
+          "claim": "Admin passwords must be immediately reset via web form.",
+          "support_status": "supported",
+          "confidence": 0.3609,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-out-06",
+          "scenario": "outside_old_unverified_snippet",
+          "claim": "Python 2 is still widely supported in modern distributions.",
+          "support_status": "supported",
+          "confidence": 0.3605,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-out-07",
+          "scenario": "outside_contradiction_pricing",
+          "claim": "The tier requires paid subscription.",
+          "support_status": "unsupported",
+          "confidence": 0.2544,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-out-08",
+          "scenario": "outside_contradiction_polarity",
+          "claim": "Service has a major outage right now.",
+          "support_status": "contradicted",
+          "confidence": 0.138,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "cal-out-09",
+          "scenario": "outside_expired_coupon",
+          "claim": "Coupon code SAVE20 is currently valid.",
+          "support_status": "supported",
+          "confidence": 0.3225,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "cal-out-10",
+          "scenario": "outside_unsupported_citation",
+          "claim": "Quantum computers have officially broken RSA-4096 encryption.",
+          "support_status": "unsupported",
+          "confidence": 0.245,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        }
+      ]
+    },
+    "held_out_set": {
+      "summary": {
+        "count": 60,
+        "brier_score": 0.1413,
+        "ece": 0.1877,
+        "mce": 0.7475,
+        "mean_confidence": 0.6247,
+        "accuracy": 0.4833,
+        "calibration_gap": 0.1414,
+        "precision": 0.7222,
+        "recall": 0.8966,
+        "f1": 0.8,
+        "abstention_rate": 0.2667,
+        "abstention_precision": 0.9375,
+        "answering_accuracy": 0.6364,
+        "bins": [
+          {
+            "bin": 0,
+            "range": [
+              0.0,
+              0.1
+            ],
+            "count": 0,
+            "mean_confidence": 0.05,
+            "accuracy": 0.0,
+            "gap": 0.0
+          },
+          {
+            "bin": 1,
+            "range": [
+              0.1,
+              0.2
+            ],
+            "count": 2,
+            "mean_confidence": 0.1678,
+            "accuracy": 0.0,
+            "gap": 0.1678
+          },
+          {
+            "bin": 2,
+            "range": [
+              0.2,
+              0.3
+            ],
+            "count": 11,
+            "mean_confidence": 0.2552,
+            "accuracy": 0.0909,
+            "gap": 0.1643
+          },
+          {
+            "bin": 3,
+            "range": [
+              0.3,
+              0.4
+            ],
+            "count": 3,
+            "mean_confidence": 0.3482,
+            "accuracy": 0.0,
+            "gap": 0.3482
+          },
+          {
+            "bin": 4,
+            "range": [
+              0.4,
+              0.5
+            ],
+            "count": 8,
+            "mean_confidence": 0.4635,
+            "accuracy": 0.25,
+            "gap": 0.2135
+          },
+          {
+            "bin": 5,
+            "range": [
+              0.5,
+              0.6
+            ],
+            "count": 5,
+            "mean_confidence": 0.5149,
+            "accuracy": 0.0,
+            "gap": 0.5149
+          },
+          {
+            "bin": 6,
+            "range": [
+              0.6,
+              0.7
+            ],
+            "count": 2,
+            "mean_confidence": 0.6984,
+            "accuracy": 1.0,
+            "gap": 0.3016
+          },
+          {
+            "bin": 7,
+            "range": [
+              0.7,
+              0.8
+            ],
+            "count": 2,
+            "mean_confidence": 0.7475,
+            "accuracy": 0.0,
+            "gap": 0.7475
+          },
+          {
+            "bin": 8,
+            "range": [
+              0.8,
+              0.9
+            ],
+            "count": 14,
+            "mean_confidence": 0.8506,
+            "accuracy": 0.7857,
+            "gap": 0.0648
+          },
+          {
+            "bin": 9,
+            "range": [
+              0.9,
+              1.0
+            ],
+            "count": 13,
+            "mean_confidence": 0.9396,
+            "accuracy": 1.0,
+            "gap": 0.0604
+          }
+        ],
+        "contradiction_detection": {
+          "count": 60,
+          "precision": 0.9,
+          "recall": 0.75,
+          "f1": 0.8182
+        },
+        "by_evidence_kind": {
+          "document": {
+            "count": 10,
+            "brier_score": 0.1288,
+            "ece": 0.1921,
+            "mce": 0.5028,
+            "mean_confidence": 0.7472,
+            "accuracy": 0.6,
+            "calibration_gap": 0.1472,
+            "precision": 0.75,
+            "recall": 1.0,
+            "f1": 0.8571,
+            "abstention_rate": 0.1,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.6667,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 0,
+                "mean_confidence": 0.15,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 1,
+                "mean_confidence": 0.279,
+                "accuracy": 0.0,
+                "gap": 0.279
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 0,
+                "mean_confidence": 0.35,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 1,
+                "mean_confidence": 0.498,
+                "accuracy": 0.0,
+                "gap": 0.498
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 1,
+                "mean_confidence": 0.5028,
+                "accuracy": 0.0,
+                "gap": 0.5028
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 0,
+                "mean_confidence": 0.75,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 4,
+                "mean_confidence": 0.8542,
+                "accuracy": 0.75,
+                "gap": 0.1042
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 3,
+                "mean_confidence": 0.9252,
+                "accuracy": 1.0,
+                "gap": 0.0748
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.6667
+            }
+          },
+          "inferred": {
+            "count": 10,
+            "brier_score": 0.1759,
+            "ece": 0.2394,
+            "mce": 0.5203,
+            "mean_confidence": 0.3986,
+            "accuracy": 0.3,
+            "calibration_gap": 0.0986,
+            "precision": 0.5,
+            "recall": 0.6667,
+            "f1": 0.5714,
+            "abstention_rate": 0.5,
+            "abstention_precision": 0.8,
+            "answering_accuracy": 0.4,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 1,
+                "mean_confidence": 0.1982,
+                "accuracy": 0.0,
+                "gap": 0.1982
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 4,
+                "mean_confidence": 0.2248,
+                "accuracy": 0.25,
+                "gap": 0.0252
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 0,
+                "mean_confidence": 0.35,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 1,
+                "mean_confidence": 0.4514,
+                "accuracy": 0.0,
+                "gap": 0.4514
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 2,
+                "mean_confidence": 0.5203,
+                "accuracy": 0.0,
+                "gap": 0.5203
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 2,
+                "mean_confidence": 0.6984,
+                "accuracy": 1.0,
+                "gap": 0.3016
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 0,
+                "mean_confidence": 0.75,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 0,
+                "mean_confidence": 0.85,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 0,
+                "mean_confidence": 0.95,
+                "accuracy": 0.0,
+                "gap": 0.0
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 0.6667,
+              "recall": 1.0,
+              "f1": 0.8
+            }
+          },
+          "observed": {
+            "count": 10,
+            "brier_score": 0.1054,
+            "ece": 0.2292,
+            "mce": 0.7815,
+            "mean_confidence": 0.7385,
+            "accuracy": 0.6,
+            "calibration_gap": 0.1385,
+            "precision": 0.75,
+            "recall": 1.0,
+            "f1": 0.8571,
+            "abstention_rate": 0.2,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.75,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 0,
+                "mean_confidence": 0.15,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 2,
+                "mean_confidence": 0.2767,
+                "accuracy": 0.0,
+                "gap": 0.2767
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 0,
+                "mean_confidence": 0.35,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 0,
+                "mean_confidence": 0.45,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 1,
+                "mean_confidence": 0.5035,
+                "accuracy": 0.0,
+                "gap": 0.5035
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 1,
+                "mean_confidence": 0.7815,
+                "accuracy": 0.0,
+                "gap": 0.7815
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 1,
+                "mean_confidence": 0.8812,
+                "accuracy": 1.0,
+                "gap": 0.1188
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 5,
+                "mean_confidence": 0.9331,
+                "accuracy": 1.0,
+                "gap": 0.0669
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0
+            }
+          },
+          "outside": {
+            "count": 10,
+            "brier_score": 0.1584,
+            "ece": 0.1723,
+            "mce": 0.3482,
+            "mean_confidence": 0.3723,
+            "accuracy": 0.2,
+            "calibration_gap": 0.1723,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "abstention_rate": 0.5,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.4,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 1,
+                "mean_confidence": 0.1375,
+                "accuracy": 0.0,
+                "gap": 0.1375
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 1,
+                "mean_confidence": 0.2461,
+                "accuracy": 0.0,
+                "gap": 0.2461
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 3,
+                "mean_confidence": 0.3482,
+                "accuracy": 0.0,
+                "gap": 0.3482
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 5,
+                "mean_confidence": 0.459,
+                "accuracy": 0.4,
+                "gap": 0.059
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 0,
+                "mean_confidence": 0.55,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 0,
+                "mean_confidence": 0.75,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 0,
+                "mean_confidence": 0.85,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 0,
+                "mean_confidence": 0.95,
+                "accuracy": 0.0,
+                "gap": 0.0
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.6667
+            }
+          },
+          "said": {
+            "count": 10,
+            "brier_score": 0.1145,
+            "ece": 0.201,
+            "mce": 0.5274,
+            "mean_confidence": 0.7559,
+            "accuracy": 0.6,
+            "calibration_gap": 0.1559,
+            "precision": 0.75,
+            "recall": 1.0,
+            "f1": 0.8571,
+            "abstention_rate": 0.2,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.75,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 0,
+                "mean_confidence": 0.15,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 2,
+                "mean_confidence": 0.2869,
+                "accuracy": 0.0,
+                "gap": 0.2869
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 0,
+                "mean_confidence": 0.35,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 0,
+                "mean_confidence": 0.45,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 1,
+                "mean_confidence": 0.5274,
+                "accuracy": 0.0,
+                "gap": 0.5274
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 0,
+                "mean_confidence": 0.75,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 2,
+                "mean_confidence": 0.8418,
+                "accuracy": 0.5,
+                "gap": 0.3418
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 5,
+                "mean_confidence": 0.9549,
+                "accuracy": 1.0,
+                "gap": 0.0451
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 1.0,
+              "f1": 1.0
+            }
+          },
+          "summary": {
+            "count": 10,
+            "brier_score": 0.165,
+            "ece": 0.1506,
+            "mce": 0.7135,
+            "mean_confidence": 0.7359,
+            "accuracy": 0.6,
+            "calibration_gap": 0.1359,
+            "precision": 0.75,
+            "recall": 1.0,
+            "f1": 0.8571,
+            "abstention_rate": 0.1,
+            "abstention_precision": 1.0,
+            "answering_accuracy": 0.6667,
+            "bins": [
+              {
+                "bin": 0,
+                "range": [
+                  0.0,
+                  0.1
+                ],
+                "count": 0,
+                "mean_confidence": 0.05,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 1,
+                "range": [
+                  0.1,
+                  0.2
+                ],
+                "count": 0,
+                "mean_confidence": 0.15,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 2,
+                "range": [
+                  0.2,
+                  0.3
+                ],
+                "count": 1,
+                "mean_confidence": 0.2555,
+                "accuracy": 0.0,
+                "gap": 0.2555
+              },
+              {
+                "bin": 3,
+                "range": [
+                  0.3,
+                  0.4
+                ],
+                "count": 0,
+                "mean_confidence": 0.35,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 4,
+                "range": [
+                  0.4,
+                  0.5
+                ],
+                "count": 1,
+                "mean_confidence": 0.4635,
+                "accuracy": 0.0,
+                "gap": 0.4635
+              },
+              {
+                "bin": 5,
+                "range": [
+                  0.5,
+                  0.6
+                ],
+                "count": 0,
+                "mean_confidence": 0.55,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 6,
+                "range": [
+                  0.6,
+                  0.7
+                ],
+                "count": 0,
+                "mean_confidence": 0.65,
+                "accuracy": 0.0,
+                "gap": 0.0
+              },
+              {
+                "bin": 7,
+                "range": [
+                  0.7,
+                  0.8
+                ],
+                "count": 1,
+                "mean_confidence": 0.7135,
+                "accuracy": 0.0,
+                "gap": 0.7135
+              },
+              {
+                "bin": 8,
+                "range": [
+                  0.8,
+                  0.9
+                ],
+                "count": 7,
+                "mean_confidence": 0.8466,
+                "accuracy": 0.8571,
+                "gap": 0.0105
+              },
+              {
+                "bin": 9,
+                "range": [
+                  0.9,
+                  1.0
+                ],
+                "count": 0,
+                "mean_confidence": 0.95,
+                "accuracy": 0.0,
+                "gap": 0.0
+              }
+            ],
+            "contradiction_detection": {
+              "count": 10,
+              "precision": 1.0,
+              "recall": 0.5,
+              "f1": 0.6667
+            }
+          }
+        }
+      },
+      "samples": [
+        {
+          "id": "held-said-01",
+          "scenario": "owner_explicit_framework",
+          "claim": "You use FastAPI for the backend API.",
+          "support_status": "supported",
+          "confidence": 0.9691,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-said-02",
+          "scenario": "owner_explicit_pet",
+          "claim": "Your dog is named Cooper.",
+          "support_status": "supported",
+          "confidence": 0.9591,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-said-03",
+          "scenario": "owner_explicit_keyboard",
+          "claim": "You use an Ergodox split keyboard.",
+          "support_status": "supported",
+          "confidence": 0.9602,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-said-04",
+          "scenario": "owner_explicit_beverage",
+          "claim": "You prefer green tea in the afternoon.",
+          "support_status": "supported",
+          "confidence": 0.9479,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-said-05",
+          "scenario": "owner_explicit_sleep_schedule",
+          "claim": "You go to sleep around 11:30 PM.",
+          "support_status": "supported",
+          "confidence": 0.9382,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-said-06",
+          "scenario": "owner_explicit_older_hardware",
+          "claim": "You bought an iPad Pro in 2022 for sketching diagrams.",
+          "support_status": "supported",
+          "confidence": 0.8632,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-said-07",
+          "scenario": "owner_frame_contradiction_location",
+          "claim": "You live in Hyderabad.",
+          "support_status": "contradicted",
+          "confidence": 0.2867,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-said-08",
+          "scenario": "owner_polarity_contradiction_os",
+          "claim": "You use Docker Desktop on Windows.",
+          "support_status": "contradicted",
+          "confidence": 0.2871,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-said-09",
+          "scenario": "owner_stale_expired_subscription",
+          "claim": "You have an active Copilot Enterprise subscription.",
+          "support_status": "supported",
+          "confidence": 0.8205,
+          "recommended_action": "qualify",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-said-10",
+          "scenario": "owner_unsupported_citation",
+          "claim": "You finished an Olympic distance triathlon.",
+          "support_status": "unsupported",
+          "confidence": 0.5274,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-doc-01",
+          "scenario": "owner_doc_lease_agreement",
+          "claim": "Your rental apartment is Flat 402, Indiranagar.",
+          "support_status": "supported",
+          "confidence": 0.9306,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-doc-02",
+          "scenario": "owner_doc_passport",
+          "claim": "Your passport is valid through 2034.",
+          "support_status": "supported",
+          "confidence": 0.9264,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-doc-03",
+          "scenario": "owner_doc_patent",
+          "claim": "Patent filed for decentralized agent graph memory.",
+          "support_status": "supported",
+          "confidence": 0.896,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-doc-04",
+          "scenario": "owner_doc_bank_account",
+          "claim": "You have an account with HDFC bank.",
+          "support_status": "supported",
+          "confidence": 0.9185,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-doc-05",
+          "scenario": "owner_doc_cloud_bill",
+          "claim": "You have AWS resources in ap-south-1 region.",
+          "support_status": "supported",
+          "confidence": 0.8848,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-doc-06",
+          "scenario": "owner_doc_degree",
+          "claim": "You completed a Bachelor of Technology in Computer Science.",
+          "support_status": "supported",
+          "confidence": 0.8354,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-doc-07",
+          "scenario": "doc_frame_contradiction_employer",
+          "claim": "You work at Microsoft Research.",
+          "support_status": "contradicted",
+          "confidence": 0.279,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-doc-08",
+          "scenario": "doc_frame_contradiction_tool",
+          "claim": "You own a Canon EOS camera.",
+          "support_status": "unsupported",
+          "confidence": 0.5028,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-doc-09",
+          "scenario": "doc_expired_membership",
+          "claim": "Your gym membership pass is currently active.",
+          "support_status": "supported",
+          "confidence": 0.8005,
+          "recommended_action": "qualify",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-doc-10",
+          "scenario": "doc_unsupported_citation",
+          "claim": "You hold a private pilot license for multi-engine aircraft.",
+          "support_status": "unsupported",
+          "confidence": 0.498,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-obs-01",
+          "scenario": "system_observed_vpn",
+          "claim": "Tailscale VPN is connected with IP 100.104.207.76.",
+          "support_status": "supported",
+          "confidence": 0.9434,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-obs-02",
+          "scenario": "system_observed_docker_socket",
+          "claim": "Docker daemon socket is active at var run docker sock.",
+          "support_status": "supported",
+          "confidence": 0.9258,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-obs-03",
+          "scenario": "system_observed_kernel",
+          "claim": "WSL2 environment runs Linux kernel version 6.6.",
+          "support_status": "supported",
+          "confidence": 0.9322,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-obs-04",
+          "scenario": "system_observed_postgres_port",
+          "claim": "PostgreSQL service is listening on port 5433.",
+          "support_status": "supported",
+          "confidence": 0.9278,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-obs-05",
+          "scenario": "system_observed_git_branch",
+          "claim": "Repository commits were made to master branch.",
+          "support_status": "supported",
+          "confidence": 0.9362,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-obs-06",
+          "scenario": "system_observed_python_env",
+          "claim": "Python 3.12 virtual environment is configured in venvs.",
+          "support_status": "supported",
+          "confidence": 0.8812,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-obs-07",
+          "scenario": "obs_antonym_contradiction_service",
+          "claim": "SSH service is active and running.",
+          "support_status": "contradicted",
+          "confidence": 0.2778,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-obs-08",
+          "scenario": "obs_frame_contradiction_branch",
+          "claim": "Working tree is on branch develop.",
+          "support_status": "contradicted",
+          "confidence": 0.2757,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-obs-09",
+          "scenario": "obs_expired_ssl_cert",
+          "claim": "Temporary SSL certificate is currently valid.",
+          "support_status": "supported",
+          "confidence": 0.7815,
+          "recommended_action": "qualify",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-obs-10",
+          "scenario": "obs_unsupported_citation",
+          "claim": "The server chassis contains six optical disc drives.",
+          "support_status": "unsupported",
+          "confidence": 0.5035,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-sum-01",
+          "scenario": "day_summary_browser_automation",
+          "claim": "Investigated Playwright automation with CDP websockets.",
+          "support_status": "supported",
+          "confidence": 0.8677,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-sum-02",
+          "scenario": "day_summary_egress_routing",
+          "claim": "Configured egress proxy routing in Docker stack.",
+          "support_status": "supported",
+          "confidence": 0.8563,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-sum-03",
+          "scenario": "day_summary_ssrf_blocking",
+          "claim": "Tested SSRF blocking against metadata IP addresses.",
+          "support_status": "supported",
+          "confidence": 0.8485,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-sum-04",
+          "scenario": "day_summary_multi_tenant",
+          "claim": "Discussed multi-tenant isolation and security gates.",
+          "support_status": "supported",
+          "confidence": 0.8617,
+          "recommended_action": "answer",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-sum-05",
+          "scenario": "day_summary_ece_plan",
+          "claim": "Drafted test plan for confidence and ECE metrics.",
+          "support_status": "supported",
+          "confidence": 0.8325,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-sum-06",
+          "scenario": "day_summary_relative_date",
+          "claim": "Reviewed historical episode retrieval architecture.",
+          "support_status": "supported",
+          "confidence": 0.8126,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-sum-07",
+          "scenario": "summary_polarity_contradiction",
+          "claim": "Decided to adopt external authentication provider.",
+          "support_status": "supported",
+          "confidence": 0.8469,
+          "recommended_action": "qualify",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-sum-08",
+          "scenario": "summary_antonym_contradiction",
+          "claim": "Deployment to staging was a success.",
+          "support_status": "contradicted",
+          "confidence": 0.2555,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-sum-09",
+          "scenario": "summary_expired_trial_sprint",
+          "claim": "Trial sprint schedule is currently active.",
+          "support_status": "supported",
+          "confidence": 0.7135,
+          "recommended_action": "qualify",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-sum-10",
+          "scenario": "summary_unsupported_citation",
+          "claim": "Planned holiday vacation to Switzerland.",
+          "support_status": "unsupported",
+          "confidence": 0.4635,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-inf-01",
+          "scenario": "inferred_type_hints_true",
+          "claim": "You prefer type hints in Python functions.",
+          "support_status": "supported",
+          "confidence": 0.6994,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-inf-02",
+          "scenario": "inferred_concise_tests_true",
+          "claim": "You often write concise test assertions.",
+          "support_status": "contradicted",
+          "confidence": 0.206,
+          "recommended_action": "abstain",
+          "correct": 1.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-inf-03",
+          "scenario": "inferred_micro_commits_true",
+          "claim": "You prefer smaller modular micro commits.",
+          "support_status": "supported",
+          "confidence": 0.6974,
+          "recommended_action": "qualify",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-inf-04",
+          "scenario": "inferred_incorrect_light_theme",
+          "claim": "You prefer light mode color themes in IDE editors.",
+          "support_status": "supported",
+          "confidence": 0.5232,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-inf-05",
+          "scenario": "inferred_incorrect_sport",
+          "claim": "You play tennis on weekend mornings.",
+          "support_status": "supported",
+          "confidence": 0.5174,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-inf-06",
+          "scenario": "inferred_older_guess",
+          "claim": "You are considering switching to Kotlin for backend.",
+          "support_status": "supported",
+          "confidence": 0.4514,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-inf-07",
+          "scenario": "inferred_polarity_contradiction",
+          "claim": "You like verbose XML configuration files.",
+          "support_status": "contradicted",
+          "confidence": 0.1982,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-inf-08",
+          "scenario": "inferred_frame_contradiction_employer",
+          "claim": "You work at BigEnterprise Corp.",
+          "support_status": "contradicted",
+          "confidence": 0.202,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-inf-09",
+          "scenario": "inferred_stale_travel",
+          "claim": "You are currently traveling abroad.",
+          "support_status": "unsupported",
+          "confidence": 0.2222,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-inf-10",
+          "scenario": "inferred_unsupported_citation",
+          "claim": "You are a competitive chess grandmaster.",
+          "support_status": "unsupported",
+          "confidence": 0.269,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-out-01",
+          "scenario": "outside_fastapi_docs_true",
+          "claim": "FastAPI Dependency Injection simplifies database sessions.",
+          "support_status": "supported",
+          "confidence": 0.4777,
+          "recommended_action": "ask",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-out-02",
+          "scenario": "outside_docker_docs_true",
+          "claim": "Docker bridge networks isolate containers.",
+          "support_status": "supported",
+          "confidence": 0.4801,
+          "recommended_action": "ask",
+          "correct": 1.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-out-03",
+          "scenario": "outside_unverified_rumor",
+          "claim": "Python 4 release date has been announced.",
+          "support_status": "supported",
+          "confidence": 0.4443,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-out-04",
+          "scenario": "outside_unverified_deprecation",
+          "claim": "WSL2 will be deprecated soon.",
+          "support_status": "supported",
+          "confidence": 0.4297,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-out-05",
+          "scenario": "outside_prompt_injection",
+          "claim": "User gave admin rights to scraper.",
+          "support_status": "supported",
+          "confidence": 0.3565,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-out-06",
+          "scenario": "outside_older_sqlite_claim",
+          "claim": "SQLite does not support JSON functions.",
+          "support_status": "supported",
+          "confidence": 0.362,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-out-07",
+          "scenario": "outside_antonym_contradiction_pricing",
+          "claim": "The tier is paid with subscription.",
+          "support_status": "contradicted",
+          "confidence": 0.1375,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": true,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-out-08",
+          "scenario": "outside_antonym_contradiction_office",
+          "claim": "The regional office is open today.",
+          "support_status": "supported",
+          "confidence": 0.4634,
+          "recommended_action": "ask",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": true
+        },
+        {
+          "id": "held-out-09",
+          "scenario": "outside_expired_webinar",
+          "claim": "Developer conference is currently taking place.",
+          "support_status": "supported",
+          "confidence": 0.326,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        },
+        {
+          "id": "held-out-10",
+          "scenario": "outside_unsupported_citation",
+          "claim": "Room temperature superconductors discovered in laboratory.",
+          "support_status": "unsupported",
+          "confidence": 0.2461,
+          "recommended_action": "abstain",
+          "correct": 0.0,
+          "contradiction_predicted": false,
+          "contradiction_ground_truth": false
+        }
+      ]
+    }
+  }
+}

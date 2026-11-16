@@ -1,0 +1,2074 @@
+{
+  "metadata": {
+    "created_at": "2026-11-16T14:20:00Z",
+    "description": "Representative evidence confidence calibration and held-out evaluation dataset across all 6 evidence kinds, contradictions, stale facts, and abstention scenarios.",
+    "total_calibration_samples": 60,
+    "total_held_out_samples": 60,
+    "evidence_kinds": [
+      "said",
+      "document",
+      "observed",
+      "summary",
+      "inferred",
+      "outside"
+    ],
+    "decision_threshold": 0.5,
+    "abstain_threshold": 0.4
+  },
+  "calibration_set": [
+    {
+      "id": "cal-said-01",
+      "scenario": "owner_explicit_current_location",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s01",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.98,
+        "content": "I live in Chennai and work remotely.",
+        "updated_at": "2026-11-04T12:00:00+00:00"
+      },
+      "claim": "You live in Chennai.",
+      "answer": "You live in Chennai [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-said-02",
+      "scenario": "owner_explicit_preference",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s02",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.95,
+        "content": "I prefer dark roast coffee over tea.",
+        "updated_at": "2026-10-25T12:00:00+00:00"
+      },
+      "claim": "You prefer dark roast coffee.",
+      "answer": "You prefer dark roast coffee [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-said-03",
+      "scenario": "owner_explicit_editor",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s03",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.96,
+        "content": "My primary editor is Neovim.",
+        "updated_at": "2026-11-09T12:00:00+00:00"
+      },
+      "claim": "You use Neovim as your primary editor.",
+      "answer": "You use Neovim as your primary editor [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-said-04",
+      "scenario": "owner_explicit_project_goal",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s04",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.92,
+        "content": "Life Graph is designed for personal memory and private AI assistance.",
+        "updated_at": "2026-10-30T12:00:00+00:00"
+      },
+      "claim": "Life Graph is designed for personal memory.",
+      "answer": "Life Graph is designed for personal memory [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-said-05",
+      "scenario": "owner_explicit_routine",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s05",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.94,
+        "content": "I start my morning workout at 6:30 AM.",
+        "updated_at": "2026-10-15T12:00:00+00:00"
+      },
+      "claim": "You start morning workouts at 6:30 AM.",
+      "answer": "You start morning workouts at 6:30 AM [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-said-06",
+      "scenario": "owner_explicit_older_hardware",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s06",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.9,
+        "content": "My secondary workstation has 64GB of RAM.",
+        "updated_at": "2026-05-18T12:00:00+00:00"
+      },
+      "claim": "Your secondary workstation has 64GB RAM.",
+      "answer": "Your secondary workstation has 64GB RAM [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-said-07",
+      "scenario": "owner_frame_contradiction_location",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s07",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.95,
+        "content": "I live in Chennai with my family.",
+        "updated_at": "2026-11-04T12:00:00+00:00"
+      },
+      "claim": "You live in London.",
+      "answer": "You live in London [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-said-08",
+      "scenario": "owner_polarity_contradiction_diet",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s08",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.95,
+        "content": "I do not eat dairy products.",
+        "updated_at": "2026-10-20T12:00:00+00:00"
+      },
+      "claim": "You eat dairy products regularly.",
+      "answer": "You eat dairy products regularly [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-said-09",
+      "scenario": "owner_stale_expired_temporary_lease",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s09",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.9,
+        "content": "Renting a desk at the co-working hub until October.",
+        "updated_at": "2026-04-28T12:00:00+00:00",
+        "valid_to": "2026-09-30T12:00:00+00:00"
+      },
+      "claim": "You currently rent a desk at the co-working hub.",
+      "answer": "You currently rent a desk at the co-working hub [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-said-10",
+      "scenario": "owner_unsupported_citation",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-cal-s10",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.95,
+        "content": "Had biryani for dinner yesterday.",
+        "updated_at": "2026-11-12T12:00:00+00:00"
+      },
+      "claim": "You won first place in a local badminton tournament.",
+      "answer": "You won first place in a local badminton tournament [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-doc-01",
+      "scenario": "owner_doc_employment_contract",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d01",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.95,
+        "content": "Employment agreement specifies Senior Systems Architect role.",
+        "updated_at": "2026-10-05T12:00:00+00:00"
+      },
+      "claim": "Your title is Senior Systems Architect.",
+      "answer": "Your title is Senior Systems Architect [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-doc-02",
+      "scenario": "owner_doc_tax_id",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d02",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.98,
+        "content": "Registered business address in Chennai, Tamil Nadu.",
+        "updated_at": "2026-09-15T12:00:00+00:00"
+      },
+      "claim": "Your registered business is located in Chennai, Tamil Nadu.",
+      "answer": "Your registered business is located in Chennai, Tamil Nadu [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-doc-03",
+      "scenario": "owner_doc_spec_architecture",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d03",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.92,
+        "content": "Life Graph database uses PostgreSQL with pgvector extension.",
+        "updated_at": "2026-10-20T12:00:00+00:00"
+      },
+      "claim": "Life Graph database uses PostgreSQL with pgvector.",
+      "answer": "Life Graph database uses PostgreSQL with pgvector [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-doc-04",
+      "scenario": "owner_doc_vehicle_registration",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d04",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.94,
+        "content": "Vehicle registration for blue Yamaha motorcycle.",
+        "updated_at": "2026-08-16T12:00:00+00:00"
+      },
+      "claim": "You own a blue Yamaha motorcycle.",
+      "answer": "You own a blue Yamaha motorcycle [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-doc-05",
+      "scenario": "owner_doc_insurance_policy",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d05",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.9,
+        "content": "Health insurance policy renewal date is June 15.",
+        "updated_at": "2026-07-17T12:00:00+00:00"
+      },
+      "claim": "Health insurance policy renews on June 15.",
+      "answer": "Health insurance policy renews on June 15 [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-doc-06",
+      "scenario": "owner_doc_older_certificate",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d06",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.88,
+        "content": "Certified Kubernetes Administrator issued in 2023.",
+        "updated_at": "2026-03-19T12:00:00+00:00"
+      },
+      "claim": "You earned the Certified Kubernetes Administrator certification in 2023.",
+      "answer": "You earned the Certified Kubernetes Administrator certification in 2023 [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-doc-07",
+      "scenario": "doc_frame_contradiction_employer",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d07",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.96,
+        "content": "Offer letter confirms you work at Autonomous Labs as Lead Engineer.",
+        "updated_at": "2026-10-10T12:00:00+00:00"
+      },
+      "claim": "You work at MegaCorp International.",
+      "answer": "You work at MegaCorp International [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-doc-08",
+      "scenario": "doc_frame_contradiction_tool",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d08",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.93,
+        "content": "Invoice receipt for Dell XPS 15 laptop with Ubuntu Linux.",
+        "updated_at": "2026-09-25T12:00:00+00:00"
+      },
+      "claim": "You use an Apple MacBook Pro as your main laptop.",
+      "answer": "You use an Apple MacBook Pro as your main laptop [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-doc-09",
+      "scenario": "doc_expired_nda",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d09",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.9,
+        "content": "Consulting engagement NDA active through March 2026.",
+        "updated_at": "2026-01-18T12:00:00+00:00",
+        "valid_to": "2026-09-15T12:00:00+00:00"
+      },
+      "claim": "Consulting engagement NDA is currently active.",
+      "answer": "Consulting engagement NDA is currently active [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-doc-10",
+      "scenario": "doc_unsupported_citation",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-cal-d10",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.92,
+        "content": "Electricity utility bill statement for September.",
+        "updated_at": "2026-09-30T12:00:00+00:00"
+      },
+      "claim": "You published an academic paper on distributed consensus.",
+      "answer": "You published an academic paper on distributed consensus [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-obs-01",
+      "scenario": "system_observed_git_commit",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o01",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.95,
+        "content": "Git scan observed repository commits made to master branch today.",
+        "updated_at": "2026-11-14T08:00:00+00:00"
+      },
+      "claim": "You committed changes to master today.",
+      "answer": "You committed changes to master today [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-obs-02",
+      "scenario": "system_observed_active_port",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o02",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.9,
+        "content": "Observed port 8000 listening for local web service.",
+        "updated_at": "2026-11-14T04:00:00+00:00"
+      },
+      "claim": "Port 8000 is listening for local web traffic.",
+      "answer": "Port 8000 is listening for local web traffic [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-obs-03",
+      "scenario": "system_observed_docker_container",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o03",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.92,
+        "content": "Observed Postgres container running healthy on port 5432.",
+        "updated_at": "2026-11-13T12:00:00+00:00"
+      },
+      "claim": "Postgres container is running on port 5432.",
+      "answer": "Postgres container is running on port 5432 [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-obs-04",
+      "scenario": "system_observed_pytest_run",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o04",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.94,
+        "content": "Observed all unit tests passing in the CI pipeline run.",
+        "updated_at": "2026-11-12T12:00:00+00:00"
+      },
+      "claim": "All unit tests passed in the latest CI pipeline run.",
+      "answer": "All unit tests passed in the latest CI pipeline run [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-obs-05",
+      "scenario": "system_observed_storage_pool",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o05",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.88,
+        "content": "Disk usage scan observed 45% storage capacity utilized.",
+        "updated_at": "2026-10-31T12:00:00+00:00"
+      },
+      "claim": "Storage pool utilized capacity is around 45 percent.",
+      "answer": "Storage pool utilized capacity is around 45 percent [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-obs-06",
+      "scenario": "system_observed_older_backup",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o06",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.85,
+        "content": "Snapshot backup completed successfully to encrypted storage.",
+        "updated_at": "2026-09-15T12:00:00+00:00"
+      },
+      "claim": "Encrypted storage snapshot backup completed successfully.",
+      "answer": "Encrypted storage snapshot backup completed successfully [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-obs-07",
+      "scenario": "obs_contradiction_service_status",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o07",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.92,
+        "content": "System observed Redis service is stopped and inactive.",
+        "updated_at": "2026-11-14T10:00:00+00:00"
+      },
+      "claim": "Redis service is active and running.",
+      "answer": "Redis service is active and running [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-obs-08",
+      "scenario": "obs_contradiction_branch",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o08",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.9,
+        "content": "Git status observed working tree on branch master.",
+        "updated_at": "2026-11-14T11:00:00+00:00"
+      },
+      "claim": "Working tree is on branch staging.",
+      "answer": "Working tree is on branch staging [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-obs-09",
+      "scenario": "obs_expired_session_lock",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o09",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.85,
+        "content": "Temporary maintenance window lock active until 08:00 UTC.",
+        "updated_at": "2026-11-13T12:00:00+00:00",
+        "valid_to": "2026-11-14T08:00:00+00:00"
+      },
+      "claim": "Maintenance window lock is currently active.",
+      "answer": "Maintenance window lock is currently active [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-obs-10",
+      "scenario": "obs_unsupported_citation",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-cal-o10",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.9,
+        "content": "Network scan recorded ping latency of 12ms to gateway.",
+        "updated_at": "2026-11-14T06:00:00+00:00"
+      },
+      "claim": "The server has four high-end GPUs installed.",
+      "answer": "The server has four high-end GPUs installed [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-sum-01",
+      "scenario": "day_summary_recent_discussion",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u01",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.85,
+        "content": "Reviewed browser sandbox network security and DNS pinning design.",
+        "updated_at": "2026-11-13T12:00:00+00:00"
+      },
+      "claim": "You reviewed browser sandbox security and DNS pinning.",
+      "answer": "You reviewed browser sandbox security and DNS pinning [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-sum-02",
+      "scenario": "day_summary_meeting_topic",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u02",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.82,
+        "content": "Discussed roadmap milestones and prioritised calibration metrics.",
+        "updated_at": "2026-11-12T12:00:00+00:00"
+      },
+      "claim": "Discussed roadmap milestones and calibration metrics.",
+      "answer": "Discussed roadmap milestones and calibration metrics [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-sum-03",
+      "scenario": "day_summary_troubleshooting",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u03",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.8,
+        "content": "Troubleshot Docker compose network routing between egress and browser.",
+        "updated_at": "2026-11-11T12:00:00+00:00"
+      },
+      "claim": "Troubleshot Docker network routing between egress and browser.",
+      "answer": "Troubleshot Docker network routing between egress and browser [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-sum-04",
+      "scenario": "day_summary_learning_session",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u04",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.84,
+        "content": "Investigated Expected Calibration Error and Brier score formulations.",
+        "updated_at": "2026-11-10T12:00:00+00:00"
+      },
+      "claim": "Investigated Expected Calibration Error and Brier score.",
+      "answer": "Investigated Expected Calibration Error and Brier score [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-sum-05",
+      "scenario": "day_summary_older_planning",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u05",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.78,
+        "content": "Outlined life graph charter invariants and fail-closed security gates.",
+        "updated_at": "2026-10-25T12:00:00+00:00"
+      },
+      "claim": "Outlined life graph charter invariants and security gates.",
+      "answer": "Outlined life graph charter invariants and security gates [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-sum-06",
+      "scenario": "day_summary_historical_sprint",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u06",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.75,
+        "content": "Completed phase zero baseline and initial trust tier separation.",
+        "updated_at": "2026-09-30T12:00:00+00:00"
+      },
+      "claim": "Completed phase zero baseline and trust tier separation.",
+      "answer": "Completed phase zero baseline and trust tier separation [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-sum-07",
+      "scenario": "summary_contradiction_topic",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u07",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.8,
+        "content": "Conversation focused on Python backend architecture, not frontend styling.",
+        "updated_at": "2026-11-12T12:00:00+00:00"
+      },
+      "claim": "Conversation focused on frontend CSS styling.",
+      "answer": "Conversation focused on frontend CSS styling [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-sum-08",
+      "scenario": "summary_contradiction_deployment",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u08",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.82,
+        "content": "The production release build was a failure due to missing dependency.",
+        "updated_at": "2026-11-04T12:00:00+00:00"
+      },
+      "claim": "The production release build was a success.",
+      "answer": "The production release build was a success [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-sum-09",
+      "scenario": "summary_expired_trial",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u09",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.75,
+        "content": "Agreed to test cloud VM trial ending on November 1.",
+        "updated_at": "2026-10-20T12:00:00+00:00",
+        "valid_to": "2026-11-01T12:00:00+00:00"
+      },
+      "claim": "Cloud VM trial is currently active.",
+      "answer": "Cloud VM trial is currently active [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-sum-10",
+      "scenario": "summary_unsupported_citation",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-cal-u10",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.8,
+        "content": "Summarized sprint standup notes on bug triaging.",
+        "updated_at": "2026-11-09T12:00:00+00:00"
+      },
+      "claim": "You reserved flights to Tokyo for December.",
+      "answer": "You reserved flights to Tokyo for December [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-inf-01",
+      "scenario": "inferred_style_preference_true",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i01",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.65,
+        "content": "The owner frequently formats code with 100 character line length.",
+        "updated_at": "2026-11-04T12:00:00+00:00"
+      },
+      "claim": "You often format code with 100 character line length.",
+      "answer": "You often format code with 100 character line length [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-inf-02",
+      "scenario": "inferred_work_hours_true",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i02",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.6,
+        "content": "User seems most active during morning and early afternoon hours.",
+        "updated_at": "2026-10-30T12:00:00+00:00"
+      },
+      "claim": "You are typically active during mornings and early afternoons.",
+      "answer": "You are typically active during mornings and early afternoons [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-inf-03",
+      "scenario": "inferred_language_preference_true",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i03",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.62,
+        "content": "Seems to prefer Python for backend scripts and automation.",
+        "updated_at": "2026-11-06T12:00:00+00:00"
+      },
+      "claim": "You seem to prefer Python for scripts and backend tasks.",
+      "answer": "You seem to prefer Python for scripts and backend tasks [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-inf-04",
+      "scenario": "inferred_incorrect_guess_keyboard",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i04",
+        "source_type": "failure_mining",
+        "trust_tier": "unverified",
+        "confidence": 0.45,
+        "content": "Owner might prefer Dvorak keyboard layout over QWERTY.",
+        "updated_at": "2026-10-15T12:00:00+00:00"
+      },
+      "claim": "You prefer the Dvorak keyboard layout.",
+      "answer": "You prefer the Dvorak keyboard layout [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-inf-05",
+      "scenario": "inferred_incorrect_guess_music",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i05",
+        "source_type": "failure_mining",
+        "trust_tier": "unverified",
+        "confidence": 0.4,
+        "content": "User may enjoy listening to classical jazz during deep work.",
+        "updated_at": "2026-10-25T12:00:00+00:00"
+      },
+      "claim": "You listen to classical jazz during deep work.",
+      "answer": "You listen to classical jazz during deep work [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-inf-06",
+      "scenario": "inferred_older_guess",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i06",
+        "source_type": "distillation",
+        "trust_tier": "unverified",
+        "confidence": 0.38,
+        "content": "Deduced possible interest in learning Rust language.",
+        "updated_at": "2026-07-17T12:00:00+00:00"
+      },
+      "claim": "You are actively learning the Rust language.",
+      "answer": "You are actively learning the Rust language [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-inf-07",
+      "scenario": "inferred_contradiction_polarity",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i07",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.55,
+        "content": "Analysis suggests owner does not like graphical mouse-heavy IDEs.",
+        "updated_at": "2026-10-30T12:00:00+00:00"
+      },
+      "claim": "You like graphical mouse-heavy IDEs like Eclipse.",
+      "answer": "You like graphical mouse-heavy IDEs like Eclipse [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-inf-08",
+      "scenario": "inferred_contradiction_role",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i08",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.58,
+        "content": "Heuristic notes user is a backend systems architect.",
+        "updated_at": "2026-11-04T12:00:00+00:00"
+      },
+      "claim": "You are a graphic designer.",
+      "answer": "You are a graphic designer [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-inf-09",
+      "scenario": "inferred_stale_hypothesis",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i09",
+        "source_type": "failure_mining",
+        "trust_tier": "unverified",
+        "confidence": 0.4,
+        "content": "Temporary assumption that test suite runs too slowly on local machine.",
+        "updated_at": "2026-03-09T12:00:00+00:00",
+        "valid_to": "2026-08-06T12:00:00+00:00"
+      },
+      "claim": "Local machine test suite currently suffers from slow execution.",
+      "answer": "Local machine test suite currently suffers from slow execution [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-inf-10",
+      "scenario": "inferred_unsupported_citation",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-cal-i10",
+        "source_type": "distillation",
+        "trust_tier": "unverified",
+        "confidence": 0.35,
+        "content": "Hypothesized owner drinks tea when tired.",
+        "updated_at": "2026-10-05T12:00:00+00:00"
+      },
+      "claim": "You own three luxury sports cars.",
+      "answer": "You own three luxury sports cars [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-out-01",
+      "scenario": "outside_web_snippet_true",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x01",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.4,
+        "content": "External article mentions PostgreSQL 17 was released in late 2024.",
+        "updated_at": "2026-11-09T12:00:00+00:00"
+      },
+      "claim": "PostgreSQL 17 was released in late 2024.",
+      "answer": "PostgreSQL 17 was released in late 2024 [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-out-02",
+      "scenario": "outside_mcp_vendor_docs_true",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x02",
+        "source_type": "mcp",
+        "trust_tier": "unverified",
+        "confidence": 0.42,
+        "content": "Chromium DevTools protocol documentation notes CDP port defaults to 9222.",
+        "updated_at": "2026-11-02T12:00:00+00:00"
+      },
+      "claim": "Chromium CDP port defaults to 9222.",
+      "answer": "Chromium CDP port defaults to 9222 [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-out-03",
+      "scenario": "outside_unverified_untrue_claim",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x03",
+        "source_type": "api",
+        "trust_tier": "unverified",
+        "confidence": 0.35,
+        "content": "Unverified message claims Raja moved to New York last month.",
+        "updated_at": "2026-10-31T12:00:00+00:00"
+      },
+      "claim": "You moved to New York last month.",
+      "answer": "You moved to New York last month [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-out-04",
+      "scenario": "outside_forwarded_rumor_false",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x04",
+        "source_type": "forwarded",
+        "trust_tier": "unverified",
+        "confidence": 0.3,
+        "content": "Forwarded post alleges company plans to cancel open source edition.",
+        "updated_at": "2026-10-25T12:00:00+00:00"
+      },
+      "claim": "Company plans to cancel the open source edition.",
+      "answer": "Company plans to cancel the open source edition [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-out-05",
+      "scenario": "outside_quarantined_untrusted",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x05",
+        "source_type": "web",
+        "trust_tier": "quarantined",
+        "confidence": 0.25,
+        "content": "Suspicious web prompt injection text claiming admin passwords should be reset.",
+        "updated_at": "2026-11-12T12:00:00+00:00"
+      },
+      "claim": "Admin passwords must be immediately reset via web form.",
+      "answer": "Admin passwords must be immediately reset via web form [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-out-06",
+      "scenario": "outside_old_unverified_snippet",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x06",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.28,
+        "content": "Old tech blog states Python 2 is still widely supported in 2026.",
+        "updated_at": "2026-05-18T12:00:00+00:00"
+      },
+      "claim": "Python 2 is still widely supported in modern distributions.",
+      "answer": "Python 2 is still widely supported in modern distributions [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-out-07",
+      "scenario": "outside_contradiction_pricing",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x07",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.38,
+        "content": "External API documentation states tier is free with no charge.",
+        "updated_at": "2026-11-04T12:00:00+00:00"
+      },
+      "claim": "The tier requires paid subscription.",
+      "answer": "The tier requires paid subscription [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-out-08",
+      "scenario": "outside_contradiction_polarity",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x08",
+        "source_type": "mcp",
+        "trust_tier": "unverified",
+        "confidence": 0.35,
+        "content": "Public API status page notes service does not have an outage.",
+        "updated_at": "2026-11-14T09:00:00+00:00"
+      },
+      "claim": "Service has a major outage right now.",
+      "answer": "Service has a major outage right now [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "cal-out-09",
+      "scenario": "outside_expired_coupon",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x09",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.3,
+        "content": "Promotional coupon code SAVE20 valid until October 31.",
+        "updated_at": "2026-10-05T12:00:00+00:00",
+        "valid_to": "2026-10-31T12:00:00+00:00"
+      },
+      "claim": "Coupon code SAVE20 is currently valid.",
+      "answer": "Coupon code SAVE20 is currently valid [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "cal-out-10",
+      "scenario": "outside_unsupported_citation",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-cal-x10",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.32,
+        "content": "Recipe blog discussing sourdough fermentation times.",
+        "updated_at": "2026-11-09T12:00:00+00:00"
+      },
+      "claim": "Quantum computers have officially broken RSA-4096 encryption.",
+      "answer": "Quantum computers have officially broken RSA-4096 encryption [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    }
+  ],
+  "held_out_set": [
+    {
+      "id": "held-said-01",
+      "scenario": "owner_explicit_framework",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s01",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.98,
+        "content": "I use FastAPI for the backend service API.",
+        "updated_at": "2026-11-06T12:00:00+00:00"
+      },
+      "claim": "You use FastAPI for the backend API.",
+      "answer": "You use FastAPI for the backend API [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-said-02",
+      "scenario": "owner_explicit_pet",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s02",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.96,
+        "content": "My golden retriever dog is named Cooper.",
+        "updated_at": "2026-11-02T12:00:00+00:00"
+      },
+      "claim": "Your dog is named Cooper.",
+      "answer": "Your dog is named Cooper [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-said-03",
+      "scenario": "owner_explicit_keyboard",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s03",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.95,
+        "content": "I use an Ergodox split mechanical keyboard.",
+        "updated_at": "2026-11-08T12:00:00+00:00"
+      },
+      "claim": "You use an Ergodox split keyboard.",
+      "answer": "You use an Ergodox split keyboard [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-said-04",
+      "scenario": "owner_explicit_beverage",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s04",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.94,
+        "content": "I prefer drinking green tea in the late afternoon.",
+        "updated_at": "2026-10-27T12:00:00+00:00"
+      },
+      "claim": "You prefer green tea in the afternoon.",
+      "answer": "You prefer green tea in the afternoon [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-said-05",
+      "scenario": "owner_explicit_sleep_schedule",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s05",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.92,
+        "content": "I usually go to sleep around 11:30 PM.",
+        "updated_at": "2026-10-23T12:00:00+00:00"
+      },
+      "claim": "You go to sleep around 11:30 PM.",
+      "answer": "You go to sleep around 11:30 PM [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-said-06",
+      "scenario": "owner_explicit_older_hardware",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s06",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.89,
+        "content": "I purchased an iPad Pro in 2022 for sketching diagrams.",
+        "updated_at": "2026-04-18T12:00:00+00:00"
+      },
+      "claim": "You bought an iPad Pro in 2022 for sketching diagrams.",
+      "answer": "You bought an iPad Pro in 2022 for sketching diagrams [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-said-07",
+      "scenario": "owner_frame_contradiction_location",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s07",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.95,
+        "content": "I live in Bengaluru near Indiranagar.",
+        "updated_at": "2026-11-02T12:00:00+00:00"
+      },
+      "claim": "You live in Hyderabad.",
+      "answer": "You live in Hyderabad [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-said-08",
+      "scenario": "owner_polarity_contradiction_os",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s08",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.96,
+        "content": "I do not use Docker Desktop on Windows, only WSL2.",
+        "updated_at": "2026-10-30T12:00:00+00:00"
+      },
+      "claim": "You use Docker Desktop on Windows.",
+      "answer": "You use Docker Desktop on Windows [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-said-09",
+      "scenario": "owner_stale_expired_subscription",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s09",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.88,
+        "content": "Subscribed to Copilot Enterprise until October.",
+        "updated_at": "2026-04-08T12:00:00+00:00",
+        "valid_to": "2026-10-05T12:00:00+00:00"
+      },
+      "claim": "You have an active Copilot Enterprise subscription.",
+      "answer": "You have an active Copilot Enterprise subscription [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-said-10",
+      "scenario": "owner_unsupported_citation",
+      "evidence_kind": "said",
+      "memory": {
+        "id": "m-held-s10",
+        "source_type": "chat",
+        "trust_tier": "self",
+        "confidence": 0.94,
+        "content": "Replaced the thermal paste on CPU cooler.",
+        "updated_at": "2026-11-11T12:00:00+00:00"
+      },
+      "claim": "You finished an Olympic distance triathlon.",
+      "answer": "You finished an Olympic distance triathlon [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-doc-01",
+      "scenario": "owner_doc_lease_agreement",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d01",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.97,
+        "content": "Apartment rental agreement for Flat 402, Indiranagar.",
+        "updated_at": "2026-10-15T12:00:00+00:00"
+      },
+      "claim": "Your rental apartment is Flat 402, Indiranagar.",
+      "answer": "Your rental apartment is Flat 402, Indiranagar [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-doc-02",
+      "scenario": "owner_doc_passport",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d02",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.99,
+        "content": "Passport renewal validity extends through 2034.",
+        "updated_at": "2026-09-25T12:00:00+00:00"
+      },
+      "claim": "Your passport is valid through 2034.",
+      "answer": "Your passport is valid through 2034 [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-doc-03",
+      "scenario": "owner_doc_patent",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d03",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.93,
+        "content": "Patent application document for decentralized agent graph memory.",
+        "updated_at": "2026-09-05T12:00:00+00:00"
+      },
+      "claim": "Patent filed for decentralized agent graph memory.",
+      "answer": "Patent filed for decentralized agent graph memory [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-doc-04",
+      "scenario": "owner_doc_bank_account",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d04",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.96,
+        "content": "Bank statement confirms account held with HDFC bank.",
+        "updated_at": "2026-09-30T12:00:00+00:00"
+      },
+      "claim": "You have an account with HDFC bank.",
+      "answer": "You have an account with HDFC bank [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-doc-05",
+      "scenario": "owner_doc_cloud_bill",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d05",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.91,
+        "content": "AWS monthly invoice confirms resources running in ap-south-1 region.",
+        "updated_at": "2026-08-26T12:00:00+00:00"
+      },
+      "claim": "You have AWS resources in ap-south-1 region.",
+      "answer": "You have AWS resources in ap-south-1 region [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-doc-06",
+      "scenario": "owner_doc_degree",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d06",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.89,
+        "content": "Bachelor of Technology in Computer Science degree conferred in 2018.",
+        "updated_at": "2026-02-27T12:00:00+00:00"
+      },
+      "claim": "You completed a Bachelor of Technology in Computer Science.",
+      "answer": "You completed a Bachelor of Technology in Computer Science [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-doc-07",
+      "scenario": "doc_frame_contradiction_employer",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d07",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.95,
+        "content": "Employment contract confirms you work at CloudScale Systems.",
+        "updated_at": "2026-10-25T12:00:00+00:00"
+      },
+      "claim": "You work at Microsoft Research.",
+      "answer": "You work at Microsoft Research [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-doc-08",
+      "scenario": "doc_frame_contradiction_tool",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d08",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.94,
+        "content": "Camera receipt confirms you own a Sony A7 camera.",
+        "updated_at": "2026-10-05T12:00:00+00:00"
+      },
+      "claim": "You own a Canon EOS camera.",
+      "answer": "You own a Canon EOS camera [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-doc-09",
+      "scenario": "doc_expired_membership",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d09",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.88,
+        "content": "Gym annual membership pass active through August 2026.",
+        "updated_at": "2026-02-07T12:00:00+00:00",
+        "valid_to": "2026-09-05T12:00:00+00:00"
+      },
+      "claim": "Your gym membership pass is currently active.",
+      "answer": "Your gym membership pass is currently active [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-doc-10",
+      "scenario": "doc_unsupported_citation",
+      "evidence_kind": "document",
+      "memory": {
+        "id": "m-held-d10",
+        "source_type": "document",
+        "trust_tier": "verified",
+        "confidence": 0.93,
+        "content": "Car maintenance service record for brake pad inspection.",
+        "updated_at": "2026-09-25T12:00:00+00:00"
+      },
+      "claim": "You hold a private pilot license for multi-engine aircraft.",
+      "answer": "You hold a private pilot license for multi-engine aircraft [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-obs-01",
+      "scenario": "system_observed_vpn",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o01",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.96,
+        "content": "Observed Tailscale VPN connected with IP 100.104.207.76.",
+        "updated_at": "2026-11-14T09:00:00+00:00"
+      },
+      "claim": "Tailscale VPN is connected with IP 100.104.207.76.",
+      "answer": "Tailscale VPN is connected with IP 100.104.207.76 [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-obs-02",
+      "scenario": "system_observed_docker_socket",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o02",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.91,
+        "content": "Observed Docker daemon socket active at var run docker sock.",
+        "updated_at": "2026-11-14T07:00:00+00:00"
+      },
+      "claim": "Docker daemon socket is active at var run docker sock.",
+      "answer": "Docker daemon socket is active at var run docker sock [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-obs-03",
+      "scenario": "system_observed_kernel",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o03",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.93,
+        "content": "Observed Linux kernel version 6.6 running in WSL2 environment.",
+        "updated_at": "2026-11-13T12:00:00+00:00"
+      },
+      "claim": "WSL2 environment runs Linux kernel version 6.6.",
+      "answer": "WSL2 environment runs Linux kernel version 6.6 [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-obs-04",
+      "scenario": "system_observed_postgres_port",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o04",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.92,
+        "content": "Observed PostgreSQL service listening on port 5433.",
+        "updated_at": "2026-11-12T12:00:00+00:00"
+      },
+      "claim": "PostgreSQL service is listening on port 5433.",
+      "answer": "PostgreSQL service is listening on port 5433 [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-obs-05",
+      "scenario": "system_observed_git_branch",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o05",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.94,
+        "content": "Git scan observed repository commits made to master branch.",
+        "updated_at": "2026-11-14T02:00:00+00:00"
+      },
+      "claim": "Repository commits were made to master branch.",
+      "answer": "Repository commits were made to master branch [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-obs-06",
+      "scenario": "system_observed_python_env",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o06",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.86,
+        "content": "Observed Python 3.12 virtual environment configured in venvs folder.",
+        "updated_at": "2026-10-05T12:00:00+00:00"
+      },
+      "claim": "Python 3.12 virtual environment is configured in venvs.",
+      "answer": "Python 3.12 virtual environment is configured in venvs [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-obs-07",
+      "scenario": "obs_antonym_contradiction_service",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o07",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.91,
+        "content": "System scan observed SSH service is stopped and inactive.",
+        "updated_at": "2026-11-14T10:00:00+00:00"
+      },
+      "claim": "SSH service is active and running.",
+      "answer": "SSH service is active and running [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-obs-08",
+      "scenario": "obs_frame_contradiction_branch",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o08",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.89,
+        "content": "Git status observed working tree on branch release-v2.",
+        "updated_at": "2026-11-14T11:00:00+00:00"
+      },
+      "claim": "Working tree is on branch develop.",
+      "answer": "Working tree is on branch develop [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-obs-09",
+      "scenario": "obs_expired_ssl_cert",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o09",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.84,
+        "content": "Temporary SSL certificate valid through yesterday.",
+        "updated_at": "2026-11-12T12:00:00+00:00",
+        "valid_to": "2026-11-13T12:00:00+00:00"
+      },
+      "claim": "Temporary SSL certificate is currently valid.",
+      "answer": "Temporary SSL certificate is currently valid [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-obs-10",
+      "scenario": "obs_unsupported_citation",
+      "evidence_kind": "observed",
+      "memory": {
+        "id": "m-held-o10",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.88,
+        "content": "Hardware monitor recorded CPU temperature at 48 degrees Celsius.",
+        "updated_at": "2026-11-14T08:00:00+00:00"
+      },
+      "claim": "The server chassis contains six optical disc drives.",
+      "answer": "The server chassis contains six optical disc drives [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-sum-01",
+      "scenario": "day_summary_browser_automation",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u01",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.86,
+        "content": "Investigated Playwright browser automation with authenticated CDP websockets.",
+        "updated_at": "2026-11-13T12:00:00+00:00"
+      },
+      "claim": "Investigated Playwright automation with CDP websockets.",
+      "answer": "Investigated Playwright automation with CDP websockets [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-sum-02",
+      "scenario": "day_summary_egress_routing",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u02",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.83,
+        "content": "Configured egress proxy network routing in Docker compose stack.",
+        "updated_at": "2026-11-12T12:00:00+00:00"
+      },
+      "claim": "Configured egress proxy routing in Docker stack.",
+      "answer": "Configured egress proxy routing in Docker stack [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-sum-03",
+      "scenario": "day_summary_ssrf_blocking",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u03",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.81,
+        "content": "Tested SSRF blocking against cloud metadata IP addresses.",
+        "updated_at": "2026-11-11T12:00:00+00:00"
+      },
+      "claim": "Tested SSRF blocking against metadata IP addresses.",
+      "answer": "Tested SSRF blocking against metadata IP addresses [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-sum-04",
+      "scenario": "day_summary_multi_tenant",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u04",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.85,
+        "content": "Discussed multi-tenant isolation and fail-closed security gates.",
+        "updated_at": "2026-11-10T12:00:00+00:00"
+      },
+      "claim": "Discussed multi-tenant isolation and security gates.",
+      "answer": "Discussed multi-tenant isolation and security gates [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-sum-05",
+      "scenario": "day_summary_ece_plan",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u05",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.79,
+        "content": "Drafted test plan for confidence decomposition and ECE metrics.",
+        "updated_at": "2026-10-30T12:00:00+00:00"
+      },
+      "claim": "Drafted test plan for confidence and ECE metrics.",
+      "answer": "Drafted test plan for confidence and ECE metrics [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-sum-06",
+      "scenario": "day_summary_relative_date",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u06",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.77,
+        "content": "Reviewed historical relative date episode retrieval architecture.",
+        "updated_at": "2026-10-10T12:00:00+00:00"
+      },
+      "claim": "Reviewed historical episode retrieval architecture.",
+      "answer": "Reviewed historical episode retrieval architecture [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-sum-07",
+      "scenario": "summary_polarity_contradiction",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u07",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.81,
+        "content": "Decided against adopting external authentication provider.",
+        "updated_at": "2026-11-09T12:00:00+00:00"
+      },
+      "claim": "Decided to adopt external authentication provider.",
+      "answer": "Decided to adopt external authentication provider [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-sum-08",
+      "scenario": "summary_antonym_contradiction",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u08",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.83,
+        "content": "Deployment to staging was a failure due to database connection timeout.",
+        "updated_at": "2026-11-06T12:00:00+00:00"
+      },
+      "claim": "Deployment to staging was a success.",
+      "answer": "Deployment to staging was a success [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-sum-09",
+      "scenario": "summary_expired_trial_sprint",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u09",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.76,
+        "content": "Agreed to follow trial sprint schedule ending on October 25.",
+        "updated_at": "2026-10-15T12:00:00+00:00",
+        "valid_to": "2026-10-25T12:00:00+00:00"
+      },
+      "claim": "Trial sprint schedule is currently active.",
+      "answer": "Trial sprint schedule is currently active [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-sum-10",
+      "scenario": "summary_unsupported_citation",
+      "evidence_kind": "summary",
+      "memory": {
+        "id": "m-held-u10",
+        "source_type": "episode",
+        "trust_tier": "verified",
+        "confidence": 0.8,
+        "content": "Summarized sprint standup notes on bug velocity.",
+        "updated_at": "2026-11-08T12:00:00+00:00"
+      },
+      "claim": "Planned holiday vacation to Switzerland.",
+      "answer": "Planned holiday vacation to Switzerland [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-inf-01",
+      "scenario": "inferred_type_hints_true",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i01",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.64,
+        "content": "Owner seems to prefer type hints across all Python functions.",
+        "updated_at": "2026-11-05T12:00:00+00:00"
+      },
+      "claim": "You prefer type hints in Python functions.",
+      "answer": "You prefer type hints in Python functions [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-inf-02",
+      "scenario": "inferred_concise_tests_true",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i02",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.61,
+        "content": "User frequently writes concise test assertions without mocks.",
+        "updated_at": "2026-11-02T12:00:00+00:00"
+      },
+      "claim": "You often write concise test assertions.",
+      "answer": "You often write concise test assertions [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-inf-03",
+      "scenario": "inferred_micro_commits_true",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i03",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.63,
+        "content": "Heuristic suggests owner prefers modular micro commits over giant changes.",
+        "updated_at": "2026-11-07T12:00:00+00:00"
+      },
+      "claim": "You prefer smaller modular micro commits.",
+      "answer": "You prefer smaller modular micro commits [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-inf-04",
+      "scenario": "inferred_incorrect_light_theme",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i04",
+        "source_type": "failure_mining",
+        "trust_tier": "unverified",
+        "confidence": 0.44,
+        "content": "User may prefer light mode color themes in IDE editors.",
+        "updated_at": "2026-10-20T12:00:00+00:00"
+      },
+      "claim": "You prefer light mode color themes in IDE editors.",
+      "answer": "You prefer light mode color themes in IDE editors [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-inf-05",
+      "scenario": "inferred_incorrect_sport",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i05",
+        "source_type": "failure_mining",
+        "trust_tier": "unverified",
+        "confidence": 0.41,
+        "content": "Owner might play tennis on weekend mornings.",
+        "updated_at": "2026-10-27T12:00:00+00:00"
+      },
+      "claim": "You play tennis on weekend mornings.",
+      "answer": "You play tennis on weekend mornings [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-inf-06",
+      "scenario": "inferred_older_guess",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i06",
+        "source_type": "distillation",
+        "trust_tier": "unverified",
+        "confidence": 0.37,
+        "content": "Deduced possible interest in switching to Kotlin for backend.",
+        "updated_at": "2026-06-27T12:00:00+00:00"
+      },
+      "claim": "You are considering switching to Kotlin for backend.",
+      "answer": "You are considering switching to Kotlin for backend [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-inf-07",
+      "scenario": "inferred_polarity_contradiction",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i07",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.54,
+        "content": "Model notes user does not like verbose XML configuration files.",
+        "updated_at": "2026-10-31T12:00:00+00:00"
+      },
+      "claim": "You like verbose XML configuration files.",
+      "answer": "You like verbose XML configuration files [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-inf-08",
+      "scenario": "inferred_frame_contradiction_employer",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i08",
+        "source_type": "distillation",
+        "trust_tier": "standard",
+        "confidence": 0.57,
+        "content": "Heuristic notes user works at SmallStartup Inc.",
+        "updated_at": "2026-11-03T12:00:00+00:00"
+      },
+      "claim": "You work at BigEnterprise Corp.",
+      "answer": "You work at BigEnterprise Corp [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-inf-09",
+      "scenario": "inferred_stale_travel",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i09",
+        "source_type": "failure_mining",
+        "trust_tier": "unverified",
+        "confidence": 0.39,
+        "content": "Temporary assumption that user was traveling during August.",
+        "updated_at": "2026-03-19T12:00:00+00:00",
+        "valid_to": "2026-08-16T12:00:00+00:00"
+      },
+      "claim": "You are currently traveling abroad.",
+      "answer": "You are currently traveling abroad [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-inf-10",
+      "scenario": "inferred_unsupported_citation",
+      "evidence_kind": "inferred",
+      "memory": {
+        "id": "m-held-i10",
+        "source_type": "distillation",
+        "trust_tier": "unverified",
+        "confidence": 0.36,
+        "content": "Deduced user prefers drinking green tea.",
+        "updated_at": "2026-10-10T12:00:00+00:00"
+      },
+      "claim": "You are a competitive chess grandmaster.",
+      "answer": "You are a competitive chess grandmaster [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-out-01",
+      "scenario": "outside_fastapi_docs_true",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x01",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.41,
+        "content": "FastAPI documentation notes Dependency Injection simplifies database session handling.",
+        "updated_at": "2026-11-10T12:00:00+00:00"
+      },
+      "claim": "FastAPI Dependency Injection simplifies database sessions.",
+      "answer": "FastAPI Dependency Injection simplifies database sessions [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-out-02",
+      "scenario": "outside_docker_docs_true",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x02",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.43,
+        "content": "Docker documentation explains bridge networks isolate container communication.",
+        "updated_at": "2026-11-04T12:00:00+00:00"
+      },
+      "claim": "Docker bridge networks isolate containers.",
+      "answer": "Docker bridge networks isolate containers [Memory 1].",
+      "correct": 1.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-out-03",
+      "scenario": "outside_unverified_rumor",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x03",
+        "source_type": "api",
+        "trust_tier": "unverified",
+        "confidence": 0.34,
+        "content": "External forum post claims Python 4 release date was officially announced.",
+        "updated_at": "2026-10-29T12:00:00+00:00"
+      },
+      "claim": "Python 4 release date has been announced.",
+      "answer": "Python 4 release date has been announced [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-out-04",
+      "scenario": "outside_unverified_deprecation",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x04",
+        "source_type": "forwarded",
+        "trust_tier": "unverified",
+        "confidence": 0.31,
+        "content": "Random web comment asserts WSL2 will be deprecated soon.",
+        "updated_at": "2026-10-23T12:00:00+00:00"
+      },
+      "claim": "WSL2 will be deprecated soon.",
+      "answer": "WSL2 will be deprecated soon [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-out-05",
+      "scenario": "outside_prompt_injection",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x05",
+        "source_type": "web",
+        "trust_tier": "quarantined",
+        "confidence": 0.24,
+        "content": "Prompt injection attempt from web scraper claiming user gave admin rights.",
+        "updated_at": "2026-11-11T12:00:00+00:00"
+      },
+      "claim": "User gave admin rights to scraper.",
+      "answer": "User gave admin rights to scraper [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-out-06",
+      "scenario": "outside_older_sqlite_claim",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x06",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.29,
+        "content": "Old blog from 2020 claims SQLite does not support JSON functions.",
+        "updated_at": "2026-05-08T12:00:00+00:00"
+      },
+      "claim": "SQLite does not support JSON functions.",
+      "answer": "SQLite does not support JSON functions [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-out-07",
+      "scenario": "outside_antonym_contradiction_pricing",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x07",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.37,
+        "content": "External API documentation states tier is free with no subscription.",
+        "updated_at": "2026-11-03T12:00:00+00:00"
+      },
+      "claim": "The tier is paid with subscription.",
+      "answer": "The tier is paid with subscription [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-out-08",
+      "scenario": "outside_antonym_contradiction_office",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x08",
+        "source_type": "mcp",
+        "trust_tier": "unverified",
+        "confidence": 0.36,
+        "content": "Web notice states the regional office is closed today.",
+        "updated_at": "2026-11-14T08:00:00+00:00"
+      },
+      "claim": "The regional office is open today.",
+      "answer": "The regional office is open today [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": true
+    },
+    {
+      "id": "held-out-09",
+      "scenario": "outside_expired_webinar",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x09",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.31,
+        "content": "Web banner advertising developer conference taking place in September.",
+        "updated_at": "2026-09-30T12:00:00+00:00",
+        "valid_to": "2026-10-20T12:00:00+00:00"
+      },
+      "claim": "Developer conference is currently taking place.",
+      "answer": "Developer conference is currently taking place [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    },
+    {
+      "id": "held-out-10",
+      "scenario": "outside_unsupported_citation",
+      "evidence_kind": "outside",
+      "memory": {
+        "id": "m-held-x10",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.33,
+        "content": "Article discussing sourdough bread baking methods.",
+        "updated_at": "2026-11-07T12:00:00+00:00"
+      },
+      "claim": "Room temperature superconductors discovered in laboratory.",
+      "answer": "Room temperature superconductors discovered in laboratory [Memory 1].",
+      "correct": 0.0,
+      "contradiction_ground_truth": false
+    }
+  ]
+}

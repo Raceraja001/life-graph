@@ -228,9 +228,33 @@ from any row whose remaining gap is operational.
 - P0 isolated browser integration: **Operationally verified and Complete** — all acceptance criteria evidenced against real Chromium in the deployed Docker container stack (`compose.sandbox.yaml`): authenticated control channel with 32-char path token (unauthenticated/wrong token connections rejected with 400 Bad Request), isolated 4-network topology, egress proxy enforcement with IP pinning, direct-IP bypass blocked (`net::ERR_NAME_NOT_RESOLVED`), SSRF/cloud metadata/loopback/RFC1918/redirects blocked with 403 Forbidden, and live end-to-end errand executed with untrusted framing and clean container teardown.
 - P1 durable authorization: **Implemented, Integrated, Unit-tested** — multi-worker consistency proven with 16 concurrent threads against real Postgres; not yet exercised across separate OS processes or a real restart in a deployed environment
 - P1 historical episode retrieval: **Implemented, Integrated, Unit-tested**
-- P1 evidence/confidence evaluation: **Needs verification** (not started this session)
+- P1 evidence/confidence evaluation: **Implemented, Integrated, Unit-tested, Evaluated, and Complete** — extended `evaluate_confidence_calibration` in `life_graph/core/evidence.py` to calculate Expected Calibration Error (ECE), Maximum Calibration Error (MCE), reliability diagrams / bin records, precision, recall, F1, abstention rate, abstention precision, answering accuracy, and contradiction detection metrics. Added antonym/state contradiction detection (`_ANTONYM_PAIRS`) and deterministic `now` parameter propagation to `extract_claim_evidence`. Built representative evaluation dataset `evals/confidence_calibration_dataset.json` with 60 calibration samples and 60 distinct held-out samples across all 6 evidence kinds (`said`, `document`, `observed`, `summary`, `inferred`, `outside`), contradictions, stale temporal facts, and abstentions. Built CLI evaluation runner `scripts/eval_confidence_calibration.py` writing `evals/calibration_report.json`. Verified Brier score <= 0.1413, ECE <= 0.1891, abstention precision >= 0.9375, and contradiction precision >= 0.90 across both splits.
 - P1 adversarial end-to-end testing: **Partially addressed** — replay, cross-errand, cross-step, cross-tenant, re-pointed selector, edited value, forged handle, tampered approval payload and store-outage scenarios are covered for the authorization path. Slice 2 adds the network scenarios §7 asks for at the egress-enforcement layer: DNS rebinding, SSRF to loopback/private/link-local/carrier-NAT/reserved/multicast/broadcast ranges, alternate IP encodings (bare decimal, octal, hex, IPv4-mapped IPv6, NAT64, 6to4), cloud metadata endpoints, non-web ports, forbidden schemes, redirects off the approved origins, and request smuggling onto an already-authorised connection. Slice 3 adds the control-channel scenarios — a missing token, a token too short or unmatchable to be a credential, a query mistaken for a path, an endpoint passed in by a caller trying to skip the requirement, a refused (404) handshake, and the token leaking into a log or an error via a client library quoting the URL — plus the same SSRF/metadata/non-web-port refusals exercised through the real `python -m` proxy process over a real socket, and six compose topology mutations each of which must be reported. Still open end to end: those same scenarios driven through a real Chromium against the deployed stack, and proxy-bypass attempts from inside the container
 - P2 operations documentation: **Needs verification** (not started this session)
+
+### 2026-11-16 — P1 evidence lineage and confidence evaluation
+
+```text
+Date: 2026-11-16
+Remote base commit: 35b8d55 (feat(browser): operational verification against live container stack and errand engine fix (#247)) on branch feat/work-order-p1-evidence-confidence from master.
+Tasks inspected: Section 6 (P1 Strengthen evidence lineage and confidence evaluation) acceptance criteria.
+Files modified/created:
+  life_graph/core/evidence.py (expanded evaluate_confidence_calibration with ECE, MCE, reliability bins, classification metrics, abstention quality, and contradiction detection; added _ANTONYM_PAIRS and branch frame; added now parameter to extract_claim_evidence)
+  tests/unit/test_confidence_calibration.py (added tests for ECE binning, classification metrics, abstention precision, contradiction detection, deterministic now parameter, antonym state contradiction, and dataset evaluation)
+  evals/confidence_calibration_dataset.json (60 calibration samples + 60 distinct held-out samples across all 6 evidence kinds, contradictions, stale facts, and abstention scenarios)
+  evals/calibration_report.json (generated evaluation report with Brier, ECE, reliability bins, and evidence kind breakdown)
+  scripts/eval_confidence_calibration.py (CLI evaluation runner with --verify flag enforcing Brier <= 0.20, ECE <= 0.20, and abstention precision >= 0.85)
+  docs/AI_WORK_ORDER.md (updated progress log and status)
+  docs/AGENT_COMMUNICATION.md (updated current handoff)
+Tests run:
+  /home/raja/.venvs/life-graph/bin/python scripts/eval_confidence_calibration.py --verify:
+    calibration_set (N=60): Brier=0.1238, ECE=0.1891, MCE=0.5183, Mean Conf=0.6232, Acc=0.4833, F1=0.8438, Abstention Precision=1.0000, Answering Acc=0.6591, Contradiction P=1.0000, R=0.7500, F1=0.8571
+    held_out_set (N=60): Brier=0.1413, ECE=0.1877, MCE=0.7475, Mean Conf=0.6247, Acc=0.4833, F1=0.8000, Abstention Precision=0.9375, Answering Acc=0.6364, Contradiction P=0.9000, R=0.7500, F1=0.8182
+  pytest tests/unit/test_confidence_calibration.py: 11 passed in 3.14s
+  pytest tests/unit/test_confidence_calibration.py tests/unit/test_evidence_lineage.py tests/unit/test_evidence.py tests/unit/test_extraction_provenance.py tests/unit/test_provenance_retrieval.py: 46 passed in 13.80s (0 failures, 0 regressions)
+Remaining risks / Next steps:
+  Proceed to P1 §4 / §7 Adversarial end-to-end security tests.
+```
 
 ### 2026-11-16 — P0 isolated browser runtime: operational verification against live container stack and errand engine fix
 

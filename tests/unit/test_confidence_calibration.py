@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from datetime import datetime, timedelta, timezone
 
 from life_graph.core.evidence import (
@@ -173,3 +176,152 @@ def test_p5_3_unsupported_claim_recommends_abstention_not_a_hedge():
     assert claims[1]["support_status"] == "supported"
     assert claims[1]["recommended_action"] in ("answer", "qualify")
     assert claims[1]["claim_confidence"] > claims[0]["claim_confidence"]
+
+
+# ── P1 §6 Extended calibration, ECE, contradiction and dataset tests ───────
+
+
+def test_evaluate_confidence_calibration_ece_bins_and_metrics():
+    """Verify ECE calculation, equal-width binning, and classification metrics."""
+    # Empty samples
+    empty_res = evaluate_confidence_calibration([])
+    assert empty_res["count"] == 0
+    assert empty_res["ece"] == 0.0
+    assert empty_res["mce"] == 0.0
+    assert empty_res["bins"] == []
+
+    # Perfectly calibrated synthetic predictions:
+    # 10 samples with confidence 0.8 and 8 of them correct (acc = 0.8)
+    # 10 samples with confidence 0.2 and 2 of them correct (acc = 0.2)
+    samples = []
+    for _ in range(8):
+        samples.append({"confidence": 0.8, "correct": True, "evidence_kind": "said"})
+    for _ in range(2):
+        samples.append({"confidence": 0.8, "correct": False, "evidence_kind": "said"})
+    for _ in range(2):
+        samples.append({"confidence": 0.2, "correct": True, "evidence_kind": "inferred"})
+    for _ in range(8):
+        samples.append({"confidence": 0.2, "correct": False, "evidence_kind": "inferred"})
+
+    res = evaluate_confidence_calibration(samples, num_bins=10)
+    assert res["count"] == 20
+    assert res["ece"] == 0.0  # perfectly calibrated!
+    assert res["mce"] == 0.0
+    assert res["calibration_gap"] == 0.0
+    assert res["precision"] == 0.80
+    assert res["recall"] == 0.80
+    assert res["f1"] == 0.80
+
+    # Abstention at threshold 0.4:
+    # 10 items in the lower bin (<0.4), 8 of which are false -> abstention precision = 8/10 = 0.8
+    assert res["abstention_rate"] == 0.50
+    assert res["abstention_precision"] == 0.80
+    # 10 items in upper bin, 8 correct -> answering accuracy = 8/10 = 0.8
+    assert res["answering_accuracy"] == 0.80
+
+    # Non-empty bins count check (10 bins total)
+    assert len(res["bins"]) == 10
+    active_bins = [b for b in res["bins"] if b["count"] > 0]
+    assert len(active_bins) == 2
+
+
+def test_evaluate_confidence_calibration_contradiction_metrics():
+    """Verify contradiction detection precision, recall, and F1 calculation."""
+    samples = [
+        {"confidence": 0.2, "correct": False, "contradiction_predicted": True, "contradiction_ground_truth": True},
+        {"confidence": 0.2, "correct": False, "contradiction_predicted": True, "contradiction_ground_truth": True},
+        {"confidence": 0.2, "correct": False, "contradiction_predicted": True, "contradiction_ground_truth": False},  # FP
+        {"confidence": 0.2, "correct": False, "contradiction_predicted": False, "contradiction_ground_truth": True},  # FN
+        {"confidence": 0.9, "correct": True, "contradiction_predicted": False, "contradiction_ground_truth": False},  # TN
+    ]
+    res = evaluate_confidence_calibration(samples)
+    assert "contradiction_detection" in res
+    cd = res["contradiction_detection"]
+    assert cd["count"] == 5
+    # TP=2, FP=1, FN=1 -> precision=2/3 (~0.6667), recall=2/3 (~0.6667), F1=2/3
+    assert abs(cd["precision"] - 0.6667) < 1e-3
+    assert abs(cd["recall"] - 0.6667) < 1e-3
+    assert abs(cd["f1"] - 0.6667) < 1e-3
+
+
+def test_extract_claim_evidence_passes_now_to_decompose():
+    """Passing now to extract_claim_evidence ensures deterministic freshness scoring."""
+    now_past = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    now_future = datetime(2027, 1, 1, tzinfo=timezone.utc)
+    memories = [
+        {
+            "id": "m1",
+            "source_type": "chat",
+            "trust_tier": "self",
+            "confidence": 0.95,
+            "content": "Raja lives in Chennai.",
+            "updated_at": "2025-01-01T00:00:00+00:00",
+        }
+    ]
+    fresh = extract_claim_evidence("You live in Chennai [Memory 1].", memories, now=now_past)[0]
+    stale = extract_claim_evidence("You live in Chennai [Memory 1].", memories, now=now_future)[0]
+
+    assert fresh["claim_confidence"] > stale["claim_confidence"]
+    assert fresh["confidence_breakdown"][0]["freshness_score"] > stale["confidence_breakdown"][0]["freshness_score"]
+
+
+def test_antonym_state_contradiction_detection():
+    """State and antonym pairs (running vs stopped, free vs paid, active vs inactive) trigger contradiction."""
+    memory_stopped = {
+        "id": "m1",
+        "source_type": "scan",
+        "trust_tier": "verified",
+        "confidence": 0.90,
+        "content": "Observed Redis service is stopped and inactive.",
+    }
+    claim_running = extract_claim_evidence(
+        "Redis service is active and running [Memory 1].", [memory_stopped]
+    )[0]
+    assert claim_running["support_status"] == "contradicted"
+    assert claim_running["recommended_action"] == "abstain"
+
+    memory_free = {
+        "id": "m2",
+        "source_type": "web",
+        "trust_tier": "unverified",
+        "confidence": 0.40,
+        "content": "External API documentation states tier is free with no charge.",
+    }
+    claim_paid = extract_claim_evidence(
+        "The tier requires a paid subscription [Memory 1].", [memory_free]
+    )[0]
+    assert claim_paid["support_status"] == "contradicted"
+    assert claim_paid["recommended_action"] == "abstain"
+
+
+def test_confidence_calibration_dataset_runs_and_meets_criteria():
+    """Evaluate evals/confidence_calibration_dataset.json and assert Section 6 acceptance thresholds."""
+    dataset_path = Path("evals/confidence_calibration_dataset.json")
+    if not dataset_path.exists():
+        # Handle running from root or elsewhere
+        dataset_path = Path("/home/raja/life-graph/evals/confidence_calibration_dataset.json")
+
+    assert dataset_path.exists(), f"Dataset not found at {dataset_path}"
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert "calibration_set" in data and len(data["calibration_set"]) >= 50
+    assert "held_out_set" in data and len(data["held_out_set"]) >= 50
+
+    from scripts.eval_confidence_calibration import evaluate_split
+
+    for split_name in ("calibration_set", "held_out_set"):
+        summary, details = evaluate_split(data[split_name])
+        assert summary["count"] == len(data[split_name])
+        # Section 6 Quality Gates:
+        assert summary["brier_score"] <= 0.20, f"{split_name} Brier score {summary['brier_score']} > 0.20"
+        assert summary["ece"] <= 0.20, f"{split_name} ECE {summary['ece']} > 0.20"
+        assert summary["abstention_precision"] >= 0.85, (
+            f"{split_name} Abstention precision {summary['abstention_precision']} < 0.85"
+        )
+        assert len(summary["by_evidence_kind"]) == 6, (
+            f"Expected all 6 evidence kinds, got {list(summary['by_evidence_kind'].keys())}"
+        )
+        for kind in ("said", "document", "observed", "summary", "inferred", "outside"):
+            assert kind in summary["by_evidence_kind"]
+            assert summary["by_evidence_kind"][kind]["count"] > 0
