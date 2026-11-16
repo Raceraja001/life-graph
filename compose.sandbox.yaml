@@ -107,9 +107,23 @@ services:
       HOME: /tmp
       LANG: C.UTF-8
       SANDBOX_ROLE: workspace
-      # Where the browser answers on the internal network. A location, not a
-      # credential — the endpoint is unreachable from anywhere else.
-      SANDBOX_BROWSER_WS_URL: ws://browser:9222/
+      # Deliberately NOT told where the browser is. Playwright's browser-server
+      # websocket on `browser:9222` is unauthenticated, and an unauthenticated
+      # browser control endpoint is a remote-code-execution handle on that
+      # browser: whatever holds it can open any page, read any cookie the
+      # browser has and script it freely. The workspace runs *untrusted*
+      # errand work, so handing it that handle would make the browser
+      # container's isolation decoration — the two are on the same bridge, so
+      # the address is still guessable, but a service that is not told an
+      # endpoint is also not a service that reaches it by accident, and
+      # nothing in the workspace image has a reason to.
+      #
+      # The application connects to that websocket from outside the bridge
+      # (services/browser_sandbox_driver.py). Closing this properly means an
+      # authenticated control channel in front of 9222 — the remaining §3
+      # requirement in docs/AI_WORK_ORDER.md — and until that exists nothing
+      # other than this application may be attached to this network.
+      # tests/unit/test_sandbox_isolation.py asserts this absence.
       TZ: UTC
     working_dir: /work
     networks:

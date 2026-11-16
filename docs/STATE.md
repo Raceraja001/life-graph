@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-16 05:28 UTC` from `feat/work-order-browser-isolation-p0` @ `596a1a0`
+Generated `2026-11-16 06:30 UTC` from `feat/work-order-browser-egress-proxy-p0` @ `2853f06`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-16 05:28 UTC` from `feat/work-order-browser-isolation-p0` @ `
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
-| Config settings | **292** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4600** in 492 files |
+| Config settings | **294** (prefix `LIFE_GRAPH_`) |
+| Test functions | **4642** in 493 files |
 | Dashboard pages | **22** |
-| Python | 466 files, 129,400 lines |
+| Python | 467 files, 130,639 lines |
 
 ---
 
@@ -1017,16 +1017,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 377 | 3763 |
+| `tests/unit/` | 378 | 3805 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **492** | **4600** |
+| **total** | **493** | **4642** |
 
 ---
 
 ## Configuration
 
-292 settings, all overridable by environment variable.
+294 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1319,6 +1319,8 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_BROWSER_SANDBOX_WS_URL` | `''` |
 | `LIFE_GRAPH_BROWSER_SANDBOX_MODE` | `'isolated'` |
 | `LIFE_GRAPH_BROWSER_SANDBOX_TIMEOUT_SECONDS` | `30` |
+| `LIFE_GRAPH_BROWSER_SANDBOX_EGRESS_PROXY_URL` | `''` |
+| `LIFE_GRAPH_BROWSER_SANDBOX_ENFORCE_EGRESS_PROXY` | `True` |
 | `LIFE_GRAPH_DURABLE_AUTHORIZATION` | `True` |
 | `LIFE_GRAPH_SEED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_PLAN_LIMITS` | `{'free': {'requests_per_min': 60, 'max_memories': 1000, '…` |

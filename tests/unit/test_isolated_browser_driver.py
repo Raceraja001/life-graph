@@ -153,7 +153,13 @@ class FakeTransport:
         self._page = page
 
     async def open_session(
-        self, *, endpoint_url: str, tenant_id: str, errand_id: str, timeout: float
+        self,
+        *,
+        endpoint_url: str,
+        tenant_id: str,
+        errand_id: str,
+        timeout: float,
+        proxy_url: str = "",
     ) -> FakeSandboxSession:
         self.opened.append(
             {
@@ -161,6 +167,7 @@ class FakeTransport:
                 "tenant_id": tenant_id,
                 "errand_id": errand_id,
                 "timeout": timeout,
+                "proxy_url": proxy_url,
             }
         )
         session = FakeSandboxSession(

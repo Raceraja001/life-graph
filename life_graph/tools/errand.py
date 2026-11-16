@@ -201,7 +201,11 @@ def set_driver_override(driver: BrowserDriver | None) -> None:
     _driver_override = driver
 
 
-def get_driver(errand_id: str | None = None, tenant_id: str | None = None) -> BrowserDriver | None:
+def get_driver(
+    errand_id: str | None = None,
+    tenant_id: str | None = None,
+    allowed_origins: list[str] | None = None,
+) -> BrowserDriver | None:
     """The contained browser this errand runs in, or ``None``.
 
     ``None`` is the fail-closed answer, and the only alternative to a
@@ -215,6 +219,14 @@ def get_driver(errand_id: str | None = None, tenant_id: str | None = None) -> Br
     what the sandbox keys this errand's cookies and storage to, so a driver is
     only built once the run has an id (after :func:`build_errand`), and a call
     without them gets ``None`` rather than an unscoped session.
+
+    *allowed_origins* is the plan's fence, handed on to the egress proxy in
+    front of this session (``services/browser_egress_proxy.py``) so the same
+    narrowing applies to every request the *browser* makes — each redirect
+    hop, each sub-resource, each ``fetch()`` — and not only to the
+    destinations the plan named. Taking it from the plan is safe for the same
+    reason :func:`_fenced` does: a fence can only narrow. It grants nothing,
+    and an empty one leaves the port, scheme and address rules doing the work.
     """
     if _driver_override is not None:
         return _driver_override
@@ -231,7 +243,11 @@ def get_driver(errand_id: str | None = None, tenant_id: str | None = None) -> Br
         )
         return None
     try:
-        return IsolatedBrowserDriver(tenant_id=tenant_id, errand_id=errand_id)
+        return IsolatedBrowserDriver(
+            tenant_id=tenant_id,
+            errand_id=errand_id,
+            allowed_origins=allowed_origins or (),
+        )
     except (SandboxUnavailableError, ValueError) as exc:
         logger.warning("isolated browser driver could not be created: %s", exc)
         return None
@@ -605,7 +621,7 @@ async def run_browser_errand(
     # After build_errand, because the run now has an id and that id is the
     # scope of the browser session: this errand's cookies and storage belong to
     # this tenant and this run, and are gone when it ends.
-    driver = get_driver(errand_id=errand_id, tenant_id=tenant_id)
+    driver = get_driver(errand_id=errand_id, tenant_id=tenant_id, allowed_origins=allowed_origins)
     if driver is None:
         return json.dumps(
             {

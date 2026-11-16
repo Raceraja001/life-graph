@@ -518,13 +518,44 @@ def test_compose_passes_no_secret_and_no_app_configuration(compose_services):
             assert value.strip() not in configured, f"{name}: {key} holds a configured secret"
 
 
-def test_the_browser_endpoint_the_workspace_is_given_is_internal(compose_services):
-    url = sb._compose_env(compose_services["workspace"]["environment"])["SANDBOX_BROWSER_WS_URL"]
-    assert url == f"ws://browser:{sb.BROWSER_WS_PORT}/"
+def test_the_workspace_is_not_given_the_browser_control_endpoint(compose_services):
+    """The shipped stack does not hand untrusted work the browser's handle.
+
+    Playwright's browser-server websocket is unauthenticated, so the endpoint
+    is not a location like the comment used to say — it is a
+    remote-code-execution handle on a browser that may be holding the owner's
+    logged-in banking session. The workspace runs errand work nobody vetted,
+    so it is not told where that endpoint is (``docs/AI_WORK_ORDER.md`` §3,
+    "do not expose an unauthenticated browser debugging/WebSocket endpoint to
+    workspace code").
+
+    This is an absence test, so it checks the absence two ways: the variable
+    is gone, and no value in the workspace's environment names the browser
+    port — a renamed variable pointing at the same place would pass the first
+    check and fail the second. ``browser`` still only ``expose``s the port, so
+    it is on the internal bridge and on no host interface.
+    """
+    env = sb._compose_env(compose_services["workspace"].get("environment"))
+    assert "SANDBOX_BROWSER_WS_URL" not in env
+    for key, value in env.items():
+        assert str(sb.BROWSER_WS_PORT) not in value, f"workspace {key} names the browser port"
+        assert "browser" not in value.lower(), f"workspace {key} names the browser"
     assert compose_services["browser"]["expose"] == [str(sb.BROWSER_WS_PORT)]
+
+
+def test_the_browser_endpoint_a_spec_may_be_given_is_internal_and_opt_in(compose_services):
+    """``workspace_spec`` can still be told, but only by a caller that asks.
+
+    The helper keeps the parameter because a future workspace that genuinely
+    drives a browser would need it, and an explicit argument in application
+    code is a decision somebody wrote down. The point of the test above is
+    that the *shipped stack* does not pass it. Nothing in the application does
+    either — ``browser=`` has no caller outside the tests.
+    """
     assert sb.workspace_spec("lg-wn1", browser="lg-b4").env["SANDBOX_BROWSER_WS_URL"] == (
         f"ws://lg-b4:{sb.BROWSER_WS_PORT}/"
     )
+    assert "SANDBOX_BROWSER_WS_URL" not in sb.workspace_spec("lg-wn2").env
 
 
 # ── The images themselves ────────────────────────────────────

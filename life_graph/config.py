@@ -833,6 +833,29 @@ class Settings(BaseSettings):
     # errand is refused rather than running against an unknown page state.
     browser_sandbox_timeout_seconds: int = 30
 
+    # ── The browser's only way out (services/browser_egress_proxy.py) ───────
+    # A forward proxy the sandboxed browser is pointed at, which judges every
+    # destination the *browser* asks for — first navigation, every redirect,
+    # every sub-resource and XHR — and connects to the address it resolved
+    # rather than to the name. That pin is what closes DNS rebinding: the
+    # application-level check in services/destination_validator.py resolves a
+    # name and the browser then resolves it again, and a zone that answers
+    # differently the second time wins that race (docs/AI_WORK_ORDER.md §3).
+    #
+    # Set this to a proxy the browser container can actually reach — in a
+    # compose deployment, a service on both the sandbox's internal bridge and
+    # an egress network. Empty means "mint an ephemeral per-errand proxy in
+    # this process", which is reachable from the application and from tests
+    # but *not* from a container on an internal-only bridge.
+    browser_sandbox_egress_proxy_url: str = ""
+    # Whether a browser errand may run at all without a proxy in front of it.
+    # On, and on is the fail-closed answer: a browser with no egress control is
+    # a browser that can be redirected at the metadata endpoint. Turning it off
+    # is for a deployment that enforces egress somewhere else (an eBPF/iptables
+    # policy, a service mesh) and is a decision to write down, not a toggle to
+    # flip when an errand fails.
+    browser_sandbox_enforce_egress_proxy: bool = True
+
     # ── Durable authorisation (autonomy/approvals/durable_store.py) ─────────
     # Keep issued capabilities and the owner's standing rules in Postgres
     # (migration 059) instead of in one process's memory. On, because the
