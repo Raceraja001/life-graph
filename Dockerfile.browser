@@ -46,12 +46,29 @@ RUN pip install --no-cache-dir --break-system-packages \
 # front of it and would then be refused for sending a non-IP Host header.
 # The browser server has neither problem: it binds where it is told and
 # speaks Playwright's own protocol over a websocket, which a client reaches
-# with `chromium.connect("ws://browser:9222/")`.
+# with `chromium.connect("ws://browser:9222/<token>")`.
+#
+# SANDBOX_BROWSER_PATH is the control channel's shared secret. With it set,
+# `run-server --path /<token>` accepts the websocket upgrade on that one path
+# and answers 404 on every other, so reaching the port is no longer the same
+# as being allowed to drive the browser — and being allowed to drive the
+# browser is remote code execution on a browser that may be holding the
+# owner's logged-in session. The application sends the same value as
+# LIFE_GRAPH_BROWSER_SANDBOX_TOKEN (life_graph/services/browser_sandbox_driver.py,
+# `control_endpoint`), which refuses the errand when it is absent.
+#
+# `${VAR:+...}` and not `${VAR:-...}`: the flag appears only when the variable
+# is non-empty, so an unset token yields the old unauthenticated command line
+# rather than `--path /`. That is deliberate — the refusal belongs on the
+# application side, where it can be reported to the owner, rather than in a
+# container that would simply fail to start. The token is never baked into the
+# image and never set in compose.sandbox.yaml: it is interpolated from the
+# environment at `docker compose up` time.
 #
 # The port is only reachable on the internal compose network; nothing is
 # published to the host. A browser control endpoint is remote code execution
 # on the browser, so it is treated like one.
-CMD ["sh", "-c", "exec python3 -m playwright run-server --host 0.0.0.0 --port ${SANDBOX_BROWSER_PORT}"]
+CMD ["sh", "-c", "exec python3 -m playwright run-server --host 0.0.0.0 --port ${SANDBOX_BROWSER_PORT} ${SANDBOX_BROWSER_PATH:+--path /${SANDBOX_BROWSER_PATH}}"]
 
 # A websocket endpoint, so this checks that the port accepts a connection
 # rather than trying to speak HTTP to it.

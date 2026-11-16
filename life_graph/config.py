@@ -823,6 +823,30 @@ class Settings(BaseSettings):
     # An explicit websocket override, when the control endpoint is not simply
     # the URL above (a broker in front of the browser, say). Wins over it.
     browser_sandbox_ws_url: str = ""
+    # ── The control channel's shared secret (path token) ───────────────────
+    # Playwright's browser server is started with `--path /<token>`
+    # (Dockerfile.browser, SANDBOX_BROWSER_PATH), which makes it accept a
+    # websocket upgrade on that one path and refuse every other. The token is
+    # therefore the credential for a remote-code-execution handle on the
+    # browser: it must be long, random and never written into
+    # compose.sandbox.yaml (the sandbox policy refuses a configured secret
+    # appearing in that file). Generate one with
+    # `python -c "import secrets;print(secrets.token_urlsafe(32))"`.
+    #
+    # It is only needed when browser_sandbox_url has no path of its own; a URL
+    # that already carries one ("ws://browser:9222/<token>") is more specific
+    # and wins. Either way the path never reaches a log — every message is
+    # written through browser_sandbox_driver.redacted().
+    browser_sandbox_token: str = ""
+    # Whether a browser errand may run over an *unauthenticated* control
+    # channel. Off, and off is the fail-closed answer: Playwright's browser
+    # server with no --path accepts any connection that can reach the port,
+    # and anything that can open it can drive a browser that may be holding
+    # the owner's logged-in session (docs/AI_WORK_ORDER.md §3, "separate
+    # authenticated control channel"). Turning this off is for a deployment
+    # that authenticates the channel somewhere else (an mTLS gateway in front
+    # of 9222) and is a decision to write down.
+    browser_sandbox_require_token: bool = True
     # "isolated" (the only mode that produces a browser), "disabled" (browser
     # errands are off), or "mock" (tests inject their own driver through the
     # seam in tools/errand.py). An unknown value reads as disabled, because a

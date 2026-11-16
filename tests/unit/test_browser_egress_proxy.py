@@ -41,7 +41,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
+import os
+import re
+import signal
 import socket
+import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -883,6 +890,15 @@ class FakeSession:
         self.closed = True
 
 
+#: The control channel's path token, as a correctly configured deployment
+#: has it: the browser server was started with `--path /<token>` and the
+#: application knows the same value, so the endpoint below carries it.
+#: tests/unit/test_isolated_browser_driver.py is where the *absence* of it is
+#: tested; here it is simply part of a working configuration.
+CONTROL_TOKEN = "Oq2tVYbW0yvQcAzpHmJrE4kLsXTd8gNu"
+ENDPOINT = f"ws://browser:9222/{CONTROL_TOKEN}"
+
+
 @pytest.fixture(autouse=True)
 def _egress_settings(monkeypatch):
     """Enforcement on and no deployment proxy: the ephemeral-proxy default."""
@@ -891,15 +907,17 @@ def _egress_settings(monkeypatch):
     monkeypatch.setattr(settings, "browser_sandbox_egress_proxy_url", "", raising=False)
     monkeypatch.setattr(settings, "browser_sandbox_enforce_egress_proxy", True, raising=False)
     monkeypatch.setattr(settings, "browser_sandbox_mode", "isolated", raising=False)
-    monkeypatch.setattr(settings, "browser_sandbox_url", "ws://browser:9222/", raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_url", ENDPOINT, raising=False)
     monkeypatch.setattr(settings, "browser_sandbox_ws_url", "", raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_token", CONTROL_TOKEN, raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_require_token", True, raising=False)
     return settings
 
 
 def isolated(transport: Any, **kwargs: Any) -> bsd.IsolatedBrowserDriver:
     kwargs.setdefault("tenant_id", "t1")
     kwargs.setdefault("errand_id", "errand_abc")
-    kwargs.setdefault("endpoint_url", "ws://browser:9222/")
+    kwargs.setdefault("endpoint_url", ENDPOINT)
     kwargs.setdefault("timeout_seconds", 2.0)
     return bsd.IsolatedBrowserDriver(transport=transport, **kwargs)
 
@@ -1116,6 +1134,227 @@ async def test_the_errand_fence_reaches_the_proxy(monkeypatch):
         await driver.close()
 
 
+# ── running it as a service ─────────────────────────────────────────────
+# The ephemeral proxy the driver mints binds the application's loopback, and a
+# container on an `internal: true` bridge cannot reach the application's
+# loopback. The deployed stack therefore runs this module as its own process
+# (`python -m life_graph.services.browser_egress_proxy`), which is what the
+# `egress` service in compose.sandbox.yaml does.
+
+
+def _args(argv: list[str]) -> Any:
+    return ep._build_parser().parse_args(argv)  # noqa: SLF001
+
+
+def test_the_entrypoint_defaults_to_the_loopback_and_the_proxy_port():
+    """A default that binds every interface would be an open relay by typo."""
+    args = _args([])
+    assert args.host == "127.0.0.1"
+    assert args.port == ep.DEFAULT_LISTEN_PORT
+    proxy = ep.proxy_from_args(args)
+    assert proxy.is_running is False
+    # No fence by default: the errand's own is per-errand, and the address,
+    # port and scheme rules are the ones that stop SSRF.
+    assert proxy.allowed_origins == ()
+    assert proxy._allowed_ports == frozenset(ep.DEFAULT_ALLOWED_PORTS)  # noqa: SLF001
+
+
+def test_the_entrypoint_takes_the_host_port_fence_and_ports_it_is_given():
+    args = _args(
+        [
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8080",
+            "--allowed-origin",
+            "https://bank.com",
+            "--allowed-origin",
+            "*.bank.com",
+            "--allowed-port",
+            "443",
+            "--max-tunnels",
+            "8",
+            "--timeout",
+            "5",
+        ]
+    )
+    proxy = ep.proxy_from_args(args)
+
+    assert proxy._bind_host == "0.0.0.0" and proxy._bind_port == 8080  # noqa: SLF001
+    assert proxy.allowed_origins == ("https://bank.com", "*://*.bank.com")
+    # Narrowing the port list is safe and is honoured exactly: 80 is no
+    # longer permitted because the deployment said 443 only.
+    assert proxy._allowed_ports == frozenset({443})  # noqa: SLF001
+    assert proxy._max_tunnels == 8  # noqa: SLF001
+
+
+def test_the_entrypoint_reads_its_configuration_from_the_environment(monkeypatch):
+    """So the compose service is configured without rewriting its command.
+
+    The names are deliberately unprefixed: a ``LIFE_GRAPH_*`` variable is
+    application configuration and ``services/sandbox.py`` refuses to pass any
+    of it into a sandbox container.
+    """
+    monkeypatch.setenv(ep.ENV_HOST, "0.0.0.0")
+    monkeypatch.setenv(ep.ENV_PORT, "9999")
+    monkeypatch.setenv(ep.ENV_ORIGINS, "https://a.test, https://b.test")
+    monkeypatch.setenv(ep.ENV_PORTS, "443,8443")
+
+    proxy = ep.proxy_from_args(_args([]))
+
+    assert proxy._bind_host == "0.0.0.0" and proxy._bind_port == 9999  # noqa: SLF001
+    assert proxy.allowed_origins == ("https://a.test", "https://b.test")
+    assert proxy._allowed_ports == frozenset({443, 8443})  # noqa: SLF001
+
+    # A flag still wins over the environment.
+    assert ep.proxy_from_args(_args(["--port", "7000"]))._bind_port == 7000  # noqa: SLF001
+    assert not ep.proxy_from_args(_args(["--allowed-origin", "https://c.test"])).allowed_origins[1:]
+
+
+async def test_the_service_serves_until_it_is_asked_to_stop():
+    """``serve_forever`` listens, then tears everything down on SIGTERM.
+
+    SIGTERM is how a container runtime asks (``docker compose down``). The
+    assertion that matters is the one after: the listener is *gone*, because a
+    proxy that outlived the stack would be a way out that outlived it.
+    """
+    proxy = BrowserEgressProxy(host="127.0.0.1", port=0)
+    task = asyncio.create_task(ep.serve_forever(proxy))
+    for _ in range(100):
+        if proxy.is_running:
+            break
+        await asyncio.sleep(0.01)
+    assert proxy.is_running, "the service never started listening"
+    host, port = proxy._host, proxy._port  # noqa: SLF001
+
+    os.kill(os.getpid(), signal.SIGTERM)
+    assert await asyncio.wait_for(task, timeout=5) == 0
+    assert not proxy.is_running
+    with pytest.raises(OSError):
+        socket.create_connection((host, port), timeout=1).close()
+
+
+async def test_a_service_on_a_real_interface_says_so(caplog):
+    """Binding more than the loopback is an open relay, and it is logged.
+
+    The container has to do it — a container is reached on its bridge address,
+    not on its loopback — and what contains it is the bridge having no other
+    member and no gateway, not the bind. Something that is only safe because
+    of the network around it should be visible in the log of the process that
+    did it.
+    """
+    proxy = BrowserEgressProxy(host="0.0.0.0", port=0)  # noqa: S104
+    with caplog.at_level(logging.WARNING, logger=ep.logger.name):
+        task = asyncio.create_task(ep.serve_forever(proxy))
+        for _ in range(100):
+            if proxy.is_running:
+                break
+            await asyncio.sleep(0.01)
+        assert proxy.is_running
+        os.kill(os.getpid(), signal.SIGTERM)
+        await asyncio.wait_for(task, timeout=5)
+
+    assert "relay" in caplog.text
+
+
+def test_the_module_runs_as_a_process_and_refuses_the_same_destinations():
+    """The real entrypoint, in a real process, over a real socket.
+
+    ``python -m life_graph.services.browser_egress_proxy`` is what the compose
+    service runs, so this test is the one that proves the deployed shape of
+    the proxy enforces the policy rather than only the in-process one. The
+    destinations are the three that matter most: the cloud metadata endpoint,
+    the loopback (where the application's own postgres and redis answer) and a
+    non-web port — in this case 9222, the sandbox browser's own control
+    channel, which an errand reaching would be the browser driving itself.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "life_graph.services.browser_egress_proxy", "--port", "0"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    try:
+        host, port = _wait_for_listener(proc)
+        for authority in (
+            "169.254.169.254:80",
+            "127.0.0.1:80",
+            "metadata.google.internal:80",
+            "browser:9222",
+            "10.0.0.5:443",
+            "[::1]:443",
+        ):
+            with contextlib.closing(socket.create_connection((host, port), timeout=5)) as sock:
+                sock.sendall(f"CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\n\r\n".encode())
+                answer = sock.recv(64)
+            assert answer.startswith(b"HTTP/1.1 403"), f"{authority} was not refused: {answer!r}"
+
+        proc.send_signal(signal.SIGTERM)
+        assert proc.wait(timeout=10) == 0, "the service did not shut down cleanly"
+    finally:
+        if proc.poll() is None:  # pragma: no cover - only on a failed assertion
+            proc.kill()
+            proc.wait(timeout=10)
+
+
+def _wait_for_listener(proc: subprocess.Popen, timeout: float = 30.0) -> tuple[str, int]:
+    """``(host, port)`` the subprocess reported, read from its own log line.
+
+    Parsed rather than guessed: picking a free port and hoping nothing else
+    takes it is how a test suite becomes flaky, and ``--port 0`` means the
+    process is the only one that knows the answer.
+    """
+    pattern = re.compile(r"serving on ([0-9a-fA-F:.]+):(\d+)")
+    deadline = time.monotonic() + timeout
+    assert proc.stdout is not None
+    while time.monotonic() < deadline:
+        line = proc.stdout.readline()
+        if not line:
+            break
+        found = pattern.search(line)
+        if found:
+            return found.group(1), int(found.group(2))
+    raise AssertionError("the egress proxy service never reported a listening address")
+
+
+def test_the_deployed_proxy_url_is_the_one_the_driver_would_point_at(monkeypatch):
+    """The compose service, the setting and the driver agree on one address.
+
+    ``http://egress:8080`` is a name that only resolves on the egress bridge,
+    which is the point: the proxy is reachable from the browser container and
+    from nowhere else.
+    """
+    from life_graph.config import settings
+    from life_graph.services import sandbox as sb
+
+    url = f"http://{sb.EGRESS_SERVICE}:{sb.EGRESS_PROXY_PORT}"
+    monkeypatch.setattr(settings, "browser_sandbox_egress_proxy_url", url, raising=False)
+    assert bsd.configured_egress_proxy_url() == url
+    assert sb.EGRESS_PROXY_PORT == ep.DEFAULT_LISTEN_PORT
+
+    compose = yaml.safe_load((REPO_ROOT / "compose.sandbox.yaml").read_text())
+    egress = compose["services"][sb.EGRESS_SERVICE]
+    assert egress["expose"] == [str(sb.EGRESS_PROXY_PORT)]
+
+
+def test_the_shared_service_carries_no_per_errand_fence_and_that_is_recorded():
+    """A limitation, written as a test so it cannot be forgotten.
+
+    A long-lived shared proxy does not know which errand a connection belongs
+    to, so it cannot apply that errand's approved origins; only a static
+    ``--allowed-origin`` fence or none. What it *does* apply to every request
+    is the part that stops SSRF, rebinding and metadata access. The errand's
+    own fence stays with the application-level check in ``tools/errand.py``
+    and with the ephemeral per-errand proxy. ``docs/AI_WORK_ORDER.md`` §10
+    records this as an open gap; this test fails if someone later believes the
+    deployed proxy is narrowing by errand when it is not.
+    """
+    proxy = ep.proxy_from_args(_args([]))
+    assert proxy.allowed_origins == ()
+    assert proxy._tenant_id == "" and proxy._errand_id == ""  # noqa: SLF001
+
+
 # ── the compose stack ────────────────────────────────────────────────────
 
 
@@ -1128,14 +1367,16 @@ def test_workspace_cannot_access_browser_ws_in_compose():
     errand work nobody vetted (``docs/AI_WORK_ORDER.md`` §3: "do not expose an
     unauthenticated browser debugging/WebSocket endpoint to workspace code").
 
-    An absence is checked three ways, because a renamed variable pointing at
+    An absence is checked four ways, because a renamed variable pointing at
     the same place would pass the first: the variable is gone, no value in the
-    workspace's environment names the browser or its port, and ``browser``
-    still only ``expose``s 9222 — on the internal bridge, on no host
-    interface. The remaining gap, recorded here so nobody reads this test as
-    more than it is: the two services share a bridge, so the address is still
-    *guessable*. Closing that needs an authenticated control channel, which is
-    the §3 requirement still open.
+    workspace's environment names the browser or its port, ``browser`` still
+    only ``expose``s 9222 — on an internal bridge, on no host interface — and
+    the workspace is on no bridge the browser is on, so the endpoint is not
+    merely un-named to it but unroutable from it. The guessable-address gap
+    this test used to record is closed twice over now: by that network split
+    and by the path token the control channel requires
+    (``browser_sandbox_require_token``, tested in
+    tests/unit/test_isolated_browser_driver.py).
     """
     compose = yaml.safe_load((REPO_ROOT / "compose.sandbox.yaml").read_text())
     workspace = compose["services"]["workspace"]
@@ -1153,4 +1394,12 @@ def test_workspace_cannot_access_browser_ws_in_compose():
     browser = compose["services"]["browser"]
     assert browser["expose"] == ["9222"]
     assert "ports" not in browser, "the browser control endpoint is published to the host"
-    assert compose["networks"]["sandbox_internal"]["internal"] is True
+
+    nets = compose["networks"]
+    browser_nets = {str(nets[n].get("name") or n) for n in browser["networks"]}
+    workspace_nets = {str(nets[n].get("name") or n) for n in workspace["networks"]}
+    assert not browser_nets & workspace_nets, "the workspace shares a bridge with the browser"
+    # Every bridge the browser is on is internal: its only way out is the
+    # proxy, which is a different container on a different network.
+    for name in browser["networks"]:
+        assert nets[name]["internal"] is True, f"the browser is on {name}, which has a gateway"

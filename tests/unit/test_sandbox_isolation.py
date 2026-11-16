@@ -6,7 +6,7 @@ that list, written twice over:
 
 * against :func:`~life_graph.services.sandbox.validate_spec`, for the specs
   the application builds at run time, and
-* against ``compose.sandbox.yaml`` and the two Dockerfiles, for the stack a
+* against ``compose.sandbox.yaml`` and the three Dockerfiles, for the stack a
   human brings up by hand.
 
 Both paths must hold. A policy that only the Python side enforces is a
@@ -18,7 +18,9 @@ test passes a fake one.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -316,7 +318,10 @@ def test_docker_run_argv_carries_every_restriction():
         assert flag in argv
     assert "--cap-drop ALL" in joined
     assert "--security-opt no-new-privileges:true" in joined
-    assert f"--network {sb.SANDBOX_NETWORK}" in joined
+    # The browser's bridge is the control one, not the workspace's: the
+    # application reaches it there and untrusted errand work is not on it.
+    assert f"--network {sb.SANDBOX_CONTROL_NETWORK}" in joined
+    assert sb.SANDBOX_OUTBOUND_NETWORK not in joined
     assert "--memory 1g" in joined and "--memory-swap 1g" in joined
     assert "--cpus 1.0" in joined and "--pids-limit 512" in joined
     assert "--user 1000:1000" in joined
@@ -408,7 +413,7 @@ def compose() -> dict:
 @pytest.fixture(scope="module")
 def compose_services(compose) -> dict:
     services = compose["services"]
-    assert set(services) == {"browser", "workspace"}
+    assert set(services) == {"browser", "egress", "workspace"}
     return services
 
 
@@ -492,17 +497,124 @@ def test_the_workspace_spec_pins_the_same_ownership():
     assert f"uid={uid}" in work and f"gid={uid}" in work
 
 
-def test_compose_networking_is_internal_only_and_unpublished(compose, compose_services):
+def test_compose_networking_is_internal_except_the_policed_way_out(compose, compose_services):
+    """One network has a gateway, and only the proxy is on it.
+
+    The bridges are the security boundary in this stack: ``internal: true``
+    means docker attaches no gateway, so a container on such a bridge has no
+    route off it at all. Everything else — the path token, the proxy's
+    destination rules — is a second lock on a door that is already shut. This
+    test is the first lock, asserted against the shipped file.
+    """
     networks = compose["networks"]
-    assert set(networks) == {"sandbox_internal"}
-    assert networks["sandbox_internal"]["internal"] is True
-    assert networks["sandbox_internal"]["name"] == sb.SANDBOX_NETWORK
+    assert set(networks) == {
+        "sandbox_control",
+        "sandbox_egress_bridge",
+        "sandbox_outbound",
+        "sandbox_workspace",
+    }
+    assert networks["sandbox_control"]["name"] == sb.SANDBOX_CONTROL_NETWORK
+    assert networks["sandbox_egress_bridge"]["name"] == sb.SANDBOX_EGRESS_NETWORK
+    assert networks["sandbox_workspace"]["name"] == sb.SANDBOX_WORKSPACE_NETWORK
+    assert networks["sandbox_outbound"]["name"] == sb.SANDBOX_OUTBOUND_NETWORK
+
+    with_a_route_out = [key for key, net in networks.items() if not (net or {}).get("internal")]
+    assert with_a_route_out == ["sandbox_outbound"], (
+        "exactly one network may have a gateway, and it is the one the proxy sits on"
+    )
+
     for name, service in compose_services.items():
-        assert service.get("networks") == ["sandbox_internal"], name
+        assert service.get("networks"), f"{name} is on the default bridge"
         assert "ports" not in service, f"{name} publishes a port to the host"
         assert service.get("network_mode") is None, name
         for shared in ("pid", "ipc", "uts"):
             assert service.get(shared) != "host", f"{name} shares the host {shared} namespace"
+
+
+def test_compose_topology_puts_only_the_proxy_on_the_way_out(compose, compose_services):
+    """``app -> browser -> egress -> web``, and nothing else reaches anything.
+
+    Asserted as exact attachment sets rather than "contains", because an
+    extra network on any of these services is a route nobody reviewed. The
+    helper the application would call is run on the same file, so the module
+    and the file cannot drift apart.
+    """
+    attached = {
+        name: sb.compose_service_networks(service, compose["networks"])
+        for name, service in compose_services.items()
+    }
+    assert set(attached["browser"]) == {sb.SANDBOX_CONTROL_NETWORK, sb.SANDBOX_EGRESS_NETWORK}
+    assert set(attached["egress"]) == {sb.SANDBOX_EGRESS_NETWORK, sb.SANDBOX_OUTBOUND_NETWORK}
+    assert set(attached["workspace"]) == {sb.SANDBOX_WORKSPACE_NETWORK}
+
+    # The browser has no route out of its own; the proxy is not one of its
+    # options but its only one.
+    assert sb.SANDBOX_OUTBOUND_NETWORK not in attached["browser"]
+    # Untrusted errand work shares no bridge with the browser or the proxy,
+    # so the control endpoint is unroutable from it and so is the way out.
+    assert not set(attached["workspace"]) & set(attached["browser"])
+    assert not set(attached["workspace"]) & set(attached["egress"])
+
+    assert sb.network_topology_violations(compose) == []
+
+
+def test_a_service_nobody_reviewed_cannot_join_the_control_or_egress_bridge(compose):
+    """Adding a service to this stack does not quietly grant it a route.
+
+    The rule is default-deny: a service with no entry in
+    ``SANDBOX_SERVICE_NETWORKS`` may only be on the bridge that reaches
+    nothing, so a future container has to be reviewed into the topology
+    rather than appearing inside it.
+    """
+    for bridge in ("sandbox_control", "sandbox_egress_bridge", "sandbox_outbound"):
+        document = copy.deepcopy(compose)
+        document["services"]["helper"] = {"networks": [bridge]}
+        violations = sb.network_topology_violations(document)
+        assert violations, f"a new service on {bridge} was not reported"
+        assert any("helper" in v for v in violations), violations
+
+    document = copy.deepcopy(compose)
+    document["services"]["helper"] = {"networks": ["sandbox_workspace"]}
+    assert sb.network_topology_violations(document) == []
+
+
+@pytest.mark.parametrize(
+    ("label", "mutate"),
+    [
+        (
+            "browser gets its own way out",
+            lambda d: d["services"]["browser"]["networks"].append("sandbox_outbound"),
+        ),
+        (
+            "workspace reaches the browser",
+            lambda d: d["services"]["workspace"]["networks"].append("sandbox_control"),
+        ),
+        (
+            "workspace reaches the proxy",
+            lambda d: d["services"]["workspace"]["networks"].append("sandbox_egress_bridge"),
+        ),
+        (
+            "the control bridge gets a gateway",
+            lambda d: d["networks"]["sandbox_control"].pop("internal"),
+        ),
+        (
+            "the proxy loses its way out",
+            lambda d: d["services"]["egress"]["networks"].remove("sandbox_outbound"),
+        ),
+        (
+            "a second network with a route out",
+            lambda d: (
+                d["networks"].__setitem__("extra", {"name": "extra_net"}),
+                d["services"]["workspace"]["networks"].append("extra"),
+            ),
+        ),
+    ],
+)
+def test_each_way_of_breaking_the_topology_is_reported(compose, label, mutate):
+    """The rules bite. Every mutation here is a real way out of the sandbox."""
+    document = copy.deepcopy(compose)
+    mutate(document)
+    assert sb.network_topology_violations(document), label
 
 
 def test_compose_passes_no_secret_and_no_app_configuration(compose_services):
@@ -563,7 +675,11 @@ def test_the_browser_endpoint_a_spec_may_be_given_is_internal_and_opt_in(compose
 
 @pytest.mark.parametrize(
     ("dockerfile", "expected_user"),
-    [("Dockerfile.browser", "pwuser"), ("Dockerfile.workspace", "65534:65534")],
+    [
+        ("Dockerfile.browser", "pwuser"),
+        ("Dockerfile.workspace", "65534:65534"),
+        ("Dockerfile.egress", "65534:65534"),
+    ],
 )
 def test_the_sandbox_images_end_up_non_root(dockerfile, expected_user):
     path = REPO_ROOT / dockerfile
@@ -573,7 +689,9 @@ def test_the_sandbox_images_end_up_non_root(dockerfile, expected_user):
     assert lines[-1] == f"USER {expected_user}", f"{dockerfile}: {lines[-1]}"
 
 
-@pytest.mark.parametrize("dockerfile", ["Dockerfile.browser", "Dockerfile.workspace"])
+@pytest.mark.parametrize(
+    "dockerfile", ["Dockerfile.browser", "Dockerfile.workspace", "Dockerfile.egress"]
+)
 def test_the_sandbox_images_bake_in_no_credentials(dockerfile):
     """An ARG or ENV naming a credential would ship inside the image layer."""
     for line in (REPO_ROOT / dockerfile).read_text().splitlines():
@@ -590,3 +708,172 @@ def test_the_sandbox_images_copy_nothing_from_the_repository(dockerfile):
     """No application source in a sandbox image: it has no business reading it."""
     for line in (REPO_ROOT / dockerfile).read_text().splitlines():
         assert not line.strip().startswith(("COPY ", "ADD ")), line.strip()
+
+
+# ── The proxy service: the one policed way out ───────────────
+
+
+def test_the_egress_service_is_the_proxy_and_carries_nothing_else(compose_services):
+    """The container that decides where a connection may go, and only that.
+
+    The generic loops above already hold it to the chassis rules — non-root,
+    read-only root, caps dropped, no-new-privileges, ceilings, tmpfs-only
+    writable space, no mount, no published port. This test is the part that
+    is specific to it: it is the proxy image, it answers on the proxy port,
+    and it is handed no credential and no application configuration, because
+    judging a destination needs neither.
+    """
+    egress = compose_services["egress"]
+    assert egress["image"] == sb.EGRESS_IMAGE
+    assert egress["expose"] == [str(sb.EGRESS_PROXY_PORT)]
+    assert "ports" not in egress, "a proxy on a host port is a relay for every local process"
+
+    env = sb._compose_env(egress.get("environment"))
+    assert env.get("SANDBOX_EGRESS_PORT") == str(sb.EGRESS_PROXY_PORT)
+    # 0.0.0.0 is required (a container is reached on its bridge address, not
+    # its loopback) and is contained by the bridge having no other member and
+    # no gateway, which the topology tests above assert.
+    assert env.get("SANDBOX_EGRESS_HOST") == "0.0.0.0"
+    for key, value in env.items():
+        assert not key.upper().startswith(sb.APP_ENV_PREFIX), f"egress: {key}"
+        assert not sb._SECRET_NAME.search(key), f"egress: {key} is credential-shaped"
+        assert not sb._KEY_SHAPED.search(value), f"egress: {key} holds a key-shaped value"
+
+
+def test_the_egress_image_runs_the_proxy_module_and_installs_nothing():
+    """The enforcement point has no dependencies and no extra tools.
+
+    A library in this image would be a library in the one container that
+    holds the egress decision, so the image is the python base, four files
+    and nothing else. No pip install means no index to be poisoned and no
+    transitive dependency to review on the path a browser errand leaves by.
+    """
+    text = (REPO_ROOT / "Dockerfile.egress").read_text()
+    assert "life_graph.services.browser_egress_proxy" in text
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            # The comments explain *why* there is no pip install; only an
+            # instruction would be a problem.
+            continue
+        assert not stripped.startswith("RUN "), f"the egress image runs a build step: {stripped}"
+        assert "pip install" not in stripped, stripped
+        assert "apt-get" not in stripped, stripped
+
+
+def test_the_egress_image_copies_only_the_enforcement_modules():
+    """An allowlist, not a convenience.
+
+    The other two sandbox images copy nothing out of the repository at all,
+    because an errand container has no business reading application source.
+    This one has to contain the code that makes the egress decision — and
+    only that: no API client, no database layer, no config module, no vault.
+    A later COPY that widened this fails here rather than shipping.
+    """
+    allowed = {
+        "life_graph/__init__.py",
+        "life_graph/services/__init__.py",
+        "life_graph/services/destination_validator.py",
+        "life_graph/services/browser_egress_proxy.py",
+    }
+    copied = set()
+    for line in (REPO_ROOT / "Dockerfile.egress").read_text().splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(("COPY ", "ADD ")):
+            continue
+        assert not stripped.startswith("ADD "), f"ADD can fetch a URL: {stripped}"
+        parts = stripped.split()[1:]
+        assert len(parts) == 2, f"one source, one destination, so it stays readable: {stripped}"
+        copied.add(parts[0])
+    assert copied == allowed, f"unexpected sources copied into the egress image: {copied}"
+    for source in copied:
+        assert (REPO_ROOT / source).is_file(), f"{source} does not exist"
+
+
+# ── The control channel's path token ─────────────────────────
+
+
+def _browser_cmd() -> str:
+    """The shell command ``Dockerfile.browser`` runs, as written in the file."""
+    import json as _json
+
+    for line in (REPO_ROOT / "Dockerfile.browser").read_text().splitlines():
+        if line.strip().startswith("CMD ["):
+            argv = _json.loads(line.strip()[4:])
+            assert argv[:2] == ["sh", "-c"], argv
+            return argv[2]
+    raise AssertionError("Dockerfile.browser has no exec-form CMD")
+
+
+@pytest.mark.parametrize(
+    ("token", "expected"),
+    [("", ""), ("s3cretpathtoken1234", "--path /s3cretpathtoken1234")],
+    ids=["unset", "set"],
+)
+def test_the_browser_server_takes_the_path_token_from_the_environment(token, expected):
+    """``--path /<token>`` appears exactly when a token was supplied.
+
+    The expansion is checked by *running* it, with the python invocation
+    replaced by `echo`, because a `${VAR:+...}` that was written as
+    `${VAR:-...}` by mistake would produce `--path /` — a server listening on
+    one guessable path, which looks like authentication and is not. The flag
+    is absent when the variable is unset on purpose: the refusal belongs on
+    the application side, where it can be reported to the owner, rather than
+    in a container that would merely fail to start.
+    """
+    command = _browser_cmd().replace("exec python3", "echo python3")
+    result = subprocess.run(
+        ["sh", "-c", command],
+        env={
+            "SANDBOX_BROWSER_PORT": "9222",
+            "SANDBOX_BROWSER_PATH": token,
+            "PATH": "/usr/bin:/bin",
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=True,
+    )
+    argv = result.stdout.split()
+    assert "run-server" in argv and "--port" in argv and "9222" in argv
+    if expected:
+        assert expected in result.stdout
+        assert "--path /" in result.stdout
+    else:
+        assert "--path" not in argv, result.stdout
+
+
+def test_the_path_token_is_never_written_into_the_compose_file(compose_services):
+    """A token in a committed file is a published token.
+
+    The value is interpolated from the environment of whoever runs
+    ``docker compose up``; the file carries only the variable's name. The
+    generic secret test above would catch a token that matched one
+    configured on this install — this one catches a hardcoded token that
+    does not.
+    """
+    env = sb._compose_env(compose_services["browser"].get("environment"))
+    assert env["SANDBOX_BROWSER_PATH"] == "${SANDBOX_BROWSER_PATH:-}"
+    raw = (REPO_ROOT / sb.SANDBOX_COMPOSE_FILE).read_text()
+    assert "LIFE_GRAPH_BROWSER_SANDBOX_TOKEN=" not in raw
+
+
+def test_the_workspace_still_cannot_reach_the_browser_control_endpoint(compose, compose_services):
+    """Two locks, asserted together: not told, and not routable.
+
+    Slice 2 removed the endpoint from the workspace's environment, which
+    stopped it being *handed* a remote-code-execution handle on a browser
+    that may hold the owner's logged-in session. It stayed guessable, because
+    the two containers shared a bridge. They no longer do, and the channel
+    now needs a path token as well.
+    """
+    env = sb._compose_env(compose_services["workspace"].get("environment"))
+    assert "SANDBOX_BROWSER_WS_URL" not in env
+    for key, value in env.items():
+        assert str(sb.BROWSER_WS_PORT) not in value, f"workspace {key} names the browser port"
+        assert "browser" not in value.lower(), f"workspace {key} names the browser"
+
+    networks = compose["networks"]
+    workspace_nets = set(sb.compose_service_networks(compose_services["workspace"], networks))
+    browser_nets = set(sb.compose_service_networks(compose_services["browser"], networks))
+    assert not workspace_nets & browser_nets, "the workspace shares a bridge with the browser"

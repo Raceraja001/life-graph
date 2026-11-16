@@ -5,8 +5,15 @@
 # them, and nothing here should ever be merged into the app's compose file.
 #
 #   docker compose -f compose.sandbox.yaml build
-#   docker compose -f compose.sandbox.yaml up -d
+#   SANDBOX_BROWSER_PATH="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')" \
+#     docker compose -f compose.sandbox.yaml up -d
 #   docker compose -f compose.sandbox.yaml down -v
+#
+# The same value goes to the application as LIFE_GRAPH_BROWSER_SANDBOX_TOKEN,
+# and LIFE_GRAPH_BROWSER_SANDBOX_EGRESS_PROXY_URL points at http://egress:8080.
+# Neither is written in this file: a token in a committed compose file is a
+# published token, and the sandbox policy refuses any value that matches a
+# credential configured on the app.
 #
 # Five invariants hold for every service below, and
 # tests/unit/test_sandbox_isolation.py asserts them against this very file:
@@ -21,11 +28,21 @@
 #      no-new-privileges.
 #   4. Memory, CPU and pid ceilings, so a runaway page or script cannot take
 #      the host down.
-#   5. An internal-only network: the containers can reach each other and
-#      nothing else. Egress is NOT quietly enabled here — a browser errand
-#      that must reach a real site gets an explicit allowlisting proxy on a
-#      second network, reviewed on its own. Default-closed means a
-#      misconfiguration fails the errand instead of leaking.
+#   5. Exactly one container has a route off this stack — `egress`, the
+#      policed proxy — and it is the only member of the only network that is
+#      not `internal: true`. Default-closed means a misconfiguration fails
+#      the errand instead of leaking.
+#
+# The topology, which is the point of the four networks below:
+#
+#   app ──(control)──> browser ──(egress bridge)──> egress ──(outbound)──> web
+#                      workspace ──(its own bridge, reaching nothing)
+#
+# `workspace` is on neither the control bridge nor the egress bridge, so the
+# container that runs untrusted errand work can neither reach the browser's
+# control endpoint nor reach the proxy: it has no browser and no way out.
+# `browser` is not on the outbound network, so the proxy is not one of its
+# options — it is its only one.
 #
 # `restart: "no"` throughout: a sandbox is throwaway. If it died, the errand
 # failed and the application decides what happens next.
@@ -56,20 +73,36 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    # Only what the browser needs to find itself. No credentials, no app config.
+    # Only what the browser needs to find itself, plus the control channel's
+    # shared secret. No credentials, no app config.
     environment:
       HOME: /tmp
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       SANDBOX_BROWSER_PORT: "9222"
+      # The control channel's path token, interpolated from the environment
+      # of whoever runs `docker compose up` — never written down here. With
+      # it set, `playwright run-server --path /<token>` accepts the websocket
+      # upgrade on that one path and answers 404 everywhere else, so reaching
+      # port 9222 stops being the same thing as being allowed to drive the
+      # browser. Unset, the browser server is unauthenticated and the
+      # application refuses the errand (browser_sandbox_require_token, on by
+      # default) rather than driving an open browser.
+      SANDBOX_BROWSER_PATH: "${SANDBOX_BROWSER_PATH:-}"
       SANDBOX_ROLE: browser
       TZ: UTC
     # `expose`, not `ports`: the browser server is reachable on the internal
-    # network, never published to the host or the LAN. A browser control
+    # networks, never published to the host or the LAN. A browser control
     # endpoint is a remote-code-execution handle on the browser.
     expose:
       - "9222"
     networks:
-      - sandbox_internal
+      # Two bridges, and the split is the isolation: the application drives
+      # the browser over `sandbox_control`, the browser reaches the proxy over
+      # `sandbox_egress_bridge`, and neither network carries anything else.
+      # The browser is deliberately NOT on `sandbox_outbound`, so it has no
+      # route to the internet except through `egress`.
+      - sandbox_control
+      - sandbox_egress_bridge
     mem_limit: 1g
     memswap_limit: 1g
     cpus: 1.0
@@ -80,6 +113,58 @@ services:
       interval: 15s
       timeout: 5s
       start_period: 20s
+      retries: 3
+
+  # ── The browser's only way out ─────────────────────────────
+  egress:
+    build:
+      context: .
+      dockerfile: Dockerfile.egress
+    image: life-graph-sandbox-egress:dev
+    init: true
+    # nobody:nogroup. Owns nothing in the image, including the four files the
+    # image copied in, so the proxy cannot rewrite the rules it enforces.
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=32m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # No credentials and no application configuration: this container decides
+    # where a connection may go, and it needs nothing else to decide that.
+    # SANDBOX_EGRESS_ALLOWED_ORIGINS could pin a static fence here; it is left
+    # unset because the errand's own fence is per-errand and the address, port
+    # and scheme rules — the ones that stop SSRF, rebinding and metadata
+    # access — apply without it.
+    environment:
+      HOME: /tmp
+      SANDBOX_EGRESS_HOST: 0.0.0.0
+      SANDBOX_EGRESS_PORT: "8080"
+      SANDBOX_ROLE: egress
+      TZ: UTC
+    # Reachable from the browser container by service name on the egress
+    # bridge, and from nowhere else. Not published to the host: a proxy on a
+    # host port is an open relay for every process on the machine.
+    expose:
+      - "8080"
+    networks:
+      # The only service on `sandbox_outbound`, which is the only network in
+      # this stack with a gateway. That is what makes this container the one
+      # policed way out rather than one of several ways out.
+      - sandbox_egress_bridge
+      - sandbox_outbound
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket;socket.create_connection(('127.0.0.1',8080),timeout=3).close()"]
+      interval: 15s
+      timeout: 5s
+      start_period: 5s
       retries: 3
 
   # ── Minimal scratch workspace ──────────────────────────────
@@ -107,42 +192,65 @@ services:
       HOME: /tmp
       LANG: C.UTF-8
       SANDBOX_ROLE: workspace
-      # Deliberately NOT told where the browser is. Playwright's browser-server
-      # websocket on `browser:9222` is unauthenticated, and an unauthenticated
-      # browser control endpoint is a remote-code-execution handle on that
-      # browser: whatever holds it can open any page, read any cookie the
-      # browser has and script it freely. The workspace runs *untrusted*
-      # errand work, so handing it that handle would make the browser
-      # container's isolation decoration — the two are on the same bridge, so
-      # the address is still guessable, but a service that is not told an
-      # endpoint is also not a service that reaches it by accident, and
-      # nothing in the workspace image has a reason to.
+      # Deliberately NOT told where the browser is, and now not able to reach
+      # it either: the workspace is alone on its own bridge, so the browser's
+      # control endpoint is not merely un-named, it is unroutable from here.
+      # That matters because whatever holds a browser control endpoint can
+      # open any page and read any cookie that browser has, and the workspace
+      # runs *untrusted* errand work. The path token on the control channel
+      # (SANDBOX_BROWSER_PATH, above) is the second lock on the same door.
       #
       # The application connects to that websocket from outside the bridge
-      # (services/browser_sandbox_driver.py). Closing this properly means an
-      # authenticated control channel in front of 9222 — the remaining §3
-      # requirement in docs/AI_WORK_ORDER.md — and until that exists nothing
-      # other than this application may be attached to this network.
-      # tests/unit/test_sandbox_isolation.py asserts this absence.
+      # (services/browser_sandbox_driver.py), with the token in the endpoint
+      # URL. tests/unit/test_sandbox_isolation.py asserts both the absence of
+      # the variable and the absence of the network path.
       TZ: UTC
     working_dir: /work
     networks:
-      - sandbox_internal
+      - sandbox_workspace
     mem_limit: 512m
     memswap_limit: 512m
     cpus: 0.5
     pids_limit: 128
     restart: "no"
 
-# `internal: true` is the whole point: docker attaches no gateway, so these
-# containers have no route off this bridge. They can talk to each other by
-# service name and to nothing else — not the internet, not the host, not the
-# application's postgres on the other compose network.
+# Three internal bridges and one with a gateway. `internal: true` is the whole
+# point of the first three: docker attaches no gateway, so a container on them
+# has no route off the bridge — not the internet, not the host, not the
+# application's postgres on the other compose network. It can reach the other
+# members of its own bridge and nothing else, which is why which container is
+# on which bridge *is* the security boundary here.
 networks:
-  sandbox_internal:
-    name: life_graph_sandbox_internal
+  # The application drives the browser over this one. Only `browser` is on
+  # it, so no sandbox container can reach the control endpoint even before the
+  # path token is considered.
+  sandbox_control:
+    name: life_graph_sandbox_control
     driver: bridge
     internal: true
+
+  # `browser` -> `egress`. The browser's requests leave on this bridge and
+  # arrive at the proxy, which is the only member with anywhere else to go.
+  sandbox_egress_bridge:
+    name: life_graph_sandbox_egress
+    driver: bridge
+    internal: true
+
+  # `workspace` alone. A bridge with one member and no gateway: untrusted
+  # errand work can reach nothing at all.
+  sandbox_workspace:
+    name: life_graph_sandbox_workspace
+    driver: bridge
+    internal: true
+
+  # The one network in this stack with a route to the internet, and `egress`
+  # is the only container permitted on it (services/sandbox.py enforces that
+  # against this file). Everything that leaves this stack has been through
+  # the proxy's destination rules and is connected to the address the proxy
+  # resolved, not to a name the browser could have re-resolved.
+  sandbox_outbound:
+    name: life_graph_sandbox_outbound
+    driver: bridge
 
 # No top-level `volumes:` stanza, and no service declares one. Writable
 # state is tmpfs or it does not exist.

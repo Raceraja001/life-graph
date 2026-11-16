@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import socket
 from typing import Any
 
@@ -52,7 +53,13 @@ OTHER_TENANT = "t2"
 BANK = "https://netbanking.hdfcbank.com"
 START = f"{BANK}/login"
 GOAL = "get this month's statement"
-ENDPOINT = "ws://browser:9222/"
+#: The control channel's shared secret: the path Playwright's browser server
+#: was started with (`--path /<token>`, Dockerfile.browser) and the only path
+#: on which it accepts a websocket upgrade. 32 url-safe characters, as a real
+#: one would be — the driver refuses a short one, and a test that used "tok"
+#: would be testing a token the application would never accept.
+CONTROL_TOKEN = "IQ7naCGt3bRtNcHLIUqJbltB2VIaeDCk"
+ENDPOINT = f"ws://browser:9222/{CONTROL_TOKEN}"
 
 FAKE_DNS: dict[str, list[str]] = {"netbanking.hdfcbank.com": ["93.184.216.34"]}
 
@@ -81,6 +88,12 @@ def _sandbox_configured(monkeypatch):
     monkeypatch.setattr(settings, "browser_sandbox_url", ENDPOINT, raising=False)
     monkeypatch.setattr(settings, "browser_sandbox_ws_url", "", raising=False)
     monkeypatch.setattr(settings, "browser_sandbox_timeout_seconds", 5, raising=False)
+    # A correctly configured deployment now includes an authenticated control
+    # channel: the browser container was started with --path /<token> and the
+    # application knows the same token. Tests that assert what happens when it
+    # is *missing* set it to "" themselves.
+    monkeypatch.setattr(settings, "browser_sandbox_token", CONTROL_TOKEN, raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_require_token", True, raising=False)
     monkeypatch.delenv(bsd.ENV_ENDPOINT, raising=False)
     monkeypatch.setattr(errand, "_driver_override", None, raising=False)
     capability_store.clear()
@@ -529,6 +542,270 @@ def test_the_endpoint_is_never_reported_with_its_credentials_on_it():
     assert "super-secret-token" not in isolated.endpoint
     assert "super-secret-token" not in repr(isolated)
     assert bsd.redacted("ws://u:p@broker:7000/t") == "ws://broker:7000"
+
+
+# ── The control channel is authenticated ─────────────────────────────────
+# Playwright's browser server with no --path accepts any connection that can
+# reach the port, and that connection can open any page and read any cookie
+# the browser holds. The sandbox browser is therefore started with
+# `--path /<token>` and answers 404 on every other path, which makes the token
+# in the endpoint URL the credential for the control channel
+# (docs/AI_WORK_ORDER.md §3, "separate authenticated control channel").
+
+
+def test_the_token_fills_a_blank_path_and_reaches_the_transport(monkeypatch):
+    """The endpoint the driver connects to carries the path, not just the port.
+
+    A token nobody puts in the URL is a token the browser server never sees,
+    so this asserts the whole way through: the setting, the composed endpoint
+    and the string the transport is actually handed.
+    """
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "browser_sandbox_url", "ws://browser:9222/", raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_token", CONTROL_TOKEN, raising=False)
+
+    assert bsd.control_endpoint() == f"ws://browser:9222/{CONTROL_TOKEN}"
+    assert bsd.control_token() == CONTROL_TOKEN
+
+    isolated = IsolatedBrowserDriver(
+        tenant_id=TENANT, errand_id="errand_tok", transport=FakeTransport()
+    )
+    assert isolated._endpoint == f"ws://browser:9222/{CONTROL_TOKEN}"  # noqa: SLF001
+
+
+async def test_the_token_is_the_endpoint_the_connection_is_made_to(monkeypatch):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "browser_sandbox_url", "ws://browser:9222/", raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_token", CONTROL_TOKEN, raising=False)
+    transport = FakeTransport()
+    isolated = IsolatedBrowserDriver(
+        tenant_id=TENANT, errand_id="errand_tok", transport=transport, timeout_seconds=0.5
+    )
+    try:
+        await isolated.read_page()
+    finally:
+        await isolated.close()
+
+    assert transport.opened[0]["endpoint_url"] == f"ws://browser:9222/{CONTROL_TOKEN}"
+
+
+@pytest.mark.parametrize(
+    ("configured_url", "token"),
+    [
+        ("ws://browser:9222/", ""),
+        ("ws://browser:9222", ""),
+        # A query is not a path: Playwright compares --path against the
+        # request path, so ?token=... would never match and must not be
+        # mistaken for a credential that was supplied.
+        (f"ws://browser:9222/?token={'x' * 32}", ""),
+        # Too short to be a credential, in the URL and in the setting.
+        ("ws://browser:9222/browser", ""),
+        ("ws://browser:9222/", "short"),
+        # Long enough, but spelled with characters the server would never
+        # match byte for byte.
+        ("ws://browser:9222/", "token with spaces and %% signs!!"),
+    ],
+    ids=[
+        "no-path",
+        "no-path-no-slash",
+        "query-not-path",
+        "short-path",
+        "short-token",
+        "unmatchable",
+    ],
+)
+def test_an_unauthenticated_control_channel_refuses_the_errand(monkeypatch, configured_url, token):
+    """No usable token, no browser. The refusal is at construction.
+
+    Every one of these is a control channel that anything able to reach port
+    9222 could drive, so each is a ``SandboxUnavailableError`` rather than a
+    session — and ``get_driver`` answers ``None``, which is what makes the
+    errand stop instead of looking for a less contained browser.
+    """
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "browser_sandbox_url", configured_url, raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_token", token, raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_require_token", True, raising=False)
+
+    with pytest.raises(SandboxUnavailableError) as caught:
+        IsolatedBrowserDriver(tenant_id=TENANT, errand_id="errand_abc", transport=FakeTransport())
+    assert "token" in str(caught.value).lower()
+    assert errand.get_driver(errand_id="errand_abc", tenant_id=TENANT) is None
+
+
+def test_an_explicitly_passed_endpoint_is_held_to_the_same_requirement(monkeypatch):
+    """A caller that hands in an endpoint does not get to skip the token.
+
+    ``control_endpoint`` is the one place that decides, so the argument path
+    and the settings path cannot drift apart — which they would if the check
+    lived next to the setting.
+    """
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "browser_sandbox_token", "", raising=False)
+
+    with pytest.raises(SandboxUnavailableError):
+        IsolatedBrowserDriver(
+            tenant_id=TENANT,
+            errand_id="errand_abc",
+            endpoint_url="ws://broker:7000/",
+            transport=FakeTransport(),
+        )
+    # With a usable one in the url itself, the same call is fine.
+    isolated = IsolatedBrowserDriver(
+        tenant_id=TENANT,
+        errand_id="errand_abc",
+        endpoint_url=f"ws://broker:7000/{CONTROL_TOKEN}",
+        transport=FakeTransport(),
+    )
+    assert isolated._endpoint.endswith(CONTROL_TOKEN)  # noqa: SLF001
+
+
+def test_a_path_the_endpoint_already_carries_wins_over_the_setting(monkeypatch):
+    """A broker in front of the browser may need a path of its own.
+
+    The more specific value wins, and neither comes from model output: both
+    are owner configuration, so this is a precedence rule and not a trust
+    decision.
+    """
+    from life_graph.config import settings
+
+    monkeypatch.setattr(
+        settings, "browser_sandbox_url", "ws://broker:7000/session/qSHZ3n0bFvQdXg0u", raising=False
+    )
+    monkeypatch.setattr(settings, "browser_sandbox_token", CONTROL_TOKEN, raising=False)
+
+    assert bsd.control_endpoint() == "ws://broker:7000/session/qSHZ3n0bFvQdXg0u"
+
+
+def test_the_requirement_is_only_turned_off_deliberately_and_loudly(monkeypatch, caplog):
+    """Off is for a deployment that authenticates the channel somewhere else.
+
+    It is still not quiet: an unauthenticated control endpoint is written
+    into the log, because somebody reading the record of an errand should be
+    able to see that this was the configuration it ran under.
+    """
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "browser_sandbox_url", "ws://browser:9222/", raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_token", "", raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_require_token", False, raising=False)
+
+    with caplog.at_level(logging.WARNING, logger=bsd.logger.name):
+        isolated = IsolatedBrowserDriver(
+            tenant_id=TENANT, errand_id="errand_abc", transport=FakeTransport()
+        )
+
+    assert isolated._endpoint == "ws://browser:9222/"  # noqa: SLF001
+    assert "not authenticated" in caplog.text or "reachable by anything" in caplog.text
+
+
+def test_a_missing_setting_reads_as_required(monkeypatch):
+    """A deployment that predates this slice gets the requirement, not an
+    open browser-control port."""
+    from life_graph.config import settings
+
+    monkeypatch.delattr(settings, "browser_sandbox_require_token", raising=False)
+    assert bsd.control_token_required() is True
+    monkeypatch.setattr(settings, "browser_sandbox_require_token", "off", raising=False)
+    assert bsd.control_token_required() is False
+
+
+async def test_the_token_never_reaches_a_log_or_an_error(monkeypatch, caplog):
+    """The credential does not travel with the complaint about it.
+
+    Playwright quotes the endpoint it was handed ("connect ws://host/<token>"),
+    and that text ends up in a log line and in the error the owner is shown.
+    Both go through ``scrubbed`` first, so this asserts the whole surface: the
+    exception, the log, ``repr`` and the driver's own ``endpoint`` property.
+    """
+    leak = f"connect ECONNREFUSED ws://browser:9222/{CONTROL_TOKEN} failed"
+    isolated = driver(RefusingTransport(RuntimeError(leak)))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(SandboxUnavailableError) as caught:
+        await isolated.navigate(START)
+
+    assert CONTROL_TOKEN not in str(caught.value)
+    assert CONTROL_TOKEN not in caplog.text
+    assert CONTROL_TOKEN not in repr(isolated)
+    assert isolated.endpoint == "ws://browser:9222"
+    assert (
+        bsd.scrubbed(leak, ENDPOINT) == "connect ECONNREFUSED ws://browser:9222/<redacted> failed"
+    )
+
+
+async def test_a_refused_handshake_is_an_unusable_runtime(monkeypatch, caplog):
+    """404 on the websocket upgrade is what a wrong token looks like.
+
+    The path-scoped browser server answers every path but its own that way,
+    so this is the shape of an unauthorised control-channel attempt arriving
+    back at the driver: one closed failure, nothing retried, no fallback.
+    """
+    refusal = BrowserRuntimeUnusableError(
+        f"the browser control endpoint refused the handshake"
+        f" (Error: Unexpected server response: 404 at ws://browser:9222/{CONTROL_TOKEN})",
+        status=404,
+    )
+    transport = RefusingTransport(refusal)
+    isolated = driver(transport)
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(SandboxUnavailableError) as caught:
+        await isolated.navigate(START)
+
+    assert transport.attempts == 1
+    assert "404" in str(caught.value)
+    assert CONTROL_TOKEN not in str(caught.value)
+    assert CONTROL_TOKEN not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("Error: Unexpected server response: 404", 404),
+        ("websocket handshake failed with status code 401", 401),
+        ("browserType.connect: status: 403 forbidden", 403),
+        ("connect ECONNREFUSED 172.19.0.3:9222", None),
+        ("", None),
+    ],
+)
+def test_the_handshake_status_is_read_out_of_the_client_message(message, expected):
+    """Playwright reports a refused upgrade as prose, not as a field."""
+    assert bsd._handshake_status(message) == expected  # noqa: SLF001
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "expected"),
+    [
+        (f"ws://browser:9222/{CONTROL_TOKEN}", CONTROL_TOKEN),
+        ("ws://browser:9222/a/b", "a/b"),
+        ("ws://browser:9222/", ""),
+        ("ws://browser:9222", ""),
+        ("ws://browser:9222/t?x=1", ""),
+        ("ws://browser:9222/t#frag", ""),
+        ("", ""),
+    ],
+)
+def test_the_path_a_endpoint_carries_is_read_exactly(endpoint, expected):
+    assert bsd.endpoint_token(endpoint) == expected
+
+
+def test_a_token_that_is_set_but_unusable_is_not_quietly_used(monkeypatch, caplog):
+    """A mistyped token falls back to the refusal, never to an open channel.
+
+    And the value does not appear in the warning: it is a credential even
+    when it is a broken one, and the log is the wrong place to publish an
+    almost-correct password.
+    """
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "browser_sandbox_token", "tok", raising=False)
+    with caplog.at_level(logging.WARNING, logger=bsd.logger.name):
+        assert bsd.control_token() == ""
+    assert "not usable" in caplog.text
+    assert "tok" not in caplog.text.replace("token", "").replace("Token", "")
 
 
 # ── Where the browser actually is ────────────────────────────────────────
