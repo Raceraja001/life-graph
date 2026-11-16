@@ -72,6 +72,7 @@ from sqlalchemy import func, select
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.lead import LEAD
+from life_graph.services.memory_sources import source_label
 from life_graph.storage.database import async_session
 
 router = APIRouter(prefix="/jarvis", tags=["jarvis"])
@@ -1008,27 +1009,11 @@ async def _transcribe(audio: UploadFile) -> str:
 # ── v2: review memories, undo a save, read an image, notifications ──────────
 
 #: Where a memory came from, in the owner's words (the app shows it).
-_SOURCE_LABEL = {
-    "cli": "Claude Code",
-    "jarvis_app": "Jarvis",
-    "explicit": "Jarvis",
-    "voice": "voice",
-    "telegram": "Telegram",
-    "dashboard": "dashboard",
-    "manual": "dashboard",
-    "image": "an image",
-    "interview_answer": "interview",
-}
+# The label lives in services/memory_sources.py; _source is kept for this
+# module's callers.
+_source = source_label
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 _IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
-
-
-def _source(m) -> str:
-    props = m.properties or {}
-    for key in (props.get("surface"), m.source_type):
-        if key in _SOURCE_LABEL:
-            return _SOURCE_LABEL[key]
-    return "Life Graph"
 
 
 @router.get("/memories/pending", summary="Memories waiting for your review, newest first")

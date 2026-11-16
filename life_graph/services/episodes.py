@@ -203,8 +203,8 @@ async def _exists(tenant_id: str, key: str) -> bool:
 
 async def summarize(source: str, day: date, lines: list[str]) -> str:
     """The local model's summary of one day, or "" if it gave none."""
-    from life_graph.api.dependencies import get_lm_client
     from life_graph.config import settings
+    from life_graph.runtime import get_lm_client
 
     reply = await get_lm_client().chat_local_only(
         [
@@ -240,9 +240,9 @@ def clean(summary: str) -> str:
 
 async def write_day(tenant_id: str, day: date) -> list[str]:
     """Write the day's episodes that are missing; return the keys written."""
-    from life_graph.api.dependencies import get_memory_manager, get_store
     from life_graph.core.tenant import tenant_scope
     from life_graph.models.schemas import MemoryCreate
+    from life_graph.runtime import get_memory_manager, get_store
 
     written = []
     for source in SOURCES:

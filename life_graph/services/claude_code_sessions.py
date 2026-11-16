@@ -275,8 +275,8 @@ async def summarize(session_id: uuid.UUID, tenant_id: str, project: str | None) 
     if not rows:
         return fallback
     try:
-        from life_graph.api.dependencies import get_lm_client
         from life_graph.config import settings
+        from life_graph.runtime import get_lm_client
 
         text = "\n".join(f"- {' '.join((content or '').split())[:300]}" for (content,) in rows)
         reply = await get_lm_client().chat_local_only(

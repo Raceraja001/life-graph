@@ -181,8 +181,8 @@ class CaptureProcessors:
                 # ── 1. Run extraction pipeline ──────────────────────
                 facts: list[ExtractedFact] = []
                 try:
-                    from life_graph.api.dependencies import get_extraction_pipeline
                     from life_graph.core.tenant import has_tenant_context, set_tenant_context
+                    from life_graph.runtime import get_extraction_pipeline
 
                     # The extractor reads the tenant's people table (who "Senthil"
                     # is); outside a request the tenant contextvar is unset.
@@ -365,9 +365,9 @@ class CaptureProcessors:
             Number of memories actually stored (post-dedup), 0 on failure.
         """
         try:
-            from life_graph.api.dependencies import get_memory_manager
             from life_graph.core.tenant import has_tenant_context, set_tenant_context
             from life_graph.core.trust import classify_surface, coerce_tier
+            from life_graph.runtime import get_memory_manager
 
             # EventBus handlers can run outside a request (worker, cron), where
             # the tenant contextvar the storage layer reads is unset.
@@ -419,7 +419,7 @@ class CaptureProcessors:
     async def _embed(text: str) -> list[float] | None:
         """An embedding of *text*, or None when there is none to be had."""
         try:
-            from life_graph.api.dependencies import get_memory_manager
+            from life_graph.runtime import get_memory_manager
 
             return await get_memory_manager().generate_embedding(text)
         except Exception:

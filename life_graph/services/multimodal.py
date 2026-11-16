@@ -237,7 +237,7 @@ class MultiModalService:
         event_bus: EventBus,
         pipeline: ExtractionPipeline | None = None,
     ) -> None:
-        from life_graph.api.dependencies import get_extraction_pipeline
+        from life_graph.runtime import get_extraction_pipeline
 
         self.minio = minio
         self.event_bus = event_bus

@@ -60,7 +60,7 @@ async def resolve_approval(approval_id: str, request: ResolveRequest):
     """Resolve (approve/reject) an approval entry."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.api.dependencies import get_approval_service
+    from life_graph.runtime import get_approval_service
 
     service = get_approval_service()
 
@@ -87,7 +87,7 @@ async def batch_resolve(request: BatchResolveRequest):
     """Batch resolve approvals by filter."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.api.dependencies import get_approval_service
+    from life_graph.runtime import get_approval_service
 
     service = get_approval_service()
 

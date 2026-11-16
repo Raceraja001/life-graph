@@ -191,6 +191,6 @@ class EvalScorer:
 
 async def _default_embed(texts: list[str]) -> list[list[float]]:
     """Embed with the app's configured backend (the one memories use)."""
-    from life_graph.api.dependencies import get_embedding_service
+    from life_graph.runtime import get_embedding_service
 
     return await get_embedding_service().embed_batch_async(texts)

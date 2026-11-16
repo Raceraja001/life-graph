@@ -395,7 +395,7 @@ async def categorise_with_model(descriptions: list[str], client=None) -> list[st
     if not descriptions:
         return []
     if client is None:
-        from life_graph.api.dependencies import get_lm_client
+        from life_graph.runtime import get_lm_client
 
         client = get_lm_client()
     numbered = "\n".join(f"{i + 1}. {d[:160]}" for i, d in enumerate(descriptions))

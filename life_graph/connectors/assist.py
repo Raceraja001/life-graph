@@ -40,7 +40,7 @@ HISTORY_DAYS = 90
 
 async def _embed(text: str) -> list[float] | None:
     try:
-        from life_graph.api.dependencies import get_embedding_service
+        from life_graph.runtime import get_embedding_service
 
         return (await get_embedding_service().embed_batch_async([text]))[0]
     except Exception:
@@ -107,7 +107,7 @@ async def _who_lines(
 
 async def prepare_meetings(now: datetime | None = None) -> int:
     """Create prep notes for timed events starting 20–40 minutes from now."""
-    from life_graph.api.dependencies import get_notification_engine
+    from life_graph.runtime import get_notification_engine
 
     now = now or datetime.now(UTC)
     lo, hi = now + PREP_LEAD[0], now + PREP_LEAD[1]

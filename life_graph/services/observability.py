@@ -180,7 +180,7 @@ async def system(session: AsyncSession, app_state: Any) -> dict[str, Any]:
 
 async def agents(tenant_id: str) -> list[dict[str, Any]]:
     """Every persona with its model, and which of its tools are not registered."""
-    from life_graph.api.dependencies import get_persona_service
+    from life_graph.runtime import get_persona_service
     from life_graph.tools.registry import registry
 
     registered = set(registry.tool_names)

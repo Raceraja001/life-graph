@@ -270,8 +270,8 @@ async def second_opinion(instruction: str, diff: str) -> tuple[bool, str]:
     models, else the local agent model, never a paid fallback. Fails closed:
     if no model answers, or the answer cannot be read, the change waits.
     """
-    from life_graph.api.dependencies import get_resilient_llm
     from life_graph.config import settings
+    from life_graph.runtime import get_resilient_llm
     from life_graph.services.compute_router import cloud_models
     from life_graph.services.resilient_llm import only_models
 

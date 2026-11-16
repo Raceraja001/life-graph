@@ -160,7 +160,7 @@ class ActionProposalHandler:
 
     def _get_bridge(self) -> ActionProposalBridge:
         if self._bridge is None:
-            from life_graph.api.dependencies import get_autofix_service, get_notification_engine
+            from life_graph.runtime import get_autofix_service, get_notification_engine
 
             self._bridge = ActionProposalBridge(
                 autofix_service=get_autofix_service(),

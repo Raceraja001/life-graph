@@ -582,7 +582,7 @@ class LLMExtractor:
 
     async def _extract_cloud(self, text: str) -> list[ExtractedFact]:
         """Extract facts using cloud LLM via LiteLLM (original path)."""
-        from life_graph.api.dependencies import get_resilient_llm
+        from life_graph.runtime import get_resilient_llm
 
         messages = [
             {"role": "system", "content": _SYSTEM_PROMPT},

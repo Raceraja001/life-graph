@@ -57,7 +57,7 @@ def filters() -> dict[str, Any]:
 
 async def search(embedding: list[float], question: str, limit: int = COLD_CANDIDATES) -> list[Any]:
     """Cold memories of the current tenant nearest to *question*, best first."""
-    from life_graph.api.dependencies import get_store
+    from life_graph.runtime import get_store
 
     hits = await get_store().hybrid_search(
         embedding=embedding, query_text=question, limit=limit, filters=filters()

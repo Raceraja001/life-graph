@@ -483,8 +483,8 @@ class ConsolidationPipeline:
             )
 
             try:
-                from life_graph.api.dependencies import get_resilient_llm
                 from life_graph.config import settings
+                from life_graph.runtime import get_resilient_llm
 
                 response = await get_resilient_llm().acompletion(
                     messages=[{"role": "user", "content": prompt}],
