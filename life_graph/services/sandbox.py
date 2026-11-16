@@ -815,10 +815,56 @@ async def run(
 # is testable and is checked before anything is started.
 
 SANDBOX_COMPOSE_FILE = "compose.sandbox.yaml"
-SANDBOX_NETWORK = "life_graph_sandbox_internal"
+
+# ── The four networks, which are the security boundary ──
+# Three internal bridges with no gateway and one bridge with a route out, and
+# which container sits on which is what contains an errand:
+#
+#   app ──(control)──> browser ──(egress bridge)──> egress ──(outbound)──> web
+#                      workspace ──(its own bridge, reaching nothing)
+#
+# The application drives the browser over the control bridge; the browser's
+# requests reach the proxy over the egress bridge; the proxy is the only
+# member of the only network with a gateway. The workspace — which is where
+# untrusted errand work runs — is alone on a bridge of its own, so it can
+# reach neither the browser's control endpoint nor the way out.
+SANDBOX_CONTROL_NETWORK = "life_graph_sandbox_control"
+SANDBOX_EGRESS_NETWORK = "life_graph_sandbox_egress"
+SANDBOX_WORKSPACE_NETWORK = "life_graph_sandbox_workspace"
+SANDBOX_OUTBOUND_NETWORK = "life_graph_sandbox_outbound"
+
+# Every network an errand container may be attached to. The outbound one is
+# deliberately absent: a SandboxSpec is an errand container, and no errand
+# container gets a route to the internet. The proxy is not built from a spec
+# (it is a compose service, checked by compose_violations below) precisely so
+# that this list does not need an exception in it.
+INTERNAL_SANDBOX_NETWORKS = (
+    SANDBOX_CONTROL_NETWORK,
+    SANDBOX_EGRESS_NETWORK,
+    SANDBOX_WORKSPACE_NETWORK,
+)
+
+# The default for a bare spec. A bare spec is a workspace, and a workspace's
+# bridge is the one that reaches nothing.
+SANDBOX_NETWORK = SANDBOX_WORKSPACE_NETWORK
+
+# Which networks each service of compose.sandbox.yaml may be on — exactly,
+# not at least. An extra attachment is a route that was not reviewed.
+EGRESS_SERVICE = "egress"
+SANDBOX_SERVICE_NETWORKS: dict[str, tuple[str, ...]] = {
+    "browser": (SANDBOX_CONTROL_NETWORK, SANDBOX_EGRESS_NETWORK),
+    EGRESS_SERVICE: (SANDBOX_EGRESS_NETWORK, SANDBOX_OUTBOUND_NETWORK),
+    "workspace": (SANDBOX_WORKSPACE_NETWORK,),
+}
+
 BROWSER_IMAGE = "life-graph-sandbox-browser:dev"
 WORKSPACE_IMAGE = "life-graph-sandbox-workspace:dev"
+EGRESS_IMAGE = "life-graph-sandbox-egress:dev"
 BROWSER_WS_PORT = 9222
+# Where the egress proxy listens (Dockerfile.egress, SANDBOX_EGRESS_PORT).
+# The application points LIFE_GRAPH_BROWSER_SANDBOX_EGRESS_PROXY_URL at
+# http://egress:8080, which is a name only resolvable on the egress bridge.
+EGRESS_PROXY_PORT = 8080
 WORKSPACE_DIR = "/work"
 SANDBOX_LABEL = "life-graph.sandbox"
 
@@ -989,9 +1035,15 @@ def spec_violations(spec: SandboxSpec) -> list[str]:
         bad.append(f"network_mode {spec.network_mode!r} leaves the internal sandbox network")
     elif mode and mode != "none":
         bad.append(f"network_mode {spec.network_mode!r} is not the internal sandbox network")
-    if mode != "none" and spec.network != SANDBOX_NETWORK:
+    if mode != "none" and spec.network not in INTERNAL_SANDBOX_NETWORKS:
+        # Not a list of equally good options: each of these bridges has no
+        # gateway, so joining any of them is "no route out". The outbound
+        # network is not here and must never be, which is what keeps an
+        # errand container from having a way out that is not the proxy.
         bad.append(
-            f"network {spec.network!r} is not the internal sandbox network {SANDBOX_NETWORK}"
+            f"network {spec.network!r} is not one of the internal sandbox networks"
+            f" ({', '.join(INTERNAL_SANDBOX_NETWORKS)}), of which {SANDBOX_NETWORK}"
+            " is the default"
         )
 
     for mount in spec.mounts:
@@ -1072,6 +1124,11 @@ def browser_spec(
             name=name or f"lg-sbx-browser-{uuid.uuid4().hex[:8]}",
             image=image,
             role="browser",
+            # The control bridge: the application reaches the browser here and
+            # nothing else on this stack is attached to it. A browser on the
+            # workspace bridge would be a browser untrusted errand code could
+            # drive.
+            network=SANDBOX_CONTROL_NETWORK,
             user="1000:1000",  # pwuser, from the Playwright base image
             memory=memory,
             cpus=cpus,
@@ -1111,6 +1168,11 @@ def workspace_spec(
         "TZ": "UTC",
     }
     if browser:
+        # Deliberately without the control channel's path token: the browser
+        # server answers 404 on every path but its own, so what a caller that
+        # opts in hands over is the address of a locked door and not a key.
+        # Handing untrusted errand work the token would make the browser
+        # container's isolation decoration.
         env["SANDBOX_BROWSER_WS_URL"] = f"ws://{browser}:{BROWSER_WS_PORT}/"
     return validate_spec(
         SandboxSpec(
@@ -1292,6 +1354,92 @@ def _compose_env(raw: object) -> dict[str, str]:
     return env
 
 
+def compose_service_networks(service: dict, networks: dict | None = None) -> list[str]:
+    """The real names of every network *service* is attached to.
+
+    Compose lets a service name its networks as a list or as a mapping, and a
+    network's real name comes from its own ``name:`` key when it has one. Both
+    are normalised here so the topology rules compare the names docker will
+    actually create.
+    """
+    attached = service.get("networks") or []
+    keys = list(attached) if isinstance(attached, (dict, list, tuple)) else [attached]
+    out: list[str] = []
+    for key in keys:
+        declared = (networks or {}).get(str(key), {}) or {}
+        out.append(str(declared.get("name") or key))
+    return out
+
+
+def network_topology_violations(document: dict) -> list[str]:
+    """Every way *document* lets something reach the network it should not.
+
+    The container-chassis rules live in :func:`spec_violations`. These are the
+    rules about *reachability*, which a per-container check cannot see:
+
+    * exactly one network may have a gateway, and it must be the outbound one.
+      Every other network must be ``internal: true``, which is what makes "no
+      route out" a property of the bridge rather than of a flag on a process;
+    * only the egress proxy may be attached to that outbound network. It is
+      the component that judges destinations; anything else there would be a
+      second way out, unjudged;
+    * the known services are attached to exactly the networks
+      :data:`SANDBOX_SERVICE_NETWORKS` says, no more. In particular the
+      workspace — where untrusted errand work runs — shares no network with
+      the browser, so the browser's control endpoint is not merely un-named
+      to it but unroutable from it;
+    * a service nobody wrote a rule for may only be on the workspace bridge,
+      so adding a service to this stack cannot quietly grant it the control
+      channel or a route out.
+    """
+    bad: list[str] = []
+    services = document.get("services") or {}
+    networks = document.get("networks") or {}
+
+    external: list[str] = []
+    for key, declared in networks.items():
+        real = str((declared or {}).get("name") or key)
+        if (declared or {}).get("internal"):
+            continue
+        external.append(real)
+        if real != SANDBOX_OUTBOUND_NETWORK:
+            bad.append(
+                f"network {key} is not internal-only and is not the outbound network"
+                f" {SANDBOX_OUTBOUND_NETWORK}"
+            )
+    if len(external) > 1:
+        bad.append(f"more than one network has a route out: {', '.join(sorted(external))}")
+
+    on_outbound: list[str] = []
+    for name, service in services.items():
+        attached = compose_service_networks(service or {}, networks)
+        if SANDBOX_OUTBOUND_NETWORK in attached:
+            on_outbound.append(name)
+        expected = SANDBOX_SERVICE_NETWORKS.get(name)
+        if expected is None:
+            # Default-deny for a service nobody has reviewed: the bridge that
+            # reaches nothing, or nothing at all.
+            for net in attached:
+                if net != SANDBOX_WORKSPACE_NETWORK:
+                    bad.append(
+                        f"{name} is attached to {net}, and a service with no reviewed"
+                        f" topology may only be on {SANDBOX_WORKSPACE_NETWORK}"
+                    )
+            continue
+        if set(attached) != set(expected):
+            bad.append(
+                f"{name} is attached to [{', '.join(attached) or 'nothing'}] rather than"
+                f" exactly [{', '.join(expected)}]"
+            )
+    if sorted(on_outbound) != [EGRESS_SERVICE] and services:
+        bad.append(
+            f"the outbound network's members are [{', '.join(sorted(on_outbound)) or 'none'}]"
+            f" rather than exactly [{EGRESS_SERVICE}]: everything that leaves this stack"
+            " must go through the proxy"
+        )
+    return bad
+
+
 def spec_from_compose(name: str, service: dict, networks: dict | None = None) -> SandboxSpec:
     """Build a :class:`SandboxSpec` out of one compose service definition.
 
@@ -1299,11 +1447,16 @@ def spec_from_compose(name: str, service: dict, networks: dict | None = None) ->
     run :func:`spec_violations` against the file a human actually brings up,
     instead of trusting that it matches the Python defaults.
     """
-    attached = list(service.get("networks") or [])
-    # A compose network's real name comes from its `name:` key when it has
-    # one, which is what the container is actually attached to.
-    declared = (networks or {}).get(attached[0] if attached else "", {}) or {}
-    network = str(declared.get("name") or (attached[0] if attached else ""))
+    attached = compose_service_networks(service, networks)
+    # A SandboxSpec carries one network because ``docker run`` attaches one.
+    # The egress proxy is on two, one of which is the outbound bridge, so the
+    # spec reports its *internal* attachment and the outbound one is judged
+    # separately by :func:`compose_violations` — which is the honest split:
+    # the spec policy is about the container's chassis, and who is allowed a
+    # route to the internet is a property of the file's topology, checked
+    # explicitly rather than by whichever network happened to be listed first.
+    internal = [n for n in attached if n != SANDBOX_OUTBOUND_NETWORK]
+    network = internal[0] if internal else (attached[0] if attached else "")
     return SandboxSpec(
         name=f"compose-{name}",
         image=str(service.get("image") or ""),
@@ -1345,9 +1498,9 @@ def compose_violations(path: Path | None = None) -> dict[str, list[str]]:
         file_level.append("declares named volumes at the top level")
     if not services:
         file_level.append("declares no services")
-    for net_name, net in networks.items():
-        if not (net or {}).get("internal"):
-            file_level.append(f"network {net_name} is not internal-only")
+    if not networks:
+        file_level.append("declares no networks, so its services are on the default bridge")
+    file_level.extend(network_topology_violations(document))
     if file_level:
         found["compose"] = file_level
 
@@ -1364,7 +1517,7 @@ def compose_violations(path: Path | None = None) -> dict[str, list[str]]:
             if str(service.get(key) or "").lower().startswith(value)
         ]
         if not service.get("networks"):
-            bad.append(f"{name} is on the default network, not the internal sandbox network")
+            bad.append(f"{name} is on the default network, not a sandbox network")
         bad += spec_violations(spec_from_compose(name, service, networks))
         if bad:
             found[name] = bad

@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:1
+# ── NOD sandbox image: the browser's only way out ────────────
+# The third part of the errand sandbox chassis (compose.sandbox.yaml,
+# life_graph/services/sandbox.py). The browser container has no gateway, so
+# the only way a browser errand reaches a real site is this container: a
+# forward proxy that judges every destination the browser asks for — the first
+# navigation, every redirect hop, every sub-resource and fetch() — and then
+# connects to the address it resolved rather than to the name, which is what
+# closes the DNS-rebinding window an application-level check cannot
+# (life_graph/services/browser_egress_proxy.py, docs/AI_WORK_ORDER.md §3).
+#
+# Build:  docker build -t life-graph-sandbox-egress:dev -f Dockerfile.egress .
+#         (or: docker compose -f compose.sandbox.yaml build egress)
+FROM python:3.11-slim
+
+# No pip install, and nothing from the network: the proxy and the destination
+# rules it enforces are standard-library Python (asyncio, ipaddress, socket).
+# A dependency here would be a dependency in the one container that holds the
+# egress decision, so the answer to "can we add a library" is no.
+
+ENV PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HOME=/tmp \
+    SANDBOX_ROLE=egress \
+    SANDBOX_EGRESS_HOST=0.0.0.0 \
+    SANDBOX_EGRESS_PORT=8080
+
+WORKDIR /app
+
+# The enforcement modules and *only* them. The other two sandbox images copy
+# nothing out of the repository at all, and that rule holds for them because
+# an errand container has no business reading application source. This one is
+# not an errand container: it is the component that makes the decision, so it
+# has to contain the code that makes it. The list is therefore an allowlist
+# rather than a convenience — four files, no API client, no database layer, no
+# config module, no vault, no credential helper. There is nothing in this
+# image to steal and nothing for it to call.
+#
+# tests/unit/test_sandbox_isolation.py asserts that this is all it copies, so
+# a later COPY that widened it would fail the suite rather than ship.
+COPY life_graph/__init__.py /app/life_graph/__init__.py
+COPY life_graph/services/__init__.py /app/life_graph/services/__init__.py
+COPY life_graph/services/destination_validator.py /app/life_graph/services/destination_validator.py
+COPY life_graph/services/browser_egress_proxy.py /app/life_graph/services/browser_egress_proxy.py
+
+# nobody:nogroup, which ships with the debian base and owns nothing in the
+# image — not even the files copied above, so the proxy cannot rewrite the
+# rules it enforces. Never root: compose pins `user:` explicitly as well, so
+# an image rebuild that lost this line still could not run privileged.
+USER 65534:65534
+
+# 0.0.0.0 because a container is reached on its bridge address and not on its
+# loopback. That is an open relay to anything that can reach this interface,
+# and it is contained by the network rather than by the bind: the only other
+# member of the bridge it listens on is the browser container, and that bridge
+# has no gateway. The module logs a warning saying exactly this on startup.
+EXPOSE 8080
+CMD ["sh", "-c", "exec python3 -m life_graph.services.browser_egress_proxy --host ${SANDBOX_EGRESS_HOST} --port ${SANDBOX_EGRESS_PORT}"]
+
+# A proxy that is not listening is a browser with no way out, which must be a
+# failure the runtime reports rather than a container that sits there. The
+# check speaks to the port it was told to bind, from inside the container.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
+    CMD python3 -c "import os,socket;socket.create_connection(('127.0.0.1',int(os.environ['SANDBOX_EGRESS_PORT'])),timeout=3).close()" || exit 1
