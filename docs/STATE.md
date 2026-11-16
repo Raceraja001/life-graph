@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-16 12:15 UTC` from `fix/state-doc-full-profile` @ `397e6e7`
+Generated `2026-11-16 12:25 UTC` from `master` @ `11490e1`
 
 ---
 
