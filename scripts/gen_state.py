@@ -29,6 +29,7 @@ import ast
 import contextlib
 import html
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -45,6 +46,14 @@ logging.disable(logging.CRITICAL)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+
+# The inventory documents the whole product, so it always describes the
+# ``full`` profile. The default (``memory_core``) mounts only the memory
+# routers: CI has no .env, and its first state-doc run (397e6e7) rewrote this
+# file from 390 HTTP operations / 88 tables down to 65 / 71. Set, not
+# setdefault, so a shell or .env choosing memory_core cannot change the
+# output either -- --check must give the same answer everywhere.
+os.environ["LIFE_GRAPH_PROFILE"] = "full"
 
 STATE_MD = REPO_ROOT / "docs" / "STATE.md"
 INVENTORY_HTML = REPO_ROOT / "docs" / "feature-inventory.html"
