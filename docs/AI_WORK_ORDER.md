@@ -237,7 +237,7 @@ from any row whose remaining gap is operational.
 ```text
 Date: 2026-11-16
 Remote base commit: 596a1a016af773d1ad3c9a9bed509977db94fba2
-Working commit: on branch feat/work-order-browser-isolation-p0 from 596a1a0
+Working commit: 756e697on branch feat/work-order-browser-isolation-p0 from 596a1a0
 Tasks inspected: section 3 (P0 isolated browser integration) and the
   2026-11-15 assignment; life_graph/tools/errand.py,
   life_graph/services/browser_errand.py, life_graph/services/sandbox.py,
@@ -446,7 +446,7 @@ Commit(s) pushed: none yet — review first (the developer approves plans and
 ```text
 Date: 2026-11-14
 Remote base commit: a9f35c97ad4c39bd8a6bc9d174b398306c9d6213 (origin/master == local HEAD at session start)
-Working commit: b597fa2b73db6e550b93ae50c7d974960a679720
+Working commit: 756e697b597fa2b73db6e550b93ae50c7d974960a679720
 Tasks inspected: section 2 (P0 exact-bound approval), section 4 (P1 durable
   authorization), section 5 (P1 historical relative-date episodes). Sections 3,
   6, 7 and 8 were read but not implemented this session.
