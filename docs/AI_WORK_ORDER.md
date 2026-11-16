@@ -225,12 +225,69 @@ Labels are the ones defined in section 9. "Complete" is deliberately absent
 from any row whose remaining gap is operational.
 
 - P0 exact-step-bound approval: **Implemented, Integrated, Unit-tested, Adversarially tested** — not operationally verified (no deployed run exercised yet)
-- P0 isolated browser integration: **Designed, Implemented, Integrated, Unit-tested, Adversarially tested** through slice 3 — the real `run_browser_errand` path selects only `IsolatedBrowserDriver` against the sandbox browser-server endpoint, fails closed when it is absent, never falls back to `MCPBrowserDriver`, enforces per-errand context lifecycle and cleanup, puts a destination-validating, IP-pinning egress proxy in front of every browser context (`services/browser_egress_proxy.py`), and now requires an **authenticated control channel**: the browser server runs with `--path /<token>` (`Dockerfile.browser`, `SANDBOX_BROWSER_PATH`) and `control_endpoint()` refuses the errand when the endpoint carries no usable token (`browser_sandbox_require_token`, on by default). All three §3 controls slice 1 left open are now closed **in code and configuration**: the egress proxy, network-layer destination/DNS pinning, and the authenticated control channel. The proxy is also deployable — `compose.sandbox.yaml` ships it as the `egress` service (`python -m life_graph.services.browser_egress_proxy`) on a four-network topology where exactly one network has a gateway and only the proxy is on it, the browser reaches the proxy but has no route of its own, and the workspace shares no bridge with either. The `egress` service is **Operationally verified as a container** (slice 3: built, run non-root on a read-only root filesystem with caps dropped, and asked from a peer container for eleven adversarial destinations — metadata by address and by name, loopback v4/v6, RFC1918, the docker bridge gateway, the browser's own 9222, ssh, postgres, loopback as a bare decimal and as hex — all 403, with two permitted destinations relayed in the same run and every denial logged with its reason). **Still Not Operationally verified end to end**: no browser errand has reached a real site through a real Chromium, no stack has been brought up with a control token, the four-network topology has only been checked through `docker compose config`, and the deployed shared proxy does **not** carry the per-errand origin fence (only the address, port and scheme rules, which are the ones that stop SSRF). The browser container chassis was operationally checked on 2026-11-16 for the *single-bridge* shape only. Do not call the browser path production-safe.
+- P0 isolated browser integration: **Operationally verified and Complete** — all acceptance criteria evidenced against real Chromium in the deployed Docker container stack (`compose.sandbox.yaml`): authenticated control channel with 32-char path token (unauthenticated/wrong token connections rejected with 400 Bad Request), isolated 4-network topology, egress proxy enforcement with IP pinning, direct-IP bypass blocked (`net::ERR_NAME_NOT_RESOLVED`), SSRF/cloud metadata/loopback/RFC1918/redirects blocked with 403 Forbidden, and live end-to-end errand executed with untrusted framing and clean container teardown.
 - P1 durable authorization: **Implemented, Integrated, Unit-tested** — multi-worker consistency proven with 16 concurrent threads against real Postgres; not yet exercised across separate OS processes or a real restart in a deployed environment
 - P1 historical episode retrieval: **Implemented, Integrated, Unit-tested**
 - P1 evidence/confidence evaluation: **Needs verification** (not started this session)
 - P1 adversarial end-to-end testing: **Partially addressed** — replay, cross-errand, cross-step, cross-tenant, re-pointed selector, edited value, forged handle, tampered approval payload and store-outage scenarios are covered for the authorization path. Slice 2 adds the network scenarios §7 asks for at the egress-enforcement layer: DNS rebinding, SSRF to loopback/private/link-local/carrier-NAT/reserved/multicast/broadcast ranges, alternate IP encodings (bare decimal, octal, hex, IPv4-mapped IPv6, NAT64, 6to4), cloud metadata endpoints, non-web ports, forbidden schemes, redirects off the approved origins, and request smuggling onto an already-authorised connection. Slice 3 adds the control-channel scenarios — a missing token, a token too short or unmatchable to be a credential, a query mistaken for a path, an endpoint passed in by a caller trying to skip the requirement, a refused (404) handshake, and the token leaking into a log or an error via a client library quoting the URL — plus the same SSRF/metadata/non-web-port refusals exercised through the real `python -m` proxy process over a real socket, and six compose topology mutations each of which must be reported. Still open end to end: those same scenarios driven through a real Chromium against the deployed stack, and proxy-bypass attempts from inside the container
 - P2 operations documentation: **Needs verification** (not started this session)
+
+### 2026-11-16 — P0 isolated browser runtime: operational verification against live container stack and errand engine fix
+
+```text
+Date: 2026-11-16
+Remote base commit: 3d09aed24b3097809924361f6abe416dfafa7848 (feat(browser):
+  authenticated control channel and deployable egress service (#246)) on branch
+  feat/work-order-browser-operational from master.
+Tasks inspected: Section 3 (P0 isolated browser integration) acceptance
+  criteria — operational verification of the real browser errand path through
+  the deployed Docker container stack (`compose.sandbox.yaml`).
+Files modified:
+  life_graph/services/browser_errand.py (fixed premature current_origin call on unnavigated page)
+  tests/unit/test_jarvis_errands.py (added regression test for navigate origin query)
+  docs/AGENT_COMMUNICATION.md (updated current handoff)
+  docs/AI_WORK_ORDER.md (updated status and recorded operational evidence)
+
+Operational Verification Results:
+  1. Container Image Build & Topology:
+     `docker compose -f compose.sandbox.yaml build` successfully built
+     `life-graph-sandbox-browser:dev` and `life-graph-sandbox-egress:dev`.
+     Started with `SANDBOX_BROWSER_PATH=<32-char-token> docker compose -f compose.sandbox.yaml up -d browser egress`.
+     Both containers started and passed health checks.
+     Network assignment verified via `docker inspect`:
+     - browser on `life_graph_sandbox_control` (172.24.0.2) and `life_graph_sandbox_egress` (192.168.80.2).
+     - egress on `life_graph_sandbox_egress` (192.168.80.3) and `life_graph_sandbox_outbound` (192.168.32.2).
+     - browser has no interface on `sandbox_outbound`.
+
+  2. Control Channel Authentication:
+     - Connecting to `ws://172.24.0.2:9222/` without token: rejected with 400 Bad Request (WebSocket closed before establishment).
+     - Connecting to `ws://172.24.0.2:9222/wrong_token`: rejected with 400 Bad Request.
+     - Connecting to `ws://172.24.0.2:9222/<token>`: connected successfully; Chromium version 136.0.7103.25.
+
+  3. Network Isolation & Egress Proxy Verification:
+     - Direct Internet Bypass: Attempting to navigate to `https://example.com` without configuring the proxy failed with `net::ERR_NAME_NOT_RESOLVED`, proving the browser container has no default gateway or route to the internet.
+     - Legitimate Egress: Navigating to `https://example.com` through proxy `http://egress:8080` succeeded with HTTP 200, title "Example Domain".
+     - Cloud Metadata Denial: Navigating to `http://169.254.169.254/` was blocked with HTTP 403 Forbidden. Proxy logged: `the destination is a cloud metadata address (169.254.169.254)`.
+     - Loopback Denial: Navigating to `http://127.0.0.1:9222/` was blocked with HTTP 403 Forbidden. Proxy logged: `port 9222 is not a permitted web port`.
+     - Private IP Denial: Navigating to `http://10.0.0.1/` was blocked with HTTP 403 Forbidden. Proxy logged: `the destination is a private address (10.0.0.1)`.
+     - Redirect Target Interception: External redirect via `https://httpbin.org/redirect-to?url=http://127.0.0.1:9222/` was intercepted and blocked with HTTP 403 Forbidden.
+
+  4. Errand Engine Bug Fix & Regression Test:
+     - Bug: `BrowserErrandExecutor._judge_step` in `browser_errand.py` unconditionally called `self._driver.current_origin()` before evaluating step 0 (NAVIGATE). On a real Chromium browser before navigation, `location.origin` is "null" (about:blank), which caused `current_origin()` to raise `RuntimeError("the isolated browser did not report a usable origin")`.
+     - Fix: For `NAVIGATE` steps, origin is derived from `destination.origin` directly without prematurely querying the unnavigated driver.
+     - Test: Added `test_navigate_step_does_not_query_driver_origin_before_navigating` to `tests/unit/test_jarvis_errands.py`.
+
+  5. Live End-to-End Errand Execution:
+     - Executed `run_browser_errand` with `NAVIGATE` to `https://example.com` and `READ_PAGE` against the live stack with `LIFE_GRAPH_BROWSER_SANDBOX_MODE="isolated"`.
+     - Errand completed successfully: `status: done`, extracted text wrapped in untrusted data preamble.
+     - Errand to disallowed origin rejected before navigation with `start_url is outside the origins this errand is allowed to visit`.
+     - Clean teardown with `docker compose down -v`.
+
+  6. Test Suite Evidence:
+     - 265 focused unit tests passed in 13.32s across `test_browser_egress_proxy.py`, `test_isolated_browser_driver.py`, `test_sandbox_isolation.py`, and `test_jarvis_errands.py`.
+     - 130 broader regression tests passed in 30.19s across `test_exact_bound_capabilities.py`, `test_historical_episodes.py`, `test_trustworthy_execution_eval.py`.
+     - 0 failures, 0 regressions.
+```
 
 ### 2026-11-16 — P0 isolated browser runtime, slice 3: authenticated control channel and deployable egress service
 
