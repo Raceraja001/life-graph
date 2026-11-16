@@ -144,7 +144,12 @@ async def run(
     """Call the tool with a fake browser and a fake session; parse its JSON."""
     browser = browser if browser is not None else FakeBrowser()
     session = session if session is not None else FakeSession()
-    monkeypatch.setattr(errand, "get_driver", lambda: browser)
+    # The driver seam, as tools/errand.py documents it: an override is the one
+    # way a driver other than the sandboxed one gets in, and it is something a
+    # test wrote down rather than something a failure falls back to. The real
+    # get_driver still runs in the tests that are about *it*
+    # (test_isolated_browser_driver.py).
+    monkeypatch.setattr(errand, "_driver_override", browser, raising=False)
     monkeypatch.setattr(database, "async_session", session_factory(session))
     out = await errand.run_browser_errand(
         goal=goal,
@@ -342,7 +347,7 @@ async def test_an_unprivileged_tenant_gets_no_browser_at_all(monkeypatch):
     from life_graph.config import settings
 
     monkeypatch.setattr(settings, "tool_privileged_tenants", "someone-else", raising=False)
-    monkeypatch.setattr(errand, "get_driver", lambda: FakeBrowser())
+    monkeypatch.setattr(errand, "_driver_override", FakeBrowser(), raising=False)
 
     out = json.loads(await errand.run_browser_errand(GOAL, START, [{"kind": "read_page"}]))
 
@@ -350,11 +355,27 @@ async def test_an_unprivileged_tenant_gets_no_browser_at_all(monkeypatch):
 
 
 async def test_no_browser_connected_is_a_sentence_not_a_crash(monkeypatch):
-    monkeypatch.setattr(errand, "get_driver", lambda: None)
+    """No isolated browser runtime configured, so there is no browser at all.
+
+    Through the real :func:`~life_graph.tools.errand.get_driver`, not a stub
+    returning ``None``: "there is no contained browser" is now a decision that
+    function makes, and this is the sentence the model gets when it does. That
+    it is not allowed to answer with a *less* contained browser instead is
+    ``test_isolated_browser_driver.py``.
+    """
+    from life_graph.config import settings
+
+    monkeypatch.setattr(errand, "_driver_override", None, raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_mode", "isolated", raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_url", "", raising=False)
+    monkeypatch.setattr(settings, "browser_sandbox_ws_url", "", raising=False)
+    monkeypatch.delenv("LIFE_GRAPH_BROWSER_SANDBOX_URL", raising=False)
 
     out = json.loads(await errand.run_browser_errand(GOAL, START, []))
 
     assert out["error"] == errand.NO_BROWSER
+    assert out["status"] == "failed"
+    assert out["reason"] == errand.SANDBOX_UNAVAILABLE
 
 
 # ── The buttons on the phone ─────────────────────────────────────────────

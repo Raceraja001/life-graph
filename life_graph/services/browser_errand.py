@@ -57,7 +57,7 @@ import inspect
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from life_graph.autonomy.approvals import (
     ACTION_TYPES,
@@ -207,6 +207,7 @@ SKIPPED = "skipped"
 # ── The driver ───────────────────────────────────────────────────────────
 
 
+@runtime_checkable
 class BrowserDriver(Protocol):
     """The five things an errand needs a browser to do.
 
@@ -220,6 +221,17 @@ class BrowserDriver(Protocol):
     instead of the live one would defeat the vault's origin check.
 
     Implementations may be sync or async; both are awaited correctly.
+
+    ``runtime_checkable`` so a test can assert that a concrete driver — the
+    sandboxed :class:`~life_graph.services.browser_sandbox_driver.IsolatedBrowserDriver`,
+    in particular — really does present all five. That is a method-presence
+    check and nothing more; it says nothing about what the driver does with
+    them, which is what the rest of this module is for.
+
+    Lifecycle is deliberately *not* here. A driver that owns a browser context
+    (and therefore cookies and storage that must not outlive the errand) also
+    offers ``close()``; the caller that created the driver is the one that
+    calls it, in a ``finally`` — see ``tools/errand.py``.
     """
 
     async def navigate(self, url: str) -> None:

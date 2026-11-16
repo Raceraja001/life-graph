@@ -807,6 +807,32 @@ class Settings(BaseSettings):
     vault_key: str = ""
     vault_key_file: str = "~/.config/life-graph/vault.key"
 
+    # ── Isolated browser runtime (services/browser_sandbox_driver.py) ───────
+    # Where the sandboxed headless Chromium answers. A browser errand drives a
+    # page the owner did not write, so it never runs on the host beside the
+    # application's credentials: it runs in the container from
+    # compose.sandbox.yaml, reached over Playwright's browser-server websocket
+    # on the internal-only network ("ws://browser:9222/"). An http(s) URL is
+    # accepted and read as ws(s); a missing port means the sandbox's own 9222.
+    #
+    # Empty is the code default, and empty means *no browser errands*. There is
+    # no fallback to a host or bridged-MCP browser — a browser control endpoint
+    # is remote code execution on that browser, and an errand that cannot have
+    # a contained one does not run (docs/AI_WORK_ORDER.md §3).
+    browser_sandbox_url: str = ""
+    # An explicit websocket override, when the control endpoint is not simply
+    # the URL above (a broker in front of the browser, say). Wins over it.
+    browser_sandbox_ws_url: str = ""
+    # "isolated" (the only mode that produces a browser), "disabled" (browser
+    # errands are off), or "mock" (tests inject their own driver through the
+    # seam in tools/errand.py). An unknown value reads as disabled, because a
+    # setting nobody understands must not be the one that grants a browser.
+    browser_sandbox_mode: str = "isolated"
+    # Ceiling on connecting to the runtime and on each driver call. Exceeding
+    # it is a closed failure: the session is marked lost and the rest of the
+    # errand is refused rather than running against an unknown page state.
+    browser_sandbox_timeout_seconds: int = 30
+
     # ── Durable authorisation (autonomy/approvals/durable_store.py) ─────────
     # Keep issued capabilities and the owner's standing rules in Postgres
     # (migration 059) instead of in one process's memory. On, because the

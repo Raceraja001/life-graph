@@ -225,12 +225,221 @@ Labels are the ones defined in section 9. "Complete" is deliberately absent
 from any row whose remaining gap is operational.
 
 - P0 exact-step-bound approval: **Implemented, Integrated, Unit-tested, Adversarially tested** — not operationally verified (no deployed run exercised yet)
-- P0 isolated browser integration: **Designed, partially Implemented** — sandbox chassis exists, but the active `MCPBrowserDriver` path is not integrated with it; egress proxy, authenticated control channel, and fail-closed runtime selection remain unverified.
+- P0 isolated browser integration: **Designed, Implemented, Integrated, Unit-tested, Adversarially tested (driver seam only)** for slice 1 — the real `run_browser_errand` path now selects only `IsolatedBrowserDriver` against the sandbox browser-server endpoint, fails closed when it is absent, and never falls back to `MCPBrowserDriver`; per-errand context lifecycle and cleanup are enforced. **Not Operationally verified end to end**, and three §3 controls remain **Not implemented**: the default-deny egress proxy, the authenticated tenant/errand-scoped control channel in front of the browser-server websocket, and network-layer destination/DNS pinning. The container chassis itself was operationally checked on 2026-11-16 (non-root, read-only root, caps dropped, no published port, no host route in, no egress out) — see the entry below. Do not call the browser path production-safe.
 - P1 durable authorization: **Implemented, Integrated, Unit-tested** — multi-worker consistency proven with 16 concurrent threads against real Postgres; not yet exercised across separate OS processes or a real restart in a deployed environment
 - P1 historical episode retrieval: **Implemented, Integrated, Unit-tested**
 - P1 evidence/confidence evaluation: **Needs verification** (not started this session)
 - P1 adversarial end-to-end testing: **Partially addressed** — replay, cross-errand, cross-step, cross-tenant, re-pointed selector, edited value, forged handle, tampered approval payload and store-outage scenarios are covered for the authorization path; browser/network scenarios depend on P0 §3 and remain open
 - P2 operations documentation: **Needs verification** (not started this session)
+
+### 2026-11-16 — P0 isolated browser runtime, slice 1: driver adapter and fail-closed seam
+
+```text
+Date: 2026-11-16
+Remote base commit: 596a1a016af773d1ad3c9a9bed509977db94fba2
+Working commit: on branch feat/work-order-browser-isolation-p0 from 596a1a0
+Tasks inspected: section 3 (P0 isolated browser integration) and the
+  2026-11-15 assignment; life_graph/tools/errand.py,
+  life_graph/services/browser_errand.py, life_graph/services/sandbox.py,
+  compose.sandbox.yaml, Dockerfile.browser, Dockerfile.workspace,
+  tests/unit/test_jarvis_errands.py, docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md.
+
+Findings (architecture trace, before changing code):
+  - Path was: run_browser_errand -> get_driver() -> MCPBrowserDriver() when
+    `mcp_playwright_browser_navigate` was in the tool registry -> registry
+    .execute() -> services/mcp_bridge.py -> whatever browser the bridged
+    Playwright MCP server owns. That server runs as a child of the
+    application process on the host, so the "browser errand" browser was a
+    host browser sitting beside the app's own credentials. No container
+    boundary was crossed anywhere on the live path.
+  - get_driver() took no arguments and therefore could not scope a session to
+    a tenant or an errand; the driver had no close()/lifecycle at all, so
+    cookies, localStorage and history were whatever the shared MCP browser
+    had accumulated, across errands and across tenants.
+  - The isolation chassis existed and was unreferenced by that path:
+    compose.sandbox.yaml `browser` service (Playwright `run-server` on
+    9222, `expose` not `ports`, internal-only bridge) plus
+    services/sandbox.py browser_spec()/SandboxManager/validate_spec.
+    Container boundary: app process (host) -> ws://browser:9222 on
+    life_graph_sandbox_internal -> `python3 -m playwright run-server`
+    (uid 1000) -> Chromium from /ms-playwright with /tmp and /dev/shm tmpfs.
+  - No egress proxy, no authenticated control channel, and no network-layer
+    destination pinning exist anywhere in the repo. The application-level
+    destination validator (services/destination_validator.py) and the
+    approval/vault/capability checks are the only destination controls, and
+    they are preflight checks in the app, not enforcement at the boundary.
+
+Threat model for this slice (what it does and does not close):
+  - Closes: an errand running in an uncontained host browser; an errand
+    running at all when the contained runtime is missing; a silent downgrade
+    to the MCP/host driver; cookies or storage shared between two errands or
+    two tenants; a browser context outliving the errand that opened it; a
+    driver reporting an origin it expected rather than the one the page is
+    on (which would defeat the vault's origin check).
+  - Does not close: SSRF/DNS-rebinding at the network layer (still
+    application preflight only); an unauthenticated browser-server websocket
+    reachable by anything else on the internal network; browser egress
+    (currently *all* egress is denied by `internal: true`, which is safe but
+    also means no real site is reachable yet — the allowlisting proxy is the
+    next slice); downloads (refused outright for now).
+
+Changes made:
+  - NEW life_graph/services/browser_sandbox_driver.py — IsolatedBrowserDriver
+    (the five BrowserDriver methods + close() + async context manager) over
+    an injectable IsolatedBrowserTransport; PlaywrightServerTransport as the
+    real transport and the only Playwright importer in the codebase;
+    configured_endpoint()/browser_sandbox_available()/sandbox_mode()/
+    sandbox_timeout()/redacted(); BrowserRuntimeUnusableError.
+    Fail-closed rules: unconfigured or non-ws/http endpoint raises
+    SandboxUnavailableError from __init__; unreachable/refused/timeout/5xx/
+    no-session raises it from the first step; a session lost mid-errand or an
+    operation timeout marks the session lost so every later step refuses; a
+    closed driver never silently opens a second context; cleanup failure
+    raises rather than being swallowed. current_origin() is read live and
+    `fullmatch`-validated against https?://[A-Za-z0-9._~%:\[\]-]+ — blank,
+    "about:blank", "null" and a prefix match are all RuntimeError, and the
+    page's own text is never put into the message. Endpoint is redacted to
+    scheme://host:port in every log line, error and repr.
+  - life_graph/tools/errand.py — get_driver(errand_id, tenant_id) now returns
+    IsolatedBrowserDriver or None, and nothing else; the `_driver_override`
+    seam is the only other way in and is explicit. MCPBrowserDriver is kept
+    but is unreachable from the seam. The driver is built *after*
+    build_errand so the session is scoped to the minted run id. A None
+    driver now reports {"status": "failed", "reason": "sandbox_unavailable",
+    "message"/"error": NO_BROWSER}; NO_BROWSER is now the isolation sentence.
+    executor.run() is wrapped so `_release(driver)` runs in a `finally` on
+    every exit — done, failed, denied, paused — and a cleanup failure adds
+    "cleanup_failed": true to the reply instead of only a log line.
+  - life_graph/services/browser_errand.py — BrowserDriver is @runtime_checkable
+    (method-presence only) so a test can assert a concrete driver presents all
+    five; docstring records that lifecycle is the caller's job. No behaviour
+    change.
+  - life_graph/config.py — browser_sandbox_url, browser_sandbox_ws_url,
+    browser_sandbox_mode ("isolated" default; "disabled"/"mock"; unknown
+    reads as disabled), browser_sandbox_timeout_seconds (30). Empty url means
+    no browser errands.
+  - pyproject.toml — new optional extra `browser-sandbox` = playwright==1.52.0
+    (client only, version pinned to Dockerfile.browser's base image), folded
+    into `all`. .env.example documents the three settings.
+  - tests/unit/test_jarvis_errands.py — the three `get_driver` monkeypatches
+    moved to the `_driver_override` seam (signature change, not a loosening);
+    test_no_browser_connected_is_a_sentence_not_a_crash now goes through the
+    real get_driver with no sandbox configured and additionally asserts
+    status/reason. No assertion was removed or weakened.
+  - NEW tests/unit/test_isolated_browser_driver.py — 45 tests.
+  - docs/STATE.md regenerated (288 -> 292 settings).
+
+Tests run (exact commands):
+  1. /home/raja/.venvs/life-graph/bin/pytest \
+       tests/unit/test_isolated_browser_driver.py \
+       tests/unit/test_exact_bound_capabilities.py \
+       tests/unit/test_historical_episodes.py \
+       tests/unit/test_jarvis_errands.py \
+       tests/unit/test_trustworthy_execution_eval.py -v
+  2. /home/raja/.venvs/life-graph/bin/pytest tests/unit/ -q   (before and
+     after the change, failure lists diffed)
+  3. /home/raja/.venvs/life-graph/bin/ruff check life_graph/ ;
+     ruff format --check on the changed files
+  4. /home/raja/.venvs/life-graph/bin/python scripts/gen_state.py --check
+  5. docker compose -f compose.sandbox.yaml up -d browser workspace ;
+     docker inspect / docker port / docker network inspect ;
+     in-container and host-side connection attempts ; down -v
+  6. LIFE_GRAPH_BROWSER_SANDBOX_URL=ws://browser:9222/ python -c "<the real
+     get_driver + IsolatedBrowserDriver.navigate path>"
+
+Results:
+  1. 175 passed (130 before this slice + 45 new). 0 failures.
+  2. Baseline 26 failed / 5167 passed; after 26 failed / 5212 passed. The
+     FAILED lists are byte-identical (diffed), so 0 regressions and +45
+     passing. Those 26 are pre-existing on this machine and unrelated
+     (model-default, cron-registration, graph-tenant, multimodal-router and
+     verifier-sandbox tests).
+  3. All checks passed on the changed files. (`ruff check life_graph/`
+     reports 31 pre-existing errors in untracked work-in-progress files —
+     api/lore.py, prosody/, tools/media_generation.py — none touched here.)
+  4. OK: docs/STATE.md is up to date.
+  5. Container evidence, real docker run:
+       - health: healthy (browser-server accepting on 9222 inside).
+       - User=1000:1000, ReadonlyRootfs=true, CapDrop=[ALL], CapAdd=[],
+         SecurityOpt=[no-new-privileges:true], Privileged=false,
+         PidsLimit=512, Memory=1g, Binds=[], PortBindings=map[].
+       - `docker port` prints nothing: no port on host/LAN/public.
+       - network life_graph_sandbox_internal: Internal=true.
+       - container env is HOME/PLAYWRIGHT_BROWSERS_PATH/SANDBOX_*/TZ/PYTHON*
+         only: no LIFE_GRAPH_*, no provider key, no DB credential.
+       - from the host: 127.0.0.1:9222 ConnectionRefused, [::1]:9222 OSError.
+       - from inside the internal network (alpine on the same bridge):
+         browser:9222 reachable, 93.184.216.34:443 blocked.
+       - from inside the browser container: 93.184.216.34:443,
+         169.254.169.254:80 and 8.8.8.8:53 all blocked (OSError).
+       - stack torn down with `down -v`; no leftover container or network.
+  6. mode=isolated, configured_endpoint=ws://browser:9222/, available=True,
+     get_driver -> IsolatedBrowserDriver(scope='default/errand_live',
+     endpoint='ws://browser:9222'); navigate raised
+     SandboxUnavailableError("the playwright client is not installed, so the
+     isolated browser runtime cannot be driven"); with the setting cleared,
+     get_driver returned None. Fail-closed on the real path, on real settings.
+
+Mutation checks (that the new tests actually bite):
+  - Reintroducing the MCP fallback inside get_driver -> 3 failures
+    (test_no_silent_fallback_to_mcp_when_isolated_mode,
+    test_the_mcp_driver_is_never_what_the_seam_returns,
+    test_the_tool_refuses_the_errand_when_the_sandbox_is_offline).
+  - Removing `_release(driver)` from the finally block and loosening the
+    origin `fullmatch` to a `search` -> 4 failures. Both mutations reverted.
+
+Acceptance criteria met (from the 2026-11-15 assignment):
+  - (1) architecture trace recorded above: yes.
+  - (2) concrete isolated BrowserDriver adapter, no silent fallback: yes,
+        Implemented + Integrated + Unit-tested + Adversarially tested.
+  - (4) per-errand context, time ceiling, close on success/failure/pause,
+        explicit cleanup policy: yes at the application layer. Not yet
+        exercised against a real container (see blockers).
+  - (8) vault flow unchanged and still origin-checked against the live
+        driver origin: unchanged; existing assertions still pass, and a
+        vault fill with no mandate is still denied and still asked about.
+  - (9) runtime unavailability / auth failure / cleanup failure as explicit
+        closed failures: yes for runtime and cleanup. Auth failure is N/A
+        until (3) exists.
+  - (10) settings, extras, .env.example and docs/STATE.md updated: yes. No
+        unused compose service was added and nothing new is claimed from
+        configuration presence.
+  NOT met, deliberately out of this slice: (3) authenticated tenant/errand
+  -scoped control channel; (5) default-deny egress with proxy-bypass
+  prevention; (6) network-boundary destination policy with per-connection
+  address pinning and redirect re-checks; (7) review of whether
+  workspace->browser reachability should be removed entirely.
+
+Remaining risks/blockers:
+  - The browser-server websocket on the internal network is still
+    unauthenticated. Anything else on life_graph_sandbox_internal — today,
+    the `workspace` service — can drive that browser. Verified reachable
+    from a throwaway container on that bridge. This is §3 control (3) and is
+    the next slice; until it lands, nothing other than the application
+    should be attached to that network.
+  - No live drive of the sandboxed browser has been performed. Two reasons,
+    both real: the Playwright client is not installed in this venv (now
+    declared as the `browser-sandbox` extra), and `internal: true` gives the
+    host no route to the container, so the app has to be *on* that network —
+    which is a deployment change that belongs with the egress proxy slice.
+    PlaywrightServerTransport is therefore Implemented but NOT
+    Integration-tested or Operationally verified. Its failure path is
+    verified; its success path is not.
+  - With `internal: true` and no proxy, a browser errand that reached a real
+    site would fail at the network. The fail-closed direction is correct but
+    the feature is not usable end to end until the allowlisting proxy exists.
+  - Downloads are refused (accept_downloads=False) rather than captured to a
+    policed location; the "download a statement" errand in the tool
+    description is not supported yet. Documented here rather than silently
+    broken.
+  - `MCPBrowserDriver` remains in the tree, unreachable from the seam but
+    reachable by passing it to set_driver_override. That is deliberate and
+    explicit, not a fallback; it is still a thing a future change could
+    misuse, so it is called out in its own docstring.
+
+Commit(s) pushed: none yet — review first (the developer approves plans and
+  diffs before anything is pushed).
+```
 
 ### 2026-11-14 — P0 exact-bound approvals, P1 durable authorization, P1 historical episodes
 

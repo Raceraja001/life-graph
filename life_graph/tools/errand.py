@@ -6,11 +6,18 @@ handles against the origin the *driver* says it is on, and fences page text as
 untrusted on the way back. Nothing about that judgement is re-decided here.
 What this module adds is the two ends the engine deliberately leaves open:
 
-1. **A browser.** The engine takes a :class:`~life_graph.services.browser_errand.BrowserDriver`
-   protocol and imports no browser at all. :class:`MCPBrowserDriver` is that
-   protocol over the bridged Playwright MCP server (``services/mcp_bridge.py``,
-   ``docs/archive/superpowers/specs/2026-08-09-playwright-mcp-wiring.md``), and
-   :func:`get_driver` is the seam tests replace with a fake.
+1. **A browser, and specifically a contained one.** The engine takes a
+   :class:`~life_graph.services.browser_errand.BrowserDriver` protocol and
+   imports no browser at all. :func:`get_driver` is what decides which one an
+   errand gets, and it has exactly one answer:
+   :class:`~life_graph.services.browser_sandbox_driver.IsolatedBrowserDriver`,
+   the sandboxed headless Chromium from ``compose.sandbox.yaml``. When that
+   runtime is not configured or not reachable, the answer is ``None`` and the
+   errand does not run. It is never :class:`MCPBrowserDriver` — the bridged
+   Playwright MCP server drives whatever browser *it* owns, in practice one on
+   the host beside the application's own credentials, and quietly using that
+   when the contained one is missing would turn an isolation failure into an
+   errand that ran anyway (``docs/AI_WORK_ORDER.md`` §3).
 2. **A way to ask the owner.** A step the policy will not authorise on its own
    becomes a ``critical`` notification with Approve/Reject buttons on the phone
    (``services/notification_actions.py``). Tapping Approve issues an
@@ -39,6 +46,7 @@ narrow where this errand may go, never widen what it may do.
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import re
@@ -46,6 +54,15 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from life_graph.services.browser_sandbox_driver import (
+    MODE_ISOLATED,
+    MODE_MOCK,
+    SANDBOX_OFFLINE,
+    IsolatedBrowserDriver,
+    browser_sandbox_available,
+    sandbox_mode,
+)
+from life_graph.services.sandbox import SandboxUnavailableError
 from life_graph.tools.registry import tool
 
 if TYPE_CHECKING:
@@ -75,10 +92,14 @@ MAX_GOAL_CHARS = 200
 #: The bridged Playwright MCP tools, as ``mcp_bridge`` registers them.
 MCP_PREFIX = "mcp_playwright_"
 
-NO_BROWSER = (
-    "No browser is connected, so I can't run errands in one. "
-    "A Playwright MCP server has to be configured in LIFE_GRAPH_MCP_SERVERS."
-)
+#: Reported when there is no isolated browser runtime to run the errand in.
+#: One sentence, and no second option in it: the sandboxed browser is the only
+#: browser an errand gets (:func:`get_driver`).
+NO_BROWSER = SANDBOX_OFFLINE
+
+#: ``reason`` on that reply. Machine-readable so a caller (or a test) can tell
+#: "the sandbox is down" from "the plan was wrong" without reading prose.
+SANDBOX_UNAVAILABLE = "sandbox_unavailable"
 
 #: The policy's reason for "nothing the owner said covers this". The one
 #: refusal that becomes a question on the phone rather than a dead end.
@@ -98,6 +119,14 @@ _ORIGIN = re.compile(r"https?://[A-Za-z0-9._~%:\[\]-]+")
 
 class MCPBrowserDriver:
     """A :class:`BrowserDriver` over the bridged Playwright MCP tools.
+
+    **Not the driver an errand gets.** :func:`get_driver` never returns one of
+    these: the bridged MCP server drives a browser this process does not own
+    and cannot describe, which is the opposite of the containment §3 of the
+    work order requires. It is kept because the bridge itself is still a real
+    integration and because a driver over it is the clearest statement of what
+    that integration *is*; reaching it takes deliberately passing one in
+    through :func:`set_driver_override`, never a fallback.
 
     Playwright MCP addresses elements by *accessibility ref* (``e12``) taken
     from a snapshot, not by CSS selector, so a step's ``field`` and
@@ -146,20 +175,66 @@ class MCPBrowserDriver:
 
 
 def browser_available() -> bool:
-    """True when the Playwright MCP bridge registered its tools this run."""
+    """True when the Playwright MCP bridge registered its tools this run.
+
+    Reports on the *bridge*, not on whether an errand can run. It is
+    deliberately not consulted by :func:`get_driver` any more: a registered
+    MCP browser is not a contained browser, and the one question that decides
+    whether an errand runs is
+    :func:`~life_graph.services.browser_sandbox_driver.browser_sandbox_available`.
+    """
     from life_graph.tools.registry import registry
 
     return f"{MCP_PREFIX}browser_navigate" in registry.tool_names
 
 
-def get_driver() -> BrowserDriver | None:
-    """The browser this errand runs in, or ``None`` when none is connected.
+#: The seam. ``None`` in production; a test (or ``browser_sandbox_mode =
+#: "mock"``) puts a driver here to run the whole tool without a container.
+#: Explicit, module-level and single-valued on purpose: an override is
+#: something a developer wrote down, not something a failure falls back to.
+_driver_override: BrowserDriver | None = None
 
-    A seam in two directions: tests pass a fake driver through it, and a
-    deployment without the bridge gets :data:`NO_BROWSER` back instead of a
-    ``KeyError`` out of the registry.
+
+def set_driver_override(driver: BrowserDriver | None) -> None:
+    """Make :func:`get_driver` return *driver* (or ``None`` to clear it)."""
+    global _driver_override
+    _driver_override = driver
+
+
+def get_driver(errand_id: str | None = None, tenant_id: str | None = None) -> BrowserDriver | None:
+    """The contained browser this errand runs in, or ``None``.
+
+    ``None`` is the fail-closed answer, and the only alternative to a
+    sandboxed driver. It is returned when the mode is ``disabled`` (or
+    anything unrecognised), when no isolated browser endpoint is configured,
+    and when a driver for this tenant and errand could not even be
+    constructed. In every one of those cases
+    :func:`run_browser_errand` reports :data:`SANDBOX_UNAVAILABLE` and stops.
+
+    *tenant_id* and *errand_id* are the session's scope, not labels: they are
+    what the sandbox keys this errand's cookies and storage to, so a driver is
+    only built once the run has an id (after :func:`build_errand`), and a call
+    without them gets ``None`` rather than an unscoped session.
     """
-    return MCPBrowserDriver() if browser_available() else None
+    if _driver_override is not None:
+        return _driver_override
+    mode = sandbox_mode()
+    if mode == MODE_MOCK:
+        # "mock" is the test mode and it has no built-in driver: whatever the
+        # test injected through the seam above, or nothing.
+        return None
+    if mode != MODE_ISOLATED or not browser_sandbox_available():
+        logger.info(
+            "no isolated browser runtime (mode=%s, configured=%s): browser errands refused",
+            mode,
+            browser_sandbox_available(),
+        )
+        return None
+    try:
+        return IsolatedBrowserDriver(tenant_id=tenant_id, errand_id=errand_id)
+    except (SandboxUnavailableError, ValueError) as exc:
+        logger.warning("isolated browser driver could not be created: %s", exc)
+        return None
 
 
 # ── Reading the plan the model wrote ─────────────────────────────────────
@@ -515,10 +590,6 @@ async def run_browser_errand(
     except ToolDeniedError as exc:
         return json.dumps({"error": str(exc)})
 
-    driver = get_driver()
-    if driver is None:
-        return json.dumps({"error": NO_BROWSER})
-
     try:
         errand, errand_id = await build_errand(
             goal,
@@ -530,6 +601,25 @@ async def run_browser_errand(
         )
     except PlanError as exc:
         return json.dumps({"error": str(exc), "goal": goal})
+
+    # After build_errand, because the run now has an id and that id is the
+    # scope of the browser session: this errand's cookies and storage belong to
+    # this tenant and this run, and are gone when it ends.
+    driver = get_driver(errand_id=errand_id, tenant_id=tenant_id)
+    if driver is None:
+        return json.dumps(
+            {
+                "status": be.FAILED,
+                "reason": SANDBOX_UNAVAILABLE,
+                "message": NO_BROWSER,
+                # Kept alongside `message`: every other refusal this tool
+                # returns is an "error", and a caller reading that key should
+                # not have to special-case the one that is about isolation.
+                "error": NO_BROWSER,
+                "goal": goal,
+                "errand_id": errand_id,
+            }
+        )
 
     task_id = str(ctx.root_task_id or ctx.task_id) if ctx is not None else None
     checker = ActionPolicyChecker(
@@ -544,6 +634,9 @@ async def run_browser_errand(
         capabilities=capability_store,
     )
     now = datetime.now(UTC)
+    result: ErrandResult | None = None
+    asking: StepResult | None = None
+    failure: str | None = None
     try:
         async with database.async_session() as session:
             executor = be.BrowserErrandExecutor(
@@ -570,9 +663,58 @@ async def run_browser_errand(
         # Never the plan and never a page: both are personal, and a page is
         # also untrusted text that should not reach a log unfenced.
         logger.warning("run_browser_errand failed (%d steps): %s", len(errand.steps), exc)
-        return json.dumps({"error": f"The errand could not be run: {exc}", "goal": goal})
+        failure = f"The errand could not be run: {exc}"
+    finally:
+        # Every exit: finished, failed, denied, or paused waiting for the
+        # owner's tap. A paused errand is over as far as this process is
+        # concerned — resuming it is a new tool call with a new session — so
+        # there is no path on which the browser context outlives the errand.
+        cleaned = await _release(driver)
 
-    return json.dumps(_reply(result, goal=goal, errand_id=errand_id, asking=asking), default=str)
+    if failure is not None:
+        out: dict[str, Any] = {
+            # Same shape as every other way this tool refuses, so a caller
+            # does not have to tell "it threw" from "it was denied" by which
+            # keys happen to be present.
+            "status": be.FAILED,
+            "error": failure,
+            "goal": goal,
+            "errand_id": errand_id,
+        }
+    else:
+        out = _reply(result, goal=goal, errand_id=errand_id, asking=asking)
+    if not cleaned:
+        # Cookies or storage that outlive the errand that set them are the
+        # isolation failing, so it is said out loud rather than logged and
+        # forgotten. Only present when it happened.
+        out["cleanup_failed"] = True
+    return json.dumps(out, default=str)
+
+
+async def _release(driver: Any) -> bool:
+    """Close *driver*'s browser context. ``False`` when something was left behind.
+
+    A :class:`~life_graph.services.browser_errand.BrowserDriver` is not
+    required to have a ``close`` — a fake in a test owns nothing, and the
+    protocol is five methods on purpose. A driver that *does* own a context
+    raises from ``close`` when it could not clean up, and that is a security
+    outcome, not a tidy-up detail: it comes back as ``False`` so the reply can
+    say so. It is never re-raised, because an errand's result is still the
+    errand's result and the owner should hear both.
+    """
+    close = getattr(driver, "close", None)
+    if close is None:
+        return True
+    try:
+        out = close()
+        if inspect.isawaitable(out):
+            await out
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "the errand's browser context could not be closed (%s): %s", type(exc).__name__, exc
+        )
+        return False
+    return True
 
 
 def _reply(
@@ -617,11 +759,15 @@ __all__ = [
     "MAX_STEPS",
     "MCP_PREFIX",
     "NO_BROWSER",
+    "SANDBOX_UNAVAILABLE",
+    "IsolatedBrowserDriver",
     "MCPBrowserDriver",
     "PlanError",
     "approval_notification",
     "browser_available",
+    "browser_sandbox_available",
     "build_errand",
     "get_driver",
     "run_browser_errand",
+    "set_driver_override",
 ]
