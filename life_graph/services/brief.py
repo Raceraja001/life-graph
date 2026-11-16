@@ -48,21 +48,65 @@ def build_brief_evidence(
     """Build 'why am I seeing this?' evidence items for the daily brief (P3 §3.13)."""
     evidence: list[dict[str, Any]] = []
     if held:
-        evidence.append({"section": "held_notifications", "count": len(held), "why": "Unread high-priority notifications since last brief"})
+        evidence.append(
+            {
+                "section": "held_notifications",
+                "count": len(held),
+                "why": "Unread high-priority notifications since last brief",
+            }
+        )
     if questions:
-        evidence.append({"section": "interview_questions", "count": len(questions), "why": "Daily memory-gap questions scheduled for user review"})
+        evidence.append(
+            {
+                "section": "interview_questions",
+                "count": len(questions),
+                "why": "Daily memory-gap questions scheduled for user review",
+            }
+        )
     if capture_summary.get("total"):
-        evidence.append({"section": "captures", "count": capture_summary["total"], "why": "New captures recorded in the last 24 hours"})
+        evidence.append(
+            {
+                "section": "captures",
+                "count": capture_summary["total"],
+                "why": "New captures recorded in the last 24 hours",
+            }
+        )
     if watcher_summary:
-        evidence.append({"section": "watchers", "count": len(watcher_summary) if isinstance(watcher_summary, (list, dict)) else 1, "why": "Background watcher activity in the last 24 hours"})
+        evidence.append(
+            {
+                "section": "watchers",
+                "count": len(watcher_summary) if isinstance(watcher_summary, (list, dict)) else 1,
+                "why": "Background watcher activity in the last 24 hours",
+            }
+        )
     if big_decisions:
-        evidence.append({"section": "decisions", "count": len(big_decisions), "why": "High-impact decisions logged in the last 24 hours"})
+        evidence.append(
+            {
+                "section": "decisions",
+                "count": len(big_decisions),
+                "why": "High-impact decisions logged in the last 24 hours",
+            }
+        )
     if approvals_line:
-        evidence.append({"section": "approvals", "count": 1, "why": "Pending approval items awaiting sign-off"})
+        evidence.append(
+            {"section": "approvals", "count": 1, "why": "Pending approval items awaiting sign-off"}
+        )
     if memory_lines:
-        evidence.append({"section": "memory", "count": len(memory_lines), "why": "Memory yield and review-queue updates"})
+        evidence.append(
+            {
+                "section": "memory",
+                "count": len(memory_lines),
+                "why": "Memory yield and review-queue updates",
+            }
+        )
     if night_shift:
-        evidence.append({"section": "night_shift", "count": len(night_shift), "why": "Overnight automated tasks completed or queued"})
+        evidence.append(
+            {
+                "section": "night_shift",
+                "count": len(night_shift),
+                "why": "Overnight automated tasks completed or queued",
+            }
+        )
     return evidence
 
 

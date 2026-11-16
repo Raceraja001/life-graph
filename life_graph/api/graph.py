@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.config import settings
 from life_graph.storage.graph import DEFAULT_GRAPH_TENANT, LABEL_PATTERN, graph_available
 
 logger = logging.getLogger(__name__)
