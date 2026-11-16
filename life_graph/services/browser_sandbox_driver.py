@@ -45,18 +45,32 @@ and *any reuse of a session across errands*. ``read_page`` is the whole body,
 not an accessibility snapshot, so element names are CSS selectors here rather
 than the ``e12`` refs the bridged MCP driver used.
 
-**What this slice is not.** The default-deny egress proxy, the authenticated
-control channel in front of the browser-server websocket, and network-layer
-destination pinning are the remaining parts of §3 of ``docs/AI_WORK_ORDER.md``.
-Until they are deployed, this driver's isolation is process/container
-isolation plus the application-level destination validator — not yet an
-egress-enforced boundary. Nothing here should be read as a claim that it is.
-Two consequences worth stating plainly: the browser-server websocket is still
-unauthenticated on the internal network, so nothing other than this
-application should be attached to that network; and with ``internal: true``
-and no proxy the container has no route to any real site, so an errand's
-navigation fails at the network. Both are closed failures, which is the right
-direction, but neither is the finished control.
+**Egress.** Every session this driver opens is created with an egress proxy in
+front of it (``services/browser_egress_proxy.py``), passed to Playwright as
+``new_context(proxy={"server": ...})`` so Chromium sends navigations,
+redirects, sub-resources and XHR through it. The proxy judges each destination
+with the same rules as ``services/destination_validator.py`` and then connects
+to the **address it resolved**, which is what closes the DNS-rebinding window
+the application-level check cannot: that check resolves a name and the browser
+resolves it again, and a zone answering differently the second time wins that
+race. Either a deployment runs the proxy
+(``LIFE_GRAPH_BROWSER_SANDBOX_EGRESS_PROXY_URL``) or this driver mints an
+ephemeral one per errand, fenced to that errand's approved origins and stopped
+with it. With ``browser_sandbox_enforce_egress_proxy`` on — the default — a
+proxy that cannot be started is a ``SandboxUnavailableError`` and the errand
+does not run.
+
+**What is still not done.** Two parts of §3 of ``docs/AI_WORK_ORDER.md``
+remain. The browser-server websocket is **still unauthenticated** on the
+internal network — nothing other than this application should be attached to
+that network — and no deployment has yet been operationally verified with the
+proxy in the path. That last point has teeth: an ephemeral proxy bound to the
+application's loopback is *not reachable* from a container on an
+``internal: true`` bridge, so the compose stack as shipped needs the proxy as
+its own service, on both that bridge and an egress network, before a browser
+errand reaches a real site. Until then an errand's navigation fails at the
+network, which is a closed failure and the right direction, but is not the
+finished control. Nothing here should be read as a claim that it is.
 """
 
 from __future__ import annotations
@@ -70,10 +84,11 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
 from life_graph.config import settings
+from life_graph.services.browser_egress_proxy import BrowserEgressProxy
 from life_graph.services.sandbox import BROWSER_WS_PORT, SandboxUnavailableError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +123,18 @@ _ORIGIN = re.compile(r"https?://[A-Za-z0-9._~%:\[\]-]+")
 SANDBOX_OFFLINE = (
     "Isolated browser sandbox is offline or not configured. To run browser"
     " errands securely, the isolated browser container must be running."
+)
+
+#: Schemes an egress proxy may be addressed by. Playwright accepts all of
+#: these in ``proxy.server``; ``BrowserEgressProxy`` itself speaks the first.
+_PROXY_SCHEMES = ("http", "https", "socks5")
+
+#: Said when egress enforcement is on and there is no proxy to enforce it.
+#: A browser with no egress control is a browser a page can redirect at the
+#: metadata endpoint, so this is a refusal, not a warning.
+EGRESS_PROXY_OFFLINE = (
+    "The browser egress proxy is unavailable, so the isolated browser has no"
+    " policed way out and the errand will not run."
 )
 
 
@@ -173,9 +200,22 @@ class IsolatedBrowserTransport(Protocol):
     """
 
     async def open_session(
-        self, *, endpoint_url: str, tenant_id: str, errand_id: str, timeout: float
+        self,
+        *,
+        endpoint_url: str,
+        tenant_id: str,
+        errand_id: str,
+        timeout: float,
+        proxy_url: str = "",
     ) -> IsolatedBrowserSession:
         """A fresh isolated session on *endpoint_url*, scoped to this errand.
+
+        *proxy_url* is the egress proxy every request this session makes must
+        go through (``services/browser_egress_proxy.py``). A transport that
+        cannot honour it must raise rather than open an unproxied session: a
+        browser that silently went direct would be the one failure the proxy
+        exists to prevent. ``""`` means no proxy, which the driver only ever
+        passes when egress enforcement has been deliberately turned off.
 
         Raises:
             BrowserRuntimeUnusableError: the runtime answered unusably.
@@ -246,7 +286,13 @@ class PlaywrightServerTransport:
     """
 
     async def open_session(
-        self, *, endpoint_url: str, tenant_id: str, errand_id: str, timeout: float
+        self,
+        *,
+        endpoint_url: str,
+        tenant_id: str,
+        errand_id: str,
+        timeout: float,
+        proxy_url: str = "",
     ) -> IsolatedBrowserSession:
         try:
             from playwright.async_api import async_playwright
@@ -260,12 +306,21 @@ class PlaywrightServerTransport:
         pw = await manager.start()
         try:
             browser = await pw.chromium.connect(endpoint_url, timeout=timeout * 1000)
-            context = await browser.new_context(
+            options: dict[str, Any] = {
                 # No storage_state: a fresh context starts with no cookies and
                 # no localStorage, which is the point. Downloads are refused
                 # rather than written anywhere the next errand could read.
-                accept_downloads=False,
-            )
+                "accept_downloads": False,
+            }
+            if proxy_url:
+                # Per *context*, not per browser: the browser server is shared
+                # by whatever connects to it, and a browser-level proxy would
+                # be a setting one errand could leave behind for the next.
+                # Chromium sends navigations, redirects, sub-resources and XHR
+                # through this, which is why the proxy sees every destination
+                # rather than only the one the application validated.
+                options["proxy"] = {"server": proxy_url}
+            context = await browser.new_context(**options)
             context.set_default_timeout(timeout * 1000)
             page = await context.new_page()
         except Exception:
@@ -273,10 +328,11 @@ class PlaywrightServerTransport:
                 await manager.__aexit__(None, None, None)
             raise
         logger.info(
-            "isolated browser session opened tenant=%s errand=%s endpoint=%s",
+            "isolated browser session opened tenant=%s errand=%s endpoint=%s egress=%s",
             tenant_id,
             errand_id,
             redacted(endpoint_url),
+            redacted(proxy_url) if proxy_url else "direct",
         )
         return _PlaywrightSession(_ManagedBrowser(browser, manager), context, page)
 
@@ -386,6 +442,74 @@ def sandbox_mode() -> str:
     return mode
 
 
+def egress_proxy_enforced() -> bool:
+    """Whether a browser errand may run without a proxy in front of it.
+
+    Defaults to **on** when the setting is missing entirely, which is the
+    fail-closed direction: a deployment that predates the setting gets
+    enforcement rather than an unpoliced browser.
+    """
+    raw = getattr(settings, "browser_sandbox_enforce_egress_proxy", True)
+    if isinstance(raw, str):
+        return raw.strip().lower() not in ("0", "false", "no", "off", "")
+    return bool(raw)
+
+
+def configured_egress_proxy_url() -> str:
+    """``browser_sandbox_egress_proxy_url``, normalised, or ``""``.
+
+    ``""`` means "nothing was configured", and the driver answers that by
+    minting an ephemeral per-errand proxy of its own. A value that is *set but
+    unusable* — no scheme, no host, a scheme Playwright would not accept — is
+    also ``""`` here and is logged: a mistyped proxy address must fall back to
+    the enforced path, never to going direct.
+    """
+    raw = str(getattr(settings, "browser_sandbox_egress_proxy_url", "") or "").strip()
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        logger.warning("browser egress proxy url cannot be parsed; it will not be used")
+        return ""
+    scheme = (parts.scheme or "").lower()
+    if scheme not in _PROXY_SCHEMES or not parts.hostname:
+        logger.warning(
+            "browser egress proxy url is not a usable %s URL: %s",
+            "/".join(_PROXY_SCHEMES),
+            redacted(raw) or "<blank>",
+        )
+        return ""
+    host = parts.hostname
+    host = f"[{host}]" if ":" in host else host
+    port = f":{parts.port}" if parts.port else ""
+    return f"{scheme}://{host}{port}"
+
+
+def _normalised_proxy_url(raw: str | None) -> str:
+    """An explicitly passed proxy url, normalised like a configured one.
+
+    Unusable reads as ``""`` — not as "go direct": the caller gets the
+    enforced path, which either mints a proxy or refuses the errand.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    try:
+        parts = urlsplit(text)
+    except ValueError:
+        logger.warning("the egress proxy url passed to the driver cannot be parsed")
+        return ""
+    scheme = (parts.scheme or "").lower()
+    if scheme not in _PROXY_SCHEMES or not parts.hostname:
+        logger.warning("the egress proxy url passed to the driver is not usable")
+        return ""
+    host = parts.hostname
+    host = f"[{host}]" if ":" in host else host
+    port = f":{parts.port}" if parts.port else ""
+    return f"{scheme}://{host}{port}"
+
+
 def sandbox_timeout() -> float:
     """``browser_sandbox_timeout_seconds``, as a positive float."""
     raw = getattr(settings, "browser_sandbox_timeout_seconds", 30)
@@ -443,6 +567,10 @@ class IsolatedBrowserDriver:
         endpoint_url: str | None = None,
         transport: IsolatedBrowserTransport | None = None,
         timeout_seconds: float | None = None,
+        proxy_url: str | None = None,
+        allowed_origins: Iterable[str] | None = None,
+        enforce_egress_proxy: bool | None = None,
+        proxy_factory: Callable[..., BrowserEgressProxy] | None = None,
     ) -> None:
         self._tenant_id = str(tenant_id or "").strip()
         self._errand_id = str(errand_id or "").strip()
@@ -474,6 +602,24 @@ class IsolatedBrowserDriver:
         #: from ``_closed`` so the reason a later step is refused is the honest
         #: one.
         self._lost = False
+        # ── egress ───────────────────────────────────────────────────────
+        #: A proxy somebody else runs, which this driver only points at. An
+        #: explicitly passed url goes through the same normalisation as a
+        #: configured one, and an unusable one reads as "none configured" so
+        #: the enforced path takes over rather than the browser going direct.
+        self._proxy_url = _normalised_proxy_url(proxy_url) or configured_egress_proxy_url()
+        self._enforce_proxy = (
+            egress_proxy_enforced() if enforce_egress_proxy is None else bool(enforce_egress_proxy)
+        )
+        #: The errand's fence, handed to an ephemeral proxy so a page that
+        #: redirects the errand off the approved origins is stopped at the
+        #: socket rather than trusted to say where it went.
+        self._allowed_origins = tuple(str(o) for o in (allowed_origins or ()) if str(o).strip())
+        self._proxy_factory = proxy_factory or BrowserEgressProxy
+        #: The ephemeral proxy *this driver owns* and must therefore stop.
+        #: ``None`` when a deployment-run proxy is configured, or when
+        #: enforcement is off.
+        self._proxy: BrowserEgressProxy | None = None
 
     # -- identity ---------------------------------------------------------
 
@@ -507,6 +653,31 @@ class IsolatedBrowserDriver:
         """True while a live session exists."""
         return self._session is not None and not self._closed
 
+    @property
+    def egress_proxy_url(self) -> str:
+        """The proxy this session's requests go through, or ``""``.
+
+        Blank before the session is opened when the proxy is the ephemeral
+        one — it has no port until it is listening.
+        """
+        if self._proxy is not None and self._proxy.is_running:
+            return self._proxy.url
+        return self._proxy_url
+
+    @property
+    def egress_proxy(self) -> BrowserEgressProxy | None:
+        """The ephemeral proxy this driver owns, if it minted one.
+
+        ``None`` when a deployment-run proxy is configured — then the denials
+        are that proxy's audit trail, not this driver's.
+        """
+        return self._proxy
+
+    @property
+    def egress_enforced(self) -> bool:
+        """Whether this driver refuses to open a session without a proxy."""
+        return self._enforce_proxy
+
     # -- lifecycle --------------------------------------------------------
 
     async def __aenter__(self) -> IsolatedBrowserDriver:
@@ -522,28 +693,36 @@ class IsolatedBrowserDriver:
         A failure to clean up is **not** swallowed: cookies that outlive the
         errand that set them are the isolation failing, so it comes back as
         :class:`~life_graph.services.sandbox.SandboxUnavailableError` for the
-        caller to log and report.
+        caller to log and report. The ephemeral egress proxy, if this driver
+        minted one, is stopped either way — a listener left running past the
+        errand is a way out left running past the errand.
         """
         session, self._session = self._session, None
         was_open = not self._closed
         self._closed = True
-        if session is None:
-            return
         try:
-            await asyncio.wait_for(session.close(), timeout=self._timeout)
-        except Exception as exc:
-            logger.warning(
-                "isolated browser session %s could not be cleaned up: %s: %s",
-                self.session_scope,
-                type(exc).__name__,
-                exc,
-            )
-            raise SandboxUnavailableError(
-                f"the isolated browser session for {self.session_scope} could not be"
-                f" cleaned up ({type(exc).__name__})"
-            ) from None
-        if was_open:
-            logger.info("isolated browser session closed scope=%s", self.session_scope)
+            if session is None:
+                return
+            try:
+                await asyncio.wait_for(session.close(), timeout=self._timeout)
+            except Exception as exc:
+                logger.warning(
+                    "isolated browser session %s could not be cleaned up: %s: %s",
+                    self.session_scope,
+                    type(exc).__name__,
+                    exc,
+                )
+                raise SandboxUnavailableError(
+                    f"the isolated browser session for {self.session_scope} could not be"
+                    f" cleaned up ({type(exc).__name__})"
+                ) from None
+            if was_open:
+                logger.info("isolated browser session closed scope=%s", self.session_scope)
+        finally:
+            # In a ``finally``, and after the session: a listener that outlives
+            # the errand is a way out that outlives the errand, and a session
+            # that would not close is exactly the case where that matters most.
+            await self._stop_proxy()
 
     # -- the five protocol methods ----------------------------------------
 
@@ -603,8 +782,92 @@ class IsolatedBrowserDriver:
             self._session = await self._open()
         return self._session
 
+    async def _egress_proxy_url(self) -> str:
+        """The proxy this session must go through, starting one if need be.
+
+        Three cases, and only the third involves this driver owning anything:
+
+        * a deployment configured a proxy — use it, and do not manage its
+          lifecycle;
+        * enforcement is off — ``""``, said out loud in the log, because a
+          browser going direct is a decision somebody made and it should be
+          visible in the record of the errand;
+        * neither — mint an ephemeral proxy bound to the loopback, scoped to
+          this errand and fenced to its approved origins, and stop it in
+          :meth:`close`.
+
+        Raises:
+            SandboxUnavailableError: enforcement is on and no proxy could be
+                started. The errand does not run. A browser with no policed
+                way out is the thing this refuses to produce.
+        """
+        if self._proxy_url:
+            return self._proxy_url
+        if not self._enforce_proxy:
+            logger.warning(
+                "browser egress enforcement is off: session %s will reach the network"
+                " directly, with only the application-level destination check in front of it",
+                self.session_scope,
+            )
+            return ""
+        if self._proxy is not None and self._proxy.is_running:
+            return self._proxy.url
+        try:
+            proxy = self._proxy_factory(
+                allowed_origins=self._allowed_origins,
+                tenant_id=self._tenant_id,
+                errand_id=self._errand_id,
+                timeout=self._timeout,
+            )
+            await asyncio.wait_for(proxy.start(), timeout=self._timeout)
+        except Exception as exc:
+            logger.warning(
+                "no egress proxy for session %s: %s: %s",
+                self.session_scope,
+                type(exc).__name__,
+                exc,
+            )
+            raise SandboxUnavailableError(
+                f"{EGRESS_PROXY_OFFLINE} ({type(exc).__name__})"
+            ) from None
+        self._proxy = proxy
+        logger.info(
+            "ephemeral egress proxy for %s listening on %s (fence: %s)",
+            self.session_scope,
+            proxy.url,
+            ", ".join(proxy.allowed_origins) or "public internet only",
+        )
+        return proxy.url
+
+    async def _stop_proxy(self) -> None:
+        """Stop the ephemeral proxy, if this driver minted one. Never raises."""
+        proxy, self._proxy = self._proxy, None
+        if proxy is None:
+            return
+        try:
+            await asyncio.wait_for(proxy.stop(), timeout=self._timeout)
+        except Exception as exc:  # noqa: BLE001
+            # The listener is on the loopback and dies with the process; a
+            # failure to stop it is worth a line, not a second exception on
+            # top of whatever is already being reported.
+            logger.warning(
+                "the egress proxy for %s would not stop: %s: %s",
+                self.session_scope,
+                type(exc).__name__,
+                exc,
+            )
+        else:
+            if proxy.denials:
+                logger.info(
+                    "egress proxy for %s denied %d destination(s): %s",
+                    self.session_scope,
+                    len(proxy.denials),
+                    "; ".join(f"{d.requested}: {d.reason}" for d in proxy.denials[:5]),
+                )
+
     async def _open(self) -> IsolatedBrowserSession:
         """Connect, or refuse. Every failure here is one closed failure."""
+        proxy_url = await self._egress_proxy_url()
         try:
             session = await asyncio.wait_for(
                 self._transport.open_session(
@@ -612,6 +875,7 @@ class IsolatedBrowserDriver:
                     tenant_id=self._tenant_id,
                     errand_id=self._errand_id,
                     timeout=self._timeout,
+                    proxy_url=proxy_url,
                 ),
                 timeout=self._timeout,
             )
@@ -699,8 +963,11 @@ __all__ = [
     "IsolatedBrowserSession",
     "IsolatedBrowserTransport",
     "PlaywrightServerTransport",
+    "EGRESS_PROXY_OFFLINE",
     "browser_sandbox_available",
+    "configured_egress_proxy_url",
     "configured_endpoint",
+    "egress_proxy_enforced",
     "redacted",
     "sandbox_mode",
     "sandbox_timeout",

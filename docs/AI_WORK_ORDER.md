@@ -225,12 +225,238 @@ Labels are the ones defined in section 9. "Complete" is deliberately absent
 from any row whose remaining gap is operational.
 
 - P0 exact-step-bound approval: **Implemented, Integrated, Unit-tested, Adversarially tested** — not operationally verified (no deployed run exercised yet)
-- P0 isolated browser integration: **Designed, Implemented, Integrated, Unit-tested, Adversarially tested (driver seam only)** for slice 1 — the real `run_browser_errand` path now selects only `IsolatedBrowserDriver` against the sandbox browser-server endpoint, fails closed when it is absent, and never falls back to `MCPBrowserDriver`; per-errand context lifecycle and cleanup are enforced. **Not Operationally verified end to end**, and three §3 controls remain **Not implemented**: the default-deny egress proxy, the authenticated tenant/errand-scoped control channel in front of the browser-server websocket, and network-layer destination/DNS pinning. The container chassis itself was operationally checked on 2026-11-16 (non-root, read-only root, caps dropped, no published port, no host route in, no egress out) — see the entry below. Do not call the browser path production-safe.
+- P0 isolated browser integration: **Designed, Implemented, Integrated, Unit-tested, Adversarially tested** through slice 2 — the real `run_browser_errand` path selects only `IsolatedBrowserDriver` against the sandbox browser-server endpoint, fails closed when it is absent, never falls back to `MCPBrowserDriver`, enforces per-errand context lifecycle and cleanup, and now puts a destination-validating, IP-pinning egress proxy in front of every browser context (`services/browser_egress_proxy.py`), refusing the errand when that proxy is unavailable. Of the three §3 controls slice 1 left open, two are now closed in code — the egress proxy and network-layer destination/DNS pinning — and one is **still Not implemented**: the authenticated tenant/errand-scoped control channel in front of the browser-server websocket (slice 2 stopped *telling* the workspace container that endpoint, but it is still reachable on the shared bridge). **Not Operationally verified end to end**: the shipped `compose.sandbox.yaml` has no proxy service, and an ephemeral proxy on the application's loopback is unreachable from a container on an `internal: true` bridge, so no browser errand has yet reached a real site. The container chassis itself was operationally checked on 2026-11-16 (non-root, read-only root, caps dropped, no published port, no host route in, no egress out) — see the entries below. Do not call the browser path production-safe.
 - P1 durable authorization: **Implemented, Integrated, Unit-tested** — multi-worker consistency proven with 16 concurrent threads against real Postgres; not yet exercised across separate OS processes or a real restart in a deployed environment
 - P1 historical episode retrieval: **Implemented, Integrated, Unit-tested**
 - P1 evidence/confidence evaluation: **Needs verification** (not started this session)
-- P1 adversarial end-to-end testing: **Partially addressed** — replay, cross-errand, cross-step, cross-tenant, re-pointed selector, edited value, forged handle, tampered approval payload and store-outage scenarios are covered for the authorization path; browser/network scenarios depend on P0 §3 and remain open
+- P1 adversarial end-to-end testing: **Partially addressed** — replay, cross-errand, cross-step, cross-tenant, re-pointed selector, edited value, forged handle, tampered approval payload and store-outage scenarios are covered for the authorization path. Slice 2 adds the network scenarios §7 asks for at the egress-enforcement layer: DNS rebinding, SSRF to loopback/private/link-local/carrier-NAT/reserved/multicast/broadcast ranges, alternate IP encodings (bare decimal, octal, hex, IPv4-mapped IPv6, NAT64, 6to4), cloud metadata endpoints, non-web ports, forbidden schemes, redirects off the approved origins, and request smuggling onto an already-authorised connection. Still open end to end: those same scenarios driven through a real Chromium against a deployed proxy, and proxy-bypass attempts from inside the container
 - P2 operations documentation: **Needs verification** (not started this session)
+
+### 2026-11-16 — P0 isolated browser runtime, slice 2: network-layer egress proxy and DNS pinning
+
+```text
+Date: 2026-11-16
+Remote base commit: 2853f06 (feat(browser): isolated browser driver adapter
+  and fail-closed seam (#244)) on branch
+  feat/work-order-browser-egress-proxy-p0 from master.
+Tasks inspected: section 3 (P0 isolated browser integration), the three
+  controls slice 1 left open; life_graph/services/browser_sandbox_driver.py,
+  life_graph/services/destination_validator.py,
+  life_graph/services/sandbox.py, life_graph/tools/errand.py,
+  life_graph/config.py, compose.sandbox.yaml,
+  tests/unit/test_sandbox_isolation.py,
+  tests/unit/test_isolated_browser_driver.py,
+  docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md.
+
+Findings (before changing code):
+  - The destination rules §3 asks for already existed, and existed *once*:
+    services/destination_validator.py's address_refusal() covers loopback,
+    the unspecified address, link-local, multicast, private (which in
+    CPython includes the broadcast address, the documentation ranges and
+    198.18.0.0/15 benchmarking), reserved and carrier-NAT, plus the cloud
+    metadata addresses by name, and _unwrap() judges IPv4-mapped IPv6, NAT64
+    and 6to4 as the IPv4 address they carry. parse_host_address() handles the
+    bare-decimal/octal/hex spellings. The gap was never the rules — it was
+    *where* they ran. So the proxy reuses that module rather than carrying a
+    second copy of the ranges, which is also the only way the two cannot
+    drift apart.
+  - The gap the module's own docstring names: it resolves the name and the
+    browser resolves the name again. One application-level check also sees
+    exactly one URL, so every redirect hop, sub-resource and page-initiated
+    fetch() was unjudged. Both are closed only by deciding at the connection.
+  - compose.sandbox.yaml handed the `workspace` service
+    SANDBOX_BROWSER_WS_URL: ws://browser:9222/, and
+    tests/unit/test_sandbox_isolation.py asserted that it did. Playwright's
+    browser-server websocket is unauthenticated, so that variable was a
+    remote-code-execution handle on a browser that may be holding the owner's
+    logged-in banking session, handed to the one container that runs
+    untrusted errand work.
+  - services/sandbox.py's workspace_spec(browser=...) sets the same variable,
+    but it is opt-in and has no caller anywhere in the application.
+
+Threat model for this slice (what it does and does not close):
+  - Closes: DNS rebinding against a browser errand (resolved once, the socket
+    goes to that address, the browser's own lookup never happens); a redirect
+    or a page-initiated request to loopback/RFC1918/link-local/carrier-NAT/
+    reserved/documentation/benchmarking/multicast/broadcast/unspecified or a
+    cloud metadata endpoint, in every spelling including the IPv6 wrappers;
+    CONNECT used as a general-purpose TCP relay to 22/25/3306/5432/6379 — and
+    to 9222, the sandbox browser's own control port; a redirect off the
+    errand's approved origins; a hop credential (Proxy-Authorization) being
+    forwarded to a destination; a second request smuggled onto a connection
+    whose single request had already been authorised; the workspace container
+    being *told* where the browser control endpoint is.
+  - Does not close: the browser-server websocket is still unauthenticated and
+    the two sandbox services still share a bridge, so the endpoint is
+    guessable even though nothing is told it — the authenticated control
+    channel is still the open §3 requirement; the proxy does not terminate
+    TLS by design, so it authorises where a connection goes and not what
+    travels through it (response-size and download limits stay with the
+    browser and the errand engine); and "default-deny" is a property of the
+    network, not of the proxy — it holds because the sandbox bridge is
+    `internal: true` and gives the browser container no gateway, so the proxy
+    is its only path out. Proxy *and* no route; neither alone.
+
+Changes made:
+  - NEW life_graph/services/browser_egress_proxy.py — BrowserEgressProxy, an
+    async forward proxy. Handles CONNECT (tunnel) and absolute-form HTTP.
+    Authorisation order is cheapest-and-most-decisive first, so a destination
+    that was never going to be allowed causes no DNS query (a query is an
+    outbound signal to whoever runs that zone): port against
+    DEFAULT_ALLOWED_PORTS = (80, 443, 8080, 8443); then
+    destination_validator.split_destination() for scheme, userinfo, control
+    characters, the local/metadata names, the .localhost/.internal suffixes
+    and an address literal in any spelling; then the origin fence; then one
+    resolution, with address_refusal() applied to EVERY address returned, not
+    the first. The permitted address is the pin: the socket is opened with
+    host=<address>, so asyncio consults no resolver. start() -> (host, port)
+    on 127.0.0.1:0 by default, stop(), async context manager, and `url` raises
+    rather than answering "" for a proxy that is not listening — a blank url
+    handed to new_context() would quietly mean "no proxy", which is the one
+    failure the module exists to prevent. Refusal is exactly
+    b"HTTP/1.1 403 Forbidden\r\n\r\n" with no body and no reason (the client
+    is a page the owner did not write); 502 is kept separate from 403 so a
+    denied-egress alert does not fire on a flaky site. Forwarded requests get
+    Host rewritten to the authorised authority, Proxy-Authorization and
+    Proxy-Connection dropped, and Connection: close forced — without that a
+    client could send a second request, to a different host, on a connection
+    this proxy had finished authorising. Decisions are recorded (bounded) for
+    the audit trail; resolver and connector are seams so the suite needs no
+    network. Nothing terminates TLS, deliberately, and the docstring says so.
+  - life_graph/services/browser_sandbox_driver.py — IsolatedBrowserTransport
+    .open_session() now takes proxy_url; PlaywrightServerTransport passes it
+    as new_context(proxy={"server": ...}) (per context, not per browser — a
+    browser-level proxy is a setting one errand could leave for the next).
+    IsolatedBrowserDriver takes proxy_url / allowed_origins /
+    enforce_egress_proxy / proxy_factory, and on first use either points at a
+    configured proxy, mints an ephemeral one scoped to the errand and fenced
+    to its approved origins, or — enforcement on and no proxy — raises
+    SandboxUnavailableError. _stop_proxy() runs in close()'s `finally`, after
+    the session, so a session that would not close cannot leave a listener
+    behind. New helpers egress_proxy_enforced() (defaults on when the setting
+    is absent) and configured_egress_proxy_url() (a set-but-unusable value
+    reads as "none configured", so a typo falls back to the enforced path and
+    never to going direct).
+  - life_graph/tools/errand.py — get_driver() takes allowed_origins and hands
+    the plan's fence to the driver, so the origin check applies to every
+    request the *browser* makes rather than only the urls the plan named.
+    Safe to take from model output for the same reason _fenced() does: a
+    fence can only narrow.
+  - life_graph/config.py + .env.example — browser_sandbox_egress_proxy_url
+    ("" = mint an ephemeral per-errand proxy) and
+    browser_sandbox_enforce_egress_proxy (True).
+  - compose.sandbox.yaml — SANDBOX_BROWSER_WS_URL removed from `workspace`,
+    with the reasoning in place of it. §3 requirement "do not expose an
+    unauthenticated browser debugging/WebSocket endpoint to workspace code":
+    partially closed (told: no; reachable: still yes).
+  - tests/unit/test_sandbox_isolation.py —
+    test_the_browser_endpoint_the_workspace_is_given_is_internal became
+    test_the_workspace_is_not_given_the_browser_control_endpoint (an absence
+    test that also refuses any workspace value naming the browser or its
+    port, so a renamed variable cannot pass) plus
+    test_the_browser_endpoint_a_spec_may_be_given_is_internal_and_opt_in,
+    which keeps the workspace_spec(browser=...) assertion. An inversion, not
+    a loosening: the file has one more assertion than before, and the
+    mutation check below shows both tests bite.
+  - tests/unit/test_isolated_browser_driver.py — FakeTransport.open_session
+    accepts and records proxy_url. Signature addition only; no assertion
+    changed or removed.
+  - NEW tests/unit/test_browser_egress_proxy.py — 41 tests.
+  - docs/STATE.md and docs/feature-inventory.html regenerated
+    (292 -> 294 settings).
+
+Tests run (exact commands):
+  1. /home/raja/.venvs/life-graph/bin/pytest \
+       tests/unit/test_browser_egress_proxy.py \
+       tests/unit/test_isolated_browser_driver.py \
+       tests/unit/test_exact_bound_capabilities.py \
+       tests/unit/test_historical_episodes.py \
+       tests/unit/test_jarvis_errands.py \
+       tests/unit/test_trustworthy_execution_eval.py -v
+     (plus tests/unit/test_sandbox_isolation.py, which this slice changes)
+  2. /home/raja/.venvs/life-graph/bin/pytest tests/unit/ -q, before and after,
+     in the same working tree (the slice stashed for the baseline run so the
+     environment was identical), FAILED lists diffed
+  3. /home/raja/.venvs/life-graph/bin/ruff check + ruff format --check on
+     every changed file
+  4. /home/raja/.venvs/life-graph/bin/python scripts/gen_state.py --check
+
+Results:
+  1. 310 passed, 0 failed (269 pre-existing + 41 new).
+  2. Baseline (this slice stashed): 26 failed, 5212 passed, 5 skipped.
+     After: 26 failed, 5254 passed, 5 skipped.
+     The FAILED lists are identical (diffed), so 0 regressions and +42
+     passing (41 new tests, plus the one test that became two). Those 26 are
+     pre-existing on this machine and unrelated — model-default,
+     cron-registration, graph-tenant-scoping, multimodal-router/service,
+     diff-scoped-verifier, mcp-servers-config and jarvis-prompt tests.
+     A first attempt to baseline in a clean `git worktree` was discarded as
+     invalid rather than reported: without this tree's .env and untracked
+     files it skipped 24 tests instead of 5 and is not comparable.
+  3. All checks passed. (`ruff check life_graph/` still reports the same 31
+     pre-existing errors in untracked work-in-progress files — api/lore.py,
+     prosody/, tools/media_generation.py — none touched here.)
+  4. OK: docs/STATE.md is up to date.
+
+Mutation checks (that the new tests actually bite) — seven applied one at a
+time and each reverted:
+  - connect to pinned.host instead of pinned.ip (undo the pin) -> 7 failures,
+    including test_proxy_pins_ip_against_dns_rebinding.
+  - judge only the first resolved address instead of all of them -> 1 failure
+    (test_every_resolved_address_must_be_permitted).
+  - drop the port allowlist -> 2 failures (test_proxy_blocks_dangerous_ports,
+    test_authorize_is_usable_on_its_own).
+  - return "" instead of raising when no proxy can be started (fail open) ->
+    2 failures (test_the_errand_refuses_to_run_when_no_proxy_can_be_started,
+    test_a_proxy_that_hangs_on_start_is_also_a_refusal).
+  - pass proxy_url="" to the transport (browser goes direct) -> 4 failures.
+  - remove `await self._stop_proxy()` from close()'s finally -> 2 failures,
+    including the stubborn-session case.
+  - put SANDBOX_BROWSER_WS_URL back in compose.sandbox.yaml -> 2 failures,
+    one in each of the two test files that assert the absence.
+
+Acceptance criteria met (§3), with the labels from section 9:
+  - Egress proxy validating destination host and resolved IP, blocking
+    loopback/private/link-local/reserved/multicast and cloud metadata:
+    Implemented, Integrated, Unit-tested, Adversarially tested.
+  - DNS rebinding mitigated by resolving and pinning at the network
+    enforcement layer rather than relying on a prior application-level
+    lookup: Implemented, Integrated, Unit-tested, Adversarially tested.
+  - Every redirect and navigation destination revalidated: Implemented by
+    construction (the proxy sees each hop as its own request) and unit-tested
+    at the proxy; not yet observed end to end through a real Chromium.
+  - Unauthenticated browser control endpoint not exposed to workspace code:
+    Partially implemented — not told, still reachable on the shared bridge.
+  - Fail closed if the egress proxy is unavailable: Implemented, Integrated,
+    Unit-tested, Adversarially tested.
+  - Default-deny outbound network policy: Designed and Implemented at two
+    layers (the `internal: true` bridge, which is operationally verified from
+    slice 1, plus this proxy), but NOT Operationally verified together.
+
+Remaining risks and blockers (the smallest safe next steps, in order):
+  1. The ephemeral proxy binds the application's loopback, and a container on
+     an `internal: true` bridge cannot reach the application's loopback. So
+     the shipped compose stack still cannot send a browser errand to a real
+     site: it fails at the network, which is the right direction and is not
+     the finished control. Next step: an `egress` service in
+     compose.sandbox.yaml attached to both sandbox_internal and a second
+     egress-only network, running this proxy, with
+     LIFE_GRAPH_BROWSER_SANDBOX_EGRESS_PROXY_URL pointing at it — then the
+     §3 verification list (proxy bypass attempt, redirect to a blocked
+     destination, real rebinding zone) run against the deployed stack.
+  2. The authenticated control channel in front of ws://browser:9222 is still
+     absent. Until it exists, nothing other than this application may be
+     attached to life_graph_sandbox_internal.
+  3. Nothing terminates TLS, so the proxy cannot enforce response-size,
+     download or content limits; those stay with the browser and the errand
+     engine and are not yet implemented there either.
+  4. Chromium's proxy setting does not cover every path out of a process
+     (WebRTC, QUIC, a bypass list). The control that makes the proxy
+     unavoidable is the absent route, not the setting.
+
+Do not call the browser errand path production-safe. Nothing in this slice
+has been exercised against a real site through a real Chromium.
+```
 
 ### 2026-11-16 — P0 isolated browser runtime, slice 1: driver adapter and fail-closed seam
 
