@@ -88,7 +88,10 @@ jobs:
   # so it was three weeks stale by 2026-10-24. After every merge to master
   # it is regenerated here and committed back when the inventory changed.
   # The "Generated …" stamp alone is not a change (-I), so an unchanged
-  # inventory makes no commit. The bot push does not trigger this workflow.
+  # inventory makes no commit. Both files carry one: STATE.md's line starts
+  # with Generated, the HTML's with <p class="sub">Generated from. Matching
+  # only the first made the bot commit a new timestamp after every merge.
+  # The bot push does not trigger this workflow.
   state-doc:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs: unit-tests
@@ -126,7 +129,8 @@ jobs:
 
       - name: Commit when the inventory changed
         run: |
-          if git diff --quiet -I '^Generated `' -- docs/STATE.md docs/feature-inventory.html; then
+          if git diff --quiet -I '^Generated `' -I '^<p class="sub">Generated from ' \
+               -- docs/STATE.md docs/feature-inventory.html; then
             echo "Inventory unchanged"
             git checkout -- docs/STATE.md docs/feature-inventory.html
             exit 0
