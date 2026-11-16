@@ -691,3 +691,23 @@ async def test_an_errand_row_reports_what_the_owner_did():
     await _tap(card, "reject")
 
     assert jarvis_today._errand_row(card)["status"] == "rejected"
+
+
+async def test_navigate_step_does_not_query_driver_origin_before_navigating(monkeypatch):
+    """Real Chromium on about:blank raises when current_origin() is queried before navigation."""
+    browser = FakeBrowser()
+
+    async def unnavigated_origin():
+        if not any(c[0] == "navigate" for c in browser.calls):
+            raise RuntimeError("the isolated browser did not report a usable origin")
+        return browser.origin
+
+    browser.current_origin = unnavigated_origin
+
+    out, _, _ = await run(
+        monkeypatch,
+        browser=browser,
+        steps=[],
+    )
+    assert out["status"] == "done"
+    assert ("navigate", START) in browser.calls
