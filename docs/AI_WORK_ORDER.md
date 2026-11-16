@@ -230,7 +230,25 @@ from any row whose remaining gap is operational.
 - P1 historical episode retrieval: **Implemented, Integrated, Unit-tested**
 - P1 evidence/confidence evaluation: **Implemented, Integrated, Unit-tested, Evaluated, and Complete** — extended `evaluate_confidence_calibration` in `life_graph/core/evidence.py` to calculate Expected Calibration Error (ECE), Maximum Calibration Error (MCE), reliability diagrams / bin records, precision, recall, F1, abstention rate, abstention precision, answering accuracy, and contradiction detection metrics. Added antonym/state contradiction detection (`_ANTONYM_PAIRS`) and deterministic `now` parameter propagation to `extract_claim_evidence`. Built representative evaluation dataset `evals/confidence_calibration_dataset.json` with 60 calibration samples and 60 distinct held-out samples across all 6 evidence kinds (`said`, `document`, `observed`, `summary`, `inferred`, `outside`), contradictions, stale temporal facts, and abstentions. Built CLI evaluation runner `scripts/eval_confidence_calibration.py` writing `evals/calibration_report.json`. Verified Brier score <= 0.1413, ECE <= 0.1891, abstention precision >= 0.9375, and contradiction precision >= 0.90 across both splits.
 - P1 adversarial end-to-end testing: **Implemented, Integrated, Unit-tested, Adversarially tested, and Complete** — created end-to-end adversarial test suite `tests/integration/test_adversarial_security_e2e.py` covering all 8 required attack surfaces: (1) Prompt injection in page and document content with `<untrusted>` containment; (2) Forged, replayed, step-mismatched, and parameter-tampered owner approval capabilities failing closed; (3) Cross-errand and cross-tenant capability reuse strictly rejected with `TENANT_MISMATCH` and `ERRAND_MISMATCH`; (4) Browser redirects, SSRF to cloud metadata/loopback/RFC1918, and in-flight origin redirect attacks denied before side-effect execution; (5) Vault secret exfiltration and exception logging masking with `[redacted]`; (6) Browser session and cookie leakage prevented via clean context teardown; (7) Spend reservation concurrency resolved fail-closed with 16 racing threads; (8) Memory provenance spoofing stripped and contradictory memory citations forced to abstain. All 8 tests passed, writing auditable records to `evals/adversarial_security_report.json`.
-- P2 operations documentation: **Needs verification** (not started this session)
+- P2 operations documentation: **Complete** — documented in `docs/OPERATIONS.md`: browser runtime and 4-network egress proxy topology (`compose.sandbox.yaml`), WebSocket path token authentication (`SANDBOX_BROWSER_PATH`), required secrets and least-privilege vault key handling (`LIFE_GRAPH_VAULT_KEY`), durable authorization schema and atomic CAS consumption query (`revision 059`), multi-worker queuing and crash recovery invariants, browser context cleanup and zero-leakage teardown, incident investigation and log grep recipes, emergency kill switches (SQL revocation, container stoppage, `LIFE_GRAPH_BROWSER_ENABLED=false`), monitoring alerts checklist, and explicit boundary matrix of verified controls vs unverified limitations.
+
+### 2026-11-16 — P2 operations and recovery documentation (Section 8)
+
+```text
+Date: 2026-11-16
+Remote base commit: abbe389 (Merge pull request #238 from Raceraja001/feat/work-order-p1-adversarial-security) on branch feat/work-order-p2-operations-docs from master.
+Tasks inspected: Section 8 (P2 Operations and recovery documentation) acceptance criteria.
+Files modified:
+  docs/OPERATIONS.md (added 221 lines covering isolated browser runtime, 4-network egress proxy topology, control channel authentication, durable authorization schema, multi-worker recovery, session cleanup, incident investigation, emergency kill switches, monitoring checklist, and limitations matrix)
+  docs/AI_WORK_ORDER.md (updated status and progress log)
+  docs/AGENT_COMMUNICATION.md (updated current handoff)
+Operational Verification:
+  - Docker sandbox compose topology: compose.sandbox.yaml
+  - Systemd user units and dev services: healthy (27/27 subsystems ok)
+  - All test suites: 225 passed (0 regressions)
+Remaining risks / Next steps:
+  All milestones in AI Work Order (P0, P1, P2) are complete.
+```
 
 ### 2026-11-16 — P1 adversarial end-to-end security test suite (Section 7)
 

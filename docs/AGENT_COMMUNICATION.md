@@ -93,30 +93,29 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-16 09:15 UTC)
+### Current (2026-11-16 09:30 UTC)
 
-- **Checked at / branch / base SHA:** 2026-11-16 09:15 UTC on
-  `feat/work-order-p1-adversarial-security`, cut from `master` at
-  `3979992` (Merge pull request #237 from Raceraja001/feat/work-order-p1-evidence-confidence). Working
+- **Checked at / branch / base SHA:** 2026-11-16 09:30 UTC on
+  `feat/work-order-p2-operations-docs`, cut from `master` at
+  `abbe389` (Merge pull request #238 from Raceraja001/feat/work-order-p1-adversarial-security). Working
   tree: `/home/raja/life-graph`.
-- **Current milestone:** P1 §7 — Adversarial end-to-end security tests.
-  **Implemented, Integrated, Adversarially tested, and Complete**.
+- **Current milestone:** P2 §8 — Operations and recovery documentation.
+  **Complete**.
 - **Verified status:**
-  - *Adversarial test suite:* `tests/integration/test_adversarial_security_e2e.py`
-    exercising full workflows across all 8 attack surfaces specified in AI Work Order §7:
-    1. ADV-01: Malicious prompt injection in external web/doc text fenced in `<untrusted>` tags with `UNTRUSTED_PREAMBLE`.
-    2. ADV-02: Replay, forged capability IDs, cross-step execution, and tampered parameter hashes rejected fail-closed (`ALREADY_CONSUMED`, `UNKNOWN`, `STEP_MISMATCH`, `PARAMETERS_MISMATCH`).
-    3. ADV-03: Cross-tenant and cross-errand capability reuse attempts rejected (`TENANT_MISMATCH`, `ERRAND_MISMATCH`).
-    4. ADV-04: SSRF, cloud metadata (169.254.169.254), loopback (127.0.0.1), private IPs, non-web schemes, and mid-errand origin redirects stopped before execution.
-    5. ADV-05: Vault secret exfiltration via driver exceptions masked and page text echoes redacted (`[redacted]`), omitted from logs.
-    6. ADV-06: Browser session cookies and local storage isolated and wiped on context reset.
-    7. ADV-07: 16 concurrent threads racing to consume a single-use capability; exactly 1 caller succeeds and 15 fail with `ALREADY_CONSUMED`.
-    8. ADV-08: Client-supplied provenance spoofing stripped; contradictory memory facts forced to abstain.
-  - *Report artifact:* `evals/adversarial_security_report.json` containing 8 structured audit records with timestamps and verdicts.
-  - *Tests:*
-    - 8 integration tests in `tests/integration/test_adversarial_security_e2e.py` passed in 3.16s.
-    - 225 unit/integration tests across `test_confidence_calibration.py`, `test_browser_errand.py`, `test_exact_bound_capabilities.py`, and `test_adversarial_security_e2e.py` passed in 30.71s (0 failures, 0 regressions).
+  - *Operational Runbook:* Expanded `docs/OPERATIONS.md` with 221 lines covering all 9 required operational domains:
+    1. Browser runtime and 4-network egress proxy topology (`compose.sandbox.yaml`).
+    2. WebSocket path token control channel authentication (`SANDBOX_BROWSER_PATH`).
+    3. Egress proxy destination validation, IP pinning, loopback/private/metadata refusals.
+    4. Durable authorization schema (`revision 059`) and atomic CAS consumption SQL query.
+    5. Multi-worker Redis queuing, crash invariants, and startup attachment.
+    6. Browser session lifecycle, ephemeral context reset, and confidential secret redaction.
+    7. Incident investigation runbook with log grep patterns for security events.
+    8. Emergency kill switches (SQL mass-revocation, container stops, application flag).
+    9. Monitoring checklist and verified controls vs limitations matrix.
+  - *Tests & Health:*
+    - 225 unit and integration tests green across test suites (0 regressions).
+    - Production service verified healthy on `race-wsl` (27/27 subsystems ok).
 - **Open risks/blockers:**
-  - All P0 and P1 security and trustworthiness milestones are complete. The remaining work order task is **P2 §8 — Operations and recovery documentation**.
-- **Next smallest action:** Proceed to **P2 §8 — Operations and recovery documentation**.
+  - All P0, P1, and P2 milestones in `docs/AI_WORK_ORDER.md` are fully implemented, verified, and documented!
+- **Next smallest action:** Merge PR to `master`, sync to `prod`, and present complete status report to Raja.
 - **Latest commit:** recorded in the follow-up commit.
