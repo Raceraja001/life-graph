@@ -679,16 +679,22 @@ class BrowserErrandExecutor:
         # and the vault: whatever we judged is where the secret goes. A
         # navigate is judged against where it is going instead, since the
         # browser is not there yet.
-        try:
-            here = normalise_origin_entry(str(await _call(self._driver.current_origin()) or ""))
-        except Exception as exc:  # noqa: BLE001 — a driver that cannot say where it is
-            return self._record(
-                index, step, None, FAILED, action_type="", detail=f"origin unavailable: {exc!s:.80}"
-            )
-        # A navigate's origin comes from the parsed destination rather than
-        # from the raw string, so ``https://BANK.com.:443/x`` is judged as the
-        # one origin it is and a mandate naming the bank covers it.
-        origin = destination.origin if destination is not None else here
+        if destination is not None:
+            # A navigate's origin comes from the parsed destination rather than
+            # from the raw string, so ``https://BANK.com.:443/x`` is judged as the
+            # one origin it is and a mandate naming the bank covers it.
+            origin = destination.origin
+            here = destination.origin
+        else:
+            try:
+                here = normalise_origin_entry(
+                    str(await _call(self._driver.current_origin()) or "")
+                )
+            except Exception as exc:  # noqa: BLE001 — a driver that cannot say where it is
+                return self._record(
+                    index, step, None, FAILED, action_type="", detail=f"origin unavailable: {exc!s:.80}"
+                )
+            origin = here
 
         action_type = STEP_ACTION_TYPES[kind]
         if kind == FILL_FIELD and step.is_secret:
