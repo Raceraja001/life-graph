@@ -239,6 +239,8 @@ Date: 2026-11-16
 Remote base commit: 2853f06 (feat(browser): isolated browser driver adapter
   and fail-closed seam (#244)) on branch
   feat/work-order-browser-egress-proxy-p0 from master.
+Working commit: 994517f on that branch. Not pushed — the push is the
+  developer's call.
 Tasks inspected: section 3 (P0 isolated browser integration), the three
   controls slice 1 left open; life_graph/services/browser_sandbox_driver.py,
   life_graph/services/destination_validator.py,
