@@ -225,12 +225,402 @@ Labels are the ones defined in section 9. "Complete" is deliberately absent
 from any row whose remaining gap is operational.
 
 - P0 exact-step-bound approval: **Implemented, Integrated, Unit-tested, Adversarially tested** — not operationally verified (no deployed run exercised yet)
-- P0 isolated browser integration: **Designed, Implemented, Integrated, Unit-tested, Adversarially tested** through slice 2 — the real `run_browser_errand` path selects only `IsolatedBrowserDriver` against the sandbox browser-server endpoint, fails closed when it is absent, never falls back to `MCPBrowserDriver`, enforces per-errand context lifecycle and cleanup, and now puts a destination-validating, IP-pinning egress proxy in front of every browser context (`services/browser_egress_proxy.py`), refusing the errand when that proxy is unavailable. Of the three §3 controls slice 1 left open, two are now closed in code — the egress proxy and network-layer destination/DNS pinning — and one is **still Not implemented**: the authenticated tenant/errand-scoped control channel in front of the browser-server websocket (slice 2 stopped *telling* the workspace container that endpoint, but it is still reachable on the shared bridge). **Not Operationally verified end to end**: the shipped `compose.sandbox.yaml` has no proxy service, and an ephemeral proxy on the application's loopback is unreachable from a container on an `internal: true` bridge, so no browser errand has yet reached a real site. The container chassis itself was operationally checked on 2026-11-16 (non-root, read-only root, caps dropped, no published port, no host route in, no egress out) — see the entries below. Do not call the browser path production-safe.
+- P0 isolated browser integration: **Designed, Implemented, Integrated, Unit-tested, Adversarially tested** through slice 3 — the real `run_browser_errand` path selects only `IsolatedBrowserDriver` against the sandbox browser-server endpoint, fails closed when it is absent, never falls back to `MCPBrowserDriver`, enforces per-errand context lifecycle and cleanup, puts a destination-validating, IP-pinning egress proxy in front of every browser context (`services/browser_egress_proxy.py`), and now requires an **authenticated control channel**: the browser server runs with `--path /<token>` (`Dockerfile.browser`, `SANDBOX_BROWSER_PATH`) and `control_endpoint()` refuses the errand when the endpoint carries no usable token (`browser_sandbox_require_token`, on by default). All three §3 controls slice 1 left open are now closed **in code and configuration**: the egress proxy, network-layer destination/DNS pinning, and the authenticated control channel. The proxy is also deployable — `compose.sandbox.yaml` ships it as the `egress` service (`python -m life_graph.services.browser_egress_proxy`) on a four-network topology where exactly one network has a gateway and only the proxy is on it, the browser reaches the proxy but has no route of its own, and the workspace shares no bridge with either. The `egress` service is **Operationally verified as a container** (slice 3: built, run non-root on a read-only root filesystem with caps dropped, and asked from a peer container for eleven adversarial destinations — metadata by address and by name, loopback v4/v6, RFC1918, the docker bridge gateway, the browser's own 9222, ssh, postgres, loopback as a bare decimal and as hex — all 403, with two permitted destinations relayed in the same run and every denial logged with its reason). **Still Not Operationally verified end to end**: no browser errand has reached a real site through a real Chromium, no stack has been brought up with a control token, the four-network topology has only been checked through `docker compose config`, and the deployed shared proxy does **not** carry the per-errand origin fence (only the address, port and scheme rules, which are the ones that stop SSRF). The browser container chassis was operationally checked on 2026-11-16 for the *single-bridge* shape only. Do not call the browser path production-safe.
 - P1 durable authorization: **Implemented, Integrated, Unit-tested** — multi-worker consistency proven with 16 concurrent threads against real Postgres; not yet exercised across separate OS processes or a real restart in a deployed environment
 - P1 historical episode retrieval: **Implemented, Integrated, Unit-tested**
 - P1 evidence/confidence evaluation: **Needs verification** (not started this session)
-- P1 adversarial end-to-end testing: **Partially addressed** — replay, cross-errand, cross-step, cross-tenant, re-pointed selector, edited value, forged handle, tampered approval payload and store-outage scenarios are covered for the authorization path. Slice 2 adds the network scenarios §7 asks for at the egress-enforcement layer: DNS rebinding, SSRF to loopback/private/link-local/carrier-NAT/reserved/multicast/broadcast ranges, alternate IP encodings (bare decimal, octal, hex, IPv4-mapped IPv6, NAT64, 6to4), cloud metadata endpoints, non-web ports, forbidden schemes, redirects off the approved origins, and request smuggling onto an already-authorised connection. Still open end to end: those same scenarios driven through a real Chromium against a deployed proxy, and proxy-bypass attempts from inside the container
+- P1 adversarial end-to-end testing: **Partially addressed** — replay, cross-errand, cross-step, cross-tenant, re-pointed selector, edited value, forged handle, tampered approval payload and store-outage scenarios are covered for the authorization path. Slice 2 adds the network scenarios §7 asks for at the egress-enforcement layer: DNS rebinding, SSRF to loopback/private/link-local/carrier-NAT/reserved/multicast/broadcast ranges, alternate IP encodings (bare decimal, octal, hex, IPv4-mapped IPv6, NAT64, 6to4), cloud metadata endpoints, non-web ports, forbidden schemes, redirects off the approved origins, and request smuggling onto an already-authorised connection. Slice 3 adds the control-channel scenarios — a missing token, a token too short or unmatchable to be a credential, a query mistaken for a path, an endpoint passed in by a caller trying to skip the requirement, a refused (404) handshake, and the token leaking into a log or an error via a client library quoting the URL — plus the same SSRF/metadata/non-web-port refusals exercised through the real `python -m` proxy process over a real socket, and six compose topology mutations each of which must be reported. Still open end to end: those same scenarios driven through a real Chromium against the deployed stack, and proxy-bypass attempts from inside the container
 - P2 operations documentation: **Needs verification** (not started this session)
+
+### 2026-11-16 — P0 isolated browser runtime, slice 3: authenticated control channel and deployable egress service
+
+```text
+Date: 2026-11-16
+Remote base commit: 33523b16e92d9513a7c28e1eb1b2d49f05053b83 (docs: add
+  persistent AI agent communication protocol) on branch
+  feat/work-order-browser-slice3 from master. master and this branch were
+  identical at the start of the session (git diff master..HEAD empty).
+Working commit: 58952fb on branch feat/work-order-browser-slice3. Not
+  pushed — the push is the developer's call.
+Tasks inspected: section 3 (P0 isolated browser integration) — the two
+  controls slice 2 left open, namely the authenticated control channel and
+  the deployed, reachable proxy. Files read before changing anything:
+  life_graph/services/browser_sandbox_driver.py,
+  life_graph/services/browser_egress_proxy.py,
+  life_graph/services/sandbox.py (spec + compose policy),
+  life_graph/services/destination_validator.py, life_graph/tools/errand.py,
+  life_graph/config.py, compose.sandbox.yaml, Dockerfile.browser,
+  Dockerfile.workspace, Dockerfile, .env.example,
+  tests/unit/test_sandbox_isolation.py,
+  tests/unit/test_isolated_browser_driver.py,
+  tests/unit/test_browser_egress_proxy.py, docs/AGENT_COMMUNICATION.md.
+  jarvis_immunity_check on sandbox.py and browser_sandbox_driver.py: nominal,
+  no recorded invariants.
+
+Findings (before changing code):
+  - Playwright's `run-server` takes `--path`, and a server started with it
+    accepts the websocket upgrade on that one path and answers 404 on every
+    other. So the authenticated-control-channel requirement did not need a
+    new gateway process in front of 9222; it needed the flag, a credential
+    to put in it, and a refusal when there is none. A gateway was considered
+    and rejected for this slice: it would be a second long-lived component
+    holding the control channel, and the flag closes the same gap with no new
+    moving part.
+  - configured_endpoint() already preserved a path, and redacted() already
+    stripped one from anything this module formats. The two gaps were that
+    nothing *required* a path, and that Playwright quotes the endpoint it was
+    handed in its own error text — which the driver then logged verbatim. A
+    path token would have been printed into the log on the first connection
+    failure, which is how a credential becomes a published credential.
+  - compose.sandbox.yaml put both services on one `internal: true` bridge, so
+    the browser's control port was guessable from the workspace even though
+    slice 2 stopped naming it; and the ephemeral proxy binds the
+    application's loopback, which a container on that bridge cannot reach. A
+    single bridge cannot express "the browser may reach the proxy, the
+    workspace may reach neither" — that needs separate bridges, which is why
+    this slice splits them rather than adding a service to the existing one.
+  - services/sandbox.py's compose policy required *every* declared network to
+    be internal, which a deployable egress service cannot satisfy: the proxy
+    must have a route out or it is not a way out. The policy therefore needed
+    a reviewed exception rather than being switched off, and the exception
+    had to be narrow enough to be worth having.
+
+Threat model for this slice (what it does and does not close):
+  - Closes: an unauthenticated browser-server websocket. Reaching port 9222
+    is no longer the same thing as being allowed to drive the browser, so a
+    process on the bridge that guessed the address now needs a 32-character
+    url-safe secret as well; the workspace container can no longer route to
+    the browser's bridge at all (two separate networks, not one shared one),
+    nor to the proxy; the path token never reaches a log line or an error
+    message, including the one case that would have leaked it (a client
+    library quoting the URL it was given); the compose stack can now actually
+    send a browser errand through the policed proxy, because the proxy is a
+    peer on a bridge the browser is on rather than a listener on the
+    application's loopback; and exactly one container in the stack has a
+    route off it, enforced against the file rather than asserted in a
+    comment.
+  - Does not close: TLS is still not terminated (deliberately), so response
+    size, download and content limits remain unimplemented; the *deployed*
+    shared proxy enforces the address, port and scheme rules on every request
+    but does **not** carry the per-errand origin fence, because a long-lived
+    shared proxy does not know which errand a connection belongs to — the
+    errand's fence still applies at the application level (navigations) and
+    in the ephemeral per-errand proxy, and a fence that follows an errand
+    through a shared proxy needs the proxy to be told which errand a
+    connection is, which nothing here does; a path token is a bearer secret
+    in a URL, so it is as strong as the deployment's handling of it (it is
+    never written to the compose file, never baked into an image and never
+    logged, but a deployment that pastes it somewhere careless has published
+    it); and nothing in this slice has been run against a real site through a
+    real Chromium, so every claim below is configuration and tests, not
+    operational evidence.
+
+Changes made:
+  - Dockerfile.browser — CMD gained
+    `${SANDBOX_BROWSER_PATH:+--path /${SANDBOX_BROWSER_PATH}}`. `:+` and not
+    `:-`: an unset token must yield no flag at all rather than `--path /`,
+    which would be one guessable path that looks like authentication. The
+    refusal lives on the application side, where the owner can be told.
+  - NEW Dockerfile.egress — python:3.11-slim, no RUN, no pip install, no
+    apt-get: the proxy and the destination rules it enforces are
+    standard-library Python. It copies four files (the package __init__s,
+    destination_validator.py, browser_egress_proxy.py) and nothing else, runs
+    as 65534:65534 which owns none of them, and its CMD is the module
+    entrypoint. The other two sandbox images copy nothing from the repository
+    at all; this one is not an errand container but the component that makes
+    the egress decision, so the allowlist is asserted by a test instead.
+  - life_graph/services/browser_sandbox_driver.py — control_endpoint() is now
+    the single place that decides what the driver may connect to:
+    normalisation, the path the endpoint already carries (which wins), the
+    token from settings filling a blank path, and the refusal. With
+    control_token_required() on — the default, and the reading of a *missing*
+    setting — an endpoint with no usable token is a SandboxUnavailableError
+    from __init__, before a socket exists. "Usable" is enforced, not
+    documented: at least MIN_CONTROL_TOKEN_LENGTH = 16 characters of
+    `[A-Za-z0-9._~/-]`, so a deployment that set `--path /browser` is told it
+    has no credential rather than believing it has one. New scrubbed() takes
+    the token out of any third-party text before it is logged or raised, and
+    PlaywrightServerTransport now wraps the connect call so a refused
+    handshake comes back as one BrowserRuntimeUnusableError with the HTTP
+    status read out of the client's prose — 404 is what a wrong token looks
+    like from here, and it is a closed failure, never a fallback.
+  - life_graph/services/browser_egress_proxy.py — a CLI entrypoint:
+    `python -m life_graph.services.browser_egress_proxy --host 0.0.0.0
+    --port 8080`. proxy_from_args() is separate from main() so a test can
+    inspect the configuration without binding anything; serve_forever()
+    installs SIGTERM/SIGINT handlers (SIGTERM is how a container runtime
+    asks), stops accepting, cancels live tunnels and logs the denials. The
+    bind default stays 127.0.0.1 — a default that bound every interface would
+    be an open relay by typo — and binding anything else logs a warning
+    saying exactly why that is only safe here. A bind failure exits 1: a
+    proxy that did not listen is a browser with no way out, and the runtime
+    should report it rather than restart into silence.
+  - compose.sandbox.yaml — four networks instead of one, which is the
+    topology the §3 requirements actually need:
+      app --(sandbox_control)--> browser --(sandbox_egress_bridge)--> egress
+          --(sandbox_outbound)--> web
+          workspace --(sandbox_workspace, one member, no gateway)
+    `sandbox_outbound` is the only network without `internal: true` and
+    `egress` is its only member. The browser is not on it, so the proxy is
+    not one of its options but its only one. The workspace shares no bridge
+    with the browser or the proxy, so the control endpoint is unroutable from
+    it rather than merely un-named. NEW `egress` service: non-root, read-only
+    root, tmpfs /tmp only, cap_drop ALL, no-new-privileges, mem/cpu/pid
+    ceilings, `expose` and not `ports`. `SANDBOX_BROWSER_PATH` is
+    interpolated from the environment of whoever runs `docker compose up` —
+    a token in a committed file is a published token.
+  - life_graph/services/sandbox.py — network constants for the four bridges;
+    spec_violations() now accepts any of INTERNAL_SANDBOX_NETWORKS and
+    deliberately not the outbound one, so no errand container can ever be
+    given a route out; browser_spec() joins the control bridge;
+    compose_service_networks() normalises compose's two forms and resolves
+    `name:`; NEW network_topology_violations() holds the file to the rules a
+    per-container check cannot see — one network with a gateway and it is the
+    outbound one, only the proxy on it, the known services attached to
+    exactly the networks SANDBOX_SERVICE_NETWORKS lists, and a service nobody
+    reviewed allowed only on the bridge that reaches nothing (default-deny,
+    so a future container cannot quietly appear with the control channel).
+    workspace_spec(browser=...) still sets no token: what an opting-in caller
+    is handed is the address of a locked door, not a key.
+  - life_graph/config.py + .env.example — browser_sandbox_token ("" = none
+    configured) and browser_sandbox_require_token (True). The egress proxy
+    url example became http://egress:8080, with the shared-proxy fence
+    limitation written next to it.
+  - docs/STATE.md and docs/feature-inventory.html regenerated (294 -> 296
+    settings).
+
+Tests (new and changed):
+  - tests/unit/test_isolated_browser_driver.py — ENDPOINT now carries a
+    32-character token and the autouse fixture configures it, so ~30 existing
+    tests assert the token-bearing endpoint reaches the transport. That is a
+    strengthening of those assertions, not a change to them: no assertion was
+    removed or loosened. 27 new tests for the control channel — the token
+    filling a blank path and arriving at the connect call; six ways of having
+    no usable token (no path, no path and no trailing slash, a query mistaken
+    for a path, a path too short, a token too short, a token spelled with
+    characters the server would never match), each a refusal *and* a
+    get_driver() answer of None; an explicitly passed endpoint held to the
+    same requirement; a path the endpoint carries winning over the setting;
+    the requirement being turned off only deliberately and loudly; a missing
+    setting reading as required; the token reaching neither the error, the
+    log, nor repr when a client library quotes it back; a 404 handshake being
+    an unusable runtime; and the status parser.
+  - tests/unit/test_browser_egress_proxy.py — 8 new tests for the deployed
+    shape: the loopback default, the flags, the environment variables, that
+    serve_forever listens and then leaves nothing listening after SIGTERM,
+    that a non-loopback bind says so, that the real `python -m` process
+    refuses the metadata endpoint, loopback, a metadata hostname, the
+    browser's own 9222, RFC1918 and IPv6 loopback over a real socket and then
+    exits 0 on SIGTERM, that the compose service and the setting agree on one
+    address, and that the shared proxy carries no per-errand fence (a
+    limitation written as a test so it cannot be quietly believed otherwise).
+    The compose assertion that referenced the old single bridge now asserts
+    the network split instead.
+  - tests/unit/test_sandbox_isolation.py — the compose fixture expects three
+    services; the networking test became "internal except the policed way
+    out"; new tests for the exact attachment sets, for default-deny on an
+    unreviewed service, a parametrized set of six topology mutations each of
+    which must be reported, the egress service's policy, the egress image
+    running the proxy and installing nothing, the COPY allowlist, the
+    Dockerfile.browser CMD expansion (run through `sh`, with and without the
+    variable), the token never being written into the compose file, and the
+    workspace being unable to reach the browser two ways at once.
+
+Tests run (exact commands):
+  1. /home/raja/.venvs/life-graph/bin/pytest \
+       tests/unit/test_browser_egress_proxy.py \
+       tests/unit/test_isolated_browser_driver.py \
+       tests/unit/test_sandbox_isolation.py \
+       tests/unit/test_browser_errand.py \
+       tests/unit/test_exact_bound_capabilities.py \
+       tests/unit/test_jarvis_errands.py -q
+  2. /home/raja/.venvs/life-graph/bin/pytest tests/unit/ -q, before and
+     after, in the same working tree (the slice's tracked changes were
+     stashed for the baseline run so the environment was identical), FAILED
+     lists diffed.
+  3. /home/raja/.venvs/life-graph/bin/pytest tests/integration/ -q, with
+     LIFE_GRAPH_DATABASE_URL/_SYNC pointed at a throwaway database
+     (life_graph_slice3_it) created for the run and dropped afterwards. The
+     integration conftest TRUNCATEs whatever database settings name, and on
+     this machine that is the developer's life_graph_dev — running the suite
+     as configured would have wiped it, so it was not run that way.
+  4. /home/raja/.venvs/life-graph/bin/ruff check + ruff format --check on
+     every changed file.
+  5. /home/raja/.venvs/life-graph/bin/python scripts/gen_state.py --check
+  6. /home/raja/.venvs/life-graph/bin/python -m
+     life_graph.services.browser_egress_proxy --help, and a manual run on
+     127.0.0.1:18089 with CONNECT attempts to 169.254.169.254:80 and
+     evil.test:22 (both 403, both logged as denials) followed by SIGTERM
+     (exit 0).
+  7. OPERATIONAL, in real containers (the docker daemon is reachable on this
+     machine):
+       SANDBOX_BROWSER_PATH=<token> docker compose -f compose.sandbox.yaml config
+       docker build -t life-graph-sandbox-egress:dev -f Dockerfile.egress .
+       docker network create lg-slice3-check
+       docker run -d --name lg-egress-check --network lg-slice3-check \
+         --user 65534:65534 --read-only --cap-drop ALL \
+         --security-opt no-new-privileges:true \
+         --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m,mode=1777 \
+         --memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 128 --init \
+         -e SANDBOX_EGRESS_HOST=0.0.0.0 -e SANDBOX_EGRESS_PORT=8080 \
+         life-graph-sandbox-egress:dev
+     then, from a *peer* container on the same bridge (which is the position
+     the browser container is in), CONNECT through the proxy to eleven
+     destinations it must refuse and two it must allow. Container and network
+     removed afterwards; the image was left in place because it is the tag
+     compose builds.
+
+Results:
+  1. 470 passed, 0 failed.
+  2. Baseline (this slice's tracked changes stashed): 26 failed, 5254 passed,
+     5 skipped. After: 26 failed, 5306 passed, 5 skipped. The FAILED lists
+     are identical (diffed with `diff`), so 0 regressions and +52 passing.
+     Those 26 are pre-existing on this machine and unrelated —
+     model-default, cron-registration, graph-tenant-scoping,
+     multimodal-router/service, diff-scoped-verifier, mcp-servers-config,
+     editions, due-notifications, verifier-inconclusive and jarvis-prompt
+     tests.
+  3. 392 failed, 398 passed, 38 skipped, 1 xfailed, 2 errors — and the
+     same numbers with this slice's tracked changes stashed, with the FAILED
+     lists diffed and identical, so 0 regressions. Those 392 are not
+     evidence of anything working: an empty database has no API key, and the
+     app's auth middleware answers 401 where these tests expect 2xx or 500,
+     so most of the suite cannot run in this configuration. Recorded as a
+     before/after comparison only. The integration suite is not usable as
+     evidence for this slice on this machine, and nothing in the slice
+     touches a database path.
+  4. All checks passed. (`ruff check life_graph/` reports 28 pre-existing
+     errors, none in a file this slice touches: 21 in the untracked
+     prosody/yappu.py, 3 in the untracked tools/media_generation.py, and 4
+     in tracked files that are unchanged here and on master — api/graph.py
+     x2, api/search.py, services/episodes.py. Slice 2's entry said "31 in
+     untracked files", which is no longer the count and was never quite the
+     breakdown.)
+  5. OK: docs/STATE.md is up to date.
+  6. As described: help text renders, both destinations refused before any
+     upstream connection, clean shutdown.
+  7. All as required, and this is the first operational evidence in this
+     milestone that is not a container-chassis check:
+       - `docker compose config` resolves the file: four networks, three of
+         them `internal: true`, `life_graph_sandbox_outbound` the only one
+         without it; `browser` on control + egress bridge, `egress` on egress
+         bridge + outbound, `workspace` alone; SANDBOX_BROWSER_PATH
+         interpolated from the environment rather than written down.
+       - The image builds with no RUN step, 187MB total.
+       - Inside the container: `id` -> uid=65534(nobody) gid=65534(nogroup),
+         and `touch /should-fail` -> "Read-only file system".
+       - On startup the proxy logs the non-loopback bind warning verbatim,
+         which is the line that says why 0.0.0.0 is only safe here.
+       - From a peer container, all eleven of these were answered
+         `HTTP/1.1 403 Forbidden`: 169.254.169.254:80,
+         metadata.google.internal:80, 127.0.0.1:80, [::1]:443, 10.0.0.5:443,
+         172.17.0.1:443 (the docker bridge gateway — the host, from inside),
+         browser:9222 (the sandbox browser's own control port),
+         example.com:22, example.com:5432, 2130706433:80 (loopback as a bare
+         decimal) and 0x7f000001:80 (loopback as hex).
+       - The two that must work did: CONNECT example.com:443 and
+         example.com:80 both answered `HTTP/1.1 200 Connection Established`.
+         So the proxy is a working way out and a closed one in the same run.
+       - `docker logs` holds 11 "egress denied" lines, each with its reason —
+         the audit trail §8 asks for, observed rather than asserted.
+
+Mutation checks (that the new tests actually bite) — thirteen applied one at
+a time and each reverted automatically:
+  - drop `--path` from the browser CMD (back to an unauthenticated server)
+    -> test_the_browser_server_takes_the_path_token_from_the_environment[set].
+  - return the endpoint instead of raising when there is no token (fail open)
+    -> test_an_unauthenticated_control_channel_refuses_the_errand[no-path].
+  - never let a configured token fill a blank path ->
+    test_the_token_fills_a_blank_path_and_reaches_the_transport.
+  - MIN_CONTROL_TOKEN_LENGTH 16 -> 1 (any path counts as a credential) ->
+    test_an_unauthenticated_control_channel_refuses_the_errand[short-path].
+  - log the client's message unscrubbed ->
+    test_the_token_never_reaches_a_log_or_an_error.
+  - attach `browser` to sandbox_outbound (its own route out) ->
+    test_the_module_and_the_compose_file_agree (plus the topology tests).
+  - move `workspace` back onto sandbox_control -> same.
+  - remove `internal: true` from the egress bridge -> same.
+  - hardcode a token into compose.sandbox.yaml ->
+    test_the_path_token_is_never_written_into_the_compose_file.
+  - disable the `__main__` guard ->
+    test_the_module_runs_as_a_process_and_refuses_the_same_destinations.
+  - drop `await proxy.stop()` from serve_forever's finally ->
+    test_the_service_serves_until_it_is_asked_to_stop.
+  - add a fifth COPY to Dockerfile.egress ->
+    test_the_egress_image_copies_only_the_enforcement_modules.
+  - skip the non-loopback bind warning ->
+    test_a_service_on_a_real_interface_says_so.
+
+Acceptance criteria met (§3), with the labels from section 9:
+  - Separate authenticated control channel; no unauthenticated browser
+    websocket exposed to workspace code: Implemented, Integrated,
+    Unit-tested, Adversarially tested. Two independent locks — the path token
+    the application refuses to run without, and a network split that leaves
+    the workspace unable to route to the browser's bridge at all. NOT
+    Operationally verified: no deployed stack has been brought up with a
+    token and connected to.
+  - Deployable egress proxy the browser container can reach: Implemented,
+    Unit-tested (including the real `python -m` process over a real socket),
+    Adversarially tested, and now **Operationally verified as a container**:
+    it builds, runs non-root on a read-only root filesystem with every
+    capability dropped, refuses eleven adversarial destinations and relays
+    two permitted ones when asked from a peer container on the same bridge,
+    and logs each denial with its reason (run 7 above). Still NOT Integrated
+    in the sense §3 means it: no *browser errand* has run through the
+    deployed service, because that needs the Playwright image and a real
+    Chromium, which this session did not build.
+  - Default-deny outbound network policy: Designed, Implemented and now
+    *enforced against the file* (exactly one network with a gateway, one
+    member on it), with `docker compose config` confirming the resolved
+    topology. The *browser's* absence of a route was operationally verified
+    in slice 1 for the single-bridge shape; the four-bridge shape has not
+    been brought up, so "the browser can reach the proxy and nothing else"
+    remains unobserved.
+  - Fail closed if the authenticated control channel is unavailable:
+    Implemented, Integrated, Unit-tested, Adversarially tested.
+  - Restrict access to internal services and control-plane endpoints:
+    Implemented at three layers now — the proxy's port allowlist excludes
+    9222, the browser cannot route to the application's networks, and the
+    control channel needs a credential.
+  - Execution time, resource, download, upload and response-size limits:
+    unchanged from slice 2. Time and resource limits exist; download is
+    refused by `accept_downloads=False`; upload and response-size are still
+    Not implemented, and the proxy cannot implement them without terminating
+    TLS, which it deliberately does not.
+
+Remaining risks and blockers (the smallest safe next steps, in order):
+  1. No *browser* has been through any of this. The proxy itself was
+     verified in a real container (run 7) and the compose topology resolves,
+     but the browser half needs the Playwright image built and a real
+     Chromium. The next step is one operational session: build the browser
+     image, generate a token, bring the stack up with SANDBOX_BROWSER_PATH
+     set, point the application at ws://<browser>:9222/<token> and
+     http://egress:8080, run one browser errand to a real site, and then
+     work the §3 verification list — proxy bypass from inside the browser
+     container, a redirect to a blocked destination, a real rebinding zone, a
+     wrong token, no token, a cross-tenant attempt. Until that is done this
+     path is not production-safe and this entry should not be read as saying
+     it is.
+  2. The deployed shared proxy does not carry the per-errand origin fence.
+     Closing it properly means the proxy knowing which errand a connection
+     belongs to — a per-errand credential on the proxy hop, or a per-errand
+     proxy container. Either is a design decision for Raja, not a detail.
+  3. A path token is a bearer secret in a URL. It is never committed, baked
+     or logged here, but rotation, revocation and distribution are
+     operational work that does not exist yet: changing it means restarting
+     the browser container and the application together.
+  4. The network rename is operationally visible: a deployment that created
+     life_graph_sandbox_internal from the old file has an orphaned network,
+     and `docker compose -f compose.sandbox.yaml up` creates the four new
+     ones. `docker network rm life_graph_sandbox_internal` cleans it up.
+  5. Chromium's proxy setting still does not cover every path out of a
+     process (WebRTC, QUIC, a bypass list). The control that makes the proxy
+     unavoidable remains the absent route, not the setting.
+
+Do not call the browser errand path production-safe. The proxy has been
+observed doing its job in a container; the browser has not been observed at
+all.
+```
 
 ### 2026-11-16 — P0 isolated browser runtime, slice 2: network-layer egress proxy and DNS pinning
 

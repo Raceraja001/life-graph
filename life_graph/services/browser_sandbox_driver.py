@@ -60,17 +60,28 @@ with it. With ``browser_sandbox_enforce_egress_proxy`` on — the default — a
 proxy that cannot be started is a ``SandboxUnavailableError`` and the errand
 does not run.
 
-**What is still not done.** Two parts of §3 of ``docs/AI_WORK_ORDER.md``
-remain. The browser-server websocket is **still unauthenticated** on the
-internal network — nothing other than this application should be attached to
-that network — and no deployment has yet been operationally verified with the
-proxy in the path. That last point has teeth: an ephemeral proxy bound to the
-application's loopback is *not reachable* from a container on an
-``internal: true`` bridge, so the compose stack as shipped needs the proxy as
-its own service, on both that bridge and an egress network, before a browser
-errand reaches a real site. Until then an errand's navigation fails at the
-network, which is a closed failure and the right direction, but is not the
-finished control. Nothing here should be read as a claim that it is.
+**The control channel is authenticated.** The sandbox browser server is
+started with ``--path /<token>`` (``Dockerfile.browser``,
+``SANDBOX_BROWSER_PATH``), so it answers the websocket upgrade on that one
+path and refuses every other with a 404. :func:`control_endpoint` is the only
+place that decides what this driver may connect to: it takes the path an
+endpoint already carries, or fills a blank one from
+``LIFE_GRAPH_BROWSER_SANDBOX_TOKEN``, and with
+``browser_sandbox_require_token`` on — the default — an endpoint with no
+usable token is a ``SandboxUnavailableError`` before a socket is opened. The
+token is a credential, so it never reaches a log: every endpoint we format
+goes through :func:`redacted`, and every message a client library hands back
+goes through :func:`scrubbed`, because Playwright quotes the URL it was given.
+
+**What is still not done.** Operational verification. No deployment has yet
+run a browser errand through the proxy to a real site, so the path token, the
+proxy and the network topology are joined up in configuration and in tests
+rather than in evidence from a running stack. The compose file now ships the
+proxy as its own ``egress`` service on a bridge the browser can reach — an
+ephemeral proxy bound to the application's loopback is *not* reachable from a
+container on an ``internal: true`` bridge, which is why the service exists —
+but ``docs/AI_WORK_ORDER.md`` §10 is the record of what has and has not been
+observed, and nothing here should be read as a claim beyond it.
 """
 
 from __future__ import annotations
@@ -128,6 +139,39 @@ SANDBOX_OFFLINE = (
 #: Schemes an egress proxy may be addressed by. Playwright accepts all of
 #: these in ``proxy.server``; ``BrowserEgressProxy`` itself speaks the first.
 _PROXY_SCHEMES = ("http", "https", "socks5")
+
+#: Shortest control-channel path token this module will accept. The token is
+#: the only thing standing between a process that can reach port 9222 and a
+#: browser it can drive, so a short one is not authentication: 16 characters
+#: of ``secrets.token_urlsafe`` output is ~96 bits. Enforced, rather than
+#: documented, because a deployment that set ``--path /browser`` would
+#: otherwise believe it had a credential.
+MIN_CONTROL_TOKEN_LENGTH = 16
+
+#: What a control-channel path may be made of. No query, no fragment, no
+#: whitespace, no control characters, no percent-escapes to unpick — the path
+#: is compared byte for byte by the browser server, and a token that needs
+#: encoding is a token that will not match.
+_CONTROL_PATH = re.compile(r"[A-Za-z0-9._~/-]+")
+
+#: Said when the control channel would be unauthenticated. Playwright's
+#: browser server without ``--path`` accepts any connection that reaches the
+#: port, and that connection can open any page and read any cookie the browser
+#: holds, so this is a refusal rather than a warning.
+CONTROL_CHANNEL_UNAUTHENTICATED = (
+    "The isolated browser control channel is not authenticated: the endpoint"
+    " carries no path token, so the errand will not run. Set"
+    " LIFE_GRAPH_BROWSER_SANDBOX_TOKEN to the same value the browser container"
+    " was started with (SANDBOX_BROWSER_PATH)."
+)
+
+#: Said when there *is* a path but it is not a credential — too short, or
+#: spelled with characters the browser server would never match.
+CONTROL_TOKEN_UNUSABLE = (
+    "The isolated browser control channel's path token is not usable as a"
+    f" credential (at least {MIN_CONTROL_TOKEN_LENGTH} characters of"
+    " url-safe text), so the errand will not run."
+)
 
 #: Said when egress enforcement is on and there is no proxy to enforce it.
 #: A browser with no egress control is a browser a page can redirect at the
@@ -273,6 +317,18 @@ class _PlaywrightSession:
         await self._browser.close()
 
 
+#: An HTTP status in a websocket-handshake failure message. Playwright reports
+#: a refused upgrade as prose ("Unexpected server response: 404"), so the
+#: status is read out of it rather than from a structured field.
+_HANDSHAKE_STATUS = re.compile(r"\b(?:response|status(?:\s+code)?)[:\s]+([1-5]\d\d)\b", re.I)
+
+
+def _handshake_status(message: str) -> int | None:
+    """The HTTP status a refused websocket upgrade reported, if it said one."""
+    found = _HANDSHAKE_STATUS.search(str(message or ""))
+    return int(found.group(1)) if found else None
+
+
 class PlaywrightServerTransport:
     """Connects to the sandbox browser's Playwright browser-server websocket.
 
@@ -305,7 +361,22 @@ class PlaywrightServerTransport:
         manager = async_playwright()
         pw = await manager.start()
         try:
-            browser = await pw.chromium.connect(endpoint_url, timeout=timeout * 1000)
+            try:
+                browser = await pw.chromium.connect(endpoint_url, timeout=timeout * 1000)
+            except Exception as exc:
+                # A path-scoped browser server answers the websocket upgrade
+                # with 404 on every path but its own, so this is what an
+                # unauthenticated — or wrongly authenticated — control channel
+                # looks like from here. It is reported as one unusable runtime
+                # with the status attached, and the message is scrubbed first:
+                # Playwright quotes the endpoint it was handed, token and all.
+                status = _handshake_status(str(exc))
+                raise BrowserRuntimeUnusableError(
+                    f"the browser control endpoint {redacted(endpoint_url)} refused the"
+                    f" handshake ({type(exc).__name__}:"
+                    f" {scrubbed(str(exc), endpoint_url)[:200]})",
+                    status=status,
+                ) from None
             options: dict[str, Any] = {
                 # No storage_state: a fresh context starts with no cookies and
                 # no localStorage, which is the point. Downloads are refused
@@ -375,6 +446,23 @@ def redacted(endpoint: str) -> str:
     return f"{parts.scheme}://{host}{port}"
 
 
+def scrubbed(text: str, endpoint: str) -> str:
+    """*text* with the endpoint's control-channel token taken out of it.
+
+    A client library's error message routinely quotes the URL it was given
+    ("connect ws://browser:9222/<token>"), and that message ends up in a log
+    line or an exception the owner reads. The token is the credential for a
+    remote-code-execution handle on the browser, so it is removed from any
+    third-party text before it travels any further. :func:`redacted` does the
+    same job for an endpoint we are formatting ourselves.
+    """
+    out = str(text or "")
+    token = endpoint_token(endpoint)
+    if token and len(token) >= 4:
+        out = out.replace(token, "<redacted>")
+    return out
+
+
 def configured_endpoint() -> str:
     """The browser-runtime endpoint as a websocket URL, or ``""`` when unset.
 
@@ -414,6 +502,135 @@ def configured_endpoint() -> str:
         host = f"[{host}]" if ":" in host else host
         parts = parts._replace(netloc=f"{host}:{BROWSER_WS_PORT}")
     return parts.geturl()
+
+
+def control_token_required() -> bool:
+    """Whether the control channel must carry a path token. Default **yes**.
+
+    Missing setting reads as required, which is the fail-closed direction: a
+    deployment that predates this slice gets the authenticated requirement
+    rather than an open browser-control port.
+    """
+    raw = getattr(settings, "browser_sandbox_require_token", True)
+    if isinstance(raw, str):
+        return raw.strip().lower() not in ("0", "false", "no", "off", "")
+    return bool(raw)
+
+
+def control_token() -> str:
+    """``browser_sandbox_token``, trimmed of its slashes, or ``""``.
+
+    ``""`` means "nothing configured", which with
+    :func:`control_token_required` on is a refusal rather than a blank path.
+    A value that is set but unusable as a credential is **not** silently
+    accepted either: it comes back as ``""`` and is logged without its value,
+    so a mistyped or far-too-short token fails the errand closed instead of
+    producing a control channel that only looks authenticated.
+    """
+    raw = str(getattr(settings, "browser_sandbox_token", "") or "").strip().strip("/")
+    if not raw:
+        return ""
+    if not _usable_control_token(raw):
+        # Never the value itself: it is a credential, and this line goes to
+        # the same log as everything else.
+        logger.warning(
+            "browser_sandbox_token is not usable as a control-channel credential"
+            " (needs at least %d characters of url-safe text); it will not be used",
+            MIN_CONTROL_TOKEN_LENGTH,
+        )
+        return ""
+    return raw
+
+
+def _usable_control_token(path: str) -> bool:
+    """Whether *path* is long enough and plain enough to be the credential."""
+    text = str(path or "").strip().strip("/")
+    if len(text) < MIN_CONTROL_TOKEN_LENGTH:
+        return False
+    return _CONTROL_PATH.fullmatch(text) is not None
+
+
+def endpoint_token(endpoint: str) -> str:
+    """The path *endpoint* already carries, without its leading slash.
+
+    A query or a fragment is not part of it: Playwright's ``--path`` is
+    compared against the request path, so anything after ``?`` would never
+    match and must not be mistaken for a credential that was supplied.
+    """
+    try:
+        parts = urlsplit(str(endpoint or ""))
+    except ValueError:
+        return ""
+    if parts.query or parts.fragment:
+        return ""
+    return (parts.path or "").strip().strip("/")
+
+
+def control_endpoint(endpoint_url: str | None = None) -> str:
+    """The endpoint the driver may actually connect to, token and all.
+
+    This is the authenticated-control-channel requirement of
+    ``docs/AI_WORK_ORDER.md`` §3, enforced in one place so that no caller can
+    reach the browser-server websocket without it. The browser container is
+    started with ``--path /<token>`` (``Dockerfile.browser``,
+    ``SANDBOX_BROWSER_PATH``) and refuses the websocket upgrade on every other
+    path, so the token in this URL is what the control channel is
+    authenticated *with*.
+
+    Resolution order, narrowest first:
+
+    1. *endpoint_url* if given, else :func:`configured_endpoint`;
+    2. the path the endpoint already carries wins — a URL written as
+       ``ws://browser:9222/<token>`` is more specific than a separate setting,
+       and a broker in front of the browser may need a path of its own;
+    3. otherwise :func:`control_token` fills the blank path.
+
+    Then the requirement: with :func:`control_token_required` on, an endpoint
+    whose final path is empty, too short or not plain url-safe text is a
+    :class:`~life_graph.services.sandbox.SandboxUnavailableError`. The errand
+    does not run, and it does not run over an unauthenticated channel either.
+
+    Raises:
+        SandboxUnavailableError: no endpoint, not a ws/http URL, or no usable
+            path token when one is required. The message never contains the
+            token — only :func:`redacted` forms of the endpoint appear.
+    """
+    raw = str(endpoint_url or "").strip()
+    if raw:
+        parts = urlsplit(raw)
+        scheme = (parts.scheme or "").lower()
+        if scheme not in _ENDPOINT_SCHEMES or not parts.netloc:
+            raise SandboxUnavailableError(
+                f"{SANDBOX_OFFLINE} (endpoint {redacted(raw)} is not a ws/http URL)"
+            )
+        if scheme in ("http", "https"):
+            parts = parts._replace(scheme="wss" if scheme == "https" else "ws")
+        endpoint = parts.geturl()
+    else:
+        endpoint = configured_endpoint()
+    if not endpoint:
+        raise SandboxUnavailableError(SANDBOX_OFFLINE)
+
+    present = endpoint_token(endpoint)
+    if not present:
+        token = control_token()
+        if token:
+            parts = urlsplit(endpoint)
+            endpoint = parts._replace(path=f"/{token}", query="", fragment="").geturl()
+            present = token
+    if not control_token_required():
+        if not present:
+            logger.warning(
+                "browser control-channel authentication is off: %s is reachable by anything"
+                " that can open the port",
+                redacted(endpoint),
+            )
+        return endpoint
+    if not present:
+        raise SandboxUnavailableError(f"{CONTROL_CHANNEL_UNAUTHENTICATED} ({redacted(endpoint)})")
+    if not _usable_control_token(present):
+        raise SandboxUnavailableError(f"{CONTROL_TOKEN_UNUSABLE} ({redacted(endpoint)})")
+    return endpoint
 
 
 def browser_sandbox_available() -> bool:
@@ -578,22 +795,11 @@ class IsolatedBrowserDriver:
             # Not a SandboxUnavailableError: the sandbox is fine, the caller
             # asked for a session that could not be scoped to anything.
             raise ValueError("an isolated browser session needs both a tenant_id and an errand_id")
-        endpoint = str(endpoint_url or "").strip() or configured_endpoint()
-        if endpoint_url:
-            # An explicitly passed endpoint goes through the same normalisation
-            # and the same refusal as a configured one.
-            parts = urlsplit(endpoint)
-            if (parts.scheme or "").lower() not in _ENDPOINT_SCHEMES or not parts.netloc:
-                raise SandboxUnavailableError(
-                    f"{SANDBOX_OFFLINE} (endpoint {redacted(endpoint)} is not a ws/http URL)"
-                )
-            if (parts.scheme or "").lower() in ("http", "https"):
-                endpoint = parts._replace(
-                    scheme="wss" if parts.scheme.lower() == "https" else "ws"
-                ).geturl()
-        if not endpoint:
-            raise SandboxUnavailableError(SANDBOX_OFFLINE)
-        self._endpoint = endpoint
+        # One place decides what this driver may connect to: normalisation,
+        # the control-channel path token and the refusal when there is none
+        # all live in ``control_endpoint``, so an explicitly passed endpoint
+        # is held to exactly the same requirement as a configured one.
+        self._endpoint = control_endpoint(endpoint_url)
         self._transport: IsolatedBrowserTransport = transport or PlaywrightServerTransport()
         self._timeout = float(timeout_seconds) if timeout_seconds else sandbox_timeout()
         self._session: IsolatedBrowserSession | None = None
@@ -897,7 +1103,7 @@ class IsolatedBrowserDriver:
                 self.endpoint,
                 self.session_scope,
                 type(exc).__name__,
-                exc,
+                scrubbed(str(exc), self._endpoint),
             )
             raise SandboxUnavailableError(
                 f"{SANDBOX_OFFLINE} ({self.endpoint}: {detail})"
@@ -937,7 +1143,7 @@ class IsolatedBrowserDriver:
                 self.session_scope,
                 what,
                 type(exc).__name__,
-                exc,
+                scrubbed(str(exc), self._endpoint),
             )
             raise SandboxUnavailableError(
                 f"the isolated browser runtime was lost while trying to {what}"
@@ -958,6 +1164,9 @@ __all__ = [
     "MODE_ISOLATED",
     "MODE_MOCK",
     "SANDBOX_OFFLINE",
+    "CONTROL_CHANNEL_UNAUTHENTICATED",
+    "CONTROL_TOKEN_UNUSABLE",
+    "MIN_CONTROL_TOKEN_LENGTH",
     "BrowserRuntimeUnusableError",
     "IsolatedBrowserDriver",
     "IsolatedBrowserSession",
@@ -967,8 +1176,13 @@ __all__ = [
     "browser_sandbox_available",
     "configured_egress_proxy_url",
     "configured_endpoint",
+    "control_endpoint",
+    "control_token",
+    "control_token_required",
     "egress_proxy_enforced",
+    "endpoint_token",
     "redacted",
     "sandbox_mode",
+    "scrubbed",
     "sandbox_timeout",
 ]

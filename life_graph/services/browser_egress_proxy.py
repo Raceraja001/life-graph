@@ -72,10 +72,13 @@ operationally verified.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import contextlib
 import ipaddress
 import logging
+import os
+import signal
 import socket
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -88,7 +91,7 @@ from life_graph.services.destination_validator import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from collections.abc import Awaitable, Callable, Iterable
+    from collections.abc import Awaitable, Callable, Iterable, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -892,8 +895,229 @@ async def _pump(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> N
                 writer.write_eof()
 
 
+# ── running it as a service ─────────────────────────────────────
+# ``python -m life_graph.services.browser_egress_proxy --host 0.0.0.0 --port 8080``
+#
+# The in-process proxy :class:`IsolatedBrowserDriver` mints is reachable from
+# the application and from the test suite, and *not* from a container on an
+# ``internal: true`` bridge — a loopback listener is not on that bridge. The
+# browser container therefore needs the proxy as a peer, which is what this
+# entrypoint is for: it is the command the ``egress`` service in
+# ``compose.sandbox.yaml`` runs, on the bridge the browser can reach and on
+# the one network in that stack with a route out.
+#
+# Two differences from the ephemeral proxy, both deliberate and both worth
+# knowing:
+#
+# * it binds a real interface, so it is only safe where nothing else can reach
+#   it. The default is still the loopback and ``--host`` is what widens it;
+# * it is long-lived and shared, so it carries **no per-errand origin fence**
+#   unless ``--allowed-origin`` gives it a static one. The address, port and
+#   scheme rules — the ones that stop SSRF, rebinding and metadata access —
+#   apply to every request either way. The errand's own fence stays with the
+#   application-level check in ``tools/errand.py``, which sees navigations but
+#   not sub-resources; a fence that follows the errand through a shared proxy
+#   needs the proxy to know which errand a connection belongs to, and nothing
+#   here claims to do that yet.
+
+#: Environment variables the entrypoint reads, so the compose service can be
+#: configured without rewriting its command. Deliberately unprefixed: a
+#: ``LIFE_GRAPH_*`` variable is application configuration and
+#: ``services/sandbox.py`` refuses to pass any of it into a sandbox container.
+ENV_HOST = "SANDBOX_EGRESS_HOST"
+ENV_PORT = "SANDBOX_EGRESS_PORT"
+ENV_ORIGINS = "SANDBOX_EGRESS_ALLOWED_ORIGINS"
+ENV_PORTS = "SANDBOX_EGRESS_ALLOWED_PORTS"
+
+#: The port the compose service listens on. Not 3128 or 8888: nothing should
+#: recognise this as a proxy by its port number, and 9222 is taken by the
+#: browser's own control channel.
+DEFAULT_LISTEN_PORT = 8080
+
+
+def _csv(raw: str | None) -> list[str]:
+    """``"a, b ,,c"`` -> ``["a", "b", "c"]``."""
+    return [part.strip() for part in str(raw or "").replace(";", ",").split(",") if part.strip()]
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m life_graph.services.browser_egress_proxy",
+        description=(
+            "The sandboxed browser's only way out: a forward proxy that judges every"
+            " destination and connects to the address it resolved, not to the name."
+        ),
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get(ENV_HOST, "127.0.0.1"),
+        help=(
+            "interface to bind (default 127.0.0.1). 0.0.0.0 is what a container on an"
+            " internal-only bridge needs, and is an open relay to anything that can reach"
+            " it — safe only because that bridge has no gateway."
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get(ENV_PORT) or DEFAULT_LISTEN_PORT),
+        help=f"port to listen on (default {DEFAULT_LISTEN_PORT}); 0 picks an ephemeral one",
+    )
+    parser.add_argument(
+        "--allowed-origin",
+        action="append",
+        default=None,
+        metavar="ORIGIN",
+        help=(
+            "a static origin fence, repeatable ('https://site.test', '*.site.test')."
+            " Omitted means no origin fence: the address, port and scheme rules still"
+            " apply and are the ones that stop SSRF."
+        ),
+    )
+    parser.add_argument(
+        "--allowed-port",
+        action="append",
+        type=int,
+        default=None,
+        metavar="PORT",
+        help=(
+            "override the permitted destination ports (default"
+            f" {', '.join(str(p) for p in DEFAULT_ALLOWED_PORTS)}). Narrowing is safe;"
+            " widening is a decision."
+        ),
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="ceiling on reading a request head and on the upstream connect (seconds)",
+    )
+    parser.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=None,
+        help="close an established tunnel after this long with no traffic (seconds)",
+    )
+    parser.add_argument(
+        "--max-tunnels",
+        type=int,
+        default=DEFAULT_MAX_TUNNELS,
+        help=f"how many connections may be open at once (default {DEFAULT_MAX_TUNNELS})",
+    )
+    parser.add_argument(
+        "--log-level",
+        default=os.environ.get("SANDBOX_EGRESS_LOG_LEVEL", "INFO"),
+        help="python logging level (default INFO). Denials are logged at WARNING.",
+    )
+    return parser
+
+
+def proxy_from_args(args: argparse.Namespace) -> BrowserEgressProxy:
+    """The proxy *args* asks for. Separate from :func:`main` so a test can
+    inspect the configuration without binding a socket or running a loop."""
+    origins = (
+        args.allowed_origin
+        if args.allowed_origin is not None
+        else _csv(os.environ.get(ENV_ORIGINS))
+    )
+    ports: Iterable[int]
+    if args.allowed_port:
+        ports = tuple(args.allowed_port)
+    else:
+        from_env = [int(p) for p in _csv(os.environ.get(ENV_PORTS)) if p.isdigit()]
+        ports = tuple(from_env) or DEFAULT_ALLOWED_PORTS
+    return BrowserEgressProxy(
+        allowed_origins=origins,
+        host=str(args.host),
+        port=int(args.port),
+        allowed_ports=ports,
+        timeout=float(args.timeout),
+        idle_timeout=args.idle_timeout,
+        max_tunnels=int(args.max_tunnels),
+    )
+
+
+async def serve_forever(proxy: BrowserEgressProxy) -> int:
+    """Run *proxy* until the process is asked to stop, then stop it cleanly.
+
+    SIGTERM is how a container runtime asks (``docker compose down``,
+    ``docker stop``), and SIGINT is how a terminal does. Both land on the same
+    path: stop accepting, cancel the live tunnels, log what was denied. A
+    tunnel that outlived the proxy would be a way out that outlived it.
+    """
+    loop = asyncio.get_running_loop()
+    stopping: asyncio.Future[str] = loop.create_future()
+
+    def _ask_to_stop(name: str) -> None:
+        if not stopping.done():
+            stopping.set_result(name)
+
+    for signame in ("SIGTERM", "SIGINT"):
+        sig = getattr(signal, signame, None)
+        if sig is None:  # pragma: no cover - every platform we run on has both
+            continue
+        with contextlib.suppress(NotImplementedError, RuntimeError):
+            loop.add_signal_handler(sig, _ask_to_stop, signame)
+
+    host, port = await proxy.start()
+    if not ipaddress.ip_address(host).is_loopback:
+        logger.warning(
+            "browser egress proxy is bound to %s:%s, which anything that can reach this"
+            " interface may use as a relay. That is only contained because the bridge it"
+            " is on has no other members and no gateway.",
+            host,
+            port,
+        )
+    logger.info(
+        "browser egress proxy serving on %s:%s (fence: %s, ports: %s)",
+        host,
+        port,
+        ", ".join(proxy.allowed_origins) or "none — address and port rules only",
+        ", ".join(str(p) for p in sorted(proxy._allowed_ports)),  # noqa: SLF001
+    )
+    try:
+        reason = await stopping
+        logger.info("browser egress proxy stopping on %s", reason)
+    except asyncio.CancelledError:
+        logger.info("browser egress proxy stopping on cancellation")
+        raise
+    finally:
+        await proxy.stop()
+        for decision in proxy.denials[-20:]:
+            logger.info(
+                "denied egress: %s %s: %s", decision.method, decision.requested, decision.reason
+            )
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for ``python -m life_graph.services.browser_egress_proxy``."""
+    args = _build_parser().parse_args(argv)
+    logging.basicConfig(
+        level=str(args.log_level).upper(),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    proxy = proxy_from_args(args)
+    try:
+        return asyncio.run(serve_forever(proxy))
+    except KeyboardInterrupt:  # pragma: no cover - a terminal, not a test
+        return 0
+    except OSError as exc:
+        # Almost always "address already in use" or a bind to an interface the
+        # container does not have. A proxy that did not bind is a browser with
+        # no way out, which is a failure worth a non-zero exit so the
+        # container runtime reports it rather than restarting into silence.
+        logger.error("browser egress proxy could not listen: %s: %s", type(exc).__name__, exc)
+        return 1
+
+
 __all__ = [
     "ALLOWED_SCHEMES",
+    "DEFAULT_LISTEN_PORT",
+    "ENV_HOST",
+    "ENV_ORIGINS",
+    "ENV_PORT",
+    "ENV_PORTS",
     "BAD_REQUEST_RESPONSE",
     "DEFAULT_ALLOWED_PORTS",
     "DEFAULT_MAX_TUNNELS",
@@ -904,5 +1128,12 @@ __all__ = [
     "EgressDecision",
     "EgressDeniedError",
     "PinnedTarget",
+    "main",
     "parse_origin_rules",
+    "proxy_from_args",
+    "serve_forever",
 ]
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised as a subprocess
+    raise SystemExit(main())
