@@ -173,8 +173,8 @@ async def _sections(
     *used*, when given, receives ``{"id", "content"}`` for each memory put in the
     block (with ``"via": "profile"`` for the card's) — what the turn's trace
     shows as "what shaped this answer"."""
-    from life_graph.api.dependencies import get_store
     from life_graph.core.tenant import tenant_scope
+    from life_graph.runtime import get_store
     from life_graph.services import profile_card
 
     query = search_text(message, history)

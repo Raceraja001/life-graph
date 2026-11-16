@@ -81,7 +81,7 @@ async def _recall(chat_id: int, query: str, reply) -> None:  # noqa: ANN001
         await reply(chat_id, "Usage: /recall <what you're looking for>")
         return
 
-    from life_graph.api.dependencies import get_memory_manager, get_store
+    from life_graph.runtime import get_memory_manager, get_store
 
     manager = get_memory_manager()
     embedding = await manager._generate_embedding(query)

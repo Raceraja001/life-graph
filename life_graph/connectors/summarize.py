@@ -163,7 +163,7 @@ async def summarize_email(
     the model and the scam check see which domain a "bill" really came from.
     """
     if client is None:
-        from life_graph.api.dependencies import get_lm_client
+        from life_graph.runtime import get_lm_client
 
         client = get_lm_client()
     body = (text or "")[:MAX_INPUT_CHARS]

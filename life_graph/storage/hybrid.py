@@ -135,7 +135,7 @@ class HybridQueryEngine:
         # Step 4 — Vector search (with or without graph filters)
         memories: list[dict[str, Any]] = []
         try:
-            from life_graph.api.dependencies import get_embedding_service
+            from life_graph.runtime import get_embedding_service
 
             # The shared service carries the configured local client; a bare
             # EmbeddingService() has none, and its sync embed() returns [] inside
@@ -237,7 +237,7 @@ class HybridQueryEngine:
         # ── Step 1: Vector + BM25 hybrid (from PostgresMemoryStore) ──
         scored_memories: list[dict[str, Any]] = []
         try:
-            from life_graph.api.dependencies import get_embedding_service
+            from life_graph.runtime import get_embedding_service
 
             # See hybrid_search: the shared, client-backed service is required here.
             embedding = await get_embedding_service().embed_async(query)

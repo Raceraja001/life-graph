@@ -306,7 +306,7 @@ class MultiModelAdvisor:
             '"confidence": 0.0-1.0, "reasoning": "..."}'
         )
 
-        from life_graph.api.dependencies import get_resilient_llm
+        from life_graph.runtime import get_resilient_llm
 
         t0 = time.monotonic()
         try:

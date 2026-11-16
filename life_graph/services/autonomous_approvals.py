@@ -44,7 +44,7 @@ class AutonomousApprovalProducer:
 
     def _get_notification_engine(self) -> Any:
         if self._notification_engine is None:
-            from life_graph.api.dependencies import get_notification_engine
+            from life_graph.runtime import get_notification_engine
 
             self._notification_engine = get_notification_engine()
         return self._notification_engine

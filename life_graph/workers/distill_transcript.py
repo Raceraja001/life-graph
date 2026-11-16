@@ -20,7 +20,7 @@ async def distill_transcript(ctx: dict, session_id: str, tenant_id: str) -> dict
     """Distill a single external session for one tenant."""
     set_tenant_context(tenant_id, "system")
 
-    from life_graph.api.dependencies import get_transcript_distiller
+    from life_graph.runtime import get_transcript_distiller
 
     distiller = get_transcript_distiller()
     result = await distiller.distill(session_id)

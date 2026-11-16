@@ -28,10 +28,10 @@ def get_resilient_llm():
     """Return the resilient LLM singleton.
 
     Imported lazily (call time, not module load time) because
-    ``life_graph.api.dependencies`` imports ``LMStudioClient`` at module
+    ``life_graph.runtime`` imports ``LMStudioClient`` at module
     scope — a top-level import here would create a circular import.
     """
-    from life_graph.api.dependencies import get_resilient_llm as _get_resilient_llm
+    from life_graph.runtime import get_resilient_llm as _get_resilient_llm
 
     return _get_resilient_llm()
 

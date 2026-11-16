@@ -50,7 +50,7 @@ async def get_autonomy_level(project_id: str):
     """Get the autonomy level for a project, with promotion progress."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.api.dependencies import get_autonomy_level_service
+    from life_graph.runtime import get_autonomy_level_service
 
     service = get_autonomy_level_service()
 
@@ -62,7 +62,7 @@ async def set_autonomy_level(project_id: str, request: SetLevelRequest):
     """Manually set the autonomy level for a project."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.api.dependencies import get_autonomy_level_service
+    from life_graph.runtime import get_autonomy_level_service
 
     service = get_autonomy_level_service()
 

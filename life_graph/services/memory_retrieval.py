@@ -59,8 +59,8 @@ SCHEMA = {
 
 async def judge(question: str, contents: list[str]) -> list[int] | None:
     """Indexes (0-based) of the contents that help answer, best first; None if the model failed."""
-    from life_graph.api.dependencies import get_lm_client
     from life_graph.config import settings
+    from life_graph.runtime import get_lm_client
 
     listing = "\n".join(f"{i + 1}. {' '.join(c.split())[:300]}" for i, c in enumerate(contents))
     reply = await get_lm_client().chat_local_only(
@@ -372,9 +372,9 @@ async def retrieve(
     cannot answer, so a model outage costs precision, never the memories
     themselves.
     """
-    from life_graph.api.dependencies import get_memory_manager, get_store
     from life_graph.config import settings
     from life_graph.core.tenant import get_current_tenant_id
+    from life_graph.runtime import get_memory_manager, get_store
     from life_graph.services import episodes, memory_tiers
 
     embedding = await get_memory_manager().generate_embedding(question)

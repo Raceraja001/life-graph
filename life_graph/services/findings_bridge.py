@@ -197,7 +197,7 @@ class FindingsBridgeHandler:
 
     def _get_bridge(self) -> FindingsBridge:
         if self._bridge is None:
-            from life_graph.api.dependencies import get_notification_engine
+            from life_graph.runtime import get_notification_engine
             from life_graph.services.webpush import PushService
             from life_graph.storage.database import async_session
 

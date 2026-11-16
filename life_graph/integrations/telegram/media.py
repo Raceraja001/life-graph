@@ -225,8 +225,8 @@ def _service():  # noqa: ANN202
     an HTTP request and meaningless inside a poll loop. The underlying
     ``ImportError`` is caught by the caller instead.
     """
-    from life_graph.api.dependencies import get_extraction_pipeline
     from life_graph.core.events import event_bus
+    from life_graph.runtime import get_extraction_pipeline
     from life_graph.services.multimodal import MultiModalService
     from life_graph.storage.minio_client import MinIOStorage
 

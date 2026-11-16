@@ -75,7 +75,7 @@ def answer_text(result: dict[str, Any] | None) -> str:
 async def ask(tenant_id: str, question: str, *, pm=None, timeout: float | None = None) -> str:
     """Ask the assistant persona and wait for its answer."""
     if pm is None:
-        from life_graph.api.dependencies import get_process_manager
+        from life_graph.runtime import get_process_manager
 
         pm = get_process_manager()
     timeout = timeout or settings.telegram_ask_timeout_seconds

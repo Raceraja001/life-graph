@@ -100,9 +100,9 @@ async def memory_search(query: str, limit: int = DEFAULT_LIMIT) -> str:
     # Imported here, not at module scope: api.dependencies pulls in the
     # whole service graph, and tools are imported during startup before
     # that is wired up (the delegate.py pattern).
-    from life_graph.api.dependencies import get_memory_manager, get_store
     from life_graph.core.task_context import get_current_task_context
     from life_graph.core.tenant import has_tenant_context, tenant_scope
+    from life_graph.runtime import get_memory_manager, get_store
 
     if has_tenant_context():
         scope: Any = nullcontext()
@@ -408,10 +408,10 @@ async def memory_save(
     """
     import uuid
 
-    from life_graph.api.dependencies import get_memory_manager, get_store
     from life_graph.core.task_context import get_current_task_context
     from life_graph.core.tenant import get_current_tenant_id, has_tenant_context, tenant_scope
     from life_graph.models.schemas import MemoryCreate
+    from life_graph.runtime import get_memory_manager, get_store
 
     ctx = get_current_task_context()
     if has_tenant_context():

@@ -26,7 +26,7 @@ async def trigger_auto_action(request: AutoFixRequest):
     """
     tenant_id = get_current_tenant_id()
 
-    from life_graph.api.dependencies import get_autofix_service
+    from life_graph.runtime import get_autofix_service
 
     service = get_autofix_service()
 
@@ -84,7 +84,7 @@ async def rollback_action(action_id: str):
     """Rollback a previously executed auto action."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.api.dependencies import get_autofix_service
+    from life_graph.runtime import get_autofix_service
 
     service = get_autofix_service()
 

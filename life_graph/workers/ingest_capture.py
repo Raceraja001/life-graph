@@ -74,7 +74,7 @@ async def ingest_capture_text(
     """
     set_tenant_context(tenant_id, "system")
 
-    from life_graph.api.dependencies import get_memory_manager
+    from life_graph.runtime import get_memory_manager
 
     manager = get_memory_manager()
 

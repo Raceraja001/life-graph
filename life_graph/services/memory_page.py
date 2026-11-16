@@ -79,8 +79,8 @@ def _evidence(m: Any) -> str:
 
 def row(m: Any) -> dict[str, Any]:
     """One memory as the page shows it."""
-    from life_graph.api.jarvis import _source
     from life_graph.services.jarvis_memory import kind_of
+    from life_graph.services.memory_sources import source_label as _source
 
     props = m.properties or {}
     slot = props.get("slot")
@@ -547,9 +547,9 @@ async def correct(tenant_id: str, memory_id: uuid.UUID, content: str) -> dict[st
     slot so the form keeps its field, supersedes the old one, and files the
     "You corrected a memory" approval (rejecting it restores the old one).
     api/jarvis.py's undo takes it back."""
-    from life_graph.api.dependencies import get_memory_manager, get_store
     from life_graph.core.tenant import tenant_scope
     from life_graph.models.schemas import MemoryCreate
+    from life_graph.runtime import get_memory_manager, get_store
     from life_graph.tools.memory_search import _queue_replacement, _supersede
 
     text_ = " ".join(str(content or "").split())

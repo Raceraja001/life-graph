@@ -123,8 +123,8 @@ def _iso(value) -> str | None:
 
 
 def memory_row(m) -> dict[str, Any]:
-    from life_graph.api.jarvis import _source
     from life_graph.core.evidence import evidence_of
+    from life_graph.services.memory_sources import source_label as _source
 
     return {
         "id": str(m.id),
@@ -401,7 +401,7 @@ class SearchUnavailableError(RuntimeError):
 async def search(query: str, limit: int = SEARCH_DEFAULT) -> list[dict[str, Any]]:
     """Active memories for *query*: the hybrid search memory_search uses
     (tools/memory_search.py), in the request's tenant. Blank asks nothing."""
-    from life_graph.api.dependencies import get_memory_manager, get_store
+    from life_graph.runtime import get_memory_manager, get_store
 
     query = " ".join((query or "").split())
     if not query:

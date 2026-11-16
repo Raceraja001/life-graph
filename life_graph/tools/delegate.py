@@ -29,8 +29,8 @@ _TERMINAL_STATUSES = {"completed", "failed", "timeout", "cancelled"}
 async def _holds_host_tools(tenant_id: str, persona: str) -> bool:
     """Whether *persona* can touch files, code or the shell. A failed lookup
     counts as yes: this decides a refusal."""
-    from life_graph.api.dependencies import get_persona_service
     from life_graph.kernel.personas import HOST_TOOLS
+    from life_graph.runtime import get_persona_service
 
     try:
         row = await get_persona_service().get_by_name(tenant_id, persona)
@@ -102,8 +102,8 @@ async def delegate_to_persona(
     {"error": "..."} so the calling persona's tool-loop can react
     to them like any other tool result.
     """
-    from life_graph.api.dependencies import get_process_manager
     from life_graph.core.task_context import get_current_task_context
+    from life_graph.runtime import get_process_manager
 
     ctx = get_current_task_context()
     if ctx is None:

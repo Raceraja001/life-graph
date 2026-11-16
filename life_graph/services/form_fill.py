@@ -54,9 +54,9 @@ def wants_slot(m: Any) -> bool:
 
 async def ask_slot(content: str, subject: str | None = None) -> str | None:
     """The normalised slot for one fact, or None."""
-    from life_graph.api.dependencies import get_lm_client
     from life_graph.config import settings
     from life_graph.core import slots
+    from life_graph.runtime import get_lm_client
 
     reply = await get_lm_client().chat_local_only(
         messages=[{"role": "system", "content": PROMPT}, {"role": "user", "content": content}],
@@ -148,7 +148,7 @@ async def fill(tenant_id: str, cap: int = CAP) -> dict[str, int]:
             )
         await session.commit()
     if todo["replace"]:
-        from life_graph.api.dependencies import get_memory_manager
+        from life_graph.runtime import get_memory_manager
 
         manager = get_memory_manager()
         with tenant_scope(tenant_id):
