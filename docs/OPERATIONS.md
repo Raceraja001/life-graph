@@ -264,3 +264,224 @@ curl -fsS http://localhost/health
 - [ ] Off-site repo (`restic snapshots`) grew this week
 - [ ] Backup volume disk usage under control (`ls -lh /backups`)
 - [ ] The vault key is still backed up somewhere other than the database dump
+
+
+## Isolated Browser Runtime and Egress Proxy Deployment
+
+The autonomous browser execution stack runs in an isolated container topology defined in `compose.sandbox.yaml`:
+
+| Container | Image | Purpose | Networks | Exposed Ports |
+|---|---|---|---|---|
+| `browser` | `life-graph-sandbox-browser:dev` | Headless Chromium instance running under dumb-init | `sandbox_control`, `sandbox_egress` | None (internal to Docker networks) |
+| `egress` | `life-graph-sandbox-egress:dev` | Forward HTTP proxy (`life_graph.services.egress_proxy`) with destination validation and IP pinning | `sandbox_egress`, `sandbox_outbound` | None (internal to Docker networks) |
+
+### 4-Network Isolation Topology
+
+The container stack enforces strict network isolation across four segregated bridges:
+
+1. **`life_graph_sandbox_control` (`172.24.0.0/16`)**:
+   - Internal bridge connecting the host application (`life-graph` API / worker) to the `browser` container on port 9222.
+   - Provides no external internet access (`internal: true`).
+2. **`life_graph_sandbox_egress` (`192.168.80.0/24`)**:
+   - Internal point-to-point bridge connecting `browser` to the `egress` proxy on port 8080 (`internal: true`).
+   - The browser container routes all web traffic through `http://egress:8080`.
+3. **`life_graph_sandbox_outbound` (`192.168.32.0/24`)**:
+   - Standard bridge with NAT allowing the `egress` proxy to communicate with external web origins.
+   - The `browser` container is **not** attached to this network.
+4. **Host / App Network**:
+   - The host application accesses the browser control channel via Docker port binding or container IP resolution (`ws://<browser-ip>:9222/<token>`).
+
+### Control Channel Authentication
+
+Direct access to the browser WebSocket is guarded by an ephemeral path token:
+- Environment variable: `SANDBOX_BROWSER_PATH`.
+- Minimum length: 32 hexadecimal characters (128-bit entropy).
+- Verification:
+  - Connections to `ws://browser:9222/` without the path token are rejected with `400 Bad Request`.
+  - Connections with a mismatched token are rejected with `400 Bad Request`.
+  - Correct connections (`ws://browser:9222/<token>`) negotiate WebSocket upgrade.
+- Token redaction: Client libraries and loggers mask the path token in URLs, exceptions, and audit logs.
+
+### Egress Proxy Enforcement
+
+All browser web requests pass through `life_graph.services.egress_proxy`:
+- **Destination Validation (`validate_destination_url`)**:
+  - Rejects loopback addresses (`127.0.0.0/8`, `::1`).
+  - Rejects private RFC1918 ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
+  - Rejects cloud metadata services (`169.254.169.254`, `metadata.google.internal`).
+  - Rejects Carrier-Grade NAT (`100.64.0.0/10`), link-local, multicast, and broadcast addresses.
+  - Rejects dangerous schemes (`file://`, `javascript:`, `data:`, `ftp://`).
+  - Rejects non-web ports (ports other than 80 and 443).
+- **IP Pinning**:
+  - Resolves hostnames once via trusted DNS and binds socket connections directly to the validated IP, eliminating DNS rebinding attacks (`Time-of-Check to Time-of-Use`).
+- **Origin Fencing**:
+  - Enforces that all HTTP requests and redirects remain within the owner-approved target origins. In-flight redirects off-origin fail closed with `DestinationRefusedError` and halt errand execution before side-effects.
+
+## Durable Authorization Schema and Migrations
+
+Durable capabilities and standing rules persist in PostgreSQL (`revision 059`):
+
+### Schema (`authorization_capabilities`)
+
+```sql
+CREATE TABLE authorization_capabilities (
+    capability_id VARCHAR(64) PRIMARY KEY,
+    tenant_id VARCHAR(64) NOT NULL,
+    errand_id VARCHAR(64) NOT NULL,
+    step_index INTEGER NOT NULL,
+    action_types TEXT[] NOT NULL,
+    target_origins TEXT[] NOT NULL,
+    target_selector TEXT,
+    parameters_hash VARCHAR(64),
+    one_use BOOLEAN NOT NULL DEFAULT TRUE,
+    expires_at TIMESTAMPTZ,
+    spent_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_auth_caps_tenant ON authorization_capabilities(tenant_id);
+CREATE INDEX idx_auth_caps_errand ON authorization_capabilities(errand_id);
+CREATE INDEX idx_auth_caps_lookup ON authorization_capabilities(capability_id, tenant_id);
+```
+
+### Exact-Step Binding and Atomic Consumption
+
+Authorization checks enforce exact multi-attribute binding:
+- `capability_id` must match.
+- `tenant_id` must match (prevents cross-tenant attacks).
+- `errand_id` must match (prevents cross-errand reuse).
+- `step_index` must match (prevents cross-step privilege escalation).
+- `target_selector` must match canonical selector.
+- `parameters_hash` must match SHA-256 hash of canonical action parameters.
+
+Atomic consumption is executed via a single SQL CAS query:
+```sql
+UPDATE authorization_capabilities
+SET spent_at = :now
+WHERE capability_id = :capability_id
+  AND tenant_id = :tenant_id
+  AND errand_id = :errand_id
+  AND step_index = :step_index
+  AND (target_selector IS NULL OR target_selector = :target_selector)
+  AND (parameters_hash IS NULL OR parameters_hash = :parameters_hash)
+  AND spent_at IS NULL
+  AND (expires_at IS NULL OR expires_at > :now)
+  AND revoked_at IS NULL
+RETURNING capability_id;
+```
+If 16 workers or threads race to consume the same one-use capability simultaneously, exactly 1 worker succeeds; all 15 competing workers receive 0 rows and are denied with `ALREADY_CONSUMED`.
+
+## Restart, Recovery and Multi-Worker Behavior
+
+1. **Worker Queuing (`arq` / Redis)**:
+   - Autonomous errands are dispatched to Redis queues and consumed by background workers.
+   - If a worker crashes mid-errand, the errand run record is marked `FAILED` or times out via heartbeat expiry.
+2. **Crash Invariants**:
+   - Because authorization capabilities are committed to PostgreSQL prior to step execution, in-flight capabilities survive worker crashes.
+   - If an errand step already spent its capability (`spent_at IS NOT NULL`), a restarted worker cannot replay that step. It must request a new owner approval.
+3. **Application Startup Attachment**:
+   - On application startup (`life_graph/main.py`), durable stores are attached to process-wide factories via `attach_durable_stores()`.
+   - Verified in `test_the_application_startup_attaches_the_durable_stores`.
+
+## Browser Session Cleanup and Retention
+
+1. **Context Lifecycle**:
+   - Each browser errand allocates a dedicated, fresh browser context (`browser.new_context()`).
+   - Context is wiped upon errand termination (success, failure, or cancellation).
+   - Cookies, local storage, indexedDB, and cache are zeroed out between errands (`reset_context()`).
+2. **Audit Retention**:
+   - Errand run summaries and step outcomes are recorded in `job_runs` / `errand_runs`.
+   - All vaulted passwords, session secrets, and credentials filled during the errand are redacted with `[redacted]` before persisting logs.
+   - Page DOM text is stripped of scripts, sanitized, and enclosed in `<untrusted>` tags.
+
+## Incident Investigation and Audit Logging
+
+Audit logs capture security events across browser errands and capabilities:
+
+### Key Event Signatures
+
+| Event Pattern | Meaning | Investigation Action |
+|---|---|---|
+| `DestinationRefusedError` | Attempted SSRF, metadata access, or private IP navigation | Inspect target URL in errand plan; verify prompt injection in preceding steps |
+| `ALREADY_CONSUMED` | Replayed capability or duplicate worker execution | Check worker concurrency logs; ensure no rogue loops |
+| `TENANT_MISMATCH` | Cross-tenant capability consumption attempt | Critical security event: inspect caller origin and authentication token |
+| `STEP_MISMATCH` | Attempt to use approval granted for step $N$ on step $M$ | Inspect errand step planner for prompt injection or drift |
+| `PARAMETERS_MISMATCH` | Action parameters altered after owner approval | Inspect DOM mutation or script injection tampering with form values |
+| `origin changed mid-errand` | Navigation redirected off approved origin during execution | Domain hijacking or malicious redirect on target site |
+
+### Log Inspection Commands
+
+```bash
+# Search for denied egress and SSRF attempts
+grep -E "DestinationRefusedError|Egress proxy: refused" logs/api.log logs/worker.log
+
+# Search for capability verification failures
+grep -E "deny/denied|ALREADY_CONSUMED|TENANT_MISMATCH|STEP_MISMATCH" logs/worker.log
+
+# Search for origin redirect violations
+grep "origin changed mid-errand" logs/worker.log
+
+# Inspect machine-readable adversarial audit report
+cat evals/adversarial_security_report.json | jq .
+```
+
+## Emergency Kill Switches
+
+In case of abnormal browser agent activity or compromise:
+
+### 1. Instant Revocation of All Pending Capabilities
+
+To immediately cancel all unspent capabilities across all tenants:
+```bash
+docker compose -f docker-compose.production.yml exec postgres \
+  psql -U life_graph -c "UPDATE authorization_capabilities SET revoked_at = NOW() WHERE spent_at IS NULL;"
+```
+
+To revoke capabilities for a specific tenant:
+```bash
+docker compose -f docker-compose.production.yml exec postgres \
+  psql -U life_graph -c "UPDATE authorization_capabilities SET revoked_at = NOW() WHERE tenant_id = '<tenant_id>' AND spent_at IS NULL;"
+```
+
+### 2. Autonomous Browser Shutdown
+
+To instantly halt all running browser errands and kill the browser driver:
+```bash
+# Stop the sandbox browser container
+docker compose -f compose.sandbox.yaml stop browser
+
+# Alternatively, stop the egress proxy container (all web requests immediately drop)
+docker compose -f compose.sandbox.yaml stop egress
+```
+
+### 3. Application-Level Kill Switch
+
+Set in `.env.production` or runtime environment:
+```bash
+LIFE_GRAPH_BROWSER_ENABLED=false
+```
+Then restart the API and workers (`./dev.sh restart`). When disabled, all browser errand requests are rejected fail-closed with `BrowserDisabledError`.
+
+## Monitoring and Alerting Checklist
+
+Configure alerts in Cloud Monitoring, Grafana, or local alerting for:
+
+- [ ] **Egress Violations**: Alert on any HTTP 403 / `DestinationRefusedError` from `egress_proxy`.
+- [ ] **Replay Attempts**: Alert on any `ALREADY_CONSUMED` check result.
+- [ ] **Cross-Tenant Attempts**: P0 Alert on any `TENANT_MISMATCH` event.
+- [ ] **Budget Cap Exhaustion**: Alert when hourly spend reservation exceeds ceiling.
+- [ ] **Subsystem Health**: Continuous poll of `GET /health`; alert if `status != 'healthy'` or any of the 27 subsystems fail.
+
+## Known Limitations and Unverified Controls
+
+Per the Definition of Done in `docs/AI_WORK_ORDER.md`, the following boundaries must be clearly distinguished:
+
+| Control | Status | Verified Scope | Unverified / Open Limitation |
+|---|---|---|---|
+| Exact-step approval binding | Complete | Unit, Integration, Concurrency (16 threads), Adversarial | Live UI click confirmation in production mobile app |
+| Isolated browser container stack | Complete | Operational (Docker compose), Network isolation, Path token auth | Multi-node Kubernetes or Nomad cluster deployments |
+| Egress proxy enforcement | Complete | Pinned IP, DNS rebinding, Cloud metadata, RFC1918, Schemes | Advanced QUIC / HTTP/3 UDP proxying (currently TCP HTTP/HTTPS only) |
+| Durable authorization persistence | Complete | PostgreSQL schema, CAS update, Indexing, Expiry/Revocation | Distributed active-active multi-region database replication |
+| Confidence calibration | Complete | Calibration (N=60) & held-out (N=60) evaluation, ECE, Brier | Production domain adaptation on newly introduced knowledge verticals |
+| External financial spend | Complete | Spend reservation logic, concurrency locks, ledger | Live banking API debit transactions with real currency |
