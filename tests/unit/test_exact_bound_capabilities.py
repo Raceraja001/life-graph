@@ -930,7 +930,7 @@ def unreachable():
     from life_graph.autonomy.approvals.durable_store import DurableCapabilityStore
 
     engine = create_engine(
-        "postgresql://nobody:nobody@127.0.0.1:1/does_not_exist",
+        "postgresql+psycopg2://nobody:nobody@127.0.0.1:1/does_not_exist",
         connect_args={"connect_timeout": 1},
         future=True,
     )
@@ -994,7 +994,7 @@ def test_unreadable_standing_rules_are_no_rules_at_all():
     )
 
     engine = create_engine(
-        "postgresql://nobody:nobody@127.0.0.1:1/does_not_exist",
+        "postgresql+psycopg2://nobody:nobody@127.0.0.1:1/does_not_exist",
         connect_args={"connect_timeout": 1},
         future=True,
     )

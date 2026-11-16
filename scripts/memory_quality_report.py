@@ -31,6 +31,8 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
+from life_graph.config import sqlalchemy_sync_url
+
 QUESTION = re.compile(
     r"\?\s*$|\?\s+\S{0,40}$|^(can|could|should|shall) we\b|\bwe can\b.*\?", re.I | re.M
 )
@@ -200,7 +202,7 @@ def main() -> None:
 
         url = settings.database_url_sync
     db = url.rsplit("/", 1)[-1]
-    with create_engine(url).connect() as c:
+    with create_engine(sqlalchemy_sync_url(url)).connect() as c:
         c.execute(text("SET TRANSACTION READ ONLY"))
         lines = [f"memory quality report · database {db}"] + report(c, a.tenant, a.days, a.examples)
     print("\n".join(lines + spool_lines(a.spool)))

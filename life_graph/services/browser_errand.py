@@ -687,12 +687,15 @@ class BrowserErrandExecutor:
             here = destination.origin
         else:
             try:
-                here = normalise_origin_entry(
-                    str(await _call(self._driver.current_origin()) or "")
-                )
+                here = normalise_origin_entry(str(await _call(self._driver.current_origin()) or ""))
             except Exception as exc:  # noqa: BLE001 — a driver that cannot say where it is
                 return self._record(
-                    index, step, None, FAILED, action_type="", detail=f"origin unavailable: {exc!s:.80}"
+                    index,
+                    step,
+                    None,
+                    FAILED,
+                    action_type="",
+                    detail=f"origin unavailable: {exc!s:.80}",
                 )
             origin = here
 

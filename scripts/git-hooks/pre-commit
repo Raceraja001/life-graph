@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Runs the same ruff checks the CI lint job runs, on the staged life_graph/
+# Python files only. Enable once per clone:
+#
+#     git config core.hooksPath scripts/git-hooks
+#
+# Why: from 2026-11-13 to 11-16 ten ruff errors failed CI lint on every push
+# and the test jobs behind it were skipped for fifteen merges. Catching them
+# at commit time is cheaper than finding them in CI.
+#
+# Emergency bypass: git commit --no-verify (CI still checks).
+set -euo pipefail
+
+files=$(git diff --cached --name-only --diff-filter=ACMR -- 'life_graph/*.py')
+[ -z "$files" ] && exit 0
+
+ruff=""
+for c in "${RUFF:-}" "$HOME/.venvs/life-graph/bin/ruff" ".venv/bin/ruff" "$(command -v ruff || true)"; do
+  if [ -n "$c" ] && [ -x "$c" ]; then
+    ruff="$c"
+    break
+  fi
+done
+if [ -z "$ruff" ]; then
+  echo "pre-commit: ruff not found; skipping lint (CI will still run it)." >&2
+  exit 0
+fi
+
+want=$(grep -oE 'ruff==[0-9.]+' pyproject.toml | head -1 | cut -d= -f3)
+have=$("$ruff" --version | awk '{print $2}')
+if [ -n "$want" ] && [ "$want" != "$have" ]; then
+  echo "pre-commit: ruff $have here, CI pins $want; results may differ." >&2
+fi
+
+# shellcheck disable=SC2086
+if ! "$ruff" check $files || ! "$ruff" format --check $files; then
+  echo >&2
+  echo "pre-commit: ruff failed. Fix with: $ruff check --fix <files> && $ruff format <files>" >&2
+  exit 1
+fi

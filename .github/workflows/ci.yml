@@ -37,9 +37,13 @@ jobs:
       - name: Check formatting
         run: ruff format --check life_graph/
 
+  # Not gated on lint. From 2026-11-13 to 11-16 a handful of ruff errors
+  # failed lint on every push, and with needs: lint both test jobs were
+  # skipped -- fifteen merges reached master without the suite running once.
+  # Lint is still a required check of its own; it just can no longer hide
+  # the test result.
   unit-tests:
     runs-on: ubuntu-latest
-    needs: lint
     steps:
       - uses: actions/checkout@v4
 
@@ -137,8 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     # Not after unit-tests: the two are independent, and running them side
     # by side makes CI as long as the slower one, not the sum. Both must
-    # still pass to merge.
-    needs: lint
+    # still pass to merge. Not gated on lint either (see unit-tests).
 
     # Postgres is NOT a service container here. Life Graph needs pgvector *and*
     # Apache AGE in the same server, and no published image carries both — AGE

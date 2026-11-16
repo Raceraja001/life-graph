@@ -82,8 +82,6 @@ def detect_big_decision(title: str | None, reasoning: str | None = None) -> tupl
     return bool(matched), matched
 
 
-
-
 def trace_causal_chain(
     decision: Any,
     predictions: list[Any] | None = None,
@@ -135,8 +133,12 @@ def trace_causal_chain(
                 "outcome": getattr(p, "outcome", "pending"),
                 "resolution_source": getattr(p, "resolution_source", None),
                 "resolution_evidence": ev,
-                "evidence_backed": bool(ev and (ev.get("evidence_backed", True) if isinstance(ev, dict) else True)),
-                "resolved_at": getattr(p, "resolved_at", None).isoformat() if getattr(p, "resolved_at", None) else None,
+                "evidence_backed": bool(
+                    ev and (ev.get("evidence_backed", True) if isinstance(ev, dict) else True)
+                ),
+                "resolved_at": getattr(p, "resolved_at", None).isoformat()
+                if getattr(p, "resolved_at", None)
+                else None,
             }
         )
 
@@ -165,7 +167,9 @@ def trace_causal_chain(
         "chosen_option": getattr(decision, "chosen_option", None),
         "options_considered": options_considered,
         "rejected_options": [o for o in options_considered if not o["chosen"]],
-        "capture_event_id": str(getattr(decision, "capture_event_id", "")) if getattr(decision, "capture_event_id", None) else None,
+        "capture_event_id": str(getattr(decision, "capture_event_id", ""))
+        if getattr(decision, "capture_event_id", None)
+        else None,
         "predictions": pred_rows,
         "supporting_memories": mem_rows,
         "has_evidence_backed_outcome": any(

@@ -132,10 +132,13 @@ def sync_engine() -> Engine:
         if _engine is None:
             from sqlalchemy import create_engine
 
-            from life_graph.config import settings
+            from life_graph.config import settings, sqlalchemy_sync_url
 
+            # sqlalchemy_sync_url names the psycopg2 driver: on SQLAlchemy
+            # 2.1 a bare postgresql:// means psycopg (v3), which is not
+            # installed, and every approval would fail closed.
             _engine = create_engine(
-                settings.database_url_sync,
+                sqlalchemy_sync_url(settings.database_url_sync),
                 pool_size=2,
                 max_overflow=3,
                 pool_pre_ping=True,

@@ -101,8 +101,11 @@ async def test_today_is_the_devices_tenant_only(client):
         "mail_waiting",
         "work",
         "study_due",
+        "errands",
         "learnt",
     }
+    # Browser errands are per tenant too: none were made for this one.
+    assert data["errands"] == []
     assert data["counts"]["to_review"] == 1
     assert data["counts"]["approvals"] == 1 and data["work"]["approvals"] == 1
     assert [m["id"] for m in data["learnt"]] == [str(mine)]

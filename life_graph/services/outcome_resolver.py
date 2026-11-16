@@ -136,7 +136,6 @@ class OutcomeResolver:
         )
         return prediction
 
-
     async def record_evidence_backed_outcome(
         self,
         tenant_id: str,
@@ -147,7 +146,8 @@ class OutcomeResolver:
     ) -> Prediction:
         """Resolve a prediction only when concrete supporting evidence is provided."""
         if not isinstance(evidence, dict) or not any(
-            evidence.get(k) for k in ("source_ref", "observation", "artifact", "summary", "capture_event_id")
+            evidence.get(k)
+            for k in ("source_ref", "observation", "artifact", "summary", "capture_event_id")
         ):
             raise ValueError(
                 "Evidence-backed outcome requires non-empty supporting evidence "

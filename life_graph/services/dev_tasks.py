@@ -77,10 +77,16 @@ def build_checkpoint(
         "idempotency_key": idem,
         "checkpoint_at": datetime.now(UTC).isoformat(),
         "stage": stage,
-        "completed_steps": list(completed_steps if completed_steps is not None else existing.get("completed_steps") or []),
+        "completed_steps": list(
+            completed_steps
+            if completed_steps is not None
+            else existing.get("completed_steps") or []
+        ),
         "artifacts": list(artifacts if artifacts is not None else existing.get("artifacts") or []),
         "interrupt_requeues": int(props.get("interrupt_requeues") or 0),
-        "resume_instructions": resume_instructions or existing.get("resume_instructions") or "Recheck preconditions before resuming.",
+        "resume_instructions": resume_instructions
+        or existing.get("resume_instructions")
+        or "Recheck preconditions before resuming.",
     }
 
 
