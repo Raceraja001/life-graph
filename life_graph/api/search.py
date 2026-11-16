@@ -509,10 +509,6 @@ async def mid_session_recall(
     )
 
 
-@router.post(
-    "/ask",
-    summary="Ask a question — get a synthesized answer from memories",
-)
 def summarize_cross_domain(memories: list[Any]) -> dict[str, int]:
     """Summarize which memory domains/categories contributed evidence (P2 §3.9)."""
     counts: dict[str, int] = {}
@@ -592,6 +588,10 @@ def detect_knowledge_gaps(
     return gaps
 
 
+@router.post(
+    "/ask",
+    summary="Ask a question — get a synthesized answer from memories",
+)
 async def ask_brain(
     body: AskRequest,
     store: PostgresMemoryStore = Depends(get_store),
