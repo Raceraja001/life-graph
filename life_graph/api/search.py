@@ -8,11 +8,10 @@ gaps can be surfaced.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import logging
 import time
 import uuid
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -510,10 +509,6 @@ async def mid_session_recall(
     )
 
 
-@router.post(
-    "/ask",
-    summary="Ask a question — get a synthesized answer from memories",
-)
 def summarize_cross_domain(memories: list[Any]) -> dict[str, int]:
     """Summarize which memory domains/categories contributed evidence (P2 §3.9)."""
     counts: dict[str, int] = {}
@@ -573,20 +568,30 @@ def detect_knowledge_gaps(
         if abstention_reason == "no_matching_memories":
             gaps.append("No matching memories found — clarify or record the missing detail.")
         elif abstention_reason == "low_confidence":
-            gaps.append("Matching memories are below the confidence threshold — confirm if still accurate.")
+            gaps.append(
+                "Matching memories are below the confidence threshold — confirm if still accurate."
+            )
         return gaps
     if not memories:
         return gaps
     max_conf = max((float(getattr(m, "confidence", 0.5) or 0.5) for m in memories), default=0.0)
     if max_conf < 0.55:
-        gaps.append("Retrieved evidence has low confidence — confirm whether this is still current.")
-    if any(str(getattr(m, "status", "") or "").lower() in ("superseded", "archived") for m in memories):
+        gaps.append(
+            "Retrieved evidence has low confidence — confirm whether this is still current."
+        )
+    if any(
+        str(getattr(m, "status", "") or "").lower() in ("superseded", "archived") for m in memories
+    ):
         gaps.append("Includes historical or superseded memories — confirm the current state.")
     if any(float(getattr(m, "trust_score", 0.5) or 0.5) < 0.4 for m in memories):
         gaps.append("Includes lower-trust sources — verify against primary records if critical.")
     return gaps
 
 
+@router.post(
+    "/ask",
+    summary="Ask a question — get a synthesized answer from memories",
+)
 async def ask_brain(
     body: AskRequest,
     store: PostgresMemoryStore = Depends(get_store),
@@ -617,7 +622,9 @@ async def ask_brain(
     from life_graph.services.memory_retrieval import retrieve
 
     rows = (
-        await retrieve(body.question, limit=body.limit, as_of=body.as_of, recorded_as_of=body.recorded_as_of)
+        await retrieve(
+            body.question, limit=body.limit, as_of=body.as_of, recorded_as_of=body.recorded_as_of
+        )
         if body.recorded_as_of is not None
         else await retrieve(body.question, limit=body.limit, as_of=body.as_of)
     )
@@ -645,12 +652,14 @@ async def ask_brain(
             answered=False,
             abstained=True,
             abstention_reason="no_matching_memories",
-            knowledge_gaps=detect_knowledge_gaps([], abstained=True, abstention_reason="no_matching_memories"),
+            knowledge_gaps=detect_knowledge_gaps(
+                [], abstained=True, abstention_reason="no_matching_memories"
+            ),
             source_count=0,
             query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
             result_mode="index" if body.index_only else "full",
             as_of=body.as_of,
-        recorded_as_of=body.recorded_as_of,
+            recorded_as_of=body.recorded_as_of,
         )
     if body.min_confidence > 0 and max_confidence < body.min_confidence:
         return AskResponse(
@@ -658,14 +667,16 @@ async def ask_brain(
             answered=False,
             abstained=True,
             abstention_reason="low_confidence",
-            knowledge_gaps=detect_knowledge_gaps(memories, abstained=True, abstention_reason="low_confidence"),
+            knowledge_gaps=detect_knowledge_gaps(
+                memories, abstained=True, abstention_reason="low_confidence"
+            ),
             source_count=len(memories),
             memories=[] if body.index_only else memories,
             query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
             result_mode="index" if body.index_only else "full",
             index=_to_index_items([(r, 0.0) for r in rows]) if body.index_only else [],
             as_of=body.as_of,
-        recorded_as_of=body.recorded_as_of,
+            recorded_as_of=body.recorded_as_of,
         )
 
     # Synthesize answer (include provenance & temporal validity metadata)

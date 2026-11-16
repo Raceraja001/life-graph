@@ -332,7 +332,9 @@ class LMStudioClient:
             )
             return response.data[0].embedding
         except Exception as exc:
-            logger.warning("LM Studio embedding failed (model=%s): %s; trying Ollama fallback", model, exc)
+            logger.warning(
+                "LM Studio embedding failed (model=%s): %s; trying Ollama fallback", model, exc
+            )
             try:
                 vectors = await self._ollama_embed([text])
                 return vectors[0] if vectors else []
@@ -368,7 +370,11 @@ class LMStudioClient:
             )
             return [item.embedding for item in response.data]
         except Exception as exc:
-            logger.warning("LM Studio batch embedding failed (model=%s): %s; trying Ollama fallback", model, exc)
+            logger.warning(
+                "LM Studio batch embedding failed (model=%s): %s; trying Ollama fallback",
+                model,
+                exc,
+            )
             try:
                 vectors = await self._ollama_embed(texts)
                 if len(vectors) == len(texts):

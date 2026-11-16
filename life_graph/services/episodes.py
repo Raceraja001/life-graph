@@ -382,7 +382,7 @@ def link_experience_to_decision(
         "decision_title": (decision_title or "")[:120],
         "outcome": outcome or "pending",
     }
-    links = [l for l in links if l.get("decision_id") != entry["decision_id"]]
+    links = [link for link in links if link.get("decision_id") != entry["decision_id"]]
     links.append(entry)
     props["decision_links"] = links[-max(1, max_links) :]
     return props

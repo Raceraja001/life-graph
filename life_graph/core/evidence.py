@@ -302,7 +302,9 @@ def normalize_lineage(
     if not isinstance(location, dict):
         location = {"ref": _clean_str(location)} if _clean_str(location) else None
 
-    raw_derived = base.get("derived_from") or props.get("derived_from") or props.get("inferred_from")
+    raw_derived = (
+        base.get("derived_from") or props.get("derived_from") or props.get("inferred_from")
+    )
     derived_from: list[str] = []
     if isinstance(raw_derived, (list, tuple)):
         derived_from = [str(x) for x in raw_derived if x is not None and str(x).strip()]
@@ -312,12 +314,16 @@ def normalize_lineage(
     lineage: dict[str, Any] = {
         "source_type": _clean_str(base.get("source_type") or source_type, max_len=64),
         "capture_event_id": str(cap_id) if cap_id is not None and str(cap_id).strip() else None,
-        "extraction_trace_id": str(trace_id) if trace_id is not None and str(trace_id).strip() else None,
+        "extraction_trace_id": str(trace_id)
+        if trace_id is not None and str(trace_id).strip()
+        else None,
         "extraction_fact_index": fact_idx,
         "excerpt": excerpt,
         "location": location,
         "derived_from": derived_from,
-        "supersedes": str(supersedes or base.get("supersedes")) if (supersedes or base.get("supersedes")) else None,
+        "supersedes": str(supersedes or base.get("supersedes"))
+        if (supersedes or base.get("supersedes"))
+        else None,
     }
     return {k: v for k, v in lineage.items() if v not in (None, [], {})}
 
@@ -414,19 +420,120 @@ _CONTRADICTION_FLOOR = 0.25
 #: so overlap is measured on the words that carry the claim.
 _STOPWORDS = frozenset(
     [
-        "a", "an", "the", "this", "that", "these", "those", "there", "here",
-        "and", "or", "but", "if", "then", "else", "so", "as", "of", "in", "on",
-        "at", "to", "for", "from", "by", "with", "about", "into", "over",
-        "under", "between", "during", "within", "is", "are", "was", "were",
-        "be", "been", "being", "am", "do", "does", "did", "done", "has",
-        "have", "had", "having", "will", "would", "shall", "should", "can",
-        "could", "may", "might", "must", "i", "me", "my", "mine", "you",
-        "your", "yours", "he", "him", "his", "she", "her", "hers", "it", "its",
-        "we", "us", "our", "ours", "they", "them", "their", "theirs", "who",
-        "whom", "whose", "which", "what", "when", "where", "why", "how", "all",
-        "any", "both", "each", "few", "more", "most", "other", "some", "such",
-        "only", "own", "same", "than", "too", "very", "just", "now", "also",
-        "still", "really", "quite", "s", "t",
+        "a",
+        "an",
+        "the",
+        "this",
+        "that",
+        "these",
+        "those",
+        "there",
+        "here",
+        "and",
+        "or",
+        "but",
+        "if",
+        "then",
+        "else",
+        "so",
+        "as",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "from",
+        "by",
+        "with",
+        "about",
+        "into",
+        "over",
+        "under",
+        "between",
+        "during",
+        "within",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "am",
+        "do",
+        "does",
+        "did",
+        "done",
+        "has",
+        "have",
+        "had",
+        "having",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "can",
+        "could",
+        "may",
+        "might",
+        "must",
+        "i",
+        "me",
+        "my",
+        "mine",
+        "you",
+        "your",
+        "yours",
+        "he",
+        "him",
+        "his",
+        "she",
+        "her",
+        "hers",
+        "it",
+        "its",
+        "we",
+        "us",
+        "our",
+        "ours",
+        "they",
+        "them",
+        "their",
+        "theirs",
+        "who",
+        "whom",
+        "whose",
+        "which",
+        "what",
+        "when",
+        "where",
+        "why",
+        "how",
+        "all",
+        "any",
+        "both",
+        "each",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "only",
+        "own",
+        "same",
+        "than",
+        "too",
+        "very",
+        "just",
+        "now",
+        "also",
+        "still",
+        "really",
+        "quite",
+        "s",
+        "t",
     ]
 )
 
@@ -434,9 +541,28 @@ _STOPWORDS = frozenset(
 #: "does not drink coffee" overlap fully) and compared separately.
 _NEGATIONS = frozenset(
     [
-        "not", "no", "never", "none", "cannot", "cant", "dont", "doesnt",
-        "didnt", "isnt", "arent", "wasnt", "werent", "wont", "havent",
-        "hasnt", "hadnt", "nor", "neither", "nothing", "nowhere", "without",
+        "not",
+        "no",
+        "never",
+        "none",
+        "cannot",
+        "cant",
+        "dont",
+        "doesnt",
+        "didnt",
+        "isnt",
+        "arent",
+        "wasnt",
+        "werent",
+        "wont",
+        "havent",
+        "hasnt",
+        "hadnt",
+        "nor",
+        "neither",
+        "nothing",
+        "nowhere",
+        "without",
         "nope",
     ]
 )
@@ -448,10 +574,21 @@ _FRAME_TAIL = r"([a-z0-9 ,'&./-]+)"
 #: the same frame with values that share nothing, they are not merely failing
 #: to overlap — they disagree, and the claim is contradicted.
 _FRAMES: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("location", re.compile(r"\b(?:lives?|living|lived|resides?|residing|based|located|stays?|staying)\s+(?:in|at)\s+" + _FRAME_TAIL)),
+    (
+        "location",
+        re.compile(
+            r"\b(?:lives?|living|lived|resides?|residing|based|located|stays?|staying)\s+(?:in|at)\s+"
+            + _FRAME_TAIL
+        ),
+    ),
     ("employer", re.compile(r"\b(?:works?|working|worked|employed)\s+(?:at|for)\s+" + _FRAME_TAIL)),
     ("preference", re.compile(r"\b(?:prefers?|preferred|favours?|favors?)\s+" + _FRAME_TAIL)),
-    ("tool", re.compile(r"\b(?:uses?|using|used|owns?|owned|drives?|runs?)\s+(?:a|an|the)?\s*" + _FRAME_TAIL)),
+    (
+        "tool",
+        re.compile(
+            r"\b(?:uses?|using|used|owns?|owned|drives?|runs?)\s+(?:a|an|the)?\s*" + _FRAME_TAIL
+        ),
+    ),
     ("role", re.compile(r"\b(?:is|was|am|are)\s+(?:a|an|the)\s+" + _FRAME_TAIL)),
     ("branch", re.compile(r"\b(?:on\s+branch|branch)\s+" + _FRAME_TAIL)),
 )
@@ -551,7 +688,11 @@ def citation_text(memory: Any) -> str:
     """
     if memory is None:
         return ""
-    get = (lambda k: memory.get(k)) if isinstance(memory, dict) else (lambda k: getattr(memory, k, None))
+    get = (
+        (lambda k: memory.get(k))
+        if isinstance(memory, dict)
+        else (lambda k: getattr(memory, k, None))
+    )
     props = get("properties") or {}
     if not isinstance(props, dict):
         props = {}
@@ -575,7 +716,11 @@ def _is_tombstone(memory: Any) -> bool:
     """True when the cited row exists only as a marker that its source is gone."""
     if memory is None:
         return True
-    get = (lambda k: memory.get(k)) if isinstance(memory, dict) else (lambda k: getattr(memory, k, None))
+    get = (
+        (lambda k: memory.get(k))
+        if isinstance(memory, dict)
+        else (lambda k: getattr(memory, k, None))
+    )
     if get("deleted") or get("missing"):
         return True
     return str(get("status") or "").lower() in ("deleted", "purged", "missing", "unavailable")
@@ -625,8 +770,10 @@ def verify_claim_support(
     conflict = _frame_conflict(claim, source_text)
     antonym_clash = _has_antonym_conflict(_content_tokens(claim), _content_tokens(source_text))
     polarity_clash = _is_negated(claim) != _is_negated(source_text)
-    if score >= _CONTRADICTION_FLOOR and (conflict or antonym_clash or (polarity_clash and score >= 0.5)):
-        clash_reason = conflict or antonym_clash or 'opposite polarity'
+    if score >= _CONTRADICTION_FLOOR and (
+        conflict or antonym_clash or (polarity_clash and score >= 0.5)
+    ):
+        clash_reason = conflict or antonym_clash or "opposite polarity"
         detail.update(
             support_status=CONTRADICTED,
             detail=f"Citation contradicts claim ({clash_reason})",
@@ -686,8 +833,14 @@ def extract_claim_evidence(
             support_details.append(support)
             if mem is None:
                 continue
-            breakdowns.append(decompose_memory_confidence(mem, now=now, support_status=support["support_status"]))
-            mid = str(mem.get("id") or "") if isinstance(mem, dict) else str(getattr(mem, "id", "") or "")
+            breakdowns.append(
+                decompose_memory_confidence(mem, now=now, support_status=support["support_status"])
+            )
+            mid = (
+                str(mem.get("id") or "")
+                if isinstance(mem, dict)
+                else str(getattr(mem, "id", "") or "")
+            )
             if support["support_status"] in _STANDS and mid and mid not in seen_ids:
                 seen_ids.add(mid)
                 supporting.append(resolve_memory_lineage(mem))
@@ -696,7 +849,9 @@ def extract_claim_evidence(
             status = _worst_status([s["support_status"] for s in support_details])
         else:
             status = UNSUPPORTED  # uncited: nothing was offered as evidence
-        scores = [s["entailment_score"] for s in support_details if s["entailment_score"] is not None]
+        scores = [
+            s["entailment_score"] for s in support_details if s["entailment_score"] is not None
+        ]
         # Weakest-link, on both axes: one strong citation cannot validate a
         # claim that also rests on a weak or wrong one.
         claim_conf = round(min((b["calibrated_confidence"] for b in breakdowns), default=0.0), 4)
@@ -745,7 +900,11 @@ def rationale_type(
     """
     if owner_confirmed(properties):
         return EXPLICIT
-    return EXPLICIT if (source or "").strip().lower() in STATED_RATIONALE_SOURCES else RATIONALE_INFERRED
+    return (
+        EXPLICIT
+        if (source or "").strip().lower() in STATED_RATIONALE_SOURCES
+        else RATIONALE_INFERRED
+    )
 
 
 # ── Confidence calibration and action thresholds (5.3) ───────────────────
@@ -851,7 +1010,11 @@ def decompose_memory_confidence(
     rather than folds in: ``base_confidence`` stays readable beside the
     penalised ``calibrated_confidence``.
     """
-    get = (lambda k, d=None: memory.get(k, d)) if isinstance(memory, dict) else (lambda k, d=None: getattr(memory, k, d))
+    get = (
+        (lambda k, d=None: memory.get(k, d))
+        if isinstance(memory, dict)
+        else (lambda k, d=None: getattr(memory, k, d))
+    )
     props = get("properties") or {}
     if not isinstance(props, dict):
         props = {}
@@ -879,7 +1042,11 @@ def decompose_memory_confidence(
     if valid_to is not None and valid_to < ref_now:
         freshness = 0.20
     else:
-        ts = _parse_dt(get("updated_at")) or _parse_dt(get("recorded_at")) or _parse_dt(get("created_at"))
+        ts = (
+            _parse_dt(get("updated_at"))
+            or _parse_dt(get("recorded_at"))
+            or _parse_dt(get("created_at"))
+        )
         if ts is None:
             freshness = 0.75
         else:
@@ -887,7 +1054,10 @@ def decompose_memory_confidence(
             freshness = round(1.0 / (1.0 + age_days / 180.0), 4)
 
     base = round(
-        max(0.0, min(1.0, 0.35 * extraction_conf + 0.25 * trust_score + 0.25 * prior + 0.15 * freshness)),
+        max(
+            0.0,
+            min(1.0, 0.35 * extraction_conf + 0.25 * trust_score + 0.25 * prior + 0.15 * freshness),
+        ),
         4,
     )
     penalty = SUPPORT_PENALTY.get(support_status, 1.0) if support_status else 1.0
@@ -989,7 +1159,7 @@ def evaluate_confidence_calibration(
         confs = [it["confidence"] for it in items]
         ys = [it["correct"] for it in items]
 
-        brier = sum((c - y) ** 2 for c, y in zip(confs, ys)) / n
+        brier = sum((c - y) ** 2 for c, y in zip(confs, ys, strict=True)) / n
         mean_c = sum(confs) / n
         acc = sum(ys) / n
         gap = mean_c - acc
@@ -1029,10 +1199,9 @@ def evaluate_confidence_calibration(
             )
 
         # Classification metrics at decision_threshold
-        tp = sum(1 for c, y in zip(confs, ys) if c >= decision_threshold and y == 1.0)
-        fp = sum(1 for c, y in zip(confs, ys) if c >= decision_threshold and y == 0.0)
-        fn = sum(1 for c, y in zip(confs, ys) if c < decision_threshold and y == 1.0)
-        tn = sum(1 for c, y in zip(confs, ys) if c < decision_threshold and y == 0.0)
+        tp = sum(1 for c, y in zip(confs, ys, strict=True) if c >= decision_threshold and y == 1.0)
+        fp = sum(1 for c, y in zip(confs, ys, strict=True) if c >= decision_threshold and y == 0.0)
+        fn = sum(1 for c, y in zip(confs, ys, strict=True) if c < decision_threshold and y == 1.0)
 
         precision = (tp / (tp + fp)) if (tp + fp) > 0 else 0.0
         recall = (tp / (tp + fn)) if (tp + fn) > 0 else 0.0
@@ -1047,11 +1216,7 @@ def evaluate_confidence_calibration(
             if abstained
             else 0.0
         )
-        answering_acc = (
-            sum(it["correct"] for it in answered) / len(answered)
-            if answered
-            else 0.0
-        )
+        answering_acc = sum(it["correct"] for it in answered) / len(answered) if answered else 0.0
 
         res: dict[str, Any] = {
             "count": n,
@@ -1071,11 +1236,27 @@ def evaluate_confidence_calibration(
         }
 
         # Contradiction metrics when ground truth is supplied
-        contr_items = [it for it in items if "contradiction_predicted" in it and "contradiction_ground_truth" in it]
+        contr_items = [
+            it
+            for it in items
+            if "contradiction_predicted" in it and "contradiction_ground_truth" in it
+        ]
         if contr_items:
-            c_tp = sum(1 for it in contr_items if it["contradiction_predicted"] and it["contradiction_ground_truth"])
-            c_fp = sum(1 for it in contr_items if it["contradiction_predicted"] and not it["contradiction_ground_truth"])
-            c_fn = sum(1 for it in contr_items if not it["contradiction_predicted"] and it["contradiction_ground_truth"])
+            c_tp = sum(
+                1
+                for it in contr_items
+                if it["contradiction_predicted"] and it["contradiction_ground_truth"]
+            )
+            c_fp = sum(
+                1
+                for it in contr_items
+                if it["contradiction_predicted"] and not it["contradiction_ground_truth"]
+            )
+            c_fn = sum(
+                1
+                for it in contr_items
+                if not it["contradiction_predicted"] and it["contradiction_ground_truth"]
+            )
             c_prec = (c_tp / (c_tp + c_fp)) if (c_tp + c_fp) > 0 else 0.0
             c_rec = (c_tp / (c_tp + c_fn)) if (c_tp + c_fn) > 0 else 0.0
             c_f1 = (2 * c_prec * c_rec / (c_prec + c_rec)) if (c_prec + c_rec) > 0 else 0.0

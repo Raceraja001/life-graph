@@ -132,7 +132,11 @@ def provenance_score(m: Any) -> float:
     ev_kind = evidence_of(src_type, tier, props)
 
     bonus = 0.0
-    if ev_kind == SAID or tier in ("self", "verified", "owner", "canonical") or src_type in ("user_explicit", "manual"):
+    if (
+        ev_kind == SAID
+        or tier in ("self", "verified", "owner", "canonical")
+        or src_type in ("user_explicit", "manual")
+    ):
         bonus = 0.18
     elif ev_kind == DOCUMENT:
         bonus = 0.12
@@ -202,7 +206,11 @@ def explain_retrieval_selection(
     for m in candidates:
         mid = getattr(m, "id", None)
         props = getattr(m, "properties", None) or {}
-        ev = evidence_of(getattr(m, "source_type", None), getattr(m, "trust_tier", None), props if isinstance(props, dict) else {})
+        ev = evidence_of(
+            getattr(m, "source_type", None),
+            getattr(m, "trust_tier", None),
+            props if isinstance(props, dict) else {},
+        )
         if mid in final_ids:
             decision, reason = "selected", "relevant_and_valid"
         elif mid in picked_ids:
@@ -409,10 +417,18 @@ async def retrieve(
     )
     window = episodes.time_window(question, reference_date)
     if window is not None:
-        dated = [m for m in await episodes.episodes_between(tenant_id, *window, limit=limit) if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_ref)]
+        dated = [
+            m
+            for m in await episodes.episodes_between(tenant_id, *window, limit=limit)
+            if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_ref)
+        ]
 
     by_strength = settings.memory_strength_rank
-    search_statuses = ("active", "superseded", "archived") if (as_of is not None or recorded_as_of is not None) else ("active",)
+    search_statuses = (
+        ("active", "superseded", "archived")
+        if (as_of is not None or recorded_as_of is not None)
+        else ("active",)
+    )
     hits = await get_store().hybrid_search(
         embedding=embedding,
         query_text=question,
@@ -452,7 +468,9 @@ async def retrieve(
         # Dify by construction, and the judge dropped the one that mattered
         # ("Life Graph does NOT use … Dify", 2026-10-23). They go first, unjudged.
         ref_ = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
-        current = [m for m in linked if is_bitemporally_valid(m, valid_at=ref_, recorded_at=recorded_ref)]
+        current = [
+            m for m in linked if is_bitemporally_valid(m, valid_at=ref_, recorded_at=recorded_ref)
+        ]
         return (dated + current)[:limit]
     if settings.memory_links and candidates:
         candidates = await _with_neighbours(tenant_id, candidates)
@@ -474,17 +492,30 @@ async def retrieve(
     if past:
         # "Where did I work before?": how things were is in the cold tier.
         known = {m.id for m in memories} | seen
-        memories += [m for m in await _cold(embedding, question) if m.id not in known and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)]
+        memories += [
+            m
+            for m in await _cold(embedding, question)
+            if m.id not in known
+            and is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)
+        ]
     picked = await _judged(asked, memories) if memories else []
     if picked is None:
         logger.warning("Memory relevance judge gave no answer; using the search order")
         # Unjudged, so active ones only: an unjudged cold hit is a guess, and
         # being returned would reawaken it (services/memory_tiers.py).
-        warm = memories if (as_of is not None or recorded_as_of is not None) else [m for m in memories if getattr(m, "status", "active") == "active"]
+        warm = (
+            memories
+            if (as_of is not None or recorded_as_of is not None)
+            else [m for m in memories if getattr(m, "status", "active") == "active"]
+        )
         return (dated + warm)[:limit]
     if not picked and not dated and cold_too and not past:
         # Nothing warm answers: older memories might (nothing is forgotten).
-        cold_rows = [m for m in await _cold(embedding, question) if is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)]
+        cold_rows = [
+            m
+            for m in await _cold(embedding, question)
+            if is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)
+        ]
         picked = (await _judged(asked, cold_rows) or []) if cold_rows else []
     return (dated + picked)[:limit]
 

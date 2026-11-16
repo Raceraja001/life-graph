@@ -20,6 +20,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
+from life_graph.storage.graph import DEFAULT_GRAPH_TENANT
 from tests.integration.conftest import assert_ok, minio_available, skip_on_db_error
 
 TENANT_HEADERS = {
@@ -321,14 +322,23 @@ class TestGraphEndpoints:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_cypher_query(self, client):
+        # Raw Cypher reads across every tenant's graph, so only the
+        # administrative tenant may run it (api/graph.py execute_cypher).
         r = await client.post(
             "/api/v1/graph/query",
-            json={
-                "cypher": "MATCH (n) RETURN n LIMIT 5",
-                "columns": ["n"],
-            },
+            json={"cypher": "MATCH (n) RETURN n LIMIT 5", "columns": ["n"]},
+            headers={"X-Tenant-ID": DEFAULT_GRAPH_TENANT},
         )
         assert_ok(r, 200)
+
+    @pytest.mark.asyncio
+    async def test_cypher_query_is_refused_for_an_ordinary_tenant(self, client):
+        r = await client.post(
+            "/api/v1/graph/query",
+            json={"cypher": "MATCH (n) RETURN n LIMIT 5", "columns": ["n"]},
+        )
+        assert r.status_code == 403, r.text
+        assert "administrative tenant" in r.json()["detail"]
 
     @pytest.mark.asyncio
     @skip_on_db_error
