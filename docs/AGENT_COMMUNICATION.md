@@ -93,29 +93,27 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-16 09:30 UTC)
+### Current (2026-11-16 10:05 UTC)
 
-- **Checked at / branch / base SHA:** 2026-11-16 09:30 UTC on
-  `feat/work-order-p2-operations-docs`, cut from `master` at
-  `abbe389` (Merge pull request #238 from Raceraja001/feat/work-order-p1-adversarial-security). Working
+- **Checked at / branch / base SHA:** 2026-11-16 10:05 UTC on
+  `chore/state-and-completion-audit`, cut from `master` at
+  `96b587f` (Merge pull request #239 from Raceraja001/feat/work-order-p2-operations-docs). Working
   tree: `/home/raja/life-graph`.
-- **Current milestone:** P2 §8 — Operations and recovery documentation.
-  **Complete**.
-- **Verified status:**
-  - *Operational Runbook:* Expanded `docs/OPERATIONS.md` with 221 lines covering all 9 required operational domains:
-    1. Browser runtime and 4-network egress proxy topology (`compose.sandbox.yaml`).
-    2. WebSocket path token control channel authentication (`SANDBOX_BROWSER_PATH`).
-    3. Egress proxy destination validation, IP pinning, loopback/private/metadata refusals.
-    4. Durable authorization schema (`revision 059`) and atomic CAS consumption SQL query.
-    5. Multi-worker Redis queuing, crash invariants, and startup attachment.
-    6. Browser session lifecycle, ephemeral context reset, and confidential secret redaction.
-    7. Incident investigation runbook with log grep patterns for security events.
-    8. Emergency kill switches (SQL mass-revocation, container stops, application flag).
-    9. Monitoring checklist and verified controls vs limitations matrix.
-  - *Tests & Health:*
-    - 225 unit and integration tests green across test suites (0 regressions).
-    - Production service verified healthy on `race-wsl` (27/27 subsystems ok).
+- **Current milestone:** Completion audit of `docs/AI_WORK_ORDER.md` acceptance criteria & `docs/STATE.md` refresh.
+- **Verified status (per Section 9 Definition of Done):**
+  - **P0 §2 Exact-step-bound approval**: **Implemented, Integrated, Unit-tested, Adversarially tested**. Verified in code and 87 unit + adversarial tests. Remaining operational gap: live user interaction in deployed production UI.
+  - **P0 §3 Isolated browser runtime**: **Operationally verified and Complete**. Evidenced against live Chromium container (`compose.sandbox.yaml`), 4-network topology, 32-char path token authentication, egress proxy enforcement with IP pinning, SSRF/metadata blocking, and clean container teardown.
+  - **P1 §4 Durable authorization**: **Implemented, Integrated, Unit-tested**. Verified via PostgreSQL table `authorization_capabilities` (`revision 059`) and 16-thread concurrent atomic CAS consumption. Remaining operational gap: multi-node OS process restart in a distributed cluster.
+  - **P1 §5 Historical episode retrieval**: **Implemented, Integrated, Unit-tested**. Verified via calendar-day anchoring and timezone-aware boundaries. Remaining operational gap: longitudinal production history validation.
+  - **P1 §6 Evidence lineage & confidence evaluation**: **Implemented, Integrated, Unit-tested, Evaluated, and Complete**. Evaluated with ECE, MCE, reliability bins, Brier score <= 0.1413 across 60 calibration and 60 held-out samples.
+  - **P1 §7 Adversarial end-to-end security**: **Implemented, Integrated, Unit-tested, Adversarially tested, and Complete**. 8/8 attack scenarios passing in `tests/integration/test_adversarial_security_e2e.py` and logged to `evals/adversarial_security_report.json`.
+  - **P2 §8 Operations and recovery runbook**: **Complete**. Documented in `docs/OPERATIONS.md` across 9 operational domains.
+  - **Inventory & Tests**:
+    - `docs/STATE.md` refreshed via `python scripts/gen_state.py --html` (verified fresh with `--check`): 390 HTTP operations, 88 tables, 59 migrations, 79 event types, 13 personas, 296 settings, 4,685 test functions in 494 files, 131,435 lines of Python.
+    - All test suites passing (225/225 regression tests green, 0 failures, 0 regressions).
+    - Production service verified healthy at `http://localhost:8080/health` (27/27 subsystems ok).
 - **Open risks/blockers:**
-  - All P0, P1, and P2 milestones in `docs/AI_WORK_ORDER.md` are fully implemented, verified, and documented!
-- **Next smallest action:** Merge PR to `master`, sync to `prod`, and present complete status report to Raja.
+  - Real browser errands touching live third-party financial institutions require human-in-the-loop owner approval and cannot be fully automated end-to-end without credentials.
+  - Operational multi-worker durability is verified with in-process concurrency against real PostgreSQL; multi-host physical node failover remains unbenchmarked.
+- **Next smallest action:** Merge completion audit to `master` and synchronize to `prod`.
 - **Latest commit:** recorded in the follow-up commit.
