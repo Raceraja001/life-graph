@@ -162,6 +162,7 @@ Do not preserve stale status as current. Keep historical evidence in the work-or
   against that running stack: proxy bypass from inside the browser container,
   a redirect to a blocked destination, a real rebinding zone, a wrong token,
   no token, and a cross-tenant attempt.
-- **Latest commit:** see the slice 3 entry in
-  `docs/AI_WORK_ORDER.md` §10 for the exact SHA. Nothing pushed — the push is
-  the developer's call.
+- **Latest commit:** `58952fb` ("feat(browser): authenticated control channel
+  and deployable egress service (Slice 3)") on
+  `feat/work-order-browser-slice3`. Nothing pushed — the push is the
+  developer's call.

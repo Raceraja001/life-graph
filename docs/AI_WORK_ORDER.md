@@ -240,7 +240,8 @@ Remote base commit: 33523b16e92d9513a7c28e1eb1b2d49f05053b83 (docs: add
   persistent AI agent communication protocol) on branch
   feat/work-order-browser-slice3 from master. master and this branch were
   identical at the start of the session (git diff master..HEAD empty).
-Working commit: recorded in the follow-up entry below once committed.
+Working commit: 58952fb on branch feat/work-order-browser-slice3. Not
+  pushed — the push is the developer's call.
 Tasks inspected: section 3 (P0 isolated browser integration) — the two
   controls slice 2 left open, namely the authenticated control channel and
   the deployed, reachable proxy. Files read before changing anything:
@@ -488,9 +489,13 @@ Results:
      before/after comparison only. The integration suite is not usable as
      evidence for this slice on this machine, and nothing in the slice
      touches a database path.
-  4. All checks passed. (`ruff check life_graph/` still reports the same 31
-     pre-existing errors in untracked work-in-progress files — api/lore.py,
-     prosody/, tools/media_generation.py — none touched here.)
+  4. All checks passed. (`ruff check life_graph/` reports 28 pre-existing
+     errors, none in a file this slice touches: 21 in the untracked
+     prosody/yappu.py, 3 in the untracked tools/media_generation.py, and 4
+     in tracked files that are unchanged here and on master — api/graph.py
+     x2, api/search.py, services/episodes.py. Slice 2's entry said "31 in
+     untracked files", which is no longer the count and was never quite the
+     breakdown.)
   5. OK: docs/STATE.md is up to date.
   6. As described: help text renders, both destinations refused before any
      upstream connection, clean shutdown.
