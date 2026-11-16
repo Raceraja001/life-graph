@@ -168,14 +168,6 @@ async def get_entity(name: str):
     summary="Execute a Cypher query",
 )
 async def execute_cypher(body: CypherQuery):
-    """Execute a raw Cypher query against the knowledge graph."""
-    current_tenant = get_current_tenant_id()
-    if current_tenant != DEFAULT_GRAPH_TENANT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Raw Cypher execution is restricted to the administrative tenant.",
-        )
-
     """Execute a raw Cypher query against the knowledge graph.
 
     **Admin-level endpoint** — allows arbitrary read queries.
@@ -184,6 +176,12 @@ async def execute_cypher(body: CypherQuery):
     Returns an empty list with ``meta.graph_enabled = false`` when Apache AGE
     is not installed. A malformed query against a working install is still 400.
     """
+    current_tenant = get_current_tenant_id()
+    if current_tenant != DEFAULT_GRAPH_TENANT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Raw Cypher execution is restricted to the administrative tenant.",
+        )
     # Security: block write operations
     _write_keywords = re.compile(
         r"\b(CREATE|SET|DELETE|DETACH|MERGE|REMOVE|DROP|CALL)\b",
