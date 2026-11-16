@@ -157,6 +157,20 @@ local-nlp = [
     "spacy>=3.7",
     "sentence-transformers>=3.0",
 ]
+# Driving the sandboxed browser (services/browser_sandbox_driver.py). Only the
+# *client* — the browser itself lives in the container from
+# compose.sandbox.yaml, so nothing is downloaded by `playwright install` here
+# and no browser ever runs on the host. The client version must match the
+# Playwright base image in Dockerfile.browser (v1.52.0): the browser bundles
+# baked into that image are the ones that release expects.
+#
+# Without this extra there is no way to connect to the runtime, and browser
+# errands fail closed with "isolated browser sandbox is offline" rather than
+# running somewhere less contained. The unit suite needs none of it — it
+# injects a transport.
+browser-sandbox = [
+    "playwright==1.52.0",
+]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
@@ -169,7 +183,7 @@ dev = [
 # Everything a full self-hosted deployment uses, so `pip install life-graph[all]`
 # reproduces the old all-in-one install in one line.
 all = [
-    "life-graph[multimodal,cold-start,local-nlp]",
+    "life-graph[multimodal,cold-start,local-nlp,browser-sandbox]",
 ]
 
 [project.scripts]

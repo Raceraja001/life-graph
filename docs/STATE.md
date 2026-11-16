@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-14 15:52 UTC` from `feat/work-order-p0-p1` @ `a9f35c9`
+Generated `2026-11-16 05:28 UTC` from `feat/work-order-browser-isolation-p0` @ `596a1a0`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-14 15:52 UTC` from `feat/work-order-p0-p1` @ `a9f35c9`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
-| Config settings | **288** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4570** in 491 files |
+| Config settings | **292** (prefix `LIFE_GRAPH_`) |
+| Test functions | **4600** in 492 files |
 | Dashboard pages | **22** |
-| Python | 465 files, 128,534 lines |
+| Python | 466 files, 129,400 lines |
 
 ---
 
@@ -1017,16 +1017,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 376 | 3733 |
+| `tests/unit/` | 377 | 3763 |
 | `tests/integration/` | 114 | 825 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **491** | **4570** |
+| **total** | **492** | **4600** |
 
 ---
 
 ## Configuration
 
-288 settings, all overridable by environment variable.
+292 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1315,6 +1315,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_INVOICE_SELLER_DETAILS` | `''` |
 | `LIFE_GRAPH_VAULT_KEY` | `''` |
 | `LIFE_GRAPH_VAULT_KEY_FILE` | `'~/.config/life-graph/vault.key'` |
+| `LIFE_GRAPH_BROWSER_SANDBOX_URL` | `''` |
+| `LIFE_GRAPH_BROWSER_SANDBOX_WS_URL` | `''` |
+| `LIFE_GRAPH_BROWSER_SANDBOX_MODE` | `'isolated'` |
+| `LIFE_GRAPH_BROWSER_SANDBOX_TIMEOUT_SECONDS` | `30` |
 | `LIFE_GRAPH_DURABLE_AUTHORIZATION` | `True` |
 | `LIFE_GRAPH_SEED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_PLAN_LIMITS` | `{'free': {'requests_per_min': 60, 'max_memories': 1000, '…` |
