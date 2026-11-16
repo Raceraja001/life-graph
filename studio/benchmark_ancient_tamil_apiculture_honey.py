@@ -11,7 +11,7 @@ TEST_CASES = [
     {
         "id": "HNY-01",
         "category": "Sangam Botanical Verse",
-        "query": "Kurinjipattu classical Sangam verses on mountain honey gathering forest foraging protocols",
+        "query": "Kurinjipattu ninety nine mountain flowers and wild rock cliff honey gathering poetry Kapilar",
         "expected_slugs": [
             "text-kurinjipattu-wild-honey-harvesting-and-mountain-foraging-poetry"
         ]

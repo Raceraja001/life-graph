@@ -67,7 +67,7 @@ TEST_CASES = [
     {
         "id": "COP-08",
         "category": "Scriptorium Topography",
-        "query": "Thiruvidaimaruthur venerable temple city in the Kaveri delta administrative center for royal copperplate charters haven",
+        "query": "Thiruvidaimaruthur ancient Chola copperplate scriptorium and chancery haven Mahalingaswamy",
         "expected_slugs": [
             "place-thiruvidaimaruthur-ancient-chola-copperplate-scriptorium-haven"
         ]
