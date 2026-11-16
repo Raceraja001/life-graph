@@ -21,7 +21,7 @@ import logging
 import re
 import tempfile
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -143,6 +143,38 @@ async def _code_context(workdir: Path, instruction: str) -> str:
         return ""
 
 
+@dataclass
+class _DispatchRun:
+    """What one dispatch_task call carries from step to step.
+
+    The inputs are fixed at the start; each step fills in or replaces the
+    rest. A step that turns the outcome into a failure replaces ``result``
+    with a fresh DriverResult, and every later step reads that one.
+    """
+
+    tenant_id: str
+    task_id: str
+    instruction: str
+    task_type: str
+    persona_name: str | None
+    session: Any
+    cost_cap_usd: float
+    interactive: bool
+    spec_first: bool
+    acceptance_tests: list[str] | None
+    project_uuid: Any = None
+    packet: ContextPacket | None = None
+    persona: Any = None
+    driver: Any = None
+    verify_chain: list[str] | None = None
+    workdir: Path | None = None
+    worktree: Any = None
+    worktree_origin: str | None = None
+    result: DriverResult | None = None
+    unverifiable: list[VerifierResult] = field(default_factory=list)
+    spec_text: str | None = None
+
+
 class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
     """Selects driver, enforces limits, runs verification, manages one-bounce.
 
@@ -199,14 +231,20 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
     ) -> DriverResult:
         """Dispatch a task through the full driver pipeline.
 
-        Steps:
+        Steps (each a method below, in this order):
         1. Check WIP limits
-        2. Build context packet
-        3. Select driver
-        4. Dispatch with timeout
-        5. Run verifier chain
-        6. If failed: bounce once, then needs_human
-        7. Record stats + emit events
+        2. Build the context packet, scoped to the persona   (_prepare_packet)
+        3. Select driver, then the Governor budget gate       (_budget_gate)
+        4. Dispatch in the resolved workdir                   (_run_driver)
+           4b. worktree .git link intact                      (_check_worktree_link)
+           4c. a code task changed some file                  (_check_files_changed)
+        5. Run verifier chain, auto-fix once                  (_verify_result)
+        6. Unverifiable, bounce once, plan spec, or second opinion
+           6b. Land the verified work on a branch             (_land_verified_work)
+        7. Record stats + emit events                         (_finish_dispatch)
+
+        Each step reads and updates one _DispatchRun; a step that turns the
+        outcome into a failure replaces ``run.result`` and later steps see it.
 
         Args:
             tenant_id: Tenant scope.
@@ -226,503 +264,86 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         Raises:
             DispatchError: If WIP limits are exceeded or no driver available.
         """
-        # verify_chain is resolved after the persona loads (Step 2b): the
-        # precedence is caller argument > persona.verifier_chain > default.
-        caller_verify_chain = verify_chain
-
         owns_session = session is None
         if owns_session:
             session = self._session_factory()
 
-        worktree = None
-        worktree_origin: str | None = None
+        run = _DispatchRun(
+            tenant_id=tenant_id,
+            task_id=task_id,
+            instruction=instruction,
+            task_type=task_type,
+            persona_name=persona_name,
+            session=session,
+            cost_cap_usd=cost_cap_usd,
+            interactive=interactive,
+            spec_first=spec_first,
+            acceptance_tests=acceptance_tests,
+        )
 
         try:
             # Normalize the project id ONCE, before both consumers (WIP check
             # and packet build) — callers may pass a non-UUID pseudo-project.
-            project_uuid = _coerce_project_uuid(project_id)
+            run.project_uuid = _coerce_project_uuid(project_id)
 
             # Step 1: Check WIP limits
-            await self._check_wip_limits(tenant_id, project_uuid, session, exclude_task_id=task_id)
-
-            # Step 2: Build context packet
-            packet = await self._context_builder.build_packet(
-                tenant_id=tenant_id,
-                task_type=task_type,
-                instruction=instruction,
-                project_id=project_uuid,
-                session=session,
-                private=private,
+            await self._check_wip_limits(
+                tenant_id, run.project_uuid, session, exclude_task_id=task_id
             )
-            # Override the task_id from the caller
-            packet.task_id = uuid.UUID(task_id) if isinstance(task_id, str) else task_id
 
-            if task_type == "plan":
-                packet.instruction = _PLAN_ONLY_PREFIX + packet.instruction
-            elif spec_first:
-                packet.instruction = _SPEC_FIRST_PREFIX + packet.instruction
-
-            # Step 2b: Resolve the pinned persona ONCE (reused for driver
-            # selection below) and scope the packet to it. Without this the
-            # driver would run with the FULL tool registry — including the
-            # host shell (`run_command`) — for an unattended dispatch.
-            persona = await self._load_persona(tenant_id, persona_name, session)
-            if persona is not None:
-                packet.persona_system_prompt = getattr(persona, "system_prompt", None)
-                allowed = getattr(persona, "allowed_tools", None)
-                packet.allowed_tools = list(allowed) if allowed is not None else None
-                packet.persona_model = getattr(persona, "model", None) or None
-            if task_type == "plan":
-                # Prompting alone didn't hold (see _PLAN_ONLY_PREFIX); take
-                # the write tools away too. An unscoped or write-only persona
-                # still gets file_read, since a plan needs to read the code.
-                read = [t for t in (packet.allowed_tools or []) if t in _PLAN_READ_TOOLS]
-                packet.allowed_tools = read or ["file_read"]
-
-            # A persona declares the checks its own work must clear —
-            # dependency-updater asks for tests_pass because its whole job is
-            # "run the project's tests before landing". Nothing read that
-            # column, so it landed on the generic default instead and its
-            # tests never ran. An explicit caller argument still wins.
-            verify_chain = _resolve_verify_chain(caller_verify_chain, persona)
-            verify_chain = _with_required_checks(verify_chain, packet.project_context)
-            # A task fanned out from a plan carries the tests bound to the
-            # acceptance criteria it cites -- check those specifically, on
-            # top of whatever chain the persona/project asked for.
-            if acceptance_tests and "acceptance_tests_pass" not in verify_chain:
-                verify_chain = [*verify_chain, "acceptance_tests_pass"]
-
-            # Step 2c: opt-in workdir isolation — only when the caller asked
-            # for it AND a real project path resolved. A no-op flag on a
-            # personaless/projectless dispatch (today's exact behavior).
-            if isolate_workdir and packet.project_context.get("path"):
-                packet.project_context["isolation"] = True
+            # Step 2: Build context packet (+ persona scope, verifier chain)
+            await self._prepare_packet(
+                run,
+                private=private,
+                caller_verify_chain=verify_chain,
+                isolate_workdir=isolate_workdir,
+            )
 
             # Step 3: Select driver
-            driver = await self._select_driver(
+            run.driver = await self._select_driver(
                 task_type,
                 persona_name,
                 tenant_id,
                 session,
-                persona=persona,
-                project_id=project_uuid,
+                persona=run.persona,
+                project_id=run.project_uuid,
             )
 
             # Step 3b: Governor budget gate — refuse before spending, not after.
-            # Autonomous dispatches are throttled/denied when the monthly budget
-            # is exhausted; interactive (user-initiated) tasks are never blocked.
-            # The cap governs paid API spend only: a run whose every model is
-            # local (Ollama) cannot spend, so it is never denied.
-            decision = await governor.authorize(
-                tenant_id,
-                BudgetCategory.DRIVER,
-                estimated_usd=driver.cost_per_task(),
-                interactive=interactive or runs_on_local_model(driver.name, packet.persona_model),
-            )
-            if not decision.allowed:
-                logger.warning(
-                    "Task %s denied by Governor: %s (spent $%.2f / $%.2f)",
-                    task_id,
-                    decision.reason,
-                    decision.spent_usd,
-                    decision.cap_usd,
-                )
-                await self._emit(
-                    EventType.DRIVER_DISPATCHED,
-                    {
-                        "task_id": task_id,
-                        "driver": driver.name,
-                        "task_type": task_type,
-                        "tenant_id": tenant_id,
-                        "budget_denied": True,
-                    },
-                )
-                return DriverResult(
-                    success=False,
-                    error=f"budget: {decision.reason}",
-                    metadata={"budget_throttled": True, "reason": decision.reason},
-                )
+            denied = await self._budget_gate(run)
+            if denied is not None:
+                return denied
 
             # Emit dispatch event
             await self._emit(
                 EventType.DRIVER_DISPATCHED,
                 {
                     "task_id": task_id,
-                    "driver": driver.name,
+                    "driver": run.driver.name,
                     "task_type": task_type,
                     "tenant_id": tenant_id,
                 },
             )
 
-            # Step 4: Dispatch with workdir
-            scratch = Path(
-                tempfile.mkdtemp(
-                    prefix=f"lg_dispatch_{task_id[:8]}_", dir=tenant_scratch_root(tenant_id)
-                )
-            )
-            workdir, worktree = await resolve_workdir(packet, scratch)
-            if worktree is not None:
-                worktree_origin = packet.project_context.get("path")
-                # Describe the packet's project location as the ALREADY-resolved
-                # workdir, so a driver that also calls resolve_workdir internally
-                # (e.g. ClaudeCodeDriver) is idempotent — it sees isolation=False
-                # and a "path" that's already the resolved worktree, so it returns
-                # that same directory directly instead of creating a SECOND, nested
-                # worktree the verifier chain would never see.
-                #
-                # Guarded on worktree is not None on purpose: when isolation was
-                # never requested (or failed), project_context stays untouched, so
-                # a caller that had an empty {} context keeps one — LocalDriver's
-                # prompt gates a whole section on `if packet.project_context:`.
-                packet.project_context["path"] = str(workdir)
-                packet.project_context["isolation"] = False
-                # Step 4a: where the symbols the instruction names are defined
-                # and who calls them, from this worktree's own code.
-                code_context = await _code_context(workdir, instruction)
-                if code_context:
-                    packet.instruction += (
-                        "\n\n--- CODE CONTEXT (where the symbols named above are "
-                        "defined and used in this project) ---\n"
-                        f"{code_context}\n"
-                        "Check these callers before changing a signature or return shape."
-                    )
-            result = await driver.dispatch(
-                packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
-            )
-            await self._emit_steps(tenant_id, task_id, driver.name, 1, result)
-            # Captured here, before later steps replace `result` with fresh
-            # DriverResult instances (verification failure, dissent, ...)
-            # that don't carry the original metadata forward — merged back
-            # in at Step 7 regardless of how the task ultimately resolved.
-            spec_text = _extract_spec(result.output) if spec_first else None
+            # Step 4: Dispatch with workdir, then the two post-run guards
+            await self._run_driver(run)
+            await self._check_worktree_link(run)
+            await self._check_files_changed(run)
 
-            # Book the actual spend into the Governor's ledger.
-            await governor.record(tenant_id, BudgetCategory.DRIVER, result.cost_usd)
-
-            # Secondary per-task guard (the Governor is the primary budget gate).
-            if result.cost_usd > cost_cap_usd:
-                logger.warning(
-                    "Task %s exceeded per-task cost cap: $%.2f > $%.2f",
-                    task_id,
-                    result.cost_usd,
-                    cost_cap_usd,
-                )
-
-            # Step 4b: The driver must not have swapped the worktree's .git
-            # link. Verifier and landing git commands run on the host inside
-            # this directory; a planted .git dir would carry its own config
-            # (filters, fsmonitor) and make them execute agent-chosen programs.
-            if (
-                result.success
-                and worktree is not None
-                and worktree_origin
-                and not worktree_intact(worktree, worktree_origin)
-            ):
-                logger.error("Task %s: worktree .git link was tampered with", task_id)
-                tamper = VerifierResult(
-                    "worktree_intact",
-                    False,
-                    {"error": "worktree .git no longer links to the origin repository"},
-                )
-                await self._create_approval_entry(
-                    tenant_id, task_id, driver.name, [tamper], session
-                )
-                result = DriverResult(
-                    success=False,
-                    output=result.output,
-                    error="Worktree .git was modified by the driver — not verified or landed",
-                    cost_usd=result.cost_usd,
-                    duration_ms=result.duration_ms,
-                    metadata={"needs_human": True, "worktree_tampered": True},
-                )
-
-            # Step 4c: a coding task that left no file changed did not do the
-            # task. Every diff-scoped verifier passes vacuously on an empty
-            # diff, so this used to finish as "completed": task ade60cc6
-            # (2026-10-18) added one import, ruff's autofix removed it as
-            # unused, and nothing else was ever written.
-            if (
-                result.success
-                and task_type in ("code", "code_change")
-                and worktree is not None
-                and not await diff_against_head(worktree)
-            ):
-                logger.warning("Task %s: the run changed no files", task_id)
-                result = DriverResult(
-                    success=False,
-                    output=result.output,
-                    error="The run changed no files, so there is nothing to verify or land",
-                    cost_usd=result.cost_usd,
-                    duration_ms=result.duration_ms,
-                    metadata={**(result.metadata or {}), "stop_reason": "no_change"},
-                )
-
-            # Step 5: Run verifier chain
-            unverifiable: list[VerifierResult] = []
-            if verify_chain and result.success:
-                task_context = {
-                    "output": result.output,
-                    "task_type": task_type,
-                    "instruction": instruction,
-                    "scope_instruction": instruction,
-                    **{k: packet.project_context.get(k) for k in SANDBOX_SETTINGS},
-                    "acceptance_tests": acceptance_tests or [],
-                }
-                v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
-
-                # Step 5b: a mechanical auto-fix pass -- ruff --fix/--format,
-                # no driver call -- before the one-bounce rule spends a real
-                # (frontier) call re-dispatching a failure a formatter would
-                # have resolved for free. Skipped when there's nothing to
-                # gain: a clean result, or one that's only inconclusive
-                # (ruff can't make a missing tool appear).
-                if not verifier_chain.all_passed(v_results) and not verifier_chain.inconclusive(
-                    v_results
-                ):
-                    autofix = await mechanical_autofix(workdir, task_context)
-                    if autofix.get("fixed") and autofix.get("candidates"):
-                        logger.info(
-                            "Task %s: mechanical auto-fix ran on %s, re-verifying",
-                            task_id,
-                            autofix["candidates"],
-                        )
-                        v_results = await verifier_chain.run_chain(
-                            verify_chain, workdir, task_context
-                        )
-
-                # Recorded once, after any auto-fix retry: the pre-fix
-                # failure was transient and mechanical, not a decision worth
-                # keeping a row for — attempt 2 stays reserved for the
-                # post-BOUNCE (re-dispatched) re-check.
-                await self._record_verification(tenant_id, task_id, 1, v_results, session)
-
-                # An inconclusive check means the gate never ran — the tool it
-                # needs is not installed for this project. Re-dispatching the
-                # agent cannot install it, so bouncing would burn a second
-                # frontier call to reach the same state. Escalate directly,
-                # and say plainly that the work was not verified rather than
-                # that it failed.
-                unverifiable = verifier_chain.inconclusive(v_results)
-                if unverifiable:
-                    names = ", ".join(r.verifier for r in unverifiable)
-                    logger.warning(
-                        "Task %s could not be verified (%s) — escalating without bounce",
-                        task_id,
-                        names,
-                    )
-                    await self._create_approval_entry(
-                        tenant_id=tenant_id,
-                        task_id=task_id,
-                        driver_name=driver.name,
-                        v_results=v_results,
-                        session=session,
-                    )
-                    result = DriverResult(
-                        success=False,
-                        output=result.output,
-                        error=f"Could not verify — checks did not run: {names}",
-                        cost_usd=result.cost_usd,
-                        duration_ms=result.duration_ms,
-                        metadata={
-                            "needs_human": True,
-                            "unverifiable": [asdict(r) for r in unverifiable],
-                        },
-                    )
-                elif not verifier_chain.all_passed(v_results):
-                    # Step 6: One-bounce rule
-                    await self._emit(
-                        EventType.VERIFICATION_FAILED,
-                        {
-                            "task_id": task_id,
-                            "driver": driver.name,
-                            "failures": [asdict(r) for r in v_results if not r.passed],
-                        },
-                    )
-
-                    # Bounce: re-dispatch once with failure context
-                    bounce_result = await self._bounce_task(
-                        tenant_id=tenant_id,
-                        task_id=task_id,
-                        driver=driver,
-                        packet=packet,
-                        workdir=workdir,
-                        failure_report=v_results,
-                        session=session,
-                        verify_chain=verify_chain,
-                        acceptance_tests=acceptance_tests,
-                    )
-
-                    if bounce_result is not None:
-                        result = bounce_result
-                    else:
-                        # Second failure → needs_human
-                        result = DriverResult(
-                            success=False,
-                            output=result.output,
-                            error="Verification failed after bounce — needs human review",
-                            cost_usd=result.cost_usd,
-                            duration_ms=result.duration_ms,
-                            metadata={
-                                "needs_human": True,
-                                "verification_failures": [
-                                    asdict(r) for r in v_results if not r.passed
-                                ],
-                            },
-                        )
-                        await self._create_approval_entry(
-                            tenant_id, task_id, driver.name, v_results, session
-                        )
-                elif task_type == "plan":
-                    # A plan dispatch passed no_diff_in_plan (genuinely no file
-                    # changes) -- file the spec for human review instead of the
-                    # normal second-opinion-review-then-land path, which has
-                    # nothing to review or land here.
-                    await self._emit(
-                        EventType.VERIFICATION_PASSED,
-                        {"task_id": task_id, "driver": driver.name},
-                    )
-                    plan_spec = _extract_spec(result.output)
-                    if plan_spec:
-                        await self._create_plan_approval(
-                            tenant_id=tenant_id,
-                            task_id=task_id,
-                            driver_name=driver.name,
-                            instruction=instruction,
-                            spec_text=plan_spec,
-                            project_id=project_uuid,
-                            persona_name=persona_name,
-                            session=session,
-                            auto_approve=bool(packet.project_context.get("auto_approve_plans")),
-                        )
-                        result.metadata = {**(result.metadata or {}), "spec": plan_spec}
-                    else:
-                        result = DriverResult(
-                            success=False,
-                            output=result.output,
-                            error="Plan dispatch produced no '## Spec' section to review",
-                            cost_usd=result.cost_usd,
-                            duration_ms=result.duration_ms,
-                            metadata={"needs_human": True},
-                        )
-                else:
-                    await self._emit(
-                        EventType.VERIFICATION_PASSED,
-                        {"task_id": task_id, "driver": driver.name},
-                    )
-
-                    # Step 6b: Second-opinion dissenting review before landing.
-                    # Reads the real diff, not the driver's narrative output --
-                    # staging here is harmless, preserve_verified_work below
-                    # re-stages (a no-op) and commits regardless of the verdict.
-                    diff_text = await diff_against_head(workdir)
-                    verdict = await self._reviewer.review(task_type, instruction, diff_text)
-                    if verdict.ran and not verdict.approved:
-                        await self._emit(
-                            EventType.SECOND_OPINION_DISSENT,
-                            {
-                                "task_id": task_id,
-                                "driver": driver.name,
-                                "concern": verdict.concern,
-                            },
-                        )
-                        await self._create_dissent_approval_entry(
-                            tenant_id,
-                            task_id,
-                            driver.name,
-                            verdict.concern,
-                            session,
-                        )
-                        result = DriverResult(
-                            success=False,
-                            output=result.output,
-                            error=(
-                                "Second-opinion dissent: "
-                                f"{verdict.concern or 'unspecified concern'}"
-                            ),
-                            cost_usd=result.cost_usd,
-                            duration_ms=result.duration_ms,
-                            metadata={
-                                "needs_human": True,
-                                "second_opinion_concern": verdict.concern,
-                            },
-                        )
+            # Steps 5-6: Run verifier chain and act on its verdict
+            if run.verify_chain and run.result.success:
+                await self._verify_result(run)
 
             # Step 6b: Land the verified work before cleanup can discard it.
-            #
-            # The worktree is created with --detach and removed unconditionally
-            # in the finally below, so a verified change was deleted along with
-            # it: the pipeline fixed the bug, proved it with the verifier
-            # chain, then reported success having landed nothing. Committing
-            # onto a branch keeps it reachable after removal, without merging,
-            # pushing, or touching the default branch -- a reviewable branch is
-            # what the approval step needs to act on.
-            # An inconclusive verifier result is not a pass, but it is also not
-            # evidence of anything wrong -- the change was simply never
-            # checked (e.g. the project doesn't have the tool yet). Discarding
-            # it here means the only way to know the diff was ever correct is
-            # this run's logs; land it like verified work so a human can
-            # still review and merge it by hand, but never auto-open or
-            # auto-merge it -- that trust bar is reserved for work that was
-            # actually checked.
-            if (
-                (result.success or unverifiable)
-                and worktree is not None
-                and worktree_origin
-                and settings.driver_land_verified_work
-                # Re-checked: a bounce re-ran the driver after Step 4b.
-                and worktree_intact(worktree, worktree_origin)
-            ):
-                landed_branch = await preserve_verified_work(
-                    worktree=worktree,
-                    repo_path=worktree_origin,
-                    task_id=task_id,
-                    # The instruction states the intent; the driver's output
-                    # is a narrative ("Changed x: ...") that read badly as a
-                    # commit subject and, via squash-merge, in history.
-                    summary=instruction,
-                )
-                if landed_branch:
-                    result.metadata = {**(result.metadata or {}), "landed_branch": landed_branch}
-                    await self._create_pr_approval(
-                        tenant_id=tenant_id,
-                        task_id=task_id,
-                        driver_name=driver.name,
-                        instruction=instruction,
-                        result=result,
-                        branch=landed_branch,
-                        repo_path=worktree_origin,
-                        checks=verify_chain,
-                        project_id=project_uuid,
-                        session=session,
-                        verified=not unverifiable,
-                        unverifiable_checks=[r.verifier for r in unverifiable],
-                        auto_open_pr=bool(packet.project_context.get("auto_open_pr")),
-                        auto_merge=bool(packet.project_context.get("auto_merge")),
-                        base_branch=packet.project_context.get("base_branch") or None,
-                        change_policy=policy_from_project(packet.project_context),
-                    )
+            await self._land_verified_work(run)
 
             # Step 7: Record stats + emit result
-            if spec_text:
-                result.metadata = {**(result.metadata or {}), "spec": spec_text}
-            await self._record_stats(tenant_id, driver.name, task_type, result, session)
-
-            await self._emit(
-                EventType.DRIVER_RESULT,
-                {
-                    "task_id": task_id,
-                    "driver": driver.name,
-                    "success": result.success,
-                    "cost_usd": result.cost_usd,
-                    "duration_ms": result.duration_ms,
-                    "landed_branch": (result.metadata or {}).get("landed_branch"),
-                },
-            )
+            await self._finish_dispatch(run)
 
             if owns_session:
                 await session.commit()
 
-            return result
+            return run.result
 
         except Exception as e:
             if owns_session:
@@ -730,13 +351,524 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             logger.error("Dispatch failed for task %s: %s", task_id, e, exc_info=True)
             raise
         finally:
-            if worktree is not None:
+            if run.worktree is not None:
                 # Run the removal from the ORIGIN repo: packet.project_context
                 # ["path"] now points at the worktree itself (see Step 4), and
                 # git refuses to delete a worktree from inside it.
-                await remove_worktree(packet, worktree, repo_path=worktree_origin)
+                await remove_worktree(run.packet, run.worktree, repo_path=run.worktree_origin)
             if owns_session:
                 await session.close()
+
+    # ── dispatch_task steps, in pipeline order ──────────────────────────
+
+    async def _prepare_packet(
+        self,
+        run: _DispatchRun,
+        *,
+        private: bool,
+        caller_verify_chain: list[str] | None,
+        isolate_workdir: bool,
+    ) -> None:
+        """Step 2: the context packet, scoped to the persona, and the checks."""
+        packet = await self._context_builder.build_packet(
+            tenant_id=run.tenant_id,
+            task_type=run.task_type,
+            instruction=run.instruction,
+            project_id=run.project_uuid,
+            session=run.session,
+            private=private,
+        )
+        # Override the task_id from the caller
+        packet.task_id = uuid.UUID(run.task_id) if isinstance(run.task_id, str) else run.task_id
+        run.packet = packet
+
+        if run.task_type == "plan":
+            packet.instruction = _PLAN_ONLY_PREFIX + packet.instruction
+        elif run.spec_first:
+            packet.instruction = _SPEC_FIRST_PREFIX + packet.instruction
+
+        # Step 2b: Resolve the pinned persona ONCE (reused for driver
+        # selection below) and scope the packet to it. Without this the
+        # driver would run with the FULL tool registry — including the
+        # host shell (`run_command`) — for an unattended dispatch.
+        persona = await self._load_persona(run.tenant_id, run.persona_name, run.session)
+        run.persona = persona
+        if persona is not None:
+            packet.persona_system_prompt = getattr(persona, "system_prompt", None)
+            allowed = getattr(persona, "allowed_tools", None)
+            packet.allowed_tools = list(allowed) if allowed is not None else None
+            packet.persona_model = getattr(persona, "model", None) or None
+        if run.task_type == "plan":
+            # Prompting alone didn't hold (see _PLAN_ONLY_PREFIX); take
+            # the write tools away too. An unscoped or write-only persona
+            # still gets file_read, since a plan needs to read the code.
+            read = [t for t in (packet.allowed_tools or []) if t in _PLAN_READ_TOOLS]
+            packet.allowed_tools = read or ["file_read"]
+
+        # A persona declares the checks its own work must clear —
+        # dependency-updater asks for tests_pass because its whole job is
+        # "run the project's tests before landing". Nothing read that
+        # column, so it landed on the generic default instead and its
+        # tests never ran. An explicit caller argument still wins
+        # (precedence: caller argument > persona.verifier_chain > default).
+        verify_chain = _resolve_verify_chain(caller_verify_chain, persona)
+        verify_chain = _with_required_checks(verify_chain, packet.project_context)
+        # A task fanned out from a plan carries the tests bound to the
+        # acceptance criteria it cites -- check those specifically, on
+        # top of whatever chain the persona/project asked for.
+        if run.acceptance_tests and "acceptance_tests_pass" not in verify_chain:
+            verify_chain = [*verify_chain, "acceptance_tests_pass"]
+        run.verify_chain = verify_chain
+
+        # Step 2c: opt-in workdir isolation — only when the caller asked
+        # for it AND a real project path resolved. A no-op flag on a
+        # personaless/projectless dispatch (today's exact behavior).
+        if isolate_workdir and packet.project_context.get("path"):
+            packet.project_context["isolation"] = True
+
+    async def _budget_gate(self, run: _DispatchRun) -> DriverResult | None:
+        """Step 3b: the Governor's verdict; a DriverResult when it says no.
+
+        Autonomous dispatches are throttled/denied when the monthly budget
+        is exhausted; interactive (user-initiated) tasks are never blocked.
+        The cap governs paid API spend only: a run whose every model is
+        local (Ollama) cannot spend, so it is never denied.
+        """
+        driver = run.driver
+        decision = await governor.authorize(
+            run.tenant_id,
+            BudgetCategory.DRIVER,
+            estimated_usd=driver.cost_per_task(),
+            interactive=run.interactive
+            or runs_on_local_model(driver.name, run.packet.persona_model),
+        )
+        if decision.allowed:
+            return None
+        logger.warning(
+            "Task %s denied by Governor: %s (spent $%.2f / $%.2f)",
+            run.task_id,
+            decision.reason,
+            decision.spent_usd,
+            decision.cap_usd,
+        )
+        await self._emit(
+            EventType.DRIVER_DISPATCHED,
+            {
+                "task_id": run.task_id,
+                "driver": driver.name,
+                "task_type": run.task_type,
+                "tenant_id": run.tenant_id,
+                "budget_denied": True,
+            },
+        )
+        return DriverResult(
+            success=False,
+            error=f"budget: {decision.reason}",
+            metadata={"budget_throttled": True, "reason": decision.reason},
+        )
+
+    async def _run_driver(self, run: _DispatchRun) -> None:
+        """Step 4: resolve the workdir, run the driver, book what it spent."""
+        packet, driver, task_id = run.packet, run.driver, run.task_id
+        scratch = Path(
+            tempfile.mkdtemp(
+                prefix=f"lg_dispatch_{task_id[:8]}_", dir=tenant_scratch_root(run.tenant_id)
+            )
+        )
+        run.workdir, run.worktree = await resolve_workdir(packet, scratch)
+        if run.worktree is not None:
+            run.worktree_origin = packet.project_context.get("path")
+            # Describe the packet's project location as the ALREADY-resolved
+            # workdir, so a driver that also calls resolve_workdir internally
+            # (e.g. ClaudeCodeDriver) is idempotent — it sees isolation=False
+            # and a "path" that's already the resolved worktree, so it returns
+            # that same directory directly instead of creating a SECOND, nested
+            # worktree the verifier chain would never see.
+            #
+            # Guarded on worktree is not None on purpose: when isolation was
+            # never requested (or failed), project_context stays untouched, so
+            # a caller that had an empty {} context keeps one — LocalDriver's
+            # prompt gates a whole section on `if packet.project_context:`.
+            packet.project_context["path"] = str(run.workdir)
+            packet.project_context["isolation"] = False
+            # Step 4a: where the symbols the instruction names are defined
+            # and who calls them, from this worktree's own code.
+            code_context = await _code_context(run.workdir, run.instruction)
+            if code_context:
+                packet.instruction += (
+                    "\n\n--- CODE CONTEXT (where the symbols named above are "
+                    "defined and used in this project) ---\n"
+                    f"{code_context}\n"
+                    "Check these callers before changing a signature or return shape."
+                )
+        result = await driver.dispatch(
+            packet, run.workdir, timeout=getattr(driver, "dispatch_timeout", 300)
+        )
+        run.result = result
+        await self._emit_steps(run.tenant_id, task_id, driver.name, 1, result)
+        # Captured here, before later steps replace `run.result` with fresh
+        # DriverResult instances (verification failure, dissent, ...)
+        # that don't carry the original metadata forward — merged back
+        # in at Step 7 regardless of how the task ultimately resolved.
+        run.spec_text = _extract_spec(result.output) if run.spec_first else None
+
+        # Book the actual spend into the Governor's ledger.
+        await governor.record(run.tenant_id, BudgetCategory.DRIVER, result.cost_usd)
+
+        # Secondary per-task guard (the Governor is the primary budget gate).
+        if result.cost_usd > run.cost_cap_usd:
+            logger.warning(
+                "Task %s exceeded per-task cost cap: $%.2f > $%.2f",
+                task_id,
+                result.cost_usd,
+                run.cost_cap_usd,
+            )
+
+    async def _check_worktree_link(self, run: _DispatchRun) -> None:
+        """Step 4b: the driver must not have swapped the worktree's .git link.
+
+        Verifier and landing git commands run on the host inside this
+        directory; a planted .git dir would carry its own config (filters,
+        fsmonitor) and make them execute agent-chosen programs.
+        """
+        result = run.result
+        if not (
+            result.success
+            and run.worktree is not None
+            and run.worktree_origin
+            and not worktree_intact(run.worktree, run.worktree_origin)
+        ):
+            return
+        logger.error("Task %s: worktree .git link was tampered with", run.task_id)
+        tamper = VerifierResult(
+            "worktree_intact",
+            False,
+            {"error": "worktree .git no longer links to the origin repository"},
+        )
+        await self._create_approval_entry(
+            run.tenant_id, run.task_id, run.driver.name, [tamper], run.session
+        )
+        run.result = DriverResult(
+            success=False,
+            output=result.output,
+            error="Worktree .git was modified by the driver — not verified or landed",
+            cost_usd=result.cost_usd,
+            duration_ms=result.duration_ms,
+            metadata={"needs_human": True, "worktree_tampered": True},
+        )
+
+    async def _check_files_changed(self, run: _DispatchRun) -> None:
+        """Step 4c: a coding task that left no file changed did not do the task.
+
+        Every diff-scoped verifier passes vacuously on an empty diff, so this
+        used to finish as "completed": task ade60cc6 (2026-10-18) added one
+        import, ruff's autofix removed it as unused, and nothing else was
+        ever written.
+        """
+        result = run.result
+        if not (
+            result.success
+            and run.task_type in ("code", "code_change")
+            and run.worktree is not None
+            and not await diff_against_head(run.worktree)
+        ):
+            return
+        logger.warning("Task %s: the run changed no files", run.task_id)
+        run.result = DriverResult(
+            success=False,
+            output=result.output,
+            error="The run changed no files, so there is nothing to verify or land",
+            cost_usd=result.cost_usd,
+            duration_ms=result.duration_ms,
+            metadata={**(result.metadata or {}), "stop_reason": "no_change"},
+        )
+
+    async def _verify_result(self, run: _DispatchRun) -> None:
+        """Steps 5-6: run the verifier chain, then act on what it found."""
+        task_context = {
+            "output": run.result.output,
+            "task_type": run.task_type,
+            "instruction": run.instruction,
+            "scope_instruction": run.instruction,
+            **{k: run.packet.project_context.get(k) for k in SANDBOX_SETTINGS},
+            "acceptance_tests": run.acceptance_tests or [],
+        }
+        v_results = await verifier_chain.run_chain(run.verify_chain, run.workdir, task_context)
+
+        # Step 5b: a mechanical auto-fix pass -- ruff --fix/--format,
+        # no driver call -- before the one-bounce rule spends a real
+        # (frontier) call re-dispatching a failure a formatter would
+        # have resolved for free. Skipped when there's nothing to
+        # gain: a clean result, or one that's only inconclusive
+        # (ruff can't make a missing tool appear).
+        if not verifier_chain.all_passed(v_results) and not verifier_chain.inconclusive(v_results):
+            autofix = await mechanical_autofix(run.workdir, task_context)
+            if autofix.get("fixed") and autofix.get("candidates"):
+                logger.info(
+                    "Task %s: mechanical auto-fix ran on %s, re-verifying",
+                    run.task_id,
+                    autofix["candidates"],
+                )
+                v_results = await verifier_chain.run_chain(
+                    run.verify_chain, run.workdir, task_context
+                )
+
+        # Recorded once, after any auto-fix retry: the pre-fix
+        # failure was transient and mechanical, not a decision worth
+        # keeping a row for — attempt 2 stays reserved for the
+        # post-BOUNCE (re-dispatched) re-check.
+        await self._record_verification(run.tenant_id, run.task_id, 1, v_results, run.session)
+
+        run.unverifiable = verifier_chain.inconclusive(v_results)
+        if run.unverifiable:
+            await self._escalate_unverifiable(run, v_results)
+        elif not verifier_chain.all_passed(v_results):
+            await self._bounce_or_escalate(run, v_results)
+        elif run.task_type == "plan":
+            await self._file_plan_spec(run)
+        else:
+            await self._second_opinion_review(run)
+
+    async def _escalate_unverifiable(
+        self, run: _DispatchRun, v_results: list[VerifierResult]
+    ) -> None:
+        """Step 6, a check could not run: escalate without a bounce.
+
+        An inconclusive check means the gate never ran — the tool it needs
+        is not installed for this project. Re-dispatching the agent cannot
+        install it, so bouncing would burn a second frontier call to reach
+        the same state. Say plainly that the work was not verified rather
+        than that it failed.
+        """
+        result = run.result
+        names = ", ".join(r.verifier for r in run.unverifiable)
+        logger.warning(
+            "Task %s could not be verified (%s) — escalating without bounce",
+            run.task_id,
+            names,
+        )
+        await self._create_approval_entry(
+            tenant_id=run.tenant_id,
+            task_id=run.task_id,
+            driver_name=run.driver.name,
+            v_results=v_results,
+            session=run.session,
+        )
+        run.result = DriverResult(
+            success=False,
+            output=result.output,
+            error=f"Could not verify — checks did not run: {names}",
+            cost_usd=result.cost_usd,
+            duration_ms=result.duration_ms,
+            metadata={
+                "needs_human": True,
+                "unverifiable": [asdict(r) for r in run.unverifiable],
+            },
+        )
+
+    async def _bounce_or_escalate(self, run: _DispatchRun, v_results: list[VerifierResult]) -> None:
+        """Step 6, a check failed: the one-bounce rule, then needs_human."""
+        driver = run.driver
+        await self._emit(
+            EventType.VERIFICATION_FAILED,
+            {
+                "task_id": run.task_id,
+                "driver": driver.name,
+                "failures": [asdict(r) for r in v_results if not r.passed],
+            },
+        )
+
+        # Bounce: re-dispatch once with failure context
+        bounce_result = await self._bounce_task(
+            tenant_id=run.tenant_id,
+            task_id=run.task_id,
+            driver=driver,
+            packet=run.packet,
+            workdir=run.workdir,
+            failure_report=v_results,
+            session=run.session,
+            verify_chain=run.verify_chain,
+            acceptance_tests=run.acceptance_tests,
+        )
+
+        if bounce_result is not None:
+            run.result = bounce_result
+            return
+        # Second failure → needs_human
+        result = run.result
+        run.result = DriverResult(
+            success=False,
+            output=result.output,
+            error="Verification failed after bounce — needs human review",
+            cost_usd=result.cost_usd,
+            duration_ms=result.duration_ms,
+            metadata={
+                "needs_human": True,
+                "verification_failures": [asdict(r) for r in v_results if not r.passed],
+            },
+        )
+        await self._create_approval_entry(
+            run.tenant_id, run.task_id, driver.name, v_results, run.session
+        )
+
+    async def _file_plan_spec(self, run: _DispatchRun) -> None:
+        """Step 6, a plan passed: file its spec for human review.
+
+        A plan dispatch passed no_diff_in_plan (genuinely no file changes),
+        so the normal second-opinion-review-then-land path has nothing to
+        review or land here.
+        """
+        await self._emit(
+            EventType.VERIFICATION_PASSED,
+            {"task_id": run.task_id, "driver": run.driver.name},
+        )
+        result = run.result
+        plan_spec = _extract_spec(result.output)
+        if plan_spec:
+            await self._create_plan_approval(
+                tenant_id=run.tenant_id,
+                task_id=run.task_id,
+                driver_name=run.driver.name,
+                instruction=run.instruction,
+                spec_text=plan_spec,
+                project_id=run.project_uuid,
+                persona_name=run.persona_name,
+                session=run.session,
+                auto_approve=bool(run.packet.project_context.get("auto_approve_plans")),
+            )
+            result.metadata = {**(result.metadata or {}), "spec": plan_spec}
+        else:
+            run.result = DriverResult(
+                success=False,
+                output=result.output,
+                error="Plan dispatch produced no '## Spec' section to review",
+                cost_usd=result.cost_usd,
+                duration_ms=result.duration_ms,
+                metadata={"needs_human": True},
+            )
+
+    async def _second_opinion_review(self, run: _DispatchRun) -> None:
+        """Step 6, checks passed: a dissenting review before landing.
+
+        Reads the real diff, not the driver's narrative output -- staging
+        here is harmless, preserve_verified_work re-stages (a no-op) and
+        commits regardless of the verdict.
+        """
+        driver = run.driver
+        await self._emit(
+            EventType.VERIFICATION_PASSED,
+            {"task_id": run.task_id, "driver": driver.name},
+        )
+        diff_text = await diff_against_head(run.workdir)
+        verdict = await self._reviewer.review(run.task_type, run.instruction, diff_text)
+        if not (verdict.ran and not verdict.approved):
+            return
+        await self._emit(
+            EventType.SECOND_OPINION_DISSENT,
+            {
+                "task_id": run.task_id,
+                "driver": driver.name,
+                "concern": verdict.concern,
+            },
+        )
+        await self._create_dissent_approval_entry(
+            run.tenant_id,
+            run.task_id,
+            driver.name,
+            verdict.concern,
+            run.session,
+        )
+        result = run.result
+        run.result = DriverResult(
+            success=False,
+            output=result.output,
+            error=(f"Second-opinion dissent: {verdict.concern or 'unspecified concern'}"),
+            cost_usd=result.cost_usd,
+            duration_ms=result.duration_ms,
+            metadata={
+                "needs_human": True,
+                "second_opinion_concern": verdict.concern,
+            },
+        )
+
+    async def _land_verified_work(self, run: _DispatchRun) -> None:
+        """Step 6b: commit the verified work to a branch before cleanup.
+
+        The worktree is created with --detach and removed unconditionally
+        in dispatch_task's finally, so a verified change was deleted along
+        with it: the pipeline fixed the bug, proved it with the verifier
+        chain, then reported success having landed nothing. Committing
+        onto a branch keeps it reachable after removal, without merging,
+        pushing, or touching the default branch -- a reviewable branch is
+        what the approval step needs to act on.
+
+        An inconclusive verifier result is not a pass, but it is also not
+        evidence of anything wrong -- the change was simply never checked
+        (e.g. the project doesn't have the tool yet). Discarding it here
+        means the only way to know the diff was ever correct is this run's
+        logs; land it like verified work so a human can still review and
+        merge it by hand, but never auto-open or auto-merge it -- that
+        trust bar is reserved for work that was actually checked.
+        """
+        if not (
+            (run.result.success or run.unverifiable)
+            and run.worktree is not None
+            and run.worktree_origin
+            and settings.driver_land_verified_work
+            # Re-checked: a bounce re-ran the driver after Step 4b.
+            and worktree_intact(run.worktree, run.worktree_origin)
+        ):
+            return
+        landed_branch = await preserve_verified_work(
+            worktree=run.worktree,
+            repo_path=run.worktree_origin,
+            task_id=run.task_id,
+            # The instruction states the intent; the driver's output
+            # is a narrative ("Changed x: ...") that read badly as a
+            # commit subject and, via squash-merge, in history.
+            summary=run.instruction,
+        )
+        if not landed_branch:
+            return
+        ctx = run.packet.project_context
+        run.result.metadata = {**(run.result.metadata or {}), "landed_branch": landed_branch}
+        await self._create_pr_approval(
+            tenant_id=run.tenant_id,
+            task_id=run.task_id,
+            driver_name=run.driver.name,
+            instruction=run.instruction,
+            result=run.result,
+            branch=landed_branch,
+            repo_path=run.worktree_origin,
+            checks=run.verify_chain,
+            project_id=run.project_uuid,
+            session=run.session,
+            verified=not run.unverifiable,
+            unverifiable_checks=[r.verifier for r in run.unverifiable],
+            auto_open_pr=bool(ctx.get("auto_open_pr")),
+            auto_merge=bool(ctx.get("auto_merge")),
+            base_branch=ctx.get("base_branch") or None,
+            change_policy=policy_from_project(ctx),
+        )
+
+    async def _finish_dispatch(self, run: _DispatchRun) -> None:
+        """Step 7: record stats and emit the result event."""
+        result = run.result
+        if run.spec_text:
+            result.metadata = {**(result.metadata or {}), "spec": run.spec_text}
+        await self._record_stats(run.tenant_id, run.driver.name, run.task_type, result, run.session)
+
+        await self._emit(
+            EventType.DRIVER_RESULT,
+            {
+                "task_id": run.task_id,
+                "driver": run.driver.name,
+                "success": result.success,
+                "cost_usd": result.cost_usd,
+                "duration_ms": result.duration_ms,
+                "landed_branch": (result.metadata or {}).get("landed_branch"),
+            },
+        )
 
     async def _select_driver(
         self,
