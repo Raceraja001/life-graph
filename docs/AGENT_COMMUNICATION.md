@@ -93,43 +93,30 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-16 09:00 UTC)
+### Current (2026-11-16 09:15 UTC)
 
-- **Checked at / branch / base SHA:** 2026-11-16 09:00 UTC on
-  `feat/work-order-p1-evidence-confidence`, cut from `master` at
-  `35b8d55` (feat(browser): operational verification against live container stack and errand engine fix (#247)). Working
+- **Checked at / branch / base SHA:** 2026-11-16 09:15 UTC on
+  `feat/work-order-p1-adversarial-security`, cut from `master` at
+  `3979992` (Merge pull request #237 from Raceraja001/feat/work-order-p1-evidence-confidence). Working
   tree: `/home/raja/life-graph`.
-- **Current milestone:** P1 §6 — Strengthen evidence lineage and confidence
-  evaluation. **Implemented, Integrated, Unit-tested, Evaluated, and Complete**.
+- **Current milestone:** P1 §7 — Adversarial end-to-end security tests.
+  **Implemented, Integrated, Adversarially tested, and Complete**.
 - **Verified status:**
-  - *Code and algorithms:*
-    1. Extended `evaluate_confidence_calibration` in `life_graph/core/evidence.py`
-       to compute Expected Calibration Error (ECE) across $M$ equal-width bins,
-       Maximum Calibration Error (MCE), reliability diagrams / bin records,
-       precision, recall, F1, abstention rate, abstention precision, answering
-       accuracy, and contradiction detection metrics.
-    2. Added `_ANTONYM_PAIRS` and `branch` frame to `verify_claim_support` so
-       direct state contradictions (running vs stopped, active vs inactive, free
-       vs paid, success vs failure) are flagged as `contradicted` rather than
-       misattributed as merely unsupported.
-    3. Added `now: datetime | None = None` parameter to `extract_claim_evidence`
-       and threaded it to `decompose_memory_confidence` for deterministic
-       freshness and confidence evaluation across historical timestamps.
-  - *Datasets and evaluation runner:*
-    1. Created `evals/confidence_calibration_dataset.json` containing 60
-       calibration samples and 60 distinct held-out samples across all 6 evidence
-       kinds (`said`, `document`, `observed`, `summary`, `inferred`, `outside`),
-       contradictory claims, stale temporal facts, and abstention scenarios.
-    2. Created `scripts/eval_confidence_calibration.py` with `--verify` flag
-       enforcing quality gates (Brier <= 0.20, ECE <= 0.20, Abstention precision >= 0.85).
-       Outputs summary and reliability tables, writes `evals/calibration_report.json`.
-  - *Evaluation results:*
-    - `calibration_set` (N=60): Brier=0.1238, ECE=0.1891, Abstention Precision=1.0000, Contradiction F1=0.8571.
-    - `held_out_set` (N=60): Brier=0.1413, ECE=0.1877, Abstention Precision=0.9375, Contradiction F1=0.8182.
+  - *Adversarial test suite:* `tests/integration/test_adversarial_security_e2e.py`
+    exercising full workflows across all 8 attack surfaces specified in AI Work Order §7:
+    1. ADV-01: Malicious prompt injection in external web/doc text fenced in `<untrusted>` tags with `UNTRUSTED_PREAMBLE`.
+    2. ADV-02: Replay, forged capability IDs, cross-step execution, and tampered parameter hashes rejected fail-closed (`ALREADY_CONSUMED`, `UNKNOWN`, `STEP_MISMATCH`, `PARAMETERS_MISMATCH`).
+    3. ADV-03: Cross-tenant and cross-errand capability reuse attempts rejected (`TENANT_MISMATCH`, `ERRAND_MISMATCH`).
+    4. ADV-04: SSRF, cloud metadata (169.254.169.254), loopback (127.0.0.1), private IPs, non-web schemes, and mid-errand origin redirects stopped before execution.
+    5. ADV-05: Vault secret exfiltration via driver exceptions masked and page text echoes redacted (`[redacted]`), omitted from logs.
+    6. ADV-06: Browser session cookies and local storage isolated and wiped on context reset.
+    7. ADV-07: 16 concurrent threads racing to consume a single-use capability; exactly 1 caller succeeds and 15 fail with `ALREADY_CONSUMED`.
+    8. ADV-08: Client-supplied provenance spoofing stripped; contradictory memory facts forced to abstain.
+  - *Report artifact:* `evals/adversarial_security_report.json` containing 8 structured audit records with timestamps and verdicts.
   - *Tests:*
-    - 11 unit tests in `tests/unit/test_confidence_calibration.py` passed in 3.14s.
-    - 46 unit tests across 5 evidence and provenance modules passed in 13.80s (0 failures, 0 regressions).
+    - 8 integration tests in `tests/integration/test_adversarial_security_e2e.py` passed in 3.16s.
+    - 225 unit/integration tests across `test_confidence_calibration.py`, `test_browser_errand.py`, `test_exact_bound_capabilities.py`, and `test_adversarial_security_e2e.py` passed in 30.71s (0 failures, 0 regressions).
 - **Open risks/blockers:**
-  - None for P1 §6. Calibration metrics and held-out evaluation generalize without overfitting.
-- **Next smallest action:** Proceed to **P1 §7 — Adversarial end-to-end security tests** in `docs/AI_WORK_ORDER.md`.
+  - All P0 and P1 security and trustworthiness milestones are complete. The remaining work order task is **P2 §8 — Operations and recovery documentation**.
+- **Next smallest action:** Proceed to **P2 §8 — Operations and recovery documentation**.
 - **Latest commit:** recorded in the follow-up commit.
