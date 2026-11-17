@@ -28,6 +28,11 @@ import httpx
 from sqlalchemy import func, select
 
 from life_graph.config import settings
+from life_graph.services.local_model_registry import (
+    PERSONAL_DATA_TASKS,
+    RTX_5080_VRAM_GB,
+    select_backend_for_task,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -290,14 +295,77 @@ async def snapshot(
     )
 
 
+def carries_personal_data(properties: dict[str, Any] | None) -> bool:
+    """Whether a queued task's properties mark it as carrying the user's own data.
+
+    Either an explicit ``personal_data`` flag, or a task kind the local model
+    registry already classifies as personal (memory extraction, episode
+    summarization, personal chat/embedding/vision/speech).
+    """
+    props = properties or {}
+    if props.get("personal_data"):
+        return True
+    return any(props.get(key) in PERSONAL_DATA_TASKS for key in ("task_kind", "task_type"))
+
+
+_NEVER_LEAVES = "personal data never leaves the local machine"
+
+
+def _personal_data_route(persona: str, props: dict[str, Any], snap: Snapshot) -> Route:
+    """Strict local-only routing for a task carrying personal data.
+
+    The cloud branch is not reachable from here *at all*: when the local GPU
+    is not available the task waits for it rather than falling back to a free
+    cloud model, whatever ``snap.cloud`` holds. The registry's
+    :func:`select_backend_for_task` decides and explains, called with an empty
+    cloud-model list so it has no cloud answer it could give.
+
+    ``snap.free_gb`` is host RAM, not VRAM, so it is deliberately not passed
+    as the VRAM budget; a caller that actually measured free VRAM can say so
+    through a ``vram_free_gb`` property.
+    """
+    task_kind = props.get("task_kind") or props.get("task_type") or "personal_memory_extraction"
+    capability = props.get("capability") or "extraction"
+    try:
+        vram_free_gb = float(props.get("vram_free_gb", RTX_5080_VRAM_GB))
+    except (TypeError, ValueError):
+        vram_free_gb = RTX_5080_VRAM_GB
+    explanation = select_backend_for_task(
+        task_kind=str(task_kind),
+        capability=str(capability),
+        personal_data=True,
+        vram_free_gb=vram_free_gb,
+        user_active_on_gpu=bool(snap.active),
+        cloud_models_available=(),
+    )
+    if explanation.action == "run_local":
+        return Route("local", persona, f"personal data, local-only; {explanation.explanation}")
+    return Route("wait", persona, f"{_NEVER_LEAVES}; {explanation.explanation}")
+
+
 def decide(persona: str, properties: dict[str, Any] | None, snap: Snapshot) -> Route:
     """Route one queued task from the facts in *snap*.
 
     Only the free local personas move. A task someone started and an API
     restart re-queued (``interactive``) stays as it was asked for, and
     ``local_only`` keeps a task off the cloud.
+
+    A task carrying personal data is routed local-or-wait before any of that:
+    it is never eligible for the free cloud models, whatever ``snap.cloud``
+    holds (drivers/cloud.py strips personal data; this keeps it from ever
+    having to).
     """
     props = properties or {}
+    if carries_personal_data(props):
+        # Ahead of every other rule, including the routing-disabled and
+        # interactive short-circuits: a free cloud model is not an option for
+        # this task under any snapshot, so the cloud persona is refused
+        # outright and anything routable goes local-or-wait.
+        if persona == CLOUD_PERSONA:
+            return Route("wait", persona, f"{_NEVER_LEAVES}; the cloud driver cannot run it")
+        if not settings.dev_route_queue or persona not in LOCAL_CODE_PERSONAS:
+            return Route("as_assigned", persona, f"{_NEVER_LEAVES}; not routed")
+        return _personal_data_route(persona, props, snap)
     if not settings.dev_route_queue or persona not in LOCAL_CODE_PERSONAS:
         return Route("as_assigned", persona, "not routed")
     if props.get("interactive"):

@@ -41,6 +41,10 @@ from life_graph.drivers.dispatch_stats import (  # noqa: F401  (re-exported)
     _coerce_project_uuid,
 )
 from life_graph.drivers.errors import DispatchError  # noqa: F401  (re-exported)
+from life_graph.drivers.execution_guard import (
+    ExecutionCheckpointTracker,
+    verify_independent_completion,
+)
 from life_graph.drivers.plan_spec import (  # noqa: F401  (re-exported)
     _PLAN_ONLY_PREFIX,
     _PLAN_READ_TOOLS,
@@ -76,6 +80,20 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+# A coding task that left no file changed did not do the task (Step 4c) -- the
+# two types the dispatcher has always enforced that on.
+_CHANGE_REQUIRED_TASK_TYPES = ("code", "code_change")
+# The wider set execution_guard.verify_independent_completion treats as code.
+# The diff's file list is read for all of them so the independent-completion
+# gate has evidence to weigh; "plan" and "general" are deliberately absent, so
+# no task type that legitimately changes nothing gets a `git add -A` pass.
+_CODE_TASK_TYPES = ("code", "code_change", "bugfix", "refactor", "feature")
+
+# `diff --git a/<pre> b/<post>`, with git's optional quoting of paths that
+# contain whitespace. Non-greedy so the ` b/` separator wins over a path that
+# happens to contain " b/" itself.
+_DIFF_GIT_HEADER = re.compile(r'^diff --git "?a/(?P<pre>.+?)"? "?b/(?P<post>.+?)"?$')
 
 # ── Constants ────────────────────────────────────────────────
 
@@ -143,6 +161,27 @@ async def _code_context(workdir: Path, instruction: str) -> str:
         return ""
 
 
+def _changed_paths(diff_text: str) -> list[str]:
+    """The repository-relative paths named by a unified diff's ``diff --git`` headers.
+
+    The post-image path (``b/...``) is the one that exists after the change,
+    so a rename reads as its new name. git writes both sides even for a pure
+    deletion, so the pre-image is only a fallback for a header shaped
+    unexpectedly.
+    """
+    paths: list[str] = []
+    for line in (diff_text or "").splitlines():
+        if not line.startswith("diff --git "):
+            continue
+        m = _DIFF_GIT_HEADER.match(line)
+        if m is None:
+            continue
+        path = m.group("post") or m.group("pre")
+        if path and path not in paths:
+            paths.append(path)
+    return paths
+
+
 @dataclass
 class _DispatchRun:
     """What one dispatch_task call carries from step to step.
@@ -173,6 +212,15 @@ class _DispatchRun:
     result: DriverResult | None = None
     unverifiable: list[VerifierResult] = field(default_factory=list)
     spec_text: str | None = None
+    tracker: ExecutionCheckpointTracker | None = None
+    # The paths this run actually changed, as read from the worktree's own
+    # diff -- None while nothing has been observed yet, which is NOT the
+    # same fact as "it changed nothing" (see _observe_files_changed).
+    files_changed: list[str] | None = None
+    # The verifier verdicts that judged the result currently in `result` --
+    # replaced by the bounce's own re-verification, so the independent
+    # completion gate never weighs a superseded attempt's checks.
+    verifier_results: list[VerifierResult] = field(default_factory=list)
 
 
 class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
@@ -426,6 +474,19 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         if isolate_workdir and packet.project_context.get("path"):
             packet.project_context["isolation"] = True
 
+        # Step 2d: the durable checkpoint trail. Each later step records the
+        # stage it completed, so a worker that dies mid-dispatch can be told
+        # (by recover_interrupted_dispatch) whether to re-dispatch in a clean
+        # worktree, land only, or skip work that already landed.
+        run.tracker = ExecutionCheckpointTracker(task_id=run.task_id, tenant_id=run.tenant_id)
+        run.tracker.record_stage(
+            "prepared",
+            metadata={
+                "task_id": run.task_id,
+                "driver": getattr(run, "driver_name", run.persona_name),
+            },
+        )
+
     async def _budget_gate(self, run: _DispatchRun) -> DriverResult | None:
         """Step 3b: the Governor's verdict; a DriverResult when it says no.
 
@@ -443,6 +504,10 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             or runs_on_local_model(driver.name, run.packet.persona_model),
         )
         if decision.allowed:
+            if run.tracker:
+                run.tracker.record_stage(
+                    "budget_checked", metadata={"cost_cap_usd": run.cost_cap_usd}
+                )
             return None
         logger.warning(
             "Task %s denied by Governor: %s (spent $%.2f / $%.2f)",
@@ -505,6 +570,13 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             packet, run.workdir, timeout=getattr(driver, "dispatch_timeout", 300)
         )
         run.result = result
+        if run.tracker:
+            run.tracker.record_stage(
+                "driver_executed",
+                metadata={
+                    "success": getattr(run.result, "success", False) if run.result else False
+                },
+            )
         await self._emit_steps(run.tenant_id, task_id, driver.name, 1, result)
         # Captured here, before later steps replace `run.result` with fresh
         # DriverResult instances (verification failure, dissent, ...)
@@ -538,8 +610,18 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             and run.worktree_origin
             and not worktree_intact(run.worktree, run.worktree_origin)
         ):
+            if run.tracker:
+                run.tracker.record_stage(
+                    "worktree_verified", metadata={"workdir": str(run.workdir)}
+                )
             return
         logger.error("Task %s: worktree .git link was tampered with", run.task_id)
+        if run.tracker:
+            run.tracker.record_stage(
+                "worktree_verified",
+                ok=False,
+                metadata={"workdir": str(run.workdir), "tampered": True},
+            )
         tamper = VerifierResult(
             "worktree_intact",
             False,
@@ -557,6 +639,21 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             metadata={"needs_human": True, "worktree_tampered": True},
         )
 
+    async def _observe_files_changed(self, run: _DispatchRun) -> None:
+        """Read the paths this run changed from the worktree's own diff.
+
+        The one source of that fact that is not the driver's own account of
+        it, so it is what the independent-completion gate weighs. Left at
+        ``None`` where there is nothing to read -- a non-code task type, or a
+        dispatch with no worktree behind it -- because "not observed" and
+        "observed nothing" are different facts and only the second one is
+        evidence that the run did nothing.
+        """
+        if run.result.success and run.worktree is not None and run.task_type in _CODE_TASK_TYPES:
+            # One `git add -A`/diff pass, read for both the Step 4c guard
+            # below and the Step 6c gate.
+            run.files_changed = _changed_paths(await diff_against_head(run.worktree))
+
     async def _check_files_changed(self, run: _DispatchRun) -> None:
         """Step 4c: a coding task that left no file changed did not do the task.
 
@@ -566,11 +663,14 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         ever written.
         """
         result = run.result
+        await self._observe_files_changed(run)
+        if run.tracker:
+            run.tracker.record_stage("files_checked")
         if not (
             result.success
-            and run.task_type in ("code", "code_change")
+            and run.task_type in _CHANGE_REQUIRED_TASK_TYPES
             and run.worktree is not None
-            and not await diff_against_head(run.worktree)
+            and not run.files_changed
         ):
             return
         logger.warning("Task %s: the run changed no files", run.task_id)
@@ -619,6 +719,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         # post-BOUNCE (re-dispatched) re-check.
         await self._record_verification(run.tenant_id, run.task_id, 1, v_results, run.session)
 
+        run.verifier_results = list(v_results)
         run.unverifiable = verifier_chain.inconclusive(v_results)
         if run.unverifiable:
             await self._escalate_unverifiable(run, v_results)
@@ -628,6 +729,43 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             await self._file_plan_spec(run)
         else:
             await self._second_opinion_review(run)
+
+        if run.tracker:
+            run.tracker.record_stage("verifier_completed")
+
+        # Step 6c: the driver's own claim of success is not evidence. Re-check
+        # it against what someone other than the driver observed -- the file
+        # list from the worktree's diff and the verifier chain's verdicts --
+        # before Step 6b is allowed to land it as verified work. Runs last so
+        # the specific failure the steps above diagnosed (dissent, bounce,
+        # unverifiable) is the one the caller sees; this only ever catches a
+        # run still claiming success.
+        if run.result and run.result.success:
+            files_changed = run.files_changed
+            if files_changed is None:
+                files_changed = getattr(run.result, "files_changed", None)
+            verified, reason = verify_independent_completion(
+                driver_claimed_success=run.result.success,
+                task_type=run.task_type,
+                # The verdicts that judged whatever is in run.result now: a
+                # bounce replaced both the result and these.
+                verifier_results=run.verifier_results,
+                files_changed=files_changed,
+                # Nothing to read a diff from, so an unknown file list must
+                # not be reported as an empty one. The verifier half of the
+                # gate still applies.
+                require_file_changes_for_code=files_changed is not None,
+            )
+            if not verified:
+                logger.warning("Task %s independent verification failed: %s", run.task_id, reason)
+                # Mark unverified so it cannot land as success.
+                run.result.success = False
+                run.result.error = reason
+                run.result.metadata = {
+                    **(run.result.metadata or {}),
+                    "needs_human": True,
+                    "independent_verification_failed": reason,
+                }
 
     async def _escalate_unverifiable(
         self, run: _DispatchRun, v_results: list[VerifierResult]
@@ -689,10 +827,15 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             session=run.session,
             verify_chain=run.verify_chain,
             acceptance_tests=run.acceptance_tests,
+            run=run,
         )
 
         if bounce_result is not None:
             run.result = bounce_result
+            # The bounce re-ran the driver in this same worktree, so Step 4c's
+            # file list describes the attempt before it (_bounce_task already
+            # replaced run.verifier_results with its own re-verification).
+            await self._observe_files_changed(run)
             return
         # Second failure → needs_human
         result = run.result
@@ -830,6 +973,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         )
         if not landed_branch:
             return
+        if run.tracker:
+            run.tracker.record_stage("landed", metadata={"branch": landed_branch})
         ctx = run.packet.project_context
         run.result.metadata = {**(run.result.metadata or {}), "landed_branch": landed_branch}
         await self._create_pr_approval(
@@ -853,6 +998,8 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
 
     async def _finish_dispatch(self, run: _DispatchRun) -> None:
         """Step 7: record stats and emit the result event."""
+        if run.tracker:
+            run.tracker.record_stage("finished")
         result = run.result
         if run.spec_text:
             result.metadata = {**(result.metadata or {}), "spec": run.spec_text}
@@ -995,6 +1142,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         session: AsyncSession,
         verify_chain: list[str],
         acceptance_tests: list[str] | None = None,
+        run: _DispatchRun | None = None,
     ) -> DriverResult | None:
         """Re-dispatch once with failure context appended to instruction.
 
@@ -1073,6 +1221,11 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             if autofix.get("fixed") and autofix.get("candidates"):
                 v_results = await verifier_chain.run_chain(verify_chain, workdir, task_context)
         await self._record_verification(tenant_id, task_id, 2, v_results, session)
+
+        if run is not None:
+            # These supersede the pre-bounce verdicts: they are the checks that
+            # actually judged bounce_result.
+            run.verifier_results = list(v_results)
 
         if verifier_chain.all_passed(v_results):
             await self._emit(

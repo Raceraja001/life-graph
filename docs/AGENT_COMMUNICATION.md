@@ -93,19 +93,71 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-17 05:20 UTC)
+### Current (2026-11-17 08:00 UTC)
 
-- **Checked at / branch / base SHA:** 2026-11-17 05:20 UTC on
-  `feat/improvement-plan-orders-4-5-6`, cut from `master` at
-  `346e2ce`. Working tree: `/home/raja/life-graph`.
-- **Current milestone:** Completion of all 6 priorities in `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 (Orders 1 through 6) & all 7 milestones in `docs/AI_WORK_ORDER.md` (§2 through §8).
+- **Checked at / branch / base SHA:** 2026-11-17 08:00 UTC on
+  `feat/track-a-production-pipeline-wiring`, cut from `master` at `74d3002`.
+  Working tree: `/home/raja/lg-wt/track-a` (git worktree).
+- **Current milestone:** Track A — production pipeline wiring & CI regression
+  gates. Orders 1-6 shipped the *mechanisms* (`drivers/execution_guard.py`,
+  `services/local_model_registry.py`, the two evaluation laboratories) but
+  three of them were not on any production path. Track A wires them in.
 - **Verified status:**
-  - **Order 1 (P0 Isolated browser runtime & exact-bound approval):** **Operationally verified and Complete**.
-  - **Order 2 (P1 Evidence-lineage & confidence calibration):** **Implemented, Integrated, Unit-tested, Evaluated, and Complete**.
-  - **Order 3 (P1 Reproducible memory evaluation laboratory):** **Implemented, Integrated, Unit-tested, Evaluated, and Complete** (`life_graph/services/memory_benchmark.py`, `scripts/eval_memory_benchmark.py`, `evals/memory_benchmark_report.json`, `tests/unit/test_memory_benchmark_lab.py`).
-  - **Order 4 (P2 Decision, prediction, and causal memory workflow):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/services/judgment.py`, `tests/unit/test_decision_experience_workflow.py` — 7-stage experience chain `Situation -> Options -> Decision -> Rationale -> Prediction -> Outcome -> Lesson`, Brier/accuracy prediction evaluation, evidence-backed lesson derivation, fenced hypothetical counterfactuals, and circumstance-change revisit assessment).
-  - **Order 5 (P2 Durable agent execution, recovery, and independent verification):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/drivers/execution_guard.py`, `tests/unit/test_durable_agent_execution.py` — ordered stage checkpoints, crash recovery actions, idempotency keys, bounded retries, independent verifier completion gate, and bounded delegation envelope validation).
-  - **Order 6 (P3 Local intelligence infrastructure & model registry):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/services/local_model_registry.py`, `tests/unit/test_local_model_infrastructure.py` — RTX 5080 16 GB VRAM model registry across 7 capabilities, strict local-only routing for personal data, routing/queue explainability, live Ollama probe, and VRAM co-residency justification showing `bge-m3` 1.4 GB + `qwen3:14b` 9.8 GB = 11.2 GB <= 16.0 GB).
-- **Open risks/blockers:** None. All items in `docs/AI_WORK_ORDER.md` and `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 are complete.
-- **Next smallest action:** Monitor production telemetry and periodic evaluation runs (`scripts/eval_memory_benchmark.py --verify`, `scripts/eval_confidence_calibration.py --verify`).
-- **Latest commit:** recorded in the merge commit on `master`.
+  - **Durable execution guard wired into the dispatcher:** *Implemented,
+    Integrated, Unit-tested.* `drivers/dispatcher.py` now builds an
+    `ExecutionCheckpointTracker` in `_prepare_packet` and records all eight
+    `ORDERED_DISPATCH_STAGES` across the pipeline (`prepared`,
+    `budget_checked`, `driver_executed`, `worktree_verified`, `files_checked`,
+    `verifier_completed`, `landed`, `finished`), with the tampered-worktree
+    path recording `ok=False`. Step 6c calls
+    `verify_independent_completion` before `_land_verified_work`, so a driver
+    that claims success cannot land without an independent verifier verdict
+    and an observed file change.
+  - **Two wiring defects found and fixed while integrating:**
+    1. The gate first read the *pre-bounce* verifier verdicts, which vetoed
+       every task the one-bounce rule had rescued. `_DispatchRun` now carries
+       `verifier_results`, and `_bounce_task` replaces them with its own
+       re-verification.
+    2. The file list was only read for `code`/`code_change`, so `bugfix`,
+       `refactor` and `feature` tasks reached the gate with no evidence and
+       were vetoed as "zero files". `_observe_files_changed` now reads the
+       diff for all five code task types (never for `plan`/`general`, which
+       legitimately change nothing) and is re-read after a bounce.
+    `files_changed` stays `None` where there is no worktree to read a diff
+    from; "not observed" is not reported to the gate as "observed nothing"
+    (`require_file_changes_for_code=False` for that one caller). The verifier
+    half of the gate still applies there.
+  - **Strict personal-data routing wired into the compute router:**
+    *Implemented, Integrated, Unit-tested.* `services/compute_router.decide`
+    now checks `carries_personal_data` ahead of every other rule, including
+    the routing-disabled and `interactive` short-circuits, and answers
+    local-or-wait via `select_backend_for_task` called with an empty cloud
+    model list. The cloud persona is refused outright. A test enumerates
+    every (persona x active x cloud-availability) combination and asserts
+    `where != "cloud"`.
+  - **Evaluation gates in CI:** *Implemented, Integrated.* The `unit-tests`
+    job runs `scripts/eval_memory_benchmark.py --verify` and
+    `scripts/eval_confidence_calibration.py --verify` after the unit suite.
+    Both pass locally (exit 0).
+  - **Tests:** `tests/unit/test_dispatcher_execution_guard.py` (new, 24
+    tests). Full unit suite: 5386 passed, 2 failed, 24 skipped — the same two
+    `test_diff_scoped_verifiers.py` failures as the pre-change baseline on
+    this machine, unrelated to Track A. `ruff check life_graph/` clean.
+    Each of the three fixes above was mutation-checked: reverting it fails
+    exactly the test that describes it.
+- **Open risks/blockers:**
+  - Not operationally verified. Every test is in-process with the driver,
+    verifier chain, governor and worktree stubbed; no real agent dispatch has
+    been run through the new gate.
+  - The checkpoint trail is held in memory on `_DispatchRun` and is not yet
+    persisted to the task row, so `recover_interrupted_dispatch` has nothing
+    to read after a real worker restart. The tracker serializes via
+    `to_dict()`; the write to `agent_tasks.properties` is the next slice.
+  - Both `--verify` scripts rewrite their report JSON and their numbers drift
+    slightly between runs on the same input, so CI will leave a dirty tree in
+    the runner. The gates compare thresholds, not reports, so this does not
+    make CI flaky, but the non-determinism is worth tracking down.
+- **Next smallest action:** Persist `run.tracker.to_dict()` into the task row
+  at each checkpoint, so crash recovery can actually read it.
+- **Latest commit:** see the Track A commit on
+  `feat/track-a-production-pipeline-wiring`.
