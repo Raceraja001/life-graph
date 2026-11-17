@@ -1,6 +1,6 @@
 {
   "benchmark": "life_graph_memory_evaluation_laboratory_v1",
-  "generated_at": "2026-11-17T04:58:19.968449+00:00",
+  "generated_at": "2026-11-17T08:07:53.447338+00:00",
   "splits": {
     "tuning_dev": {
       "split": "tuning_dev",
@@ -26,8 +26,8 @@
             "correction_supersession_rate": 0.8,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.166,
-            "latency_ms_p95": 0.267
+            "latency_ms_p50": 0.327,
+            "latency_ms_p95": 0.382
           },
           "by_kind": {
             "about": {
@@ -152,8 +152,8 @@
             "correction_supersession_rate": 0.6667,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.446,
-            "latency_ms_p95": 0.747
+            "latency_ms_p50": 0.468,
+            "latency_ms_p95": 0.626
           },
           "by_kind": {
             "about": {
@@ -278,8 +278,8 @@
             "correction_supersession_rate": 0.8667,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.731,
-            "latency_ms_p95": 0.871
+            "latency_ms_p50": 0.823,
+            "latency_ms_p95": 1.069
           },
           "by_kind": {
             "about": {
@@ -404,8 +404,8 @@
             "correction_supersession_rate": 0.6667,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 1.22,
-            "latency_ms_p95": 1.765
+            "latency_ms_p50": 1.246,
+            "latency_ms_p95": 1.788
           },
           "by_kind": {
             "about": {
@@ -530,8 +530,8 @@
             "correction_supersession_rate": 1.0,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 1.503,
-            "latency_ms_p95": 2.121
+            "latency_ms_p50": 1.305,
+            "latency_ms_p95": 2.814
           },
           "by_kind": {
             "about": {
@@ -656,8 +656,8 @@
             "correction_supersession_rate": 1.0,
             "abstention_precision": 1.0,
             "abstention_recall": 1.0,
-            "latency_ms_p50": 1.483,
-            "latency_ms_p95": 2.457
+            "latency_ms_p50": 1.386,
+            "latency_ms_p95": 2.306
           },
           "by_kind": {
             "about": {
@@ -793,8 +793,8 @@
             "correction_supersession_rate": 0.7391,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.312,
-            "latency_ms_p95": 0.407
+            "latency_ms_p50": 0.262,
+            "latency_ms_p95": 0.358
           },
           "by_kind": {
             "about": {
@@ -933,8 +933,8 @@
             "correction_supersession_rate": 0.6957,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 0.694,
-            "latency_ms_p95": 0.896
+            "latency_ms_p50": 0.679,
+            "latency_ms_p95": 0.983
           },
           "by_kind": {
             "about": {
@@ -1073,8 +1073,8 @@
             "correction_supersession_rate": 0.6087,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 1.177,
-            "latency_ms_p95": 1.56
+            "latency_ms_p50": 1.24,
+            "latency_ms_p95": 1.839
           },
           "by_kind": {
             "about": {
@@ -1213,8 +1213,8 @@
             "correction_supersession_rate": 0.6522,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 1.828,
-            "latency_ms_p95": 2.498
+            "latency_ms_p50": 2.045,
+            "latency_ms_p95": 2.722
           },
           "by_kind": {
             "about": {
@@ -1353,8 +1353,8 @@
             "correction_supersession_rate": 0.8696,
             "abstention_precision": 0.0,
             "abstention_recall": 0.0,
-            "latency_ms_p50": 2.089,
-            "latency_ms_p95": 2.82
+            "latency_ms_p50": 2.112,
+            "latency_ms_p95": 3.154
           },
           "by_kind": {
             "about": {
@@ -1493,8 +1493,8 @@
             "correction_supersession_rate": 0.8696,
             "abstention_precision": 1.0,
             "abstention_recall": 1.0,
-            "latency_ms_p50": 2.293,
-            "latency_ms_p95": 3.598
+            "latency_ms_p50": 2.455,
+            "latency_ms_p95": 3.653
           },
           "by_kind": {
             "about": {
