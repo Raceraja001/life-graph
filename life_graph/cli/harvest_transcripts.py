@@ -24,6 +24,7 @@ import logging
 import sys
 from typing import TYPE_CHECKING, Any
 
+from life_graph.core.tenant import set_tenant_context
 from life_graph.watchers.agent_transcripts.adapters import AGENT_ALIASES, adapters_for
 from life_graph.watchers.agent_transcripts.harvest import DEFAULT_FILE_LIMIT, collect_new_slices
 from life_graph.watchers.agent_transcripts.watermark import (
@@ -120,6 +121,7 @@ async def harvest_once(args: argparse.Namespace) -> dict[str, Any]:
     On ``--dry-run`` nothing is imported that would need a database: the scan,
     the normalizer and the candidate gate are all local and free.
     """
+    set_tenant_context(args.tenant)
     adapters = adapters_for(args.agent)
     store = WatermarkStore(state_path=args.state_file)
     limit = None if not args.limit or args.limit <= 0 else int(args.limit)

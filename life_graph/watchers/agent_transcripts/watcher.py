@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 SURFACE = "coding_agent"
 
 #: ``CaptureEvent.modality`` for every turn harvested here.
-MODALITY = "session_transcript"
+MODALITY = "transcript"
 
 
 class AgentTranscriptWatcher(BaseWatcher):

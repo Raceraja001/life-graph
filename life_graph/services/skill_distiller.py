@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from life_graph.core.tenant import tenant_scope
 from life_graph.models.db import Memory
 
 if TYPE_CHECKING:
@@ -374,47 +375,48 @@ class SkillDistillationEngine:
                 action="NOOP", reasoning="Rejected by the candidate gate", dry_run=dry_run
             )
 
-        existing = await self._related_skills(session_slice)
-        try:
-            raw = await self.llm.chat(
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": self.build_prompt(session_slice, existing)},
-                ],
-                model=self.model,
-                temperature=0.2,
-                max_tokens=1200,
-                response_format={"type": "json_object"},
+        with tenant_scope(self.tenant_id):
+            existing = await self._related_skills(session_slice)
+            try:
+                raw = await self.llm.chat(
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": self.build_prompt(session_slice, existing)},
+                    ],
+                    model=self.model,
+                    temperature=0.2,
+                    max_tokens=1200,
+                    response_format={"type": "json_object"},
+                )
+            except Exception as exc:  # noqa: BLE001 - a distillation is never worth a failed run
+                logger.warning("Skill distillation LLM call failed: %s", exc)
+                return DistillationResult(
+                    action="NOOP", reasoning=f"LLM unavailable: {exc}", dry_run=dry_run
+                )
+
+            payload = parse_llm_json(raw)
+            action = str(payload.get("action") or "NOOP").strip().upper()
+            if action not in ACTIONS:
+                logger.info("Distiller returned unusable action %r — treating as NOOP", action)
+                action = "NOOP"
+
+            result = DistillationResult(
+                action=action,
+                reasoning=str(payload.get("reasoning") or "").strip(),
+                skill=payload.get("skill") if isinstance(payload.get("skill"), dict) else {},
+                memory_id=self._clean_id(payload.get("target_memory_id")),
+                patch_notes=(str(payload.get("patch_notes")).strip() or None)
+                if payload.get("patch_notes")
+                else None,
+                dry_run=dry_run,
+                related_skill_ids=[s["id"] for s in existing],
             )
-        except Exception as exc:  # noqa: BLE001 - a distillation is never worth a failed run
-            logger.warning("Skill distillation LLM call failed: %s", exc)
-            return DistillationResult(
-                action="NOOP", reasoning=f"LLM unavailable: {exc}", dry_run=dry_run
-            )
 
-        payload = parse_llm_json(raw)
-        action = str(payload.get("action") or "NOOP").strip().upper()
-        if action not in ACTIONS:
-            logger.info("Distiller returned unusable action %r — treating as NOOP", action)
-            action = "NOOP"
-
-        result = DistillationResult(
-            action=action,
-            reasoning=str(payload.get("reasoning") or "").strip(),
-            skill=payload.get("skill") if isinstance(payload.get("skill"), dict) else {},
-            memory_id=self._clean_id(payload.get("target_memory_id")),
-            patch_notes=(str(payload.get("patch_notes")).strip() or None)
-            if payload.get("patch_notes")
-            else None,
-            dry_run=dry_run,
-            related_skill_ids=[s["id"] for s in existing],
-        )
-
-        if action == "CREATE_SKILL":
-            return await self._create(session_slice, result)
-        if action == "PATCH_EXISTING":
-            return await self._patch(session_slice, result)
-        return result
+            if action == "CREATE_SKILL":
+                return await self._create(session_slice, result)
+            if action == "PATCH_EXISTING":
+                return await self._patch(session_slice, result)
+            return result
 
     async def _related_skills(self, session_slice: NormalizedSessionSlice) -> list[dict[str, Any]]:
         """Procedural skills already stored that look related to this turn.
