@@ -10,7 +10,6 @@ nothing here touches the database.
 from __future__ import annotations
 
 import time
-import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -25,7 +24,9 @@ TOKEN = "phone-token"
 TENANT = "t-phone"
 DEVICE = "d-1"
 PHONE = {"Authorization": f"Bearer {TOKEN}"}
-ID = str(uuid.uuid4())
+# Fixed, not uuid4(): it is part of the test ids, and pytest-xdist needs every
+# worker to collect the same ids.
+ID = "00000000-0000-4000-8000-000000000001"
 
 #: A sample of what stays service-key only (method, path).
 REFUSED = [

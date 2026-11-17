@@ -9,20 +9,8 @@ produced an empty toolset for most personas.
 
 from __future__ import annotations
 
-import life_graph.tools.assistant  # noqa: F401
-import life_graph.tools.browser  # noqa: F401
-import life_graph.tools.calculator  # noqa: F401
-import life_graph.tools.code  # noqa: F401
-import life_graph.tools.datetime_tool  # noqa: F401
-import life_graph.tools.delegate  # noqa: F401
-import life_graph.tools.filesystem  # noqa: F401
-import life_graph.tools.git  # noqa: F401
-import life_graph.tools.memory_search  # noqa: F401
-import life_graph.tools.reminders  # noqa: F401
-import life_graph.tools.system_inspect  # noqa: F401
-import life_graph.tools.terminal  # noqa: F401
-import life_graph.tools.web_search  # noqa: F401
 from life_graph.kernel.personas import _BUILTIN_PERSONAS
+from life_graph.tools.load import register_all
 from life_graph.tools.registry import registry
 
 # Deferred, documented-unregistered names. Empty: every persona tool name now
@@ -38,6 +26,10 @@ def test_every_persona_allowed_tool_is_registered_or_deferred():
     from life_graph.connectors.tools import register_tools
 
     register_tools()
+    # The same loader the API and the worker use. A hand-kept import list
+    # here fell behind it (approvals, run_tests, schedules), so the test only
+    # passed when an earlier test in the same process had imported those.
+    register_all()
     registered = set(registry.tool_names)
     unexplained = {}
     for defn in _BUILTIN_PERSONAS:
