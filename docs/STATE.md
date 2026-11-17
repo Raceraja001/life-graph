@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-17 04:27 UTC` from `feat/work-order-final-operational-verification` @ `28c4558`
+Generated `2026-11-17 04:35 UTC` from `master` @ `573e365`
 
 ---
 
@@ -26,7 +26,7 @@ Generated `2026-11-17 04:27 UTC` from `feat/work-order-final-operational-verific
 | Config settings | **296** (prefix `LIFE_GRAPH_`) |
 | Test functions | **4704** in 498 files |
 | Dashboard pages | **22** |
-| Python | 469 files, 131,926 lines |
+| Python | 465 files, 130,414 lines |
 
 ---
 
