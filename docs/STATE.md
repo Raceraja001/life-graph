@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-17 09:35 UTC` from `feat/agent-transcript-harvester-skill-distiller` @ `2635c33`
+Generated `2026-11-17 10:29 UTC` from `master` @ `1cff945`
 
 ---
 
@@ -26,7 +26,7 @@ Generated `2026-11-17 09:35 UTC` from `feat/agent-transcript-harvester-skill-dis
 | Config settings | **296** (prefix `LIFE_GRAPH_`) |
 | Test functions | **4917** in 511 files |
 | Dashboard pages | **22** |
-| Python | 496 files, 137,020 lines |
+| Python | 496 files, 137,024 lines |
 
 ---
 
