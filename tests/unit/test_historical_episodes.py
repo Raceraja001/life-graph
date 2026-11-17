@@ -330,3 +330,15 @@ def test_last_week_is_always_seven_days_ending_on_a_sunday(anchor, window):
     assert time_window("what happened last week?", anchor) == window
     assert (end - start).days == 6
     assert start.weekday() == 0 and end.weekday() == 6
+
+
+async def test_last_year_and_this_month_anchor_to_as_of(probe):
+    """15 June 2025 -> last year is 2024-01-01..2024-12-31, this month is 2025-06-01..2025-06-15."""
+    await retrieve("What major milestones happened last year?", as_of=AS_OF)
+    assert probe.window == (date(2024, 1, 1), date(2024, 12, 31))
+
+    await retrieve("What have we worked on this month?", as_of=AS_OF)
+    assert probe.window == (date(2025, 6, 1), date(2025, 6, 15))
+
+    await retrieve("What have we worked on this year?", as_of=AS_OF)
+    assert probe.window == (date(2025, 1, 1), date(2025, 6, 15))
