@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from life_graph.core.tenant import tenant_scope
 from life_graph.models.db import Memory
@@ -220,6 +220,58 @@ def render_skill(skill: dict[str, Any]) -> str:
         f"## Pitfalls / Edge Cases\n"
         f"{str(skill.get('pitfalls') or '').strip()}\n"
     )
+
+
+#: The ``# Title`` line :func:`render_skill` writes, read back out.
+TITLE_RE = re.compile(r"^#[ \t]+(.+)$", re.MULTILINE)
+
+
+def skill_clause():
+    """SQL for "this memory is a procedural skill".
+
+    Three ways in, because the corpus predates the distiller: rows it wrote
+    carry ``source_type`` and ``properties.fact_type``, and a hand-tagged
+    memory carries only the ``skill`` tag. Shared by the API
+    (``api/skills.py``) and the persona block (``services/persona_context.py``)
+    so neither can drift from what the distiller writes.
+    """
+    return or_(
+        Memory.source_type == SOURCE_TYPE,
+        Memory.properties["fact_type"].astext == FACT_TYPE,
+        Memory.tags.any(BASE_TAGS[0]),
+    )
+
+
+def skill_title(content: str | None, properties: dict[str, Any] | None = None) -> str:
+    """A skill's heading: its ``# Title`` line, else ``properties.title``, else its first line."""
+    match = TITLE_RE.search(content or "")
+    if match and match.group(1).strip():
+        return match.group(1).strip()
+    stored = str((properties or {}).get("title") or "").strip()
+    if stored:
+        return stored
+    first = next((line.strip() for line in (content or "").splitlines() if line.strip()), "")
+    return _clip(first.lstrip("# ").strip(), 120) or "Untitled procedure"
+
+
+def skill_body(content: str | None) -> str:
+    """The recipe without its ``# Title`` line — the caller renders the title itself."""
+    text = (content or "").strip()
+    match = TITLE_RE.match(text)
+    return text[match.end() :].lstrip("\n") if match else text
+
+
+def skill_project(tags: list[str] | None, properties: dict[str, Any] | None = None) -> str | None:
+    """Which project a skill came out of.
+
+    Newer rows store it in ``properties.project``; older ones only have
+    ``_skill_tags``' ordering, where the first tag that is not one of
+    :data:`BASE_TAGS` is the project name.
+    """
+    stored = str((properties or {}).get("project") or "").strip()
+    if stored and stored != "unknown":
+        return stored
+    return next((t for t in (tags or []) if t not in BASE_TAGS), None)
 
 
 def parse_llm_json(raw: str) -> dict[str, Any]:
@@ -515,6 +567,9 @@ class SkillDistillationEngine:
             "surface": "cli",
             "fact_type": FACT_TYPE,
             "origin_agent": session_slice.agent_type,
+            # Also a tag; stored here too so the API can filter on it without
+            # guessing which of a skill's tags is the project (skill_project).
+            "project": session_slice.project_name,
             "session_id": session_slice.session_id,
             "transcript_path": session_slice.file_path,
             "distilled_at": datetime.now(UTC).isoformat(),

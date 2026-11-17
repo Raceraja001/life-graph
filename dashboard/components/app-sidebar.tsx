@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Brain, Scale, BarChart3, ClipboardList, Bot, Activity, Settings, Zap, Menu, X, Radar } from "lucide-react";
+import { Brain, Scale, BarChart3, ClipboardList, Bot, Activity, Settings, Sparkles, Zap, Menu, X, Radar } from "lucide-react";
 import { useState } from "react";
 
 const NAV = [
@@ -12,6 +12,7 @@ const NAV = [
   { label: "Tasks", href: "/tasks", icon: ClipboardList },
   { label: "Dev tasks", href: "/drivers", icon: Bot },
   { label: "Agents", href: "/agents", icon: Radar },
+  { label: "Skills", href: "/skills", icon: Sparkles },
   { label: "Activity", href: "/activity", icon: Activity },
 ];
 

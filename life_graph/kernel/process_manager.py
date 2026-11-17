@@ -653,6 +653,25 @@ class ProcessManager:
                         system_prompt = f"{system_prompt or ''}\n\n{block}".strip()
                 except Exception:
                     logger.warning("Project context for %s failed", agent_name, exc_info=True)
+                # The recipes distilled from past sessions (services/skill_distiller.py):
+                # a persona with code, shell or git tools is the one about to repeat
+                # the mistake one of them records. Same gate as the projects block,
+                # and in the system prompt for the same prompt-cache reason.
+                try:
+                    project = (
+                        await persona_context.task_project_name(
+                            self._session_factory, tenant_id, ctx.task_id
+                        )
+                        if ctx
+                        else None
+                    )
+                    skills = await persona_context.procedural_skills_block(
+                        self._session_factory, tenant_id, project
+                    )
+                    if skills:
+                        system_prompt = f"{system_prompt or ''}\n\n{skills}".strip()
+                except Exception:
+                    logger.warning("Skill context for %s failed", agent_name, exc_info=True)
         # What shaped this answer (services/turn_trace.py): the memories put in
         # front of the model and the tools it called, kept on the result.
         used_memories: list[dict[str, Any]] = []

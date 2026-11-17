@@ -528,6 +528,17 @@ export const api = {
     list: () => listRequest<any>("/procedures/"),
   },
 
+  // ── Procedural skills (distilled from agent sessions) ──
+  // data is {items, total, limit, offset}, so listRequest's flat-array
+  // unwrap can't see it — read the envelope itself.
+  skills: {
+    list: (params?: { status?: string; tag?: string; project?: string; search?: string; limit?: string; offset?: string }) =>
+      GET<any>("/skills", params).then((res: any) => res?.data ?? { items: [], total: 0 }),
+    get: (id: string) => GET<any>(`/skills/${id}`).then((res: any) => res?.data),
+    approve: (id: string) => POST<any>(`/skills/${id}/approve`, {}).then((res: any) => res?.data),
+    archive: (id: string) => request<any>("DELETE", `/skills/${id}`).then((res: any) => res?.data),
+  },
+
   // ── Watchers ──────────────────────────────
   watchers: {
     events: (params?: { limit?: string }) =>

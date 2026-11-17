@@ -291,6 +291,7 @@ async def test_create_skill_writes_one_memory_stamped_as_a_procedural_skill():
         "surface": "cli",
         "fact_type": FACT_TYPE,
         "origin_agent": "claude_code",
+        "project": "life-graph",
         "session_id": "sess-1",
         "transcript_path": "/home/raja/.claude/projects/p/sess-1.jsonl",
         "distilled_at": memory.properties["distilled_at"],

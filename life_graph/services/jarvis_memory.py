@@ -17,6 +17,9 @@ A memory's ``kind``:
   each time (the words promote_standing looks for);
 * ``preference`` / ``decision``: the extractor's ``fact_type`` (an
   anti-preference is a preference);
+* ``skill``: a procedure distilled from a coding session
+  (services/skill_distiller.py — ``fact_type = "procedural_skill"``, or the
+  ``distilled_skill`` source);
 * ``fact``: everything else.
 
 Entities carry no type either. People are the entities named like one of the
@@ -85,13 +88,20 @@ def is_rule(m) -> bool:
 
 
 def kind_of(m) -> str:
-    """``fact``, ``preference``, ``rule``, ``decision`` or ``episode``."""
+    """``fact``, ``preference``, ``rule``, ``decision``, ``skill`` or ``episode``."""
+    from life_graph.services.skill_distiller import FACT_TYPE as SKILL_FACT_TYPE
+    from life_graph.services.skill_distiller import SOURCE_TYPE as SKILL_SOURCE_TYPE
+
     props = m.properties or {}
     if props.get("kind") == EPISODE:
         return "episode"
     if is_rule(m):
         return "rule"
     fact_type = props.get("fact_type")
+    # A distilled recipe (services/skill_distiller.py) is not a fact about the
+    # owner; it is a procedure, and the phone lists it apart from the rest.
+    if fact_type == SKILL_FACT_TYPE or m.source_type == SKILL_SOURCE_TYPE:
+        return "skill"
     tags = set(m.tags or [])
     if fact_type in _PREFERENCE_TYPES or (not fact_type and "preference" in tags):
         return "preference"

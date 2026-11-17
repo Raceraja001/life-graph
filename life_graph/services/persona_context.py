@@ -120,3 +120,140 @@ async def docs_roots(session_factory, tenant_id: str, task_id) -> list[str]:
     if (base / "docs").is_dir():
         roots.append(str(base / "docs"))
     return roots
+
+
+# ── Learned procedural skills ─────────────────────────────────
+#
+# services/skill_distiller.py writes one markdown recipe per session that went
+# wrong and then right. Stored, those recipes were only reachable if a persona
+# happened to search for them — which a persona about to repeat last week's
+# mistake does not do. Personas holding code, shell or git tools now carry the
+# active ones in their system prompt, where the local model's prompt cache
+# keeps them free to re-read (see the volatile-note comment in
+# kernel/process_manager.py).
+
+#: Tags that make a skill worth injecting whatever the project is: toolchain
+#: and environment recipes travel, project-specific ones mostly do not.
+GENERAL_SKILL_TAGS = frozenset(
+    {
+        "alembic",
+        "bash",
+        "build",
+        "ci",
+        "cli",
+        "dev",
+        "docker",
+        "env",
+        "git",
+        "lint",
+        "migration",
+        "node",
+        "npm",
+        "podman",
+        "pytest",
+        "python",
+        "ruff",
+        "shell",
+        "test",
+        "venv",
+    }
+)
+
+#: Skills read from the database before ranking, per skill finally kept. The
+#: ranking is done in Python (three tiers over tags), so the window has to be
+#: wide enough that a project's own skills are in it.
+SKILL_WINDOW = 4
+
+#: Hard cap on rows read, whatever ``limit`` asks for.
+MAX_SKILL_ROWS = 40
+
+#: Per-skill characters in the prompt. A patched skill grows every time it is
+#: reinforced; five unclipped ones could outweigh the persona itself.
+SKILL_CHARS = 1500
+
+SKILLS_HEADING = (
+    "## Learned Procedural Skills & Workflows\n"
+    "Apply these previously distilled fixes and workflow recipes when "
+    "encountering related issues:"
+)
+
+
+def _skill_rank(memory, project_name: str | None) -> int:
+    """0 this project's, 1 general toolchain, 2 another project's."""
+    tags = {str(t).lower() for t in (memory.tags or [])}
+    props = memory.properties or {}
+    if project_name:
+        project = project_name.lower()
+        if project in tags or str(props.get("project") or "").lower() == project:
+            return 0
+    return 1 if tags & GENERAL_SKILL_TAGS else 2
+
+
+def render_skills(rows, project_name: str | None = None, limit: int = 5) -> str:
+    """The prompt block for *rows*, best-matching first; "" when there is nothing."""
+    from life_graph.services.skill_distiller import skill_body, skill_title
+
+    ranked = sorted(
+        enumerate(rows),  # index keeps the query's order stable inside a tier
+        key=lambda pair: (_skill_rank(pair[1], project_name), pair[0]),
+    )
+    parts: list[str] = []
+    for _, memory in ranked[: max(0, limit)]:
+        body = skill_body(memory.content)
+        if len(body) > SKILL_CHARS:
+            body = f"{body[:SKILL_CHARS].rstrip()}… [truncated]"
+        parts.append(f"### {skill_title(memory.content, memory.properties)}\n{body}".rstrip())
+    return f"{SKILLS_HEADING}\n\n" + "\n\n".join(parts) if parts else ""
+
+
+async def procedural_skills_block(
+    session_factory,
+    tenant_id: str,
+    project_name: str | None = None,
+    limit: int = 5,
+) -> str:
+    """The active distilled skills for *tenant_id*, as a markdown prompt block.
+
+    Only ``active`` ones: a skill the owner archived in the dashboard
+    (``api/skills.py``) must stop reaching the model, and a pending one must
+    not reach it before it is approved.
+    """
+    from sqlalchemy.orm import defer
+
+    from life_graph.models.db import Memory
+    from life_graph.services.skill_distiller import skill_clause
+
+    window = min(max(1, limit) * SKILL_WINDOW, MAX_SKILL_ROWS)
+    async with session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(Memory)
+                    .where(
+                        Memory.tenant_id == tenant_id,
+                        Memory.status == "active",
+                        skill_clause(),
+                    )
+                    .options(defer(Memory.embedding))
+                    .order_by(Memory.importance.desc(), Memory.created_at.desc())
+                    .limit(window)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    return render_skills(rows, project_name, limit)
+
+
+async def task_project_name(session_factory, tenant_id: str, task_id) -> str | None:
+    """The name of the project a kernel task runs against, or None."""
+    from life_graph.models.db import AgentTask
+
+    async with session_factory() as session:
+        return (
+            await session.execute(
+                select(Project.name)
+                .join(AgentTask, AgentTask.project_id == Project.id)
+                .where(AgentTask.tenant_id == tenant_id, AgentTask.id == task_id)
+            )
+        ).scalar_one_or_none()

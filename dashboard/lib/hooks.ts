@@ -124,6 +124,35 @@ export function useProcedures() {
   return useQuery({ queryKey: ["procedures"], queryFn: () => api.procedures.list() });
 }
 
+// ── Procedural skills ──────────────────────────
+export function useSkills(params?: {
+  status?: string;
+  tag?: string;
+  project?: string;
+  search?: string;
+  limit?: string;
+  offset?: string;
+}) {
+  return useQuery({ queryKey: ["skills", params], queryFn: () => api.skills.list(params) });
+}
+export function useSkill(id: string) {
+  return useQuery({ queryKey: ["skills", id], queryFn: () => api.skills.get(id), enabled: !!id });
+}
+/** Approving or archiving moves a skill between every status tab, so refresh them all. */
+function useSkillMutation(fn: (id: string) => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => qc.invalidateQueries({ queryKey: ["skills"] }),
+  });
+}
+export function useApproveSkill() {
+  return useSkillMutation((id: string) => api.skills.approve(id));
+}
+export function useArchiveSkill() {
+  return useSkillMutation((id: string) => api.skills.archive(id));
+}
+
 // ── Judgment: predictions + calibration ──────────
 export function usePredictions(status: "suggested" | "pending" | "resolved") {
   return useQuery({

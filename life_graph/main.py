@@ -644,6 +644,7 @@ if settings.is_full_profile:
     from life_graph.api import procedures
     from life_graph.api import push as push_api
     from life_graph.api import research as research_api
+    from life_graph.api import skills as skills_api
     from life_graph.api import vault as vault_api
     from life_graph.api import watchers as watchers_api
     from life_graph.api import web_research as web_research_api
@@ -654,6 +655,7 @@ if settings.is_full_profile:
     v1_router.include_router(multimodal_router)
     v1_router.include_router(agent.router)
     v1_router.include_router(procedures.router)
+    v1_router.include_router(skills_api.router)
     v1_router.include_router(kernel_api.router)
     v1_router.include_router(observability_api.router)
     v1_router.include_router(evidence_api.router)
