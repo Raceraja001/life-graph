@@ -31,6 +31,33 @@ class WatcherFramework:
         self._registry[watcher_class.name] = watcher_class
         self.logger.debug("Registered watcher: %s", watcher_class.name)
 
+    def register_defaults(self) -> int:
+        """Register every watcher that ships with Life Graph. Returns the count.
+
+        Only ``BaseWatcher`` subclasses are listed: ``run_watcher`` calls
+        ``(tenant_id, session_factory, settings)`` and relies on the base
+        class owning the run lifecycle, which the older ad-hoc watchers
+        (``CodeQualityWatcher``, ``ServerHealthWatcher``) do not. Those are
+        reached through ``workers.tasks.run_watchers``, which handles both
+        conventions.
+
+        Imported here rather than at module import so constructing a
+        framework stays cheap for callers that register their own set.
+        """
+        from life_graph.watchers.agent_transcripts.watcher import AgentTranscriptWatcher
+        from life_graph.watchers.dependency_watcher import DependencyWatcher
+        from life_graph.watchers.page_monitor_watcher import PageMonitorWatcher
+        from life_graph.watchers.tech_radar_watcher import TechRadarWatcher
+
+        for watcher_class in (
+            AgentTranscriptWatcher,
+            DependencyWatcher,
+            TechRadarWatcher,
+            PageMonitorWatcher,
+        ):
+            self.register(watcher_class)
+        return len(self._registry)
+
     def get_registered(self) -> dict[str, type[BaseWatcher]]:
         """Return a copy of the registered watcher classes."""
         return dict(self._registry)

@@ -27,6 +27,7 @@ import textwrap
 
 import pytest
 
+from life_graph.watchers.agent_transcripts.watcher import AgentTranscriptWatcher
 from life_graph.watchers.app_uptime_watcher import AppUptimeWatcher
 from life_graph.watchers.base import BaseWatcher
 from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
@@ -43,6 +44,7 @@ ALL_WATCHERS = [
     TechRadarWatcher,
     PageMonitorWatcher,
     AppUptimeWatcher,
+    AgentTranscriptWatcher,
 ]
 
 
@@ -98,10 +100,17 @@ def test_watcher_names_are_unique():
 
 
 def test_no_watcher_module_is_unaccounted_for():
-    """A new *_watcher.py must be added to ALL_WATCHERS and the map."""
+    """A new watcher module must be added to ALL_WATCHERS and the map.
+
+    Two layouts count: the original flat ``<name>_watcher.py``, and a watcher
+    that grew into a package of its own with the class in ``<pkg>/watcher.py``
+    (the transcript harvester, which ships adapters and a normalizer beside it).
+    """
     watcher_dir = pathlib.Path(BaseWatcher.__module__.replace(".", "/")).parent
     root = pathlib.Path(tasks.__file__).resolve().parents[2]
-    modules = sorted((root / watcher_dir).glob("*_watcher.py"))
+    modules = sorted(
+        [*(root / watcher_dir).glob("*_watcher.py"), *(root / watcher_dir).glob("*/watcher.py")]
+    )
 
     assert len(modules) == len(ALL_WATCHERS), (
         f"{len(modules)} watcher modules on disk but {len(ALL_WATCHERS)} tracked: "
@@ -122,7 +131,18 @@ def test_calling_convention_is_one_of_the_two_supported(cls):
 
     if issubclass(cls, BaseWatcher):
         assert {"tenant_id", "session_factory"} <= params
-        assert inspect.signature(cls.execute).return_annotation in (None, "None")
+        # The lifecycle path reads events off ``self._events`` and ignores
+        # whatever execute() returns, so returning the emitted list (which
+        # the transcript harvester does, for direct callers) is also fine —
+        # what must never happen is an ad-hoc-style list *instead of*
+        # emitting, which the assertion below is here to keep honest.
+        annotation = str(inspect.signature(cls.execute).return_annotation)
+        assert annotation in ("None", "list[WatchEventData]")
+        if annotation != "None":
+            assert "self.emit_event(" in inspect.getsource(cls), (
+                f"{cls.__name__}.execute returns a list but never emits — "
+                "its findings would be silently dropped by the lifecycle path"
+            )
     else:
         assert {"config", "session_factory"} <= params
         ret = inspect.signature(cls.execute).return_annotation
