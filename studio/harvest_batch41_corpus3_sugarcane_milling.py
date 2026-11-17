@@ -14,6 +14,19 @@ OLLAMA_URL = "http://localhost:11434/api/embeddings"
 MODEL_NAME = "bge-m3:latest"
 DOSSIER_DIR = "/mnt/h/DevTools/Projects/learn-ai/moolam-chronicles/knowledge"
 
+# The knowledge tree uses real English plurals ("technologies", not "technologys").
+CATEGORY_DIRS = {
+    "technology": "technologies",
+    "archaeology": "archaeology",
+    "history": "history",
+    "science": "science",
+}
+
+
+def category_dir(category: str) -> str:
+    return CATEGORY_DIRS.get(category, category + "s")
+
+
 DOSSIERS = [
     {
         "slug": "text-perumpanarruppadai-and-purananuru-on-sugarcane-milling-mills",
@@ -309,7 +322,7 @@ def get_embedding(text: str) -> list:
 def main():
     print("=== Phase 1: Markdown Dossiers ===")
     for d in DOSSIERS:
-        cat_dir = os.path.join(DOSSIER_DIR, d["category"] + "s")
+        cat_dir = os.path.join(DOSSIER_DIR, category_dir(d["category"]))
         os.makedirs(cat_dir, exist_ok=True)
         filepath = os.path.join(cat_dir, d["file"])
         with open(filepath, "w", encoding="utf-8") as f:
