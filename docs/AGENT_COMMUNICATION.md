@@ -93,23 +93,19 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-17 05:00 UTC)
+### Current (2026-11-17 05:20 UTC)
 
-- **Checked at / branch / base SHA:** 2026-11-17 05:00 UTC on
-  `feat/memory-evaluation-laboratory`, cut from `master` at
-  `2a50eba5` (`docs(state): regenerate the inventory [skip ci]`). Working
-  tree: `/home/raja/life-graph`.
-- **Current milestone:** P1 Evaluation Laboratory — Reproducible memory benchmarks and single-variable ablation datasets (`docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 2 & Section 4 Order 3). **Implemented, Integrated, Unit-tested, Evaluated, and Complete**.
+- **Checked at / branch / base SHA:** 2026-11-17 05:20 UTC on
+  `feat/improvement-plan-orders-4-5-6`, cut from `master` at
+  `346e2ce`. Working tree: `/home/raja/life-graph`.
+- **Current milestone:** Completion of all 6 priorities in `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 (Orders 1 through 6) & all 7 milestones in `docs/AI_WORK_ORDER.md` (§2 through §8).
 - **Verified status:**
-  - **All `docs/AI_WORK_ORDER.md` milestones (§2–§8):** **Operationally verified and Complete**.
-  - **P1 Evaluation Laboratory (`docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Order 3):** **Complete**.
-    - Added `life_graph/services/memory_benchmark.py` evaluating a 6-stage single-variable retrieval & lifecycle ablation ladder (`1_lexical_bm25`, `2_vector_ngram`, `3_hybrid_rrf`, `4_graph_entity_expansion`, `5_rerank_temporal_provenance`, `6_multistep_adaptive_abstain`) across separate tuning (`evals/memory_structures/test_life.json`, 140 questions) and held-out (`evals/memory_structures/test_life_2.json`, 185 questions) synthetic datasets plus deterministic lifecycle invariants.
-    - Added CLI runner `scripts/eval_memory_benchmark.py` with `--verify` regression gate and generated `evals/memory_benchmark_report.json`:
-      - `tuning_dev`: R@1 `0.4480 -> 0.5600`, R@5 `0.7120 -> 0.8960`, MRR `0.5633 -> 0.6929`, Support@5 `0.6071 -> 0.8643`, Temporal accuracy `0.6800 -> 0.9200`, Supersession `0.8000 -> 1.0000`, Abstention P/R `1.0000 / 1.0000`.
-      - `held_out`: R@1 `0.5562 -> 0.5917`, R@5 `0.7692 -> 0.8994`, MRR `0.6391 -> 0.7112`, Support@5 `0.6486 -> 0.8432`, Temporal accuracy `0.7115 -> 0.8846`, Supersession `0.7391 -> 0.8696`, Abstention P/R `1.0000 / 1.0000`.
-      - Lifecycle invariants: `bitemporal_accuracy = 1.0`, `forgetting_leakage_rate = 0.0`, `provenance_contradiction_gate_ok = True`.
-    - Added unit & regression suite `tests/unit/test_memory_benchmark_lab.py` (`5 passed in 10.81s`).
-    - Regenerated `docs/STATE.md` and `docs/feature-inventory.html` (`python scripts/gen_state.py --check` -> OK).
-- **Open risks/blockers:** None.
-- **Next smallest action:** Proceed to `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 Order 4 (P2: Integrate decision, prediction and causal memory into one workflow).
+  - **Order 1 (P0 Isolated browser runtime & exact-bound approval):** **Operationally verified and Complete**.
+  - **Order 2 (P1 Evidence-lineage & confidence calibration):** **Implemented, Integrated, Unit-tested, Evaluated, and Complete**.
+  - **Order 3 (P1 Reproducible memory evaluation laboratory):** **Implemented, Integrated, Unit-tested, Evaluated, and Complete** (`life_graph/services/memory_benchmark.py`, `scripts/eval_memory_benchmark.py`, `evals/memory_benchmark_report.json`, `tests/unit/test_memory_benchmark_lab.py`).
+  - **Order 4 (P2 Decision, prediction, and causal memory workflow):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/services/judgment.py`, `tests/unit/test_decision_experience_workflow.py` — 7-stage experience chain `Situation -> Options -> Decision -> Rationale -> Prediction -> Outcome -> Lesson`, Brier/accuracy prediction evaluation, evidence-backed lesson derivation, fenced hypothetical counterfactuals, and circumstance-change revisit assessment).
+  - **Order 5 (P2 Durable agent execution, recovery, and independent verification):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/drivers/execution_guard.py`, `tests/unit/test_durable_agent_execution.py` — ordered stage checkpoints, crash recovery actions, idempotency keys, bounded retries, independent verifier completion gate, and bounded delegation envelope validation).
+  - **Order 6 (P3 Local intelligence infrastructure & model registry):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/services/local_model_registry.py`, `tests/unit/test_local_model_infrastructure.py` — RTX 5080 16 GB VRAM model registry across 7 capabilities, strict local-only routing for personal data, routing/queue explainability, live Ollama probe, and VRAM co-residency justification showing `bge-m3` 1.4 GB + `qwen3:14b` 9.8 GB = 11.2 GB <= 16.0 GB).
+- **Open risks/blockers:** None. All items in `docs/AI_WORK_ORDER.md` and `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 are complete.
+- **Next smallest action:** Monitor production telemetry and periodic evaluation runs (`scripts/eval_memory_benchmark.py --verify`, `scripts/eval_confidence_calibration.py --verify`).
 - **Latest commit:** recorded in the merge commit on `master`.
