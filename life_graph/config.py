@@ -173,21 +173,21 @@ class Settings(BaseSettings):
     # Empty = no limit.
     memory_start_at: str = ""
     # The local model that decides which searched memories answer a question
-    # (services/memory_retrieval.py). Empty = lm_extraction_model, which is
+    # (services/memory/retrieval.py). Empty = lm_extraction_model, which is
     # also Jarvis's local model here: a separate small judge meant a third
     # model on a 16 GB GPU that holds two, so every personal question
     # reloaded one (~15 s, measured 2026-10-22). The same model, already
     # loaded, judges in ~0.3 s.
     memory_judge_model: str = ""
-    # Nothing is forgotten, only further away (services/memory_tiers.py): when
+    # Nothing is forgotten, only further away (services/memory/tiers.py): when
     # no active memory answers, or the question is about the past, archived and
     # replaced memories are searched too, and say so.
     memory_cold_tier: bool = True
     # Memories said together or used together are linked, and a found memory
-    # brings its strongest links along for the judge (services/associations.py).
+    # brings its strongest links along for the judge (services/memory/associations.py).
     memory_links: bool = True
     # Search order nudged by how important, used and recent a memory is
-    # (services/memory_retrieval.py strength_order).
+    # (services/memory/retrieval.py strength_order).
     memory_strength_rank: bool = False
     # Nightly: active memories without a form slot get one (services/form_fill.py).
     memory_form_fill: bool = True

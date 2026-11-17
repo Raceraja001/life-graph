@@ -72,7 +72,7 @@ from sqlalchemy import func, select
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.lead import LEAD
-from life_graph.services.memory_sources import source_label
+from life_graph.services.memory.sources import source_label
 from life_graph.storage.database import async_session
 
 router = APIRouter(prefix="/jarvis", tags=["jarvis"])
@@ -702,7 +702,7 @@ async def messages(conversation_id: uuid.UUID):
                 # Drop while it is open, POST /jarvis/nudges/{id}.
                 reply["nudge"] = {"id": nudge_id, "status": nudged[nudge_id]}
             if asked_about := (t.result or {}).get("memory_check"):
-                # A Memory check (services/memory_check.py): each memory with
+                # A Memory check (services/memory/check.py): each memory with
                 # its status now, Keep / Drop while pending, i.e.
                 # POST /memories/{id}/approve|reject.
                 reply["memory_check"] = [checked[i] for i in asked_about if i in checked]
@@ -712,7 +712,7 @@ async def messages(conversation_id: uuid.UUID):
 
 async def _memory_check_states(tenant_id: str, tasks: list) -> dict[str, dict]:
     """``{memory id: {"id", "content", "status"}}`` for the memories these turns asked about."""
-    from life_graph.services import memory_check
+    from life_graph.services.memory import check as memory_check
 
     ids = [i for t in tasks for i in ((t.result or {}).get("memory_check") or [])]
     if not ids:
@@ -1009,7 +1009,7 @@ async def _transcribe(audio: UploadFile) -> str:
 # ── v2: review memories, undo a save, read an image, notifications ──────────
 
 #: Where a memory came from, in the owner's words (the app shows it).
-# The label lives in services/memory_sources.py; _source is kept for this
+# The label lives in services/memory/sources.py; _source is kept for this
 # module's callers.
 _source = source_label
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -1088,7 +1088,7 @@ async def undo_save(memory_id: uuid.UUID):
                     "UPDATE memories SET status = 'archived', updated_at = NOW(),"
                     " properties = COALESCE(properties, '{}'::jsonb) || CAST(:note AS jsonb)"
                     " WHERE id = :id AND tenant_id = :t AND status IN ('active', 'pending')"
-                    # 'owner': a correction typed on the memory page (services/memory_page.py).
+                    # 'owner': a correction typed on the memory page (services/memory/page.py).
                     " AND properties->>'saved_by' IN ('jarvis', 'owner') RETURNING id"
                 ),
                 {"id": memory_id, "t": tenant_id, "note": note},

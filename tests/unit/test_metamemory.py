@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from life_graph.services.metamemory import MetamemoryTracker
+from life_graph.services.memory.metamemory import MetamemoryTracker
 
 
 def _make_tracker() -> MetamemoryTracker:

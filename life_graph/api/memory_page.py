@@ -2,7 +2,7 @@
 
 Registered before api/memories.py, whose ``GET /memories/{memory_id}`` would
 otherwise take ``/memories/overview`` and answer 422 for a non-UUID id.
-See services/memory_page.py for what each action reuses.
+See services/memory/page.py for what each action reuses.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from life_graph.api.dependencies import get_store
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.services import memory_page
+from life_graph.services.memory import page as memory_page
 from life_graph.storage.postgres import PostgresMemoryStore
 
 router = APIRouter(prefix="/memories", tags=["memory-page"])

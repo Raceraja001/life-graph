@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from life_graph.services.memory_retrieval import (
+from life_graph.services.memory.retrieval import (
     explain_retrieval_selection,
     provenance_score,
     provenance_tiebreak_order,

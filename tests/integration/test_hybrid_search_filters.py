@@ -82,7 +82,7 @@ async def test_hybrid_search_applies_its_filters():
 @skip_on_db_error
 async def test_ask_answers_from_active_memories_only(monkeypatch):
     """Since 2026-10-29 ask finds memories the way Jarvis does
-    (services/memory_retrieval.py), still from active memories only."""
+    (services/memory/retrieval.py), still from active memories only."""
     from httpx import ASGITransport, AsyncClient
 
     from life_graph.core.memory_manager import MemoryManager

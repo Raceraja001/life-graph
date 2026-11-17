@@ -21,7 +21,7 @@ import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RANKING_PY = ROOT / "life_graph" / "scoring" / "ranking.py"
-RECALL_PY = ROOT / "life_graph" / "services" / "recall.py"
+RECALL_PY = ROOT / "life_graph" / "services" / "memory" / "recall.py"
 
 # Names bound to a candidate dict inside ranking.py.
 _CANDIDATE_NAMES = {"cand", "candidate"}

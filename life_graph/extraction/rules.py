@@ -33,7 +33,7 @@ class ExtractedFact:
     trace_index: int = -1
     changes_over_time: bool = False
     """A state that may change (where the owner lives, their job, the current
-    plan): shown "as of" the day it was noted (services/memory_context.py)."""
+    plan): shown "as of" the day it was noted (services/memory/context.py)."""
     valid_until: str | None = None
     """YYYY-MM-DD after which it stops being true, when the text said so."""
     subject: str = "owner"

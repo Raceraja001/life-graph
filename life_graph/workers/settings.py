@@ -190,7 +190,7 @@ class WorkerSettings:
             run_at_startup=False,
         ),
         # Keep or drop what Jarvis noted, just before the brief counts it
-        # (services/memory_check.py).
+        # (services/memory/check.py).
         cron(
             "life_graph.workers.memory_check.send_memory_check",
             hour=(settings.brief_hour_utc - 1) % 24,
