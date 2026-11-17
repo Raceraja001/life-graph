@@ -10,7 +10,7 @@ import subprocess
 
 import pytest
 
-from life_graph.services.verifiers import verifier_chain
+from life_graph.services.dev.verifiers import verifier_chain
 
 
 def _init_repo(path):
@@ -260,7 +260,7 @@ async def test_lint_clean_diff_is_inconclusive_when_ruff_is_not_installed(tmp_pa
     re-running the agent cannot install a linter. The check simply did not
     happen, and that is now what it says.
     """
-    import life_graph.services.verifiers as verifiers_mod
+    import life_graph.services.dev.verifiers as verifiers_mod
 
     _init_repo(tmp_path)
     (tmp_path / "new.py").write_text("x = 1\n", encoding="utf-8")
@@ -312,7 +312,7 @@ def _fake_pip_audit(tmp_path, report: dict, returncode: int = 0):
 @pytest.mark.asyncio
 async def test_no_vulnerable_deps_skips_when_no_manifest_touched(tmp_path, monkeypatch):
     """No dependency manifest in the diff -> a real pass, no tool ever invoked."""
-    import life_graph.services.verifiers as verifiers_mod
+    import life_graph.services.dev.verifiers as verifiers_mod
 
     _init_repo(tmp_path)
     (tmp_path / "new.py").write_text("x = 1\n", encoding="utf-8")
@@ -332,7 +332,7 @@ async def test_no_vulnerable_deps_skips_when_no_manifest_touched(tmp_path, monke
 
 @pytest.mark.asyncio
 async def test_no_vulnerable_deps_inconclusive_without_pip_audit(tmp_path, monkeypatch):
-    import life_graph.services.verifiers as verifiers_mod
+    import life_graph.services.dev.verifiers as verifiers_mod
 
     _init_repo(tmp_path)
     (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
@@ -353,7 +353,7 @@ async def test_no_vulnerable_deps_inconclusive_without_pip_audit(tmp_path, monke
 
 @pytest.mark.asyncio
 async def test_no_vulnerable_deps_passes_when_pip_audit_finds_nothing(tmp_path, monkeypatch):
-    import life_graph.services.verifiers as verifiers_mod
+    import life_graph.services.dev.verifiers as verifiers_mod
 
     _init_repo(tmp_path)
     (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
@@ -372,7 +372,7 @@ async def test_no_vulnerable_deps_passes_when_pip_audit_finds_nothing(tmp_path, 
 
 @pytest.mark.asyncio
 async def test_no_vulnerable_deps_fails_when_pip_audit_finds_a_vuln(tmp_path, monkeypatch):
-    import life_graph.services.verifiers as verifiers_mod
+    import life_graph.services.dev.verifiers as verifiers_mod
 
     _init_repo(tmp_path)
     (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")
@@ -400,7 +400,7 @@ async def test_no_vulnerable_deps_fails_when_pip_audit_finds_a_vuln(tmp_path, mo
 async def test_no_vulnerable_deps_inconclusive_when_pip_audit_itself_fails(tmp_path, monkeypatch):
     """A network failure or bad env (exit code neither 0 nor 1) is not a
     verdict on the dependencies — must not be reported as a vulnerability."""
-    import life_graph.services.verifiers as verifiers_mod
+    import life_graph.services.dev.verifiers as verifiers_mod
 
     _init_repo(tmp_path)
     (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
@@ -432,7 +432,7 @@ async def test_no_vulnerable_deps_never_trusts_an_ambient_pip_audit(tmp_path, mo
     no such argument, so an ambient one must never be trusted here at all
     — only a venv actually inside this project's own workdir counts.
     """
-    import life_graph.services.verifiers as verifiers_mod
+    import life_graph.services.dev.verifiers as verifiers_mod
 
     _init_repo(tmp_path)
     (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")

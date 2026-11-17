@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from life_graph.services.second_opinion import SecondOpinionReviewer
+from life_graph.services.dev.second_opinion import SecondOpinionReviewer
 
 
 class StubLLM:

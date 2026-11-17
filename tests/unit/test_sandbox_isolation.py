@@ -1,10 +1,10 @@
-"""The errand sandbox's isolation guarantees (life_graph/services/sandbox.py).
+"""The errand sandbox's isolation guarantees (life_graph/services/dev/sandbox.py).
 
 An errand runs code and renders pages the owner did not write, so the whole
 value of the sandbox is the list of things it *cannot* do. These tests are
 that list, written twice over:
 
-* against :func:`~life_graph.services.sandbox.validate_spec`, for the specs
+* against :func:`~life_graph.services.dev.sandbox.validate_spec`, for the specs
   the application builds at run time, and
 * against ``compose.sandbox.yaml`` and the three Dockerfiles, for the stack a
   human brings up by hand.
@@ -27,7 +27,7 @@ import pytest
 import yaml
 
 from life_graph.config import settings
-from life_graph.services import sandbox as sb
+from life_graph.services.dev import sandbox as sb
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

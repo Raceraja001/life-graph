@@ -8,8 +8,8 @@ import subprocess
 
 import pytest
 
-from life_graph.services import proof_checks as pc
-from life_graph.services import sandbox
+from life_graph.services.dev import proof_checks as pc
+from life_graph.services.dev import sandbox
 
 APP = """\
 def sign(x):

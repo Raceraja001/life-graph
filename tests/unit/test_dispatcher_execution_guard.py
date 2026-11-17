@@ -29,7 +29,7 @@ from life_graph.services.compute_router import (
     carries_personal_data,
     decide,
 )
-from life_graph.services.verifiers import VerifierResult
+from life_graph.services.dev.verifiers import VerifierResult
 
 
 class _Session:

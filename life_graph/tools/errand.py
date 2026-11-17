@@ -62,7 +62,7 @@ from life_graph.services.browser_sandbox_driver import (
     browser_sandbox_available,
     sandbox_mode,
 )
-from life_graph.services.sandbox import SandboxUnavailableError
+from life_graph.services.dev.sandbox import SandboxUnavailableError
 from life_graph.tools.registry import tool
 
 if TYPE_CHECKING:

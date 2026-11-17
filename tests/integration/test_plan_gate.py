@@ -57,7 +57,7 @@ async def _plan_tasks(count, project_id, *, first_status="queued"):
 
 async def _drain():
     """Claim until nothing is runnable; return the ids that were claimed."""
-    from life_graph.services.dev_tasks import claim_next_queued
+    from life_graph.services.dev.tasks import claim_next_queued
     from life_graph.storage.database import async_session
 
     claimed = []

@@ -367,7 +367,7 @@ async def auto_merge_status(session: AsyncSession, tenant_id: str) -> list[dict[
     from life_graph.drivers.dispatcher import AUTO_PR_MERGE_RATE
     from life_graph.kernel.personas import PersonaService
     from life_graph.kernel.project_registry import ProjectRegistry
-    from life_graph.services.dev_outcomes import track_record
+    from life_graph.services.dev.outcomes import track_record
     from life_graph.storage.database import async_session
 
     stats = await dev_task_stats(session, tenant_id)
@@ -1117,7 +1117,7 @@ async def task_diff(session: AsyncSession, tenant_id: str, task_id: str) -> dict
     Written by the dev agent (OpenCode, task 90033c3e); its tests were not
     usable and were replaced.
     """
-    from life_graph.services.github_pr import landed_diff
+    from life_graph.services.dev.github_pr import landed_diff
 
     # Find the newest Approval with kind "driver_pr" and matching payload.task_id
     result = await session.execute(

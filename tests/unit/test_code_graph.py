@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from life_graph.services.code_graph import build_graph, context_for, mentioned_symbols
+from life_graph.services.dev.code_graph import build_graph, context_for, mentioned_symbols
 
 
 @pytest.fixture

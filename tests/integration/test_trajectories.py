@@ -36,7 +36,7 @@ async def _task(tenant: str) -> uuid.UUID:
 @skip_on_db_error
 async def test_steps_are_recorded_and_read_back_in_order_for_their_tenant_only():
     from life_graph.core.events import Event, EventType
-    from life_graph.services.trajectories import TrajectoryRecorder, list_steps
+    from life_graph.services.dev.trajectories import TrajectoryRecorder, list_steps
     from life_graph.storage.database import async_session
 
     tenant = f"traj_{uuid.uuid4().hex[:8]}"
@@ -100,7 +100,7 @@ async def test_steps_are_recorded_and_read_back_in_order_for_their_tenant_only()
 async def test_an_opted_out_tenant_has_no_steps_recorded(monkeypatch):
     from life_graph.config import settings
     from life_graph.core.events import Event, EventType
-    from life_graph.services.trajectories import TrajectoryRecorder, list_steps
+    from life_graph.services.dev.trajectories import TrajectoryRecorder, list_steps
     from life_graph.storage.database import async_session
 
     tenant = f"optout_{uuid.uuid4().hex[:8]}"

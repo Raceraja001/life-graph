@@ -277,7 +277,7 @@ async def test_bounce_packet_keeps_persona_scoping(monkeypatch):
         allowed_tools=["file_read"],
     )
 
-    from life_graph.services.verifiers import VerifierResult
+    from life_graph.services.dev.verifiers import VerifierResult
 
     async def _chain(*_a, **_k):
         return [VerifierResult(verifier="build_ok", passed=True, evidence="")]

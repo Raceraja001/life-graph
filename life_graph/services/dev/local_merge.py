@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from life_graph.services.github_pr import (
+from life_graph.services.dev.github_pr import (
     _BRANCH_RE,
     _SHA_RE,
     PullRequestError,

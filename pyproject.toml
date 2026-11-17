@@ -72,7 +72,7 @@ dependencies = [
     # LLM (routing only, minimal usage)
     "litellm>=1.40",
     "google-auth>=2.30",  # Vertex AI credential handling (litellm's vertex_ai/* provider)
-    # Powers the diff-reading second-opinion reviewer (services/pr_agent_review.py)
+    # Powers the diff-reading second-opinion reviewer (services/dev/pr_agent_review.py)
     # -- a real driver dispatch, not a dev-only tool, so this is a runtime
     # dependency like litellm above, not the `dev` extra pip-audit lives in.
     # Python>=3.12 only (pr-agent's own requirement) -- this project supports

@@ -8,7 +8,7 @@ HTTPS, how many days are left on the certificate.
   is made RECHECK_SECONDS after the first, in the same run) raise an
   important event, pushed to the phone at once (watchers/notification_engine
   URGENT_WATCHERS), and queue a fix task through
-  services/production_findings.py, which de-duplicates an outage that lasts
+  services/dev/production_findings.py, which de-duplicates an outage that lasts
   for hours. Recovery raises one info event.
 - **Certificate**: alerts at 14, 7, 3 and 1 days left, once each.
 - **Backups**: ``backup_check_command`` runs in the project's directory once a
@@ -236,7 +236,7 @@ class AppUptimeWatcher(BaseWatcher):
     async def _file_fix(
         self, project: dict[str, Any], title: str, detail: str, signature: str
     ) -> None:
-        from life_graph.services.production_findings import file_fix_task
+        from life_graph.services.dev.production_findings import file_fix_task
 
         try:
             await file_fix_task(

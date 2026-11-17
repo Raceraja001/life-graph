@@ -45,7 +45,7 @@ from life_graph.autonomy.pipeline.service import AutoFixService
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.dispatcher import DEFAULT_VERIFY_CHAIN
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
-from life_graph.services.verifiers import verifier_chain
+from life_graph.services.dev.verifiers import verifier_chain
 
 if TYPE_CHECKING:
     from pathlib import Path

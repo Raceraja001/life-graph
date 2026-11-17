@@ -1,5 +1,5 @@
 # ── NOD errand sandbox ───────────────────────────────────────
-# The isolation chassis for errands (life_graph/services/sandbox.py). This
+# The isolation chassis for errands (life_graph/services/dev/sandbox.py). This
 # stack is separate from docker-compose.yml on purpose: that one runs the
 # application *with* its secrets, this one runs untrusted work *without*
 # them, and nothing here should ever be merged into the app's compose file.
@@ -244,7 +244,7 @@ networks:
     internal: true
 
   # The one network in this stack with a route to the internet, and `egress`
-  # is the only container permitted on it (services/sandbox.py enforces that
+  # is the only container permitted on it (services/dev/sandbox.py enforces that
   # against this file). Everything that leaves this stack has been through
   # the proxy's destination rules and is connected to the address the proxy
   # resolved, not to a name the browser could have re-resolved.

@@ -137,7 +137,7 @@ def test_local_collector_joins_tokens_into_one_text_step():
 
 def test_recorder_redacts_and_caps_what_it_stores(monkeypatch):
     from life_graph.config import settings
-    from life_graph.services.trajectories import to_rows
+    from life_graph.services.dev.trajectories import to_rows
 
     monkeypatch.setattr(settings, "trajectory_step_max_chars", 50)
     steps = [

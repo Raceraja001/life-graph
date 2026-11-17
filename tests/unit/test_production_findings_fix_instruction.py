@@ -1,6 +1,6 @@
 import re
 
-from life_graph.services.production_findings import fix_instruction
+from life_graph.services.dev.production_findings import fix_instruction
 
 # Helper to extract the 'What was observed' section content
 

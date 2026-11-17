@@ -13,7 +13,7 @@ import pytest
 from fastapi import HTTPException
 
 from life_graph.core.tenant import tenant_scope
-from life_graph.services import dev_tasks
+from life_graph.services.dev import tasks as dev_tasks
 from tests.unit.fakes import FakeSession, fake_landed_diff, sql
 
 TASK = str(uuid.uuid4())

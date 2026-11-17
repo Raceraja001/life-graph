@@ -942,12 +942,12 @@ async def tick_scheduled_jobs(ctx: dict) -> dict:
 async def sync_dev_task_prs(ctx: dict) -> dict:
     """Every 15 min: settle agent PRs merged/closed on GitHub, pull review comments.
 
-    See ``life_graph/services/dev_outcomes.py``. Outcomes recorded from the
+    See ``life_graph/services/dev/outcomes.py``. Outcomes recorded from the
     approvals feed are handled by its event subscriber; this catches what
     happens on GitHub directly.
     """
     from life_graph.services.approvals import retry_auto_merges
-    from life_graph.services.dev_outcomes import sync_all
+    from life_graph.services.dev.outcomes import sync_all
 
     # First, so a PR that auto-merges now is settled by this same sync.
     try:
@@ -967,7 +967,7 @@ async def run_nightly_dev_suggestions(ctx: dict) -> dict:
     The tasks run in the API process's queue runner, one at a time, so the
     morning brings PR approvals rather than an overloaded GPU at night.
     """
-    from life_graph.services.dev_suggestions import run_nightly
+    from life_graph.services.dev.suggestions import run_nightly
 
     return await run_nightly(async_session)
 
@@ -985,7 +985,7 @@ async def learn_project_task(
     "project_learn").
     """
     from life_graph.runtime import get_preference_store, get_project_registry
-    from life_graph.services.project_learning import learn_project
+    from life_graph.services.dev.project_learning import learn_project
 
     set_tenant_context(tenant_id, "system")
     job_id = uuid.uuid4()

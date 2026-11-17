@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from life_graph.drivers.dispatcher import DEFAULT_VERIFY_CHAIN, _resolve_verify_chain
-from life_graph.services.verifiers import verifier_chain
+from life_graph.services.dev.verifiers import verifier_chain
 
 
 class _Persona:

@@ -6,8 +6,8 @@ from __future__ import annotations
 import pytest
 
 from life_graph.drivers.dispatcher import _with_required_checks
-from life_graph.services import sandbox
-from life_graph.services import verifiers as v
+from life_graph.services.dev import sandbox
+from life_graph.services.dev import verifiers as v
 
 
 @pytest.fixture

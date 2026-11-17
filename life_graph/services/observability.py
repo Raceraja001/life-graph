@@ -18,7 +18,7 @@ from sqlalchemy import func, select, text
 
 from life_graph.config import settings
 from life_graph.models.db import AgentTask, Memory
-from life_graph.services.dev_tasks import RUNNER_LOCK_KEY, _kind_filter
+from life_graph.services.dev.tasks import RUNNER_LOCK_KEY, _kind_filter
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

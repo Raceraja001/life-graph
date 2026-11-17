@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
-from life_graph.services import sandbox
-from life_graph.services.acceptance import is_js_test_ref, is_safe_test_ref
+from life_graph.services.dev import sandbox
+from life_graph.services.dev.acceptance import is_js_test_ref, is_safe_test_ref
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -150,7 +150,7 @@ class VerifierChain:
         self.register("diff_within_scope", _verify_diff_within_scope)
         self.register("tests_exercise_code", _verify_tests_exercise_code)
         self.register("no_test_weakening", _verify_no_test_weakening)
-        # Proof checks (services/proof_checks.py), imported when they run.
+        # Proof checks (services/dev/proof_checks.py), imported when they run.
         self.register("diff_coverage", _proof("diff_coverage"))
         self.register("tests_catch_mutants", _proof("tests_catch_mutants"))
         self.register("change_explained", _proof("change_explained"))
@@ -270,7 +270,7 @@ def _missing_module(result: subprocess.CompletedProcess, module: str) -> bool:
 # ── Sandboxed execution ──────────────────────────────────────
 #
 # With LIFE_GRAPH_VERIFIER_SANDBOX=docker the checks that execute anything run
-# in a container (services/sandbox.py). Inside it the toolchain is the
+# in a container (services/dev/sandbox.py). Inside it the toolchain is the
 # project's cached venv, else the image's own — never a binary from the
 # worktree: a fresh worktree has no .venv, so one found there was planted.
 
@@ -827,7 +827,7 @@ async def _verify_no_vulnerable_deps_in_diff(workdir: Path, ctx: dict) -> tuple[
     Runs on the host, never inside the check-phase sandbox: unlike every
     other verifier here, this one genuinely needs outbound network access
     (querying the OSV/PyPI vulnerability database), which the sandbox denies
-    by design (``services/sandbox.py``'s ``--network none`` check phase).
+    by design (``services/dev/sandbox.py``'s ``--network none`` check phase).
     That's safe specifically for this check: pip-audit only reads installed
     package name/version metadata and queries a vulnerability database, it
     never executes anything from the diff itself — unlike tests_pass or
@@ -1210,7 +1210,7 @@ def _proof(name: str):
     module imports this one)."""
 
     async def run(workdir: Path, ctx: dict):
-        from life_graph.services import proof_checks
+        from life_graph.services.dev import proof_checks
 
         return await getattr(proof_checks, name)(workdir, ctx)
 

@@ -583,7 +583,7 @@ class Settings(BaseSettings):
     # denied unless this is set. Tests run in the verifier sandbox regardless.
     driver_opencode_allow_bash: bool = False
     # A plan approves itself only for a project with auto_approve_plans set,
-    # at most this many tasks, and every other rule in services/plan_policy.py.
+    # at most this many tasks, and every other rule in services/dev/plan_policy.py.
     auto_plan_max_tasks: int = 3
     # Seconds a project's smoke_command may take after a deploy.
     post_deploy_smoke_timeout: int = 300
@@ -594,7 +594,7 @@ class Settings(BaseSettings):
     bootstrap_create_github: bool = False
     # Set false on a preview/secondary instance so it never even tries to be
     # the dev-task runner. Without it, the database advisory lock still keeps
-    # it from running alongside the real one (services/dev_tasks.py).
+    # it from running alongside the real one (services/dev/tasks.py).
     dev_task_runner_enabled: bool = True
     # Where queued coding work runs (services/compute_router.py). The one GPU
     # is the user's while he is active (speech models), so queued tasks then go
@@ -674,7 +674,7 @@ class Settings(BaseSettings):
     )
     tech_watch_max_pages: int = 6  # new pages read per topic per day
     tech_watch_digest_per_topic: int = 6  # findings per topic in the Monday brief
-    # Per-step content cap for recorded agent runs (services/trajectories.py).
+    # Per-step content cap for recorded agent runs (services/dev/trajectories.py).
     # One whole-file read can be megabytes; the real length is kept alongside.
     trajectory_step_max_chars: int = 16_000
     # Tenants whose agent runs are NOT recorded step by step (consent: a
@@ -685,7 +685,7 @@ class Settings(BaseSettings):
     driver_second_opinion_enabled: bool = False
     driver_second_opinion_model: str | None = None  # None = agent_llm_model
     # The second-opinion review before a code change lands unattended
-    # (services/change_policy.py). Empty = the free cloud models, else the
+    # (services/dev/change_policy.py). Empty = the free cloud models, else the
     # local agent model; never a paid fallback. Code only leaves the machine.
     change_review_model: str = ""
     driver_pr_agent_bin: str = "pr-agent"  # the PR-Agent CLI backing the reviewer above
@@ -698,7 +698,7 @@ class Settings(BaseSettings):
     driver_pr_description_model: str | None = None  # None = agent_llm_model
     # Where verifiers execute agent-written code (tests, linters). "none" runs
     # them on the host as this process's user; "docker" runs each check in a
-    # locked-down container (life_graph/services/sandbox.py). With "docker",
+    # locked-down container (life_graph/services/dev/sandbox.py). With "docker",
     # a missing daemon or image makes checks inconclusive, never passing.
     # GitHub CLI used to push approved task branches and open PRs; it must be
     # logged in (`gh auth login`) as the user this process runs as.
@@ -719,7 +719,7 @@ class Settings(BaseSettings):
     # Where the claude_code driver itself executes. "none" runs it on the
     # host as this process's user (scoped only by the CLI's own
     # --allowedTools/--permission-mode). "docker" runs it in a container
-    # (life_graph/services/sandbox.py:run_driver) with the worktree mounted
+    # (life_graph/services/dev/sandbox.py:run_driver) with the worktree mounted
     # read-write, only its own OAuth token available (a throwaway copy, not
     # the live ~/.claude), and no other host path visible. Unlike the
     # verifier sandbox this needs network (the CLI calls the Anthropic API),
@@ -731,7 +731,7 @@ class Settings(BaseSettings):
     driver_claude_sandbox_memory: str = "4g"
     driver_claude_sandbox_cpus: str = "4"
     # The CLI's own OAuth token file, staged into a throwaway copy for each
-    # sandboxed dispatch (life_graph/services/sandbox.py:stage_credentials).
+    # sandboxed dispatch (life_graph/services/dev/sandbox.py:stage_credentials).
     # Never mounted live — see driver_claude_sandbox's docstring above.
     driver_claude_code_creds_path: str = "~/.claude/.credentials.json"
 
@@ -969,7 +969,7 @@ class Settings(BaseSettings):
 
     @property
     def trajectory_opt_out_tenants_list(self) -> list[str]:
-        """Tenants opted out of step recording (services/trajectories.py)."""
+        """Tenants opted out of step recording (services/dev/trajectories.py)."""
         return [t.strip() for t in self.trajectory_opt_out_tenants.split(",") if t.strip()]
 
     @property

@@ -30,7 +30,7 @@ async def project(monkeypatch):
 
 
 def _finding(i):
-    from life_graph.services.dev_suggestions import Finding
+    from life_graph.services.dev.suggestions import Finding
 
     return Finding(
         kind="todo", key=f"k{i}-{uuid.uuid4().hex[:6]}", title=f"t{i}", instruction=f"Fix item {i}"
@@ -60,7 +60,7 @@ async def _tasks(project_id):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_queue_respects_cap_seen_keys_and_open_tasks(project):
-    from life_graph.services.dev_suggestions import queue_suggestions
+    from life_graph.services.dev.suggestions import queue_suggestions
     from life_graph.storage.database import async_session
 
     findings = [_finding(i) for i in range(4)]
@@ -81,7 +81,7 @@ async def test_queue_respects_cap_seen_keys_and_open_tasks(project):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_same_finding_is_not_suggested_twice(project):
-    from life_graph.services.dev_suggestions import queue_suggestions
+    from life_graph.services.dev.suggestions import queue_suggestions
     from life_graph.storage.database import async_session
 
     f = _finding(1)
@@ -101,7 +101,7 @@ async def test_claim_restart_and_run(project, monkeypatch):
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.models.db import AgentTask
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     queued = await dev_tasks.create_dev_task(
@@ -170,7 +170,7 @@ async def test_a_started_task_requeued_by_a_restart_stays_interactive(project, m
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.models.db import AgentTask
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     async def not_now(*_a, **_k):  # the restart happens before it runs
@@ -223,7 +223,7 @@ async def test_a_queued_plan_still_runs_as_a_plan(project, monkeypatch):
     plan must keep its spec_first and its no_diff_in_plan check."""
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     queued = await dev_tasks.create_dev_task(
@@ -258,7 +258,7 @@ async def test_a_queued_plan_still_runs_as_a_plan(project, monkeypatch):
 
 async def _claim_ours(task_id):
     """Claim until our task comes up or nothing more is runnable."""
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     for _ in range(200):
@@ -272,7 +272,8 @@ async def test_while_the_user_is_active_a_nightly_task_goes_to_the_cloud(project
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.models.db import AgentTask
-    from life_graph.services import compute_router, dev_tasks
+    from life_graph.services import compute_router
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     async def active(_factory, _tenant):
@@ -325,7 +326,8 @@ async def test_while_the_user_is_active_a_nightly_task_goes_to_the_cloud(project
 
 async def test_while_the_user_is_active_without_a_cloud_model_it_waits(project, monkeypatch):
     from life_graph.models.db import AgentTask
-    from life_graph.services import compute_router, dev_tasks
+    from life_graph.services import compute_router
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     async def active(_factory, _tenant):

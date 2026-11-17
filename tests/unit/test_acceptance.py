@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from life_graph.services.acceptance import (
+from life_graph.services.dev.acceptance import (
     AcceptanceCriterion,
     bound_tests,
     cited_criteria,

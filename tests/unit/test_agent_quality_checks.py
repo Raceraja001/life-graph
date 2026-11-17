@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-from life_graph.services.verifiers import (
+from life_graph.services.dev.verifiers import (
     _test_smells,
     _verify_diff_within_scope,
     _verify_tests_exercise_code,
@@ -162,7 +162,7 @@ def test_run_tests_takes_the_path_shapes_models_send(sent, paths):
 
 def test_task_of_recovers_the_original_task_from_a_bounce():
     from life_graph.drivers.self_check import task_of
-    from life_graph.services.verifiers import BOUNCE_TASK_MARKER
+    from life_graph.services.dev.verifiers import BOUNCE_TASK_MARKER
 
     bounce = f"Your previous attempt ... failed:\n- x\n\n{BOUNCE_TASK_MARKER}\n{TASK}"
     assert task_of(bounce) == TASK
@@ -173,8 +173,8 @@ def test_task_of_recovers_the_original_task_from_a_bounce():
 @pytest.mark.asyncio
 async def test_self_check_reports_a_failing_cheap_check(project, monkeypatch):
     from life_graph.drivers import self_check
-    from life_graph.services import verifiers
-    from life_graph.services.verifiers import VerifierResult
+    from life_graph.services.dev import verifiers
+    from life_graph.services.dev.verifiers import VerifierResult
 
     async def no_tests(workdir, ctx):
         return None
@@ -210,7 +210,7 @@ async def test_self_check_reports_a_failing_cheap_check(project, monkeypatch):
 async def test_the_bounce_leads_with_the_failures_and_keeps_the_task_last(monkeypatch, tmp_path):
     from life_graph.drivers.base import ContextPacket, DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
-    from life_graph.services.verifiers import BOUNCE_TASK_MARKER, VerifierResult
+    from life_graph.services.dev.verifiers import BOUNCE_TASK_MARKER, VerifierResult
 
     sent = {}
 
@@ -251,7 +251,7 @@ CALLABLE_ONLY_TEST = """import pytest
 
 @pytest.mark.asyncio
 async def test_task_diff_function_exists():
-    from life_graph.services.dev_tasks import task_diff
+    from life_graph.services.dev.tasks import task_diff
 
     assert callable(task_diff)
 """
@@ -268,7 +268,7 @@ async def test_task_diff_function_exists():
 def test_handing_the_code_to_an_introspection_builtin_is_not_use(probe):
     source = (
         "import inspect\n"
-        "from life_graph.services.dev_tasks import task_diff\n\n"
+        "from life_graph.services.dev.tasks import task_diff\n\n"
         f"def test_x():\n    {probe}\n"
     )
     assert any("never calls or patches" in s for s in _test_smells(source, {"life_graph"}))
@@ -282,7 +282,7 @@ def test_the_callable_only_test_is_caught():
 def test_calling_the_code_inside_a_probe_still_counts():
     # The result of a real call may be checked with isinstance.
     source = (
-        "from life_graph.services.dev_tasks import task_diff\n\n"
+        "from life_graph.services.dev.tasks import task_diff\n\n"
         "async def test_x():\n    assert isinstance(await task_diff(1, 2, 3), dict)\n"
     )
     assert _test_smells(source, {"life_graph"}) == []

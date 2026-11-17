@@ -24,7 +24,7 @@ from life_graph.core.budget import BudgetDecision
 from life_graph.core.events import EventType
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.dispatcher import TaskDispatcher
-from life_graph.services.verifiers import VerifierResult
+from life_graph.services.dev.verifiers import VerifierResult
 
 
 class _Session:

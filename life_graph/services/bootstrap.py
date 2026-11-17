@@ -108,7 +108,7 @@ async def bootstrap(
 ) -> dict[str, Any]:
     """Scaffold, version, register and (optionally) plan a new app."""
     from life_graph.kernel.project_registry import ProjectRegistry
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     if not _NAME_RE.match(name or ""):

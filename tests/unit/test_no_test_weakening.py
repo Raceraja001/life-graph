@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from life_graph.services.verifiers import verifier_chain
+from life_graph.services.dev.verifiers import verifier_chain
 
 ORIGINAL = """\
 import pytest

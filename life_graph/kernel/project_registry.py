@@ -47,25 +47,25 @@ logger = logging.getLogger(__name__)
 #   nightly_persona       persona that works them (default code-fixer-local)
 #   nightly_lint_paths    paths the nightly ruff scan covers (default: the whole repo)
 #   nightly_untested      also queue tests for short public Python functions no test
-#                          names (opt-in; services/dev_suggestions.py untested_findings)
+#                          names (opt-in; services/dev/suggestions.py untested_findings)
 #   nightly_untested_paths  paths that scan covers (default: the whole repo)
 #   protected_paths       globs an agent change may touch only with a person's review —
 #                          never auto-opened or auto-merged (on top of the defaults in
-#                          services/change_policy.py: CI, migrations, dependencies, ...)
+#                          services/dev/change_policy.py: CI, migrations, dependencies, ...)
 #   auto_merge_max_lines  most changed lines an agent change may land with unattended (150)
 #   auto_merge_max_files  most changed files an agent change may land with unattended (3)
 #   diff_coverage_min     share of changed production lines tests must run (0.8; diff_coverage)
 #   mutation_min_kill     share of mutants a changed test must catch (0.6; tests_catch_mutants)
 #   smoke_command        run after a successful deploy; failing it runs rollback_command
-#                          (if set) and queues a fix task (services/production_findings.py)
+#                          (if set) and queues a fix task (services/dev/production_findings.py)
 #   rollback_command      undo a deploy whose smoke check failed
 #   fix_persona           persona that works production fix tasks (default code-fixer-local)
 #   health_url            polled hourly by the app_uptime watcher: status, latency, TLS expiry
 #   backup_check_command  run daily by the same watcher; non-zero exit = backups are failing
 #   auto_approve_plans    let a small, gap-free, non-sensitive plan from a trusted driver
-#                          approve itself (services/plan_policy.py); off by default
+#                          approve itself (services/dev/plan_policy.py); off by default
 #   pr_mode               "github" (default) or "local": a repo with no GitHub remote; approving
-#                          a task's PR merges it into the local base branch (services/local_merge.py)
+#                          a task's PR merges it into the local base branch (services/dev/local_merge.py)
 #   base_branch           branch every dev task is cut from (fetched from origin) and PRs
 #                          target; unset = whatever the local checkout is on
 #   deploy_command        shell command to run after a merge, in the project's repo path

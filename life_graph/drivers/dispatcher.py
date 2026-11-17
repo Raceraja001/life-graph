@@ -66,15 +66,15 @@ from life_graph.drivers.workdir import (
     resolve_workdir,
     worktree_intact,
 )
-from life_graph.services.change_policy import policy_from_project
-from life_graph.services.governor import governor
-from life_graph.services.verifiers import (  # noqa: F401  (failure_text: re-exported)
+from life_graph.services.dev.change_policy import policy_from_project
+from life_graph.services.dev.verifiers import (  # noqa: F401  (failure_text: re-exported)
     BOUNCE_TASK_MARKER,
     VerifierResult,
     failure_text,
     mechanical_autofix,
     verifier_chain,
 )
+from life_graph.services.governor import governor
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -131,7 +131,7 @@ SANDBOX_SETTINGS: tuple[str, ...] = (
     "sandbox_app_port",
     "sandbox_e2e_command",
     "sandbox_e2e_timeout",
-    # Thresholds for the proof checks (services/proof_checks.py).
+    # Thresholds for the proof checks (services/dev/proof_checks.py).
     "diff_coverage_min",
     "mutation_min_kill",
 )
@@ -150,7 +150,7 @@ async def _code_context(workdir: Path, instruction: str) -> str:
     if not settings.driver_code_context_enabled:
         return ""
     try:
-        from life_graph.services.code_graph import build_graph, context_for
+        from life_graph.services.dev.code_graph import build_graph, context_for
 
         graph = await asyncio.wait_for(
             asyncio.to_thread(build_graph, workdir), timeout=_CODE_CONTEXT_TIMEOUT_SECONDS
@@ -246,13 +246,13 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
     def _build_default_reviewer():
         """Build the second-opinion reviewer from settings (off by default).
 
-        Backed by PR-Agent (services/pr_agent_review.py), which reads the
+        Backed by PR-Agent (services/dev/pr_agent_review.py), which reads the
         actual diff rather than the driver's narrative account of it —
         same settings surface (driver_second_opinion_enabled/_model) the
         older thin LLM-skim reviewer used, same gate position.
         """
         from life_graph.config import settings
-        from life_graph.services.pr_agent_review import PRAgentReviewer
+        from life_graph.services.dev.pr_agent_review import PRAgentReviewer
 
         return PRAgentReviewer(
             model=settings.driver_second_opinion_model or settings.agent_llm_model,
@@ -415,7 +415,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         The trail only ever helps a *restarted* process, which can read
         nothing out of this one's memory -- so every stage writes it to
         ``agent_tasks.properties['checkpoints']``, where
-        :func:`~life_graph.services.dev_tasks.fail_interrupted` reads it to
+        :func:`~life_graph.services.dev.tasks.fail_interrupted` reads it to
         decide whether an abandoned run has to be re-dispatched in a clean
         worktree, only landed, or left alone because it already landed.
 
@@ -1150,7 +1150,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             # whether that work passed the checks: a free driver whose PRs keep
             # getting rejected here is not the cheap option.
             if project_id is not None:
-                from life_graph.services.dev_outcomes import track_record
+                from life_graph.services.dev.outcomes import track_record
 
                 kept = []
                 for d in available:

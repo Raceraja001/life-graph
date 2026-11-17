@@ -8,8 +8,8 @@ import asyncio
 
 import pytest
 
-from life_graph.services.github_pr import _pr_body, _verification_line
-from life_graph.services.pr_description import draft_pr_description
+from life_graph.services.dev.github_pr import _pr_body, _verification_line
+from life_graph.services.dev.pr_description import draft_pr_description
 
 GOOD = "## What changed\n- Added `foo()` in a.py\n## Why\nNeeded.\n## Review notes\nNone"
 DIFF = "diff --git a/a.py b/a.py\n+def foo():\n+    return 1\n"

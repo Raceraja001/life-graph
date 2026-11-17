@@ -74,7 +74,7 @@ async def record_outcome(
     if payload.get("outcome") in FINAL:
         return False
 
-    from life_graph.services.change_policy import trust_key
+    from life_graph.services.dev.change_policy import trust_key
 
     tenant_id = pr_approval.tenant_id
     driver = payload.get("driver") or "unknown"
@@ -82,7 +82,7 @@ async def record_outcome(
     trust = TrustScoreService(session)
     # The driver's overall record (driver selection reads it) and, when the
     # change was described at landing, the record for that kind of change,
-    # which is what unattended open/merge reads (services/change_policy.py).
+    # which is what unattended open/merge reads (services/dev/change_policy.py).
     kind = (payload.get("change") or {}).get("kind")
     agents = [driver, *([trust_key(driver, kind)] if kind else [])]
     for agent in agents:
@@ -465,15 +465,15 @@ async def record_reverts(session_factory) -> list[dict[str, Any]]:
     A merge counts as a success when it lands; if anyone reverts it on any
     branch within :data:`REVERT_WINDOW_DAYS` (``git revert`` writes "This
     reverts commit <sha>"), that is recorded as a failure for the driver and
-    for the kind of change (services/change_policy.py) — once per merge. The
+    for the kind of change (services/dev/change_policy.py) — once per merge. The
     post-merge CI revert is caught the same way once it merges. Reads the
     project's local clone, which every dev task fetches.
     """
     from datetime import timedelta
 
     from life_graph.autonomy.trust.service import TrustScoreService
-    from life_graph.services.change_policy import trust_key
-    from life_graph.services.github_pr import _git
+    from life_graph.services.dev.change_policy import trust_key
+    from life_graph.services.dev.github_pr import _git
 
     since = datetime.now(UTC) - timedelta(days=REVERT_WINDOW_DAYS)
     reports: list[dict[str, Any]] = []
@@ -546,7 +546,7 @@ async def check_post_merge_ci(session: AsyncSession, merge_approval: Approval) -
     resolved, so a merge is checked (and, if broken, reverted) exactly once.
     """
     from life_graph.kernel.notification_engine import NotificationEngine
-    from life_graph.services import github_pr
+    from life_graph.services.dev import github_pr
     from life_graph.storage.database import async_session
 
     payload = merge_approval.payload or {}
@@ -604,8 +604,8 @@ async def check_rollforward(session: AsyncSession, merge_approval: Approval) -> 
     """
     from life_graph.kernel.project_registry import ProjectRegistry
     from life_graph.models.db import AgentTask
-    from life_graph.services import github_pr
-    from life_graph.services.dev_tasks import create_dev_task
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev.tasks import create_dev_task
     from life_graph.storage.database import async_session
 
     payload = merge_approval.payload or {}

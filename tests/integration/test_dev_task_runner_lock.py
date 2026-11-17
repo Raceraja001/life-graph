@@ -16,7 +16,7 @@ async def test_a_second_process_cannot_take_the_runner_lock_until_the_first_lets
     from sqlalchemy.ext.asyncio import create_async_engine
 
     from life_graph.config import settings
-    from life_graph.services.dev_tasks import acquire_runner_lock, release_runner_lock
+    from life_graph.services.dev.tasks import acquire_runner_lock, release_runner_lock
 
     # Two engines = two independent "processes" as far as Postgres is concerned.
     first_engine = create_async_engine(settings.database_url)

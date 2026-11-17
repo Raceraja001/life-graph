@@ -199,7 +199,7 @@ def test_p3_build_brief_evidence():
 def test_p3_durable_task_checkpoint_and_resume_guard():
     from types import SimpleNamespace
 
-    from life_graph.services.dev_tasks import build_checkpoint, can_safely_resume
+    from life_graph.services.dev.tasks import build_checkpoint, can_safely_resume
 
     task = SimpleNamespace(
         id="task-123",

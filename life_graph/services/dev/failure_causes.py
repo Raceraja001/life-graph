@@ -4,7 +4,7 @@ No LLM (charter invariant 1). The order below is the precedence: the first
 matching rule wins, so a run that timed out *because* its model kept
 erroring is filed under the earlier, more specific rule. Rules read three
 things a failed run leaves behind: the task's ``error`` string, its
-verification attempts, and its recorded steps (services/trajectories.py).
+verification attempts, and its recorded steps (services/dev/trajectories.py).
 
 A cause is a plain string key with a label, not an enum (invariant 2), so a
 new rule is one entry in ``CAUSES`` and one branch in :func:`classify`.

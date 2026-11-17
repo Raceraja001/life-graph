@@ -13,7 +13,7 @@ import pytest
 
 from life_graph.drivers.base import ContextPacket
 from life_graph.drivers.claude_code import ClaudeCodeDriver
-from life_graph.services import sandbox
+from life_graph.services.dev import sandbox
 
 
 @pytest.fixture

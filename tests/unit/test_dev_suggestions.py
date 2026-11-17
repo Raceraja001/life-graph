@@ -7,8 +7,8 @@ import subprocess
 
 import pytest
 
-from life_graph.services import dev_suggestions as ds
-from life_graph.services import sandbox
+from life_graph.services.dev import sandbox
+from life_graph.services.dev import suggestions as ds
 
 
 def test_todo_findings_key_survives_line_moves_and_skips_junk(tmp_path):

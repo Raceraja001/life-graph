@@ -110,7 +110,7 @@ async def test_each_template_passes_its_own_checks_from_the_first_commit(
     from life_graph.config import settings
     from life_graph.models.db import Project
     from life_graph.services.bootstrap import bootstrap
-    from life_graph.services.verifiers import verifier_chain
+    from life_graph.services.dev.verifiers import verifier_chain
     from life_graph.storage.database import async_session
 
     image = (

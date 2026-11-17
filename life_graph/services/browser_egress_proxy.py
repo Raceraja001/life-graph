@@ -923,7 +923,7 @@ async def _pump(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> N
 #: Environment variables the entrypoint reads, so the compose service can be
 #: configured without rewriting its command. Deliberately unprefixed: a
 #: ``LIFE_GRAPH_*`` variable is application configuration and
-#: ``services/sandbox.py`` refuses to pass any of it into a sandbox container.
+#: ``services/dev/sandbox.py`` refuses to pass any of it into a sandbox container.
 ENV_HOST = "SANDBOX_EGRESS_HOST"
 ENV_PORT = "SANDBOX_EGRESS_PORT"
 ENV_ORIGINS = "SANDBOX_EGRESS_ALLOWED_ORIGINS"

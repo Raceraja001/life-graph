@@ -52,7 +52,7 @@ async def _tasks(tenant):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_a_reported_failure_queues_one_fix_task_and_dedupes_the_repeat(tenant, tmp_path):
-    from life_graph.services.production_findings import file_fix_task
+    from life_graph.services.dev.production_findings import file_fix_task
     from life_graph.storage.database import async_session
 
     pid = await _project(tenant, tmp_path, fix_persona="code-fixer-opencode")

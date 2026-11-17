@@ -1,9 +1,9 @@
 """Tasks tagged ``properties.incident`` stay in the table but out of the list
-and the stats (services/dev_tasks.py list_dev_tasks)."""
+and the stats (services/dev/tasks.py list_dev_tasks)."""
 
 from __future__ import annotations
 
-from life_graph.services import dev_tasks
+from life_graph.services.dev import tasks as dev_tasks
 from tests.unit.fakes import FakeSession, sql
 
 

@@ -64,7 +64,7 @@ def fake_dispatch(monkeypatch):
 
 
 async def _drain():
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     await asyncio.gather(*list(dev_tasks._background))
 
@@ -236,7 +236,7 @@ async def test_auto_merge_status_reports_the_exact_gate_numbers(project):
     from life_graph.autonomy.models import TrustScore
     from life_graph.kernel.project_registry import ProjectRegistry
     from life_graph.models.db import AgentTask, Approval
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     await ProjectRegistry(session_factory=async_session).update_settings(
@@ -301,7 +301,7 @@ async def test_auto_merge_status_reports_the_exact_gate_numbers(project):
 async def test_auto_merge_status_not_yet_earning_below_threshold(project):
     from life_graph.autonomy.models import TrustScore
     from life_graph.models.db import AgentTask, Approval
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     task_id = uuid.uuid4()
@@ -361,7 +361,7 @@ async def test_auto_merge_status_skips_personas_with_no_static_driver(project):
     chosen per dispatch by the selection cascade, so there is no single
     track record to summarize honestly here."""
     from life_graph.models.db import AgentTask, Approval
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     task_id = uuid.uuid4()
@@ -403,7 +403,7 @@ async def test_dependency_audit_readiness_finds_a_real_declared_dependency(proje
     """project's path IS this repo's own checkout, whose pyproject.toml/
     uv.lock genuinely declare pip-audit (it powers this very verifier) --
     a real file read, not a mock."""
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     rows = await dev_tasks.dependency_audit_readiness(TENANT)
 
@@ -417,7 +417,7 @@ async def test_dependency_audit_readiness_finds_a_real_declared_dependency(proje
 async def test_dependency_audit_readiness_false_when_not_declared(tmp_path, monkeypatch):
     from life_graph.api.dependencies import get_persona_service, get_project_registry
     from life_graph.config import settings
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'demo'\n", encoding="utf-8")
     monkeypatch.setattr(settings, "tool_fs_roots", str(tmp_path))
@@ -437,7 +437,7 @@ async def test_dependency_audit_readiness_false_when_not_declared(tmp_path, monk
 @skip_on_db_error
 async def test_a_restart_requeues_an_abandoned_task_once_then_fails_it(project):
     from life_graph.models.db import AgentTask
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     async with async_session() as s:
@@ -505,8 +505,8 @@ async def test_verification_surfaces_the_failing_checks_evidence(project):
     not require a hand-run query against VerificationRun."""
     from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.models.db import AgentTask
-    from life_graph.services import dev_tasks
-    from life_graph.services.verifiers import VerifierResult
+    from life_graph.services.dev import tasks as dev_tasks
+    from life_graph.services.dev.verifiers import VerifierResult
     from life_graph.storage.database import async_session
 
     task_id = uuid.uuid4()
@@ -549,7 +549,7 @@ async def test_verification_surfaces_the_failing_checks_evidence(project):
 @skip_on_db_error
 async def test_verification_is_empty_for_a_task_with_no_runs(project):
     from life_graph.models.db import AgentTask
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     task_id = uuid.uuid4()

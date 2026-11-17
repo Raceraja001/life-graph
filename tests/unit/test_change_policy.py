@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from life_graph.services import change_policy as cp
+from life_graph.services.dev import change_policy as cp
 from tests.unit.fakes import FakeSession
 
 
@@ -97,7 +97,7 @@ async def test_describe_change_fails_closed_without_a_readable_diff(tmp_path):
 
 
 def _records(monkeypatch, by_agent):
-    from life_graph.services import dev_outcomes
+    from life_graph.services.dev import outcomes as dev_outcomes
 
     async def track_record(_session, _tenant, agent, _project):
         merged, failed = by_agent.get(agent, (0, 0))

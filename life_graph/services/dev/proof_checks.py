@@ -32,8 +32,8 @@ import subprocess
 import tempfile
 from pathlib import Path, PurePosixPath
 
-from life_graph.services import sandbox
-from life_graph.services.verifiers import (
+from life_graph.services.dev import sandbox
+from life_graph.services.dev.verifiers import (
     _HARDENED_GIT,
     _changed_files,
     _is_test_path,

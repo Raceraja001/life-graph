@@ -11,8 +11,8 @@ import subprocess
 
 import pytest
 
-from life_graph.services import verifiers as verifiers_mod
-from life_graph.services.verifiers import mechanical_autofix, verifier_chain
+from life_graph.services.dev import verifiers as verifiers_mod
+from life_graph.services.dev.verifiers import mechanical_autofix, verifier_chain
 
 
 def _init_repo(path):

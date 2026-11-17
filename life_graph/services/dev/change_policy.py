@@ -77,7 +77,7 @@ _DOC_SUFFIXES = (".md", ".rst", ".txt")
 
 
 def _is_test(rel: str) -> bool:
-    from life_graph.services.verifiers import _is_test_path
+    from life_graph.services.dev.verifiers import _is_test_path
 
     return _is_test_path(rel)
 
@@ -144,7 +144,7 @@ async def describe_change(
     On any git failure the change is described as unknown ``code`` with a
     review reason, so the gate fails closed.
     """
-    from life_graph.services.github_pr import _SHA_RE, _git
+    from life_graph.services.dev.github_pr import _SHA_RE, _git
 
     policy = policy or policy_from_project(None)
     files: list[str] = []
@@ -191,7 +191,7 @@ async def kind_record(
     they have an established one of their own (that history is nearly all
     test PRs). Code never falls back, and needs CODE_MIN_OUTCOMES.
     """
-    from life_graph.services.dev_outcomes import track_record
+    from life_graph.services.dev.outcomes import track_record
 
     record = await track_record(session, tenant_id, trust_key(driver, kind), project_id)
     if kind == "code":
@@ -224,7 +224,7 @@ async def auto_gate(
     reasons = list(change.get("review_reasons") or [])
     if change.get("kind", "code") == "code":
         # Production code lands unattended only with proof it is covered and
-        # understood (services/proof_checks.py), never on "tests pass" alone.
+        # understood (services/dev/proof_checks.py), never on "tests pass" alone.
         checks = set(payload.get("checks") or [])
         missing = [c for c in CODE_PROOF_CHECKS if c not in checks]
         if missing:

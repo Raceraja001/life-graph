@@ -2,7 +2,7 @@
 
 One row per step (what the agent said, each tool call and its result), per
 attempt, so a run can be replayed in order and studied afterwards. Written
-from the ``driver:steps`` event by services/trajectories.py; content is
+from the ``driver:steps`` event by services/dev/trajectories.py; content is
 redacted and size-capped before it lands here. Deleted with its task.
 
 No schema qualifier, matching every migration since 023.

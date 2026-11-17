@@ -1340,7 +1340,7 @@ _FORBIDDEN_HOST_SHARING = {"pid": "host", "ipc": "host", "network_mode": "host",
 
 def compose_path() -> Path:
     """Path to ``compose.sandbox.yaml`` at the repository root."""
-    return Path(__file__).resolve().parents[2] / SANDBOX_COMPOSE_FILE
+    return Path(__file__).resolve().parents[3] / SANDBOX_COMPOSE_FILE
 
 
 def _compose_env(raw: object) -> dict[str, str]:

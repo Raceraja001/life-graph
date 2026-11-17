@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from life_graph.services.verifiers import verifier_chain
+from life_graph.services.dev.verifiers import verifier_chain
 
 TEST_PATH = "app/src/test/java/com/x/AddTest.kt"
 ORIGINAL = """\

@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-from life_graph.services.pr_agent_review import PRAgentReviewer, ReviewVerdict
+from life_graph.services.dev.pr_agent_review import PRAgentReviewer, ReviewVerdict
 
 
 def test_parse_approves_when_no_issues_and_no_security_concern():
@@ -87,7 +87,7 @@ async def test_missing_binary_fails_open():
 
 @pytest.mark.asyncio
 async def test_nonzero_exit_fails_open(monkeypatch):
-    import life_graph.services.pr_agent_review as mod
+    import life_graph.services.dev.pr_agent_review as mod
 
     class _FakeProc:
         returncode = 1
