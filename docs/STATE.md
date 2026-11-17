@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-17 05:02 UTC` from `feat/memory-evaluation-laboratory` @ `62bc81d`
+Generated `2026-11-17 05:05 UTC` from `master` @ `d6c359a`
 
 ---
 
@@ -26,7 +26,7 @@ Generated `2026-11-17 05:02 UTC` from `feat/memory-evaluation-laboratory` @ `62b
 | Config settings | **296** (prefix `LIFE_GRAPH_`) |
 | Test functions | **4708** in 499 files |
 | Dashboard pages | **22** |
-| Python | 470 files, 133,129 lines |
+| Python | 466 files, 131,617 lines |
 
 ---
 
