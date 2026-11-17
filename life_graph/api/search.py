@@ -161,6 +161,13 @@ class AskResponse(BaseModel):
     domains_covered: dict[str, int] = Field(default_factory=dict)
     challenge_prompts: list[str] = Field(default_factory=list)
     claim_evidence: list[dict[str, Any]] = Field(default_factory=list)
+    epistemic_status: str = Field(
+        "explicitly_stated",
+        description="explicitly_stated, inferred, stale, contradicted, or unsupported",
+    )
+    source_lineage: list[dict[str, Any]] = Field(
+        default_factory=list, description="Resolved evidence lineage for citations"
+    )
 
 
 # ── Projection helpers ───────────────────────────────────────
@@ -556,6 +563,124 @@ def detect_challenge_prompts(
     return prompts
 
 
+# ── Epistemic status (§3.A — memory that understands its limitations) ─────
+#
+# An answer's worth is not its wording but its relationship to the evidence
+# behind it, and those are five different relationships: the owner said it,
+# we worked it out, it was true once, two memories disagree, or nothing
+# actually supports it. The five are reported as one field rather than left
+# for a caller to infer from `confidence`, because a number cannot say which
+# of them it is — a stale fact and an inferred guess can score the same.
+#
+# Worst-first, so one good memory never launders the set: contradiction
+# outranks staleness, staleness outranks inference.
+
+#: The owner's own words, a document, or something observed — stated outright.
+EPISTEMIC_EXPLICIT = "explicitly_stated"
+#: Derived rather than stated: present it as a guess (core/evidence.is_guess).
+EPISTEMIC_INFERRED = "inferred"
+#: True once; its validity window has closed or it has been replaced.
+EPISTEMIC_STALE = "stale"
+#: At least one memory asserts something incompatible with the question.
+EPISTEMIC_CONTRADICTED = "contradicted"
+#: Nothing stored supports an answer — including every abstention.
+EPISTEMIC_UNSUPPORTED = "unsupported"
+
+
+def resolve_source_lineage(rows: list[Any]) -> list[dict[str, Any]]:
+    """Evidence lineage for each cited memory — origin, extraction trace, span.
+
+    Read from the retrieved rows rather than the response models: the capture
+    event, source excerpt and derivation ancestry live on the row and in its
+    JSONB ``properties``, which the projection drops.
+    """
+    from life_graph.core.evidence import resolve_memory_lineage
+
+    lineage: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            lineage.append(resolve_memory_lineage(row))
+        except Exception:  # noqa: BLE001 — an unreadable row must not fail the answer
+            logger.warning("Lineage resolution failed for a cited memory", exc_info=True)
+    return lineage
+
+
+def _is_contradicted(row: Any) -> bool:
+    """True when retrieval or the row itself says this memory disagrees with the question."""
+    from life_graph.core.evidence import CONTRADICTED
+
+    assessment = getattr(row, "retrieval_evidence", None)
+    if isinstance(assessment, dict) and (
+        assessment.get("contradicted") or assessment.get("support_status") == CONTRADICTED
+    ):
+        return True
+    if str(getattr(row, "status", "") or "").lower() == "contradicted":
+        return True
+    props = getattr(row, "properties", None)
+    return bool(isinstance(props, dict) and (props.get("contradicted") or props.get("contradicts")))
+
+
+def _is_stale(row: Any, now: datetime) -> bool:
+    """True when the memory's real-world validity has closed, or it was replaced."""
+    from life_graph.services.memory.retrieval import is_valid_at
+
+    if str(getattr(row, "status", "") or "").lower() in ("superseded", "archived", "stale"):
+        return True
+    if getattr(row, "superseded_by", None):
+        return True
+    try:
+        return not is_valid_at(row, now)
+    except Exception:  # noqa: BLE001 — an unreadable timestamp is not evidence of staleness
+        logger.warning("Validity check failed for a cited memory", exc_info=True)
+        return False
+
+
+def _is_inferred(row: Any) -> bool:
+    """True when the memory is a derivation or an unverified outside claim."""
+    from life_graph.core.evidence import evidence_of, is_guess
+
+    props = getattr(row, "properties", None)
+    return is_guess(
+        evidence_of(
+            getattr(row, "source_type", None),
+            getattr(row, "trust_tier", None),
+            props if isinstance(props, dict) else {},
+        )
+    )
+
+
+def classify_epistemic_status(
+    rows: list[Any],
+    *,
+    abstained: bool,
+    retrieval_evidence: Any = None,
+    now: datetime | None = None,
+) -> str:
+    """How the answer stands to its evidence: one of the five ``EPISTEMIC_*`` values.
+
+    *retrieval_evidence* is the assessment carried by a
+    ``RetrievalResult`` (services/memory/retrieval.py), so a contradiction
+    retrieval already detected is not re-derived here.
+    """
+    from datetime import UTC
+
+    if abstained or not rows:
+        return EPISTEMIC_UNSUPPORTED
+    ref = now or datetime.now(UTC)
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=UTC)
+
+    if isinstance(retrieval_evidence, dict) and retrieval_evidence.get("contradicted"):
+        return EPISTEMIC_CONTRADICTED
+    if any(_is_contradicted(r) for r in rows):
+        return EPISTEMIC_CONTRADICTED
+    if any(_is_stale(r, ref) for r in rows):
+        return EPISTEMIC_STALE
+    if any(_is_inferred(r) for r in rows):
+        return EPISTEMIC_INFERRED
+    return EPISTEMIC_EXPLICIT
+
+
 def detect_knowledge_gaps(
     memories: list[Any],
     *,
@@ -611,6 +736,7 @@ async def ask_brain(
         return AskResponse(
             answer="Embedding service is unavailable. Cannot search memories.",
             source_count=0,
+            epistemic_status=EPISTEMIC_UNSUPPORTED,
         )
 
     # The memories that answer it, as Jarvis finds them (services/memory/retrieval.py):
@@ -632,9 +758,17 @@ async def ask_brain(
         return AskResponse(
             answer="Embedding service is unavailable. Cannot search memories.",
             source_count=0,
+            epistemic_status=EPISTEMIC_UNSUPPORTED,
         )
 
     memories = [MemoryResponse.model_validate(r) for r in rows]
+    # §3.A — where the answer stands to its evidence, and that evidence's
+    # origin. Both read the retrieved rows, not the projections: the capture
+    # event, source span, validity window and retrieval's own contradiction
+    # assessment live on the row. `retrieval_evidence` is what
+    # services/memory/retrieval.py attached (RetrievalResult).
+    source_lineage = resolve_source_lineage(rows)
+    retrieval_evidence = getattr(rows, "evidence", None)
 
     # Track in metamemory
     max_confidence = max((m.confidence for m in memories), default=0.0)
@@ -655,6 +789,7 @@ async def ask_brain(
             knowledge_gaps=detect_knowledge_gaps(
                 [], abstained=True, abstention_reason="no_matching_memories"
             ),
+            epistemic_status=EPISTEMIC_UNSUPPORTED,
             source_count=0,
             query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
             result_mode="index" if body.index_only else "full",
@@ -670,6 +805,8 @@ async def ask_brain(
             knowledge_gaps=detect_knowledge_gaps(
                 memories, abstained=True, abstention_reason="low_confidence"
             ),
+            epistemic_status=EPISTEMIC_UNSUPPORTED,
+            source_lineage=source_lineage,
             source_count=len(memories),
             memories=[] if body.index_only else memories,
             query_time_ms=round((time.perf_counter() - t0) * 1000, 2),
@@ -717,6 +854,12 @@ async def ask_brain(
         domains_covered=summarize_cross_domain(memories),
         challenge_prompts=detect_challenge_prompts(memories),
         claim_evidence=result.get("claim_evidence") or [],
+        epistemic_status=classify_epistemic_status(
+            rows,
+            abstained=not result.get("answered", True),
+            retrieval_evidence=retrieval_evidence,
+        ),
+        source_lineage=source_lineage,
     )
     full = (
         AskResponse(
@@ -725,6 +868,8 @@ async def ask_brain(
             model=result["model"],
             memories=memories,
             query_time_ms=payload.query_time_ms,
+            epistemic_status=payload.epistemic_status,
+            source_lineage=source_lineage,
         )
         if body.index_only
         else None
