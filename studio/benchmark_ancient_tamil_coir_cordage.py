@@ -1,134 +1,140 @@
 #!/usr/bin/env python3
-import requests
+"""
+Benchmark: Ancient Tamil Coir Cordage, Brackish Lagoon Coconut Fibre Retting & Marine Caulking Engineering
+Generated automatically.
+"""
+
+import sys
 import psycopg2
-import time
+import requests
 
-OLLAMA_URL = "http://localhost:11434/api/embeddings"
-EMBED_MODEL = "bge-m3:latest"
 DB_URL = "postgresql://life_graph:life_graph@localhost:55432/life_graph"
+OLLAMA_URL = "http://localhost:11434/api/embeddings"
+MODEL_NAME = "bge-m3:latest"
 
-TEST_CASES = [
+BENCHMARK_QUERIES = [
     {
-        "id": "COI-01",
-        "query": "Pattinappalai verses on ocean ships Vangam moored with coir hawsers in Kaveripattinam",
+        "id": "COR-01",
+        "title": "Sangam Coir Ships Verses",
+        "query": "Perumpanarruppadai Pattinappalai coconut coir cordage stitched ships ocean vangams verses",
         "expected_slugs": [
-            "text-pattinappalai-ship-rigging-and-coir-cordage-poetry"
-        ],
-        "category": "Literature & Rigging"
+            "text-perumpanarruppadai-and-pattinappalai-on-coir-stitched-ships"
+        ]
     },
     {
-        "id": "COI-02",
-        "query": "Brackish estuarine coconut husk retting halophilic bacterial pectin hydrolysis in lagoons",
+        "id": "COR-02",
+        "title": "Coconut Mesocarp Retting Chemistry",
+        "query": "Cocos nucifera mesocarp lignocellulose anaerobic lagoon retting kinetics pectinolysis",
         "expected_slugs": [
-            "concept-brackish-estuarine-coconut-husk-retting-and-pectin-hydrolysis"
-        ],
-        "category": "Retting Biochemistry"
+            "concept-cocos-nucifera-mesocarp-lignocellulose-and-anaerobic-retting"
+        ]
     },
     {
-        "id": "COI-03",
-        "query": "Triple strand coir hawser spinning Muvizhai Kayiru and surge energy absorption mechanics",
+        "id": "COR-03",
+        "title": "Mallet Defibration Spinning Wheel",
+        "query": "Mallet defibration spinning wheel thiri reverse two ply cordage twisting raattai",
         "expected_slugs": [
-            "concept-triple-strand-coir-hawser-spinning-and-tensile-cordage-mechanics"
-        ],
-        "category": "Hawser Engineering"
+            "technology-manual-beating-spinning-wheel-thiri-and-reverse-ply-cordage"
+        ]
     },
     {
-        "id": "COI-04",
-        "query": "Vegetable dammar resin and castor oil waterproofing impregnation for marine rigging",
+        "id": "COR-04",
+        "title": "Stitched Ship Planks Artifact",
+        "query": "Marakkalam stitched timber planks heavy coir rigging dammar tree resin caulking",
         "expected_slugs": [
-            "concept-vegetable-tallow-and-tar-waterproofing-for-marine-rigging"
-        ],
-        "category": "Cordage Waterproofing"
+            "artifact-marakkalam-stitched-planks-coir-rigging-and-resin-caulking"
+        ]
     },
     {
-        "id": "COI-05",
-        "query": "Traditional coconut fiber net weaving needles and nonslip anchor knotting mechanics",
+        "id": "COR-05",
+        "title": "Coir Tensile Mechanics",
+        "query": "Coir fiber tensile mechanics saltwater wet elongation elasticity rot resistance",
         "expected_slugs": [
-            "concept-traditional-coconut-fiber-net-weaving-and-hawser-knotting"
-        ],
-        "category": "Netting & Knotting"
+            "concept-coir-tensile-strength-saltwater-elongation-and-rot-resistance"
+        ]
     },
     {
-        "id": "COI-06",
-        "query": "Manappadu Pandya port epigraphs on cordage guilds and naval cable quotas",
+        "id": "COR-06",
+        "title": "Coir Spinners Guild Corporation",
+        "query": "Kayittru valaiignar vanga marakkar guild coir spinners shipwright corporation",
         "expected_slugs": [
-            "insc-manappadu-pandya-port-cordage-and-rope-guild-charters"
-        ],
-        "category": "Port Epigraphy"
+            "institution-kayittru-valaiignar-and-vanga-marakkar-guild-of-coir-spinners"
+        ]
     },
     {
-        "id": "COI-07",
-        "query": "Master coir spinner Kayittru Vanikan managing 100-meter ropewalks at Manappadu",
+        "id": "COR-07",
+        "title": "Marine Caulking Pyrotechnics",
+        "query": "Marine caulking pyrotechnics dammar pitch melting kungiliyam estuarine seam packing",
         "expected_slugs": [
-            "char-manappadu-master-coir-spinner-kayittru-vanikan"
-        ],
-        "category": "Master Artisans"
+            "technology-marine-caulking-resin-pitch-melting-and-seam-packing"
+        ]
     },
     {
-        "id": "COI-08",
-        "query": "Manappadu ancient coir cordage estuarine retting and marine rigging haven",
+        "id": "COR-08",
+        "title": "Kottaipattinam Coir Haven",
+        "query": "Kottaipattinam ancient coir cordage haven Palk Strait lagoon stitched ship citadel",
         "expected_slugs": [
-            "place-manappadu-ancient-coir-cordage-and-rigging-haven"
-        ],
-        "category": "Estuarine Haven Topography"
+            "place-kottaipattinam-ancient-coir-cordage-haven"
+        ]
     }
 ]
 
-def get_bge_embedding(text: str):
-    resp = requests.post(OLLAMA_URL, json={"model": EMBED_MODEL, "prompt": text}, timeout=30)
+def get_embedding(text: str) -> list:
+    resp = requests.post(OLLAMA_URL, json={"model": MODEL_NAME, "prompt": text})
     resp.raise_for_status()
     return resp.json()["embedding"]
 
 def main():
     print("=" * 80)
-    print("BENCHMARK: Ancient Tamil Coir Cordage & Marine Rigging")
-    print(f"Model: {EMBED_MODEL} | Dimension: 1024 | Total Queries: {len(TEST_CASES)}")
+    print("BENCHMARK: Ancient Tamil Coir Cordage, Brackish Lagoon Coconut Fibre Retting & Marine Caulking Engineering")
+    print(f"Model: {MODEL_NAME} | Dimension: 1024 | Total Queries: {len(BENCHMARK_QUERIES)}")
     print("=" * 80)
 
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
 
     passed = 0
-    t0 = time.time()
+    total = len(BENCHMARK_QUERIES)
 
-    for tc in TEST_CASES:
-        emb = get_bge_embedding(tc["query"])
-        emb_str = "[" + ",".join(str(x) for x in emb) + "]"
+    for item in BENCHMARK_QUERIES:
+        qid = item["id"]
+        qtitle = item["title"]
+        query = item["query"]
+        expected = item["expected_slugs"]
 
+        q_emb = get_embedding(query)
         cur.execute("""
             SELECT node_slug, 1 - (embedding <=> %s::vector) AS sim
             FROM rag_chunks
             ORDER BY embedding <=> %s::vector
             LIMIT 5;
-        """, (emb_str, emb_str))
+        """, (q_emb, q_emb))
         results = cur.fetchall()
 
-        top_slug = results[0][0]
-        top_sim = results[0][1]
-        is_hit = top_slug in tc["expected_slugs"]
-        status = "PASS" if is_hit else "FAIL"
-        if is_hit:
+        top1_slug, top1_sim = results[0]
+        if top1_slug in expected:
             passed += 1
-
-        print(f"[{status}] {tc['id']} ({tc['category']})")
-        print(f"  Query:    '{tc['query']}'")
-        print(f"  Expected: {tc['expected_slugs']}")
-        print(f"  Top-1:    {top_slug} (Sim: {top_sim:.4f})")
-        if not is_hit:
+            print(f"[PASS] {qid} ({qtitle})")
+            print(f"  Query:    '{query}'")
+            print(f"  Expected: {expected}")
+            print(f"  Top-1:    {top1_slug} (Sim: {top1_sim:.4f})")
+        else:
+            print(f"[FAIL] {qid} ({qtitle})")
+            print(f"  Query:    '{query}'")
+            print(f"  Expected: {expected}")
+            print(f"  Top-1:    {top1_slug} (Sim: {top1_sim:.4f})")
             print("  Top-5:")
-            for rank, (r_slug, r_sim) in enumerate(results, 1):
-                print(f"    {rank}. {r_slug} ({r_sim:.4f})")
-        print("-" * 80)
-
-    elapsed = time.time() - t0
-    accuracy = (passed / len(TEST_CASES)) * 100
-    print(f"RESULTS: {passed}/{len(TEST_CASES)} passed ({accuracy:.1f}%) in {elapsed:.2f}s")
-    print("=" * 80)
+            for s, sim in results:
+                print(f"    - {s} ({sim:.4f})")
 
     cur.close()
     conn.close()
-    if passed != len(TEST_CASES):
-        exit(1)
+
+    print("=" * 80)
+    print(f"SUMMARY: {passed}/{total} passed ({(passed/total)*100:.1f}%)")
+    print("=" * 80)
+    if passed < total:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
