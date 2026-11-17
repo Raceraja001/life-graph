@@ -116,7 +116,7 @@ async def write_cards(text: str, *, client=None) -> list[dict[str, str]]:
     if not text.strip():
         return []
     if client is None:
-        from life_graph.api.dependencies import get_lm_client
+        from life_graph.runtime import get_lm_client
 
         client = get_lm_client()
     try:

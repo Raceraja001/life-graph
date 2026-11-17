@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 
-from life_graph.api.dependencies import get_scheduler_service
 from life_graph.connectors.locality import CLOUD, audience
 from life_graph.core.tenant import set_tenant_context
 from life_graph.kernel.ambient import (
@@ -22,6 +21,7 @@ from life_graph.kernel.ambient import (
     AMBIENT_ADVISORY,
 )
 from life_graph.models.db import JobRun, Memory
+from life_graph.runtime import get_scheduler_service
 from life_graph.services.ambient_context import build_ambient_input
 from life_graph.storage.database import async_session
 
@@ -69,7 +69,7 @@ async def run_tenant_consolidation(ctx: dict, tenant_id: str) -> dict:
 
     try:
         # Run the consolidation pipeline
-        from life_graph.api.dependencies import get_consolidation_pipeline
+        from life_graph.runtime import get_consolidation_pipeline
 
         pipeline = get_consolidation_pipeline()
         report = await pipeline.run()
@@ -220,7 +220,7 @@ async def run_all_research(ctx: dict) -> dict:
 
     logger.info("Running research for %d tenants: %s", len(tenant_ids), tenant_ids)
 
-    from life_graph.api.dependencies import get_research_engine
+    from life_graph.runtime import get_research_engine
 
     engine = get_research_engine()
 
@@ -252,7 +252,7 @@ async def run_nightly_self_heal(ctx: dict) -> dict:
 
     logger.info("Starting nightly self-heal for all tenants")
 
-    from life_graph.api.dependencies import (
+    from life_graph.runtime import (
         get_eval_service,
         get_optimizer_service,
         get_prompt_version_service,
@@ -393,8 +393,8 @@ async def run_watchers(ctx: dict) -> dict:
         logger.warning("Watcher models not available — skipping watcher run")
         return {"status": "skipped", "reason": "models_unavailable"}
 
-    from life_graph.api.dependencies import get_watcher_notification_engine
     from life_graph.core.events import EventType, event_bus
+    from life_graph.runtime import get_watcher_notification_engine
     from life_graph.watchers.app_uptime_watcher import AppUptimeWatcher
     from life_graph.watchers.base import BaseWatcher
     from life_graph.watchers.code_quality_watcher import CodeQualityWatcher
@@ -428,7 +428,7 @@ async def run_watchers(ctx: dict) -> dict:
     # worker and the Redis bridge is publish-only — an API-process subscriber
     # would never receive worker-emitted events.
     try:
-        from life_graph.api.dependencies import get_process_manager
+        from life_graph.runtime import get_process_manager
         from life_graph.watchers.origination import TaskOriginationService
 
         origination = TaskOriginationService(get_process_manager())
@@ -632,7 +632,7 @@ async def run_daily_digest(ctx: dict) -> dict:
         logger.warning("Watcher models not available — skipping digest")
         return {"status": "skipped"}
 
-    from life_graph.api.dependencies import get_digest_generator
+    from life_graph.runtime import get_digest_generator
 
     digest_gen = get_digest_generator()
 
@@ -706,8 +706,8 @@ async def check_approval_timeouts(ctx: dict) -> dict:
     """Every 5 minutes: check and auto-approve expired approval entries."""
     logger.info("Checking approval timeouts")
 
-    from life_graph.api.dependencies import get_approval_service
     from life_graph.config import settings
+    from life_graph.runtime import get_approval_service
 
     try:
         approval_service = get_approval_service()
@@ -724,7 +724,7 @@ async def send_approval_escalations(ctx: dict) -> dict:
     """Every 30 minutes: send escalation notifications for pending approvals."""
     logger.info("Sending approval escalations")
 
-    from life_graph.api.dependencies import get_approval_service
+    from life_graph.runtime import get_approval_service
 
     try:
         approval_service = get_approval_service()
@@ -788,7 +788,7 @@ async def run_assistant_daily(ctx: dict) -> dict:
     each feature (document expiry, budgets, overdue invoices) for every
     tenant that has rows, so the reminders are held for the brief.
     """
-    from life_graph.api.dependencies import get_notification_engine
+    from life_graph.runtime import get_notification_engine
     from life_graph.services.assistant_daily import run_daily
 
     report = await run_daily(async_session, get_notification_engine())
@@ -982,7 +982,7 @@ async def learn_project_task(
     row this creates (``GET /admin/jobs?tenant_id=...``, ``job_name`` ==
     "project_learn").
     """
-    from life_graph.api.dependencies import get_preference_store, get_project_registry
+    from life_graph.runtime import get_preference_store, get_project_registry
     from life_graph.services.project_learning import learn_project
 
     set_tenant_context(tenant_id, "system")

@@ -77,7 +77,9 @@ def fakes(monkeypatch):
             return None  # the test DB cannot store vectors (tests/conftest.py)
 
     import life_graph.api.dependencies as deps
+    from life_graph.config import settings
 
+    monkeypatch.setattr(settings, "memory_start_at", "")
     monkeypatch.setattr(episodes, "summarize", fake_summary)
     monkeypatch.setattr(deps, "get_memory_manager", lambda: _Manager())
     return seen
@@ -193,3 +195,125 @@ async def test_a_reply_asked_again_is_summarised_once(fakes):
 
     lines, _ = await episodes._jarvis_turns(tenant, DAY)
     assert lines == ["Owner: Pick a film for tonight", "Jarvis: Vikram."]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_historical_retrieve_against_postgres_respects_as_of_and_recorded_as_of(monkeypatch):
+    """End-to-end DB verification for P1 Section 5:
+    - Relative window ('yesterday', 'last year') anchors to as_of against real Postgres.
+    - Superseded episode in Postgres is returned when recorded_as_of precedes superseded_at
+      and hidden after superseded_at.
+    - Late-arriving episode in Postgres is hidden when recorded_as_of precedes recorded_at
+      and returned when recorded_as_of is after recorded_at.
+    """
+    import life_graph.runtime as runtime
+    from life_graph.core.tenant import tenant_scope
+    from life_graph.models.db import Memory
+    from life_graph.services import entities, memory_retrieval
+    from life_graph.storage.database import async_session
+
+    tenant = f"epi_hist_{uuid.uuid4().hex[:8]}"
+    as_of = datetime(2025, 6, 15, 12, 0, tzinfo=UTC)
+    june_14 = date(2025, 6, 14)
+    year_2024_day = date(2024, 7, 10)
+
+    async with async_session() as s:
+        # 1. Episode on 2025-06-14 originally recorded 2025-06-15, superseded 2025-06-18
+        superseded_ep = Memory(
+            tenant_id=tenant,
+            content="Conversations with Jarvis on Saturday 14 June 2025: First draft summary.",
+            source_type="episode",
+            status="superseded",
+            trust_tier="verified",
+            importance=0.5,
+            properties={
+                "kind": "episode",
+                "source": "jarvis",
+                "date": june_14.isoformat(),
+                "episode_key": f"{june_14}:jarvis:v1",
+                "recorded_at": "2025-06-15T08:00:00Z",
+                "superseded_at": "2025-06-18T09:00:00Z",
+            },
+        )
+        # 2. Late-arriving work episode for 2025-06-14 recorded on 2025-06-20
+        late_ep = Memory(
+            tenant_id=tenant,
+            content="Work on Saturday 14 June 2025: Late backfilled work summary.",
+            source_type="episode",
+            status="active",
+            trust_tier="verified",
+            importance=0.5,
+            properties={
+                "kind": "episode",
+                "source": "work",
+                "date": june_14.isoformat(),
+                "episode_key": f"{june_14}:work",
+                "recorded_at": "2025-06-20T10:00:00Z",
+            },
+        )
+        # 3. Episode from 2024 for 'last year' relative to 2025-06-15
+        last_year_ep = Memory(
+            tenant_id=tenant,
+            content="Work on Wednesday 10 July 2024: Built the initial graph schema.",
+            source_type="episode",
+            status="active",
+            trust_tier="verified",
+            importance=0.5,
+            properties={
+                "kind": "episode",
+                "source": "work",
+                "date": year_2024_day.isoformat(),
+                "episode_key": f"{year_2024_day}:work",
+                "recorded_at": "2024-07-11T00:00:00Z",
+            },
+        )
+        s.add_all([superseded_ep, late_ep, last_year_ep])
+        await s.commit()
+
+    class _Manager:
+        async def generate_embedding(self, text):
+            return [0.1]
+
+    class _Store:
+        async def hybrid_search(self, **kw):
+            return []
+
+    async def _no_entities(t_id, text_):
+        return []
+
+    monkeypatch.setattr(runtime, "get_memory_manager", lambda: _Manager())
+    monkeypatch.setattr(runtime, "get_store", lambda: _Store())
+    monkeypatch.setattr(entities, "known_in_text", _no_entities)
+
+    with tenant_scope(tenant):
+        # At recorded_as_of = 2025-06-16: superseded_ep was active belief, late_ep not yet recorded
+        at_june_16 = await memory_retrieval.retrieve(
+            "What did we talk about yesterday?",
+            as_of=as_of,
+            recorded_as_of=datetime(2025, 6, 16, tzinfo=UTC),
+        )
+        assert [m.content for m in at_june_16] == [superseded_ep.content]
+
+        # At recorded_as_of = 2025-06-19: superseded_ep already superseded, late_ep still not recorded
+        at_june_19 = await memory_retrieval.retrieve(
+            "What did we talk about yesterday?",
+            as_of=as_of,
+            recorded_as_of=datetime(2025, 6, 19, tzinfo=UTC),
+        )
+        assert at_june_19 == []
+
+        # At recorded_as_of = 2025-06-21: late_ep is now recorded and returned
+        at_june_21 = await memory_retrieval.retrieve(
+            "What did we talk about yesterday?",
+            as_of=as_of,
+            recorded_as_of=datetime(2025, 6, 21, tzinfo=UTC),
+        )
+        assert [m.content for m in at_june_21] == [late_ep.content]
+
+        # 'last year' relative to as_of=2025-06-15 retrieves the 2024 episode from Postgres
+        from_2024 = await memory_retrieval.retrieve(
+            "What did we work on last year?",
+            as_of=as_of,
+        )
+        assert [m.content for m in from_2024] == [last_year_ep.content]

@@ -13,6 +13,7 @@ Local model only: the question and the memories are the owner's.
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import math
@@ -59,8 +60,8 @@ SCHEMA = {
 
 async def judge(question: str, contents: list[str]) -> list[int] | None:
     """Indexes (0-based) of the contents that help answer, best first; None if the model failed."""
-    from life_graph.api.dependencies import get_lm_client
     from life_graph.config import settings
+    from life_graph.runtime import get_lm_client
 
     listing = "\n".join(f"{i + 1}. {' '.join(c.split())[:300]}" for i, c in enumerate(contents))
     reply = await get_lm_client().chat_local_only(
@@ -270,11 +271,11 @@ def _temporal(memory: Any, *names: str) -> datetime | None:
         if not isinstance(props, dict):
             props = {}
     for name in names:
-        raw = getattr(memory, name, None)
+        raw = props.get(name)
+        if raw is None:
+            raw = getattr(memory, name, None)
         if raw is None and isinstance(memory, dict):
             raw = memory.get(name)
-        if raw is None:
-            raw = props.get(name)
         found = _as_utc(raw)
         if found is not None:
             return found
@@ -288,9 +289,23 @@ def is_valid_at(memory: Any, ref_time: datetime) -> bool:
     fact and its replacement never both answer for the instant they meet.
     ``valid_to`` is accepted as an alias for ``valid_until``
     (core/evidence.py's confidence decomposition uses that name).
+    For an episode summary (``properties.kind == 'episode'``), real-world valid
+    time starts on the episode's calendar ``date`` rather than the DB row's
+    auto-populated ``valid_from`` insertion timestamp.
     """
     ref = _ensure_utc(ref_time)
-    v_from = _temporal(memory, "valid_from")
+    props = getattr(memory, "properties", None)
+    if not isinstance(props, dict):
+        props = memory.get("properties") if isinstance(memory, dict) else {}
+    if (
+        isinstance(props, dict)
+        and props.get("kind") == "episode"
+        and "valid_from" not in props
+        and props.get("date")
+    ):
+        v_from = _as_utc(props.get("date"))
+    else:
+        v_from = _temporal(memory, "valid_from")
     v_until = _temporal(memory, "valid_until", "valid_to")
     started = v_from is None or v_from <= ref
     not_ended = v_until is None or ref < v_until
@@ -372,9 +387,9 @@ async def retrieve(
     cannot answer, so a model outage costs precision, never the memories
     themselves.
     """
-    from life_graph.api.dependencies import get_memory_manager, get_store
     from life_graph.config import settings
     from life_graph.core.tenant import get_current_tenant_id
+    from life_graph.runtime import get_memory_manager, get_store
     from life_graph.services import episodes, memory_tiers
 
     embedding = await get_memory_manager().generate_embedding(question)
@@ -415,20 +430,22 @@ async def retrieve(
         if as_of is not None
         else datetime.now(episodes._tz()).date()
     )
-    window = episodes.time_window(question, reference_date)
-    if window is not None:
-        dated = [
-            m
-            for m in await episodes.episodes_between(tenant_id, *window, limit=limit)
-            if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_ref)
-        ]
-
     by_strength = settings.memory_strength_rank
     search_statuses = (
         ("active", "superseded", "archived")
         if (as_of is not None or recorded_as_of is not None)
         else ("active",)
     )
+    window = episodes.time_window(question, reference_date)
+    if window is not None:
+        ep_kwargs: dict[str, Any] = {"limit": limit}
+        if "statuses" in inspect.signature(episodes.episodes_between).parameters:
+            ep_kwargs["statuses"] = search_statuses
+        dated = [
+            m
+            for m in await episodes.episodes_between(tenant_id, *window, **ep_kwargs)
+            if is_bitemporally_valid(m, valid_at=as_of, recorded_at=recorded_ref)
+        ][:limit]
     hits = await get_store().hybrid_search(
         embedding=embedding,
         query_text=question,

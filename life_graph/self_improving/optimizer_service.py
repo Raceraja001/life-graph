@@ -327,7 +327,7 @@ class FewShotOptimizerService:
             else f"POST /api/v1/self-improving/prompt-versions/deactivate?task_type={task_type}"
         )
         try:
-            from life_graph.api.dependencies import get_notification_engine
+            from life_graph.runtime import get_notification_engine
 
             await get_notification_engine().create(
                 tenant_id,

@@ -287,8 +287,8 @@ async def _study_due(tenant_id: str, today: date) -> int:
 
 async def _learnt(tenant_id: str, now: datetime) -> list[dict[str, Any]]:
     """Newest memories waiting for review, then the ones most recently kept."""
-    from life_graph.api.jarvis import _source
     from life_graph.models.db import Memory
+    from life_graph.services.memory_sources import source_label as _source
     from life_graph.storage.database import async_session
 
     async with async_session() as session:

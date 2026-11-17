@@ -225,7 +225,7 @@ async def extract(text: str, *, client=None, now: datetime | None = None) -> dic
     """Fields for one document's text, on the local model only; never raises."""
     now = now or datetime.now(UTC)
     if client is None:
-        from life_graph.api.dependencies import get_lm_client
+        from life_graph.runtime import get_lm_client
 
         client = get_lm_client()
     data = None

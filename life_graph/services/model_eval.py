@@ -56,7 +56,7 @@ async def smoke_test(model_id: str) -> tuple[bool | None, str]:
     says nothing about the model, so the caller tries again later instead of
     failing it (gemma-4-31b was 429 on its first live evaluation, 2026-10-20).
     """
-    from life_graph.api.dependencies import get_resilient_llm
+    from life_graph.runtime import get_resilient_llm
     from life_graph.services.resilient_llm import only_models
 
     try:

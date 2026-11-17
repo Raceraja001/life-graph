@@ -33,7 +33,7 @@ async def query_audit_log(
     """Query audit log with filters."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.api.dependencies import get_audit_service
+    from life_graph.runtime import get_audit_service
 
     service = get_audit_service()
 
@@ -75,7 +75,7 @@ async def export_audit_log(request: ExportRequest):
     """Export audit log as NDJSON."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.api.dependencies import get_audit_service
+    from life_graph.runtime import get_audit_service
 
     service = get_audit_service()
 
@@ -97,7 +97,7 @@ async def rollback_from_audit(action_id: UUID):
     """Rollback an action referenced from audit log."""
     tenant_id = get_current_tenant_id()
 
-    from life_graph.api.dependencies import get_autofix_service
+    from life_graph.runtime import get_autofix_service
 
     service = get_autofix_service()
 

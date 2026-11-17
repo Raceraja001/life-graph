@@ -622,7 +622,7 @@ class ConnectorRuntime:
         return done
 
     async def _embed_missing(self, account: ConnectorAccount, limit: int = 200) -> None:
-        from life_graph.api.dependencies import get_embedding_service
+        from life_graph.runtime import get_embedding_service
 
         async with async_session() as session:
             rows = list(

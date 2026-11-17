@@ -54,10 +54,10 @@ RECURRING_INTENT = re.compile(
 )
 async def ask_schedule(ask: str, when: str) -> str:
     """Store one scheduled ask for the current tenant. Never raises."""
-    from life_graph.api.dependencies import get_scheduler_service
     from life_graph.config import settings
     from life_graph.core.task_context import get_current_task_context
     from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
+    from life_graph.runtime import get_scheduler_service
     from life_graph.services import scheduled_asks
     from life_graph.storage.database import async_session
 

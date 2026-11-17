@@ -203,8 +203,8 @@ async def _exists(tenant_id: str, key: str) -> bool:
 
 async def summarize(source: str, day: date, lines: list[str]) -> str:
     """The local model's summary of one day, or "" if it gave none."""
-    from life_graph.api.dependencies import get_lm_client
     from life_graph.config import settings
+    from life_graph.runtime import get_lm_client
 
     reply = await get_lm_client().chat_local_only(
         [
@@ -240,9 +240,9 @@ def clean(summary: str) -> str:
 
 async def write_day(tenant_id: str, day: date) -> list[str]:
     """Write the day's episodes that are missing; return the keys written."""
-    from life_graph.api.dependencies import get_memory_manager, get_store
     from life_graph.core.tenant import tenant_scope
     from life_graph.models.schemas import MemoryCreate
+    from life_graph.runtime import get_memory_manager, get_store
 
     written = []
     for source in SOURCES:
@@ -330,6 +330,12 @@ def time_window(question: str, today: date) -> tuple[date, date] | None:
         first = today.replace(day=1)
         end = first - timedelta(days=1)
         return end.replace(day=1), end
+    if re.search(r"\bthis month\b", q):
+        return today.replace(day=1), today
+    if re.search(r"\blast year\b", q):
+        return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
+    if re.search(r"\bthis year\b", q):
+        return date(today.year, 1, 1), today
     if re.search(r"\b(today|this morning)\b", q):
         return today, today
     for i, name in enumerate(_WEEKDAYS):
@@ -340,10 +346,23 @@ def time_window(question: str, today: date) -> tuple[date, date] | None:
     return None
 
 
-async def episodes_between(tenant_id: str, start: date, end: date, limit: int = 8) -> list[Any]:
-    """Active episode memories covering days start..end (inclusive), oldest first."""
+async def episodes_between(
+    tenant_id: str,
+    start: date,
+    end: date,
+    limit: int = 8,
+    statuses: tuple[str, ...] = ("active",),
+) -> list[Any]:
+    """Episode memories covering days start..end (inclusive), oldest first.
+
+    Defaults to active rows; historical queries pass statuses including
+    superseded and archived so bitemporal filtering in
+    services/memory_retrieval.py can reconstruct what was believed at an
+    earlier transaction-time cutoff.
+    """
     from life_graph.models.db import Memory
 
+    sql_limit = max(limit * 4, 64) if len(statuses) > 1 else limit
     async with async_session() as session:
         rows = (
             (
@@ -351,13 +370,13 @@ async def episodes_between(tenant_id: str, start: date, end: date, limit: int = 
                     select(Memory)
                     .where(
                         Memory.tenant_id == tenant_id,
-                        Memory.status == "active",
+                        Memory.status.in_(statuses),
                         Memory.properties["kind"].astext == KIND,
                         Memory.properties["date"].astext >= start.isoformat(),
                         Memory.properties["date"].astext <= end.isoformat(),
                     )
                     .order_by(Memory.properties["date"].astext)
-                    .limit(limit)
+                    .limit(sql_limit)
                 )
             )
             .scalars()

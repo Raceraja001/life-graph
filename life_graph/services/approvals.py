@@ -1017,7 +1017,7 @@ class ApprovalService:
         ``appr.payload`` carries the autonomy-side identifiers written by the
         ``AutonomousApprovalProducer`` (``approval_id`` — the ``approval_queue``
         row; ``auto_action_id`` — the queued ``AutoAction``). Imports are lazy
-        to avoid an import cycle between ``life_graph.api.dependencies`` (which
+        to avoid an import cycle between ``life_graph.runtime`` (which
         wires this service) and the autonomy pipeline it depends on here.
         Defensive: a malformed payload (missing autonomy approval id) resolves
         the generic approval without acting, matching the sibling handlers.
@@ -1052,7 +1052,7 @@ class ApprovalService:
         underlying execution succeeded or failed — a failed-but-completed
         agent_task is still a *resolved* approval.
         """
-        from life_graph.api.dependencies import get_approval_service, get_autofix_service
+        from life_graph.runtime import get_approval_service, get_autofix_service
 
         payload = appr.payload or {}
         autonomy_approval_id = payload.get("approval_id")

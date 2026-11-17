@@ -184,7 +184,7 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
 
     # Startup — seed kernel personas
     with startup_step(report, "seed_personas"):
-        from life_graph.api.dependencies import get_persona_service
+        from life_graph.runtime import get_persona_service
 
         persona_svc = get_persona_service()
         for tenant in seed_tenants:
@@ -211,8 +211,8 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
 
     # Startup — seed ambient scheduled jobs
     with startup_step(report, "seed_ambient_jobs"):
-        from life_graph.api.dependencies import get_scheduler_service
         from life_graph.kernel.ambient import seed_ambient_jobs
+        from life_graph.runtime import get_scheduler_service
 
         for tenant in seed_tenants:
             seeded_jobs = await seed_ambient_jobs(get_scheduler_service(), tenant)
@@ -229,7 +229,7 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
 
     # Startup — wire schedule outcome reconciliation
     with startup_step(report, "scheduler_outcomes"):
-        from life_graph.api.dependencies import get_scheduler_service
+        from life_graph.runtime import get_scheduler_service
 
         # fire_job only enqueues, so a schedule cannot know whether its work
         # succeeded until the task settles. Without this subscription every
@@ -391,7 +391,7 @@ async def lifespan(app: FastAPI):
     # exceptions so an optional step can never abort boot, and this one must.
     # It only catches the statically knowable case (no local model, no client);
     # a configured backend that happens to be down still fails at call time.
-    from life_graph.api.dependencies import get_embedding_service
+    from life_graph.runtime import get_embedding_service
 
     if not get_embedding_service().available:
         msg = (
@@ -777,7 +777,7 @@ async def health_check():
     # writes keep succeeding while every vector comes back empty and semantic
     # search returns nothing. Probe it so the degradation is visible. It never
     # affects the 503, which stays Postgres-only.
-    from life_graph.api.dependencies import get_embedding_service
+    from life_graph.runtime import get_embedding_service
 
     t0 = time.monotonic()
     checks["embeddings"] = {

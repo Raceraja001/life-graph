@@ -420,7 +420,7 @@ class ResearchEngine:
             f"Article content: {article_content[:1000]}"
         )
 
-        from life_graph.api.dependencies import get_resilient_llm
+        from life_graph.runtime import get_resilient_llm
 
         try:
             response = await asyncio.wait_for(

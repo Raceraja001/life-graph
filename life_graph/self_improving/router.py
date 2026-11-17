@@ -17,14 +17,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import inspect as sa_inspect
 
-from life_graph.api.dependencies import (
+from life_graph.api.responses import success_response
+from life_graph.core.tenant import get_current_tenant_id
+from life_graph.runtime import (
     get_dashboard_service,
     get_eval_service,
     get_optimizer_service,
     get_prompt_version_service,
 )
-from life_graph.api.responses import success_response
-from life_graph.core.tenant import get_current_tenant_id
 from life_graph.self_improving.schemas import (
     EvalCaseCreate,
     EvalSuiteCreate,

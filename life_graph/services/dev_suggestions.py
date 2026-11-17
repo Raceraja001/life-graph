@@ -454,7 +454,7 @@ async def queue_suggestions(
     findings: list[Finding],
 ) -> dict[str, Any]:
     """Queue dev tasks for new findings, respecting the per-project cap."""
-    from life_graph.api.dependencies import get_persona_service
+    from life_graph.runtime import get_persona_service
     from life_graph.services import dev_tasks
 
     meta = project.get("scan_metadata") or {}

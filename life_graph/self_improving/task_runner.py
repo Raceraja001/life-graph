@@ -32,7 +32,7 @@ def _extraction_llm_fn(tenant_id: str) -> LlmFn:
     prompts: dict[str, ResolvedPrompt] = {}
 
     async def run(prompt_version_id: str, input_text: str) -> tuple[str, int, int, Decimal]:
-        from life_graph.api.dependencies import get_lm_client
+        from life_graph.runtime import get_lm_client
 
         prompt = prompts.get(prompt_version_id)
         if prompt is None:

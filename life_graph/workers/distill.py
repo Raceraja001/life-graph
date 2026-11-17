@@ -29,7 +29,7 @@ async def distill_conversation(ctx: dict, conversation_id: str, tenant_id: str) 
     """Distill a single conversation for one tenant."""
     set_tenant_context(tenant_id, "system")
 
-    from life_graph.api.dependencies import get_distillation_service
+    from life_graph.runtime import get_distillation_service
 
     distiller = get_distillation_service()
     result = await distiller.distill(uuid.UUID(conversation_id))

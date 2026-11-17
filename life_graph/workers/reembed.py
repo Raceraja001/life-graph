@@ -93,7 +93,7 @@ async def reembed_table(target: _EmbedTarget, *, batch_size: int = BATCH_SIZE) -
     sentence-transformers, so a "re-embed" could fill the column with vectors
     from a different model than the one search queries with.
     """
-    from life_graph.api.dependencies import get_embedding_service
+    from life_graph.runtime import get_embedding_service
 
     service = get_embedding_service()
     model = target.model

@@ -125,7 +125,7 @@ async def email_search(query: str, days: int = 30, sender: str | None = None) ->
         return json.dumps({"error": "no tenant context"})
     embedding = None
     try:
-        from life_graph.api.dependencies import get_embedding_service
+        from life_graph.runtime import get_embedding_service
 
         embedding = (await get_embedding_service().embed_batch_async([query]))[0]
     except Exception:

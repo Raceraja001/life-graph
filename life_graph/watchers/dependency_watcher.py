@@ -123,7 +123,7 @@ async def _get_impact_analysis(
 ) -> str | None:
     """Optional LLM-based impact analysis via litellm."""
     try:
-        from life_graph.api.dependencies import get_resilient_llm
+        from life_graph.runtime import get_resilient_llm
 
         prompt = (
             f"Analyze the impact of upgrading the package '{package}' "
