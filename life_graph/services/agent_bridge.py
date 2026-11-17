@@ -26,7 +26,7 @@ from life_graph.models.schemas import MemoryResponse, RecallContext
 if TYPE_CHECKING:
     from life_graph.core.memory_manager import MemoryManager
     from life_graph.services.intentions import IntentionService
-    from life_graph.services.recall import RecallEngine
+    from life_graph.services.memory.recall import RecallEngine
     from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)

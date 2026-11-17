@@ -1,7 +1,7 @@
 """Where a memory came from, in words the owner reads.
 
 Used by the Jarvis memory views (api/jarvis.py, services/jarvis_memory.py,
-services/jarvis_today.py, services/memory_page.py). Lived in api/jarvis.py
+services/jarvis_today.py, services/memory/page.py). Lived in api/jarvis.py
 until 2026-11-16, which made three services import a route module for it.
 """
 

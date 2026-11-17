@@ -1,9 +1,9 @@
 """Cold memory, learned links and the nightly form fill against the database (2026-10-31).
 
-- services/memory_tiers.py: archived and replaced memories are searched when
+- services/memory/tiers.py: archived and replaced memories are searched when
   nothing active answers, labelled; what the owner took back or a bulk clean-up
   moved out never is; one that answers goes back to active.
-- services/associations.py: facts said together are linked, links strengthen
+- services/memory/associations.py: facts said together are linked, links strengthen
   with use, and a found memory brings its linked ones along.
 - services/form_fill.py: unchecked memories get a slot; a same-slot clash is
   offered, not applied.
@@ -96,7 +96,7 @@ async def _strength(a, b) -> float:
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_facts_said_together_are_linked_and_strengthen_with_use(monkeypatch):
-    from life_graph.services import associations
+    from life_graph.services.memory import associations
 
     tag = uuid.uuid4().hex[:6]
     a, b, c = await _ingest(
@@ -125,7 +125,7 @@ async def test_facts_said_together_are_linked_and_strengthen_with_use(monkeypatc
 @skip_on_db_error
 async def test_cold_search_reads_archived_and_replaced_but_not_what_was_taken_back():
     from life_graph.core.tenant import tenant_scope
-    from life_graph.services import memory_tiers
+    from life_graph.services.memory import tiers as memory_tiers
     from life_graph.storage.database import async_session
 
     tag = uuid.uuid4().hex[:6]
@@ -170,7 +170,8 @@ async def test_cold_search_reads_archived_and_replaced_but_not_what_was_taken_ba
 async def test_retrieve_falls_back_to_cold_and_follows_links(monkeypatch):
     from life_graph.api.dependencies import get_memory_manager
     from life_graph.core.tenant import tenant_scope
-    from life_graph.services import associations, memory_retrieval
+    from life_graph.services.memory import associations
+    from life_graph.services.memory import retrieval as memory_retrieval
 
     tag = uuid.uuid4().hex[:6]
     word = f"quillback{tag}"
@@ -260,7 +261,8 @@ async def test_review_fixes_for_the_cold_tier(monkeypatch):
 
     from life_graph.api.dependencies import get_memory_manager
     from life_graph.core.tenant import tenant_scope
-    from life_graph.services import memory_retrieval, memory_tiers
+    from life_graph.services.memory import retrieval as memory_retrieval
+    from life_graph.services.memory import tiers as memory_tiers
     from life_graph.storage.database import async_session
 
     tag = uuid.uuid4().hex[:6]
@@ -307,7 +309,7 @@ async def test_review_fixes_for_the_cold_tier(monkeypatch):
 async def test_an_unjudged_answer_never_includes_cold_memories(monkeypatch):
     from life_graph.api.dependencies import get_memory_manager
     from life_graph.core.tenant import tenant_scope
-    from life_graph.services import memory_retrieval
+    from life_graph.services.memory import retrieval as memory_retrieval
 
     word = f"gunwale{uuid.uuid4().hex[:6]}"
     warm = await _put(f"The owner's {word} job started in March.", "active")

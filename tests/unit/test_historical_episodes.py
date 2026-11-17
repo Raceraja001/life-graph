@@ -5,7 +5,7 @@ point in the past. "What did we talk about yesterday?" asked with
 ``as_of=2025-06-15`` is a question about 14 June 2025 — not about yesterday
 relative to whenever the test happens to run.
 
-It used to be the latter: ``services/memory_retrieval.py`` anchored the
+It used to be the latter: ``services/memory/retrieval.py`` anchored the
 episode window to ``datetime.now()`` whatever ``as_of`` said, so a historical
 query was answered with today's day summaries. That is the worst shape of
 wrong available here, because the reply came back sourced: real episodes,
@@ -31,7 +31,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from life_graph.services.episodes import time_window
-from life_graph.services.memory_retrieval import retrieve
+from life_graph.services.memory.retrieval import retrieve
 
 #: A Sunday, so "last week" and "this week" are different weeks and a weekday
 #: reference ("on Monday") has a defined answer.
@@ -80,7 +80,8 @@ def probe(monkeypatch):
     """A wired ``retrieve`` with no database, no model and no entity index."""
     import life_graph.api.dependencies as deps
     from life_graph.core.tenant import tenant_scope
-    from life_graph.services import entities, episodes, memory_retrieval
+    from life_graph.services import entities, episodes
+    from life_graph.services.memory import retrieval as memory_retrieval
 
     class _Manager:
         async def generate_embedding(self, text):

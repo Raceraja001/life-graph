@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 CANDIDATES = 10
 #: Memories linked to an entity the question names, added to the judge's candidates.
 ENTITY_CANDIDATES = 8
-#: The best search hits whose linked memories are added (services/associations.py) …
+#: The best search hits whose linked memories are added (services/memory/associations.py) …
 LINK_SEEDS = 5
 #: … and at most this many of them.
 LINKED_CANDIDATES = 6
@@ -105,8 +105,8 @@ def strength_order(hits: list[tuple[Any, float]]) -> list[tuple[Any, float]]:
 
 async def _with_neighbours(tenant_id: str, candidates: list[Any]) -> list[Any]:
     """*candidates* plus the active memories most strongly linked to the best of
-    them (services/associations.py): said or used together with a match."""
-    from life_graph.services import associations
+    them (services/memory/associations.py): said or used together with a match."""
+    from life_graph.services.memory import associations
 
     try:
         linked = await associations.neighbours(
@@ -377,9 +377,9 @@ async def retrieve(
 ) -> list[Any] | None:
     """Memories of the current tenant that help answer *question*, best first.
 
-    Active memories first; archived and replaced ones (services/memory_tiers.py)
+    Active memories first; archived and replaced ones (services/memory/tiers.py)
     when none of those helps, or alongside them when the question is about the
-    past — only for a caller that labels them (*cold*, services/memory_context.py
+    past — only for a caller that labels them (*cold*, services/memory/context.py
     render); /ask and the dashboard chat would pass an old value on as current.
     ``[]`` means memory was searched and nothing helps; ``None`` means it
     could not be searched (no embedding), which a caller must not present as
@@ -390,7 +390,8 @@ async def retrieve(
     from life_graph.config import settings
     from life_graph.core.tenant import get_current_tenant_id
     from life_graph.runtime import get_memory_manager, get_store
-    from life_graph.services import episodes, memory_tiers
+    from life_graph.services import episodes
+    from life_graph.services.memory import tiers as memory_tiers
 
     embedding = await get_memory_manager().generate_embedding(question)
     if not embedding:
@@ -519,7 +520,7 @@ async def retrieve(
     if picked is None:
         logger.warning("Memory relevance judge gave no answer; using the search order")
         # Unjudged, so active ones only: an unjudged cold hit is a guess, and
-        # being returned would reawaken it (services/memory_tiers.py).
+        # being returned would reawaken it (services/memory/tiers.py).
         warm = (
             memories
             if (as_of is not None or recorded_as_of is not None)
@@ -538,7 +539,7 @@ async def retrieve(
 
 
 async def _cold(embedding: list[float], question: str) -> list[Any]:
-    from life_graph.services import memory_tiers
+    from life_graph.services.memory import tiers as memory_tiers
 
     try:
         return await memory_tiers.search(embedding, question)

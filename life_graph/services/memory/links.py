@@ -34,7 +34,7 @@ VALID_LINK_TYPES = frozenset(
         "CONTRADICTS",
         "SUPERSEDES",
         "LEADS_TO",
-        # Said or used together; strengthens with use (services/associations.py).
+        # Said or used together; strengthens with use (services/memory/associations.py).
         "ASSOCIATED",
     }
 )

@@ -7,9 +7,9 @@ recalling one brings up its strongest neighbours. Life Graph does the same:
   (MemoryManager.ingest / store_facts). "My wife Priya teaches at DAV; she
   takes the 8:10 bus" gives two notes that search may find one at a time.
 - **Used together**: the memories one answer used are linked, or their link
-  strengthened (services/memory_context.py).
+  strengthened (services/memory/context.py).
 - **Spreading**: the memories search finds bring their strongest active
-  neighbours along as extra candidates (services/memory_retrieval.py). The
+  neighbours along as extra candidates (services/memory/retrieval.py). The
   relevance judge still decides which of them answer, so a weak link costs a
   candidate slot, never a wrong answer.
 

@@ -21,9 +21,9 @@ from unittest.mock import MagicMock
 import pytest
 
 import life_graph.core.tenant as tenant_mod
-import life_graph.services.recall as recall_mod
+import life_graph.services.memory.recall as recall_mod
 from life_graph.core.tenant import set_tenant_context
-from life_graph.services.recall import RecallEngine
+from life_graph.services.memory.recall import RecallEngine
 
 
 @pytest.fixture(autouse=True)

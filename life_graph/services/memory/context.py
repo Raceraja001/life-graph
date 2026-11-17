@@ -8,7 +8,7 @@ the owner's memories that match it. Never on a cloud run: these are personal.
 
 Search alone always returns its nearest memories, related or not, so the
 candidates pass through the local relevance judge first
-(services/memory_retrieval.py); when none help, the block says so.
+(services/memory/retrieval.py); when none help, the block says so.
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ def render(rows: list[tuple], most: int = MAX_MEMORIES) -> str:
             text = text[: limit - 1] + "…"
         kind = props.get("evidence")
         label = "" if episode or kind in (None, ev.SAID) else ev.PROMPT_LABEL.get(kind, "")
-        # An archived or replaced memory (services/memory_tiers.py) says so.
+        # An archived or replaced memory (services/memory/tiers.py) says so.
         label = " · ".join(x for x in (props.get("tier"), label) if x)
         tail = f" · {label}" if label else ""
         if episode or not created_at:
@@ -115,7 +115,7 @@ def _row(m) -> tuple:
     props["evidence"] = ev.evidence_of(
         getattr(m, "source_type", None), getattr(m, "trust_tier", None), props
     )
-    from life_graph.services import memory_tiers
+    from life_graph.services.memory import tiers as memory_tiers
 
     if tier := memory_tiers.label(m):
         props["tier"] = tier
@@ -123,9 +123,10 @@ def _row(m) -> tuple:
 
 
 async def _strengthen(tenant_id: str, found: list) -> None:
-    """What one answer used is linked (services/associations.py), and an
-    archived memory that answered goes back to active (services/memory_tiers.py)."""
-    from life_graph.services import associations, memory_tiers
+    """What one answer used is linked (services/memory/associations.py), and an
+    archived memory that answered goes back to active (services/memory/tiers.py)."""
+    from life_graph.services.memory import associations
+    from life_graph.services.memory import tiers as memory_tiers
 
     await associations.used_together(tenant_id, [m.id for m in found])
     try:
@@ -180,7 +181,7 @@ async def _sections(
     query = search_text(message, history)
     if not query:
         return ""
-    from life_graph.services.memory_retrieval import ABOUT, retrieve
+    from life_graph.services.memory.retrieval import ABOUT, retrieve
 
     cap = ABOUT_MEMORIES if ABOUT.search(message or "") else MAX_MEMORIES
 

@@ -50,7 +50,7 @@ def no_embedding_service(monkeypatch):
 
 
 def _judge(monkeypatch, decide):
-    from life_graph.services import memory_retrieval
+    from life_graph.services.memory import retrieval as memory_retrieval
 
     seen = {}
 

@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import life_graph.api.dependencies  # noqa: F401
-
 from life_graph.api.procedures import (
     build_procedure_candidate,
     can_auto_execute_side_effects,
@@ -24,7 +23,7 @@ from life_graph.core.evidence import (
 )
 from life_graph.services.episodes import link_experience_to_decision
 from life_graph.services.judgment import trace_causal_chain
-from life_graph.services.memory_retrieval import (
+from life_graph.services.memory.retrieval import (
     explain_retrieval_selection,
     is_bitemporally_valid,
     provenance_tiebreak_order,
@@ -103,7 +102,7 @@ async def test_w7_scenario_1_and_2_bitemporal_correction_and_historical_query():
         patch("life_graph.api.dependencies.get_store", return_value=fake_store),
         patch("life_graph.api.dependencies.get_memory_manager", return_value=fake_mm),
         patch("life_graph.core.tenant.get_current_tenant_id", return_value="t1"),
-        patch("life_graph.services.memory_retrieval._judged", new=AsyncMock(side_effect=lambda q, ms: ms)),
+        patch("life_graph.services.memory.retrieval._judged", new=AsyncMock(side_effect=lambda q, ms: ms)),
         patch("life_graph.services.entities.known_in_text", new=AsyncMock(return_value=[])),
     ):
         hist = await retrieve(
