@@ -82,6 +82,179 @@ def detect_big_decision(title: str | None, reasoning: str | None = None) -> tupl
     return bool(matched), matched
 
 
+HYPOTHETICAL_COUNTERFACTUAL_PREFIX = "[HYPOTHETICAL COUNTERFACTUAL — NOT A REMEMBERED FACT]"
+
+
+def evaluate_predictions(predictions: list[Any] | None) -> dict[str, Any]:
+    """Evaluate predictions against resolved evidence-backed outcomes."""
+    preds = list(predictions or [])
+    resolved = [
+        p
+        for p in preds
+        if getattr(p, "outcome", "pending") in ("correct", "incorrect", "ambiguous")
+    ]
+    evidence_backed = [p for p in resolved if bool(getattr(p, "resolution_evidence", None))]
+    brier_scores: list[float] = []
+    correct_count = 0
+    incorrect_count = 0
+    ambiguous_count = 0
+    for p in evidence_backed:
+        out = getattr(p, "outcome", "pending")
+        conf = float(getattr(p, "confidence", 0.5) or 0.5)
+        if out == "correct":
+            correct_count += 1
+            brier_scores.append((conf - 1.0) ** 2)
+        elif out == "incorrect":
+            incorrect_count += 1
+            brier_scores.append((conf - 0.0) ** 2)
+        elif out == "ambiguous":
+            ambiguous_count += 1
+    mean_brier = round(sum(brier_scores) / len(brier_scores), 4) if brier_scores else None
+    decisive = correct_count + incorrect_count
+    accuracy = round(correct_count / decisive, 4) if decisive > 0 else None
+    return {
+        "total_predictions": len(preds),
+        "resolved_count": len(resolved),
+        "evidence_backed_resolved_count": len(evidence_backed),
+        "pending_count": sum(1 for p in preds if getattr(p, "outcome", "pending") == "pending"),
+        "correct_count": correct_count,
+        "incorrect_count": incorrect_count,
+        "ambiguous_count": ambiguous_count,
+        "accuracy": accuracy,
+        "brier_score": mean_brier,
+    }
+
+
+def derive_decision_lessons(
+    decision: Any,
+    predictions: list[Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Derive structured lessons strictly from evidence-backed resolved outcomes."""
+    title = str(getattr(decision, "title", "") or "").strip()
+    chosen = str(getattr(decision, "chosen_option", "") or title).strip()
+    lessons: list[dict[str, Any]] = []
+    for p in predictions or []:
+        outcome = str(getattr(p, "outcome", "pending") or "pending")
+        ev = getattr(p, "resolution_evidence", None) or {}
+        has_ev = bool(ev and (ev.get("evidence_backed", True) if isinstance(ev, dict) else True))
+        if outcome not in ("correct", "incorrect") or not has_ev:
+            continue
+        stmt = str(getattr(p, "statement", "") or "").strip()
+        obs = ""
+        if isinstance(ev, dict):
+            obs = str(
+                ev.get("observation") or ev.get("summary") or ev.get("source_ref") or ""
+            ).strip()
+        if outcome == "correct":
+            lessons.append(
+                {
+                    "prediction_id": str(getattr(p, "id", "")),
+                    "lesson_type": "validated_hypothesis",
+                    "evidence_backed": True,
+                    "lesson": (
+                        f"Validated for '{chosen}': prediction '{stmt}' held true"
+                        + (f" ({obs})." if obs else ".")
+                    ),
+                }
+            )
+        else:
+            lessons.append(
+                {
+                    "prediction_id": str(getattr(p, "id", "")),
+                    "lesson_type": "falsified_assumption",
+                    "evidence_backed": True,
+                    "lesson": (
+                        f"Assumption falsified for '{chosen}': predicted '{stmt}' did not hold"
+                        + (
+                            f" ({obs}). Re-evaluate alternatives."
+                            if obs
+                            else ". Re-evaluate alternatives."
+                        )
+                    ),
+                }
+            )
+    return lessons
+
+
+def build_hypothetical_counterfactuals(
+    decision: Any,
+    rejected_options: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build explicitly labeled hypothetical counterfactuals for rejected options.
+
+    Counterfactuals are fenced so they can never be stored or retrieved as remembered facts.
+    """
+    chosen = str(
+        getattr(decision, "chosen_option", None) or getattr(decision, "title", "") or "chosen path"
+    ).strip()
+    out: list[dict[str, Any]] = []
+    for rej in rejected_options:
+        opt = str(rej.get("option") or "").strip()
+        if not opt:
+            continue
+        why_not = str(rej.get("rejected_because") or "trade-offs at decision time").strip()
+        out.append(
+            {
+                "rejected_option": opt,
+                "chosen_option": chosen,
+                "is_hypothetical": True,
+                "epistemic_status": "hypothetical_counterfactual",
+                "never_remembered_as_fact": True,
+                "statement": (
+                    f"{HYPOTHETICAL_COUNTERFACTUAL_PREFIX} If '{opt}' had been selected "
+                    f"instead of '{chosen}' (originally rejected due to: {why_not}), "
+                    "the outcome remains uninferred and hypothetical."
+                ),
+            }
+        )
+    return out
+
+
+def assess_decision_revisit(
+    decision: Any,
+    predictions: list[Any] | None = None,
+    *,
+    memories: list[Any] | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Determine whether an old decision should be revisited when circumstances or outcomes change."""
+    ref_now = now or datetime.now(UTC)
+    reasons: list[str] = []
+
+    # 1. Scheduled review_at reached
+    review_at = getattr(decision, "review_at", None)
+    if isinstance(review_at, datetime):
+        rev_utc = (
+            review_at.replace(tzinfo=UTC) if review_at.tzinfo is None else review_at.astimezone(UTC)
+        )
+        if rev_utc <= ref_now:
+            reasons.append(f"scheduled review date reached ({rev_utc.date().isoformat()})")
+
+    # 2. Evidence-backed prediction falsified
+    for p in predictions or []:
+        ev = getattr(p, "resolution_evidence", None) or {}
+        has_ev = bool(ev and (ev.get("evidence_backed", True) if isinstance(ev, dict) else True))
+        if getattr(p, "outcome", "pending") == "incorrect" and has_ev:
+            reasons.append(f"prediction falsified by evidence: {getattr(p, 'statement', '')[:80]}")
+
+    # 3. Circumstance change in supporting/newer memories
+    for m in memories or []:
+        props = getattr(m, "properties", None) or {}
+        content = str(getattr(m, "content", "") or "")
+        if isinstance(props, dict) and (
+            props.get("circumstance_changed")
+            or props.get("invalidates_decision")
+            or "changed" in content.lower()
+            or "no longer" in content.lower()
+        ):
+            reasons.append(f"circumstance change in memory {getattr(m, 'id', '')}: {content[:80]}")
+
+    return {
+        "should_revisit": bool(reasons),
+        "reasons": reasons,
+    }
+
+
 def trace_causal_chain(
     decision: Any,
     predictions: list[Any] | None = None,
@@ -92,12 +265,12 @@ def trace_causal_chain(
     from life_graph.core.evidence import evidence_of, rationale_type
 
     source = str(getattr(decision, "source", "") or "").lower()
-    props = getattr(decision, "properties", None)
+    decision_props = getattr(decision, "properties", None)
     # Two names for one distinction, because they are read by different
     # callers: rationale_type is the vocabulary core/evidence.py uses for
     # "did the owner say this, or did we work it out?", rationale_origin is
     # the key the causal-chain API has returned since P0.5.
-    r_type = rationale_type(source, props if isinstance(props, dict) else None)
+    r_type = rationale_type(source, decision_props if isinstance(decision_props, dict) else None)
     rationale_origin = "user_stated" if r_type == "explicit" else "model_inferred"
 
     # The options that were weighed, and why the losers lost: a decision
@@ -157,24 +330,55 @@ def trace_causal_chain(
             }
         )
 
+    rejected_options = [o for o in options_considered if not o["chosen"]]
+    pred_eval = evaluate_predictions(predictions)
+    lessons = derive_decision_lessons(decision, predictions)
+    counterfactuals = build_hypothetical_counterfactuals(decision, rejected_options)
+    revisit = assess_decision_revisit(decision, predictions, memories=memories)
+    situation_summary = None
+    if isinstance(decision_props, dict) and decision_props.get("situation"):
+        situation_summary = str(decision_props["situation"])
+    elif mem_rows:
+        situation_summary = mem_rows[0]["content"]
+    else:
+        situation_summary = getattr(decision, "title", "")
+
     return {
         "decision_id": str(getattr(decision, "id", "")),
         "title": getattr(decision, "title", ""),
         "status": getattr(decision, "status", ""),
+        "situation": {
+            "summary": situation_summary,
+            "supporting_memory_count": len(mem_rows),
+            "domain_tags": list(getattr(decision, "domain_tags", None) or []),
+        },
         "rationale_origin": rationale_origin,
         "rationale_type": r_type,
         "reasoning": getattr(decision, "reasoning", None),
         "chosen_option": getattr(decision, "chosen_option", None),
         "options_considered": options_considered,
-        "rejected_options": [o for o in options_considered if not o["chosen"]],
+        "rejected_options": rejected_options,
         "capture_event_id": str(getattr(decision, "capture_event_id", ""))
         if getattr(decision, "capture_event_id", None)
         else None,
         "predictions": pred_rows,
+        "prediction_evaluation": pred_eval,
         "supporting_memories": mem_rows,
         "has_evidence_backed_outcome": any(
             r["outcome"] != "pending" and r["evidence_backed"] for r in pred_rows
         ),
+        "lessons": lessons,
+        "counterfactuals": counterfactuals,
+        "revisit_assessment": revisit,
+        "experience_stages": [
+            "situation",
+            "options",
+            "decision",
+            "rationale",
+            "prediction",
+            "outcome",
+            "lesson",
+        ],
     }
 
 
@@ -522,6 +726,42 @@ class JudgmentService:
             stmt = stmt.where(Prediction.resolve_by <= due_before)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def resolve_outcome_and_link_episode(
+        self,
+        tenant_id: str,
+        decision_id: uuid.UUID,
+        prediction_id: uuid.UUID,
+        *,
+        outcome: str,
+        source: str,
+        evidence: dict[str, Any],
+        episode_props: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Resolve a prediction with mandatory evidence, trace the 7-stage causal chain,
+        and link the outcome to an episode properties dictionary."""
+        from life_graph.services.episodes import link_experience_to_decision
+        from life_graph.services.outcome_resolver import OutcomeResolver
+
+        resolver = OutcomeResolver(self.session, self.event_bus)
+        await resolver.record_evidence_backed_outcome(
+            tenant_id=tenant_id,
+            prediction_id=prediction_id,
+            outcome=outcome,
+            source=source,
+            evidence=evidence,
+        )
+        chain = await self.get_causal_chain(tenant_id, decision_id)
+        linked_episode = link_experience_to_decision(
+            episode_props or {},
+            decision_id=str(decision_id),
+            decision_title=chain["title"],
+            outcome=outcome,
+        )
+        return {
+            "causal_chain": chain,
+            "episode_properties": linked_episode,
+        }
 
     async def get_causal_chain(
         self,
