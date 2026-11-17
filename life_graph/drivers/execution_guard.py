@@ -37,6 +37,7 @@ class StageCheckpoint:
     attempt: int
     ok: bool
     detail: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -48,7 +49,14 @@ class ExecutionCheckpointTracker:
     attempt: int = 1
     checkpoints: list[StageCheckpoint] = field(default_factory=list)
 
-    def record(self, stage: str, *, ok: bool = True, detail: str | None = None) -> StageCheckpoint:
+    def record(
+        self,
+        stage: str,
+        *,
+        ok: bool = True,
+        detail: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> StageCheckpoint:
         if stage not in ORDERED_DISPATCH_STAGES:
             raise ValueError(f"Unknown dispatch stage: {stage!r}")
         cp = StageCheckpoint(
@@ -57,9 +65,27 @@ class ExecutionCheckpointTracker:
             attempt=self.attempt,
             ok=ok,
             detail=detail,
+            metadata=dict(metadata) if metadata else None,
         )
         self.checkpoints.append(cp)
         return cp
+
+    def record_stage(
+        self,
+        stage: str,
+        *,
+        metadata: dict[str, Any] | None = None,
+        ok: bool = True,
+        detail: str | None = None,
+    ) -> StageCheckpoint:
+        """Record one checkpoint with the structured facts the stage observed.
+
+        The call site the dispatcher uses: ``metadata`` keeps the evidence the
+        stage actually saw (cost cap, workdir, how many files changed) next to
+        the checkpoint, so a restart decision can be audited from the persisted
+        task properties rather than the logs.
+        """
+        return self.record(stage, ok=ok, detail=detail, metadata=metadata)
 
     @property
     def last_completed_stage(self) -> str | None:
@@ -81,6 +107,7 @@ class ExecutionCheckpointTracker:
                     "attempt": c.attempt,
                     "ok": c.ok,
                     "detail": c.detail,
+                    "metadata": c.metadata,
                 }
                 for c in self.checkpoints
             ],
@@ -144,14 +171,21 @@ def verify_independent_completion(
     verifier_results: list[Any] | None,
     files_changed: list[str] | None = None,
     require_verifier_for_code: bool = True,
+    require_file_changes_for_code: bool = True,
 ) -> tuple[bool, str]:
-    """Enforce that an agent's self-reported success never proves completion without independent verification."""
+    """Enforce that an agent's self-reported success never proves completion without independent verification.
+
+    ``require_file_changes_for_code`` is for the one caller that genuinely
+    cannot observe a diff -- a dispatch with no git worktree behind it, where
+    ``files_changed`` would be unknown rather than empty. Everyone who can see
+    the file list leaves it on; claiming zero changed files is never a pass.
+    """
     if not driver_claimed_success:
         return False, "driver_reported_failure"
 
     is_code = (task_type or "").lower() in ("code", "bugfix", "refactor", "feature")
     changed = [f for f in (files_changed or []) if str(f).strip()]
-    if is_code and not changed:
+    if is_code and require_file_changes_for_code and not changed:
         return False, "code_task_modified_zero_files"
 
     verifiers = list(verifier_results or [])

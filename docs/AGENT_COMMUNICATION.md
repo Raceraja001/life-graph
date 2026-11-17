@@ -93,19 +93,29 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-17 05:20 UTC)
+### Current (2026-11-17 08:10 UTC)
 
-- **Checked at / branch / base SHA:** 2026-11-17 05:20 UTC on
-  `feat/improvement-plan-orders-4-5-6`, cut from `master` at
-  `346e2ce`. Working tree: `/home/raja/life-graph`.
-- **Current milestone:** Completion of all 6 priorities in `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 (Orders 1 through 6) & all 7 milestones in `docs/AI_WORK_ORDER.md` (§2 through §8).
+- **Checked at / branch / base SHA:** 2026-11-17 08:10 UTC on `master`, merging Track A (`8f4d140`) and Track B (`d3703b9`) from base `74d3002`.
+- **Current milestone:** Parallel Execution of Track A (Production Pipeline Wiring & CI Regression Gates) and Track B (Improvement Plan §3 Research Directions A, C and §3.B Decision Revisit Delivery).
 - **Verified status:**
-  - **Order 1 (P0 Isolated browser runtime & exact-bound approval):** **Operationally verified and Complete**.
-  - **Order 2 (P1 Evidence-lineage & confidence calibration):** **Implemented, Integrated, Unit-tested, Evaluated, and Complete**.
-  - **Order 3 (P1 Reproducible memory evaluation laboratory):** **Implemented, Integrated, Unit-tested, Evaluated, and Complete** (`life_graph/services/memory_benchmark.py`, `scripts/eval_memory_benchmark.py`, `evals/memory_benchmark_report.json`, `tests/unit/test_memory_benchmark_lab.py`).
-  - **Order 4 (P2 Decision, prediction, and causal memory workflow):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/services/judgment.py`, `tests/unit/test_decision_experience_workflow.py` — 7-stage experience chain `Situation -> Options -> Decision -> Rationale -> Prediction -> Outcome -> Lesson`, Brier/accuracy prediction evaluation, evidence-backed lesson derivation, fenced hypothetical counterfactuals, and circumstance-change revisit assessment).
-  - **Order 5 (P2 Durable agent execution, recovery, and independent verification):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/drivers/execution_guard.py`, `tests/unit/test_durable_agent_execution.py` — ordered stage checkpoints, crash recovery actions, idempotency keys, bounded retries, independent verifier completion gate, and bounded delegation envelope validation).
-  - **Order 6 (P3 Local intelligence infrastructure & model registry):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/services/local_model_registry.py`, `tests/unit/test_local_model_infrastructure.py` — RTX 5080 16 GB VRAM model registry across 7 capabilities, strict local-only routing for personal data, routing/queue explainability, live Ollama probe, and VRAM co-residency justification showing `bge-m3` 1.4 GB + `qwen3:14b` 9.8 GB = 11.2 GB <= 16.0 GB).
-- **Open risks/blockers:** None. All items in `docs/AI_WORK_ORDER.md` and `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 are complete.
-- **Next smallest action:** Monitor production telemetry and periodic evaluation runs (`scripts/eval_memory_benchmark.py --verify`, `scripts/eval_confidence_calibration.py --verify`).
-- **Latest commit:** recorded in the merge commit on `master`.
+  - **Track A — Durable execution guard wired into dispatcher:** *Implemented, Integrated, Unit-tested.* `drivers/dispatcher.py` builds an `ExecutionCheckpointTracker` in `_prepare_packet` and records all eight `ORDERED_DISPATCH_STAGES` across the pipeline (`prepared`, `budget_checked`, `driver_executed`, `worktree_verified`, `files_checked`, `verifier_completed`, `landed`, `finished`), with the tampered-worktree path recording `ok=False`. Step 6c calls `verify_independent_completion` before `_land_verified_work`, so a driver that claims success cannot land without an independent verifier verdict and an observed file change.
+  - **Track A — Two wiring defects fixed during integration:**
+    1. Gate read pre-bounce verifier verdicts (vetoed rescued tasks); `_DispatchRun` now carries `verifier_results`, and `_bounce_task` updates them.
+    2. File list was only read for `code`/`code_change`; `_observe_files_changed` now reads diff for all five code task types (`code`, `code_change`, `bugfix`, `refactor`, `feature`) and re-reads after a bounce.
+  - **Track A — Strict personal-data routing wired into compute router:** *Implemented, Integrated, Unit-tested.* `services/compute_router.decide` checks `carries_personal_data` ahead of other rules, refusing cloud outright and answering local-or-wait via `select_backend_for_task` with empty cloud model list.
+  - **Track A — Evaluation gates in CI:** *Implemented, Integrated.* `.github/workflows/ci.yml` runs `scripts/eval_memory_benchmark.py --verify` and `scripts/eval_confidence_calibration.py --verify` after the unit suite. Both pass locally (exit 0).
+  - **Track B — §3.C adaptive early exit:** *Implemented, Integrated, Unit-tested.* `life_graph/services/memory/retrieval.py` — `assess_hit_evidence` scores the top hybrid hit on calibrated confidence (`decompose_memory_confidence`) and entailment (`verify_claim_support`); at `>= 0.92` confidence with `>= 0.85` entailment or full keyword coverage, entity expansion and `_with_neighbours` are skipped.
+  - **Track B — §3.C abstention indicator:** *Implemented, Integrated, Unit-tested.* `retrieve` returns `RetrievalResult` (a `list` subclass) carrying `abstain`, `abstention_reason` (`contradictory_evidence` / `unresolvable_missing_evidence`), per-memory assessment, and `early_exit`; returned rows carry `retrieval_evidence`.
+  - **Track B — §3.A epistemic status & lineage:** *Implemented, Integrated, Unit-tested.* `POST /search/ask` returns `epistemic_status` (`explicitly_stated` / `inferred` / `stale` / `contradicted` / `unsupported`, worst-first) and `source_lineage` (`resolve_memory_lineage` per cited memory).
+  - **Track B — §3.B decision revisit delivery:** *Implemented, Integrated, Unit-tested.* `BriefComposer._decision_revisit_lines` queries active decisions with predictions and flagged memories, calls `assess_decision_revisit`, and renders a "Revisit a decision" section in the daily brief body, metadata, and evidence.
+- **Evidence:**
+  - Track A: `tests/unit/test_dispatcher_execution_guard.py` (24 tests passed).
+  - Track B: `tests/unit/test_adaptive_retrieval.py` (16 passed) + `tests/unit/test_brief_decision_revisit.py` (15 passed) + `tests/unit/test_decision_experience_workflow.py` (4 passed) = 35 passed.
+  - CI verification scripts: `python scripts/eval_memory_benchmark.py --verify` (exit 0) and `python scripts/eval_confidence_calibration.py --verify` (exit 0).
+  - Full unit suite: 5410 passed, 2 pre-existing environment-related failed (`test_diff_scoped_verifiers.py::test_lint_clean_diff_*`), 24 skipped.
+  - Code hygiene: `ruff check life_graph/` clean; `python scripts/gen_state.py --html --check` clean.
+- **Open risks/blockers:**
+  - The checkpoint trail is currently held in memory on `_DispatchRun` during dispatch execution; persisting `tracker.to_dict()` into `agent_tasks.properties` across restarts is the next operational slice for full crash recovery.
+  - Section 3 early-exit latency/cost savings are reasoned (2 fewer round-trips); empirical latency benchmark measurement on large memory set is pending.
+- **Next smallest action:** Persist `run.tracker.to_dict()` into task row properties and run memory benchmark comparison.
+- **Latest commits:** `8f4d140` (Track A) and `d3703b9` (Track B) merged into `master`.

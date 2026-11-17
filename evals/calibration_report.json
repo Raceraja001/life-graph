@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "evaluated_at": "2026-11-16T08:52:05.887948+00:00",
+    "evaluated_at": "2026-11-17T08:07:53.755966+00:00",
     "dataset_path": "evals/confidence_calibration_dataset.json",
     "bins": 10,
     "decision_threshold": 0.5,
@@ -10,12 +10,12 @@
     "calibration_set": {
       "summary": {
         "count": 60,
-        "brier_score": 0.1238,
-        "ece": 0.1891,
+        "brier_score": 0.123,
+        "ece": 0.1872,
         "mce": 0.5183,
-        "mean_confidence": 0.6232,
+        "mean_confidence": 0.6212,
         "accuracy": 0.4833,
-        "calibration_gap": 0.1398,
+        "calibration_gap": 0.1379,
         "precision": 0.7714,
         "recall": 0.931,
         "f1": 0.8438,
@@ -40,10 +40,10 @@
               0.1,
               0.2
             ],
-            "count": 2,
-            "mean_confidence": 0.1685,
+            "count": 3,
+            "mean_confidence": 0.1586,
             "accuracy": 0.0,
-            "gap": 0.1685
+            "gap": 0.1586
           },
           {
             "bin": 2,
@@ -51,10 +51,10 @@
               0.2,
               0.3
             ],
-            "count": 10,
-            "mean_confidence": 0.2676,
+            "count": 9,
+            "mean_confidence": 0.2691,
             "accuracy": 0.0,
-            "gap": 0.2676
+            "gap": 0.2691
           },
           {
             "bin": 3,
@@ -137,8 +137,8 @@
         "contradiction_detection": {
           "count": 60,
           "precision": 1.0,
-          "recall": 0.75,
-          "f1": 0.8571
+          "recall": 0.8333,
+          "f1": 0.9091
         },
         "by_evidence_kind": {
           "document": {
@@ -542,12 +542,12 @@
           },
           "outside": {
             "count": 10,
-            "brier_score": 0.1445,
-            "ece": 0.1856,
+            "brier_score": 0.14,
+            "ece": 0.174,
             "mce": 0.348,
-            "mean_confidence": 0.3507,
+            "mean_confidence": 0.3391,
             "accuracy": 0.2,
-            "calibration_gap": 0.1507,
+            "calibration_gap": 0.1391,
             "precision": 0.0,
             "recall": 0.0,
             "f1": 0.0,
@@ -572,10 +572,10 @@
                   0.1,
                   0.2
                 ],
-                "count": 1,
-                "mean_confidence": 0.138,
+                "count": 2,
+                "mean_confidence": 0.1384,
                 "accuracy": 0.0,
-                "gap": 0.138
+                "gap": 0.1384
               },
               {
                 "bin": 2,
@@ -583,10 +583,10 @@
                   0.2,
                   0.3
                 ],
-                "count": 2,
-                "mean_confidence": 0.2497,
+                "count": 1,
+                "mean_confidence": 0.245,
                 "accuracy": 0.0,
-                "gap": 0.2497
+                "gap": 0.245
               },
               {
                 "bin": 3,
@@ -669,8 +669,8 @@
             "contradiction_detection": {
               "count": 10,
               "precision": 1.0,
-              "recall": 0.5,
-              "f1": 0.6667
+              "recall": 1.0,
+              "f1": 1.0
             }
           },
           "said": {
@@ -1562,11 +1562,11 @@
           "id": "cal-out-07",
           "scenario": "outside_contradiction_pricing",
           "claim": "The tier requires paid subscription.",
-          "support_status": "unsupported",
-          "confidence": 0.2544,
+          "support_status": "contradicted",
+          "confidence": 0.1388,
           "recommended_action": "abstain",
           "correct": 0.0,
-          "contradiction_predicted": false,
+          "contradiction_predicted": true,
           "contradiction_ground_truth": true
         },
         {
@@ -1607,18 +1607,18 @@
     "held_out_set": {
       "summary": {
         "count": 60,
-        "brier_score": 0.1413,
-        "ece": 0.1877,
+        "brier_score": 0.1381,
+        "ece": 0.1823,
         "mce": 0.7475,
-        "mean_confidence": 0.6247,
+        "mean_confidence": 0.6193,
         "accuracy": 0.4833,
-        "calibration_gap": 0.1414,
+        "calibration_gap": 0.136,
         "precision": 0.7222,
         "recall": 0.8966,
         "f1": 0.8,
-        "abstention_rate": 0.2667,
-        "abstention_precision": 0.9375,
-        "answering_accuracy": 0.6364,
+        "abstention_rate": 0.2833,
+        "abstention_precision": 0.9412,
+        "answering_accuracy": 0.6512,
         "bins": [
           {
             "bin": 0,
@@ -1637,10 +1637,10 @@
               0.1,
               0.2
             ],
-            "count": 2,
-            "mean_confidence": 0.1678,
+            "count": 3,
+            "mean_confidence": 0.1582,
             "accuracy": 0.0,
-            "gap": 0.1678
+            "gap": 0.1582
           },
           {
             "bin": 2,
@@ -1670,10 +1670,10 @@
               0.4,
               0.5
             ],
-            "count": 8,
+            "count": 7,
             "mean_confidence": 0.4635,
-            "accuracy": 0.25,
-            "gap": 0.2135
+            "accuracy": 0.2857,
+            "gap": 0.1778
           },
           {
             "bin": 5,
@@ -1733,9 +1733,9 @@
         ],
         "contradiction_detection": {
           "count": 60,
-          "precision": 0.9,
-          "recall": 0.75,
-          "f1": 0.8182
+          "precision": 0.9091,
+          "recall": 0.8333,
+          "f1": 0.8696
         },
         "by_evidence_kind": {
           "document": {
@@ -2139,18 +2139,18 @@
           },
           "outside": {
             "count": 10,
-            "brier_score": 0.1584,
-            "ece": 0.1723,
+            "brier_score": 0.1388,
+            "ece": 0.1735,
             "mce": 0.3482,
-            "mean_confidence": 0.3723,
+            "mean_confidence": 0.3399,
             "accuracy": 0.2,
-            "calibration_gap": 0.1723,
+            "calibration_gap": 0.1399,
             "precision": 0.0,
             "recall": 0.0,
             "f1": 0.0,
-            "abstention_rate": 0.5,
+            "abstention_rate": 0.6,
             "abstention_precision": 1.0,
-            "answering_accuracy": 0.4,
+            "answering_accuracy": 0.5,
             "bins": [
               {
                 "bin": 0,
@@ -2169,10 +2169,10 @@
                   0.1,
                   0.2
                 ],
-                "count": 1,
-                "mean_confidence": 0.1375,
+                "count": 2,
+                "mean_confidence": 0.1383,
                 "accuracy": 0.0,
-                "gap": 0.1375
+                "gap": 0.1383
               },
               {
                 "bin": 2,
@@ -2202,10 +2202,10 @@
                   0.4,
                   0.5
                 ],
-                "count": 5,
-                "mean_confidence": 0.459,
-                "accuracy": 0.4,
-                "gap": 0.059
+                "count": 4,
+                "mean_confidence": 0.458,
+                "accuracy": 0.5,
+                "gap": 0.042
               },
               {
                 "bin": 5,
@@ -2266,8 +2266,8 @@
             "contradiction_detection": {
               "count": 10,
               "precision": 1.0,
-              "recall": 0.5,
-              "f1": 0.6667
+              "recall": 1.0,
+              "f1": 1.0
             }
           },
           "said": {
@@ -3170,11 +3170,11 @@
           "id": "held-out-08",
           "scenario": "outside_antonym_contradiction_office",
           "claim": "The regional office is open today.",
-          "support_status": "supported",
-          "confidence": 0.4634,
-          "recommended_action": "ask",
+          "support_status": "contradicted",
+          "confidence": 0.139,
+          "recommended_action": "abstain",
           "correct": 0.0,
-          "contradiction_predicted": false,
+          "contradiction_predicted": true,
           "contradiction_ground_truth": true
         },
         {

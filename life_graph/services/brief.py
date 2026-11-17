@@ -22,7 +22,14 @@ from sqlalchemy import func, select
 
 from life_graph.config import settings
 from life_graph.core.events import EventBus, EventType
-from life_graph.models.db import Approval, CaptureEvent, Decision, Memory, Notification
+from life_graph.models.db import (
+    Approval,
+    CaptureEvent,
+    Decision,
+    Memory,
+    Notification,
+    Prediction,
+)
 from life_graph.services.interview import InterviewService
 from life_graph.services.memory import capture_yield as memory_yield
 
@@ -32,6 +39,46 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 BRIEF_KIND = "daily_brief"
+
+#: Decisions that can still be revisited: a candidate has not been made yet,
+#: and a superseded or discarded one has already been answered.
+REVISIT_STATUSES = ("decided", "reviewed")
+#: How many recent decisions are assessed for a revisit (newest first).
+REVISIT_DECISION_LIMIT = 20
+#: How many recent memories are read as possible circumstance-change evidence.
+REVISIT_MEMORY_LIMIT = 200
+#: At most this many revisit lines a day — the brief is a nudge, not a backlog.
+REVISIT_MAX_LINES = 3
+
+
+def _flags_circumstance_change(memory: Any) -> bool:
+    """True when a memory *explicitly* says a premise changed.
+
+    ``assess_decision_revisit`` also reads free text for "changed" / "no
+    longer", which an ordinary day's captures are full of. Passing it every
+    recent memory would mark every decision revisit-worthy and turn the brief
+    into noise, so only memories whose own properties claim an invalidation —
+    or that name the decision — are offered as circumstance evidence.
+    """
+    props = getattr(memory, "properties", None)
+    if not isinstance(props, dict):
+        return False
+    return bool(
+        props.get("circumstance_changed")
+        or props.get("invalidates_decision")
+        or props.get("decision_id")
+    )
+
+
+def _review_recorded(decision: Any) -> bool:
+    """True when this decision's scheduled review has already been carried out."""
+    review_at = getattr(decision, "review_at", None)
+    reviewed_at = getattr(decision, "reviewed_at", None)
+    if not isinstance(review_at, datetime) or not isinstance(reviewed_at, datetime):
+        return False
+    review_at = review_at if review_at.tzinfo else review_at.replace(tzinfo=UTC)
+    reviewed_at = reviewed_at if reviewed_at.tzinfo else reviewed_at.replace(tzinfo=UTC)
+    return reviewed_at >= review_at
 
 
 def build_brief_evidence(
@@ -44,6 +91,7 @@ def build_brief_evidence(
     approvals_line: str | None = None,
     memory_lines: list[str] | None = None,
     night_shift: list[str] | None = None,
+    decision_revisits: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Build 'why am I seeing this?' evidence items for the daily brief (P3 §3.13)."""
     evidence: list[dict[str, Any]] = []
@@ -107,6 +155,14 @@ def build_brief_evidence(
                 "why": "Overnight automated tasks completed or queued",
             }
         )
+    if decision_revisits:
+        evidence.append(
+            {
+                "section": "decision_revisits",
+                "count": len(decision_revisits),
+                "why": "Decisions whose review date was reached or whose prediction was falsified",
+            }
+        )
     return evidence
 
 
@@ -150,6 +206,7 @@ class BriefComposer:
         capture_summary = await self._capture_summary(tenant_id, since)
         watcher_summary = await self._watcher_summary(tenant_id, since)
         big_decisions = await self._big_decisions(tenant_id, since)
+        decision_revisits = await self._decision_revisit_lines(tenant_id, now)
         connector_sections = await self._connector_sections(tenant_id, now)
         assistant_lines = await self._assistant_lines(tenant_id)
         night_shift = await self._night_shift_lines(tenant_id, since)
@@ -168,6 +225,7 @@ class BriefComposer:
             or capture_summary["total"]
             or watcher_summary
             or big_decisions
+            or decision_revisits
             or connector_sections
             or assistant_lines
             or night_shift
@@ -180,7 +238,12 @@ class BriefComposer:
             return None
 
         body = self._format_body(
-            held, question_data, capture_summary, watcher_summary, big_decisions
+            held,
+            question_data,
+            capture_summary,
+            watcher_summary,
+            big_decisions,
+            decision_revisits=decision_revisits,
         )
         if money_week:
             # Categories and percentages only: this body leaves the machine.
@@ -224,6 +287,7 @@ class BriefComposer:
             approvals_line=approvals_line,
             memory_lines=memory_lines,
             night_shift=night_shift,
+            decision_revisits=decision_revisits,
         )
 
         async with self._session_factory() as session:
@@ -241,6 +305,7 @@ class BriefComposer:
                     "capture_summary": capture_summary,
                     "watcher_summary": watcher_summary,
                     "big_decisions": big_decisions,
+                    "decision_revisits": decision_revisits,
                     "connectors": connector_sections["local"] if connector_sections else None,
                     "evidence": evidence,
                 },
@@ -400,6 +465,100 @@ class BriefComposer:
                 .limit(5)
             )
             return [{"id": str(d.id), "title": d.title} for d in result.scalars().all()]
+
+    async def _decision_revisit_lines(self, tenant_id: str, now: datetime) -> list[str]:
+        """Decisions a change has overtaken — review date reached, or a prediction falsified.
+
+        The judgment engine already knows when a decision has gone stale
+        (``services/judgment.assess_decision_revisit``: scheduled review
+        reached, evidence-backed prediction falsified, or a premise that
+        changed). The brief is where that reaches the owner, because nothing
+        else asks: a review date nobody is told about is a column, not a review.
+
+        Two noise gates, because a line that fires forever teaches the owner to
+        skip the whole brief: a decision whose review has been recorded is
+        dropped (:func:`_review_recorded`), and only predictions falsified
+        inside the window and memories that explicitly flag an invalidation
+        (:func:`_flags_circumstance_change`) are offered as evidence.
+        """
+        from life_graph.services.judgment import assess_decision_revisit
+
+        since = now - timedelta(hours=24)
+        try:
+            async with self._session_factory() as session:
+                decisions = list(
+                    (
+                        await session.execute(
+                            select(Decision)
+                            .where(
+                                Decision.tenant_id == tenant_id,
+                                Decision.status.in_(REVISIT_STATUSES),
+                            )
+                            .order_by(Decision.created_at.desc())
+                            .limit(REVISIT_DECISION_LIMIT)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if not decisions:
+                    return []
+                predictions = list(
+                    (
+                        await session.execute(
+                            select(Prediction).where(
+                                Prediction.tenant_id == tenant_id,
+                                Prediction.decision_id.in_([d.id for d in decisions]),
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                recent = list(
+                    (
+                        await session.execute(
+                            select(Memory)
+                            .where(
+                                Memory.tenant_id == tenant_id,
+                                Memory.created_at >= since,
+                            )
+                            .order_by(Memory.created_at.desc())
+                            .limit(REVISIT_MEMORY_LIMIT)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+        except Exception:
+            logger.warning("Decision revisit lines failed for %s", tenant_id, exc_info=True)
+            return []
+
+        changed = [m for m in recent if _flags_circumstance_change(m)]
+        falsified: dict[Any, list[Any]] = {}
+        for p in predictions:
+            resolved = getattr(p, "resolved_at", None)
+            if getattr(p, "outcome", "pending") != "incorrect":
+                continue
+            if resolved is not None:
+                resolved = resolved if resolved.tzinfo else resolved.replace(tzinfo=UTC)
+                if resolved < since:
+                    continue
+            falsified.setdefault(p.decision_id, []).append(p)
+
+        lines: list[str] = []
+        for d in decisions:
+            if _review_recorded(d) and not falsified.get(d.id):
+                continue
+            assessment = assess_decision_revisit(
+                d, falsified.get(d.id, []), memories=changed, now=now
+            )
+            if assessment.get("should_revisit"):
+                reasons = ", ".join(assessment.get("reasons") or [])
+                lines.append(f"Revisit decision '{d.title}': {reasons}")
+            if len(lines) >= REVISIT_MAX_LINES:
+                break
+        return lines
 
     async def _watcher_summary(self, tenant_id: str, since: datetime) -> dict[str, int]:
         """Watch-event counts per watcher in the window (empty if none)."""
@@ -592,6 +751,7 @@ class BriefComposer:
         capture_summary: dict[str, int],
         watcher_summary: dict[str, int],
         big_decisions: list[dict[str, Any]] | None = None,
+        decision_revisits: list[str] | None = None,
     ) -> str:
         lines: list[str] = []
         if held:
@@ -605,6 +765,11 @@ class BriefComposer:
                 lines.append(
                     f"- {d['title']}  _(challenge: POST /judgment/decisions/{d['id']}/challenge)_"
                 )
+            lines.append("")
+        if decision_revisits:
+            lines.append("## Revisit a decision")
+            for line in decision_revisits:
+                lines.append(f"- {line}")
             lines.append("")
         if questions:
             lines.append("## Questions for you")
