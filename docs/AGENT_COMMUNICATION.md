@@ -93,24 +93,23 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-17 04:30 UTC)
+### Current (2026-11-17 05:00 UTC)
 
-- **Checked at / branch / base SHA:** 2026-11-17 04:30 UTC on
-  `feat/work-order-final-operational-verification`, cut from `master` at
-  `28c4558` (`docs(state): regenerate the inventory [skip ci]`). Working
+- **Checked at / branch / base SHA:** 2026-11-17 05:00 UTC on
+  `feat/memory-evaluation-laboratory`, cut from `master` at
+  `2a50eba5` (`docs(state): regenerate the inventory [skip ci]`). Working
   tree: `/home/raja/life-graph`.
-- **Current milestone:** Operational & real-PostgreSQL integration verification of P0 §2, P1 §4, and P1 §5 — closing all remaining gaps in `docs/AI_WORK_ORDER.md`.
-- **Verified status (per Section 9 Definition of Done):**
-  - **P0 §2 Exact-step-bound approval**: **Implemented, Integrated, Unit-tested, Integration-tested, Adversarially tested, Operationally verified, and Complete**. Verified end-to-end against real PostgreSQL (`notifications` + `capabilities`) and live isolated Chromium (`life-graph-sandbox-browser-1` at `172.24.0.2`) + egress proxy (`http://egress:8080`) as well as in `tests/integration/test_durable_authorization_multiprocess.py`.
-  - **P0 §3 Isolated browser runtime**: **Operationally verified and Complete**. Evidenced against live Chromium container (`compose.sandbox.yaml`), 4-network topology, 32-char path token authentication, egress proxy enforcement with IP pinning, SSRF/metadata blocking, and clean container teardown.
-  - **P1 §4 Durable authorization**: **Implemented, Integrated, Unit-tested, Integration-tested, Operationally verified, and Complete**. Verified across 8 independent OS worker processes (distinct PIDs and `psycopg2` pools) racing against real PostgreSQL after issuer process exit (1 winner `capability_valid`, 7 losers `capability_already_consumed`), plus standing-rule persistence across process restarts and cross-process revocation (`tests/integration/test_durable_authorization_multiprocess.py`).
-  - **P1 §5 Historical episode retrieval**: **Implemented, Integrated, Unit-tested, Integration-tested, and Complete**. Extended `episodes.time_window` (`this month`, `last year`, `this year`), added historical `statuses` support to `episodes.episodes_between`, fixed ORM `Memory` valid-time precedence in `memory_retrieval._temporal` and `is_valid_at`, and verified against real PostgreSQL in `tests/integration/test_episodes.py` (`58/58` unit + integration tests passing).
-  - **P1 §6 Evidence lineage & confidence evaluation**: **Implemented, Integrated, Unit-tested, Evaluated, and Complete**.
-  - **P1 §7 Adversarial end-to-end security**: **Implemented, Integrated, Unit-tested, Adversarially tested, and Complete**.
-  - **P2 §8 Operations and recovery runbook**: **Complete**.
-  - **Inventory & Tests**:
-    - `docs/STATE.md` and `docs/feature-inventory.html` refreshed and verified via `python scripts/gen_state.py --check`.
-- **Open risks/blockers:**
-  - All P0, P1, and P2 milestones in `docs/AI_WORK_ORDER.md` (§2–§8) are **Complete**.
-- **Next smallest action:** Proceed to the next priority in `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 (Order 3: Establish reproducible memory benchmarks and regression datasets).
-- **Latest commit:** `7c78d97` (`feat(work-order): complete P0/P1 operational & DB verification across approval, multiprocess auth, and episodes`).
+- **Current milestone:** P1 Evaluation Laboratory — Reproducible memory benchmarks and single-variable ablation datasets (`docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 2 & Section 4 Order 3). **Implemented, Integrated, Unit-tested, Evaluated, and Complete**.
+- **Verified status:**
+  - **All `docs/AI_WORK_ORDER.md` milestones (§2–§8):** **Operationally verified and Complete**.
+  - **P1 Evaluation Laboratory (`docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Order 3):** **Complete**.
+    - Added `life_graph/services/memory_benchmark.py` evaluating a 6-stage single-variable retrieval & lifecycle ablation ladder (`1_lexical_bm25`, `2_vector_ngram`, `3_hybrid_rrf`, `4_graph_entity_expansion`, `5_rerank_temporal_provenance`, `6_multistep_adaptive_abstain`) across separate tuning (`evals/memory_structures/test_life.json`, 140 questions) and held-out (`evals/memory_structures/test_life_2.json`, 185 questions) synthetic datasets plus deterministic lifecycle invariants.
+    - Added CLI runner `scripts/eval_memory_benchmark.py` with `--verify` regression gate and generated `evals/memory_benchmark_report.json`:
+      - `tuning_dev`: R@1 `0.4480 -> 0.5600`, R@5 `0.7120 -> 0.8960`, MRR `0.5633 -> 0.6929`, Support@5 `0.6071 -> 0.8643`, Temporal accuracy `0.6800 -> 0.9200`, Supersession `0.8000 -> 1.0000`, Abstention P/R `1.0000 / 1.0000`.
+      - `held_out`: R@1 `0.5562 -> 0.5917`, R@5 `0.7692 -> 0.8994`, MRR `0.6391 -> 0.7112`, Support@5 `0.6486 -> 0.8432`, Temporal accuracy `0.7115 -> 0.8846`, Supersession `0.7391 -> 0.8696`, Abstention P/R `1.0000 / 1.0000`.
+      - Lifecycle invariants: `bitemporal_accuracy = 1.0`, `forgetting_leakage_rate = 0.0`, `provenance_contradiction_gate_ok = True`.
+    - Added unit & regression suite `tests/unit/test_memory_benchmark_lab.py` (`5 passed in 10.81s`).
+    - Regenerated `docs/STATE.md` and `docs/feature-inventory.html` (`python scripts/gen_state.py --check` -> OK).
+- **Open risks/blockers:** None.
+- **Next smallest action:** Proceed to `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 Order 4 (P2: Integrate decision, prediction and causal memory into one workflow).
+- **Latest commit:** recorded in the merge commit on `master`.
