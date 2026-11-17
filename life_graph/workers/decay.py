@@ -91,7 +91,7 @@ async def _expire_stale_pending(session, tenant_id: str) -> int:
     memories had waited since 2026-10-13 and nothing reached recall. Rejected,
     not deleted: approving one brings it back, and the reason is stamped on it.
 
-    The clock starts when the Memory check showed it (services/memory_check.py
+    The clock starts when the Memory check showed it (services/memory/check.py
     stamps ``review_offered_at``), not when it was noted: until 2026-10-28 it
     started at creation, and memories nobody had been shown were dropped.
     """

@@ -43,7 +43,7 @@ from life_graph.models.db import (
     TenantWebhook,
 )
 from life_graph.models.schemas import MemoryResponse
-from life_graph.services.metamemory import MetamemoryTracker
+from life_graph.services.memory.metamemory import MetamemoryTracker
 from life_graph.storage.database import async_session
 from life_graph.storage.postgres import PostgresMemoryStore
 

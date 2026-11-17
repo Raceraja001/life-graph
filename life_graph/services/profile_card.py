@@ -1,6 +1,6 @@
 """The owner's lasting facts, in front of every local Jarvis answer.
 
-Search decides what Jarvis sees (services/memory_context.py), so a fact it
+Search decides what Jarvis sees (services/memory/context.py), so a fact it
 misses is a fact Jarvis "forgets": asked "which phone should I buy a case
 for?", the search for that wording need not find "my phone is a Realme X2
 Pro". Supermemory's static profile, Letta's memory blocks and Claude's memory

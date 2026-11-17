@@ -1,4 +1,4 @@
-"""Unit tests for the proactive recall engine (`services/recall.py`).
+"""Unit tests for the proactive recall engine (`services/memory/recall.py`).
 
 Recall decides which memories are pushed at you unprompted. Getting it wrong
 is quiet: you are shown the wrong things, or nagged about facts you already
@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from life_graph.services.recall import (
+from life_graph.services.memory.recall import (
     RecallEngine,
     _dict_to_memory_response,
     _has_any_tag,
@@ -170,7 +170,7 @@ async def test_candidate_dict_supplies_everything_the_converter_reads():
     import inspect
     import textwrap
 
-    from life_graph.services import recall
+    from life_graph.services.memory import recall
 
     src = textwrap.dedent(inspect.getsource(recall.RecallEngine._retrieve_candidates))
     built = {
@@ -223,7 +223,7 @@ async def test_anti_annoyance_suppresses_recently_surfaced():
 
 @pytest.mark.asyncio
 async def test_anti_annoyance_releases_after_the_cooldown():
-    from life_graph.services.recall import _COOLDOWN_SECONDS
+    from life_graph.services.memory.recall import _COOLDOWN_SECONDS
 
     engine = _engine()
     c = _cand()
@@ -254,7 +254,7 @@ async def test_two_dismissals_are_not_enough_to_suppress():
 
 @pytest.mark.asyncio
 async def test_anti_annoyance_enforces_the_session_cap():
-    from life_graph.services.recall import _MAX_SESSION_SURFACES
+    from life_graph.services.memory.recall import _MAX_SESSION_SURFACES
 
     engine = _engine()
     out = await engine._apply_anti_annoyance([_cand() for _ in range(_MAX_SESSION_SURFACES + 5)])
@@ -263,7 +263,7 @@ async def test_anti_annoyance_enforces_the_session_cap():
 
 @pytest.mark.asyncio
 async def test_session_cap_accounts_for_already_surfaced():
-    from life_graph.services.recall import _MAX_SESSION_SURFACES
+    from life_graph.services.memory.recall import _MAX_SESSION_SURFACES
 
     engine = _engine()
     engine._session_surface_count = _MAX_SESSION_SURFACES - 2
@@ -486,7 +486,7 @@ async def test_expanding_an_indexed_memory_does_suppress_the_next_recall():
 
 @pytest.mark.asyncio
 async def test_mid_session_respects_the_cap():
-    from life_graph.services.recall import _MAX_SESSION_SURFACES
+    from life_graph.services.memory.recall import _MAX_SESSION_SURFACES
 
     engine = _engine([_Memory()])
     engine._session_surface_count = _MAX_SESSION_SURFACES
@@ -513,7 +513,11 @@ def _attributes_retrieval_reads() -> set[str]:
     import pathlib
 
     recall_py = (
-        pathlib.Path(__file__).resolve().parents[2] / "life_graph" / "services" / "recall.py"
+        pathlib.Path(__file__).resolve().parents[2]
+        / "life_graph"
+        / "services"
+        / "memory"
+        / "recall.py"
     )
     tree = ast.parse(recall_py.read_text())
     for node in ast.walk(tree):
