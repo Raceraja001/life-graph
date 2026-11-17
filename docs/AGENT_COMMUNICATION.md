@@ -93,19 +93,65 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-17 05:20 UTC)
+### Current (2026-11-17 08:05 UTC)
 
-- **Checked at / branch / base SHA:** 2026-11-17 05:20 UTC on
-  `feat/improvement-plan-orders-4-5-6`, cut from `master` at
-  `346e2ce`. Working tree: `/home/raja/life-graph`.
-- **Current milestone:** Completion of all 6 priorities in `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 (Orders 1 through 6) & all 7 milestones in `docs/AI_WORK_ORDER.md` (§2 through §8).
+- **Checked at / branch / base SHA:** 2026-11-17 08:05 UTC on
+  `feat/track-b-adaptive-retrieval-and-limitations`, cut from `master` at
+  `74d3002`. Working tree: `/home/raja/lg-wt/track-b` (git worktree).
+- **Current milestone:** Track B — `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md`
+  Section 3 research directions A (memory that understands its limitations)
+  and C (retrieval that knows when to stop), plus the delivery path for B
+  (decision experience) through the daily brief.
 - **Verified status:**
-  - **Order 1 (P0 Isolated browser runtime & exact-bound approval):** **Operationally verified and Complete**.
-  - **Order 2 (P1 Evidence-lineage & confidence calibration):** **Implemented, Integrated, Unit-tested, Evaluated, and Complete**.
-  - **Order 3 (P1 Reproducible memory evaluation laboratory):** **Implemented, Integrated, Unit-tested, Evaluated, and Complete** (`life_graph/services/memory_benchmark.py`, `scripts/eval_memory_benchmark.py`, `evals/memory_benchmark_report.json`, `tests/unit/test_memory_benchmark_lab.py`).
-  - **Order 4 (P2 Decision, prediction, and causal memory workflow):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/services/judgment.py`, `tests/unit/test_decision_experience_workflow.py` — 7-stage experience chain `Situation -> Options -> Decision -> Rationale -> Prediction -> Outcome -> Lesson`, Brier/accuracy prediction evaluation, evidence-backed lesson derivation, fenced hypothetical counterfactuals, and circumstance-change revisit assessment).
-  - **Order 5 (P2 Durable agent execution, recovery, and independent verification):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/drivers/execution_guard.py`, `tests/unit/test_durable_agent_execution.py` — ordered stage checkpoints, crash recovery actions, idempotency keys, bounded retries, independent verifier completion gate, and bounded delegation envelope validation).
-  - **Order 6 (P3 Local intelligence infrastructure & model registry):** **Implemented, Integrated, Unit-tested, and Complete** (`life_graph/services/local_model_registry.py`, `tests/unit/test_local_model_infrastructure.py` — RTX 5080 16 GB VRAM model registry across 7 capabilities, strict local-only routing for personal data, routing/queue explainability, live Ollama probe, and VRAM co-residency justification showing `bge-m3` 1.4 GB + `qwen3:14b` 9.8 GB = 11.2 GB <= 16.0 GB).
-- **Open risks/blockers:** None. All items in `docs/AI_WORK_ORDER.md` and `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` Section 4 are complete.
-- **Next smallest action:** Monitor production telemetry and periodic evaluation runs (`scripts/eval_memory_benchmark.py --verify`, `scripts/eval_confidence_calibration.py --verify`).
-- **Latest commit:** recorded in the merge commit on `master`.
+  - **§3.C adaptive early exit:** **Implemented, Integrated, Unit-tested.**
+    `life_graph/services/memory/retrieval.py` — `assess_hit_evidence` scores
+    the top hybrid hit on calibrated confidence (`decompose_memory_confidence`,
+    no similarity in it) and entailment (`verify_claim_support`); at
+    `>= 0.92` confidence with `>= 0.85` entailment or full keyword coverage,
+    entity expansion and `_with_neighbours` are both skipped.
+  - **§3.C abstention indicator:** **Implemented, Integrated, Unit-tested.**
+    `retrieve` now returns a `RetrievalResult` (a `list` subclass, so every
+    existing caller is unchanged) carrying `abstain`,
+    `abstention_reason` (`contradictory_evidence` /
+    `unresolvable_missing_evidence`), the full per-memory assessment, and
+    `early_exit`; each returned row also carries `retrieval_evidence`.
+  - **§3.A epistemic status:** **Implemented, Integrated, Unit-tested.**
+    `POST /search/ask` returns `epistemic_status`
+    (`explicitly_stated` / `inferred` / `stale` / `contradicted` /
+    `unsupported`, worst-first) and `source_lineage`
+    (`resolve_memory_lineage` per cited memory, read from the retrieved rows
+    so the capture event, excerpt and span survive the projection).
+  - **§3.B revisit delivery:** **Implemented, Integrated, Unit-tested.**
+    `BriefComposer._decision_revisit_lines` queries active decisions with
+    their predictions and flagged recent memories, calls
+    `assess_decision_revisit`, and renders a "Revisit a decision" section in
+    the daily brief body, metadata and "why am I seeing this?" evidence.
+- **Evidence:**
+  `pytest tests/unit/test_adaptive_retrieval.py tests/unit/test_brief_decision_revisit.py tests/unit/test_decision_experience_workflow.py -v`
+  → 35 passed. Full `pytest tests/unit/ -q` → 5393 passed, 2 failed, 24
+  skipped; both failures (`test_diff_scoped_verifiers.py::test_lint_clean_diff_*`,
+  "ruff not available for this project") reproduce unchanged at `74d3002`
+  in a clean worktree, so they are environmental and pre-existing.
+  `ruff check life_graph/` clean; `docs/STATE.md` regenerated
+  (`scripts/gen_state.py --html --check` → OK).
+- **Open risks/blockers:**
+  - Unit-tested only. No integration or operational evidence yet: the early
+    exit's claimed latency/cost win is reasoned (two fewer round trips), **not
+    measured** — it needs a run through `scripts/eval_memory_benchmark.py` on
+    real memories to show quality is not traded for it.
+  - `EARLY_EXIT_CONFIDENCE = 0.92` / `EARLY_EXIT_ENTAILMENT = 0.85` are the
+    work order's figures, not measured thresholds. In practice only a fresh,
+    high-trust, owner-stated memory clears them, so the gate is narrow by
+    construction; widening it must wait for calibration evidence.
+  - Nothing in the codebase writes `Decision.reviewed_at`, so a reached review
+    date repeats daily until the owner acts (the approvals line behaves the
+    same way, by design). `_review_recorded` already honours the column for
+    when a review-recording path exists.
+  - The brief passes `assess_decision_revisit` only memories whose properties
+    explicitly flag an invalidation: its free-text "changed"/"no longer" rule
+    would otherwise fire on ordinary captures. Precision over recall,
+    deliberately — a text-only circumstance change is not surfaced.
+- **Next smallest action:** Measure the early exit — run
+  `scripts/eval_memory_benchmark.py` with and without it and record
+  first-result accuracy, candidate count and latency in `evals/`.
+- **Latest commit:** recorded in the Track B commit on this branch.

@@ -13,6 +13,7 @@ Local model only: the question and the memories are the owner's.
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import logging
@@ -190,6 +191,216 @@ def provenance_tiebreak_order(
     cluster.sort(key=lambda h: (-provenance_score(h[0]), -float(h[1])))
     result.extend(cluster)
     return result
+
+
+# ── Adaptive retrieval (§3.C — retrieval that knows when to stop) ─────────
+#
+# Two decisions, both taken from the candidates' *own* evidence and never
+# from their retrieval score (a similarity number is not a calibrated
+# confidence — see core/evidence.py):
+#
+# * Stop early. When the best hit is fresh, high-trust, and accounts for the
+#   question's content words, entity and link expansion can only add
+#   distractors and latency: there is nothing left to find.
+# * Say the evidence will not do. Memories that contradict the question, or
+#   a candidate whose source no longer resolves, are not fixed by retrieving
+#   more.
+#
+# The second is *reported*, not acted on here: `retrieve` still returns what
+# it found, with the assessment attached (:class:`RetrievalResult`), so each
+# surface decides what an abstention indicator means for it. /ask turns it
+# into an epistemic status (api/search.py) rather than a refusal, because a
+# memory that contradicts the question often answers it ("you no longer live
+# in London") — what must not happen is presenting it as plain agreement.
+
+#: Calibrated confidence at which the top hit alone is strong enough to answer.
+EARLY_EXIT_CONFIDENCE = 0.92
+#: … and how much of the question's content words that hit must account for.
+EARLY_EXIT_ENTAILMENT = 0.85
+#: Calibrated confidence below which a candidate carries no usable evidence.
+THIN_EVIDENCE_CONFIDENCE = 0.40
+
+
+class RetrievalResult(list):
+    """The retrieved memories, plus what retrieval learned about their evidence.
+
+    A ``list`` subclass so every existing caller keeps working unchanged
+    (``len``, iteration, indexing, truthiness); the attributes are for callers
+    that need to know *why* — that the evidence was contradictory or too thin
+    (``abstain`` / ``abstention_reason``), or that one hit was good enough to
+    stop expanding (``early_exit``). Each returned memory also carries its own
+    ``retrieval_evidence`` dict.
+    """
+
+    __slots__ = ("abstain", "abstention_reason", "early_exit", "evidence")
+
+    def __init__(
+        self,
+        items: Any = (),
+        *,
+        abstain: bool = False,
+        abstention_reason: str | None = None,
+        evidence: dict[str, Any] | None = None,
+        early_exit: bool = False,
+    ) -> None:
+        super().__init__(items)
+        self.abstain = abstain
+        self.abstention_reason = abstention_reason
+        self.evidence = evidence or {}
+        self.early_exit = early_exit
+
+
+def assess_hit_evidence(
+    question: str,
+    memory: Any,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """What one candidate's own evidence says about *question*.
+
+    Entailment (does the memory's text actually account for what was asked?)
+    and calibrated confidence (how much is this kind of evidence, from this
+    path, at this age, worth?) are kept apart in the result: a memory can be
+    highly trusted and still be about something else, and collapsing the two
+    is how a confident-looking answer gets built out of a near-miss.
+    """
+    from life_graph.core.evidence import (
+        CONTRADICTED,
+        SUPPORTED,
+        UNRESOLVED_SOURCE,
+        decompose_memory_confidence,
+        verify_claim_support,
+    )
+
+    support = verify_claim_support(question, memory)
+    status = str(support.get("support_status") or UNRESOLVED_SOURCE)
+    breakdown = decompose_memory_confidence(memory, now=now, support_status=status)
+    score = float(support.get("entailment_score") or 0.0)
+    conf = float(breakdown["calibrated_confidence"])
+    # Every content word of the question is in the memory's text or its
+    # preserved source span: the strongest entailment signal we have locally.
+    covered = score >= 1.0
+    entailed = status == SUPPORTED and (covered or score >= EARLY_EXIT_ENTAILMENT)
+    return {
+        "memory_id": support.get("memory_id"),
+        "support_status": status,
+        "support_detail": support.get("detail"),
+        "entailment_score": score,
+        "keywords_covered": covered,
+        "calibrated_confidence": conf,
+        "base_confidence": breakdown["base_confidence"],
+        "evidence_kind": breakdown["evidence_kind"],
+        "explicit_vs_inferred": breakdown["explicit_vs_inferred"],
+        "recommended_action": breakdown["recommended_action"],
+        "sufficient": bool(conf >= EARLY_EXIT_CONFIDENCE and entailed),
+        "contradicted": status == CONTRADICTED,
+        # A contradicted memory is not "unresolvable": it resolved, and it
+        # disagrees — a different problem, reported separately.
+        "unresolvable": status == UNRESOLVED_SOURCE
+        or (status not in (SUPPORTED, CONTRADICTED) and conf < THIN_EVIDENCE_CONFIDENCE),
+    }
+
+
+def _neutral_assessment(memory: Any) -> dict[str, Any]:
+    """A no-claim assessment, used when assessing one candidate itself failed."""
+    mid = memory.get("id") if isinstance(memory, dict) else getattr(memory, "id", None)
+    return {
+        "memory_id": str(mid) if mid is not None else None,
+        "support_status": "context",
+        "support_detail": "Evidence assessment failed; nothing claimed either way",
+        "entailment_score": 0.0,
+        "keywords_covered": False,
+        "calibrated_confidence": 0.0,
+        "base_confidence": 0.0,
+        "evidence_kind": None,
+        "explicit_vs_inferred": None,
+        "recommended_action": "abstain",
+        "sufficient": False,
+        "contradicted": False,
+        "unresolvable": False,
+    }
+
+
+def assess_candidate_evidence(
+    question: str,
+    candidates: list[Any],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Whether the candidate set is contradictory or too thin to answer *question*.
+
+    ``abstain`` is an indicator for the caller, not a decision taken here:
+    more retrieval cannot reconcile two memories that disagree, nor conjure a
+    source for a claim whose lineage is gone, so the honest thing is to say
+    which it is. One entry per candidate comes back in ``per_memory``, in the
+    candidates' own order.
+    """
+    from life_graph.core.evidence import SUPPORTED
+
+    per: list[dict[str, Any]] = []
+    for m in candidates:
+        try:
+            per.append(assess_hit_evidence(question, m, now=now))
+        except Exception:  # noqa: BLE001 — a failed assessment must not claim support
+            logger.warning("Evidence assessment failed for a candidate", exc_info=True)
+            per.append(_neutral_assessment(m))
+
+    contradicted = [a["memory_id"] for a in per if a["contradicted"]]
+    unresolvable = [a["memory_id"] for a in per if a["unresolvable"]]
+    supported = [a for a in per if a["support_status"] == SUPPORTED]
+
+    if contradicted:
+        abstain, reason = True, "contradictory_evidence"
+        detail = (
+            f"{len(contradicted)} of {len(per)} candidate memories assert something "
+            "incompatible with the question"
+        )
+    elif per and len(unresolvable) == len(per):
+        abstain, reason = True, "unresolvable_missing_evidence"
+        detail = (
+            "No candidate memory resolves to readable evidence above the "
+            f"{THIN_EVIDENCE_CONFIDENCE} confidence floor"
+        )
+    else:
+        abstain, reason, detail = False, None, None
+
+    return {
+        "abstain": abstain,
+        "abstention_reason": reason,
+        "detail": detail,
+        "contradicted": contradicted,
+        "unresolvable": unresolvable,
+        "assessed": len(per),
+        "supported": len(supported),
+        "per_memory": per,
+    }
+
+
+def _result(
+    question: str,
+    items: list[Any],
+    *,
+    early: dict[str, Any] | None = None,
+    now: datetime | None = None,
+) -> RetrievalResult:
+    """*items* as a :class:`RetrievalResult`, with their evidence assessed.
+
+    The assessment reads the memories that are actually being returned, so a
+    caller's abstention indicator is about the evidence it was handed.
+    """
+    assessment = assess_candidate_evidence(question, items, now=now)
+    for memory, per in zip(items, assessment["per_memory"], strict=False):
+        # A read-only or mapping row simply does not carry it; the collection's
+        # own assessment is the one every caller can rely on.
+        with contextlib.suppress(AttributeError, TypeError):
+            memory.retrieval_evidence = per
+    return RetrievalResult(
+        items,
+        abstain=assessment["abstain"],
+        abstention_reason=assessment["abstention_reason"],
+        evidence=assessment,
+        early_exit=bool(early and early.get("sufficient")),
+    )
 
 
 def explain_retrieval_selection(
@@ -374,7 +585,7 @@ async def retrieve(
     cold: bool = False,
     as_of: datetime | None = None,
     recorded_as_of: datetime | None = None,
-) -> list[Any] | None:
+) -> RetrievalResult | None:
     """Memories of the current tenant that help answer *question*, best first.
 
     Active memories first; archived and replaced ones (services/memory/tiers.py)
@@ -386,6 +597,11 @@ async def retrieve(
     "nothing remembered". Falls back to the plain search order when the judge
     cannot answer, so a model outage costs precision, never the memories
     themselves.
+
+    The return is a :class:`RetrievalResult` — a list, so every caller keeps
+    working — carrying what retrieval learned about the evidence it found:
+    whether it stopped early on a sufficient top hit, and whether the evidence
+    is contradictory or too thin to answer from (§3.C).
     """
     from life_graph.config import settings
     from life_graph.core.tenant import get_current_tenant_id
@@ -457,6 +673,21 @@ async def retrieve(
         hits = strength_order(hits)[:CANDIDATES]
     hits = provenance_tiebreak_order(hits)
     candidates = [m for m, _ in hits]
+    ref_time = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
+    # §3.C — stop when the evidence is already sufficient. The best hit's own
+    # calibrated confidence and entailment, not its search score, decide: when
+    # fresh high-trust words already account for the question, every further
+    # expansion below can only add distractors and latency.
+    early = assess_hit_evidence(question, candidates[0], now=ref_time) if candidates else None
+    early_exit = bool(early and early["sufficient"])
+    if early_exit:
+        logger.debug(
+            "Retrieval early exit: top hit %s conf=%.3f entailment=%.3f",
+            early["memory_id"],
+            early["calibrated_confidence"],
+            early["entailment_score"],
+        )
+
     # A question that names a known person, project or thing also gets the
     # memories linked to it (services/entities.py): search finds what is worded
     # like the question, the link finds what is about the same thing. The
@@ -466,7 +697,7 @@ async def retrieve(
     linked: list[Any] = []
     asked = question
     try:
-        named = await entities.known_in_text(tenant_id, question)
+        named = [] if early_exit else await entities.known_in_text(tenant_id, question)
         if named:
             linked = await entities.memories_for(
                 tenant_id, [eid for eid, _ in named], limit=max(ENTITY_CANDIDATES, limit)
@@ -485,15 +716,15 @@ async def retrieve(
         # "Tell me everything about Dify": the memories linked to Dify are about
         # Dify by construction, and the judge dropped the one that mattered
         # ("Life Graph does NOT use … Dify", 2026-10-23). They go first, unjudged.
-        ref_ = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
         current = [
-            m for m in linked if is_bitemporally_valid(m, valid_at=ref_, recorded_at=recorded_ref)
+            m
+            for m in linked
+            if is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)
         ]
-        return (dated + current)[:limit]
-    if settings.memory_links and candidates:
+        return _result(question, (dated + current)[:limit], early=early, now=ref_time)
+    if settings.memory_links and candidates and not early_exit:
         candidates = await _with_neighbours(tenant_id, candidates)
 
-    ref_time = _ensure_utc(as_of) if as_of is not None else datetime.now(UTC)
     seen = {m.id for m in dated}
     # A fact with an end date that has passed is no longer true ("in Chennai
     # until Friday"); when as_of is given, reconstruct validity at that point in time.
@@ -526,7 +757,7 @@ async def retrieve(
             if (as_of is not None or recorded_as_of is not None)
             else [m for m in memories if getattr(m, "status", "active") == "active"]
         )
-        return (dated + warm)[:limit]
+        return _result(question, (dated + warm)[:limit], early=early, now=ref_time)
     if not picked and not dated and cold_too and not past:
         # Nothing warm answers: older memories might (nothing is forgotten).
         cold_rows = [
@@ -535,7 +766,7 @@ async def retrieve(
             if is_bitemporally_valid(m, valid_at=ref_time, recorded_at=recorded_ref)
         ]
         picked = (await _judged(asked, cold_rows) or []) if cold_rows else []
-    return (dated + picked)[:limit]
+    return _result(question, (dated + picked)[:limit], early=early, now=ref_time)
 
 
 async def _cold(embedding: list[float], question: str) -> list[Any]:
