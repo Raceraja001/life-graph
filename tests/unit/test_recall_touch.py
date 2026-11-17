@@ -46,7 +46,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from life_graph.services.memory.recall import RecallEngine
+from life_graph.services.recall import RecallEngine
 
 
 class _Memory:

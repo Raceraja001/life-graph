@@ -35,7 +35,7 @@ async def _run(message: str, persona: dict) -> dict:
 
     with (
         patch("life_graph.agents.orchestrator.AgentOrchestrator.run", _fake_run),
-        patch("life_graph.services.memory.context.memory_block", fake_block),
+        patch("life_graph.services.memory_context.memory_block", fake_block),
     ):
         result = await mgr._run_agent("t1", "jarvis", {"message": message}, persona)
     seen["calls"] = calls

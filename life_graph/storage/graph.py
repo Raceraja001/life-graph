@@ -50,7 +50,7 @@ _PLACEHOLDER = re.compile(r"'(?:\\.|[^'\\])*'|\$(\w+)")
 #
 # The pool was previously declared as a class attribute but assigned as an
 # instance attribute, so every ``GraphStore()`` built its own pool — and
-# callers like ``services/memory/links.py`` construct one per link and never
+# callers like ``services/memory_links.py`` construct one per link and never
 # close it. One pool per process is the intent.
 #
 # The availability answer is cached for the same reason, but more sharply: on

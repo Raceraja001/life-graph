@@ -121,7 +121,7 @@ def _raw_filter_sql(filters: dict | None) -> tuple[str, dict]:
         clauses.append("source_type = :f_source_type")
         params["f_source_type"] = filters["source_type"]
     if filters.get("cold_tier"):
-        # services/memory/tiers.py: not what the owner took back (forgot,
+        # services/memory_tiers.py: not what the owner took back (forgot,
         # undid) and not what a bulk clean-up moved out on purpose.
         clauses.append(
             "NOT (COALESCE(properties, '{}'::jsonb) ?| ARRAY['forgotten', 'undone', 'merged_into'])"

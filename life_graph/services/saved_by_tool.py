@@ -203,7 +203,7 @@ async def drop_saved(
     """
     if not saved or not facts:
         return list(facts)
-    from life_graph.services.memory.recall import _cosine
+    from life_graph.services.recall import _cosine
 
     vectors = [s.embedding or await embed(s.content) for s in saved]
     kept: list[ExtractedFact] = []

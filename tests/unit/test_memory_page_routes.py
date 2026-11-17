@@ -17,13 +17,13 @@ def test_overview_route_comes_before_the_memory_id_route():
 
 
 def test_like_escapes_wildcards():
-    from life_graph.services.memory.page import _like
+    from life_graph.services.memory_page import _like
 
     assert _like("100%_a\\b") == "100\\%\\_a\\\\b"
 
 
 def test_row_marks_only_owner_or_jarvis_corrections_undoable():
-    from life_graph.services.memory.page import row
+    from life_graph.services.memory_page import row
 
     def mem(**props):
         return SimpleNamespace(

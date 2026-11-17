@@ -210,8 +210,7 @@ async def test_historical_retrieve_against_postgres_respects_as_of_and_recorded_
     import life_graph.runtime as runtime
     from life_graph.core.tenant import tenant_scope
     from life_graph.models.db import Memory
-    from life_graph.services import entities
-    from life_graph.services.memory import retrieval as memory_retrieval
+    from life_graph.services import entities, memory_retrieval
     from life_graph.storage.database import async_session
 
     tenant = f"epi_hist_{uuid.uuid4().hex[:8]}"

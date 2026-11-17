@@ -24,7 +24,7 @@ from life_graph.scoring.ranking import RecallRanker
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 POSTGRES_PY = ROOT / "life_graph" / "storage" / "postgres.py"
-RECALL_PY = ROOT / "life_graph" / "services" / "memory" / "recall.py"
+RECALL_PY = ROOT / "life_graph" / "services" / "recall.py"
 
 
 def _base_score_coefficients() -> dict[str, float]:

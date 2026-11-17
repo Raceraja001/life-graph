@@ -14,7 +14,7 @@ Sets live in evals/local/<tenant>_<set>.json (personal, never in git):
   distractors).
 - ``live``: built from the memories active now. ``build`` only ADDS questions
   for memories it has none for, so the set grows as the owner keeps memories
-  (services/memory/check.py) and earlier numbers stay comparable.
+  (services/memory_check.py) and earlier numbers stay comparable.
 - ``<set>_ta``: the same questions in Tamil (``translate``), because Tamil
   questions are where ranking broke on 2026-10-28 (a reranker took hit@1 from
   70% to 23%).
@@ -56,7 +56,7 @@ from pathlib import Path
 from sqlalchemy import text
 
 OUT_DIR = Path("evals/local")
-#: Candidates the judge sees, as in services/memory/retrieval.py.
+#: Candidates the judge sees, as in services/memory_retrieval.py.
 JUDGE_CANDIDATES = 10
 
 QUESTION_PROMPT = """\
@@ -272,13 +272,13 @@ async def _search(
         ids = [str(m.id) for m, _ in hits]
         if method == "hybrid":
             return ids
-        from life_graph.services.memory.retrieval import judge
+        from life_graph.services.memory_retrieval import judge
 
         picked = await judge(query, [m.content for m, _ in hits])
         # A judge failure falls back to the search order, as retrieval does.
         return ids if picked is None else [ids[i] for i in picked]
     if method == "recall":
-        from life_graph.services.memory.retrieval import retrieve
+        from life_graph.services.memory_retrieval import retrieve
 
         found = (
             await retrieve(query, limit=k, as_of=as_of)

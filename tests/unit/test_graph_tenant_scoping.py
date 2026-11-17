@@ -301,7 +301,7 @@ class TestCallers:
         assert "tenant_id: 'acme'" in graph_store.execute_cypher.call_args.args[0]
 
     async def test_link_sync_uses_the_links_tenant_not_the_context(self, monkeypatch):
-        from life_graph.services.memory import links as memory_links
+        from life_graph.services import memory_links
 
         graph_store = MagicMock(upsert_vertex=AsyncMock(), create_edge=AsyncMock())
         monkeypatch.setattr(graph_module, "GraphStore", lambda: graph_store)

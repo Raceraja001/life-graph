@@ -9,7 +9,7 @@ filtered after cutting to the maximum, so repeat recalls came back shorter.
 from __future__ import annotations
 
 from life_graph.config import settings
-from life_graph.services.memory import recall as recall_mod
+from life_graph.services import recall as recall_mod
 from tests.unit.test_recall_engine import _engine, _Memory
 
 

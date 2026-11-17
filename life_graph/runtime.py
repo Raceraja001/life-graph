@@ -27,8 +27,8 @@ from life_graph.services.contradiction import ContradictionDetector
 from life_graph.services.impact import ImpactScorer
 from life_graph.services.intentions import IntentionService
 from life_graph.services.llm_client import LMStudioClient
-from life_graph.services.memory.metamemory import MetamemoryTracker
-from life_graph.services.memory.recall import RecallEngine
+from life_graph.services.metamemory import MetamemoryTracker
+from life_graph.services.recall import RecallEngine
 from life_graph.services.synthesis import SynthesisService
 from life_graph.storage.database import async_session
 from life_graph.storage.postgres import PostgresMemoryStore
@@ -202,7 +202,7 @@ def get_impact_scorer() -> ImpactScorer:
 @lru_cache(maxsize=1)
 def get_micro_consolidator():
     """Return the singleton micro-consolidation service."""
-    from life_graph.services.memory.micro_consolidation import MicroConsolidator
+    from life_graph.services.micro_consolidation import MicroConsolidator
 
     return MicroConsolidator(
         session_factory=async_session,

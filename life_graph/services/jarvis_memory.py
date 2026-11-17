@@ -124,7 +124,7 @@ def _iso(value) -> str | None:
 
 def memory_row(m) -> dict[str, Any]:
     from life_graph.core.evidence import evidence_of
-    from life_graph.services.memory.sources import source_label as _source
+    from life_graph.services.memory_sources import source_label as _source
 
     return {
         "id": str(m.id),

@@ -57,7 +57,7 @@ def _candidate(**kw):
 
 
 def _response(cand):
-    from life_graph.services.memory.recall import _dict_to_memory_response
+    from life_graph.services.recall import _dict_to_memory_response
 
     return _dict_to_memory_response(cand)
 

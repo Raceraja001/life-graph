@@ -1,11 +1,11 @@
-import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+import uuid
 
 import pytest
 
 from life_graph.api.search import AskRequest, ask_brain
-from life_graph.services.memory.retrieval import is_valid_at
+from life_graph.services.memory_retrieval import is_valid_at
 
 
 def _mem(content: str, *, days_ago: int = 10, valid_days: int | None = None, confidence: float = 0.8):
@@ -70,7 +70,7 @@ async def test_ask_brain_abstains_when_no_memories(monkeypatch):
     async def _fake_retrieve(q, limit=10, as_of=None):
         return []
 
-    monkeypatch.setattr("life_graph.services.memory.retrieval.retrieve", _fake_retrieve)
+    monkeypatch.setattr("life_graph.services.memory_retrieval.retrieve", _fake_retrieve)
     res = await ask_brain(
         AskRequest(question="What is my secret project?"),
         store=None,
@@ -102,7 +102,7 @@ async def test_ask_brain_abstains_below_min_confidence(monkeypatch):
     async def _fake_retrieve(q, limit=10, as_of=None):
         return [low_mem]
 
-    monkeypatch.setattr("life_graph.services.memory.retrieval.retrieve", _fake_retrieve)
+    monkeypatch.setattr("life_graph.services.memory_retrieval.retrieve", _fake_retrieve)
     res = await ask_brain(
         AskRequest(question="Is this confirmed?", min_confidence=0.6),
         store=None,
@@ -117,8 +117,7 @@ async def test_ask_brain_abstains_below_min_confidence(monkeypatch):
 
 def test_provenance_order_prefers_verified_high_trust():
     from types import SimpleNamespace
-
-    from life_graph.services.memory.retrieval import provenance_order
+    from life_graph.services.memory_retrieval import provenance_order
 
     low = SimpleNamespace(id="low", trust_score=0.3, confidence=0.4, trust_tier="inferred", source_type="chat")
     high = SimpleNamespace(id="high", trust_score=0.9, confidence=0.9, trust_tier="verified", source_type="user_explicit")
@@ -129,7 +128,6 @@ def test_provenance_order_prefers_verified_high_trust():
 
 def test_detect_knowledge_gaps_surfaces_low_confidence_and_superseded():
     from types import SimpleNamespace
-
     from life_graph.api.search import detect_knowledge_gaps
 
     assert detect_knowledge_gaps([], abstained=True, abstention_reason="no_matching_memories")
@@ -165,7 +163,6 @@ async def test_lm_client_embed_falls_back_to_ollama(monkeypatch):
 def test_p2_cross_domain_and_challenge_mode():
     from datetime import UTC, datetime, timedelta
     from types import SimpleNamespace
-
     from life_graph.api.search import detect_challenge_prompts, summarize_cross_domain
 
     old_ts = datetime.now(UTC) - timedelta(days=120)
@@ -198,7 +195,6 @@ def test_p3_build_brief_evidence():
 
 def test_p3_durable_task_checkpoint_and_resume_guard():
     from types import SimpleNamespace
-
     from life_graph.services.dev_tasks import build_checkpoint, can_safely_resume
 
     task = SimpleNamespace(
@@ -211,7 +207,7 @@ def test_p3_durable_task_checkpoint_and_resume_guard():
         task,
         stage="interrupted_restart",
         completed_steps=["edit_files"],
-        artifacts=["life_graph/services/memory/retrieval.py"],
+        artifacts=["life_graph/services/memory_retrieval.py"],
     )
     assert cp["idempotency_key"].startswith("task-123:")
     assert cp["completed_steps"] == ["edit_files"]
@@ -223,8 +219,7 @@ def test_p3_durable_task_checkpoint_and_resume_guard():
 def test_p0_2_bitemporal_valid_and_transaction_time():
     from datetime import UTC, datetime
     from types import SimpleNamespace
-
-    from life_graph.services.memory.retrieval import is_bitemporally_valid
+    from life_graph.services.memory_retrieval import is_bitemporally_valid
 
     # Fact was valid in June 2026 (valid_from=Jun 1, valid_until=Jul 1),
     # but was only recorded on Aug 1 (late correction / past effective date).
@@ -264,7 +259,7 @@ def _bitemporal_mem(**over):
 
 def test_p5_1_supersession_reconstructs_the_belief_that_was_current_then():
     """A corrected memory must come back for the window it was still believed in."""
-    from life_graph.services.memory.retrieval import is_bitemporally_valid, is_known_at
+    from life_graph.services.memory_retrieval import is_bitemporally_valid, is_known_at
 
     # "Raja lives in Bangalore", recorded Jan 1, corrected away on Jun 1.
     old_belief = _bitemporal_mem(
@@ -295,7 +290,7 @@ def test_p5_1_supersession_reconstructs_the_belief_that_was_current_then():
 
 
 def test_p5_1_superseded_at_read_from_attribute_as_well_as_properties():
-    from life_graph.services.memory.retrieval import is_known_at
+    from life_graph.services.memory_retrieval import is_known_at
 
     on_attr = _bitemporal_mem(superseded_at=datetime(2026, 6, 1, tzinfo=UTC))
     assert is_known_at(on_attr, datetime(2026, 5, 1, tzinfo=UTC)) is True
@@ -304,7 +299,7 @@ def test_p5_1_superseded_at_read_from_attribute_as_well_as_properties():
 
 def test_p5_1_recorded_at_wins_over_created_at_for_in_place_edits():
     """created_at is not transaction time: an edited row keeps its original one."""
-    from life_graph.services.memory.retrieval import is_known_at, recorded_time_of
+    from life_graph.services.memory_retrieval import is_known_at, recorded_time_of
 
     # Row created Jan 1, then corrected in place on Aug 1; the correction's
     # recorded_at is the only honest answer to "when did we know this?".
@@ -326,7 +321,7 @@ def test_p5_1_recorded_at_wins_over_created_at_for_in_place_edits():
 def test_p5_1_normalizes_naive_iso_and_offset_timestamps_to_utc():
     from datetime import timezone
 
-    from life_graph.services.memory.retrieval import is_bitemporally_valid, is_valid_at
+    from life_graph.services.memory_retrieval import is_bitemporally_valid, is_valid_at
 
     # A naive column (SQLite, or a row built in a test) is read as UTC.
     naive = _bitemporal_mem(
@@ -363,7 +358,7 @@ def test_p5_1_normalizes_naive_iso_and_offset_timestamps_to_utc():
 
 def test_p5_1_three_historical_question_forms():
     """The three questions bitemporality exists to answer, on one fact's history."""
-    from life_graph.services.memory.retrieval import is_bitemporally_valid
+    from life_graph.services.memory_retrieval import is_bitemporally_valid
 
     # What we recorded in March: "Raja is in Chennai from Jan, indefinitely".
     # On Jun 1 we learned he had actually left in May, so the Jan fact was

@@ -833,7 +833,7 @@ class ApprovalService:
         loser.status = "superseded"
         loser.superseded_by = winner.id
         # A duplicate, not an earlier value: the cold tier must not show it as
-        # "later replaced" (services/memory/tiers.py).
+        # "later replaced" (services/memory_tiers.py).
         loser.properties = {**(loser.properties or {}), "merged_into": str(winner.id)}
         winner.supersedes = loser.id
 

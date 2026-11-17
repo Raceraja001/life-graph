@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from life_graph.services.context import ContextFingerprint
-from life_graph.services.memory.recall import RecallEngine, _cosine
+from life_graph.services.recall import RecallEngine, _cosine
 
 
 def _memory(content: str, embedding: list[float] | None) -> SimpleNamespace:
