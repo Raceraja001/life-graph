@@ -1,4 +1,9 @@
-"""Life Graph CLI — Cold start bootstrap and utilities."""
+"""Life Graph CLI — cold start bootstrap, migrations, hooks and utilities.
+
+The argument parser and every ``cmd_*`` the console script dispatches to.
+``life_graph.cli`` re-exports them all, so ``life-graph = "life_graph.cli:main"``
+keeps working unchanged.
+"""
 
 import argparse
 import json
@@ -435,6 +440,16 @@ def main():
     hk_status = hk_sub.add_parser("status", help="Show hook installation and capture status")
     hk_status.add_argument("--settings", help="Settings file to inspect")
     hk_status.set_defaults(dry_run=False, func=cmd_hooks_status)
+
+    # harvest-transcripts command — the coding-agent transcript harvester
+    from life_graph.cli.harvest_transcripts import add_arguments, cmd_harvest_transcripts
+
+    ht = subparsers.add_parser(
+        "harvest-transcripts",
+        help="Harvest coding-agent session transcripts and distil skills",
+    )
+    add_arguments(ht)
+    ht.set_defaults(func=cmd_harvest_transcripts)
 
     # reembed command
     re = subparsers.add_parser("reembed", help="Re-embed the corpus with the configured model")
