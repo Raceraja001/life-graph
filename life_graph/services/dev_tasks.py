@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, or_, select, text
 
+from life_graph.drivers.execution_guard import recover_interrupted_dispatch
 from life_graph.models.db import AgentTask, Approval, VerificationRun
 
 if TYPE_CHECKING:
@@ -702,10 +703,22 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
 
     That is every ``running`` task, and ``queued`` tasks that were meant to
     start immediately (tasks queued for :func:`run_queue` are still waiting
-    for their turn and are left alone). Each goes back on the queue once --
-    ``run_mode`` becomes ``queue`` so :func:`run_queue` picks it up -- and
-    is failed only when it was already re-queued before. Returns how many
-    were failed.
+    for their turn and are left alone).
+
+    What each one gets is decided by how far its dispatch had actually got,
+    read from the stage trail the dispatcher persists into
+    ``properties.checkpoints`` (see
+    :func:`~life_graph.drivers.execution_guard.recover_interrupted_dispatch`):
+
+    * already landed -- completed, with nothing re-run;
+    * verification passed, landing interrupted -- re-queued to land only,
+      so no second LLM dispatch is paid for a verdict it already earned;
+    * anything earlier, or no trail at all -- re-queued to re-dispatch in a
+      clean worktree.
+
+    A re-queue sets ``run_mode`` to ``queue`` so :func:`run_queue` picks it
+    up, and happens once: a task interrupted again is failed. Returns how
+    many were failed.
     """
     abandoned_queued = and_(
         AgentTask.status == "queued",
@@ -730,29 +743,69 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
         now = datetime.now(UTC)
         for task in rows:
             props = dict(task.properties or {})
+            # What the dispatcher got through before the process died, read
+            # from the stage trail it flushed on every step
+            # (TaskDispatcher._persist_checkpoint). Without this the recovery
+            # was blind: a run whose changes were already committed to an
+            # lg/task-* branch got re-dispatched and did the work twice, and
+            # a run that had already passed verification paid for a second
+            # LLM dispatch to re-earn a verdict it had.
+            recovery = recover_interrupted_dispatch(props.get("checkpoints"))
+            action = recovery.get("action")
+
+            if action == "skip_already_landed":
+                # The branch exists and the PR approval was already filed:
+                # there is nothing left to redo, only a row to close out.
+                task.status = "completed"
+                task.completed_at = now
+                task.status_history = _history(task, "completed", "already landed before restart")
+                logger.info("Marked dev task %s completed: already landed before restart", task.id)
+                continue
+
             done = int(props.get("interrupt_requeues") or 0)
-            if done < INTERRUPT_REQUEUES:
-                props["interrupt_requeues"] = done + 1
-                props["run_mode"] = QUEUE_MODE
-                props["checkpoint"] = build_checkpoint(
-                    task,
-                    stage="interrupted_restart",
-                    resume_instructions="Recheck worktree/branch state and resume without duplicating side effects.",
-                )
-                # Routed to the cloud for that run only: route it afresh.
-                if props.get("routed_from"):
-                    task.assigned_agent = props.pop("routed_from")
-                props.pop("route", None)
-                task.properties = props
-                task.status = "queued"
-                task.started_at = None
-                task.status_history = _history(task, "queued", "re-queued after an API restart")
-                logger.warning("Re-queued dev task %s after an API restart", task.id)
-            else:
+            if done >= INTERRUPT_REQUEUES:
                 task.status = "failed"
                 task.error = _INTERRUPTED
                 task.completed_at = now
                 failed += 1
+                continue
+
+            land_only = action == "land_only"
+            props["interrupt_requeues"] = done + 1
+            props["run_mode"] = QUEUE_MODE
+            if land_only:
+                props["resume_action"] = "land_only"
+                props["checkpoint"] = build_checkpoint(
+                    task,
+                    stage="land_only",
+                    resume_instructions=(
+                        "Task verification already passed before restart; land verified "
+                        "changes without re-dispatching LLM."
+                    ),
+                )
+            else:
+                props["checkpoint"] = build_checkpoint(
+                    task,
+                    stage="re_dispatch_in_clean_worktree",
+                    resume_instructions="Clean worktree and re-dispatch from prepared stage.",
+                )
+            # Routed to the cloud for that run only: route it afresh.
+            if props.get("routed_from"):
+                task.assigned_agent = props.pop("routed_from")
+            props.pop("route", None)
+            task.properties = props
+            task.status = "queued"
+            task.started_at = None
+            if land_only:
+                task.status_history = _history(
+                    task, "queued", "re-queued to land verified changes after restart"
+                )
+                logger.warning(
+                    "Re-queued dev task %s to land verified changes after restart", task.id
+                )
+            else:
+                task.status_history = _history(task, "queued", "re-queued after an API restart")
+                logger.warning("Re-queued dev task %s after an API restart", task.id)
         await session.commit()
     return failed
 
