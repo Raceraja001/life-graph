@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "evaluated_at": "2026-11-17T08:07:53.755966+00:00",
+    "evaluated_at": "2026-11-17T08:47:11.545437+00:00",
     "dataset_path": "evals/confidence_calibration_dataset.json",
     "bins": 10,
     "decision_threshold": 0.5,

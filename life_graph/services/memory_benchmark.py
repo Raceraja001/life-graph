@@ -12,6 +12,12 @@ Compares six retrieval configurations one variable at a time:
   4. `4_graph_entity_expansion`: Alias, kinship & bilingual graph expansion + semantic facet tags.
   5. `5_rerank_temporal_provenance`: Temporal supersession reranking (`current` vs `past`/`old_fact`).
   6. `6_multistep_adaptive_abstain`: Multi-step bridge retrieval + calibrated abstention gate.
+
+`compare_adaptive_early_exit()` additionally runs the top-of-ladder method twice per
+split — once with the adaptive early-exit gate off and once with it on — so the
+latency saved by skipping entity expansion and the bridge hop can be weighed against
+any retrieval quality it costs. The gate itself is not re-implemented here: the
+production `assess_hit_evidence()` decides, over the same thresholds.
 """
 
 from __future__ import annotations
@@ -28,9 +34,19 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from life_graph.core.evidence import ABSTAIN, CONTRADICTED, extract_claim_evidence
+from life_graph.core.evidence import (
+    ABSTAIN,
+    CONTRADICTED,
+    SUPPORTED,
+    extract_claim_evidence,
+)
 from life_graph.services.episodes import time_window
-from life_graph.services.memory.retrieval import is_bitemporally_valid
+from life_graph.services.memory.retrieval import (
+    EARLY_EXIT_CONFIDENCE,
+    EARLY_EXIT_ENTAILMENT,
+    assess_hit_evidence,
+    is_bitemporally_valid,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 TUNING_DATASET = ROOT / "evals" / "memory_structures" / "test_life.json"
@@ -44,6 +60,37 @@ BENCHMARK_METHODS = (
     "5_rerank_temporal_provenance",
     "6_multistep_adaptive_abstain",
 )
+
+#: The only method that runs the whole expansion stack, so the only one the
+#: adaptive early-exit gate can shorten. `compare_adaptive_early_exit()` uses it.
+PRIMARY_METHOD = "6_multistep_adaptive_abstain"
+
+#: Early-exit modes for `retrieve_for_method`.
+#: `off` is the historical path — the gate is never consulted and nothing is spent
+#: assessing it. `measure` pays the assessment and records the verdict but keeps the
+#: full expansion, which is what makes it the honest baseline for a latency comparison:
+#: production assesses the top hit either way, so the only variable left between
+#: `measure` and `on` is whether the expansion below is skipped.
+EARLY_EXIT_OFF = "off"
+EARLY_EXIT_MEASURE = "measure"
+EARLY_EXIT_ON = "on"
+EARLY_EXIT_MODES = (EARLY_EXIT_OFF, EARLY_EXIT_MEASURE, EARLY_EXIT_ON)
+
+#: Extraction confidence for a benchmark message: the corpus stores what was said
+#: verbatim, so nothing was distilled and there is no misreading to discount.
+#: This is the *most* generous value available, which makes every measured exit
+#: rate below an upper bound on what the production gate would fire at.
+CAPTURE_EXTRACTION_CONFIDENCE = 1.0
+
+#: Timing passes per (split, mode). Each question's reported latency is its minimum
+#: across passes — the pass least contaminated by scheduler noise. Retrieval is
+#: deterministic, so repeating it cannot change any quality metric.
+LATENCY_PASSES = 3
+
+#: Calibrated-confidence floors swept in the sensitivity study. The production floor
+#: comes first; the rest exist because `EARLY_EXIT_CONFIDENCE` is strict enough that
+#: the headline exit rate alone says little about the latency/quality curve.
+CONFIDENCE_FLOOR_SWEEP = (EARLY_EXIT_CONFIDENCE, 0.90, 0.88, 0.86, 0.85)
 
 STOPWORDS = frozenset(
     {
@@ -780,6 +827,58 @@ def _should_abstain(question: dict[str, Any], corpus: list[EnrichedMemory]) -> b
     return False
 
 
+def _as_evidence_memory(mem: EnrichedMemory) -> SimpleNamespace:
+    """A benchmark memory shaped like the row `assess_hit_evidence` sees in production.
+
+    The provenance is the most favourable one a real row can carry — the owner's own
+    words (`trust_tier="self"` → evidence kind `said`), stored verbatim, never
+    expired — so the only component of the calibrated confidence that varies across
+    the corpus is freshness, measured from the message's own date.
+    """
+    recorded = datetime(mem.msg_date.year, mem.msg_date.month, mem.msg_date.day, 12, tzinfo=UTC)
+    return SimpleNamespace(
+        id=mem.id,
+        content=mem.raw_text,
+        summary=None,
+        properties={"kind": "fact", "source_excerpt": mem.raw_text},
+        confidence=CAPTURE_EXTRACTION_CONFIDENCE,
+        trust_tier="self",
+        source_type="chat",
+        status="active",
+        recorded_at=recorded,
+        created_at=recorded,
+        updated_at=recorded,
+        valid_to=None,
+    )
+
+
+def assess_corpus_hit(
+    question: str,
+    mem: EnrichedMemory,
+    *,
+    today: date,
+    confidence_floor: float = EARLY_EXIT_CONFIDENCE,
+) -> dict[str, Any]:
+    """The production early-exit verdict for one corpus hit.
+
+    Delegates to `assess_hit_evidence` so the benchmark measures the shipped gate
+    rather than a copy of it. `confidence_floor` only re-derives `sufficient` from
+    the components the assessment already returned; the entailment rule is untouched,
+    which is what lets the sensitivity sweep move one threshold at a time.
+    """
+    now = datetime(today.year, today.month, today.day, 12, tzinfo=UTC)
+    evidence = assess_hit_evidence(question, _as_evidence_memory(mem), now=now)
+    if confidence_floor != EARLY_EXIT_CONFIDENCE:
+        entailed = evidence["support_status"] == SUPPORTED and (
+            evidence["keywords_covered"] or evidence["entailment_score"] >= EARLY_EXIT_ENTAILMENT
+        )
+        evidence["sufficient"] = bool(
+            evidence["calibrated_confidence"] >= confidence_floor and entailed
+        )
+    evidence["confidence_floor"] = confidence_floor
+    return evidence
+
+
 def retrieve_for_method(
     question: dict[str, Any],
     corpus: list[EnrichedMemory],
@@ -787,8 +886,19 @@ def retrieve_for_method(
     *,
     top_k: int = 5,
     rrf_k: int = 20,
+    early_exit_mode: str = EARLY_EXIT_OFF,
+    today: date | None = None,
+    confidence_floor: float = EARLY_EXIT_CONFIDENCE,
+    trace: dict[str, Any] | None = None,
 ) -> tuple[list[EnrichedMemory], bool]:
-    """Return `(top_k_memories, abstained)` for a single question and method."""
+    """Return `(top_k_memories, abstained)` for a single question and method.
+
+    With `early_exit_mode` left at its default `off` this is the original ladder,
+    unchanged and unmeasured. `measure` and `on` additionally consult the adaptive
+    early-exit gate on the hybrid stage's top hit (see `EARLY_EXIT_MODES`); `on`
+    acts on it, skipping graph/alias expansion and the multi-step bridge. `trace`,
+    when given, receives the gate's verdict for the caller to aggregate.
+    """
     q_text = question["q"]
     q_kind = question.get("kind", "simple")
     base_tokens = _tokenize(q_text)
@@ -826,18 +936,45 @@ def retrieve_for_method(
         ranked = sorted(range(len(corpus)), key=lambda i: (-combined[i], i))
         return [corpus[i] for i in ranked[:top_k]], False
 
-    # Stage 4+: Graph entity/alias expansion + semantic facet matching
-    alias_tokens = _expand_alias_tokens(q_text, base_tokens)
-    graph_query = base_tokens + alias_tokens
-    bm25_graph = _bm25_from_token_lists(graph_query, [m.graph_tokens for m in corpus])
-    bm25_alias_only = (
-        _bm25_from_token_lists(alias_tokens, [m.graph_tokens for m in corpus])
-        if alias_tokens
-        else [0.0] * len(corpus)
-    )
+    # §3.C adaptive early exit. The hybrid ranking above is this benchmark's analogue
+    # of the production hybrid search, so the gate reads the same thing it reads in
+    # services/memory/retrieval.py: the top hit's own calibrated confidence and
+    # entailment, not its search score. When they already account for the question,
+    # the expansions below can only add distractors and latency.
+    exited_early = False
+    if early_exit_mode != EARLY_EXIT_OFF:
+        if today is None:
+            raise ValueError("early_exit_mode requires `today` (the dataset's reference date)")
+        hybrid_top = min(range(len(corpus)), key=lambda i: (-combined[i], i)) if corpus else None
+        evidence = (
+            assess_corpus_hit(
+                q_text, corpus[hybrid_top], today=today, confidence_floor=confidence_floor
+            )
+            if hybrid_top is not None
+            else None
+        )
+        sufficient = bool(evidence and evidence["sufficient"])
+        exited_early = sufficient and early_exit_mode == EARLY_EXIT_ON
+        if trace is not None:
+            trace["evidence"] = evidence
+            trace["sufficient"] = sufficient
+            trace["early_exit"] = exited_early
 
-    for i in range(len(corpus)):
-        combined[i] += 0.12 * bm25_graph[i] + 0.10 * bm25_alias_only[i]
+    # Stage 4+: Graph entity/alias expansion + semantic facet matching
+    if exited_early:
+        graph_query = base_tokens
+    else:
+        alias_tokens = _expand_alias_tokens(q_text, base_tokens)
+        graph_query = base_tokens + alias_tokens
+        bm25_graph = _bm25_from_token_lists(graph_query, [m.graph_tokens for m in corpus])
+        bm25_alias_only = (
+            _bm25_from_token_lists(alias_tokens, [m.graph_tokens for m in corpus])
+            if alias_tokens
+            else [0.0] * len(corpus)
+        )
+
+        for i in range(len(corpus)):
+            combined[i] += 0.12 * bm25_graph[i] + 0.10 * bm25_alias_only[i]
 
     if method == "4_graph_entity_expansion":
         ranked = sorted(range(len(corpus)), key=lambda i: (-combined[i], i))
@@ -874,7 +1011,7 @@ def retrieve_for_method(
 
     ranked = sorted(range(len(corpus)), key=lambda i: (-combined[i], i))
     # Multi-step bridge: preserve top-3 primary hits and promote complementary 2nd-hop entity memories into ranks 4..top_k
-    if len(ranked) > 3 and q_kind in ("multi_hop", "about", "connected"):
+    if len(ranked) > 3 and q_kind in ("multi_hop", "about", "connected") and not exited_early:
         bridge_ents: list[str] = []
         for idx in ranked[:2]:
             for ent in sorted(corpus[idx].entities):
@@ -1083,6 +1220,107 @@ def evaluate_lifecycle_invariants() -> dict[str, Any]:
     }
 
 
+def _percentile(sorted_samples: list[float], fraction: float) -> float:
+    """The benchmark's long-standing percentile convention, kept exactly as it was."""
+    if not sorted_samples:
+        return 0.0
+    if fraction >= 1.0:
+        return sorted_samples[-1]
+    if fraction == 0.5:
+        return sorted_samples[len(sorted_samples) // 2]
+    return sorted_samples[min(len(sorted_samples) - 1, int(len(sorted_samples) * fraction))]
+
+
+def latency_stats(samples: list[float]) -> dict[str, float]:
+    """Mean/p50/p95/min/max over per-question latencies, in milliseconds."""
+    if not samples:
+        return {"count": 0, "mean": 0.0, "p50": 0.0, "p95": 0.0, "min": 0.0, "max": 0.0}
+    ordered = sorted(samples)
+    return {
+        "count": len(ordered),
+        "mean": round(sum(ordered) / len(ordered), 3),
+        "p50": round(_percentile(ordered, 0.5), 3),
+        "p95": round(_percentile(ordered, 0.95), 3),
+        "min": round(ordered[0], 3),
+        "max": round(ordered[-1], 3),
+    }
+
+
+def summarize_scores(
+    scored: list[dict[str, Any]],
+    latencies_ms: list[float],
+) -> dict[str, Any]:
+    """The `overall` / `by_kind` / `sample_failures` report for one scored run."""
+    answerable = [s for s in scored if not s["is_abstain"]]
+    abstain_qs = [s for s in scored if s["is_abstain"]]
+    temporal_qs = [s for s in scored if s["kind"] in ("current", "past", "old_fact")]
+    current_qs = [s for s in scored if s["kind"] == "current"]
+
+    pred_abstain = [s for s in scored if s["abstained"]]
+    tp_abstain = sum(1 for s in pred_abstain if s["is_abstain"])
+    abstain_prec = (
+        tp_abstain / len(pred_abstain) if pred_abstain else (1.0 if not abstain_qs else 0.0)
+    )
+    abstain_rec = tp_abstain / max(1, len(abstain_qs))
+
+    by_kind: dict[str, dict[str, float]] = {}
+    kinds = sorted({s["kind"] for s in scored})
+    for k in kinds:
+        sub = [s for s in scored if s["kind"] == k]
+        by_kind[k] = {
+            "count": len(sub),
+            "recall_at_1": round(sum(s["hit_at_1"] for s in sub) / len(sub), 4),
+            "recall_at_5": round(sum(s["hit_at_5"] for s in sub) / len(sub), 4),
+            "mrr": round(sum(s["mrr"] for s in sub) / len(sub), 4),
+            "full_support_at_5": round(sum(s["full_support_at_5"] for s in sub) / len(sub), 4),
+        }
+
+    lat_sorted = sorted(latencies_ms)
+    p50 = _percentile(lat_sorted, 0.5)
+    p95 = _percentile(lat_sorted, 0.95)
+
+    failures = [{"id": s["id"], "kind": s["kind"]} for s in scored if s["full_support_at_5"] < 1.0][
+        :10
+    ]
+
+    return {
+        "overall": {
+            "total_questions": len(scored),
+            "answerable_questions": len(answerable),
+            "abstain_questions": len(abstain_qs),
+            "recall_at_1": round(
+                sum(s["hit_at_1"] for s in answerable) / max(1, len(answerable)), 4
+            ),
+            "recall_at_3": round(
+                sum(s["hit_at_3"] for s in answerable) / max(1, len(answerable)), 4
+            ),
+            "recall_at_5": round(
+                sum(s["hit_at_5"] for s in answerable) / max(1, len(answerable)), 4
+            ),
+            "mrr": round(sum(s["mrr"] for s in answerable) / max(1, len(answerable)), 4),
+            "ndcg_at_5": round(
+                sum(s["ndcg_at_5"] for s in answerable) / max(1, len(answerable)), 4
+            ),
+            "full_support_at_5": round(
+                sum(s["full_support_at_5"] for s in scored) / max(1, len(scored)), 4
+            ),
+            "temporal_accuracy": round(
+                sum(s["full_support_at_5"] for s in temporal_qs) / max(1, len(temporal_qs)), 4
+            ),
+            "correction_supersession_rate": round(
+                sum(1.0 for s in current_qs if s["supersession_clean"]) / max(1, len(current_qs)),
+                4,
+            ),
+            "abstention_precision": round(abstain_prec, 4),
+            "abstention_recall": round(abstain_rec, 4),
+            "latency_ms_p50": round(p50, 3),
+            "latency_ms_p95": round(p95, 3),
+        },
+        "by_kind": by_kind,
+        "sample_failures": failures,
+    }
+
+
 def evaluate_split(
     split_name: str,
     dataset_path: Path,
@@ -1103,78 +1341,7 @@ def evaluate_split(
             retrieved, abstained = retrieve_for_method(q, corpus, method)
             latencies_ms.append((time.perf_counter() - t0) * 1000.0)
             scored.append(score_question(q, retrieved, abstained))
-
-        answerable = [s for s in scored if not s["is_abstain"]]
-        abstain_qs = [s for s in scored if s["is_abstain"]]
-        temporal_qs = [s for s in scored if s["kind"] in ("current", "past", "old_fact")]
-        current_qs = [s for s in scored if s["kind"] == "current"]
-
-        pred_abstain = [s for s in scored if s["abstained"]]
-        tp_abstain = sum(1 for s in pred_abstain if s["is_abstain"])
-        abstain_prec = (
-            tp_abstain / len(pred_abstain) if pred_abstain else (1.0 if not abstain_qs else 0.0)
-        )
-        abstain_rec = tp_abstain / max(1, len(abstain_qs))
-
-        by_kind: dict[str, dict[str, float]] = {}
-        kinds = sorted({s["kind"] for s in scored})
-        for k in kinds:
-            sub = [s for s in scored if s["kind"] == k]
-            by_kind[k] = {
-                "count": len(sub),
-                "recall_at_1": round(sum(s["hit_at_1"] for s in sub) / len(sub), 4),
-                "recall_at_5": round(sum(s["hit_at_5"] for s in sub) / len(sub), 4),
-                "mrr": round(sum(s["mrr"] for s in sub) / len(sub), 4),
-                "full_support_at_5": round(sum(s["full_support_at_5"] for s in sub) / len(sub), 4),
-            }
-
-        lat_sorted = sorted(latencies_ms)
-        p50 = lat_sorted[len(lat_sorted) // 2] if lat_sorted else 0.0
-        p95 = (
-            lat_sorted[min(len(lat_sorted) - 1, int(len(lat_sorted) * 0.95))] if lat_sorted else 0.0
-        )
-
-        failures = [
-            {"id": s["id"], "kind": s["kind"]} for s in scored if s["full_support_at_5"] < 1.0
-        ][:10]
-
-        method_reports[method] = {
-            "overall": {
-                "total_questions": len(scored),
-                "answerable_questions": len(answerable),
-                "abstain_questions": len(abstain_qs),
-                "recall_at_1": round(
-                    sum(s["hit_at_1"] for s in answerable) / max(1, len(answerable)), 4
-                ),
-                "recall_at_3": round(
-                    sum(s["hit_at_3"] for s in answerable) / max(1, len(answerable)), 4
-                ),
-                "recall_at_5": round(
-                    sum(s["hit_at_5"] for s in answerable) / max(1, len(answerable)), 4
-                ),
-                "mrr": round(sum(s["mrr"] for s in answerable) / max(1, len(answerable)), 4),
-                "ndcg_at_5": round(
-                    sum(s["ndcg_at_5"] for s in answerable) / max(1, len(answerable)), 4
-                ),
-                "full_support_at_5": round(
-                    sum(s["full_support_at_5"] for s in scored) / max(1, len(scored)), 4
-                ),
-                "temporal_accuracy": round(
-                    sum(s["full_support_at_5"] for s in temporal_qs) / max(1, len(temporal_qs)), 4
-                ),
-                "correction_supersession_rate": round(
-                    sum(1.0 for s in current_qs if s["supersession_clean"])
-                    / max(1, len(current_qs)),
-                    4,
-                ),
-                "abstention_precision": round(abstain_prec, 4),
-                "abstention_recall": round(abstain_rec, 4),
-                "latency_ms_p50": round(p50, 3),
-                "latency_ms_p95": round(p95, 3),
-            },
-            "by_kind": by_kind,
-            "sample_failures": failures,
-        }
+        method_reports[method] = summarize_scores(scored, latencies_ms)
 
     return {
         "split": split_name,
@@ -1186,6 +1353,348 @@ def evaluate_split(
         "question_count": len(questions),
         "methods": method_reports,
     }
+
+
+# --------------------------------------------------------------------------
+# Adaptive early-exit comparison (Track 2)
+# --------------------------------------------------------------------------
+
+#: Labels for the two arms of the comparison, in report order.
+BASELINE_ARM = "baseline"
+ADAPTIVE_ARM = "adaptive_early_exit"
+
+#: Quality metrics the comparison reports and gates on.
+COMPARED_METRICS = (
+    "recall_at_1",
+    "recall_at_5",
+    "mrr",
+    "full_support_at_5",
+    "abstention_precision",
+    "abstention_recall",
+)
+
+#: Metrics that must not fall when the gate is switched on, and by how much they
+#: are allowed to. Zero: skipping an expansion because the top hit already answers
+#: the question is only sound if it costs no recall at all.
+NO_REGRESSION_METRICS = ("recall_at_1", "recall_at_5", "mrr", "full_support_at_5")
+REGRESSION_TOLERANCE = 0.0
+
+
+def _run_early_exit_pass(
+    questions: list[dict[str, Any]],
+    corpus: list[EnrichedMemory],
+    *,
+    method: str,
+    mode: str,
+    today: date,
+    confidence_floor: float,
+) -> tuple[list[float], list[dict[str, Any]], list[dict[str, Any]]]:
+    """One timed pass over every question: latencies, scores, and gate verdicts."""
+    latencies_ms: list[float] = []
+    scored: list[dict[str, Any]] = []
+    traces: list[dict[str, Any]] = []
+    for q in questions:
+        trace: dict[str, Any] = {}
+        t0 = time.perf_counter()
+        retrieved, abstained = retrieve_for_method(
+            q,
+            corpus,
+            method,
+            early_exit_mode=mode,
+            today=today,
+            confidence_floor=confidence_floor,
+            trace=trace,
+        )
+        latencies_ms.append((time.perf_counter() - t0) * 1000.0)
+        scored.append(score_question(q, retrieved, abstained))
+        traces.append(trace)
+    return latencies_ms, scored, traces
+
+
+def _timed_arm(
+    questions: list[dict[str, Any]],
+    corpus: list[EnrichedMemory],
+    *,
+    method: str,
+    mode: str,
+    today: date,
+    confidence_floor: float,
+    passes: int,
+) -> tuple[list[float], list[dict[str, Any]], list[dict[str, Any]]]:
+    """`passes` identical passes, keeping each question's fastest observed latency.
+
+    Retrieval is deterministic, so the scores and verdicts of every pass are the
+    same and the last pass's are returned; only the timings differ, and the minimum
+    is the one least inflated by whatever else the machine was doing.
+    """
+    best: list[float] | None = None
+    scored: list[dict[str, Any]] = []
+    traces: list[dict[str, Any]] = []
+    for _ in range(max(1, passes)):
+        latencies_ms, scored, traces = _run_early_exit_pass(
+            questions,
+            corpus,
+            method=method,
+            mode=mode,
+            today=today,
+            confidence_floor=confidence_floor,
+        )
+        best = (
+            latencies_ms
+            if best is None
+            else [min(a, b) for a, b in zip(best, latencies_ms, strict=True)]
+        )
+    return best or [], scored, traces
+
+
+def _early_exit_summary(
+    traces: list[dict[str, Any]],
+    *,
+    acted: bool,
+    confidence_floor: float,
+) -> dict[str, Any]:
+    """How many questions the gate fired on, and on which.
+
+    `acted` separates the two arms: both consult the gate, but only the adaptive arm
+    skips anything, so the baseline reports what it *would* have skipped (its exit
+    rate is 0 by construction) and the adaptive arm reports what it did.
+    """
+    sufficient = [i for i, t in enumerate(traces) if t.get("sufficient")]
+    exited = [i for i, t in enumerate(traces) if t.get("early_exit")]
+    total = len(traces)
+    return {
+        "total_questions": total,
+        "evidence_sufficient": len(sufficient),
+        "early_exited": len(exited),
+        "exit_rate_pct": round(100.0 * len(exited) / total, 2) if total else 0.0,
+        "would_exit_rate_pct": round(100.0 * len(sufficient) / total, 2) if total else 0.0,
+        "acted_on_gate": acted,
+        "confidence_floor": confidence_floor,
+        "entailment_floor": EARLY_EXIT_ENTAILMENT,
+    }
+
+
+def _relative_pct(baseline: float, adaptive: float) -> float | None:
+    """Change from *baseline* to *adaptive* as a percentage, or None at a zero base."""
+    if baseline == 0:
+        return None
+    return round(100.0 * (adaptive - baseline) / abs(baseline), 2)
+
+
+def _arm_delta(
+    base: dict[str, Any],
+    adapt: dict[str, Any],
+    *,
+    base_lat: list[float],
+    adapt_lat: list[float],
+    exited: list[int],
+) -> dict[str, Any]:
+    """Baseline → adaptive movement, in quality and in latency."""
+    quality: dict[str, Any] = {}
+    for metric in COMPARED_METRICS:
+        b = base["overall"][metric]
+        a = adapt["overall"][metric]
+        quality[metric] = {
+            "baseline": b,
+            "adaptive": a,
+            "delta": round(a - b, 4),
+            "relative_pct": _relative_pct(b, a),
+        }
+
+    latency: dict[str, Any] = {}
+    for stat in ("mean", "p50", "p95"):
+        b = base["latency_ms"][stat]
+        a = adapt["latency_ms"][stat]
+        latency[stat] = {
+            "baseline_ms": b,
+            "adaptive_ms": a,
+            "delta_ms": round(a - b, 3),
+            "relative_pct": _relative_pct(b, a),
+        }
+
+    # The paired measurement: the same questions, timed both ways. With a strict
+    # gate the fleet-wide means barely move, so this is where the saving is visible.
+    paired_base = [base_lat[i] for i in exited]
+    paired_adapt = [adapt_lat[i] for i in exited]
+    saved = [b - a for b, a in zip(paired_base, paired_adapt, strict=True)]
+    on_exited = {
+        "count": len(exited),
+        "baseline": latency_stats(paired_base),
+        "adaptive": latency_stats(paired_adapt),
+        "mean_saving_ms": round(sum(saved) / len(saved), 3) if saved else 0.0,
+        "mean_saving_pct": (
+            round(100.0 * sum(saved) / sum(paired_base), 2) if sum(paired_base) > 0 else 0.0
+        ),
+    }
+    return {"quality": quality, "latency": latency, "on_early_exited_questions": on_exited}
+
+
+def _regression_gates(delta: dict[str, Any]) -> dict[str, Any]:
+    """Whether switching the gate on cost any retrieval quality."""
+    checks: dict[str, bool] = {}
+    for metric in NO_REGRESSION_METRICS:
+        checks[f"{metric}_no_regression"] = (
+            delta["quality"][metric]["delta"] >= -REGRESSION_TOLERANCE
+        )
+    checks["abstention_precision_no_regression"] = (
+        delta["quality"]["abstention_precision"]["delta"] >= -REGRESSION_TOLERANCE
+    )
+    checks["abstention_recall_no_regression"] = (
+        delta["quality"]["abstention_recall"]["delta"] >= -REGRESSION_TOLERANCE
+    )
+    return {"checks": checks, "passed": all(checks.values())}
+
+
+def evaluate_early_exit_split(
+    split_name: str,
+    dataset_path: Path,
+    *,
+    method: str = PRIMARY_METHOD,
+    confidence_floor: float = EARLY_EXIT_CONFIDENCE,
+    passes: int = LATENCY_PASSES,
+) -> dict[str, Any]:
+    """Run *method* over one split twice — gate off, then gate on — and compare.
+
+    Both arms pay for assessing the top hit's evidence, exactly as production does,
+    so the single variable between them is whether a sufficient verdict is acted on.
+    """
+    raw_bytes = dataset_path.read_bytes()
+    data = json.loads(raw_bytes.decode("utf-8"))
+    corpus = build_corpus(data)
+    questions = data["questions"]
+    today = date.fromisoformat(data.get("today", "2026-10-31"))
+
+    arms: dict[str, Any] = {}
+    latencies: dict[str, list[float]] = {}
+    traces_by_arm: dict[str, list[dict[str, Any]]] = {}
+    for label, mode in ((BASELINE_ARM, EARLY_EXIT_MEASURE), (ADAPTIVE_ARM, EARLY_EXIT_ON)):
+        per_q, scored, traces = _timed_arm(
+            questions,
+            corpus,
+            method=method,
+            mode=mode,
+            today=today,
+            confidence_floor=confidence_floor,
+            passes=passes,
+        )
+        report = summarize_scores(scored, per_q)
+        report["latency_ms"] = latency_stats(per_q)
+        report["early_exit"] = _early_exit_summary(
+            traces, acted=mode == EARLY_EXIT_ON, confidence_floor=confidence_floor
+        )
+        arms[label] = report
+        latencies[label] = per_q
+        traces_by_arm[label] = traces
+
+    exited = [i for i, t in enumerate(traces_by_arm[ADAPTIVE_ARM]) if t.get("early_exit")]
+    delta = _arm_delta(
+        arms[BASELINE_ARM],
+        arms[ADAPTIVE_ARM],
+        base_lat=latencies[BASELINE_ARM],
+        adapt_lat=latencies[ADAPTIVE_ARM],
+        exited=exited,
+    )
+    return {
+        "split": split_name,
+        "dataset_file": str(dataset_path.relative_to(ROOT)),
+        "dataset_sha256": hashlib.sha256(raw_bytes).hexdigest(),
+        "today": data.get("today"),
+        "message_count": len(corpus),
+        "question_count": len(questions),
+        "method": method,
+        "confidence_floor": confidence_floor,
+        "entailment_floor": EARLY_EXIT_ENTAILMENT,
+        "timing_passes": max(1, passes),
+        "early_exited_question_ids": [questions[i]["id"] for i in exited],
+        "arms": arms,
+        "delta": delta,
+        "gates": _regression_gates(delta),
+    }
+
+
+def sweep_confidence_floors(
+    dataset_path: Path,
+    *,
+    method: str = PRIMARY_METHOD,
+    floors: tuple[float, ...] = CONFIDENCE_FLOOR_SWEEP,
+    passes: int = LATENCY_PASSES,
+) -> list[dict[str, Any]]:
+    """Exit rate, quality and latency as the calibrated-confidence floor is relaxed.
+
+    The shipped floor is strict enough that it fires on only a handful of these
+    questions, which tells us the gate is safe but almost nothing about the shape of
+    the trade-off. Walking the floor down traces the curve the floor sits on.
+    """
+    data = json.loads(dataset_path.read_bytes().decode("utf-8"))
+    corpus = build_corpus(data)
+    questions = data["questions"]
+    today = date.fromisoformat(data.get("today", "2026-10-31"))
+
+    rows: list[dict[str, Any]] = []
+    for floor in floors:
+        per_q, scored, traces = _timed_arm(
+            questions,
+            corpus,
+            method=method,
+            mode=EARLY_EXIT_ON,
+            today=today,
+            confidence_floor=floor,
+            passes=passes,
+        )
+        summary = summarize_scores(scored, per_q)
+        lat = latency_stats(per_q)
+        exit_info = _early_exit_summary(traces, acted=True, confidence_floor=floor)
+        rows.append(
+            {
+                "confidence_floor": floor,
+                "early_exited": exit_info["early_exited"],
+                "exit_rate_pct": exit_info["exit_rate_pct"],
+                "recall_at_1": summary["overall"]["recall_at_1"],
+                "recall_at_5": summary["overall"]["recall_at_5"],
+                "mrr": summary["overall"]["mrr"],
+                "full_support_at_5": summary["overall"]["full_support_at_5"],
+                "latency_mean_ms": lat["mean"],
+                "latency_p50_ms": lat["p50"],
+                "latency_p95_ms": lat["p95"],
+            }
+        )
+    return rows
+
+
+def compare_adaptive_early_exit(
+    *,
+    method: str = PRIMARY_METHOD,
+    passes: int = LATENCY_PASSES,
+    sweep: bool = True,
+) -> dict[str, Any]:
+    """The full baseline-vs-adaptive-early-exit comparison over both splits."""
+    splits = {
+        "tuning_dev": evaluate_early_exit_split(
+            "tuning_dev", TUNING_DATASET, method=method, passes=passes
+        ),
+        "held_out": evaluate_early_exit_split(
+            "held_out", HELDOUT_DATASET, method=method, passes=passes
+        ),
+    }
+    report: dict[str, Any] = {
+        "benchmark": "life_graph_adaptive_early_exit_comparison_v1",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "method": method,
+        "timing_passes": max(1, passes),
+        "thresholds": {
+            "calibrated_confidence": EARLY_EXIT_CONFIDENCE,
+            "entailment": EARLY_EXIT_ENTAILMENT,
+            "extraction_confidence_assumed": CAPTURE_EXTRACTION_CONFIDENCE,
+        },
+        "splits": splits,
+        "gates_passed": all(s["gates"]["passed"] for s in splits.values()),
+    }
+    if sweep:
+        report["confidence_floor_sensitivity"] = {
+            "tuning_dev": sweep_confidence_floors(TUNING_DATASET, method=method, passes=passes),
+            "held_out": sweep_confidence_floors(HELDOUT_DATASET, method=method, passes=passes),
+        }
+    return report
 
 
 def run_memory_benchmark() -> dict[str, Any]:
