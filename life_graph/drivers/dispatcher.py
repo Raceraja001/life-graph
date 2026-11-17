@@ -409,6 +409,47 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
 
     # ── dispatch_task steps, in pipeline order ──────────────────────────
 
+    async def _persist_checkpoint(self, run: _DispatchRun) -> None:
+        """Flush the run's stage trail into the task row's properties.
+
+        The trail only ever helps a *restarted* process, which can read
+        nothing out of this one's memory -- so every stage writes it to
+        ``agent_tasks.properties['checkpoints']``, where
+        :func:`~life_graph.services.dev_tasks.fail_interrupted` reads it to
+        decide whether an abandoned run has to be re-dispatched in a clean
+        worktree, only landed, or left alone because it already landed.
+
+        Best-effort, in its own session: a dispatch with no task row behind
+        it (the test endpoint's throwaway ids) or a failed write must never
+        break the pipeline.
+        """
+        if run.tracker is None:
+            return
+        try:
+            from sqlalchemy import select
+
+            from life_graph.models.db import AgentTask
+
+            pk = uuid.UUID(str(run.task_id))
+            async with self._session_factory() as session:
+                task = (
+                    await session.execute(
+                        select(AgentTask).where(
+                            AgentTask.id == pk, AgentTask.tenant_id == run.tenant_id
+                        )
+                    )
+                ).scalar_one_or_none()
+                if task is None:
+                    return
+                props = dict(task.properties or {})
+                props["checkpoints"] = run.tracker.to_dict()
+                task.properties = props
+                await session.commit()
+        except Exception:
+            logger.warning(
+                "Could not persist dispatch checkpoints for task %s", run.task_id, exc_info=True
+            )
+
     async def _prepare_packet(
         self,
         run: _DispatchRun,
@@ -486,6 +527,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 "driver": getattr(run, "driver_name", run.persona_name),
             },
         )
+        await self._persist_checkpoint(run)
 
     async def _budget_gate(self, run: _DispatchRun) -> DriverResult | None:
         """Step 3b: the Governor's verdict; a DriverResult when it says no.
@@ -508,6 +550,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 run.tracker.record_stage(
                     "budget_checked", metadata={"cost_cap_usd": run.cost_cap_usd}
                 )
+                await self._persist_checkpoint(run)
             return None
         logger.warning(
             "Task %s denied by Governor: %s (spent $%.2f / $%.2f)",
@@ -577,6 +620,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                     "success": getattr(run.result, "success", False) if run.result else False
                 },
             )
+            await self._persist_checkpoint(run)
         await self._emit_steps(run.tenant_id, task_id, driver.name, 1, result)
         # Captured here, before later steps replace `run.result` with fresh
         # DriverResult instances (verification failure, dissent, ...)
@@ -614,6 +658,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 run.tracker.record_stage(
                     "worktree_verified", metadata={"workdir": str(run.workdir)}
                 )
+                await self._persist_checkpoint(run)
             return
         logger.error("Task %s: worktree .git link was tampered with", run.task_id)
         if run.tracker:
@@ -622,6 +667,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 ok=False,
                 metadata={"workdir": str(run.workdir), "tampered": True},
             )
+            await self._persist_checkpoint(run)
         tamper = VerifierResult(
             "worktree_intact",
             False,
@@ -666,6 +712,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         await self._observe_files_changed(run)
         if run.tracker:
             run.tracker.record_stage("files_checked")
+            await self._persist_checkpoint(run)
         if not (
             result.success
             and run.task_type in _CHANGE_REQUIRED_TASK_TYPES
@@ -732,6 +779,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
 
         if run.tracker:
             run.tracker.record_stage("verifier_completed")
+            await self._persist_checkpoint(run)
 
         # Step 6c: the driver's own claim of success is not evidence. Re-check
         # it against what someone other than the driver observed -- the file
@@ -975,6 +1023,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             return
         if run.tracker:
             run.tracker.record_stage("landed", metadata={"branch": landed_branch})
+            await self._persist_checkpoint(run)
         ctx = run.packet.project_context
         run.result.metadata = {**(run.result.metadata or {}), "landed_branch": landed_branch}
         await self._create_pr_approval(
@@ -1000,6 +1049,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         """Step 7: record stats and emit the result event."""
         if run.tracker:
             run.tracker.record_stage("finished")
+            await self._persist_checkpoint(run)
         result = run.result
         if run.spec_text:
             result.metadata = {**(result.metadata or {}), "spec": run.spec_text}
