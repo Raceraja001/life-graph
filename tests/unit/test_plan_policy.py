@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from life_graph.services.acceptance import is_check_only_task, parse_criteria, spec_gaps
-from life_graph.services.plan_policy import decide
+from life_graph.services.dev.acceptance import is_check_only_task, parse_criteria, spec_gaps
+from life_graph.services.dev.plan_policy import decide
 
 TRUSTED = {"established": True, "merge_rate": 0.9, "merged": 9, "total": 10}
 SPEC = "**Requirements:**\nAC-1: lists todos — test: tests/t.test.mjs::lists\n"

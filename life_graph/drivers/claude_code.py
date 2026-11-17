@@ -27,7 +27,7 @@ from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import render_memory_block
 from life_graph.drivers.steps import parse_claude_stream
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
-from life_graph.services import sandbox
+from life_graph.services.dev import sandbox
 
 logger = logging.getLogger(__name__)
 

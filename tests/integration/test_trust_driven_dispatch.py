@@ -74,7 +74,7 @@ async def _record(driver, project_id, merged, failed):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_track_record_counts_outcomes():
-    from life_graph.services.dev_outcomes import track_record
+    from life_graph.services.dev.outcomes import track_record
     from life_graph.storage.database import async_session
 
     project = uuid.uuid4()
@@ -127,7 +127,7 @@ async def test_auto_persona_pin_means_choose(drivers):
 async def landing(monkeypatch):
     from types import SimpleNamespace
 
-    from life_graph.services import github_pr
+    from life_graph.services.dev import github_pr
 
     async def fake_describe(repo_path, branch, **_kw):  # base_branch= since Phase 0
         return {"head_commit": "a" * 40, "base_commit": "b" * 40, "base_branch": "master"}
@@ -137,7 +137,7 @@ async def landing(monkeypatch):
     # (drivers/dispatch_approvals.py, split out of dispatcher.py), so that is
     # the module to patch.
     from life_graph.drivers import dispatch_approvals as dispatcher
-    from life_graph.services import change_policy
+    from life_graph.services.dev import change_policy
 
     # The landed diff, as change_policy would describe it (the commits above
     # are fake, so git cannot). Tests set .change to land other kinds.
@@ -367,7 +367,7 @@ async def test_protected_or_large_changes_always_wait_for_a_person(landing, chan
 @skip_on_db_error
 async def test_a_merged_pr_counts_for_its_kind_and_the_driver(landing):
     from life_graph.models.db import Approval
-    from life_graph.services.dev_outcomes import record_outcome, track_record
+    from life_graph.services.dev.outcomes import record_outcome, track_record
     from life_graph.storage.database import async_session
 
     project = uuid.uuid4()
@@ -613,7 +613,7 @@ async def test_apply_driver_deploy_failure_leaves_it_pending(tmp_path):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_approving_driver_plan_dispatches_a_combined_task(monkeypatch):
-    import life_graph.services.dev_tasks as dev_tasks_mod
+    import life_graph.services.dev.tasks as dev_tasks_mod
     from life_graph.models.db import Approval
     from life_graph.services.approvals import ApprovalService
     from life_graph.storage.database import async_session
@@ -667,7 +667,7 @@ async def test_approving_driver_plan_dispatches_a_combined_task(monkeypatch):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_rejecting_driver_plan_is_a_plain_noop(monkeypatch):
-    import life_graph.services.dev_tasks as dev_tasks_mod
+    import life_graph.services.dev.tasks as dev_tasks_mod
     from life_graph.models.db import Approval
     from life_graph.services.approvals import ApprovalService
     from life_graph.storage.database import async_session
@@ -714,7 +714,7 @@ async def test_approving_a_multi_task_plan_fans_out_queued_in_order(monkeypatch)
     (already running as an API lifespan task) is what actually runs them
     one at a time, so _apply_driver_plan itself only needs to queue them
     in the right order."""
-    import life_graph.services.dev_tasks as dev_tasks_mod
+    import life_graph.services.dev.tasks as dev_tasks_mod
     from life_graph.models.db import Approval
     from life_graph.services.approvals import ApprovalService
     from life_graph.storage.database import async_session
@@ -772,7 +772,7 @@ async def test_approving_a_multi_task_plan_fans_out_queued_in_order(monkeypatch)
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_single_parsed_task_falls_back_to_one_combined_dispatch(monkeypatch):
-    import life_graph.services.dev_tasks as dev_tasks_mod
+    import life_graph.services.dev.tasks as dev_tasks_mod
     from life_graph.models.db import Approval
     from life_graph.services.approvals import ApprovalService
     from life_graph.storage.database import async_session
@@ -878,7 +878,7 @@ async def test_fully_auto_resolved_approvals_never_notify_but_deploy_still_does(
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_fan_out_binds_each_task_to_only_the_tests_it_cites(monkeypatch):
-    import life_graph.services.dev_tasks as dev_tasks_mod
+    import life_graph.services.dev.tasks as dev_tasks_mod
     from life_graph.models.db import Approval
     from life_graph.services.approvals import ApprovalService
     from life_graph.storage.database import async_session
@@ -934,7 +934,7 @@ async def test_queued_task_carries_its_acceptance_tests_into_dispatch(monkeypatc
     come from there, or every fanned-out task silently loses its check."""
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     project = await _make_project()
@@ -977,7 +977,8 @@ async def test_queued_task_carries_its_acceptance_tests_into_dispatch(monkeypatc
 @skip_on_db_error
 async def test_pr_approval_carries_a_drafted_description(landing, monkeypatch):
     from life_graph.config import settings
-    from life_graph.services import github_pr, llm_client
+    from life_graph.services import llm_client
+    from life_graph.services.dev import github_pr
 
     monkeypatch.setattr(settings, "driver_pr_description_enabled", True)
 
@@ -1019,7 +1020,7 @@ async def test_a_reverted_merge_counts_against_the_driver_and_its_kind(tmp_path)
     from datetime import UTC, datetime
 
     from life_graph.models.db import Approval
-    from life_graph.services.dev_outcomes import record_reverts, track_record
+    from life_graph.services.dev.outcomes import record_reverts, track_record
     from life_graph.storage.database import async_session
 
     def git(*args):

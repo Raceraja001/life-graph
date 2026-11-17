@@ -68,7 +68,7 @@ async def file_fix_task(
     (defaults to the title). Returns ``{"queued": id}`` or
     ``{"deduplicated": existing_id}``.
     """
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     project_id = str(project["id"])
     key = finding_key(project_id, kind, signature or title)

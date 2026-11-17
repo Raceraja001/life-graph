@@ -105,7 +105,7 @@ def edit_counts(steps: list[dict]) -> tuple[int, int]:
 
 
 async def hidden_test(repo: Path, toolchain: str, spec: dict) -> tuple[bool, str]:
-    from life_graph.services.verifiers import verifier_chain
+    from life_graph.services.dev.verifiers import verifier_chain
 
     target = repo / spec["path"]
     target.parent.mkdir(parents=True, exist_ok=True)

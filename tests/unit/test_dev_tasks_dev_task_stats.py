@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
 
-from life_graph.services.dev_tasks import dev_task_stats
+from life_graph.services.dev.tasks import dev_task_stats
 
 # Monkeypatch list_dev_tasks in tests
 
@@ -22,7 +22,7 @@ async def _patch_list_dev_tasks(monkeypatch, return_value):
     async def fake_list_dev_tasks(session, tenant_id, limit=2000):  # noqa: D401
         return return_value
 
-    monkeypatch.setattr("life_graph.services.dev_tasks.list_dev_tasks", fake_list_dev_tasks)
+    monkeypatch.setattr("life_graph.services.dev.tasks.list_dev_tasks", fake_list_dev_tasks)
 
 
 @pytest.mark.asyncio

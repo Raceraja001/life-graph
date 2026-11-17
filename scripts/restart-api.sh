@@ -5,7 +5,7 @@
 # on every saved file). This waits until no dev task is running, then stops
 # only this repo's API (by its pid file) and starts it again the way start.sh
 # does. A task that still gets interrupted is re-queued once on startup
-# (services/dev_tasks.py fail_interrupted), so a forced restart costs a re-run,
+# (services/dev/tasks.py fail_interrupted), so a forced restart costs a re-run,
 # not the task.
 #
 #   scripts/restart-api.sh            wait up to 30 min for an idle moment
@@ -23,7 +23,7 @@ running_tasks() {
 import asyncio
 from sqlalchemy import func, select
 from life_graph.models.db import AgentTask
-from life_graph.services.dev_tasks import _kind_filter
+from life_graph.services.dev.tasks import _kind_filter
 from life_graph.storage.database import async_session
 async def main():
     async with async_session() as s:

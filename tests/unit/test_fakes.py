@@ -54,7 +54,7 @@ def test_sql_inlines_values_including_jsonb_lookups():
 
 
 async def test_fake_landed_diff_records_its_calls(monkeypatch):
-    from life_graph.services import github_pr
+    from life_graph.services.dev import github_pr
 
     calls = fake_landed_diff(monkeypatch, "diff --git a/x b/x\n")
     assert await github_pr.landed_diff("/r", "a", "b") == "diff --git a/x b/x\n"

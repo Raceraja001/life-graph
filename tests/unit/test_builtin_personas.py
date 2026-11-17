@@ -66,7 +66,7 @@ def test_all_builtins_have_required_seed_fields() -> None:
 
 def test_verifier_chains_reference_registered_kinds() -> None:
     """A persona's verifier_chain must only name verifiers that exist."""
-    from life_graph.services.verifiers import VerifierChain
+    from life_graph.services.dev.verifiers import VerifierChain
 
     registered = set(VerifierChain()._verifiers.keys())
     for defn in _BUILTIN_PERSONAS:

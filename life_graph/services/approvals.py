@@ -237,15 +237,15 @@ class ApprovalService:
         """
         if not approve:
             return
-        from life_graph.services.github_pr import PullRequestError, open_pull_request
-        from life_graph.services.local_merge import merge_locally, pr_mode
+        from life_graph.services.dev.github_pr import PullRequestError, open_pull_request
+        from life_graph.services.dev.local_merge import merge_locally, pr_mode
 
         if (
             await pr_mode(self.session, (appr.payload or {}).get("project_id"), appr.tenant_id)
             == "local"
         ):
             # No remote to open a PR on: this approval is the merge, into the
-            # local base branch (services/local_merge.py). One decision, made
+            # local base branch (services/dev/local_merge.py). One decision, made
             # by the user — local mode never merges on its own.
             try:
                 merged = await merge_locally(appr.payload or {})
@@ -324,7 +324,7 @@ class ApprovalService:
         if (merge_appr.payload or {}).get("verified") is False:
             logger.info("Auto-merge skipped: branch was landed off an unverified diff")
             return
-        from life_graph.services.change_policy import auto_gate
+        from life_graph.services.dev.change_policy import auto_gate
 
         # Trust per kind of change, protected paths and size: change_policy.
         gate_payload = {
@@ -358,7 +358,7 @@ class ApprovalService:
         Keyed ``(source="driver_merge", source_ref=task_id)`` so it is filed
         once per task.
         """
-        from life_graph.services.github_pr import merge_approval_fields
+        from life_graph.services.dev.github_pr import merge_approval_fields
 
         fields = merge_approval_fields(pr_approval.payload or {})
         merge = Approval(
@@ -381,7 +381,7 @@ class ApprovalService:
         """
         if not approve:
             return
-        from life_graph.services.github_pr import PullRequestError, merge_pull_request
+        from life_graph.services.dev.github_pr import PullRequestError, merge_pull_request
 
         try:
             outcome = await merge_pull_request(appr.payload or {})
@@ -546,7 +546,7 @@ class ApprovalService:
             appr.payload = {**appr.payload, "rollback": {"exit": rcode, "output": rout[-2000:]}}
             outcome += "; rolled back" if rcode == 0 else f"; ROLLBACK FAILED (exit {rcode})"
         try:
-            from life_graph.services.production_findings import file_fix_task
+            from life_graph.services.dev.production_findings import file_fix_task
             from life_graph.storage.database import async_session
 
             project = await self._project_dict(appr.tenant_id, payload.get("project_id"))
@@ -634,7 +634,8 @@ class ApprovalService:
             raise ApprovalActionError(f"project {project_id} no longer exists")
 
         from life_graph.drivers.dispatcher import _parse_tasks
-        from life_graph.services import acceptance, dev_tasks
+        from life_graph.services.dev import acceptance
+        from life_graph.services.dev import tasks as dev_tasks
         from life_graph.storage.database import async_session as session_factory
 
         project_dict = {"id": str(project.id), "name": project.name}

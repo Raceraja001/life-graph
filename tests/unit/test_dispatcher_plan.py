@@ -293,7 +293,7 @@ async def test_complete_plan_reports_no_gaps(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_acceptance_tests_join_the_chain_and_survive_a_bounce(monkeypatch):
-    from life_graph.services.verifiers import VerifierResult
+    from life_graph.services.dev.verifiers import VerifierResult
 
     calls = []
 
@@ -320,7 +320,7 @@ async def test_acceptance_tests_join_the_chain_and_survive_a_bounce(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_no_acceptance_tests_leaves_the_chain_alone(monkeypatch):
-    from life_graph.services.verifiers import VerifierResult
+    from life_graph.services.dev.verifiers import VerifierResult
 
     calls = []
 

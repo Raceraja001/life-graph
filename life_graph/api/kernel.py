@@ -1478,7 +1478,7 @@ class ProjectRegister(_ProjectOpsSettings):
 def _validate_checks(v: list[str] | None) -> list[str] | None:
     if not v:
         return v
-    from life_graph.services.verifiers import verifier_chain
+    from life_graph.services.dev.verifiers import verifier_chain
 
     unknown = [c for c in v if c not in verifier_chain.names]
     if unknown:

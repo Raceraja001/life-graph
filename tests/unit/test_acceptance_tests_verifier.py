@@ -12,8 +12,8 @@ import sys
 
 import pytest
 
-from life_graph.services import verifiers as verifiers_mod
-from life_graph.services.verifiers import verifier_chain
+from life_graph.services.dev import verifiers as verifiers_mod
+from life_graph.services.dev.verifiers import verifier_chain
 
 
 @pytest.fixture(autouse=True)

@@ -10,7 +10,7 @@ import uuid
 
 import pytest
 
-from life_graph.services import verifiers as verifiers_mod
+from life_graph.services.dev import verifiers as verifiers_mod
 from tests.integration.conftest import skip_on_db_error
 
 TENANT = f"conformance_{uuid.uuid4().hex[:8]}"
@@ -75,7 +75,7 @@ async def _task_with_spec(repo, spec=SPEC):
 @skip_on_db_error
 async def test_reports_each_criterion_and_stores_the_report(repo):
     from life_graph.models.db import AgentTask
-    from life_graph.services.conformance import check_conformance
+    from life_graph.services.dev.conformance import check_conformance
     from life_graph.storage.database import async_session
 
     task_id = await _task_with_spec(repo)
@@ -96,7 +96,7 @@ async def test_reports_each_criterion_and_stores_the_report(repo):
 @skip_on_db_error
 async def test_checks_committed_code_not_the_live_checkouts_uncommitted_edits(repo):
     """Uncommitted work in the live checkout must not leak into the check."""
-    from life_graph.services.conformance import check_conformance
+    from life_graph.services.dev.conformance import check_conformance
     from life_graph.storage.database import async_session
 
     (repo / "tests" / "test_feature.py").write_text(
@@ -111,7 +111,7 @@ async def test_checks_committed_code_not_the_live_checkouts_uncommitted_edits(re
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_the_worktree_is_cleaned_up(repo):
-    from life_graph.services.conformance import check_conformance
+    from life_graph.services.dev.conformance import check_conformance
     from life_graph.storage.database import async_session
 
     task_id = await _task_with_spec(repo)
@@ -127,7 +127,7 @@ async def test_the_worktree_is_cleaned_up(repo):
     [(None, "no spec"), ("**Tasks:** 1. do it", "no acceptance criteria")],
 )
 async def test_refuses_without_a_spec_or_criteria(repo, spec, message):
-    from life_graph.services.conformance import ConformanceError, check_conformance
+    from life_graph.services.dev.conformance import ConformanceError, check_conformance
     from life_graph.storage.database import async_session
 
     task_id = await _task_with_spec(repo, spec)
@@ -138,7 +138,7 @@ async def test_refuses_without_a_spec_or_criteria(repo, spec, message):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_unknown_task_is_refused():
-    from life_graph.services.conformance import ConformanceError, check_conformance
+    from life_graph.services.dev.conformance import ConformanceError, check_conformance
     from life_graph.storage.database import async_session
 
     with pytest.raises(ConformanceError, match="no dev task"):

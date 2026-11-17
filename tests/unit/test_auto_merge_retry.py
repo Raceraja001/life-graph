@@ -60,7 +60,7 @@ async def test_nothing_pending_is_a_no_op(auto_merge):
 
 
 async def test_the_sync_job_retries_first_and_survives_a_failure(monkeypatch):
-    from life_graph.services import dev_outcomes
+    from life_graph.services.dev import outcomes as dev_outcomes
     from life_graph.workers import tasks
 
     order = []

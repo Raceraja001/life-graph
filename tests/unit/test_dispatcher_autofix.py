@@ -13,7 +13,7 @@ import life_graph.drivers.dispatcher as disp_mod
 from life_graph.core.budget import BudgetDecision
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.dispatcher import TaskDispatcher
-from life_graph.services import verifiers as verifiers_mod
+from life_graph.services.dev import verifiers as verifiers_mod
 from tests.unit.test_mechanical_autofix import _real_ruff_path
 
 

@@ -43,7 +43,7 @@ from life_graph.services.browser_sandbox_driver import (
     BrowserRuntimeUnusableError,
     IsolatedBrowserDriver,
 )
-from life_graph.services.sandbox import SandboxUnavailableError
+from life_graph.services.dev.sandbox import SandboxUnavailableError
 from life_graph.storage import database
 from life_graph.tools import errand
 from tests.unit.fakes import FakeSession, session_factory

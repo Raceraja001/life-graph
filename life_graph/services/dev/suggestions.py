@@ -145,7 +145,7 @@ async def lint_findings(root: Path, paths: list[str] | None = None) -> list[Find
     directories are always excluded: rewriting an applied migration to satisfy
     a linter is exactly the change nobody wants to find in the morning.
     """
-    from life_graph.services import sandbox
+    from life_graph.services.dev import sandbox
 
     if not sandbox.enabled():
         return []
@@ -199,7 +199,7 @@ async def test_findings(root: Path, meta: dict[str, Any]) -> list[Finding]:
     """Failing tests from the project's sandbox test command, if it has one."""
     import shlex
 
-    from life_graph.services import sandbox
+    from life_graph.services.dev import sandbox
 
     command = meta.get("sandbox_test_command")
     if not command or not sandbox.enabled():
@@ -455,7 +455,7 @@ async def queue_suggestions(
 ) -> dict[str, Any]:
     """Queue dev tasks for new findings, respecting the per-project cap."""
     from life_graph.runtime import get_persona_service
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     meta = project.get("scan_metadata") or {}
     max_tasks = max(1, min(int(meta.get("nightly_max_tasks") or DEFAULT_MAX_TASKS), MAX_TASKS_CAP))

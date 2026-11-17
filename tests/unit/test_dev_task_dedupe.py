@@ -1,12 +1,12 @@
 """The same instruction for the same project, while one is still to run, is
-one task (services/dev_tasks.py create_dev_task)."""
+one task (services/dev/tasks.py create_dev_task)."""
 
 from __future__ import annotations
 
 import uuid
 
 from life_graph.models.db import AgentTask
-from life_graph.services import dev_tasks
+from life_graph.services.dev import tasks as dev_tasks
 from tests.unit.fakes import FakeSession, session_factory, sql
 
 PROJECT = {"id": str(uuid.uuid4()), "name": "life-graph"}

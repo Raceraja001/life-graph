@@ -539,7 +539,7 @@ async def test_learn_project_records_success_and_result(fake_session, monkeypatc
 
     learn_result = {"project_id": "p1", "findings": 3, "created": 2, "updated": 1, "archived": 0}
     monkeypatch.setattr(
-        "life_graph.services.project_learning.learn_project",
+        "life_graph.services.dev.project_learning.learn_project",
         AsyncMock(return_value=learn_result),
     )
 
@@ -591,7 +591,7 @@ async def test_learn_project_analysis_failure_is_recorded_and_reraised(fake_sess
     monkeypatch.setattr("life_graph.api.dependencies.get_project_registry", lambda: registry)
     monkeypatch.setattr("life_graph.api.dependencies.get_preference_store", lambda: MagicMock())
     monkeypatch.setattr(
-        "life_graph.services.project_learning.learn_project",
+        "life_graph.services.dev.project_learning.learn_project",
         AsyncMock(side_effect=RuntimeError("git history unreadable")),
     )
 

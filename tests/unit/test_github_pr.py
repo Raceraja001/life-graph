@@ -14,8 +14,8 @@ from types import SimpleNamespace
 import pytest
 
 from life_graph.services import approvals as approvals_mod
-from life_graph.services import github_pr
-from life_graph.services.github_pr import PullRequestError, describe_landing, open_pull_request
+from life_graph.services.dev import github_pr
+from life_graph.services.dev.github_pr import PullRequestError, describe_landing, open_pull_request
 
 
 def git(cwd, *args):
@@ -792,7 +792,7 @@ async def test_pr_state_rejects_a_bad_url(pr_state_env):
 async def test_describe_landing_uses_a_pinned_base_branch(tmp_path):
     import subprocess
 
-    from life_graph.services.github_pr import describe_landing
+    from life_graph.services.dev.github_pr import describe_landing
 
     def git(*args):
         subprocess.run(

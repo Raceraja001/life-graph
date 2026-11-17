@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from life_graph.services.acceptance import is_js_test_ref, is_safe_test_ref
+from life_graph.services.dev.acceptance import is_js_test_ref, is_safe_test_ref
 
 
 @pytest.mark.parametrize(
@@ -45,7 +45,7 @@ def test_js_refs_are_told_apart_from_pytest_refs():
 @pytest.mark.asyncio
 async def test_a_node_check_runs_in_a_tmp_copy_with_deps_at_root(tmp_path, monkeypatch):
     from life_graph.config import settings
-    from life_graph.services import sandbox
+    from life_graph.services.dev import sandbox
 
     captured = {}
 

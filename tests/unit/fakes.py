@@ -153,7 +153,7 @@ def sql(stmt) -> str:
 def fake_landed_diff(monkeypatch, text: str) -> list[tuple]:
     """Replace ``github_pr.landed_diff`` (it shells out to git) with one that
     returns *text*. Returns the list its calls are recorded in."""
-    from life_graph.services import github_pr
+    from life_graph.services.dev import github_pr
 
     calls: list[tuple] = []
 

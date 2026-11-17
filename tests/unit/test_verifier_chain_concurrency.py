@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from life_graph.services.verifiers import VerifierChain, VerifierResult
+from life_graph.services.dev.verifiers import VerifierChain, VerifierResult
 
 
 @pytest.fixture

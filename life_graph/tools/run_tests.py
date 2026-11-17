@@ -101,8 +101,8 @@ def _clean(paths: list[str]) -> list[str] | str:
     timeout_seconds=RUN_TIMEOUT + 60,
 )
 async def run_tests(paths: list[str] | str) -> str:
-    from life_graph.services import sandbox
-    from life_graph.services.verifiers import _test_evidence
+    from life_graph.services.dev import sandbox
+    from life_graph.services.dev.verifiers import _test_evidence
 
     check_tenant("run_tests")
     roots = _task_roots.get()
@@ -153,8 +153,8 @@ def gradle_filters(paths: list[str]) -> list[str]:
 
 
 async def _run_gradle_tests(workdir, ctx: dict, paths: list[str]) -> str:
-    from life_graph.services import sandbox
-    from life_graph.services.verifiers import _gradle_evidence
+    from life_graph.services.dev import sandbox
+    from life_graph.services.dev.verifiers import _gradle_evidence
 
     filters = gradle_filters(paths)
     if not filters:

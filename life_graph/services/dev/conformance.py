@@ -1,6 +1,6 @@
 """Re-check a spec against the code: does the project still satisfy it?
 
-A plan's acceptance criteria are bound to tests (services/acceptance.py) and
+A plan's acceptance criteria are bound to tests (services/dev/acceptance.py) and
 checked once, when each task lands. Code keeps changing after that. This
 re-runs every criterion's bound test against the project's current code and
 records a per-criterion pass/fail/untested report on the task that produced
@@ -31,8 +31,8 @@ from typing import TYPE_CHECKING, Any
 from life_graph.drivers.base import ContextPacket
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.models.db import AgentTask, Project
-from life_graph.services.acceptance import AcceptanceCriterion, is_safe_test_ref, parse_criteria
-from life_graph.services.verifiers import verifier_chain
+from life_graph.services.dev.acceptance import AcceptanceCriterion, is_safe_test_ref, parse_criteria
+from life_graph.services.dev.verifiers import verifier_chain
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

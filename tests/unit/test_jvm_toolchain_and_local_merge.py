@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from life_graph.services import sandbox
+from life_graph.services.dev import sandbox
 
 
 def test_toolchain_and_task_parsing():
@@ -91,7 +91,7 @@ async def test_checks_run_gradle_offline_with_a_read_only_cache(tmp_path, captur
 
 
 def test_gradle_evidence_keeps_the_reasons():
-    from life_graph.services.verifiers import _gradle_evidence
+    from life_graph.services.dev.verifiers import _gradle_evidence
 
     out = "\n".join(
         [
@@ -169,7 +169,7 @@ def repo(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_merges_into_the_checked_out_base(repo):
-    from life_graph.services.local_merge import merge_locally
+    from life_graph.services.dev.local_merge import merge_locally
 
     r, payload = repo
     out = await merge_locally(payload)
@@ -183,7 +183,7 @@ async def test_merges_into_the_checked_out_base(repo):
 
 @pytest.mark.asyncio
 async def test_merges_a_base_that_is_not_checked_out(repo):
-    from life_graph.services.local_merge import merge_locally
+    from life_graph.services.dev.local_merge import merge_locally
 
     r, payload = repo
     _git(r, "checkout", "-qb", "elsewhere")
@@ -194,8 +194,8 @@ async def test_merges_a_base_that_is_not_checked_out(repo):
 
 @pytest.mark.asyncio
 async def test_refuses_what_was_not_verified_or_would_lose_work(repo):
-    from life_graph.services.github_pr import PullRequestError
-    from life_graph.services.local_merge import merge_locally
+    from life_graph.services.dev.github_pr import PullRequestError
+    from life_graph.services.dev.local_merge import merge_locally
 
     r, payload = repo
     (r / "a.kt").write_text("val a = 99  // uncommitted\n")
@@ -216,7 +216,7 @@ async def test_refuses_what_was_not_verified_or_would_lose_work(repo):
 
 
 def test_scope_knows_kotlin_paths_and_test_source_sets():
-    from life_graph.services.verifiers import _is_test_path, named_paths
+    from life_graph.services.dev.verifiers import _is_test_path, named_paths
 
     instruction = (
         "Create app/src/main/java/com/x/net/FriendlyError.kt and its tests in "

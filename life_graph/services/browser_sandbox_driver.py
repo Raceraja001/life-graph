@@ -4,7 +4,7 @@
 duty to the bridged Playwright MCP server, which drives *whatever browser that
 server happens to own* — in practice one on the host, beside the application's
 own credentials. The isolation chassis for errands already existed next to it
-(``compose.sandbox.yaml``, ``Dockerfile.browser``, ``services/sandbox.py``): a
+(``compose.sandbox.yaml``, ``Dockerfile.browser``, ``services/dev/sandbox.py``): a
 non-root headless Chromium with a read-only root filesystem, every capability
 dropped, tmpfs-only writable space and an ``internal: true`` network, driven
 from outside over Playwright's own browser-server websocket. The two were never
@@ -18,7 +18,7 @@ driver protocol over **that endpoint and no other**:
   (``LIFE_GRAPH_BROWSER_SANDBOX_URL``), never to a host browser;
 * every way of not having that runtime — unset, malformed, unreachable,
   timing out, answering 5xx, dying mid-errand — is one
-  :class:`~life_graph.services.sandbox.SandboxUnavailableError`, which is a
+  :class:`~life_graph.services.dev.sandbox.SandboxUnavailableError`, which is a
   refusal to act rather than a reason to try something less contained;
 * a session is opened per ``(tenant_id, errand_id)`` pair and closed with the
   errand, so two errands — and two tenants — never see each other's cookies,
@@ -96,7 +96,7 @@ from urllib.parse import urlsplit
 
 from life_graph.config import settings
 from life_graph.services.browser_egress_proxy import BrowserEgressProxy
-from life_graph.services.sandbox import BROWSER_WS_PORT, SandboxUnavailableError
+from life_graph.services.dev.sandbox import BROWSER_WS_PORT, SandboxUnavailableError
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Awaitable, Callable, Iterable
@@ -188,7 +188,7 @@ class BrowserRuntimeUnusableError(RuntimeError):
     *status* carries the HTTP status when the websocket handshake was refused
     with one (a 502 from a proxy in front of a browser that is not up, say).
     :class:`IsolatedBrowserDriver` turns every one of these into
-    :class:`~life_graph.services.sandbox.SandboxUnavailableError`; the separate
+    :class:`~life_graph.services.dev.sandbox.SandboxUnavailableError`; the separate
     type exists so a transport can report *why* without each transport
     inventing its own exception.
     """
@@ -587,7 +587,7 @@ def control_endpoint(endpoint_url: str | None = None) -> str:
 
     Then the requirement: with :func:`control_token_required` on, an endpoint
     whose final path is empty, too short or not plain url-safe text is a
-    :class:`~life_graph.services.sandbox.SandboxUnavailableError`. The errand
+    :class:`~life_graph.services.dev.sandbox.SandboxUnavailableError`. The errand
     does not run, and it does not run over an unauthenticated channel either.
 
     Raises:
@@ -638,7 +638,7 @@ def browser_sandbox_available() -> bool:
 
     Configuration, not reachability: whether the endpoint actually answers is
     decided by connecting to it, and that answer is a
-    :class:`~life_graph.services.sandbox.SandboxUnavailableError` at the moment
+    :class:`~life_graph.services.dev.sandbox.SandboxUnavailableError` at the moment
     an errand needs the browser rather than a cached health bit that could be
     stale in the unsafe direction.
     """
@@ -761,7 +761,7 @@ class IsolatedBrowserDriver:
     Fail-closed in every direction:
 
     * no endpoint configured, or one that is not a usable ws/http URL →
-      :class:`~life_graph.services.sandbox.SandboxUnavailableError` from
+      :class:`~life_graph.services.dev.sandbox.SandboxUnavailableError` from
       ``__init__``, before anything can mistake this driver for a working one;
     * unreachable, timing out, 5xx, or any other failure to establish the
       session → ``SandboxUnavailableError`` from the first step;
@@ -898,7 +898,7 @@ class IsolatedBrowserDriver:
         Idempotent, and safe to call on a driver that never opened a session.
         A failure to clean up is **not** swallowed: cookies that outlive the
         errand that set them are the isolation failing, so it comes back as
-        :class:`~life_graph.services.sandbox.SandboxUnavailableError` for the
+        :class:`~life_graph.services.dev.sandbox.SandboxUnavailableError` for the
         caller to log and report. The ephemeral egress proxy, if this driver
         minted one, is stopped either way — a listener left running past the
         errand is a way out left running past the errand.

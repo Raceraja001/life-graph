@@ -3,7 +3,7 @@ narrative summary of it.
 
 Runs PR-Agent (https://github.com/The-PR-Agent/pr-agent, self-hosted,
 BYO LLM) as a subprocess against the diff a driver produced, in the same
-gate position the older :class:`~life_graph.services.second_opinion.
+gate position the older :class:`~life_graph.services.dev.second_opinion.
 SecondOpinionReviewer` occupied — after verification, before landing — but
 reading the actual code instead of the driver's own narrative account of
 what it did. Uses PR-Agent's "plain-diff" local mode (``--stdin``,

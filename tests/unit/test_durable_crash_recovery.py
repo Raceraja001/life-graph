@@ -28,8 +28,8 @@ from life_graph.drivers.execution_guard import (
     ExecutionCheckpointTracker,
 )
 from life_graph.models.db import AgentTask
-from life_graph.services import dev_tasks
-from life_graph.services.verifiers import VerifierResult
+from life_graph.services.dev import tasks as dev_tasks
+from life_graph.services.dev.verifiers import VerifierResult
 
 
 def _trail(*stages: str) -> dict:

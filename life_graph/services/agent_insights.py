@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select
 
 from life_graph.models.db import AgentRunStep, AgentTask, VerificationRun
-from life_graph.services import acceptance
-from life_graph.services.dev_tasks import (
+from life_graph.services.dev import acceptance
+from life_graph.services.dev.failure_causes import CAUSES, classify
+from life_graph.services.dev.tasks import (
     _approvals_by_task,
     _kind_filter,
     _not_incident,
@@ -28,8 +29,7 @@ from life_graph.services.dev_tasks import (
     driver_of,
     serialize,
 )
-from life_graph.services.failure_causes import CAUSES, classify
-from life_graph.services.trajectories import list_steps
+from life_graph.services.dev.trajectories import list_steps
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

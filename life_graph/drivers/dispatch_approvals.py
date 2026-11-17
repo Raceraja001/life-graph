@@ -13,7 +13,7 @@ from life_graph.autonomy.safety.classifier import RiskLevel
 from life_graph.config import settings
 from life_graph.core.events import EventType
 from life_graph.drivers.plan_spec import _PLAN_SPEC_MAX_CHARS, _parse_tasks
-from life_graph.services.change_policy import describe_change, second_opinion
+from life_graph.services.dev.change_policy import describe_change, second_opinion
 
 if TYPE_CHECKING:
     import uuid
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from life_graph.drivers.base import DriverResult
-    from life_graph.services.verifiers import VerifierResult
+    from life_graph.services.dev.verifiers import VerifierResult
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class ApprovalFilingMixin:
         """
         try:
             from life_graph.models.db import Approval
-            from life_graph.services.acceptance import parse_criteria, spec_gaps
+            from life_graph.services.dev.acceptance import parse_criteria, spec_gaps
 
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else "Plan"
             gaps = spec_gaps(parse_criteria(spec_text), _parse_tasks(spec_text))
@@ -178,16 +178,16 @@ class ApprovalFilingMixin:
         spec_text: str,
         gaps: list[str],
     ) -> bool:
-        """Approve the plan without asking when services/plan_policy.py allows it.
+        """Approve the plan without asking when services/dev/plan_policy.py allows it.
 
         Approval goes through ApprovalService.resolve, the same path a
         person's click takes, so fan-out is identical. Whatever the outcome,
         the reasons are written on the approval. Any failure leaves it
         pending, exactly as with auto-approval off.
         """
-        from life_graph.services import plan_policy
         from life_graph.services.approvals import ApprovalService
-        from life_graph.services.dev_outcomes import track_record
+        from life_graph.services.dev import plan_policy
+        from life_graph.services.dev.outcomes import track_record
 
         try:
             record = (
@@ -230,9 +230,9 @@ class ApprovalFilingMixin:
         if not (base and head):
             return None
         try:
-            from life_graph.services.github_pr import landed_diff
+            from life_graph.services.dev.github_pr import landed_diff
+            from life_graph.services.dev.pr_description import draft_pr_description
             from life_graph.services.llm_client import get_resilient_llm
-            from life_graph.services.pr_description import draft_pr_description
 
             diff_text = await landed_diff(repo_path, base, head)
             return await draft_pr_description(
@@ -268,7 +268,7 @@ class ApprovalFilingMixin:
         """File a ``driver_pr`` approval for a landed branch.
 
         Approving it pushes the branch and opens a pull request
-        (``services/github_pr.py``). The payload pins the exact verified commit
+        (``services/dev/github_pr.py``). The payload pins the exact verified commit
         and the commit the work started from, so approval acts on what was
         checked — not on whatever the branch holds by the time someone taps it.
         Best-effort, like the other approval producers: a failure here leaves
@@ -286,7 +286,7 @@ class ApprovalFilingMixin:
         """
         try:
             from life_graph.models.db import Approval
-            from life_graph.services.github_pr import describe_landing
+            from life_graph.services.dev.github_pr import describe_landing
 
             landing = await describe_landing(repo_path, branch, base_branch=base_branch)
             title_line = instruction.strip().splitlines()[0] if instruction.strip() else branch
@@ -303,7 +303,7 @@ class ApprovalFilingMixin:
                 and not change["review_reasons"]
             ):
                 # Only for code that could otherwise land without a person.
-                from life_graph.services.github_pr import landed_diff
+                from life_graph.services.dev.github_pr import landed_diff
 
                 diff = await landed_diff(
                     repo_path, landing.get("base_commit", ""), landing.get("head_commit", "")
@@ -329,7 +329,7 @@ class ApprovalFilingMixin:
                 "change": change,
                 **landing,
             }
-            from life_graph.services.local_merge import pr_mode
+            from life_graph.services.dev.local_merge import pr_mode
 
             # In local mode approving is the merge (services/approvals.py), so say that.
             local = await pr_mode(session, project_id, tenant_id) == "local"
@@ -421,9 +421,9 @@ class ApprovalFilingMixin:
         approval pending, exactly as if auto-open were off.
         """
         from life_graph.services.approvals import ApprovalService
-        from life_graph.services.change_policy import auto_gate
-        from life_graph.services.github_pr import PullRequestError, open_pull_request
-        from life_graph.services.local_merge import pr_mode
+        from life_graph.services.dev.change_policy import auto_gate
+        from life_graph.services.dev.github_pr import PullRequestError, open_pull_request
+        from life_graph.services.dev.local_merge import pr_mode
 
         if await pr_mode(session, project_id, appr.tenant_id) == "local":
             # In local mode, approving driver_pr merges: never unattended.

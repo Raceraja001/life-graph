@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from life_graph.services.dev_tasks import _approvals_by_task, _verification_summary
+from life_graph.services.dev.tasks import _approvals_by_task, _verification_summary
 from tests.unit.fakes import FakeSession, sql
 
 

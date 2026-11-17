@@ -1008,7 +1008,7 @@ class VerificationRun(Base):
 class AgentRunStep(Base):
     """One step of a driver run: what the agent said, called, got back.
 
-    Written by services/trajectories.py from the ``driver:steps`` event, one
+    Written by services/dev/trajectories.py from the ``driver:steps`` event, one
     row per step, so a run can be replayed in order and studied afterwards.
     ``kind`` is an open string (drivers/steps.py lists the values in use).
     ``content`` is redacted and capped at write time; ``properties`` carries

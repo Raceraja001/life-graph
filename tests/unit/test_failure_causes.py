@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from life_graph.services.failure_causes import CAUSES, classify, failed_verifiers
+from life_graph.services.dev.failure_causes import CAUSES, classify, failed_verifiers
 
 
 @pytest.mark.parametrize(

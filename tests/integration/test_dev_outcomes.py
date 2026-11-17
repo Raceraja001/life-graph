@@ -82,7 +82,7 @@ async def _trust(driver, project_id):
 @skip_on_db_error
 async def test_merge_approval_records_trust_success_once(task_and_pr):
     from life_graph.models.db import AgentTask, Approval
-    from life_graph.services.dev_outcomes import DevOutcomeRecorder
+    from life_graph.services.dev.outcomes import DevOutcomeRecorder
     from life_graph.storage.database import async_session
 
     async with async_session() as s:
@@ -117,7 +117,7 @@ async def test_merge_approval_records_trust_success_once(task_and_pr):
 @skip_on_db_error
 async def test_rejected_pr_records_failure_and_correction(task_and_pr):
     from life_graph.models.db import Approval, Correction
-    from life_graph.services.dev_outcomes import DevOutcomeRecorder
+    from life_graph.services.dev.outcomes import DevOutcomeRecorder
     from life_graph.storage.database import async_session
 
     async with async_session() as s:
@@ -183,7 +183,7 @@ def fake_gh(tmp_path, monkeypatch):
 @skip_on_db_error
 async def test_sync_closes_pr_and_ingests_only_my_comments(task_and_pr, fake_gh):
     from life_graph.models.db import Approval, CaptureEvent
-    from life_graph.services.dev_outcomes import sync_pr
+    from life_graph.services.dev.outcomes import sync_pr
     from life_graph.storage.database import async_session
 
     async with async_session() as s:
@@ -261,7 +261,7 @@ async def test_sync_closes_pr_and_ingests_only_my_comments(task_and_pr, fake_gh)
 async def test_verification_runs_recorded_only_for_task_rows(task_and_pr):
     from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.models.db import VerificationRun
-    from life_graph.services.verifiers import VerifierResult
+    from life_graph.services.dev.verifiers import VerifierResult
     from life_graph.storage.database import async_session
 
     results = [VerifierResult("build_ok_diff", True, {"checked": 1})]
@@ -284,7 +284,7 @@ async def test_verification_runs_recorded_only_for_task_rows(task_and_pr):
 @pytest.mark.asyncio
 async def test_sync_skips_cleanly_without_gh(monkeypatch):
     from life_graph.config import settings
-    from life_graph.services.dev_outcomes import sync_all
+    from life_graph.services.dev.outcomes import sync_all
 
     monkeypatch.setattr(settings, "driver_gh_bin", "/nonexistent/gh")
     assert await sync_all(None) == {"skipped": "gh not logged in"}
@@ -326,7 +326,8 @@ async def merged_task():
 @skip_on_db_error
 async def test_post_merge_ci_success_marks_checked_without_reverting(merged_task, monkeypatch):
     from life_graph.models.db import Approval
-    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev import outcomes as dev_outcomes
     from life_graph.storage.database import async_session
 
     async def fake_status(payload):
@@ -353,7 +354,8 @@ async def test_post_merge_ci_success_marks_checked_without_reverting(merged_task
 @skip_on_db_error
 async def test_post_merge_ci_pending_leaves_unchecked_for_next_sync(merged_task, monkeypatch):
     from life_graph.models.db import Approval
-    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev import outcomes as dev_outcomes
     from life_graph.storage.database import async_session
 
     async def fake_status(payload):
@@ -376,7 +378,8 @@ async def test_post_merge_ci_pending_leaves_unchecked_for_next_sync(merged_task,
 @skip_on_db_error
 async def test_post_merge_ci_failure_opens_revert_and_notifies(merged_task, monkeypatch):
     from life_graph.models.db import Approval, Notification
-    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev import outcomes as dev_outcomes
     from life_graph.storage.database import async_session
 
     async def fake_status(payload):
@@ -417,7 +420,8 @@ async def test_post_merge_ci_failure_opens_revert_and_notifies(merged_task, monk
 @skip_on_db_error
 async def test_post_merge_ci_already_checked_is_a_noop(merged_task, monkeypatch):
     from life_graph.models.db import Approval
-    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev import outcomes as dev_outcomes
     from life_graph.storage.database import async_session
 
     def must_not_run(payload):
@@ -442,7 +446,8 @@ async def test_sync_all_gives_up_on_a_merge_stuck_pending_a_day(merged_task, fak
     from datetime import UTC, datetime, timedelta
 
     from life_graph.models.db import Approval
-    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev import outcomes as dev_outcomes
     from life_graph.storage.database import async_session
 
     fake_gh(state="OPEN")  # no driver_pr rows reference this PR; first loop is a no-op
@@ -515,7 +520,8 @@ async def revertable_task():
 @skip_on_db_error
 async def test_rollforward_waits_for_the_revert_to_actually_merge(revertable_task, monkeypatch):
     from life_graph.models.db import Approval
-    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev import outcomes as dev_outcomes
     from life_graph.storage.database import async_session
 
     async def fake_state(payload):
@@ -539,7 +545,9 @@ async def test_rollforward_waits_for_the_revert_to_actually_merge(revertable_tas
 async def test_rollforward_dispatches_a_retry_once_the_revert_merges(revertable_task, monkeypatch):
     from life_graph.kernel.project_registry import ProjectRegistry
     from life_graph.models.db import Approval
-    from life_graph.services import dev_outcomes, dev_tasks, github_pr
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev import outcomes as dev_outcomes
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     async def fake_state(payload):
@@ -581,7 +589,8 @@ async def test_rollforward_dispatches_a_retry_once_the_revert_merges(revertable_
 @skip_on_db_error
 async def test_rollforward_is_a_noop_once_already_dispatched(revertable_task, monkeypatch):
     from life_graph.models.db import Approval
-    from life_graph.services import dev_outcomes, github_pr
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev import outcomes as dev_outcomes
     from life_graph.storage.database import async_session
 
     def must_not_run(payload):
@@ -605,7 +614,9 @@ async def test_rollforward_is_a_noop_once_already_dispatched(revertable_task, mo
 async def test_rollforward_skips_when_the_project_is_no_longer_active(revertable_task, monkeypatch):
     from life_graph.kernel.project_registry import ProjectRegistry
     from life_graph.models.db import Approval
-    from life_graph.services import dev_outcomes, dev_tasks, github_pr
+    from life_graph.services.dev import github_pr
+    from life_graph.services.dev import outcomes as dev_outcomes
+    from life_graph.services.dev import tasks as dev_tasks
     from life_graph.storage.database import async_session
 
     async def fake_state(payload):

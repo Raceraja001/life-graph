@@ -65,7 +65,7 @@ CHEAP_CHECKS = ("lint_clean_diff", "diff_within_scope", "tests_exercise_code", "
 
 def task_of(instruction: str | None) -> str:
     """The original task: a bounce's instruction ends with it after a marker."""
-    from life_graph.services.verifiers import BOUNCE_TASK_MARKER
+    from life_graph.services.dev.verifiers import BOUNCE_TASK_MARKER
 
     text = instruction or ""
     return text.split(BOUNCE_TASK_MARKER, 1)[1].strip() if BOUNCE_TASK_MARKER in text else text
@@ -99,7 +99,7 @@ async def _test_feedback(workdir: Path, project_context: dict) -> str | None:
 
 
 async def _check_feedback(workdir: Path, project_context: dict, instruction: str) -> str | None:
-    from life_graph.services.verifiers import failure_text, mechanical_autofix, verifier_chain
+    from life_graph.services.dev.verifiers import failure_text, mechanical_autofix, verifier_chain
 
     ctx = {**project_context, "scope_instruction": task_of(instruction)}
     # Free first: what ruff fixes by itself is not worth the agent's turn.

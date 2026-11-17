@@ -67,11 +67,11 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     ("connectors/store.py", "purge_expired"): (
         "nightly retention across every tenant: deletes by age and by disabled account"
     ),
-    ("services/dev_tasks.py", "fail_interrupted"): (
+    ("services/dev/tasks.py", "fail_interrupted"): (
         "startup recovery — a restarted API abandons in-process dev tasks of every "
         "tenant; only rows with properties.kind == dev_task are touched"
     ),
-    ("services/dev_outcomes.py", "sync_all"): (
+    ("services/dev/outcomes.py", "sync_all"): (
         "cron discovery of opened agent PRs across tenants; each approval row "
         "carries its own tenant_id and is processed under it"
     ),
@@ -79,11 +79,11 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
         "same cron as sync_all: pending driver_merge approvals across tenants; "
         "maybe_auto_merge reads each row's own tenant_id for the trust record"
     ),
-    ("services/dev_tasks.py", "claim_next_queued"): (
+    ("services/dev/tasks.py", "claim_next_queued"): (
         "single queue runner for the process; the claimed row carries its own "
         "tenant_id and the task runs under that tenant's context"
     ),
-    ("services/dev_suggestions.py", "run_nightly"): (
+    ("services/dev/suggestions.py", "run_nightly"): (
         "cron discovery of opted-in projects across tenants; each project is "
         "processed under its own tenant context"
     ),
@@ -233,7 +233,7 @@ class TestGetScoped:
 
 
 async def test_another_tenants_project_never_sets_pr_mode():
-    from life_graph.services.local_merge import pr_mode
+    from life_graph.services.dev.local_merge import pr_mode
 
     project = SimpleNamespace(tenant_id="b", scan_metadata={"pr_mode": "local"})
     assert await pr_mode(_FakeSession(project), str(uuid.uuid4()), "b") == "local"

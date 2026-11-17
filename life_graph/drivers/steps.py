@@ -13,7 +13,7 @@ exposed), ``tool_call`` (``content`` is the JSON input), ``tool_result``
 None otherwise; ``ref`` ties a tool_result back to its tool_call.
 
 Steps are captured verbatim here; redaction and size caps happen once, where
-they are stored (services/trajectories.py).
+they are stored (services/dev/trajectories.py).
 """
 
 from __future__ import annotations

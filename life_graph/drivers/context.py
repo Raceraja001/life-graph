@@ -174,7 +174,7 @@ class ContextPacketBuilder:
                         "auto_merge",
                         "base_branch",
                         "auto_approve_plans",
-                        # The unattended-landing gate (services/change_policy.py).
+                        # The unattended-landing gate (services/dev/change_policy.py).
                         "protected_paths",
                         "auto_merge_max_lines",
                         "auto_merge_max_files",

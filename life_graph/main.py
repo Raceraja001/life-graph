@@ -318,7 +318,7 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
     # can neither claim queued tasks nor fail the real runner's in-flight one.
     app.state.dev_task_runner_lock = None
     with startup_step(report, "dev_task_runner_lock"):
-        from life_graph.services.dev_tasks import acquire_runner_lock
+        from life_graph.services.dev.tasks import acquire_runner_lock
         from life_graph.storage.database import engine
 
         if settings.dev_task_runner_enabled:
@@ -333,7 +333,7 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
     is_dev_task_runner = app.state.dev_task_runner_lock is not None
 
     with startup_step(report, "dev_tasks_recovery"):
-        from life_graph.services.dev_tasks import fail_interrupted
+        from life_graph.services.dev.tasks import fail_interrupted
 
         if is_dev_task_runner:
             interrupted = await fail_interrupted(async_session)
@@ -341,13 +341,13 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
                 logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
 
     with startup_step(report, "dev_outcome_recorder"):
-        from life_graph.services.dev_outcomes import dev_outcome_recorder
+        from life_graph.services.dev.outcomes import dev_outcome_recorder
 
         # APPROVAL_RESOLVED is emitted by the approvals API in this process.
         dev_outcome_recorder.subscribe()
 
     with startup_step(report, "trajectory_recorder"):
-        from life_graph.services.trajectories import trajectory_recorder
+        from life_graph.services.dev.trajectories import trajectory_recorder
 
         # driver:steps is emitted by the dispatcher, in whichever process runs
         # the dev task: that is this one, the runner-lock holder.
@@ -357,7 +357,7 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
     with startup_step(report, "dev_task_queue"):
         import asyncio
 
-        from life_graph.services.dev_tasks import run_queue
+        from life_graph.services.dev.tasks import run_queue
 
         # Queued dev tasks (nightly suggestions) run here, where the drivers
         # are registered, one at a time.
@@ -483,7 +483,7 @@ async def lifespan(app: FastAPI):
     if app.state.dev_task_queue is not None:
         app.state.dev_task_queue.cancel()
     if app.state.dev_task_runner_lock is not None:
-        from life_graph.services.dev_tasks import release_runner_lock
+        from life_graph.services.dev.tasks import release_runner_lock
 
         try:
             await release_runner_lock(app.state.dev_task_runner_lock)

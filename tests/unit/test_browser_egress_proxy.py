@@ -58,7 +58,7 @@ import yaml
 from life_graph.services import browser_egress_proxy as ep
 from life_graph.services import browser_sandbox_driver as bsd
 from life_graph.services.browser_egress_proxy import BrowserEgressProxy, EgressDeniedError
-from life_graph.services.sandbox import SandboxUnavailableError
+from life_graph.services.dev.sandbox import SandboxUnavailableError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -1192,7 +1192,7 @@ def test_the_entrypoint_reads_its_configuration_from_the_environment(monkeypatch
     """So the compose service is configured without rewriting its command.
 
     The names are deliberately unprefixed: a ``LIFE_GRAPH_*`` variable is
-    application configuration and ``services/sandbox.py`` refuses to pass any
+    application configuration and ``services/dev/sandbox.py`` refuses to pass any
     of it into a sandbox container.
     """
     monkeypatch.setenv(ep.ENV_HOST, "0.0.0.0")
@@ -1326,7 +1326,7 @@ def test_the_deployed_proxy_url_is_the_one_the_driver_would_point_at(monkeypatch
     from nowhere else.
     """
     from life_graph.config import settings
-    from life_graph.services import sandbox as sb
+    from life_graph.services.dev import sandbox as sb
 
     url = f"http://{sb.EGRESS_SERVICE}:{sb.EGRESS_PROXY_PORT}"
     monkeypatch.setattr(settings, "browser_sandbox_egress_proxy_url", url, raising=False)

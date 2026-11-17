@@ -1,4 +1,4 @@
-from life_graph.services.github_pr import merge_approval_fields
+from life_graph.services.dev.github_pr import merge_approval_fields
 
 
 def test_merge_approval_fields_basic():

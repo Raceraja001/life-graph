@@ -9,7 +9,7 @@ import pytest
 
 from life_graph.core.events import Event, EventType, event_bus
 from life_graph.drivers.dispatcher import TaskDispatcher
-from life_graph.services.verifiers import VerifierResult
+from life_graph.services.dev.verifiers import VerifierResult
 
 
 class _FakeSession:

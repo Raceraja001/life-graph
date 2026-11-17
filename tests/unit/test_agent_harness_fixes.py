@@ -65,7 +65,7 @@ async def test_registry_returns_the_fit_error_to_the_model():
 
 
 def test_lint_evidence_keeps_every_finding_from_the_top():
-    from life_graph.services.verifiers import _ruff_issues
+    from life_graph.services.dev.verifiers import _ruff_issues
 
     short = "a.py:1:1: F821 Undefined name `logging`\nFound 1 error.\n"
     assert _ruff_issues(short) == short
@@ -96,7 +96,7 @@ FAILED test_x.py::test_err - KeyError: 'boom'
 
 
 def test_test_evidence_keeps_the_reasons_and_drops_the_warnings():
-    from life_graph.services.verifiers import _test_evidence
+    from life_graph.services.dev.verifiers import _test_evidence
 
     out = _test_evidence(PYTEST_OUT)
     assert out.startswith("=") and "FAILURES" in out.split("\n")[0]
@@ -106,7 +106,7 @@ def test_test_evidence_keeps_the_reasons_and_drops_the_warnings():
 
 
 def test_test_evidence_caps_a_long_section_but_keeps_the_summary():
-    from life_graph.services.verifiers import _test_evidence
+    from life_graph.services.dev.verifiers import _test_evidence
 
     many = "=== FAILURES ===\n" + "E   boom\n" * 600 + "600 failed in 1s\n"
     out = _test_evidence(many)
@@ -117,7 +117,7 @@ def test_test_evidence_caps_a_long_section_but_keeps_the_summary():
 
 def test_bounce_feedback_is_readable_text_not_a_dict_repr():
     from life_graph.drivers.dispatcher import failure_text
-    from life_graph.services.verifiers import VerifierResult
+    from life_graph.services.dev.verifiers import VerifierResult
 
     r = VerifierResult(
         verifier="tests_pass",
@@ -271,7 +271,7 @@ async def test_non_coding_and_read_only_runs_are_not_nudged(tmp_path):
 
 @pytest.fixture
 def sandboxed(monkeypatch, tmp_path):
-    from life_graph.services import sandbox
+    from life_graph.services.dev import sandbox
 
     calls = {}
 
@@ -305,7 +305,7 @@ async def test_run_tests_runs_pytest_in_the_sandbox_with_the_project_setup(sandb
 
 @pytest.mark.asyncio
 async def test_run_tests_refuses_outside_a_task_and_without_the_sandbox(monkeypatch, tmp_path):
-    from life_graph.services import sandbox
+    from life_graph.services.dev import sandbox
     from life_graph.tools._guards import confine_to
     from life_graph.tools.run_tests import project_settings, run_tests
 
@@ -429,7 +429,7 @@ async def test_self_check_is_silent_when_tests_pass_or_none_changed(
     repo_with_changes, monkeypatch, tmp_path_factory
 ):
     from life_graph.drivers import self_check
-    from life_graph.services import sandbox
+    from life_graph.services.dev import sandbox
 
     async def prepare_env(workdir, setup=None):
         return workdir

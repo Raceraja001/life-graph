@@ -59,7 +59,7 @@ _WRITE_TOOLS = frozenset({"file_write", "code_edit"})
 
 def _can_run_tests(packet: ContextPacket) -> bool:
     """A Python or JVM project, with the sandbox on and run_tests in the persona's tools."""
-    from life_graph.services import sandbox
+    from life_graph.services.dev import sandbox
 
     allowed = packet.allowed_tools
     ctx = packet.project_context or {}

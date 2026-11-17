@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from life_graph.cold_start.git_analyzer import GitAnalyzer
-from life_graph.services import project_learning as pl
+from life_graph.services.dev import project_learning as pl
 
 PROJECT = {"id": str(uuid.uuid4()), "name": "demo", "path": "/repo"}
 

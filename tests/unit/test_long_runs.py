@@ -309,7 +309,7 @@ async def test_local_driver_outcomes(events, success, reason, tmp_path):
 
 
 def test_failure_causes_name_the_new_stops():
-    from life_graph.services.failure_causes import classify
+    from life_graph.services.dev.failure_causes import classify
 
     stuck = classify(status="failed", error="Stopped: stuck in a loop (repeat).", steps=[])
     assert stuck["cause"] == "stuck"

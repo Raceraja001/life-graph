@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from life_graph.services.dev_tasks import driver_of
+from life_graph.services.dev.tasks import driver_of
 
 # Helper to create a task-like object
 

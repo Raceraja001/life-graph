@@ -8,7 +8,8 @@ import uuid
 import pytest
 
 from life_graph.models.db import AgentTask
-from life_graph.services import compute_router, dev_tasks
+from life_graph.services import compute_router
+from life_graph.services.dev import tasks as dev_tasks
 from tests.unit.fakes import FakeSession, session_factory
 
 EXHAUSTED = "All models are currently unavailable. Please try again shortly."

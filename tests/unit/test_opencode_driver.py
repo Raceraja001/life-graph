@@ -97,7 +97,7 @@ def test_every_text_part_is_kept_so_an_early_spec_survives():
     """Task 81de2480 wrote its ## Spec and its ## Understanding in separate
     text parts; only the last was kept, so the task's spec was null."""
     from life_graph.drivers.plan_spec import _extract_spec
-    from life_graph.services.proof_checks import _UNDERSTANDING_RE
+    from life_graph.services.dev.proof_checks import _UNDERSTANDING_RE
 
     run = "\n".join(
         [
@@ -163,7 +163,7 @@ async def test_a_timed_out_run_keeps_the_steps_it_printed(tmp_path):
 
 
 def test_the_prompt_says_what_can_and_cannot_run(tmp_path, monkeypatch):
-    from life_graph.services import sandbox
+    from life_graph.services.dev import sandbox
 
     monkeypatch.setattr(sandbox, "enabled", lambda: False)
     assert "cannot run tests" in OpencodeDriver._prompt(_packet(tmp_path))
@@ -173,7 +173,7 @@ def test_the_prompt_says_what_can_and_cannot_run(tmp_path, monkeypatch):
 
 
 def test_run_tests_is_served_over_mcp_only_with_the_sandbox(tmp_path, monkeypatch):
-    from life_graph.services import sandbox
+    from life_graph.services.dev import sandbox
 
     packet = _packet(tmp_path, ["code_edit", "run_tests"])
     packet.project_context["sandbox_setup"] = "uv sync --frozen"

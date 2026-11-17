@@ -60,7 +60,7 @@ def app(tmp_path, monkeypatch):
 
 
 async def _check(name: str, workdir: Path, ctx: dict):
-    from life_graph.services.verifiers import verifier_chain
+    from life_graph.services.dev.verifiers import verifier_chain
 
     (result,) = await verifier_chain.run_chain([name], workdir, ctx)
     return result

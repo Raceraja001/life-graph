@@ -301,7 +301,7 @@ async def create_dev_task(body: DevTaskCreate):
     offered back as ``driver_pr`` / ``driver_merge`` approvals.
     """
     from life_graph.api.dependencies import get_persona_service, get_project_registry
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     tenant_id = get_current_tenant_id()
     project = await get_project_registry().get_by_id(tenant_id, body.project_id)
@@ -331,7 +331,7 @@ async def create_dev_task(body: DevTaskCreate):
 
 @router.get("/tasks", summary="List dev tasks with PR and merge state")
 async def list_dev_tasks(limit: int = Query(50, ge=1, le=200)):
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     async with async_session() as session:
         data = await dev_tasks.list_dev_tasks(session, get_current_tenant_id(), limit)
@@ -351,7 +351,7 @@ async def get_dev_task_stats():
     average duration/cost, per (persona, project) pair. Same trust bar the
     dispatcher itself uses lives in TrustScore/track_record; this is a
     *readable summary* of dev_task outcomes, not another trust source."""
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     async with async_session() as session:
         data = await dev_tasks.dev_task_stats(session, get_current_tenant_id())
@@ -368,7 +368,7 @@ async def get_auto_merge_status():
     and whether the project opted in — so "why isn't this auto-merging" is
     answered by one glance instead of a hand-run curl against /tasks/stats
     plus mentally comparing it to 80%."""
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     async with async_session() as session:
         data = await dev_tasks.auto_merge_status(session, get_current_tenant_id())
@@ -386,7 +386,7 @@ async def get_dependency_audit_readiness():
     dependency manifest. This checks every active project's own manifest
     for a declared pip-audit dependency up front, so the gap is visible
     before it's found the hard way."""
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     data = await dev_tasks.dependency_audit_readiness(get_current_tenant_id())
     return success_response(data=data)
@@ -459,7 +459,7 @@ async def put_presence(body: PresenceUpdate):
 
 @router.get("/tasks/{task_id}", summary="Get one dev task")
 async def get_dev_task(task_id: str):
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     async with async_session() as session:
         data = await dev_tasks.get_dev_task(session, get_current_tenant_id(), task_id)
@@ -476,7 +476,7 @@ async def check_dev_task_conformance(task_id: str):
     """Run every acceptance criterion's bound test against the project's
     current HEAD (in a throwaway worktree) and store a per-criterion report
     on the task. Synchronous: returns once the tests have run."""
-    from life_graph.services.conformance import ConformanceError, check_conformance
+    from life_graph.services.dev.conformance import ConformanceError, check_conformance
 
     try:
         report = await check_conformance(async_session, get_current_tenant_id(), task_id)
@@ -494,7 +494,7 @@ async def get_dev_task_steps(task_id: str):
     (attempt 2 is the bounce). Content is redacted and size-capped; a step
     cut short carries ``properties.original_chars``. Empty when the task's
     driver ran before step recording existed."""
-    from life_graph.services.trajectories import list_steps
+    from life_graph.services.dev.trajectories import list_steps
 
     try:
         tid = uuid.UUID(task_id)
@@ -513,7 +513,7 @@ async def get_dev_task_diff(task_id: str):
     """From the task's newest driver_pr approval: branch, commits, changed
     files and the diff (capped; ``truncated`` says so). 404 until the task
     has landed a change."""
-    from life_graph.services import dev_tasks
+    from life_graph.services.dev import tasks as dev_tasks
 
     try:
         uuid.UUID(task_id)
@@ -589,7 +589,7 @@ async def report_production_finding(project_id: str, body: ProductionFindingBody
     """For external monitors: the fix goes through the normal dev-task gates
     (budget, verification, PR and merge approvals), never straight to production."""
     from life_graph.kernel.project_registry import ProjectRegistry
-    from life_graph.services.production_findings import file_fix_task
+    from life_graph.services.dev.production_findings import file_fix_task
 
     tenant = get_current_tenant_id()
     try:

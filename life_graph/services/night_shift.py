@@ -42,7 +42,7 @@ def _settled_at(task: dict) -> datetime | None:
 async def _waiting_reason(session: AsyncSession, tenant_id: str, task: dict) -> str:
     """Why this task is waiting for the owner, in the gate's own words."""
     from life_graph.models.db import Approval
-    from life_graph.services.change_policy import auto_gate
+    from life_graph.services.dev.change_policy import auto_gate
 
     if task["stage"] == "needs_review":
         return "its checks failed twice — needs your review"
@@ -67,7 +67,7 @@ async def report(
     """The night shift since *since* (default: the last 24 hours)."""
     from life_graph.models.db import AgentTask
     from life_graph.services.agent_insights import cause_of
-    from life_graph.services.dev_tasks import list_dev_tasks
+    from life_graph.services.dev.tasks import list_dev_tasks
 
     since = since or datetime.now(UTC) - timedelta(hours=24)
     tasks = await list_dev_tasks(session, tenant_id, limit=300)

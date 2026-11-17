@@ -2,7 +2,7 @@
 
 A capture is extracted by CaptureProcessors, which listens on the API
 process's in-memory event bus. A capture written by the worker (PR review
-feedback, services/dev_outcomes.py), or one whose handler died with the
+feedback, services/dev/outcomes.py), or one whose handler died with the
 process, stays ``received`` for good: on 2026-10-23 there were 970 of them,
 among them 6 of the owner's prompts and 5 voice notes. Nothing retried them.
 
