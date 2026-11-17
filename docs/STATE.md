@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-17 10:29 UTC` from `master` @ `1cff945`
+Generated `2026-11-17 11:21 UTC` from `master` @ `7048227`
 
 ---
 
@@ -16,7 +16,7 @@ Generated `2026-11-17 10:29 UTC` from `master` @ `1cff945`
 
 | | |
 |---|---|
-| HTTP operations | **390** across 338 paths, 45 tags |
+| HTTP operations | **394** across 341 paths, 46 tags |
 | Database tables | **88** |
 | Migrations | **59** (head: `059_durable_capabilities_and_standing_rules`) |
 | Event types | **79** |
@@ -24,15 +24,15 @@ Generated `2026-11-17 10:29 UTC` from `master` @ `1cff945`
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
 | Config settings | **296** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4917** in 511 files |
-| Dashboard pages | **22** |
-| Python | 496 files, 137,024 lines |
+| Test functions | **4935** in 512 files |
+| Dashboard pages | **23** |
+| Python | 497 files, 137,446 lines |
 
 ---
 
 ## HTTP API
 
-390 operations, grouped by OpenAPI tag.
+394 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -551,6 +551,15 @@ Generated `2026-11-17 10:29 UTC` from `master` @ `1cff945`
 | POST | `/api/v1/search/recall` | Proactive recall at session start |
 | POST | `/api/v1/search/recall/event` | Mid-session event-driven recall |
 
+### `skills` — 4
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/skills/` | List procedural skills |
+| DELETE | `/api/v1/skills/{skill_id}` | Archive a skill |
+| GET | `/api/v1/skills/{skill_id}` | Get one procedural skill |
+| POST | `/api/v1/skills/{skill_id}/approve` | Approve a skill into active recall |
+
 ### `telegram` — 4
 
 | Method | Path | Summary |
@@ -926,7 +935,7 @@ Generated `2026-11-17 10:29 UTC` from `master` @ `1cff945`
 
 ## Dashboard
 
-22 pages.
+23 pages.
 
 | Route | File |
 |---|---|
@@ -951,6 +960,7 @@ Generated `2026-11-17 10:29 UTC` from `master` @ `1cff945`
 | `/memories` | `dashboard/app/memories/page.tsx` |
 | `/` | `dashboard/app/page.tsx` |
 | `/settings` | `dashboard/app/settings/page.tsx` |
+| `/skills` | `dashboard/app/skills/page.tsx` |
 | `/tasks` | `dashboard/app/tasks/page.tsx` |
 
 ---
@@ -1017,10 +1027,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 394 | 4068 |
+| `tests/unit/` | 395 | 4086 |
 | `tests/integration/` | 116 | 837 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **511** | **4917** |
+| **total** | **512** | **4935** |
 
 ---
 
