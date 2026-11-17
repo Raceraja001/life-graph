@@ -207,7 +207,7 @@ async def test_limit_defaults_to_five_and_caps_at_twenty(wire):
 
 
 async def test_never_calls_a_write_path(wire, monkeypatch):
-    from life_graph.services.memory.recall import RecallEngine
+    from life_graph.services.recall import RecallEngine
     from life_graph.storage.postgres import PostgresMemoryStore
 
     # The tripwire names must be the real store's, or this proves nothing.

@@ -403,7 +403,7 @@ class LifeGraph(Method):
     """L: Life Graph's real extractor and slot rules (PYTHONPATH must point at a
     life-graph checkout): every fact is a note; slotted facts form the owner's
     form, a new value replacing the old (kept as history); Jarvis gets the form
-    plus the best notes, as services/memory/context.py does."""
+    plus the best notes, as services/memory_context.py does."""
 
     key, name = "L", "Life Graph: notes + form (real code)"
 
@@ -613,7 +613,7 @@ _CURRENT = {"key": ""}
 
 
 def _count_judge() -> None:
-    from life_graph.services.memory import retrieval as memory_retrieval
+    from life_graph.services import memory_retrieval
 
     if getattr(memory_retrieval, "_bakeoff_counted", False):
         return
@@ -669,7 +669,7 @@ def _dated_extraction():
 
 
 class RealLifeGraph(Method):
-    """R*: what Jarvis gets in production (services/memory/context.py: the form,
+    """R*: what Jarvis gets in production (services/memory_context.py: the form,
     then search + links + cold tier, filtered by the local relevance judge),
     with the 2026-10-31 brain steps switched on or off. Asking changes nothing:
     usage counts, used-together links and reawakening are off here, so variants
@@ -701,7 +701,7 @@ class RealLifeGraph(Method):
         if self.decay_first:
             await _REAL.decay(data["today"])
         from life_graph.api.dependencies import get_store
-        from life_graph.services.memory import context as memory_context
+        from life_graph.services import memory_context
 
         async def nothing(*a, **k):
             return 0
@@ -712,7 +712,7 @@ class RealLifeGraph(Method):
 
     async def context(self, q, llm, emb):
         from life_graph.core.tenant import tenant_scope
-        from life_graph.services.memory import context as memory_context
+        from life_graph.services import memory_context
 
         async with _REAL_GATE:
             self._apply()

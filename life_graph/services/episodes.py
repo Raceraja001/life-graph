@@ -357,7 +357,7 @@ async def episodes_between(
 
     Defaults to active rows; historical queries pass statuses including
     superseded and archived so bitemporal filtering in
-    services/memory/retrieval.py can reconstruct what was believed at an
+    services/memory_retrieval.py can reconstruct what was believed at an
     earlier transaction-time cutoff.
     """
     from life_graph.models.db import Memory

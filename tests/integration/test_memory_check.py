@@ -55,7 +55,7 @@ async def _memory(content: str, *, status="pending", age_hours: float, props=Non
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_a_few_a_day_are_asked_about_in_one_chat_and_keep_drop_work(client, monkeypatch):
-    from life_graph.services.memory import check as memory_check
+    from life_graph.services import memory_check
     from life_graph.storage.database import async_session
 
     monkeypatch.setattr(memory_check, "PER_DAY", 2)
@@ -111,7 +111,7 @@ async def test_a_few_a_day_are_asked_about_in_one_chat_and_keep_drop_work(client
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_nothing_pending_means_no_message_and_no_chat(client):
-    from life_graph.services.memory import check as memory_check
+    from life_graph.services import memory_check
     from life_graph.storage.database import async_session
 
     tenant = f"memchk_{uuid.uuid4().hex[:8]}"

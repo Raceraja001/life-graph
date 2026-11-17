@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import MemoryLinkCreate, MemoryLinkResponse
-from life_graph.services.memory import links as link_service
+from life_graph.services import memory_links as link_service
 
 logger = logging.getLogger(__name__)
 

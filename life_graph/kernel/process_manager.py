@@ -663,10 +663,10 @@ class ProcessManager:
             and lead_route.kind == "personal"
             and (lead_route.pinned or run_is_local(orchestrator.model))
         ):
-            # The owner's memories, on a local run only (services/memory/context.py):
+            # The owner's memories, on a local run only (services/memory_context.py):
             # a personal route is pinned to local models (only_models below), or
             # its model and every fallback are local.
-            from life_graph.services.memory.context import memory_block
+            from life_graph.services.memory_context import memory_block
 
             started = time.monotonic()
             remembered = await memory_block(

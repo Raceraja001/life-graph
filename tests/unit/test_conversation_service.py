@@ -378,8 +378,7 @@ async def test_ask_passes_prior_turns_as_history_excluding_current_question(monk
 async def test_the_default_retrieval_uses_the_judged_search_with_follow_ups(monkeypatch):
     from types import SimpleNamespace
 
-    from life_graph.services import conversation
-    from life_graph.services.memory import retrieval as memory_retrieval
+    from life_graph.services import conversation, memory_retrieval
 
     seen = {}
     mem = SimpleNamespace(

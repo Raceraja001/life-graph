@@ -186,14 +186,14 @@ def test_recall_session_id_prefers_the_field_then_the_context():
 
 
 def _engine(store):
-    from life_graph.services.memory.recall import RecallEngine
+    from life_graph.services.recall import RecallEngine
 
     return RecallEngine(store, ranker=MagicMock(), context_builder=MagicMock())
 
 
 @pytest.mark.asyncio
 async def test_disclosure_in_a_session_links_the_memories_as_recalled(monkeypatch):
-    from life_graph.services.memory import recall
+    from life_graph.services import recall
 
     monkeypatch.setattr(recall, "get_redis", lambda: None)
     store = SimpleNamespace(
@@ -213,7 +213,7 @@ async def test_disclosure_in_a_session_links_the_memories_as_recalled(monkeypatc
 
 @pytest.mark.asyncio
 async def test_a_failed_link_never_costs_the_caller_its_recall(monkeypatch):
-    from life_graph.services.memory import recall
+    from life_graph.services import recall
 
     monkeypatch.setattr(recall, "get_redis", lambda: None)
     store = SimpleNamespace(

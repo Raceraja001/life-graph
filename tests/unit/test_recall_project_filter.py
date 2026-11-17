@@ -20,9 +20,7 @@ import pathlib
 
 from life_graph.scoring.ranking import context_similarity
 
-RECALL_PY = (
-    pathlib.Path(__file__).resolve().parents[2] / "life_graph" / "services" / "memory" / "recall.py"
-)
+RECALL_PY = pathlib.Path(__file__).resolve().parents[2] / "life_graph" / "services" / "recall.py"
 
 
 def _retrieve_candidates_source() -> str:

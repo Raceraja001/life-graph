@@ -1,4 +1,4 @@
-"""Jarvis starts a personal answer with the owner's matching memories (services/memory/context.py)."""
+"""Jarvis starts a personal answer with the owner's matching memories (services/memory_context.py)."""
 
 from __future__ import annotations
 
@@ -6,9 +6,8 @@ import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from life_graph.services import profile_card
-from life_graph.services.memory import retrieval as memory_retrieval
-from life_graph.services.memory.context import (
+from life_graph.services import memory_retrieval, profile_card
+from life_graph.services.memory_context import (
     HEADER,
     NOTHING_ELSE,
     NOTHING_FOUND,

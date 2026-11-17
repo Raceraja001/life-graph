@@ -39,7 +39,7 @@ def test_ranker_scores_exactly_the_keys_retrieval_supplies():
     import ast
     import textwrap
 
-    from life_graph.services.memory.recall import RecallEngine
+    from life_graph.services.recall import RecallEngine
 
     src = textwrap.dedent(inspect.getsource(RecallEngine._retrieve_candidates))
     built = {

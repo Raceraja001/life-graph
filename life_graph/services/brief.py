@@ -23,8 +23,8 @@ from sqlalchemy import func, select
 from life_graph.config import settings
 from life_graph.core.events import EventBus, EventType
 from life_graph.models.db import Approval, CaptureEvent, Decision, Memory, Notification
+from life_graph.services import memory_yield
 from life_graph.services.interview import InterviewService
-from life_graph.services.memory import capture_yield as memory_yield
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -459,7 +459,7 @@ class BriefComposer:
         )
 
     async def _memory_yield_lines(self, tenant_id: str, since: datetime) -> list[str]:
-        """What the capture spine kept in the window (services/memory/capture_yield.py).
+        """What the capture spine kept in the window (services/memory_yield.py).
 
         Counts only. The line that says "935 captures → 2 kept" is the one
         nobody had on 2026-10-24.

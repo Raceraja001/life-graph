@@ -66,7 +66,7 @@ from life_graph.models.vault import VaultSecret
 from life_graph.services import browser_errand as be
 from life_graph.services import destination_validator as dv
 from life_graph.services import vault
-from life_graph.services.memory.retrieval import is_bitemporally_valid, is_known_at
+from life_graph.services.memory_retrieval import is_bitemporally_valid, is_known_at
 from life_graph.services.spend_guardrails import SpendCapExceededError, SpendTracker
 from tests.conftest import fake_request
 from tests.unit.fakes import FakeSession, sql

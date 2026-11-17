@@ -21,9 +21,9 @@ _RETRIEVE_LIMIT = 8
 
 async def _judged_retrieve(question: str, history: list[dict[str, str]]) -> list[dict[str, Any]]:
     """Active memories that answer *question* (a short follow-up searched with the
-    previous question), via services/memory/retrieval.py, as synthesis dicts."""
-    from life_graph.services.memory.context import search_text
-    from life_graph.services.memory.retrieval import retrieve
+    previous question), via services/memory_retrieval.py, as synthesis dicts."""
+    from life_graph.services.memory_context import search_text
+    from life_graph.services.memory_retrieval import retrieve
 
     found = await retrieve(search_text(question, history), limit=_RETRIEVE_LIMIT) or []
     return [

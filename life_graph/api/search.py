@@ -35,8 +35,8 @@ from life_graph.models.schemas import (
     TrailPassage,
 )
 from life_graph.scoring.ranking import to_index
-from life_graph.services.memory.metamemory import MetamemoryTracker
-from life_graph.services.memory.recall import RecallEngine
+from life_graph.services.metamemory import MetamemoryTracker
+from life_graph.services.recall import RecallEngine
 from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)
@@ -179,7 +179,7 @@ def _to_memory_responses(hits: list[tuple[Any, float]]) -> list[MemoryResponse]:
     from the best of a bad lot. Search always returns `limit` rows, so without
     it nothing downstream can decline to answer.
     """
-    from life_graph.services.memory.recall import _dict_to_memory_response
+    from life_graph.services.recall import _dict_to_memory_response
 
     out: list[MemoryResponse] = []
     for obj, score in hits:
@@ -349,12 +349,12 @@ async def semantic_search(
 
     if search_mode == "judged":
         # ── Judged: hybrid's candidates, kept and ordered by the relevance
-        # judge (services/memory/retrieval.py), as Jarvis does. Measured
+        # judge (services/memory_retrieval.py), as Jarvis does. Measured
         # 2026-10-29 on the owner's memories: first result right 89.2% vs
         # 78.5% for hybrid, and it can return nothing when nothing fits
         # (5 of 10 unanswerable questions; hybrid 0 of 10).
         try:
-            from life_graph.services.memory.retrieval import CANDIDATES, judge
+            from life_graph.services.memory_retrieval import CANDIDATES, judge
 
             candidates = await store.hybrid_search(
                 embedding=embedding,
@@ -613,13 +613,13 @@ async def ask_brain(
             source_count=0,
         )
 
-    # The memories that answer it, as Jarvis finds them (services/memory/retrieval.py):
+    # The memories that answer it, as Jarvis finds them (services/memory_retrieval.py):
     # active only, hybrid search plus memories linked to what it names and the
     # day summaries of a period it asks about, kept and ordered by the
     # relevance judge, and none when none fits. Until 2026-10-29 this was the
     # 10 nearest by meaning alone, related or not (first result right 84.9% vs
     # 89.2% judged, on the owner's memories).
-    from life_graph.services.memory.retrieval import retrieve
+    from life_graph.services.memory_retrieval import retrieve
 
     rows = (
         await retrieve(

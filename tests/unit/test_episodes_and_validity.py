@@ -9,7 +9,7 @@ import pytest
 from life_graph.core.memory_manager import _end_of_day
 from life_graph.extraction.llm import _validity
 from life_graph.services.episodes import time_window
-from life_graph.services.memory.context import render
+from life_graph.services.memory_context import render
 
 THU = date(2026, 10, 22)  # a Thursday
 
