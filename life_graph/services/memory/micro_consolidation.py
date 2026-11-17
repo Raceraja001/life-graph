@@ -228,7 +228,7 @@ class MicroConsolidator:
                             .values(
                                 status="superseded",
                                 superseded_by=existing.id,
-                                # A duplicate, not an earlier value (services/memory_tiers.py).
+                                # A duplicate, not an earlier value (services/memory/tiers.py).
                                 properties=func.coalesce(Memory.properties, cast("{}", JSONB)).op(
                                     "||"
                                 )(cast(json.dumps({"merged_into": str(existing.id)}), JSONB)),

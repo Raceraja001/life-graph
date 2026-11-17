@@ -27,7 +27,7 @@ from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import classify_ingress
 from life_graph.models.db import Memory
 from life_graph.models.schemas import MemoryCreate, MemoryResponse, MemoryUpdate
-from life_graph.services.recall import RecallEngine
+from life_graph.services.memory.recall import RecallEngine
 from life_graph.storage.postgres import PostgresMemoryStore
 
 logger = logging.getLogger(__name__)

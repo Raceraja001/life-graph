@@ -9,7 +9,7 @@ so none of them could read memory at all.
 **Read-only by construction.** It runs the same two calls the search
 route uses — ``MemoryManager.generate_embedding`` plus
 ``PostgresMemoryStore.hybrid_search`` — and nothing else. It deliberately
-does *not* go through ``services/recall.py``: that engine is driven by a
+does *not* go through ``services/memory/recall.py``: that engine is driven by a
 context fingerprint rather than a query, and its full-disclosure path
 writes (7-day cooldown keys, ``touch_many``). Surfacing a memory to an
 agent here records no access count, no cooldown and no reinforcement.

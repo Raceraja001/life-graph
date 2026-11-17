@@ -80,7 +80,7 @@ def _evidence(m: Any) -> str:
 def row(m: Any) -> dict[str, Any]:
     """One memory as the page shows it."""
     from life_graph.services.jarvis_memory import kind_of
-    from life_graph.services.memory_sources import source_label as _source
+    from life_graph.services.memory.sources import source_label as _source
 
     props = m.properties or {}
     slot = props.get("slot")
@@ -112,7 +112,7 @@ def _cold_clause(tenant_id: str):
     not a bulk clean-up, not from before the owner's fresh start."""
     from life_graph.config import settings
     from life_graph.models.db import Memory
-    from life_graph.services.memory_tiers import BULK_ARCHIVES, COLD_STATUSES
+    from life_graph.services.memory.tiers import BULK_ARCHIVES, COLD_STATUSES
 
     clauses = [
         Memory.tenant_id == tenant_id,
@@ -148,7 +148,7 @@ async def _replacements(session, tenant_id: str, ids: list[Any]) -> dict[Any, tu
 
 
 def _cold_label(m: Any, replaced: dict[Any, tuple]) -> str:
-    from life_graph.services import memory_tiers
+    from life_graph.services.memory import tiers as memory_tiers
 
     if m.superseded_by in replaced:
         m.replaced = replaced[m.superseded_by]
@@ -338,7 +338,7 @@ async def connections(tenant_id: str, memory_id: uuid.UUID) -> dict[str, Any] | 
     replaced by, and the entities it mentions. None when it is not this tenant's."""
     from life_graph.models.assistant import Entity, MemoryEntity
     from life_graph.models.db import Memory
-    from life_graph.services.associations import _EFFECTIVE, HALF_LIFE_DAYS, LINK_TYPE
+    from life_graph.services.memory.associations import _EFFECTIVE, HALF_LIFE_DAYS, LINK_TYPE
 
     async with async_session() as session:
         m = await _get(session, tenant_id, memory_id)

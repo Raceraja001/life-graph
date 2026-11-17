@@ -218,7 +218,7 @@ async def test_an_unclear_correction_waits_and_keep_replaces():
     from httpx import ASGITransport, AsyncClient
 
     from life_graph.main import app
-    from life_graph.services import memory_check
+    from life_graph.services.memory import check as memory_check
     from life_graph.storage.database import async_session
 
     tag = uuid.uuid4().hex[:6]

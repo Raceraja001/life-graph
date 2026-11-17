@@ -1,5 +1,5 @@
-"""Cold labels, link pairs and strength order (services/memory_tiers.py,
-services/associations.py, services/memory_retrieval.py; 2026-10-31)."""
+"""Cold labels, link pairs and strength order (services/memory/tiers.py,
+services/memory/associations.py, services/memory/retrieval.py; 2026-10-31)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,10 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from life_graph.services import associations, memory_context, memory_retrieval, memory_tiers
+from life_graph.services.memory import associations
+from life_graph.services.memory import context as memory_context
+from life_graph.services.memory import retrieval as memory_retrieval
+from life_graph.services.memory import tiers as memory_tiers
 
 
 def _m(**kw):
