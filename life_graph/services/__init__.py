@@ -20,7 +20,7 @@ def __getattr__(name):
         "ContradictionDetector": ("life_graph.services.contradiction", "ContradictionDetector"),
         "Contradiction": ("life_graph.services.contradiction", "Contradiction"),
         "IdentityService": ("life_graph.services.identity", "IdentityService"),
-        "RecallEngine": ("life_graph.services.recall", "RecallEngine"),
+        "RecallEngine": ("life_graph.services.memory.recall", "RecallEngine"),
         "TriggerMatcher": ("life_graph.services.triggers", "TriggerMatcher"),
         "PreferenceGraphService": (
             "life_graph.services.preference_graph",

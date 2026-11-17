@@ -1,4 +1,4 @@
-"""The relevance judge keeps only memories that help answer — or none (services/memory_retrieval.py)."""
+"""The relevance judge keeps only memories that help answer — or none (services/memory/retrieval.py)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from life_graph.services.memory_retrieval import judge, retrieve
+from life_graph.services.memory.retrieval import judge, retrieve
 
 
 @pytest.fixture(autouse=True)
@@ -136,7 +136,7 @@ async def test_a_named_entity_adds_its_memories_to_the_judges_candidates(monkeyp
     ],
 )
 def test_about_questions(question, about):
-    from life_graph.services.memory_retrieval import ABOUT
+    from life_graph.services.memory.retrieval import ABOUT
 
     assert bool(ABOUT.search(question)) is about
 

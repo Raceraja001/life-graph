@@ -41,12 +41,12 @@ logger = logging.getLogger(__name__)
 
 
 async def _link_said_together(memories: list[Memory]) -> None:
-    """Facts from one message are linked (services/associations.py)."""
+    """Facts from one message are linked (services/memory/associations.py)."""
     tenant = next(
         (t for m in memories if isinstance(t := getattr(m, "tenant_id", None), str)), None
     )
     if tenant and len(memories) > 1:
-        from life_graph.services import associations
+        from life_graph.services.memory import associations
 
         await associations.said_together(tenant, [m.id for m in memories])
 
@@ -852,7 +852,7 @@ AUTO_APPROVE_MIN_CONFIDENCE = 0.8
 #: How sure it must be of a firm fact the owner stated without asking.
 AUTO_KEEP_MIN_CONFIDENCE = 0.9
 #: What the owner states firmly. Not ``intention``: plans change, and those
-#: wait for the owner's Keep or Drop in the Memory check (services/memory_check.py).
+#: wait for the owner's Keep or Drop in the Memory check (services/memory/check.py).
 AUTO_KEEP_TYPES = frozenset({"fact", "preference", "anti_preference", "decision"})
 #: Wording of a thought in progress, not a settled fact: "is considering…",
 #: "for now". On 2026-10-28 "The owner prefers using existing tools like Dify"

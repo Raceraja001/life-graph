@@ -124,7 +124,7 @@ async def _run(agent, persona, message, tool_override=None, **extra):
         patch("life_graph.tools.registry.registry", _FakeReg()),
         patch("life_graph.agents.orchestrator.AgentOrchestrator", _FakeOrchestrator),
         patch("life_graph.connectors.chat_context.context_for") as context_for,
-        patch("life_graph.services.memory_context.memory_block", _no_memories),
+        patch("life_graph.services.memory.context.memory_block", _no_memories),
     ):
         out = await pm._run_agent(
             "t1", agent, {"message": message, **extra}, persona, tool_override=tool_override
@@ -149,7 +149,7 @@ async def test_a_turn_records_what_shaped_it():
         patch("life_graph.tools.registry.registry", _FakeReg()),
         patch("life_graph.agents.orchestrator.AgentOrchestrator", _FakeToolOrchestrator),
         patch("life_graph.connectors.chat_context.context_for"),
-        patch("life_graph.services.memory_context.memory_block", remembered),
+        patch("life_graph.services.memory.context.memory_block", remembered),
     ):
         out = await pm._run_agent("t1", "jarvis", {"message": "what bills are due?"}, _persona())
     trace = out["trace"]

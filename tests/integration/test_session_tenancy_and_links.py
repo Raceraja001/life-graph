@@ -333,7 +333,7 @@ async def test_an_expand_in_a_session_feeds_impact_scoring(client):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_micro_consolidation_gathers_created_memories_only(client):
-    from life_graph.services.micro_consolidation import MicroConsolidator
+    from life_graph.services.memory.micro_consolidation import MicroConsolidator
     from life_graph.storage.database import async_session
     from life_graph.storage.postgres import PostgresMemoryStore
 

@@ -30,7 +30,7 @@ from typing import Any
 
 from life_graph.core.evidence import ABSTAIN, CONTRADICTED, extract_claim_evidence
 from life_graph.services.episodes import time_window
-from life_graph.services.memory_retrieval import is_bitemporally_valid
+from life_graph.services.memory.retrieval import is_bitemporally_valid
 
 ROOT = Path(__file__).resolve().parents[2]
 TUNING_DATASET = ROOT / "evals" / "memory_structures" / "test_life.json"

@@ -1,5 +1,5 @@
 """Memory yield: captures per surface against the memories they became, and
-the brief lines that say so (services/memory_yield.py)."""
+the brief lines that say so (services/memory/capture_yield.py)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from life_graph.services import memory_yield
 from life_graph.services.brief import BriefComposer
+from life_graph.services.memory import capture_yield as memory_yield
 from tests.unit.fakes import FakeSession
 
 SINCE = datetime(2026, 10, 23, tzinfo=UTC)
