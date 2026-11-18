@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-18 10:54 UTC` from `master` @ `e581c52`
+Generated `2026-11-18 12:04 UTC` from `master` @ `0100e45`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-18 10:54 UTC` from `master` @ `e581c52`
 
 | | |
 |---|---|
-| HTTP operations | **395** across 342 paths, 46 tags |
-| Database tables | **88** |
-| Migrations | **59** (head: `059_durable_capabilities_and_standing_rules`) |
+| HTTP operations | **397** across 344 paths, 46 tags |
+| Database tables | **89** |
+| Migrations | **60** (head: `060_dev_task_events`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
-| Config settings | **310** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5039** in 522 files |
+| Config settings | **312** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5058** in 524 files |
 | Dashboard pages | **23** |
-| Python | 562 files, 139,737 lines |
+| Python | 563 files, 140,404 lines |
 
 ---
 
 ## HTTP API
 
-395 operations, grouped by OpenAPI tag.
+397 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -187,7 +187,7 @@ Generated `2026-11-18 10:54 UTC` from `master` @ `e581c52`
 | GET | `/api/v1/autonomy/trust/scores` | List Scores |
 | GET | `/api/v1/autonomy/trust/scores/{score_id}` | Get Score |
 
-### `drivers` — 23
+### `drivers` — 25
 
 | Method | Path | Summary |
 |---|---|---|
@@ -212,6 +212,8 @@ Generated `2026-11-18 10:54 UTC` from `master` @ `e581c52`
 | POST | `/api/v1/kernel/drivers/tasks/{task_id}/cancel` | Cancel a queued or running dev task |
 | POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/events` | The task's live session events after a sequence number (long-poll) |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/events/stream` | The task's live session as Server-Sent Events (resumes from Last-Event-ID) |
 | GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
 | GET | `/api/v1/kernel/drivers/templates` | App templates a new project can start from |
 
@@ -663,7 +665,7 @@ Generated `2026-11-18 10:54 UTC` from `master` @ `e581c52`
 
 ## Database tables
 
-88 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
+89 tables. **Tenant** marks a `tenant_id` column — the multi-tenancy invariant requires every query to filter on it.
 
 | Table | Columns | Tenant | Created by |
 |---|---:|:---:|---|
@@ -686,6 +688,7 @@ Generated `2026-11-18 10:54 UTC` from `master` @ `e581c52`
 | `conversation_messages` | 8 | ✓ | `027_conversations` |
 | `conversations` | 6 | ✓ | `027_conversations` |
 | `cross_system_syncs` | 20 | ✓ | `017_agent_networks` |
+| `dev_task_events` | 9 | ✓ | `060_dev_task_events` |
 | `device_pairing_codes` | 5 | ✓ | `052_devices` |
 | `devices` | 7 | ✓ | `052_devices` |
 | `documents` | 15 | ✓ | `045_documents` |
@@ -1016,9 +1019,9 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 
 ## Migrations
 
-59 revisions, head `059_durable_capabilities_and_standing_rules`.
+60 revisions, head `060_dev_task_events`.
 
-`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules`
+`001_initial_schema` · `002_add_age_graph` · `003_multi_tenancy` · `004_webhooks_tenants_dedup` · `005_cold_start_config` · `006_confidence_decay` · `007_bm25_search` · `008_impact_scoring` · `009_memory_links` · `010_procedures` · `011_os_kernel` · `012_scheduled_jobs` · `013_projects_notifications` · `014_personal_ai` · `015_self_improving` · `016_ambient_ai` · `017_agent_networks` · `018_autonomous_ai` · `019_capture_spine` · `020_judgment_engine` · `021_agent_drivers` · `022_trust_tiers` · `023_budget_spend` · `024_shadow_mode` · `025_embedding_dim` · `026_approvals` · `027_conversations` · `028_push_subscriptions` · `029_conversation_last_distilled_at` · `030_external_sessions` · `031_add_kind_instruction_to_autonomy` · `032_autonomy_kill_switch` · `033_widen_evidence_stance` · `034_notification_channel_name` · `035_decay_horizon_six_months` · `036_backfill_memory_trust_tiers` · `037_telegram_bridge` · `038_extraction_traces` · `039_connectors` · `040_connector_contacts` · `041_connector_code` · `042_connector_tasks` · `043_assistant_message_surface` · `044_agent_run_steps` · `045_documents` · `046_money` · `047_page_monitors` · `048_review_cards` · `049_invoices` · `050_llm_offers` · `051_topic_findings` · `052_devices` · `053_entities` · `054_feature_ideas` · `055_feature_idea_worth` · `056_study_upgrade` · `057_entity_aliases` · `058_vault_secrets` · `059_durable_capabilities_and_standing_rules` · `060_dev_task_events`
 
 ---
 
@@ -1028,16 +1031,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 404 | 4181 |
-| `tests/integration/` | 117 | 846 |
+| `tests/unit/` | 405 | 4190 |
+| `tests/integration/` | 118 | 856 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **522** | **5039** |
+| **total** | **524** | **5058** |
 
 ---
 
 ## Configuration
 
-310 settings, all overridable by environment variable.
+312 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1211,6 +1214,8 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DEV_RUNNER_LEASE_STALE_SECONDS` | `180` |
 | `LIFE_GRAPH_DEV_RUNNER_CANCEL_POLL_SECONDS` | `3` |
 | `LIFE_GRAPH_DEV_RUNNER_DRAIN_SECONDS` | `1500` |
+| `LIFE_GRAPH_DEV_TASK_EVENTS_RETENTION_DAYS` | `14` |
+| `LIFE_GRAPH_DEV_TASK_MAX_TIMEOUT_SECONDS` | `3600` |
 | `LIFE_GRAPH_TRAJECTORY_STEP_MAX_CHARS` | `16000` |
 | `LIFE_GRAPH_TRAJECTORY_OPT_OUT_TENANTS` | `''` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |
