@@ -79,7 +79,7 @@ def _evidence(m: Any) -> str:
 
 def row(m: Any) -> dict[str, Any]:
     """One memory as the page shows it."""
-    from life_graph.services.jarvis_memory import kind_of
+    from life_graph.services.jarvis.memory import kind_of
     from life_graph.services.memory.sources import source_label as _source
 
     props = m.properties or {}
@@ -178,7 +178,7 @@ async def overview(
     """Everything the page shows, for *tenant_id*. ``q`` narrows notes, the form and
     the cold tier by substring; ``kind``/``evidence`` narrow notes; ``topic`` the form."""
     from life_graph.models.db import Memory
-    from life_graph.services.jarvis_memory import kind_of
+    from life_graph.services.jarvis.memory import kind_of
 
     q = " ".join((q or "").split()).casefold()
     notes_limit = max(1, min(int(notes_limit), NOTES_MAX))

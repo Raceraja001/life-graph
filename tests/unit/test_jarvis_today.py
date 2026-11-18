@@ -1,4 +1,4 @@
-"""GET /jarvis/today (services/jarvis_today.py): the Today screen's assembly,
+"""GET /jarvis/today (services/jarvis/today.py): the Today screen's assembly,
 each source failing on its own, the insight rules, and every query scoped to
 the device's tenant. No database: sources are faked or their SQL inspected."""
 
@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from life_graph.services import jarvis_today as jt
+from life_graph.services.jarvis import today as jt
 from tests.unit.fakes import FakeSession, session_factory, sql
 
 NOW = datetime(2026, 10, 25, 9, 42, tzinfo=UTC)

@@ -1,4 +1,4 @@
-"""Answer cards (services/jarvis_cards.py, api/jarvis.py): each card tool's
+"""Answer cards (services/jarvis/cards.py, api/jarvis.py): each card tool's
 result as the app's cards, results cut at 2,000 characters read up to the
 cut, local_only accounts masked, the chat stream's card events after the
 existing ones, and the voice reply's cards from the run's own tool results."""
@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from life_graph.services import jarvis_cards as jc
 from life_graph.services.chat_stream import _trim
+from life_graph.services.jarvis import cards as jc
 
 CARD_KEYS = {"kind", "id", "title", "subtitle", "amount", "when", "actions", "source"}
 

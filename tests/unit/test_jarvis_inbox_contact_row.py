@@ -1,4 +1,4 @@
-from life_graph.services.jarvis_inbox import _first_phone, contact_row
+from life_graph.services.jarvis.inbox import _first_phone, contact_row
 
 
 def test_contact_row_with_all_fields():

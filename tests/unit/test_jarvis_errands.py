@@ -2,7 +2,7 @@
 
 Three files meet here: ``tools/errand.py`` (the chat-facing tool),
 ``services/notification_actions.py`` (the Approve/Reject buttons) and
-``services/jarvis_today.py`` (the card on the Today screen). The engine
+``services/jarvis/today.py`` (the card on the Today screen). The engine
 underneath is covered by ``test_browser_errand.py``; what these tests check is
 the wiring, and specifically that the wiring did not become a way around the
 engine:
@@ -39,8 +39,9 @@ from life_graph.core.tenant import tenant_scope
 from life_graph.core.trust import UNTRUSTED_PREAMBLE
 from life_graph.services import browser_errand as be
 from life_graph.services import destination_validator as dv
-from life_graph.services import jarvis_today, vault
 from life_graph.services import notification_actions as na
+from life_graph.services import vault
+from life_graph.services.jarvis import today as jarvis_today
 from life_graph.storage import database
 from life_graph.tools import errand
 from tests.unit.fakes import FakeSession, session_factory

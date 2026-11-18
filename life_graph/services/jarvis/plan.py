@@ -1,7 +1,7 @@
 """The phone's Plan screen: the next days, one row each (life-graph-android docs/PLAN-v4.md, S2).
 
 ``GET /jarvis/plan?days=N`` (api/jarvis.py) reads each source on its own here,
-as the Today screen does (services/jarvis_today.py), then :func:`assemble`
+as the Today screen does (services/jarvis/today.py), then :func:`assemble`
 puts every item on its day in the owner's time zone. A source that fails is
 ``None`` and only its kind is empty; the failure is logged at debug level by
 source name and exception type only.

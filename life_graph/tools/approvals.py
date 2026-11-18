@@ -3,7 +3,7 @@
 Read-only (web-chat-wave1 F4). Jarvis lists the pending items of the approvals
 queue (pull requests its agents made, models to adopt, contradictions it
 resolved); the chat shows each as a card whose buttons the owner presses
-(services/jarvis_cards.py). Jarvis itself can never approve or reject: no
+(services/jarvis/cards.py). Jarvis itself can never approve or reject: no
 tool does that, and the buttons call the same endpoints as the inbox.
 """
 

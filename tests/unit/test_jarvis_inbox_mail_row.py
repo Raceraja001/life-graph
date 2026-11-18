@@ -1,8 +1,8 @@
-"""Tests for the mail_row function in life_graph/services/jarvis_inbox.py."""
+"""Tests for the mail_row function in life_graph/services/jarvis/inbox.py."""
 
 from datetime import UTC, datetime
 
-from life_graph.services.jarvis_inbox import mail_row
+from life_graph.services.jarvis.inbox import mail_row
 
 
 def test_mail_row_all_fields_present():
