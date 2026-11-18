@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-18 08:43 UTC` from `master` @ `bd97e01`
+Generated `2026-11-18 09:59 UTC` from `master` @ `5b3f052`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-18 08:43 UTC` from `master` @ `bd97e01`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
-| Config settings | **303** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5012** in 520 files |
+| Config settings | **304** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5014** in 520 files |
 | Dashboard pages | **23** |
-| Python | 559 files, 138,632 lines |
+| Python | 559 files, 138,644 lines |
 
 ---
 
@@ -1027,16 +1027,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 403 | 4163 |
+| `tests/unit/` | 403 | 4165 |
 | `tests/integration/` | 116 | 837 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **520** | **5012** |
+| **total** | **520** | **5014** |
 
 ---
 
 ## Configuration
 
-303 settings, all overridable by environment variable.
+304 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1193,6 +1193,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_TIMEOUT_SECONDS` | `1200` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_AUTH` | `'oauth'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_API_KEY` | `''` |
+| `LIFE_GRAPH_DRIVER_OPENCODE_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_OPENCODE_BIN` | `'opencode'` |
 | `LIFE_GRAPH_DRIVER_OPENCODE_MODEL` | `'ollama/qwen3-coder:30b'` |
 | `LIFE_GRAPH_DRIVER_OPENCODE_OLLAMA_BASE` | `'http://localhost:11434/v1'` |
