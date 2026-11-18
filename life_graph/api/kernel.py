@@ -306,6 +306,29 @@ async def cancel_task(
             detail=f"Task {task_id} not found",
         )
 
+    # A dev task is not the process manager's: it runs in the dev-task runner
+    # (possibly another process). Setting the row to cancelled here left the
+    # agent running and the row overwritten when it finished.
+    if ((getattr(task, "properties", None) or {}).get("kind")) == "dev_task":
+        from life_graph.services.dev import tasks as dev_tasks
+        from life_graph.storage.database import async_session
+
+        state = await dev_tasks.request_cancel(async_session, tenant_id, str(task_id))
+        if state is None or state["cancel"] == "not_cancellable":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Task {task_id} is already {getattr(task, 'status', '?')} — cannot cancel",
+            )
+        return success_response(
+            data={
+                "id": str(task_id),
+                "status": state["status"],
+                "message": "Cancelled"
+                if state["cancel"] == "done"
+                else "Cancel requested; the runner is stopping the agent",
+            }
+        )
+
     terminal_states = {"completed", "failed", "cancelled", "timeout"}
     if task.status in terminal_states:
         raise HTTPException(

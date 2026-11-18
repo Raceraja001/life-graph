@@ -6,17 +6,19 @@ worktree, sandboxed verification, landing on an ``lg/task-*`` branch, and the
 ``driver_pr`` / ``driver_merge`` approvals that follow. The row is what the
 dashboard polls; the approvals carry the PR and merge state.
 
-Runs happen in the API process, not the ARQ worker: drivers are registered in
-the API lifespan, and a dispatch plus one bounce can outlast the worker's job
-timeout, whose automatic retry would re-run a coding agent. The cost of an
-in-process run is that an API restart abandons it —
-:func:`fail_interrupted` marks those rows failed at startup instead of
-leaving them "running" forever (which would also hold a WIP slot).
+Runs happen in the dev-task runner (services/dev/runner.py), never the ARQ
+worker: a dispatch plus one bounce can outlast the worker's job timeout, whose
+automatic retry would re-run a coding agent. The runner lives in whichever
+process holds the runner lock: the API (``dev_task_runner_mode=api``) or a
+dedicated ``python -m life_graph.workers.dev_runner`` process (``worker``), in
+which case API restarts no longer interrupt agent runs. A runner restart still
+abandons what it was running; :func:`fail_interrupted` recovers those rows at
+startup instead of leaving them "running" forever (which would also hold a
+WIP slot).
 """
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 import uuid
@@ -52,10 +54,6 @@ def instruction_key(instruction: str) -> str:
     """A short key for "the same instruction": whitespace and case folded."""
     folded = " ".join(instruction.split()).lower()
     return hashlib.sha256(folded.encode()).hexdigest()[:16]
-
-
-# Strong references: asyncio keeps only weak ones to running tasks.
-_background: set[asyncio.Task] = set()
 
 
 def _kind_filter():
@@ -121,11 +119,16 @@ async def create_dev_task(
     spec_first: bool = False,
     verify_chain: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Record a dev task and start it in the background.
+    """Record a dev task and hand it to the dev-task runner.
 
-    With ``start=False`` the task is left ``queued`` for :func:`run_queue`
-    (``properties.run_mode == "queue"``), which runs queued tasks one at a time
-    — how nightly suggestions avoid starting several local-model runs at once.
+    Every task goes through the runner's queue (``properties.run_mode ==
+    "queue"``): the runner — services/dev/runner.py, in the process holding
+    the runner lock — is the only thing that executes dev tasks. ``start=True``
+    marks it ``start_now`` (claimed ahead of unattended work, no GPU routing,
+    not budget-gated: someone asked for it) and wakes the runner. It used to be
+    an ``asyncio.create_task`` in whichever API process got the request, which
+    bypassed the lock, the concurrency limits and cancellation.
+    ``start=False`` leaves it for its turn (nightly suggestions, plan tasks).
     """
     task_id = uuid.uuid4()
     title = instruction.strip().splitlines()[0][:200] if instruction.strip() else "Dev task"
@@ -171,18 +174,16 @@ async def create_dev_task(
                 "kind": KIND,
                 "instruction_key": key,
                 "project_name": project["name"],
-                **({} if start else {"run_mode": QUEUE_MODE}),
+                "run_mode": QUEUE_MODE,
+                **({"start_now": True} if start else {}),
                 # A task started now was asked for by someone, so the Governor
-                # never blocks it; kept so a re-queue after an API restart runs
-                # it the same way (run_queue).
+                # never blocks it; kept so a re-queue after a restart runs it
+                # the same way.
                 "interactive": start,
-                # What run_queue needs to run it as asked (a queued plan is
+                # What the runner needs to run it as asked (a queued plan is
                 # still a plan).
-                **(
-                    {}
-                    if start
-                    else {"spec_first": spec_first, "verify_chain": list(verify_chain or [])}
-                ),
+                "spec_first": spec_first,
+                "verify_chain": list(verify_chain or []),
             },
             tags=[KIND],
             status_history=[{"status": "queued", "at": datetime.now(UTC).isoformat()}],
@@ -192,24 +193,10 @@ async def create_dev_task(
         await session.refresh(task)
         data = serialize(task, [])
 
-    if not start:
-        return data
+    if start:
+        from life_graph.services.dev.runner import notify_runner
 
-    bg = asyncio.create_task(
-        _run(
-            session_factory,
-            tenant_id,
-            str(task_id),
-            instruction,
-            project["id"],
-            persona_name,
-            task_type,
-            spec_first=spec_first,
-            verify_chain=verify_chain,
-        )
-    )
-    _background.add(bg)
-    bg.add_done_callback(_background.discard)
+        await notify_runner()
     return data
 
 
@@ -239,37 +226,63 @@ async def _run(
         # Read from the row, not passed in: a fanned-out plan task usually
         # reaches here via run_queue(), which only has the row to go on.
         acceptance_tests = list((task.properties or {}).get("acceptance_tests") or []) or None
+        props = dict(task.properties or {})
+        # Recovery asked for a land-only resume (fail_interrupted): read the
+        # point to resume from before the trail is set aside below. Popped, so
+        # a second interruption never loops on it.
+        resume = props.pop("resume_action", None)
+        resume_point = _resume_point(props.get("checkpoints")) if resume == "land_only" else None
         # A previous attempt's stage trail must not decide this attempt's
         # recovery: if this run crashed before its first checkpoint flush,
         # the old "finished, failed" trail would mark it failed unrun.
-        if (task.properties or {}).get("checkpoints"):
-            props = dict(task.properties)
+        if props.get("checkpoints"):
             props["previous_checkpoints"] = props.pop("checkpoints")
-            task.properties = props
+        task.properties = props
         await session.commit()
 
     status, error, result_data = "failed", None, {}
     try:
         dispatcher = TaskDispatcher(session_factory=session_factory, event_bus=event_bus)
-        async with session_factory() as session:
-            result = await dispatcher.dispatch_task(
-                tenant_id=tenant_id,
-                task_id=task_id,
-                instruction=instruction,
-                task_type=task_type,
-                project_id=project_id,
-                session=session,
-                persona_name=persona_name,
-                # A dashboard task is user-started, so the Governor must not block
-                # it; queued (unattended) work is subject to the budget like any
-                # other autonomous dispatch.
-                interactive=interactive,
-                isolate_workdir=True,
-                spec_first=spec_first,
-                verify_chain=verify_chain,
-                acceptance_tests=acceptance_tests,
-            )
-            await session.commit()
+        result = None
+        if resume_point is not None:
+            # Verified (or landed) before the restart: finish from there, with
+            # no second agent run, when the kept worktree/branch allows it.
+            async with session_factory() as session:
+                result = await dispatcher.resume_landing(
+                    tenant_id=tenant_id,
+                    task_id=task_id,
+                    instruction=instruction,
+                    task_type=task_type,
+                    project_id=project_id,
+                    persona_name=persona_name,
+                    session=session,
+                    saved=resume_point,
+                )
+                await session.commit()
+            if result is None and resume_point.get("landed_branch"):
+                # Already on a branch and nothing more could be done from
+                # here: never re-run the agent for work that already landed.
+                result = _already_landed_result(resume_point)
+        if result is None:
+            async with session_factory() as session:
+                result = await dispatcher.dispatch_task(
+                    tenant_id=tenant_id,
+                    task_id=task_id,
+                    instruction=instruction,
+                    task_type=task_type,
+                    project_id=project_id,
+                    session=session,
+                    persona_name=persona_name,
+                    # A dashboard task is user-started, so the Governor must not
+                    # block it; queued (unattended) work is subject to the budget
+                    # like any other autonomous dispatch.
+                    interactive=interactive,
+                    isolate_workdir=True,
+                    spec_first=spec_first,
+                    verify_chain=verify_chain,
+                    acceptance_tests=acceptance_tests,
+                )
+                await session.commit()
         status = "completed" if result.success else "failed"
         error = result.error
         result_data = {
@@ -291,6 +304,41 @@ async def _run(
         task.completed_at = datetime.now(UTC)
         task.status_history = _history(task, status, error)
         await session.commit()
+
+
+def _resume_point(trail: dict | None) -> dict | None:
+    """What a land-only resume needs, read from a persisted stage trail.
+
+    The dispatcher stores it on a *passing* ``verifier_completed`` checkpoint
+    (worktree, origin, diff hash, driver, checks, the agent's summary) and the
+    branch on ``landed``. None when the trail carries no such point (older
+    runs, or a run that never verified).
+    """
+    if not isinstance(trail, dict):
+        return None
+    point: dict = {}
+    for cp in trail.get("checkpoints") or []:
+        if not isinstance(cp, dict) or not cp.get("ok"):
+            continue
+        meta = cp.get("metadata") or {}
+        if cp.get("stage") == "verifier_completed" and isinstance(meta.get("resume"), dict):
+            point.update(meta["resume"])
+        if cp.get("stage") == "landed" and meta.get("branch"):
+            point["landed_branch"] = meta["branch"]
+    return point or None
+
+
+def _already_landed_result(point: dict):
+    from life_graph.drivers.base import DriverResult
+
+    return DriverResult(
+        success=True,
+        output=str(point.get("output") or "")[:8000],
+        metadata={
+            "landed_branch": point.get("landed_branch"),
+            "resumed": "already_landed",
+        },
+    )
 
 
 def _not_incident():
@@ -782,6 +830,15 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
 
             done = int(props.get("interrupt_requeues") or 0)
             if done >= INTERRUPT_REQUEUES:
+                if recovery.get("already_landed"):
+                    # Out of retries, but the work is on its branch: close it
+                    # out rather than call landed work a failure.
+                    task.status = "completed"
+                    task.completed_at = now
+                    task.status_history = _history(
+                        task, "completed", "already landed; interrupted again"
+                    )
+                    continue
                 task.status = "failed"
                 task.error = _INTERRUPTED
                 task.completed_at = now
@@ -796,12 +853,14 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
                 props["checkpoint"] = build_checkpoint(
                     task,
                     stage="land_only",
-                    # Honest about today's behaviour: run_claimed() re-runs the
-                    # whole dispatch (the crashed worktree is gone). A true
-                    # land-only resume is work-order Stage 3.
+                    # TaskDispatcher.resume_landing: lands the kept worktree if
+                    # it is intact and unchanged (diff hash), or files the PR
+                    # approval for work already on its branch. Otherwise the
+                    # task re-runs from the start.
                     resume_instructions=(
-                        "Verification had passed before the restart; the task is re-run "
-                        "from the start (land-only resume is not implemented yet)."
+                        "Verification had passed before the restart; land the kept, "
+                        "unchanged worktree without re-running the agent, or re-run "
+                        "from the start if it is gone or changed."
                     ),
                 )
             else:
@@ -907,12 +966,21 @@ async def _notify_plan_stopped(task: AgentTask, prev: AgentTask, stage: str) -> 
         logger.warning("Could not send the plan-stopped notification", exc_info=True)
 
 
-async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -> AgentTask | None:
-    """Atomically claim the oldest *runnable* queue-mode task (status -> running).
+async def claim_next_queued(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    runner_id: str | None = None,
+    allow_unattended: bool = True,
+) -> AgentTask | None:
+    """Atomically claim the next *runnable* queue-mode task (status -> running).
 
-    A plan task whose predecessor isn't merged yet is skipped (it waits);
-    one whose predecessor can no longer merge is marked failed, along with
-    the rest of its plan as the scan reaches them.
+    ``start_now`` tasks (someone pressed start) come first and run as they
+    always did: no GPU routing, no plan gate. The rest go oldest first. A plan
+    task whose predecessor isn't merged yet is skipped (it waits); one whose
+    predecessor can no longer merge is marked failed, along with the rest of
+    its plan as the scan reaches them. With ``allow_unattended=False`` (the
+    runner already has its one unattended task) only interactive tasks are
+    claimed. The claim records ``properties.lease`` for ``runner_id``.
     """
     from life_graph.services.llm import compute_router
 
@@ -930,7 +998,11 @@ async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -
                         AgentTask.status == "queued",
                         AgentTask.properties["run_mode"].astext == QUEUE_MODE,
                     )
-                    .order_by(AgentTask.created_at)
+                    # start_now first (IS NULL sorts false first), then oldest.
+                    .order_by(
+                        AgentTask.properties["start_now"].astext.is_(None),
+                        AgentTask.created_at,
+                    )
                     .limit(_QUEUE_SCAN_LIMIT)
                     .with_for_update(skip_locked=True)
                 )
@@ -938,7 +1010,25 @@ async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -
             .scalars()
             .all()
         )
+        now = datetime.now(UTC)
+        lease = {
+            "runner": runner_id,
+            "claimed_at": now.isoformat(),
+            "heartbeat_at": now.isoformat(),
+        }
         for task in candidates:
+            props = task.properties or {}
+            if props.get("start_now"):
+                # Exactly what an immediate start used to do: run now, as
+                # asked, without waiting on the GPU router or a plan gate.
+                task.status = "running"
+                task.started_at = now
+                task.status_history = _history(task, "running", "started")
+                task.properties = {**props, "lease": lease}
+                claimed = task
+                break
+            if not allow_unattended and not props.get("interactive"):
+                continue
             gate, prev, stage = await _plan_gate(session, task)
             if gate == "wait":
                 continue
@@ -977,8 +1067,9 @@ async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -
                     task.properties = {**task.properties, "routed_from": persona}
                     task.assigned_agent = route.persona
             task.status = "running"
-            task.started_at = datetime.now(UTC)
+            task.started_at = now
             task.status_history = _history(task, "running", note)
+            task.properties = {**(task.properties or {}), "lease": lease}
             claimed = task
             break
         await session.commit()
@@ -1197,22 +1288,67 @@ async def task_diff(session: AsyncSession, tenant_id: str, task_id: str) -> dict
 
 
 async def run_queue(session_factory: async_sessionmaker[AsyncSession]) -> None:
-    """Run queued dev tasks one at a time, forever (API process lifespan task).
+    """Run dev tasks forever: the runner-lock holder's lifespan task.
 
-    One at a time on purpose: queued work is unattended (nightly suggestions),
-    usually on the local model, and several concurrent runs would contend for
-    one GPU and trip the per-project WIP limit.
+    Kept as the entry point main.py and the worker call; the work is
+    :class:`~life_graph.services.dev.runner.DevTaskRunner` (concurrency, lease
+    heartbeat, cancellation).
     """
-    while True:
-        try:
-            task = await claim_next_queued(session_factory)
-            if task is None:
-                await asyncio.sleep(QUEUE_POLL_SECONDS)
-                continue
-            logger.info("Running queued dev task %s (%s)", task.id, task.title)
-            await run_claimed(session_factory, task)
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.warning("Dev task queue runner iteration failed", exc_info=True)
-            await asyncio.sleep(QUEUE_POLL_SECONDS)
+    from life_graph.services.dev.runner import DevTaskRunner, set_local_runner
+
+    runner = DevTaskRunner(session_factory)
+    set_local_runner(runner)
+    try:
+        await runner.run_forever()
+    finally:
+        set_local_runner(None)
+
+
+CANCELLABLE = ("queued", "running")
+
+
+async def request_cancel(
+    session_factory: async_sessionmaker[AsyncSession], tenant_id: str, task_id: str
+) -> dict[str, Any] | None:
+    """Cancel a dev task: at once if queued, through its runner if running.
+
+    A queued task is marked cancelled here. A running one gets
+    ``properties.cancel_requested_at`` (merged atomically, so it can't race a
+    checkpoint write) and the runner is woken; the runner cancels the run,
+    which stops the agent's process group or container, and writes the final
+    ``cancelled`` status. Returns the new state, or None when there is no such
+    task for this tenant.
+    """
+    from life_graph.services.dev.runner import notify_runner
+
+    pk = uuid.UUID(task_id)
+    async with session_factory() as session:
+        task = (
+            await session.execute(
+                select(AgentTask)
+                .where(AgentTask.id == pk, AgentTask.tenant_id == tenant_id, _kind_filter())
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if task is None:
+            return None
+        if task.status not in CANCELLABLE:
+            return {"id": task_id, "status": task.status, "cancel": "not_cancellable"}
+        if task.status == "queued":
+            task.status = "cancelled"
+            task.completed_at = datetime.now(UTC)
+            task.status_history = _history(task, "cancelled", "cancelled before it started")
+            await session.commit()
+            return {"id": task_id, "status": "cancelled", "cancel": "done"}
+        now = datetime.now(UTC).isoformat()
+        await session.execute(
+            text(
+                "UPDATE agent_tasks SET properties = coalesce(properties, '{}'::jsonb)"
+                " || jsonb_build_object('cancel_requested_at', CAST(:now AS text))"
+                " WHERE id = :id AND tenant_id = :tenant"
+            ),
+            {"now": now, "id": pk, "tenant": tenant_id},
+        )
+        await session.commit()
+    await notify_runner(cancel=True)
+    return {"id": task_id, "status": "running", "cancel": "requested"}

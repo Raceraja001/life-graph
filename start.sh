@@ -108,6 +108,17 @@ if [ $BACKEND -eq 1 ] || [ $BOTH -eq 1 ] || [ $ALL -eq 1 ]; then
     echo $! >"$RUN_DIR/api.pid"
     dim "pid $(cat "$RUN_DIR/api.pid" 2>/dev/null)  log: logs/uvicorn.log"
     wait_for_http "http://localhost:$API_PORT/health" 25 "API" || dim "check logs/uvicorn.log"
+
+    # Dev tasks run in their own process when LIFE_GRAPH_DEV_TASK_RUNNER_MODE=worker
+    # (services/dev/runner.py): API restarts then no longer cut a running agent off.
+    runner_mode="${LIFE_GRAPH_DEV_TASK_RUNNER_MODE:-$(grep -E '^LIFE_GRAPH_DEV_TASK_RUNNER_MODE=' "$ROOT/.env" 2>/dev/null | tail -1 | cut -d= -f2)}"
+    if [ "$runner_mode" = "worker" ]; then
+        step "[backend] Starting the dev-task worker..."
+        (cd "$ROOT" && exec nohup "$PY" -m life_graph.workers.dev_runner \
+            >"$LOG_DIR/dev_runner.log" 2>&1 </dev/null) &
+        echo $! >"$RUN_DIR/dev_runner.pid"
+        dim "pid $(cat "$RUN_DIR/dev_runner.pid" 2>/dev/null)  log: logs/dev_runner.log"
+    fi
 fi
 
 # ── Dashboard ─────────────────────────────────────────────────

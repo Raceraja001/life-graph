@@ -375,6 +375,11 @@ class ClaudeCodeDriver:
                 await kill_process_group(proc)
                 await proc.communicate()
                 raise
+            except asyncio.CancelledError:
+                # A cancel (dev-task runner) must stop the CLI and whatever it
+                # started, not leave them running unattended.
+                await kill_process_group(proc)
+                raise
             return proc.returncode, out, err
 
         # API-key mode stages no personal credentials at all.

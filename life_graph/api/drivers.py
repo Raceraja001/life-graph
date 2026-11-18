@@ -468,6 +468,26 @@ async def get_dev_task(task_id: str):
     return success_response(data=data)
 
 
+@router.post("/tasks/{task_id}/cancel", summary="Cancel a queued or running dev task")
+async def cancel_dev_task(task_id: str):
+    """Queued: cancelled at once. Running: the runner (in whichever process
+    holds the runner lock) stops the agent -- its process group or container
+    -- and records ``cancelled``; poll the task to see it land. 409 when the
+    task already finished."""
+    from life_graph.services.dev import tasks as dev_tasks
+
+    try:
+        uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Dev task not found") from None
+    state = await dev_tasks.request_cancel(async_session, get_current_tenant_id(), task_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Dev task not found")
+    if state["cancel"] == "not_cancellable":
+        raise HTTPException(status_code=409, detail=f"Dev task is already {state['status']}")
+    return success_response(data=state)
+
+
 @router.post(
     "/tasks/{task_id}/conformance",
     summary="Re-check a task's spec against the project's current code",

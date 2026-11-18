@@ -216,7 +216,7 @@ After approval, submit a focused PR containing the problem statement, ADR/threat
 | 0 — current truth | Done | Stage 0 report (PR description); gaps verified against `0987505` |
 | 1 — boundary design | Done | `docs/design/adr-secure-task-runtime.md` (ADR + threat model) |
 | 2 — vertical slice (claude_code) | Implemented, not deployed | `services/dev/task_runtime.py`; `docs/security/runtime-probe-results-2026-11-18.md`; one real task end to end |
-| 3 — durable worker boundary | Not started | Known gaps: immediate starts bypass the runner lock; cancel doesn't reach the driver; no land-only resume; no per-task lease |
+| 3 — durable worker boundary | Implemented, not deployed | `services/dev/runner.py`, `workers/dev_runner.py`; ADR §Stage 3; runner integration tests; worker smoke run |
 | 4 — interactive sessions/UI | Not started | — |
 | 5 — benchmark and hardening | First probe set recorded | Probes + docker tests; no benchmark expansion yet |
 
@@ -229,8 +229,8 @@ Acceptance criteria:
 - [x] Every task gets an isolated writable workspace (dev tasks: per-task worktree; the runtime refuses anything outside the scratch root).
 - [x] Host secrets and credentials are not inherited by default (container env validated; host env allowlisted).
 - [x] Resource and timeout limits are enforced (probe: pids, tmpfs, memory, deadline).
-- [~] Task state survives API/worker restarts. Re-queue and recovery existed already; checkpoints now carry verdicts. Land-only resume is Stage 3.
-- [~] Duplicate execution and concurrent workspace corruption prevented. Workspaces are per task; the runner-lock bypass for immediate starts is Stage 3.
+- [x] Task state survives API/worker restarts. In worker mode API restarts don't touch runs; the worker drains on SIGTERM; recovery lands verified work without re-running the agent.
+- [x] Duplicate execution and concurrent workspace corruption prevented. One lock-holding runner claims with SKIP LOCKED; per-task worktrees; the limits are counted in one process.
 - [x] Logs, events and runtime metadata are auditable (labels + `result.metadata.runtime`). Live streaming is Stage 4.
 - [x] Existing verifier, approval, diff and PR workflows still work (unit suite green; no policy changed).
 - [x] Failure and cleanup paths have automated tests.

@@ -64,9 +64,12 @@ def fake_dispatch(monkeypatch):
 
 
 async def _drain():
-    from life_graph.services.dev import tasks as dev_tasks
+    # Every task goes through the runner now (no background create_task in the
+    # request): run it until nothing is left to claim.
+    from life_graph.services.dev.runner import DevTaskRunner
+    from life_graph.storage.database import async_session
 
-    await asyncio.gather(*list(dev_tasks._background))
+    await DevTaskRunner(async_session, listen=False).run_until_idle()
 
 
 async def _start(client, project, instruction="Fix the typo in README", **extra):

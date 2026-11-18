@@ -288,19 +288,9 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
 
     # Startup — register agent drivers
     with startup_step(report, "agent_drivers"):
-        from life_graph.drivers.claude_code import ClaudeCodeDriver
-        from life_graph.drivers.local import LocalDriver
-        from life_graph.drivers.registry import driver_registry
+        from life_graph.drivers.setup import register_default_drivers
 
-        driver_registry.register(LocalDriver())
-        driver_registry.register(ClaudeCodeDriver())
-        from life_graph.drivers.opencode import OpencodeDriver
-
-        driver_registry.register(OpencodeDriver())
-        from life_graph.drivers.cloud import CloudDriver
-
-        driver_registry.register(CloudDriver())
-        logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
+        logger.info("Agent drivers registered: %s", register_default_drivers())
 
     # Free models adopted through a model_adoption approval join the cloud
     # model list (services/llm/offers.py, compute_router.set_adopted).
@@ -321,7 +311,11 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         from life_graph.services.dev.tasks import acquire_runner_lock
         from life_graph.storage.database import engine
 
-        if settings.dev_task_runner_enabled:
+        if settings.dev_task_runner_mode == "worker":
+            # The dedicated worker (python -m life_graph.workers.dev_runner)
+            # holds the lock and runs tasks; this API only queues and inspects.
+            logger.info("Dev tasks run in the dedicated worker (dev_task_runner_mode=worker)")
+        elif settings.dev_task_runner_enabled:
             app.state.dev_task_runner_lock = await acquire_runner_lock(engine)
             if app.state.dev_task_runner_lock is None:
                 logger.warning(

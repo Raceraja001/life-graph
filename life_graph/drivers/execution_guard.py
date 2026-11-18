@@ -139,6 +139,18 @@ def can_safely_retry(
     return True, "retry_permitted"
 
 
+def _has_resume_data(checkpoint_data: dict[str, Any]) -> bool:
+    for cp in checkpoint_data.get("checkpoints") or []:
+        if (
+            isinstance(cp, dict)
+            and cp.get("stage") == "verifier_completed"
+            and cp.get("ok")
+            and isinstance((cp.get("metadata") or {}).get("resume"), dict)
+        ):
+            return True
+    return False
+
+
 def recover_interrupted_dispatch(checkpoint_data: dict[str, Any] | None) -> dict[str, Any]:
     """Inspect a persisted checkpoint dictionary after a worker/process restart."""
     if not isinstance(checkpoint_data, dict):
@@ -152,6 +164,11 @@ def recover_interrupted_dispatch(checkpoint_data: dict[str, Any] | None) -> dict
                 return {"action": "already_failed", "resume_from": None, "already_landed": False}
             break
     last_stage = checkpoint_data.get("last_completed_stage")
+    # Landed but not finished: the crash may have come before the PR approval
+    # was filed. With resume data (dispatcher, verifier_completed metadata) the
+    # runner files it without re-running anything; without it, close it out.
+    if last_stage == "landed" and _has_resume_data(checkpoint_data):
+        return {"action": "land_only", "resume_from": "landed", "already_landed": True}
     if last_stage in ("landed", "finished"):
         return {
             "action": "skip_already_landed",

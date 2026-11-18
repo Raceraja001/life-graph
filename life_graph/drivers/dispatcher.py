@@ -17,6 +17,7 @@ One-bounce rule:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import re
 import tempfile
@@ -99,6 +100,15 @@ _DIFF_GIT_HEADER = re.compile(r'^diff --git "?a/(?P<pre>.+?)"? "?b/(?P<post>.+?)
 
 DEFAULT_COST_CAP_USD = 2.0
 MIN_TRUST_THRESHOLD = 0.6
+
+
+@dataclass(frozen=True)
+class _NamedDriver:
+    """Stands in for a driver no longer registered, on a resume (name only)."""
+
+    name: str
+
+
 # A persona whose driver is "auto" lets the dispatcher choose per project.
 AUTO_DRIVER = "auto"
 # Below this merge rate (once established) a driver is skipped for a project.
@@ -406,6 +416,144 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 await remove_worktree(run.packet, run.worktree, repo_path=run.worktree_origin)
             if owns_session:
                 await session.close()
+
+    async def resume_landing(
+        self,
+        *,
+        tenant_id: str,
+        task_id: str,
+        instruction: str,
+        task_type: str,
+        project_id: Any,
+        persona_name: str | None,
+        session: Any,
+        saved: dict[str, Any],
+    ) -> DriverResult | None:
+        """Finish a dispatch that had passed verification before a crash.
+
+        No agent runs. Two cases, from the persisted resume point
+        (``verifier_completed`` metadata, and ``landed`` if it got that far):
+
+        - **already landed** on ``lg/task-*``: file the PR approval if the crash
+          came before it (one approval per task: an existing one is kept);
+        - **verified, not landed**: land the kept worktree, but only when it is
+          still intact and its diff is byte-for-byte what was verified (the
+          SHA-256 recorded then), then file the approval as usual.
+
+        Returns None when neither is possible (worktree gone or changed, no
+        resume data); the caller then re-runs the task from the start, or, for
+        already-landed work, just closes it out.
+        """
+        branch = saved.get("landed_branch")
+        origin = saved.get("worktree_origin")
+        worktree = Path(saved["worktree"]) if saved.get("worktree") else None
+        if not origin or not (branch or worktree):
+            return None
+        if branch and await self._has_pr_approval(tenant_id, task_id, session):
+            return DriverResult(
+                success=True,
+                output=str(saved.get("output") or ""),
+                metadata={"landed_branch": branch, "resumed": "already_landed"},
+            )
+        if not branch:
+            if worktree is None or not worktree.is_dir() or not worktree_intact(worktree, origin):
+                logger.info("Task %s: kept worktree gone or not intact; re-running", task_id)
+                return None
+            diff = await diff_against_head(worktree)
+            if hashlib.sha256(diff.encode()).hexdigest() != saved.get("diff_sha256"):
+                logger.warning(
+                    "Task %s: worktree changed since it was verified; re-running", task_id
+                )
+                return None
+
+        run = _DispatchRun(
+            tenant_id=tenant_id,
+            task_id=task_id,
+            instruction=instruction,
+            task_type=task_type,
+            persona_name=persona_name,
+            session=session,
+            cost_cap_usd=DEFAULT_COST_CAP_USD,
+            interactive=True,
+            spec_first=False,
+            acceptance_tests=None,
+        )
+        try:
+            run.project_uuid = _coerce_project_uuid(project_id)
+            # The project's CURRENT policy (auto_open_pr, auto_merge, protected
+            # paths) decides the approval, not a copy from before the crash.
+            await self._prepare_packet(
+                run,
+                private=False,
+                caller_verify_chain=saved.get("verify_chain") or None,
+                isolate_workdir=False,
+            )
+            run.driver = driver_registry.get(saved.get("driver") or "") or _NamedDriver(
+                saved.get("driver") or "unknown"
+            )
+            run.verify_chain = list(saved.get("verify_chain") or run.verify_chain or [])
+            run.files_changed = list(saved.get("files_changed") or []) or None
+            run.result = DriverResult(
+                success=True,
+                output=str(saved.get("output") or ""),
+                metadata={"resumed": "land_only"},
+            )
+            run.tracker = ExecutionCheckpointTracker(task_id=task_id, tenant_id=tenant_id)
+            run.tracker.record_stage(
+                "verifier_completed", metadata={"verdict": "passed", "resumed": True}
+            )
+            if branch:
+                run.tracker.record_stage("landed", metadata={"branch": branch, "resumed": True})
+                run.result.metadata["landed_branch"] = branch
+                ctx = run.packet.project_context
+                await self._create_pr_approval(
+                    tenant_id=tenant_id,
+                    task_id=task_id,
+                    driver_name=run.driver.name,
+                    instruction=instruction,
+                    result=run.result,
+                    branch=branch,
+                    repo_path=origin,
+                    checks=run.verify_chain,
+                    project_id=run.project_uuid,
+                    session=session,
+                    verified=True,
+                    unverifiable_checks=[],
+                    auto_open_pr=bool(ctx.get("auto_open_pr")),
+                    auto_merge=bool(ctx.get("auto_merge")),
+                    base_branch=ctx.get("base_branch") or None,
+                    change_policy=policy_from_project(ctx),
+                )
+            else:
+                run.worktree, run.worktree_origin, run.workdir = worktree, origin, worktree
+                await self._land_verified_work(run)
+                if "landed_branch" not in (run.result.metadata or {}):
+                    return None
+            await self._finish_dispatch(run)
+            logger.info("Task %s resumed after restart without re-running the agent", task_id)
+            return run.result
+        finally:
+            if worktree is not None and worktree.is_dir() and run.packet is not None:
+                await remove_worktree(run.packet, worktree, repo_path=origin)
+
+    async def _has_pr_approval(self, tenant_id: str, task_id: str, session: Any) -> bool:
+        """Whether a driver_pr approval was already filed for this task."""
+        from sqlalchemy import select
+
+        from life_graph.models.db import Approval
+
+        row = (
+            await session.execute(
+                select(Approval.id)
+                .where(
+                    Approval.tenant_id == tenant_id,
+                    Approval.source_ref == str(task_id),
+                    Approval.kind == "driver_pr",
+                )
+                .limit(1)
+            )
+        ).first()
+        return row is not None
 
     # ── dispatch_task steps, in pipeline order ──────────────────────────
 
@@ -822,8 +970,23 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 verdict = "passed"
             else:
                 verdict = "failed"
+            metadata: dict[str, Any] = {"verdict": verdict}
+            if verdict == "passed" and run.worktree is not None and run.worktree_origin:
+                # Enough to land this exact work after a crash without a second
+                # agent run (resume_landing): where it is, and a fingerprint
+                # proving it is unchanged since it was verified.
+                diff = await diff_against_head(run.workdir)
+                metadata["resume"] = {
+                    "worktree": str(run.worktree),
+                    "worktree_origin": str(run.worktree_origin),
+                    "diff_sha256": hashlib.sha256(diff.encode()).hexdigest(),
+                    "driver": getattr(run.driver, "name", None),
+                    "verify_chain": list(run.verify_chain or []),
+                    "output": (run.result.output or "")[:4000],
+                    "files_changed": list(run.files_changed or []),
+                }
             run.tracker.record_stage(
-                "verifier_completed", ok=verdict == "passed", metadata={"verdict": verdict}
+                "verifier_completed", ok=verdict == "passed", metadata=metadata
             )
             await self._persist_checkpoint(run)
 

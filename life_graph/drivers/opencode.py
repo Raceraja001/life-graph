@@ -259,6 +259,11 @@ class OpencodeDriver:
         ]
         try:
             await asyncio.wait_for(proc.wait(), timeout=timeout)
+        except asyncio.CancelledError:
+            await kill_process_group(proc)
+            for r in readers:
+                r.cancel()
+            raise
         except TimeoutError:
             await kill_process_group(proc)
             await proc.wait()

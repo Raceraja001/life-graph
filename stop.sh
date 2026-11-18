@@ -66,6 +66,26 @@ fi
 
 if [ $BACKEND -eq 1 ] || [ $BOTH -eq 1 ] || [ $ALL -eq 1 ]; then
     stop_service backend "$RUN_DIR/api.pid" "$API_PORT"
+    # The dev-task worker drains running tasks on SIGTERM
+    # (LIFE_GRAPH_DEV_RUNNER_DRAIN_SECONDS, default 1500): wait for it rather
+    # than SIGKILL after 2 s, or the drain is pointless. DEV_RUNNER_STOP_WAIT
+    # caps the wait here.
+    if [ -f "$RUN_DIR/dev_runner.pid" ]; then
+        pid="$(cat "$RUN_DIR/dev_runner.pid" 2>/dev/null)"
+        step "[dev-runner] Stopping (draining running tasks)..."
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill -TERM "$pid" 2>/dev/null
+            waited=0
+            while kill -0 "$pid" 2>/dev/null && [ $waited -lt "${DEV_RUNNER_STOP_WAIT:-1560}" ]; do
+                sleep 1; waited=$((waited + 1))
+            done
+            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
+            ok "Stopped"
+        else
+            dim "Not running"
+        fi
+        rm -f "$RUN_DIR/dev_runner.pid"
+    fi
 fi
 
 if [ $INFRA -eq 1 ] || [ $ALL -eq 1 ]; then
