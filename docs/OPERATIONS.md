@@ -590,3 +590,20 @@ is the one control.
   `LIFE_GRAPH_DEV_TASK_MAX_TIMEOUT_SECONDS` (3600).
 - **Cancel:** the page's Cancel button takes two clicks.
   `POST /kernel/drivers/tasks/{id}/cancel` does the same.
+
+### Benchmark and reliability checks
+
+- **Benchmark:**
+  `python scripts/bench_drivers.py --engine claude_code --engine local:ollama_chat/gpt-oss:20b --runtime task`
+  Results go to `evals/driver_bench/` (see its README). It needs the driver and verifier
+  images. Claude Code runs use the CLI's login.
+- **Reliability:**
+  `LIFE_GRAPH_DATABASE_URL=<a THROWAWAY database> python scripts/runtime_reliability.py --out evals/reliability/<date>.json`
+  - It starts real worker processes and containers, with a fake CLI.
+  - It refuses a database URL that doesn't look like a throwaway one.
+  - It checks container kill, proxy kill, pickup, cancel, SIGTERM drain, SIGKILL recovery by a
+    standby, no duplicate delivery, and concurrent tasks in separate worktrees.
+- **Security probe:** `python scripts/runtime_security_probe.py --image <driver image>`.
+- **Don't run any of these while a dev-task worker for the same install is starting.** A
+  worker's startup sweep removes runtimes with no running task row. The scripts label their
+  runtimes as a separate instance for this reason, but don't push it.

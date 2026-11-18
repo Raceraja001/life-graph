@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import uuid
 from pathlib import Path
@@ -145,6 +146,81 @@ def worktree_intact(worktree: Path, origin: str | Path) -> bool:
     except (OSError, RuntimeError):
         return False
     return expected in target.parents
+
+
+# Bounds the walk: an agent can create files faster than we want to stat them.
+_SYMLINK_SCAN_LIMIT = 200_000
+
+
+def _unchanged_tracked_links(base: Path) -> set[str]:
+    """Symlinks committed at HEAD and not changed in the worktree.
+
+    Those are the project's own (the owner committed them), not the agent's.
+    Only called once the worktree's .git link is known intact, so these git
+    commands read the origin's own repository config.
+    """
+    import subprocess
+
+    def git(*args: str) -> str:
+        res = subprocess.run(
+            ["git", "-C", str(base), *args], capture_output=True, text=True, timeout=30
+        )
+        return res.stdout if res.returncode == 0 else ""
+
+    tracked = {
+        line.split("\t", 1)[1]
+        for line in git("ls-files", "-s").splitlines()
+        if line.startswith("120000 ") and "\t" in line
+    }
+    changed = set(git("diff", "--name-only", "HEAD").splitlines())
+    return tracked - changed
+
+
+def escaping_symlinks(worktree: Path, limit: int = 20, *, git_aware: bool = False) -> list[str]:
+    """Symlinks in *worktree* whose target lies outside it (relative paths).
+
+    The worktree is the agent's. A link it plants -- ``notes.txt ->
+    ~/.ssh/id_rsa`` -- is read by host-side code that trusts the worktree:
+    verifiers reading changed files, the PR description and review models
+    reading the diff, the landing commit. The agent's own container cannot see
+    the host; the host-side reader can, so one link would carry a host file
+    out. A link that stays inside the worktree is fine (repos use them).
+    Dangling links count when their target would be outside. The walk skips
+    ``.git`` and stops after ``limit`` findings. With ``git_aware`` (only for a
+    worktree whose .git link is intact), links committed at HEAD and left
+    unchanged are not counted: the agent did not make them.
+    """
+    try:
+        base = Path(worktree).resolve()
+    except (TypeError, OSError):
+        return []
+    found: list[str] = []
+    seen = 0
+    for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
+        if ".git" in dirnames:
+            dirnames.remove(".git")
+        for name in [*dirnames, *filenames]:
+            seen += 1
+            if seen > _SYMLINK_SCAN_LIMIT:
+                found.append("(scan limit reached: too many files to check)")
+                return found
+            path = Path(dirpath) / name
+            if not path.is_symlink():
+                continue
+            try:
+                target = Path(os.path.realpath(path))
+            except OSError:
+                target = None
+            if target is None or (target != base and base not in target.parents):
+                found.append(str(path.relative_to(base)))
+                if len(found) >= limit:
+                    break
+        if len(found) >= limit:
+            break
+    if found and git_aware:
+        own = _unchanged_tracked_links(base)
+        found = [f for f in found if f not in own]
+    return found
 
 
 async def diff_against_head(workdir: Path) -> str:

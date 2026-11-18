@@ -62,6 +62,7 @@ from life_graph.drivers.verify_chain import (  # noqa: F401  (re-exported)
 )
 from life_graph.drivers.workdir import (
     diff_against_head,
+    escaping_symlinks,
     preserve_verified_work,
     remove_worktree,
     resolve_workdir,
@@ -848,11 +849,26 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         fsmonitor) and make them execute agent-chosen programs.
         """
         result = run.result
+        # Links leaving the worktree are tampering too: host-side readers
+        # (verifiers, PR description, landing) would follow them to host files.
+        intact = (
+            run.worktree is None
+            or not run.worktree_origin
+            or worktree_intact(run.worktree, run.worktree_origin)
+        )
+        # git_aware: links committed at HEAD and unchanged are the project's,
+        # not the agent's. Only asked of an intact worktree, so the git
+        # commands it runs read the origin's config, never a planted one.
+        escaping = (
+            escaping_symlinks(run.worktree, git_aware=True)
+            if result.success and run.worktree is not None and intact
+            else []
+        )
         if not (
             result.success
             and run.worktree is not None
             and run.worktree_origin
-            and not worktree_intact(run.worktree, run.worktree_origin)
+            and (not intact or escaping)
         ):
             if run.tracker:
                 run.tracker.record_stage(
@@ -860,26 +876,27 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 )
                 await self._persist_checkpoint(run)
             return
-        logger.error("Task %s: worktree .git link was tampered with", run.task_id)
+        what = (
+            f"symlinks leaving the worktree: {', '.join(escaping[:5])}"
+            if escaping
+            else "worktree .git no longer links to the origin repository"
+        )
+        logger.error("Task %s: worktree tampered with (%s)", run.task_id, what)
         if run.tracker:
             run.tracker.record_stage(
                 "worktree_verified",
                 ok=False,
-                metadata={"workdir": str(run.workdir), "tampered": True},
+                metadata={"workdir": str(run.workdir), "tampered": True, "why": what},
             )
             await self._persist_checkpoint(run)
-        tamper = VerifierResult(
-            "worktree_intact",
-            False,
-            {"error": "worktree .git no longer links to the origin repository"},
-        )
+        tamper = VerifierResult("worktree_intact", False, {"error": what})
         await self._create_approval_entry(
             run.tenant_id, run.task_id, run.driver.name, [tamper], run.session
         )
         run.result = DriverResult(
             success=False,
             output=result.output,
-            error="Worktree .git was modified by the driver — not verified or landed",
+            error=f"Worktree tampered with by the driver ({what}) — not verified or landed",
             cost_usd=result.cost_usd,
             duration_ms=result.duration_ms,
             metadata={"needs_human": True, "worktree_tampered": True},

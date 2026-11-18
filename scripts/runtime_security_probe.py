@@ -57,6 +57,10 @@ for name, path in [("write_root", "/probe"), ("write_usr", "/usr/probe"), ("writ
 r["write_work"] = attempt(lambda: open("/work/.probe-write", "w").write("x"))
 r["write_tmp"] = attempt(lambda: open("/tmp/probe", "w").write("x"))
 r["git_dir_target"] = attempt(lambda: open("/work/.git").read().strip())
+# Plant links the HOST would follow (relative and absolute): the agent cannot
+# read through them in here, but host-side readers of the worktree could.
+r["plant_symlinks"] = attempt(lambda: [os.symlink(t, "/work/" + n) for n, t in
+    (("leak_abs", "/home/raja/.ssh/id_rsa"), ("leak_rel", "../../../../../../etc/passwd"))] and "planted")
 
 # Environment
 r["env_names"] = sorted(os.environ)
@@ -163,6 +167,10 @@ async def main() -> int:
     args = ap.parse_args()
 
     from life_graph.config import settings
+    # Its own instance label (task_runtime.instance_id): a dev-task worker's
+    # startup sweep removes this install's runtimes with no running task row,
+    # which a script's runtimes never have (seen 2026-11-18).
+    settings.edition = (settings.edition or "") + "-script"
     from life_graph.drivers.dispatcher import tenant_scratch_root
     from life_graph.services.dev import sandbox, task_runtime
 
@@ -205,6 +213,10 @@ async def main() -> int:
         report["host_side"] = {
             "probe_file_landed_in_worktree": (worktree / ".probe-write").exists(),
             "origin_untouched": not (repo / ".probe-write").exists(),
+            # The dispatcher vetoes the run when this is non-empty (drivers/workdir.py).
+            "escaping_symlinks_flagged": __import__(
+                "life_graph.drivers.workdir", fromlist=["x"]
+            ).escaping_symlinks(worktree),
         }
 
         # 2. The in-container deadline.

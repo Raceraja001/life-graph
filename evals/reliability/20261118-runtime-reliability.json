@@ -1,0 +1,71 @@
+{
+  "runtime": {
+    "container_killed": {
+      "exit_code": 137,
+      "teardown": {
+        "ok": true,
+        "errors": []
+      },
+      "seconds_after_kill": 1.2,
+      "leftover_containers": 0,
+      "leftover_networks": 0,
+      "pass": true
+    },
+    "proxy_killed": {
+      "exit_code": 0,
+      "teardown": {
+        "ok": true,
+        "errors": []
+      },
+      "seconds_after_kill": 40.3,
+      "leftover_containers": 0,
+      "leftover_networks": 0,
+      "pass": true
+    }
+  },
+  "worker": {
+    "pickup_via_notify": {
+      "status": "running",
+      "seconds": 6.06,
+      "pass": true
+    },
+    "cancel_kills_group": {
+      "status": "cancelled",
+      "seconds": 0.32,
+      "children_alive": [],
+      "children_seen": 1,
+      "pass": true
+    },
+    "sigterm_drains": {
+      "exit": 0,
+      "seconds_to_exit": 6.5,
+      "task_after": "completed",
+      "pass": true
+    },
+    "sigkill_standby_recovers": {
+      "final": "completed",
+      "seconds_to_done": 33.35,
+      "agent_runs": 2,
+      "pass": true,
+      "note": "2 = the run the SIGKILL cut off, plus exactly one recovery run"
+    },
+    "no_duplicate_delivery": {
+      "runs_per_task": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "pass": true
+    },
+    "concurrent_own_worktrees": {
+      "worktrees": 3,
+      "tasks": 3,
+      "pass": true
+    }
+  },
+  "passed": 8,
+  "total": 8
+}

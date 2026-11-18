@@ -660,3 +660,28 @@ def test_a_non_personal_task_still_reaches_the_free_cloud_model(routing_on):
 
     assert route.where == "cloud"
     assert route.persona == CLOUD_PERSONA
+
+
+@pytest.mark.asyncio
+async def test_a_symlink_out_of_the_worktree_is_tampering(wired, monkeypatch):
+    """Host-side readers (verifiers, PR description, landing) would follow it
+    to a host file the agent's own container could never see."""
+    build, captured = wired
+    monkeypatch.setattr(disp_mod, "verifier_chain", _Chain([VerifierResult("lint", True, {})]))
+
+    async def _diff(_workdir):
+        return "diff --git a/a.py b/a.py\n"
+
+    monkeypatch.setattr(disp_mod, "diff_against_head", _diff)
+    disp = build(_Driver(), worktree=_Worktree())
+    monkeypatch.setattr(disp_mod, "escaping_symlinks", lambda _wt, **_k: ["notes.txt"])
+    monkeypatch.setattr(disp_mod, "preserve_verified_work", _never_lands())
+
+    result = await _dispatch(disp, task_type="code", project_id=str(uuid.uuid4()))
+
+    assert result.success is False
+    assert "symlinks leaving the worktree: notes.txt" in result.error
+    run = captured["run"]
+    tamper = next(c for c in run.tracker.checkpoints if c.stage == "worktree_verified")
+    assert tamper.ok is False and "notes.txt" in tamper.metadata["why"]
+    assert "landed" not in _stages(run)

@@ -172,3 +172,48 @@ Found by that run and fixed:
 
 Not done (by choice): an interactive shell into the container, and live streaming for the
 local driver (its steps still arrive at the end of the attempt).
+
+## Stage 5: benchmark and hardening (2026-11-18)
+
+**Benchmark** (`evals/driver_bench/README.md`, 2026-11-18):
+- 10 tasks in 5 categories. Each new hidden test was validated against its starting repo and a
+  reference fix.
+- Claude Code in the task runtime passed 10/10 (bugfix 2/2 when not disturbed). Local
+  gpt-oss:20b passed 9/10 and fails the two-bug fix consistently.
+- The project's own verifier chain agreed with the hidden tests 14/14, with 0 false positives.
+- Runtime overhead is ~3 s; the agent container peaks at ~0.2 GiB.
+
+**Reliability** (`scripts/runtime_reliability.py`, `evals/reliability/20261118-runtime-reliability.json`): 8/8.
+- **Container killed:** the run ends; nothing is left.
+- **Egress proxy killed (network loss):** the run ends; nothing is left.
+- **Pickup** via NOTIFY.
+- **Cancel:** 0.32 s, and the agent's child process is dead.
+- **SIGTERM** drains before the worker exits.
+- **SIGKILL mid-run:** a standby takes the lock and recovers the task once its lease is stale.
+  The task completes, with exactly one recovery run.
+- **Two workers at once:** each of 6 tasks ran exactly once.
+- **Three concurrent tasks:** three separate worktrees.
+
+Found and fixed by these checks:
+- **WIP at claim time.** The runner claimed a third task for a project already running two,
+  and the dispatcher failed it outright ("Project WIP limit reached"). The claim now applies the
+  dispatcher's per-project and per-tenant limits, and such a task waits in the queue.
+- **Scripts swept by workers.** A worker's startup sweep removed runtimes created by scripts
+  (no task row). Scripts now use their own instance label.
+- **Host-run agents get an allowlisted environment (by design).** The reliability script's fake
+  CLI needed its variables passed via `driver_host_env_passthrough`, which is how the
+  isolation is meant to work. Its first cancel check had passed vacuously; it now requires the
+  children it checks to have been seen.
+
+**Hardening:** a symlink leaving the worktree is tampering (`drivers/workdir.py`
+`escaping_symlinks`; vetoed in the dispatcher's worktree check). Verified against a real
+container (`docs/security/`).
+
+**Still unproven / not done:**
+- kernel or container escapes;
+- DNS tunnelling through allowlisted hosts;
+- a large or representative repository benchmark;
+- moving the verifier's dependency-setup step onto an isolated network (it uses the default
+  bridge);
+- OpenCode inside the runtime (parked);
+- prod deployment.

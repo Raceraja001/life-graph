@@ -218,7 +218,7 @@ After approval, submit a focused PR containing the problem statement, ADR/threat
 | 2 — vertical slice (claude_code) | Implemented, not deployed | `services/dev/task_runtime.py`; `docs/security/runtime-probe-results-2026-11-18.md`; one real task end to end |
 | 3 — durable worker boundary | Implemented, not deployed | `services/dev/runner.py`, `workers/dev_runner.py`; ADR §Stage 3; runner integration tests; worker smoke run |
 | 4 — interactive sessions/UI | Implemented, not deployed | live session log + long-poll/SSE API, cancel, per-task timeout; life-graph-ui run page; ADR §Stage 4 |
-| 5 — benchmark and hardening | First probe set recorded | Probes + docker tests; no benchmark expansion yet |
+| 5 — benchmark and hardening | Done (not deployed) | benchmark 10 tasks/5 categories (`evals/driver_bench/README.md`); reliability 8/8 (`scripts/runtime_reliability.py`); symlink-escape veto; probes re-run (`docs/security/`) |
 
 Acceptance criteria:
 

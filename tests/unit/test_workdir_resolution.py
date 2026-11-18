@@ -213,3 +213,59 @@ async def test_an_unsafe_base_branch_name_is_ignored(tmp_path):
     assert await _pinned_start(tmp_path, "--upload-pack=evil") is None
     assert await _pinned_start(tmp_path, "main; rm -rf /") is None
     assert await _pinned_start(tmp_path, None) is None
+
+
+# ── Symlinks leaving the worktree (work order Stage 5 hardening) ──
+
+
+def test_a_link_out_of_the_worktree_is_found(tmp_path):
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    wt = tmp_path / "wt"
+    (wt / "src").mkdir(parents=True)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("host secret")
+    (wt / "src" / "notes.txt").symlink_to(secret)
+    (wt / "up").symlink_to("../")
+    (wt / "dangling").symlink_to("/nonexistent/elsewhere")
+    assert sorted(escaping_symlinks(wt)) == ["dangling", "src/notes.txt", "up"]
+
+
+def test_links_inside_the_worktree_and_git_are_fine(tmp_path):
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    wt = tmp_path / "wt"
+    (wt / "docs").mkdir(parents=True)
+    (wt / "docs" / "README.md").write_text("x")
+    (wt / "README.md").symlink_to("docs/README.md")
+    (wt / ".git").mkdir()
+    (wt / ".git" / "weird").symlink_to("/etc")  # git's own business, not scanned
+    assert escaping_symlinks(wt) == []
+
+
+def test_not_a_path_is_not_a_crash():
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    assert escaping_symlinks(object()) == []
+
+
+def test_a_committed_link_is_the_projects_own_but_a_changed_one_is_flagged(tmp_path):
+    import subprocess
+
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    wt = tmp_path / "repo"
+    wt.mkdir()
+    (wt / "tool").symlink_to("/usr/bin/env")  # committed by the owner
+    subprocess.run(["git", "init", "-q"], cwd=wt, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=wt, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i"],
+        cwd=wt, check=True,
+    )  # fmt: skip
+    assert escaping_symlinks(wt, git_aware=True) == []
+    assert escaping_symlinks(wt) == ["tool"]  # without git, every escaping link
+    (wt / "leak").symlink_to("/etc/passwd")  # the agent's
+    (wt / "tool").unlink()
+    (wt / "tool").symlink_to("/etc/shadow")  # retargeted by the agent
+    assert sorted(escaping_symlinks(wt, git_aware=True)) == ["leak", "tool"]
