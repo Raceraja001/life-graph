@@ -43,7 +43,7 @@ class ProcessManager:
         persona_service: PersonaService to validate agent names.
     """
 
-    # Coupled with settings.kernel_max_concurrent_tasks (see config.py):
+    # Coupled with settings.kernel_max_concurrent_tasks (see config/agents.py):
     # a delegate_to_persona(wait=True) chain at full depth holds one
     # semaphore permit per hop for the duration of the wait, so the
     # concurrency limit must exceed this depth or a single delegation

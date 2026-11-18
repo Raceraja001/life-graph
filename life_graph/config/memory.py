@@ -1,0 +1,173 @@
+"""The memory engine: embeddings, recall, decay, dedup, capture quality.
+
+One part of :class:`life_graph.config.Settings`; the fields are read as
+``LIFE_GRAPH_<NAME>`` like every other setting.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+from pydantic import BaseModel
+
+
+class MemorySettings(BaseModel):
+    """The memory engine: embeddings, recall, decay, dedup, capture quality."""
+
+    # ── Embeddings ─────────────────────────────────────
+    # Modern multilingual local embedder (D6). Dimension is the single source of
+    # truth for the pgvector columns (Vector(settings.embedding_dimension)) and
+    # the null-and-rebuild migration — keep the two in sync when swapping models.
+    # When no embedding backend is reachable the service used to return empty
+    # vectors and log a warning, so semantic search silently stopped working
+    # while ingestion still reported success. For a memory system that is the
+    # wrong failure mode: refuse to start instead. Set false to opt into the
+    # degraded mode deliberately (e.g. a keyword-only deployment).
+    require_embedding_backend: bool = True
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimension: int = 1024
+
+    # ── Proactive Recall ───────────────────────────────
+    recall_max_session_start: int = 5
+    recall_max_during_session: int = 2
+    recall_cooldown_days: int = 7
+    recall_confidence_threshold: float = 0.7
+
+    # ── Progressive disclosure ─────────────────────────
+    # Two halves of the same protocol: an index line names a memory cheaply,
+    # then a batch expand fetches the ones that matter.
+    #
+    # How much of a memory's text a compact index line carries when search or
+    # recall is called with index_only. Long enough to recognise a memory,
+    # short enough that the line costs ~12 tokens instead of the ~150 a full
+    # memory object costs.
+    recall_index_content_chars: int = 120
+    # Cap on one POST /api/v1/memories/batch expand. Recall hands back at most
+    # a few dozen index lines, so a caller with a legitimate reason to expand
+    # more than this is really asking for a list endpoint.
+    memory_batch_max: int = 50
+
+    # ── Decay ──────────────────────────────────────────
+    decay_archive_threshold: float = 0.01
+    """Effective-importance floor below which removal is *proposed*.
+
+    A memory's effective importance is ``importance * exp(-decay_rate *
+    days_since_activity)``. Falling below this floor makes it a candidate for
+    an archive approval -- nothing is archived without one. With the default
+    ``memories.decay_rate`` of 0.0217 the horizon is ~180 days since last
+    activity for importance 0.5, ~212 days for 1.0. Recall never touches this:
+    ranking demotes stale memories on its own recency curve."""
+
+    decay_proposal_limit: int = 50
+    # Unreviewed memories older than this are rejected by the nightly decay job
+    # (reversible: approve brings one back). 0 = keep waiting forever.
+    pending_memory_expiry_days: int = 14
+    # A fresh start (ISO timestamp, e.g. 2026-10-23T12:00:00+05:30): day
+    # summaries and the capture retry job never read anything older, so
+    # archived memories are not written again from old conversations.
+    # Empty = no limit.
+    memory_start_at: str = ""
+    # The local model that decides which searched memories answer a question
+    # (services/memory/retrieval.py). Empty = lm_extraction_model, which is
+    # also Jarvis's local model here: a separate small judge meant a third
+    # model on a 16 GB GPU that holds two, so every personal question
+    # reloaded one (~15 s, measured 2026-10-22). The same model, already
+    # loaded, judges in ~0.3 s.
+    memory_judge_model: str = ""
+    # Nothing is forgotten, only further away (services/memory/tiers.py): when
+    # no active memory answers, or the question is about the past, archived and
+    # replaced memories are searched too, and say so.
+    memory_cold_tier: bool = True
+    # Memories said together or used together are linked, and a found memory
+    # brings its strongest links along for the judge (services/memory/associations.py).
+    memory_links: bool = True
+    # Search order nudged by how important, used and recent a memory is
+    # (services/memory/retrieval.py strength_order).
+    memory_strength_rank: bool = False
+    # Nightly: active memories without a form slot get one (services/form_fill.py).
+    memory_form_fill: bool = True
+    # The owner's lasting facts, put in front of every local Jarvis answer
+    # whether or not search finds them (services/profile_card.py). 0 = off.
+    profile_card_max_items: int = 40
+    """Most archive proposals one decay sweep may queue for a tenant.
+
+    Decay proposes rather than archives, so an unbounded first sweep over a
+    long-neglected corpus would bury the approval queue. Lowest effective
+    importance first, so the clearest candidates surface soonest."""
+    decay_default_lambda: float = 0.1
+
+    # ── Deduplication ──────────────────────────────────
+    dedup_enabled: bool = True
+    dedup_threshold: float = 0.92  # cosine similarity threshold for near-duplicate detection
+    # Contradiction check (services/contradiction.py): only active memories at
+    # or above this cosine similarity to a new fact are compared with it. Was a
+    # hard-coded 0.75 in the module until 2026-10-22.
+    contradiction_similarity_threshold: float = 0.75
+
+    # Merge suggestions: nightly, additive. Active pairs whose similarity lands in
+    # [merge_review_low, dedup_threshold) coexist today (below the auto-merge line);
+    # the producer queues them as merge approvals for the user to confirm.
+    merge_review_low: float = 0.85
+    merge_suggest_scan_limit: int = 200  # max active memories scanned per tenant per run
+
+    # ── Capture Quality ──────────────────────────────────────
+    capture_llm_clean: bool = True  # LLM as primary extractor on the capture path
+    extraction_language_guard: bool = True  # skip English NER on non-Latin text
+    extraction_tag_only_entities: bool = True  # entities/tech become tags, not memories
+    extraction_min_confidence: float = 0.45  # drop facts below this before storing
+    # The extractor is told who the people a message names already are, from the
+    # people table (extraction/llm.py known_people), instead of guessing.
+    extraction_known_people: bool = True
+    extraction_llm_min_words: int = 20  # legacy 3-tier LLM gate (non-capture callers)
+    extraction_llm_confidence_threshold: float = 0.5  # legacy 3-tier LLM gate
+
+    # Surfaces whose captures are an activity trail, not content: the event row
+    # is kept, but extraction, memory storage and the decision/procedure regexes
+    # are skipped. Without this, every tool call became several LLM-written
+    # "facts" about shell commands, which drowned real memories in the review
+    # queue and in recall. Comma-separated; empty string extracts everything.
+    # assistant_message too: the assistant's own replies narrate work in hand
+    # and produced 3,502 of 3,668 pending memories (2026-10-22). The owner's
+    # memory is learnt from the owner's words; the replies stay in the trail.
+    capture_no_extract_surfaces: str = "tool_exhaust,assistant_message"
+    # Surfaces whose assistant saves explicit "remember that…" requests itself
+    # (Jarvis's memory_save): there the extractor drops the facts that the run
+    # for the same message already saved (services/saved_by_tool.py).
+    capture_saved_by_tool_surfaces: str = "jarvis_app"
+    # How long the extractor waits, off the request path, for that run to
+    # finish before leaving the capture to the capture sweep.
+    capture_saved_by_tool_wait_seconds: int = 90
+    # Claude Code sessions (services/claude_code_sessions.py): a session whose
+    # SessionEnd marker arrived is closed this long after it, so prompts still
+    # being extracted are linked first; one that never sent it (terminal
+    # killed, crash) is closed after this long without a new memory.
+    claude_code_session_end_grace_minutes: int = 5
+    claude_code_session_idle_minutes: int = 240
+
+    # ── Cold Start ─────────────────────────────────────
+    cold_start_min_memories: int = 50
+
+    # ── Impact Scoring (Feature 5) ─────────────────────
+    impact_boost_on_success: float = 0.1
+    impact_penalty_on_failure: float = 0.05
+    impact_default: float = 0.5
+
+    def memory_start(self) -> datetime | None:
+        """``memory_start_at`` as an aware UTC datetime, or None (unset or unreadable)."""
+        if not self.memory_start_at.strip():
+            return None
+        try:
+            at = datetime.fromisoformat(self.memory_start_at.strip())
+        except ValueError:
+            return None
+        return (at if at.tzinfo else at.replace(tzinfo=UTC)).astimezone(UTC)
+
+    @property
+    def capture_no_extract_surfaces_list(self) -> list[str]:
+        """Surfaces that are logged as capture events but never extracted."""
+        return [s.strip() for s in self.capture_no_extract_surfaces.split(",") if s.strip()]
+
+    @property
+    def capture_saved_by_tool_surfaces_list(self) -> list[str]:
+        """Surfaces whose explicit-save facts are left to the assistant's own tool."""
+        return [s.strip() for s in self.capture_saved_by_tool_surfaces.split(",") if s.strip()]

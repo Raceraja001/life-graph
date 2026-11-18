@@ -973,7 +973,7 @@ def _settings_secret_values() -> set[str]:
     """Every credential-shaped value currently configured on the app.
 
     Read straight off :class:`~life_graph.config.Settings` by field name
-    rather than from a hand-kept list, so a provider added to ``config.py``
+    rather than from a hand-kept list, so a provider added to ``life_graph/config/``
     tomorrow is covered without anyone remembering to update this module.
     """
     found: set[str] = set()
