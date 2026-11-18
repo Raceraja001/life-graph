@@ -9,8 +9,9 @@ from types import SimpleNamespace
 import pytest
 
 from life_graph.config import settings
-from life_graph.services import compute_router, model_eval, workers
-from life_graph.services import resilient_llm as rl
+from life_graph.services import workers
+from life_graph.services.llm import compute_router, model_eval
+from life_graph.services.llm import resilient as rl
 from life_graph.services.scrub import scrub
 from life_graph.services.worker_templates import OFFER_READER, validate_offer
 
@@ -371,7 +372,7 @@ async def test_a_template_without_reasoning_runs_with_reasoning_off(orchestrated
     ],
 )
 def test_provider_key_merges_the_names_a_provider_goes_by(names, key):
-    from life_graph.services.llm_offers import provider_key
+    from life_graph.services.llm.offers import provider_key
 
     assert {provider_key(n) for n in names} == {key}
 

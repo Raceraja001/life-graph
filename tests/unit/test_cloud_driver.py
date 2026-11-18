@@ -12,7 +12,7 @@ from life_graph.config import settings
 from life_graph.drivers import local
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.cloud import CloudDriver
-from life_graph.services import resilient_llm
+from life_graph.services.llm import resilient as resilient_llm
 
 FREE = "openrouter/poolside/laguna-s-2.1:free"
 

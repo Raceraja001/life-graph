@@ -24,7 +24,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 BENCH_SCRIPT = ROOT / "scripts" / "bench_drivers.py"
 
 # Adoption bar (AC-4.1).
@@ -57,7 +57,7 @@ async def smoke_test(model_id: str) -> tuple[bool | None, str]:
     failing it (gemma-4-31b was 429 on its first live evaluation, 2026-10-20).
     """
     from life_graph.runtime import get_resilient_llm
-    from life_graph.services.resilient_llm import only_models
+    from life_graph.services.llm.resilient import only_models
 
     try:
         with only_models([model_id]):
@@ -97,7 +97,7 @@ async def run_benchmark(model_id: str, *, timeout: int = 900) -> dict[str, Any]:
     """The coding benchmark for one free cloud model; a summary of its rows."""
     import yaml
 
-    from life_graph.services.resilient_llm import only_models
+    from life_graph.services.llm.resilient import only_models
 
     bench = _bench_module()
     spec = yaml.safe_load(bench.TASKS.read_text())

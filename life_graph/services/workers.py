@@ -83,7 +83,7 @@ _in_worker: contextvars.ContextVar[bool] = contextvars.ContextVar("in_worker", d
 def envelope_models(envelope: Envelope) -> list[str]:
     """The models a worker in *envelope* may run on, in failover order."""
     from life_graph.config import settings
-    from life_graph.services.compute_router import cloud_models
+    from life_graph.services.llm.compute_router import cloud_models
 
     # Research is public information: the free cloud models only. Personal
     # envelopes (local model only) arrive with the jobs that need them.
@@ -122,7 +122,7 @@ async def run_worker(
 
     from life_graph.agents.orchestrator import AgentOrchestrator
     from life_graph.core.tenant import set_tenant_context
-    from life_graph.services.resilient_llm import only_models, reasoning_off
+    from life_graph.services.llm.resilient import only_models, reasoning_off
     from life_graph.services.scrub import scrub
 
     envelope = ENVELOPES.get(envelope_name)

@@ -12,7 +12,7 @@ from typing import Any
 
 from life_graph.config import settings
 from life_graph.core.evidence import extract_claim_evidence
-from life_graph.services.llm_client import LMStudioClient
+from life_graph.services.llm.client import LMStudioClient
 
 logger = logging.getLogger(__name__)
 

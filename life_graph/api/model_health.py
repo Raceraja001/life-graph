@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from life_graph.api.responses import success_response
-from life_graph.services.llm_health import LLMHealth
+from life_graph.services.llm.health import LLMHealth
 
 router = APIRouter(prefix="/health", tags=["health"])
 

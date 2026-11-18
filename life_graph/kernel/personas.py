@@ -348,7 +348,7 @@ _BUILTIN_PERSONAS: list[dict[str, Any]] = [
         "icon": "☁️",
         "description": (
             "Code Fixer on a free cloud model, for queued work while the GPU is"
-            " busy with speech (services/compute_router.py). The code leaves the"
+            " busy with speech (services/llm/compute_router.py). The code leaves the"
             " machine; personal context does not. Free models only, never paid."
             " Its model is the first of dev_cloud_models; change it here."
         ),

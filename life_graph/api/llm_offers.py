@@ -22,7 +22,7 @@ router = APIRouter(prefix="/llm-offers", tags=["llm-offers"])
 @router.get("", summary="Free LLM models, tiers and credits found, with their evaluation")
 async def list_offers(status_filter: str | None = Query(None, alias="status", max_length=16)):
     from life_graph.models.assistant import LlmOffer
-    from life_graph.services.llm_offers import to_dict
+    from life_graph.services.llm.offers import to_dict
 
     tenant_id = get_current_tenant_id()
     query = select(LlmOffer).where(LlmOffer.tenant_id == tenant_id)
@@ -36,7 +36,7 @@ async def list_offers(status_filter: str | None = Query(None, alias="status", ma
 @router.post("/{offer_id}/evaluate", summary="Queue an offer for evaluation")
 async def queue_evaluation(offer_id: str):
     from life_graph.models.assistant import LlmOffer
-    from life_graph.services.llm_offers import reachable, to_dict
+    from life_graph.services.llm.offers import reachable, to_dict
 
     try:
         pk = uuid.UUID(offer_id)

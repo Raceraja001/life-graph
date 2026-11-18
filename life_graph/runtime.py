@@ -26,7 +26,7 @@ from life_graph.services.context import ContextBuilder
 from life_graph.services.contradiction import ContradictionDetector
 from life_graph.services.impact import ImpactScorer
 from life_graph.services.intentions import IntentionService
-from life_graph.services.llm_client import LMStudioClient
+from life_graph.services.llm.client import LMStudioClient
 from life_graph.services.memory.metamemory import MetamemoryTracker
 from life_graph.services.memory.recall import RecallEngine
 from life_graph.services.synthesis import SynthesisService
@@ -54,7 +54,7 @@ def get_lm_client() -> LMStudioClient:
 @lru_cache(maxsize=1)
 def get_resilient_llm():
     """Singleton resilient LLM wrapper (shared health record)."""
-    from life_graph.services.resilient_llm import ResilientLLM
+    from life_graph.services.llm.resilient import ResilientLLM
 
     return ResilientLLM()
 

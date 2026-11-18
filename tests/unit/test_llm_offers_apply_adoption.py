@@ -13,12 +13,12 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock, patch
 
-from life_graph.services.llm_offers import apply_adoption
+from life_graph.services.llm.offers import apply_adoption
 
 
 async def test_apply_adoption_no_offer_id():
     """Test when approval has no offer_id in payload."""
-    with patch("life_graph.services.llm_offers.refresh_adopted") as mock_refresh:
+    with patch("life_graph.services.llm.offers.refresh_adopted") as mock_refresh:
         # This tests the early return case where offer_id is not present in payload
         session = AsyncMock()
         approval = AsyncMock()
@@ -35,7 +35,7 @@ async def test_apply_adoption_no_offer_id():
 
 async def test_apply_adoption_offer_not_found():
     """Test when offer with given ID doesn't exist."""
-    with patch("life_graph.services.llm_offers.refresh_adopted") as mock_refresh:
+    with patch("life_graph.services.llm.offers.refresh_adopted") as mock_refresh:
         # Test for early return due to offer being None from get()
         session = AsyncMock()
         session.get.return_value = None
@@ -54,7 +54,7 @@ async def test_apply_adoption_offer_not_found():
 
 async def test_apply_adoption_tenant_mismatch():
     """Test when offer tenant doesn't match approval tenant."""
-    with patch("life_graph.services.llm_offers.refresh_adopted") as mock_refresh:
+    with patch("life_graph.services.llm.offers.refresh_adopted") as mock_refresh:
         # Test early return due to tenant mismatch
         offer_id = str(uuid.uuid4())
 
@@ -78,7 +78,7 @@ async def test_apply_adoption_tenant_mismatch():
 
 async def test_apply_adoption_approve():
     """Test when adoption is approved."""
-    with patch("life_graph.services.llm_offers.refresh_adopted") as mock_refresh:
+    with patch("life_graph.services.llm.offers.refresh_adopted") as mock_refresh:
         # Test the approve case
         offer_id = str(uuid.uuid4())
 
@@ -103,7 +103,7 @@ async def test_apply_adoption_approve():
 
 async def test_apply_adoption_reject():
     """Test when adoption is rejected."""
-    with patch("life_graph.services.llm_offers.refresh_adopted") as mock_refresh:
+    with patch("life_graph.services.llm.offers.refresh_adopted") as mock_refresh:
         # Test the reject case
         offer_id = str(uuid.uuid4())
 

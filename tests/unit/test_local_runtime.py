@@ -1,5 +1,5 @@
-"""Life Graph's per-request Ollama options (services/local_runtime.py) and the
-native-API path of the local client (services/llm_client.py)."""
+"""Life Graph's per-request Ollama options (services/llm/local_runtime.py) and the
+native-API path of the local client (services/llm/client.py)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from datetime import UTC, datetime
 import pytest
 
 from life_graph.config import settings
-from life_graph.services import local_runtime
-from life_graph.services.llm_client import LMStudioClient
+from life_graph.services.llm import local_runtime
+from life_graph.services.llm.client import LMStudioClient
 
 
 @pytest.fixture(autouse=True)

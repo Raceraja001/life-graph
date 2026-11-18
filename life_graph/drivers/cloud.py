@@ -1,6 +1,6 @@
 """Cloud Driver — the local driver's agent loop on a free hosted model.
 
-For the hours the GPU belongs to the user (services/compute_router.py): the
+For the hours the GPU belongs to the user (services/llm/compute_router.py): the
 same orchestrator, tools, confinement, nudges and self-check as
 :class:`LocalDriver`, with three differences that make it safe to hand code
 to a free cloud model:
@@ -8,7 +8,7 @@ to a free cloud model:
 * **Free only, fail closed.** The persona's model must be a free cloud model
   (``openrouter/...:free``, ``nvidia_nim/...``); anything else is refused, and
   the run may fail over only to the other free cloud models
-  (:func:`life_graph.services.resilient_llm.only_models`) — never to the GPU,
+  (:func:`life_graph.services.llm.resilient.only_models`) — never to the GPU,
   OmniRoute or a paid model.
 * **No personal data.** Preferences, procedures and memories are dropped from
   the packet; the model sees the task, AGENTS.md and the code.
@@ -41,7 +41,7 @@ class CloudDriver(LocalDriver):
 
     async def available(self) -> bool:
         """Available once a free cloud model with a provider key is configured."""
-        from life_graph.services.compute_router import cloud_models
+        from life_graph.services.llm.compute_router import cloud_models
 
         return bool(cloud_models())
 
@@ -49,8 +49,8 @@ class CloudDriver(LocalDriver):
         self, packet: ContextPacket, workdir: Path, timeout: int = 300
     ) -> DriverResult:
         """Run the local agent loop on the persona's free cloud model."""
-        from life_graph.services.compute_router import cloud_models, is_free_cloud_model
-        from life_graph.services.resilient_llm import _allowed_fallbacks, only_models
+        from life_graph.services.llm.compute_router import cloud_models, is_free_cloud_model
+        from life_graph.services.llm.resilient import _allowed_fallbacks, only_models
 
         if not is_free_cloud_model(packet.persona_model):
             return DriverResult(
@@ -65,7 +65,7 @@ class CloudDriver(LocalDriver):
         packet.procedures = []
         packet.memories = []
         # A caller that already narrowed the chain (the model evaluation runs
-        # one model only, services/model_eval.py) keeps its narrower list.
+        # one model only, services/llm/model_eval.py) keeps its narrower list.
         outer = _allowed_fallbacks.get()
         models = [m for m in outer if is_free_cloud_model(m)] if outer is not None else None
         with only_models(models if models is not None else cloud_models()):

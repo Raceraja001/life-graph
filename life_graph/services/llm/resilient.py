@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
 from life_graph.config import settings
-from life_graph.services.llm_health import LLMHealth
+from life_graph.services.llm.health import LLMHealth
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ def only_models(models: list[str]):
 LOCAL_PROVIDERS = ("ollama/", "ollama_chat/", "lm_studio/")
 
 # How long Ollama holds a model after a request, and with what context size:
-# services/local_runtime.py (waking hours: until they end; night: a few minutes).
+# services/llm/local_runtime.py (waking hours: until they end; night: a few minutes).
 
 
 def _local_model_kwargs(model: str) -> dict[str, Any]:
@@ -154,12 +154,12 @@ def _local_model_kwargs(model: str) -> dict[str, Any]:
     if not model.startswith(LOCAL_PROVIDERS):
         return {}
 
-    from life_graph.services import local_runtime
+    from life_graph.services.llm import local_runtime
 
     extra: dict[str, Any] = {"keep_alive": local_runtime.keep_alive()}
     if model.startswith(("ollama/", "ollama_chat/")):
         # The same context size as every other Life Graph request: a different
-        # one makes Ollama load a second copy (services/local_runtime.py).
+        # one makes Ollama load a second copy (services/llm/local_runtime.py).
         extra["num_ctx"] = local_runtime.num_ctx()
     if settings.lm_reasoning_effort:
         # A thinking model answers "hi" with 141 tokens of hidden reasoning and

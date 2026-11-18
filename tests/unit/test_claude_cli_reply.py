@@ -3,7 +3,7 @@ import tempfile
 import pytest
 
 from life_graph.drivers.claude_code import _DENIABLE_CLI_TOOLS, _RESTRICTIVE_PERMISSION_MODE
-from life_graph.services.claude_cli_reply import run_claude_cli
+from life_graph.services.llm.claude_cli_reply import run_claude_cli
 
 
 class _FakeProcess:

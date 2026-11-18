@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import life_graph.services.llm_client as lc
-from life_graph.services.llm_client import LMStudioClient
-from life_graph.services.resilient_llm import ResilientLLMExhaustedError
+import life_graph.services.llm.client as lc
+from life_graph.services.llm.client import LMStudioClient
+from life_graph.services.llm.resilient import ResilientLLMExhaustedError
 
 
 @pytest.mark.asyncio

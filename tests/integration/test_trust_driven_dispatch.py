@@ -977,8 +977,8 @@ async def test_queued_task_carries_its_acceptance_tests_into_dispatch(monkeypatc
 @skip_on_db_error
 async def test_pr_approval_carries_a_drafted_description(landing, monkeypatch):
     from life_graph.config import settings
-    from life_graph.services import llm_client
     from life_graph.services.dev import github_pr
+    from life_graph.services.llm import client as llm_client
 
     monkeypatch.setattr(settings, "driver_pr_description_enabled", True)
 
@@ -1002,7 +1002,7 @@ async def test_pr_approval_carries_a_drafted_description(landing, monkeypatch):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_disabled_description_never_calls_a_model(landing, monkeypatch):
-    from life_graph.services import llm_client
+    from life_graph.services.llm import client as llm_client
 
     def _boom():
         raise AssertionError("must not be called when drafting is disabled")

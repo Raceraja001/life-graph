@@ -272,8 +272,8 @@ async def test_while_the_user_is_active_a_nightly_task_goes_to_the_cloud(project
     from life_graph.drivers.base import DriverResult
     from life_graph.drivers.dispatcher import TaskDispatcher
     from life_graph.models.db import AgentTask
-    from life_graph.services import compute_router
     from life_graph.services.dev import tasks as dev_tasks
+    from life_graph.services.llm import compute_router
     from life_graph.storage.database import async_session
 
     async def active(_factory, _tenant):
@@ -326,8 +326,8 @@ async def test_while_the_user_is_active_a_nightly_task_goes_to_the_cloud(project
 
 async def test_while_the_user_is_active_without_a_cloud_model_it_waits(project, monkeypatch):
     from life_graph.models.db import AgentTask
-    from life_graph.services import compute_router
     from life_graph.services.dev import tasks as dev_tasks
+    from life_graph.services.llm import compute_router
     from life_graph.storage.database import async_session
 
     async def active(_factory, _tenant):

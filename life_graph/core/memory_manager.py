@@ -800,7 +800,7 @@ class MemoryManager:
 
         if settings.use_local_llm:
             try:
-                from life_graph.services.llm_client import LMStudioClient
+                from life_graph.services.llm.client import LMStudioClient
 
                 if not hasattr(self, "_lm_client"):
                     self._lm_client = LMStudioClient()

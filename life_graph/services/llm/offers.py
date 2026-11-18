@@ -55,7 +55,7 @@ async def fetch_free_models(
 ) -> list[str] | None:
     """A provider's free models as LiteLLM ids; None when it cannot be read
     (NVIDIA without a key is skipped, not failed)."""
-    from life_graph.services.model_catalog import _is_free, _is_text_output
+    from life_graph.services.llm.model_catalog import _is_free, _is_text_output
 
     own = client is None
     http = client or httpx.AsyncClient(timeout=20.0)
@@ -296,7 +296,7 @@ def _known_provider(provider: str) -> str | None:
 async def news_scan(session_factory: async_sessionmaker[AsyncSession], tenant_id: str) -> dict:
     """Search, read new pages with the offer_reader worker, record offers."""
     from life_graph.services import web_pages
-    from life_graph.services.compute_router import _has_key
+    from life_graph.services.llm.compute_router import _has_key
     from life_graph.services.worker_templates import OFFER_READER, validate_offer
     from life_graph.services.workers import WorkerError, json_array, run_worker
 
@@ -362,7 +362,7 @@ async def news_scan(session_factory: async_sessionmaker[AsyncSession], tenant_id
 
 def reachable(model_id: str | None) -> bool:
     """A free cloud model we hold a key for."""
-    from life_graph.services.compute_router import _has_key, is_free_cloud_model
+    from life_graph.services.llm.compute_router import _has_key, is_free_cloud_model
 
     return bool(model_id) and is_free_cloud_model(model_id) and _has_key(model_id)
 
@@ -384,9 +384,9 @@ async def evaluations_today(session: AsyncSession, tenant_id: str) -> int:
 async def evaluate_next(session_factory: async_sessionmaker[AsyncSession], tenant_id: str) -> dict:
     """Evaluate the oldest waiting reachable offer, within the daily cap."""
     from life_graph.models.assistant import LlmOffer
-    from life_graph.services import model_eval
-    from life_graph.services.compute_router import cloud_models
-    from life_graph.services.resilient_llm import provider_of, provider_usage
+    from life_graph.services.llm import model_eval
+    from life_graph.services.llm.compute_router import cloud_models
+    from life_graph.services.llm.resilient import provider_of, provider_usage
 
     async with session_factory() as session:
         if await evaluations_today(session, tenant_id) >= settings.offers_max_evals_per_day:
@@ -516,8 +516,8 @@ async def apply_adoption(session: AsyncSession, approval: Any, approve: bool) ->
 async def refresh_adopted(session: AsyncSession) -> list[str]:
     """Load the adopted models (best first) into the compute router."""
     from life_graph.models.assistant import LlmOffer
-    from life_graph.services import model_eval
-    from life_graph.services.compute_router import set_adopted
+    from life_graph.services.llm import model_eval
+    from life_graph.services.llm.compute_router import set_adopted
 
     rows = (
         (await session.execute(select(LlmOffer).where(LlmOffer.status == "adopted")))

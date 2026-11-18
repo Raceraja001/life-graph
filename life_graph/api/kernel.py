@@ -36,7 +36,7 @@ from life_graph.core.run_taint import TAINT_INPUT_KEY
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import with_shared
 from life_graph.services.chat_stream import get_chat_stream_bus, map_bus_event
-from life_graph.services.model_catalog import get_model_catalog
+from life_graph.services.llm.model_catalog import get_model_catalog
 
 router = APIRouter(prefix="/kernel", tags=["kernel"])
 

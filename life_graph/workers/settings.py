@@ -449,7 +449,7 @@ class WorkerSettings:
             minute=set(range(60)),
             run_at_startup=False,
         ),
-        # ── Job 1, free LLM offers (services/llm_offers.py) ──
+        # ── Job 1, free LLM offers (services/llm/offers.py) ──
         cron(
             "life_graph.workers.llm_offers.run_llm_catalog_diff",
             hour=21,

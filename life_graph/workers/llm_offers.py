@@ -1,4 +1,4 @@
-"""ARQ jobs for Job 1, free LLM offers (services/llm_offers.py).
+"""ARQ jobs for Job 1, free LLM offers (services/llm/offers.py).
 
 Each runs for the tenants in ``offers_tenants`` (off when empty) and never
 raises: a failure in one tenant or one step is logged and reported, so the
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 async def run_llm_catalog_diff(ctx: dict) -> dict:
     """Daily: diff the free-model catalogs (plain code, no model call)."""
-    from life_graph.services.llm_offers import catalog_diff
+    from life_graph.services.llm.offers import catalog_diff
 
     tenants = settings.offers_tenants_list
     if not tenants:
@@ -32,7 +32,7 @@ async def run_llm_catalog_diff(ctx: dict) -> dict:
 
 async def run_llm_offer_news(ctx: dict) -> dict:
     """Every 6 h: read new pages about free LLM offers."""
-    from life_graph.services.llm_offers import news_scan
+    from life_graph.services.llm.offers import news_scan
 
     out = {}
     for tenant_id in settings.offers_tenants_list:
@@ -47,7 +47,7 @@ async def run_llm_offer_news(ctx: dict) -> dict:
 
 async def run_llm_offer_evals(ctx: dict) -> dict:
     """Hourly: evaluate the next waiting free model, within the daily cap."""
-    from life_graph.services.llm_offers import evaluate_next
+    from life_graph.services.llm.offers import evaluate_next
 
     out = {}
     for tenant_id in settings.offers_tenants_list:

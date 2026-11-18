@@ -272,8 +272,8 @@ async def second_opinion(instruction: str, diff: str) -> tuple[bool, str]:
     """
     from life_graph.config import settings
     from life_graph.runtime import get_resilient_llm
-    from life_graph.services.compute_router import cloud_models
-    from life_graph.services.resilient_llm import only_models
+    from life_graph.services.llm.compute_router import cloud_models
+    from life_graph.services.llm.resilient import only_models
 
     models = [m for m in (settings.change_review_model, *cloud_models()) if m] or [
         settings.agent_llm_model

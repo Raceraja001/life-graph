@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from life_graph.services.llm_health import LLMHealth
+from life_graph.services.llm.health import LLMHealth
 
 
 class FakeRedis:
@@ -32,7 +32,7 @@ class FakeRedis:
 @pytest.fixture
 def health(monkeypatch):
     fake = FakeRedis()
-    monkeypatch.setattr("life_graph.services.llm_health.get_redis", lambda: fake)
+    monkeypatch.setattr("life_graph.services.llm.health.get_redis", lambda: fake)
     h = LLMHealth(clock=lambda: fake.now)
     return h, fake
 
@@ -66,7 +66,7 @@ async def test_record_failure_count_resets_after_success(health):
 
 @pytest.mark.asyncio
 async def test_record_failure_returns_one_when_redis_unavailable(monkeypatch):
-    monkeypatch.setattr("life_graph.services.llm_health.get_redis", lambda: None)
+    monkeypatch.setattr("life_graph.services.llm.health.get_redis", lambda: None)
     h = LLMHealth()
     assert await h.record_failure("m", "error") == 1
 
@@ -87,7 +87,7 @@ async def test_get_returns_empty_dict_for_unknown_model(health):
 
 @pytest.mark.asyncio
 async def test_get_returns_empty_dict_when_redis_unavailable(monkeypatch):
-    monkeypatch.setattr("life_graph.services.llm_health.get_redis", lambda: None)
+    monkeypatch.setattr("life_graph.services.llm.health.get_redis", lambda: None)
     h = LLMHealth()
     assert await h.get("m") == {}
 
@@ -110,7 +110,7 @@ async def test_in_cooldown_false_for_unknown_model(health):
 
 @pytest.mark.asyncio
 async def test_fail_open_when_redis_unavailable(monkeypatch):
-    monkeypatch.setattr("life_graph.services.llm_health.get_redis", lambda: None)
+    monkeypatch.setattr("life_graph.services.llm.health.get_redis", lambda: None)
     h = LLMHealth()
     # No exceptions; in_cooldown False; records are no-ops.
     await h.record_success("m", 10)

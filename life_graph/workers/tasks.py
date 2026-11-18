@@ -849,7 +849,7 @@ async def failure_pattern_mining(ctx: dict) -> dict:
 
     from life_graph.models.db import TenantConfig
     from life_graph.services.failure_mining import FailurePatternMiner
-    from life_graph.services.llm_client import LMStudioClient
+    from life_graph.services.llm.client import LMStudioClient
 
     async with async_session() as session:
         result = await session.execute(
