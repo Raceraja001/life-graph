@@ -118,6 +118,7 @@ async def create_dev_task(
     properties: dict[str, Any] | None = None,
     spec_first: bool = False,
     verify_chain: list[str] | None = None,
+    timeout_seconds: int | None = None,
 ) -> dict[str, Any]:
     """Record a dev task and hand it to the dev-task runner.
 
@@ -184,6 +185,7 @@ async def create_dev_task(
                 # still a plan).
                 "spec_first": spec_first,
                 "verify_chain": list(verify_chain or []),
+                **({"timeout_seconds": int(timeout_seconds)} if timeout_seconds else {}),
             },
             tags=[KIND],
             status_history=[{"status": "queued", "at": datetime.now(UTC).isoformat()}],
@@ -229,6 +231,7 @@ async def _run(
         # reaches here via run_queue(), which only has the row to go on.
         acceptance_tests = list((task.properties or {}).get("acceptance_tests") or []) or None
         props = dict(task.properties or {})
+        timeout_seconds = props.get("timeout_seconds")
         # Recovery asked for a land-only resume (fail_interrupted): read the
         # point to resume from before the trail is set aside below. Popped, so
         # a second interruption never loops on it.
@@ -287,6 +290,7 @@ async def _run(
                     spec_first=spec_first,
                     verify_chain=verify_chain,
                     acceptance_tests=acceptance_tests,
+                    timeout_seconds=timeout_seconds,
                 )
                 await session.commit()
         status = "completed" if result.success else "failed"
@@ -310,6 +314,13 @@ async def _run(
         task.completed_at = datetime.now(UTC)
         task.status_history = _history(task, status, error)
         await session.commit()
+    from life_graph.services.dev import task_events
+
+    task_events.emit(
+        tenant_id, task_id, "status", status,
+        data={"error": (error or "")[:500]} if error else None,
+    )  # fmt: skip
+    await task_events.flush()
 
 
 def _resume_point(trail: dict | None) -> dict | None:
@@ -706,7 +717,27 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "started_at": task.started_at.isoformat() if task.started_at else None,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        # What the run was allowed and where it ran (Stage 4 runtime panel):
+        # the execution boundary and the task runtime's audit record.
+        "boundary": metadata.get("boundary"),
+        "runtime": _runtime_view(metadata.get("runtime")),
+        "lease": props.get("lease"),
+        "cancel_requested_at": props.get("cancel_requested_at"),
+        "timeout_seconds": props.get("timeout_seconds"),
     }
+
+
+def _runtime_view(runtime: dict | None) -> dict | None:
+    """The task runtime's metadata, trimmed to what a person reads: image,
+    network policy, limits, teardown. (It holds no secrets.)"""
+    if not isinstance(runtime, dict):
+        return None
+    keys = (
+        "runtime", "policy_version", "image", "image_id", "egress_image", "network",
+        "egress_allowlist", "limits", "user", "binds", "exit_code", "timed_out",
+        "duration_ms", "teardown", "started_at", "finished_at",
+    )  # fmt: skip
+    return {k: runtime[k] for k in keys if k in runtime}
 
 
 # One dev-task runner per database. Every API process used to run the queue
@@ -1405,5 +1436,8 @@ async def request_cancel(
             {"now": now, "id": pk, "tenant": tenant_id},
         )
         await session.commit()
+    from life_graph.services.dev import task_events
+
+    task_events.emit(tenant_id, task_id, "cancel_requested", "cancel requested", source="api")
     await notify_runner(cancel=True)
     return {"id": task_id, "status": "running", "cancel": "requested"}

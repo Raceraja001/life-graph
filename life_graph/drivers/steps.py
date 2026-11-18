@@ -33,6 +33,51 @@ def _as_text(value: Any) -> str:
     return json.dumps(value, default=str)
 
 
+def claude_event_steps(event: dict) -> list[dict]:
+    """The steps in ONE ``stream-json`` event (an assistant or user message).
+
+    Shared by :func:`parse_claude_stream` (the whole run, afterwards) and the
+    live session stream (services/dev/task_events.py, one line at a time).
+    """
+    etype = event.get("type")
+    if etype not in ("assistant", "user"):
+        return []
+    at = event.get("timestamp")
+    content = (event.get("message") or {}).get("content")
+    if isinstance(content, str):
+        content = [{"type": "text", "text": content}]
+    steps: list[dict] = []
+    for block in content or []:
+        if not isinstance(block, dict):
+            continue
+        btype = block.get("type")
+        if btype == "text" and etype == "assistant":
+            steps.append({"kind": "text", "content": block.get("text", ""), "at": at})
+        elif btype == "thinking":
+            steps.append({"kind": "thinking", "content": block.get("thinking", ""), "at": at})
+        elif btype == "tool_use":
+            steps.append(
+                {
+                    "kind": "tool_call",
+                    "tool": block.get("name"),
+                    "content": json.dumps(block.get("input"), default=str),
+                    "ref": block.get("id"),
+                    "at": at,
+                }
+            )
+        elif btype == "tool_result":
+            step = {
+                "kind": "tool_result",
+                "content": _as_text(block.get("content")),
+                "ref": block.get("tool_use_id"),
+                "at": at,
+            }
+            if block.get("is_error"):
+                step["is_error"] = True
+            steps.append(step)
+    return steps
+
+
 def parse_claude_stream(text: str) -> tuple[dict, list[dict]]:
     """Split ``claude -p --output-format stream-json`` stdout into (result, steps).
 
@@ -78,40 +123,7 @@ def parse_claude_stream(text: str) -> tuple[dict, list[dict]]:
         elif etype == "result":
             result = dict(event)
         elif etype in ("assistant", "user"):
-            at = event.get("timestamp")
-            content = (event.get("message") or {}).get("content")
-            if isinstance(content, str):
-                content = [{"type": "text", "text": content}]
-            for block in content or []:
-                if not isinstance(block, dict):
-                    continue
-                btype = block.get("type")
-                if btype == "text" and etype == "assistant":
-                    steps.append({"kind": "text", "content": block.get("text", ""), "at": at})
-                elif btype == "thinking":
-                    steps.append(
-                        {"kind": "thinking", "content": block.get("thinking", ""), "at": at}
-                    )
-                elif btype == "tool_use":
-                    steps.append(
-                        {
-                            "kind": "tool_call",
-                            "tool": block.get("name"),
-                            "content": json.dumps(block.get("input"), default=str),
-                            "ref": block.get("id"),
-                            "at": at,
-                        }
-                    )
-                elif btype == "tool_result":
-                    step = {
-                        "kind": "tool_result",
-                        "content": _as_text(block.get("content")),
-                        "ref": block.get("tool_use_id"),
-                        "at": at,
-                    }
-                    if block.get("is_error"):
-                        step["is_error"] = True
-                    steps.append(step)
+            steps.extend(claude_event_steps(event))
     if not result:
         # No result event (killed mid-run): the steps still say what happened.
         result = {"is_error": True, "result": "claude_code stream ended without a result"}

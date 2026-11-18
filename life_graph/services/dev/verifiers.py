@@ -684,16 +684,22 @@ async def _verify_lint_clean(workdir: Path, ctx: dict) -> tuple[bool | None, dic
     return passed, {"issues": result.stdout[-500:], "returncode": result.returncode, "ruff": ruff}
 
 
-async def _verify_build_ok(workdir: Path, ctx: dict) -> tuple[bool, dict]:
-    """Check Python syntax by compiling all .py files."""
-    import py_compile
+def _syntax_error(py_file: Path) -> str | None:
+    """A file's syntax error, or None. Compiled in memory: py_compile wrote a
+    __pycache__/*.pyc into the agent's worktree, which then landed on the task
+    branch (seen in the Stage 4 end-to-end run, 2026-11-18)."""
+    try:
+        compile(py_file.read_bytes(), str(py_file), "exec", dont_inherit=True)
+    except (SyntaxError, ValueError) as e:
+        return f"{py_file}: {e}"
+    except OSError as e:
+        return f"{py_file}: unreadable ({e})"
+    return None
 
-    errors = []
-    for py_file in workdir.rglob("*.py"):
-        try:
-            py_compile.compile(str(py_file), doraise=True)
-        except py_compile.PyCompileError as e:
-            errors.append(str(e))
+
+async def _verify_build_ok(workdir: Path, ctx: dict) -> tuple[bool, dict]:
+    """Check Python syntax by compiling all .py files (in memory)."""
+    errors = [e for e in (_syntax_error(f) for f in workdir.rglob("*.py")) if e]
     passed = len(errors) == 0
     return passed, {"errors": errors[:10]}
 
@@ -757,15 +763,8 @@ async def _verify_no_diff_in_plan(workdir: Path, ctx: dict) -> tuple[bool, dict]
 
 async def _verify_build_ok_diff(workdir: Path, ctx: dict) -> tuple[bool, dict]:
     """Like build_ok, but only compiles files changed since HEAD."""
-    import py_compile
-
-    errors = []
     changed = _changed_python_files(workdir)
-    for py_file in changed:
-        try:
-            py_compile.compile(str(py_file), doraise=True)
-        except py_compile.PyCompileError as e:
-            errors.append(str(e))
+    errors = [e for e in (_syntax_error(f) for f in changed) if e]
     passed = len(errors) == 0
     return passed, {"errors": errors[:10], "checked": len(changed)}
 

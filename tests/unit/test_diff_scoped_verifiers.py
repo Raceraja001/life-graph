@@ -467,3 +467,20 @@ async def test_no_vulnerable_deps_never_trusts_an_ambient_pip_audit(tmp_path, mo
         "this project, so 'found on PATH' is not evidence it checked anything real"
     )
     assert results[0].passed is False
+
+
+async def test_build_checks_leave_no_bytecode_in_the_worktree(tmp_path):
+    """py_compile wrote __pycache__/*.pyc into the agent's worktree, and the
+    landing commit put it on the task branch (Stage 4 e2e, 2026-11-18)."""
+    import life_graph.services.dev.verifiers as verifiers_mod
+
+    _init_repo(tmp_path)
+    (tmp_path / "calc.py").write_text("def mul(a, b):\n    return a * b\n")
+    passed, _ = await verifiers_mod._verify_build_ok_diff(tmp_path, {})
+    assert passed is True
+    passed, _ = await verifiers_mod._verify_build_ok(tmp_path, {})
+    assert passed is True
+    assert not list(tmp_path.rglob("*.pyc"))
+    (tmp_path / "bad.py").write_text("def broken(:\n")
+    passed, ev = await verifiers_mod._verify_build_ok_diff(tmp_path, {})
+    assert passed is False and "bad.py" in ev["errors"][0]

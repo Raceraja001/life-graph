@@ -20,16 +20,14 @@ user can. The shell is therefore denied on the host by default
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import os
 import signal
-from typing import TYPE_CHECKING
+from collections.abc import Callable  # noqa: TC003
 
 from life_graph.config import settings
-
-if TYPE_CHECKING:
-    import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -90,3 +88,41 @@ async def kill_process_group(proc: asyncio.subprocess.Process) -> None:
     except (ProcessLookupError, PermissionError, AttributeError, OSError):
         with contextlib.suppress(ProcessLookupError):
             proc.kill()
+
+
+async def communicate_streaming(
+    proc: asyncio.subprocess.Process,
+    timeout: float,
+    on_stdout_line: Callable[[str], None] | None,
+) -> tuple[bytes, bytes]:
+    """Like ``proc.communicate()`` under a timeout, but hands each stdout line
+    to *on_stdout_line* as it arrives (the live session view, Stage 4).
+
+    Raises TimeoutError like ``asyncio.wait_for``; the caller kills. A stand-in
+    process without readable pipes (test fakes) just gets ``communicate()``.
+    """
+    stdout = getattr(proc, "stdout", None)
+    if on_stdout_line is None or stdout is None or not hasattr(stdout, "readline"):
+        return await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    out = bytearray()
+    err = bytearray()
+
+    async def read_out() -> None:
+        while line := await stdout.readline():
+            out.extend(line)
+            try:
+                on_stdout_line(line.decode(errors="replace"))
+            except Exception:  # a broken viewer never breaks the run
+                logger.debug("live line handler failed", exc_info=True)
+
+    async def read_err() -> None:
+        if proc.stderr is not None:
+            while chunk := await proc.stderr.read(65536):
+                err.extend(chunk)
+
+    async def run() -> None:
+        await asyncio.gather(read_out(), read_err())
+        await proc.wait()
+
+    await asyncio.wait_for(run(), timeout=timeout)
+    return bytes(out), bytes(err)

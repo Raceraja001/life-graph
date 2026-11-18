@@ -50,6 +50,7 @@ import os
 import shutil
 import time
 import uuid
+from collections.abc import Callable  # noqa: TC003
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -98,10 +99,13 @@ async def docker_runner(
     timeout: int,
     container: str | None = None,
     env: dict[str, str] | None = None,
+    on_stdout_line: Callable[[str], None] | None = None,
 ) -> SandboxResult:
     # sandbox._exec keeps the parent env for the docker CLI itself (it needs
     # DOCKER_HOST etc.); nothing of it reaches the container unless named.
-    return await sandbox._exec(argv, timeout, container=container, env=env)
+    return await sandbox._exec(
+        argv, timeout, container=container, env=env, on_stdout_line=on_stdout_line
+    )
 
 
 @dataclass(frozen=True)
@@ -126,6 +130,8 @@ class RuntimeRequest:
     pids_limit: int = 512
     timeout: int = 1200
     tmp_size: str = "512m"
+    # Each stdout line as it arrives (the live session view); not policy.
+    on_stdout_line: Callable[[str], None] | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -146,6 +152,13 @@ _ISOLATED_GATEWAY_OPTS = (
     "com.docker.network.bridge.gateway_mode_ipv4",
     "com.docker.network.bridge.gateway_mode_ipv6",
 )
+
+
+def _event(req: RuntimeRequest, kind: str, content: str, data: dict | None = None) -> None:
+    """A runtime lifecycle line in the task's live session (best-effort)."""
+    from life_graph.services.dev import task_events
+
+    task_events.emit(req.tenant_id, req.task_id, kind, content, data=data, source="runtime")
 
 
 def instance_id() -> str:
@@ -228,17 +241,20 @@ class DockerTaskRuntime:
             meta["user"] = spec.user
             meta["binds"] = [{"target": b.target, "read_only": b.read_only} for b in spec.binds]
             await self._create_network(names["network"], labels)
+            _event(req, "runtime", "isolated network ready", {"network": names["network"]})
             if req.egress_allowlist:
                 meta["egress_image"] = settings.driver_runtime_egress_image
                 meta["egress_image_id"] = await self._image_id(settings.driver_runtime_egress_image)
                 await self._start_proxy(names["proxy"], names["network"], labels, req)
             argv = sandbox.docker_run_argv(spec, detach=False)
             grace = max(5, int(settings.driver_runtime_kill_grace_seconds))
+            _event(req, "runtime", "agent container starting", {"rid": rid})
             res = await self._docker(
                 argv,
                 timeout=req.timeout + grace,
                 container=names["container"],
                 env=dict(req.secret_env) or None,
+                on_stdout_line=req.on_stdout_line,
             )
             # 124: coreutils timeout fired inside the container; 137 after -k.
             if res.returncode in (124, 137) and time.monotonic() - start >= req.timeout:
@@ -269,6 +285,12 @@ class DockerTaskRuntime:
             except Exception as exc:  # never mask the run's own outcome
                 logger.error("task runtime teardown raised: %s", exc)
                 meta["teardown"] = {"ok": False, "errors": [f"teardown raised: {exc}"]}
+            _event(
+                req,
+                "runtime",
+                "runtime removed" if meta["teardown"].get("ok") else "runtime teardown incomplete",
+                {"teardown": meta["teardown"], "exit_code": meta.get("exit_code")},
+            )
 
     async def teardown(self, names: dict[str, str]) -> dict:
         """Remove one runtime's container, proxy and network. Idempotent."""
@@ -505,6 +527,11 @@ async def sweep_orphans(session_factory) -> dict | None:
             rows = await session.execute(select(AgentTask.id).where(AgentTask.status == "running"))
             active = {str(r) for r in rows.scalars().all()}
         report = await runtime.sweep(active)
+        from life_graph.services.dev import task_events
+
+        report["events_expired"] = await task_events.expire(
+            session_factory, settings.dev_task_events_retention_days
+        )
     except Exception as exc:  # never block startup on cleanup
         logger.warning("task runtime sweep failed: %s", exc)
         return None

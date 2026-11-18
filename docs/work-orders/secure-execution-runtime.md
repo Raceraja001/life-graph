@@ -217,7 +217,7 @@ After approval, submit a focused PR containing the problem statement, ADR/threat
 | 1 — boundary design | Done | `docs/design/adr-secure-task-runtime.md` (ADR + threat model) |
 | 2 — vertical slice (claude_code) | Implemented, not deployed | `services/dev/task_runtime.py`; `docs/security/runtime-probe-results-2026-11-18.md`; one real task end to end |
 | 3 — durable worker boundary | Implemented, not deployed | `services/dev/runner.py`, `workers/dev_runner.py`; ADR §Stage 3; runner integration tests; worker smoke run |
-| 4 — interactive sessions/UI | Not started | — |
+| 4 — interactive sessions/UI | Implemented, not deployed | live session log + long-poll/SSE API, cancel, per-task timeout; life-graph-ui run page; ADR §Stage 4 |
 | 5 — benchmark and hardening | First probe set recorded | Probes + docker tests; no benchmark expansion yet |
 
 Acceptance criteria:
@@ -231,7 +231,7 @@ Acceptance criteria:
 - [x] Resource and timeout limits are enforced (probe: pids, tmpfs, memory, deadline).
 - [x] Task state survives API/worker restarts. In worker mode API restarts don't touch runs; the worker drains on SIGTERM; recovery lands verified work without re-running the agent.
 - [x] Duplicate execution and concurrent workspace corruption prevented. One lock-holding runner claims with SKIP LOCKED; per-task worktrees; the limits are counted in one process.
-- [x] Logs, events and runtime metadata are auditable (labels + `result.metadata.runtime`). Live streaming is Stage 4.
+- [x] Logs, events and runtime metadata are auditable: labels, `result.metadata.runtime`, and the per-task `dev_task_events` session log, streamed live and resumable.
 - [x] Existing verifier, approval, diff and PR workflows still work (unit suite green; no policy changed).
 - [x] Failure and cleanup paths have automated tests.
 - [x] Security boundary tests have recorded results.

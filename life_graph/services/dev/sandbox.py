@@ -244,7 +244,11 @@ def _limits(*, memory: str, cpus: str) -> list[str]:
 
 
 async def _exec(
-    argv: list[str], timeout: int, container: str | None = None, env: dict | None = None
+    argv: list[str],
+    timeout: int,
+    container: str | None = None,
+    env: dict | None = None,
+    on_stdout_line=None,
 ) -> SandboxResult:
     """Run a docker CLI command, killing the container itself on timeout.
 
@@ -264,7 +268,9 @@ async def _exec(
     except FileNotFoundError as exc:
         raise SandboxUnavailableError("docker CLI not found") from exc
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        from life_graph.drivers.host_exec import communicate_streaming
+
+        out, err = await communicate_streaming(proc, timeout, on_stdout_line)
     except asyncio.CancelledError:
         # Cancelling the docker client does not stop the container it started.
         if container:

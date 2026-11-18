@@ -270,6 +270,12 @@ class DevTaskRunner:
         self._running[tid] = run
         run.add_done_callback(lambda _t, tid=tid: self._done(tid))
         logger.info("Dev-task runner %s started task %s (%s)", self.id, tid, task.title)
+        from life_graph.services.dev import task_events
+
+        task_events.emit(
+            getattr(task, "tenant_id", None), tid, "status", "running",
+            data={"runner": self.id, "unattended": tid in self._unattended},
+        )  # fmt: skip
 
     def _done(self, tid: str) -> None:
         self._running.pop(tid, None)
@@ -306,6 +312,10 @@ class DevTaskRunner:
                 task.completed_at = datetime.now(UTC)
                 task.status_history = _history(task, "cancelled", "cancelled while running")
                 await session.commit()
+                from life_graph.services.dev import task_events
+
+                task_events.emit(task.tenant_id, tid, "status", "cancelled")
+                await task_events.flush()
         except Exception:
             logger.warning("Could not record the cancel of dev task %s", tid, exc_info=True)
 

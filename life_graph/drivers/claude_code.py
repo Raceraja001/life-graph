@@ -26,8 +26,12 @@ from pathlib import Path
 from life_graph.config import settings
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import render_memory_block
-from life_graph.drivers.host_exec import host_driver_env, kill_process_group
-from life_graph.drivers.steps import parse_claude_stream
+from life_graph.drivers.host_exec import (
+    communicate_streaming,
+    host_driver_env,
+    kill_process_group,
+)
+from life_graph.drivers.steps import claude_event_steps, parse_claude_stream
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.services.dev import sandbox
 
@@ -136,6 +140,44 @@ def _api_key() -> str | None:
     if not key:
         raise RuntimeError("driver_claude_code_auth=api_key but no ANTHROPIC_API_KEY is set")
     return key
+
+
+class _LiveStream:
+    """Turns the CLI's stream-json lines into live session events (Stage 4).
+
+    The same steps parse_claude_stream builds after the run, emitted as each
+    line arrives so the dashboard's session view shows the agent working.
+    """
+
+    def __init__(self, packet: ContextPacket | None) -> None:
+        self.tenant = getattr(packet, "tenant_id", None)
+        self.task = getattr(packet, "task_id", None)
+
+    def __call__(self, line: str) -> None:
+        from life_graph.services.dev import task_events
+
+        try:
+            event = json.loads(line)
+        except ValueError:
+            return
+        if not isinstance(event, dict):
+            return
+        if event.get("type") == "system" and event.get("subtype") == "init":
+            model = event.get("model")
+            task_events.emit(
+                self.tenant, self.task, "agent_start", f"agent started ({model})",
+                data={"model": model}, source="agent",
+            )  # fmt: skip
+            return
+        for step in claude_event_steps(event):
+            task_events.emit(
+                self.tenant,
+                self.task,
+                step["kind"],
+                step.get("content") or "",
+                data={k: step[k] for k in ("tool", "is_error", "ref") if step.get(k)},
+                source="agent",
+            )
 
 
 class ClaudeCodeDriver:
@@ -371,10 +413,11 @@ class ClaudeCodeDriver:
                 start_new_session=True,
             )
             try:
-                out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                out, err = await communicate_streaming(proc, timeout, _LiveStream(packet))
             except TimeoutError:
                 await kill_process_group(proc)
-                await proc.communicate()
+                with contextlib.suppress(Exception):
+                    await proc.communicate()
                 raise
             except asyncio.CancelledError:
                 # A cancel (dev-task runner) must stop the CLI and whatever it
@@ -451,6 +494,7 @@ class ClaudeCodeDriver:
             cpus=settings.driver_claude_sandbox_cpus,
             pids_limit=settings.driver_runtime_pids_limit,
             timeout=timeout,
+            on_stdout_line=_LiveStream(packet),
         )
         try:
             outcome = await task_runtime.runtime.run(req)
