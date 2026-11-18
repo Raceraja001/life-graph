@@ -1,6 +1,7 @@
 # Life Graph — AI Implementation Work Order
 
-**Status:** Active  
+**Status:** Closed 2026-11-18. All milestones complete (see §11). The active work order is
+`docs/work-orders/secure-execution-runtime.md`. Keep this file as the record of that work.  
 **Priority order:** P0 → P1 → P2  
 **Purpose:** Close the remaining security, authorization, browser-isolation, and memory-integrity gaps before expanding product capabilities.
 

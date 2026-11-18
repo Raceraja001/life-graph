@@ -1,3 +1,7 @@
+> **Historical (2026-11-18).** Not an active instruction. Its work is recorded as
+> complete in `docs/AI_WORK_ORDER.md`; the active work order is
+> `docs/work-orders/secure-execution-runtime.md`.
+
 # Life Graph — Engineering Review & AI Execution Instructions
 
 > **Review date:** 2026-11-14  

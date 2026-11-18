@@ -355,6 +355,8 @@ async def test_no_vulnerable_deps_inconclusive_without_pip_audit(tmp_path, monke
 async def test_no_vulnerable_deps_passes_when_pip_audit_finds_nothing(tmp_path, monkeypatch):
     import life_graph.services.dev.verifiers as verifiers_mod
 
+    monkeypatch.setattr(verifiers_mod.settings, "verifier_allow_host_execution", True)
+
     _init_repo(tmp_path)
     (tmp_path / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
     subprocess.run(
@@ -373,6 +375,8 @@ async def test_no_vulnerable_deps_passes_when_pip_audit_finds_nothing(tmp_path, 
 @pytest.mark.asyncio
 async def test_no_vulnerable_deps_fails_when_pip_audit_finds_a_vuln(tmp_path, monkeypatch):
     import life_graph.services.dev.verifiers as verifiers_mod
+
+    monkeypatch.setattr(verifiers_mod.settings, "verifier_allow_host_execution", True)
 
     _init_repo(tmp_path)
     (tmp_path / "requirements.txt").write_text("requests==2.0.0\n", encoding="utf-8")

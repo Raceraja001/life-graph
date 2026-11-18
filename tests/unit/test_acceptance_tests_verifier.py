@@ -20,6 +20,9 @@ from life_graph.services.dev.verifiers import verifier_chain
 def _host_mode(monkeypatch):
     monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
     monkeypatch.setattr(verifiers_mod, "_project_python", lambda _workdir: sys.executable)
+    # Host execution of agent code is refused by default; these tests are
+    # about the host path itself, so they opt in explicitly.
+    monkeypatch.setattr(verifiers_mod.settings, "verifier_allow_host_execution", True)
 
 
 @pytest.fixture

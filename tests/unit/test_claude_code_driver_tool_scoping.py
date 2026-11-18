@@ -70,6 +70,9 @@ def test_disallowed_cli_tools_empty_when_everything_dangerous_is_allowed():
 
 @pytest.mark.asyncio
 async def test_dispatch_passes_allowed_tools_flag_to_the_cli(tmp_path, monkeypatch):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "driver_allow_host_shell", True)
     driver = ClaudeCodeDriver(binary="claude")
     packet = ContextPacket(
         task_id=uuid.uuid4(), tenant_id="t1", task_type="code",
@@ -114,6 +117,9 @@ async def test_dispatch_passes_allowed_tools_flag_to_the_cli(tmp_path, monkeypat
 
 @pytest.mark.asyncio
 async def test_dispatch_omits_flag_when_unscoped(tmp_path, monkeypatch):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "driver_allow_host_shell", True)
     driver = ClaudeCodeDriver(binary="claude")
     packet = ContextPacket(
         task_id=uuid.uuid4(), tenant_id="t1", task_type="code",

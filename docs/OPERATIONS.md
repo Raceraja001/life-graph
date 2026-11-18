@@ -485,3 +485,50 @@ Per the Definition of Done in `docs/AI_WORK_ORDER.md`, the following boundaries 
 | Durable authorization persistence | Complete | PostgreSQL schema, CAS update, Indexing, Expiry/Revocation | Distributed active-active multi-region database replication |
 | Confidence calibration | Complete | Calibration (N=60) & held-out (N=60) evaluation, ECE, Brier | Production domain adaptation on newly introduced knowledge verticals |
 | External financial spend | Complete | Spend reservation logic, concurrency locks, ledger | Live banking API debit transactions with real currency |
+
+## Dev-agent execution runtime
+
+Where coding drivers run, and how to run them safely. Design and threat model:
+`docs/design/adr-secure-task-runtime.md`. Probe evidence: `docs/security/`.
+
+### Execution boundary per driver
+
+| Driver | Where it runs | Shell | Environment |
+|---|---|---|---|
+| `claude_code`, `DRIVER_CLAUDE_SANDBOX=task` | per-task container; worktree is the only host path; internal network; egress only via allowlisting proxy | yes, inside the container | built in code, validated (no `LIFE_GRAPH_*`, no secrets) |
+| `claude_code`, `=docker` (legacy) | container on docker's default bridge (open network) | yes, inside the container | as above, minus the network policy |
+| `claude_code`, `=none` | host, as the API user | **denied** unless `DRIVER_ALLOW_HOST_SHELL=true` | allowlist (`drivers/host_exec.py`) |
+| `opencode` | host, as the API user | **denied** unless `DRIVER_OPENCODE_ALLOW_BASH=true` | allowlist |
+| `local` | in the API process | `run_command`: `TOOL_SHELL_MODE=allowlist` (read-only programs) | `shell_allowlist.child_env()` |
+| verifiers | `VERIFIER_SANDBOX=docker`: `--network none` container. `=none`: code-executing checks are **inconclusive** unless `VERIFIER_ALLOW_HOST_EXECUTION=true` | — | — |
+
+### Enable the task runtime
+
+```bash
+docker build -t life-graph-sandbox-egress:dev -f Dockerfile.egress .   # the proxy
+bash docker/claude-driver/build.sh                                       # life-graph-claude-driver:latest
+docker build -t life-graph-verifier:py3.12 docker/verifier              # verifier (and -node/-jvm if used)
+# .env
+LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=task
+LIFE_GRAPH_VERIFIER_SANDBOX=docker
+```
+
+Restart the API. Check it with `python scripts/runtime_security_probe.py --image
+life-graph-claude-driver:latest`: it should report no host paths, no LIFE_GRAPH_* variables,
+unreachable direct network, and 403 from the proxy for unlisted hosts. A missing image makes
+dispatches fail with `exit_status=sandbox_unavailable`. They never fall back to the host.
+
+### Inspect and clean up
+
+- Running runtimes: `docker ps --filter label=life-graph.runtime=1`. The task id is in the
+  `life-graph.runtime.task` label, and the run's metadata is in `task.result.metadata.runtime`.
+- Leftovers from a crash are removed at the next API start (`dev_task_runtime_sweep`
+  startup step, runner-lock holder only). By hand:
+  `docker rm -f $(docker ps -aq --filter label=life-graph.runtime=1)`, plus `docker network
+  prune --filter label=life-graph.runtime=1`. Never remove the shared `lg-rt-outbound`
+  network while a task is running.
+
+### Rollback
+
+Set `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=docker` (previous container behaviour) and restart.
+There is no schema change.

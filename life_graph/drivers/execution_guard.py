@@ -143,6 +143,14 @@ def recover_interrupted_dispatch(checkpoint_data: dict[str, Any] | None) -> dict
     """Inspect a persisted checkpoint dictionary after a worker/process restart."""
     if not isinstance(checkpoint_data, dict):
         return {"action": "start_fresh", "resume_from": "prepared", "already_landed": False}
+    # A dispatch that reached its end and failed is decided: re-running it
+    # would only pay to fail again, and reading it as "finished" called it
+    # completed.
+    for cp in reversed(checkpoint_data.get("checkpoints") or []):
+        if isinstance(cp, dict) and cp.get("stage") == "finished":
+            if cp.get("ok") is False:
+                return {"action": "already_failed", "resume_from": None, "already_landed": False}
+            break
     last_stage = checkpoint_data.get("last_completed_stage")
     if last_stage in ("landed", "finished"):
         return {

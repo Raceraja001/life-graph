@@ -206,7 +206,18 @@ def enabled() -> bool:
 
 
 def driver_sandbox_enabled() -> bool:
-    return settings.driver_claude_sandbox == "docker"
+    """Whether the claude_code driver runs in a container at all ("docker" or "task")."""
+    return settings.driver_claude_sandbox in ("docker", "task")
+
+
+def task_runtime_enabled() -> bool:
+    """Whether the claude_code driver uses the per-task runtime (task_runtime.py)."""
+    return settings.driver_claude_sandbox == "task"
+
+
+def driver_creds_root() -> Path:
+    """Where :func:`stage_credentials` puts its throwaway copies."""
+    return _cache_root().parent / "driver-creds"
 
 
 def _cache_root() -> Path:
@@ -686,7 +697,7 @@ async def stage_credentials(source: Path) -> Path:
     """
     if not source.is_file():
         raise SandboxUnavailableError(f"no claude CLI credentials at {source}")
-    staged = _cache_root().parent / "driver-creds" / uuid.uuid4().hex
+    staged = driver_creds_root() / uuid.uuid4().hex
     staged.mkdir(parents=True)
     shutil.copy2(source, staged / ".credentials.json")
     os.chmod(staged / ".credentials.json", 0o600)
@@ -930,6 +941,80 @@ class SandboxPolicyError(ValueError):
         super().__init__(f"{target}: " + "; ".join(self.violations))
 
 
+# ── Per-task runtime additions (task_runtime.py) ──
+# A task runtime makes its own internal network per task (``docker network
+# create --internal``: no gateway) and checks that it IS internal before
+# anything joins it. The name pattern is what lets a spec name it; being
+# internal is verified at runtime, not assumed from the name.
+RUNTIME_NETWORK_PREFIX = "lg-rt-net-"
+_RUNTIME_NETWORK = re.compile(r"^lg-rt-net-[0-9a-f]{8,32}$")
+RUNTIME_LABEL = "life-graph.runtime"
+_LABEL_KEY = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+# Variable names a spec may pass through *by name* (``-e NAME``: the value
+# comes from the docker client's own environment and never appears in the
+# argv). Only the commercial-terms API key, and only for a driver container.
+PASSTHROUGH_ENV_ALLOWED = frozenset({"ANTHROPIC_API_KEY"})
+# Characters that would change what ``--mount`` means.
+_BIND_UNSAFE = re.compile(r"[,=\n\r\x00\"']")
+
+
+@dataclass(frozen=True)
+class Bind:
+    """One host directory a task runtime mounts, as a typed exception.
+
+    ``SandboxSpec.mounts`` still refuses every host path. A bind is allowed
+    only for a directory inside one of :func:`allowed_bind_roots` (the
+    dispatch scratch root, where worktrees are made, and the throwaway
+    credentials root) — never the live checkout, ``$HOME``, or ``/``.
+    """
+
+    source: str
+    target: str
+    read_only: bool = False
+
+
+def allowed_bind_roots() -> tuple[Path, ...]:
+    """Host directories a :class:`Bind` may come from (resolved)."""
+    import tempfile
+
+    return (
+        (Path(tempfile.gettempdir()) / "lg-tenants").resolve(),
+        driver_creds_root().resolve(),
+    )
+
+
+def _bind_violations(bind: Bind) -> list[str]:
+    bad: list[str] = []
+    src, dst = str(bind.source), str(bind.target)
+    if _BIND_UNSAFE.search(src) or _BIND_UNSAFE.search(dst):
+        bad.append(f"bind {src!r} -> {dst!r} holds a character that changes --mount's meaning")
+        return bad
+    if _RUNTIME_SOCKET.search(src) or _RUNTIME_SOCKET.search(dst):
+        bad.append(f"bind {src!r} exposes a container runtime socket")
+    if not dst.startswith("/") or dst == "/" or ".." in dst.split("/"):
+        bad.append(f"bind target {dst!r} must be an absolute path below /")
+    path = Path(src)
+    if not path.is_absolute():
+        bad.append(f"bind source {src!r} is not absolute")
+        return bad
+    if path.is_symlink():
+        bad.append(f"bind source {src!r} is a symlink")
+    resolved = path.resolve()
+    # What is validated must be exactly what docker mounts: a source with a
+    # symlinked middle component, or "..", resolves somewhere else.
+    if str(resolved) != src:
+        bad.append(f"bind source {src!r} is not a canonical path (resolves to {resolved})")
+    if not resolved.is_dir():
+        bad.append(f"bind source {src!r} is not an existing directory")
+    roots = allowed_bind_roots()
+    if not any(resolved != root and root in resolved.parents for root in roots):
+        bad.append(
+            f"bind source {src!r} is outside the runtime's bind roots"
+            f" ({', '.join(str(r) for r in roots)})"
+        )
+    return bad
+
+
 @dataclass(frozen=True)
 class SandboxSpec:
     """A container an errand may run in, plus every restriction it runs under.
@@ -967,6 +1052,11 @@ class SandboxSpec:
     working_dir: str = WORKSPACE_DIR
     # Wall-clock ceiling for the docker CLI calls this spec produces.
     timeout: int = 120
+    # Task-runtime only (see Bind / PASSTHROUGH_ENV_ALLOWED above). Errand
+    # builders never set these, so errands keep "no host path at all".
+    binds: tuple[Bind, ...] = ()
+    passthrough_env: tuple[str, ...] = ()
+    labels: dict[str, str] = field(default_factory=dict)
 
 
 def _settings_secret_values() -> set[str]:
@@ -1035,7 +1125,11 @@ def spec_violations(spec: SandboxSpec) -> list[str]:
         bad.append(f"network_mode {spec.network_mode!r} leaves the internal sandbox network")
     elif mode and mode != "none":
         bad.append(f"network_mode {spec.network_mode!r} is not the internal sandbox network")
-    if mode != "none" and spec.network not in INTERNAL_SANDBOX_NETWORKS:
+    if (
+        mode != "none"
+        and spec.network not in INTERNAL_SANDBOX_NETWORKS
+        and not _RUNTIME_NETWORK.match(spec.network or "")
+    ):
         # Not a list of equally good options: each of these bridges has no
         # gateway, so joining any of them is "no route out". The outbound
         # network is not here and must never be, which is what keeps an
@@ -1089,6 +1183,23 @@ def spec_violations(spec: SandboxSpec) -> list[str]:
         bad.append(f"cpus {spec.cpus!r} must be a share between 0 and 8")
 
     bad.extend(_env_violations(spec.env))
+
+    # ── Task-runtime extras ──
+    for bind in spec.binds:
+        bad.extend(_bind_violations(bind))
+    targets = [str(b.target) for b in spec.binds]
+    if len(set(targets)) != len(targets):
+        bad.append("two binds share a target")
+    for name in spec.passthrough_env:
+        if name not in PASSTHROUGH_ENV_ALLOWED:
+            bad.append(f"env {name} may not be passed through by name")
+        if name in spec.env:
+            bad.append(f"env {name} is both set and passed through")
+    for key, value in spec.labels.items():
+        if not _LABEL_KEY.match(str(key)):
+            bad.append(f"label {key!r} is not a safe label key")
+        if "\n" in str(value) or "\x00" in str(value) or len(str(value)) > 256:
+            bad.append(f"label {key!r} has an unsafe value")
     return bad
 
 
@@ -1239,8 +1350,15 @@ def docker_run_argv(spec: SandboxSpec, *, detach: bool = True) -> list[str]:
         argv += ["--tmpfs", entry]
     for mount in spec.mounts:
         argv += ["-v", mount]
+    for bind in spec.binds:
+        opt = f"type=bind,source={bind.source},target={bind.target}"
+        argv += ["--mount", opt + (",readonly" if bind.read_only else "")]
+    for key in sorted(spec.labels):
+        argv += ["--label", f"{key}={spec.labels[key]}"]
     for key in sorted(spec.env):
         argv += ["-e", f"{key}={spec.env[key]}"]
+    for name in spec.passthrough_env:
+        argv += ["-e", name]
     argv += ["-w", spec.working_dir]
     if spec.entrypoint:
         argv += ["--entrypoint", spec.entrypoint]

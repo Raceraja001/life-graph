@@ -2,7 +2,7 @@
 
 > **Status: Built.** Implemented in `life_graph/drivers/dispatcher.py`. This document records the design as it was specified; for what the code actually does now, see [docs/STATE.md](../STATE.md) — it is generated from the code.
 
-> ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `021_agent_drivers.py`; package `life_graph/drivers/` (base protocol, registry, local driver, dispatcher with WIP limits + bounce-once, context packets); `services/verifiers.py`, `services/results_loop.py`; API `api/drivers.py`. **Still pending**: second-opinion reviewer pass; seed personas (`uzhavu-ops`, `dependency-updater`); watcher-finding → task origination. See [CHARTER.md](../../CHARTER.md#current-frontier) for what is genuinely still open. **Do not rebuild what exists.**
+> _Historical banner (July 2026); the line above and docs/STATE.md are current._ ✅ **STATUS: MOSTLY IMPLEMENTED (July 2026).** Migration `021_agent_drivers.py`; package `life_graph/drivers/` (base protocol, registry, local driver, dispatcher with WIP limits + bounce-once, context packets); `services/verifiers.py`, `services/results_loop.py`; API `api/drivers.py`. **Still pending**: second-opinion reviewer pass; seed personas (`uzhavu-ops`, `dependency-updater`); watcher-finding → task origination. See [CHARTER.md](../../CHARTER.md#current-frontier) for what is genuinely still open. **Do not rebuild what exists.**
 
 > **Purpose**: Turn Life Graph from "one orchestrator loop with 10 tools" into an agent workforce — by wrapping best-in-class external agents (Claude Code headless, Codex CLI, browser-use) as interchangeable **drivers**, arming every dispatch with a **context packet** no external agent has, gating every result through a **verifier chain**, and feeding every outcome back into memory, trust, and calibration. Life Graph never competes with frontier executors; it employs them.
 >
@@ -387,14 +387,16 @@ LIFE_GRAPH_CONCURRENT_TASKS_PER_TENANT=5
 - Malformed driver JSON output → `exit_status=failed`, raw stdout preserved in `output.raw` for debugging
 - Verifier crash (not failure) → treated as inconclusive: chain continues, crash logged, task cannot auto-land (conservative)
 - Workdir isolation: `isolation=true` tasks run in a git worktree; worktree cleanup on terminal state; dirty worktree on failure is preserved 7 days for forensics
-- Cost runaway guard: per-task cost cap (default $2) — driver processes killed past cap, task marked failed
+- Cost runaway guard: per-task cost cap (designed as $2; the setting is `per_task_spend_cap_usd`, see STATE.md) — driver processes killed past cap, task marked failed
 
 ### Security Considerations
 
 - External drivers execute with project-scoped workdirs only — never `$HOME`, never the Life Graph repo itself without an explicit persona permission
 - Private-flagged tasks strip memory/preference packet sections for external drivers (Story 2); enforced in the packet builder, not by driver goodwill
 - Era-8 safety classifier runs on task **intent** before dispatch (existing) and on **artifacts** before landing — destructive-action patterns route to the approval queue regardless of trust level
-- Driver subprocess env is allow-listed (no ambient API keys beyond what the driver itself needs)
+- Driver subprocess env is allow-listed (no ambient API keys beyond what the driver itself needs).
+  True since 2026-11-18 (`drivers/host_exec.py`; containers: `services/dev/task_runtime.py`);
+  before that host-run drivers inherited the API process's whole environment.
 
 ### Cost Model
 

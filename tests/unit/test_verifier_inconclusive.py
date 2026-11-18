@@ -25,6 +25,13 @@ import life_graph.services.dev.verifiers as verifiers_mod
 from life_graph.services.dev.verifiers import VerifierResult, verifier_chain
 
 
+@pytest.fixture(autouse=True)
+def _allow_host_execution(monkeypatch):
+    # These tests are about how host-side checks report; the default now
+    # refuses host execution of agent code (test_host_execution_policy.py).
+    monkeypatch.setattr(verifiers_mod.settings, "verifier_allow_host_execution", True)
+
+
 def _init_repo(path):
     subprocess.run(["git", "init", "-q", "."], cwd=str(path), check=False)
     subprocess.run(["git", "add", "-A"], cwd=str(path), check=False)
