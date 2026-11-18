@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-18 06:17 UTC` from `master` @ `d4fc0e3`
+Generated `2026-11-18 08:43 UTC` from `master` @ `bd97e01`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-18 06:17 UTC` from `master` @ `d4fc0e3`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
-| Config settings | **296** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4961** in 516 files |
+| Config settings | **303** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5012** in 520 files |
 | Dashboard pages | **23** |
-| Python | 557 files, 137,652 lines |
+| Python | 559 files, 138,632 lines |
 
 ---
 
@@ -1027,16 +1027,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 399 | 4112 |
+| `tests/unit/` | 403 | 4163 |
 | `tests/integration/` | 116 | 837 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **516** | **4961** |
+| **total** | **520** | **5012** |
 
 ---
 
 ## Configuration
 
-296 settings, all overridable by environment variable.
+303 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1226,6 +1226,13 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_MEMORY` | `'4g'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_CPUS` | `'4'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_CREDS_PATH` | `'~/.claude/.credentials.json'` |
+| `LIFE_GRAPH_DRIVER_RUNTIME_EGRESS_IMAGE` | `'life-graph-sandbox-egress:dev'` |
+| `LIFE_GRAPH_DRIVER_RUNTIME_EGRESS_ALLOWLIST` | `'api.anthropic.com,console.anthropic.com,platform.claude.…` |
+| `LIFE_GRAPH_DRIVER_RUNTIME_PIDS_LIMIT` | `512` |
+| `LIFE_GRAPH_DRIVER_RUNTIME_KILL_GRACE_SECONDS` | `15` |
+| `LIFE_GRAPH_DRIVER_ALLOW_HOST_SHELL` | `False` |
+| `LIFE_GRAPH_DRIVER_HOST_ENV_PASSTHROUGH` | `''` |
+| `LIFE_GRAPH_VERIFIER_ALLOW_HOST_EXECUTION` | `False` |
 | `LIFE_GRAPH_SHADOW_MODE_ENABLED` | `True` |
 | `LIFE_GRAPH_SHADOW_MIN_DAYS` | `14` |
 | `LIFE_GRAPH_SHADOW_MIN_SAMPLES` | `5` |
