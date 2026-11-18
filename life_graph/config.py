@@ -596,7 +596,7 @@ class Settings(BaseSettings):
     # the dev-task runner. Without it, the database advisory lock still keeps
     # it from running alongside the real one (services/dev/tasks.py).
     dev_task_runner_enabled: bool = True
-    # Where queued coding work runs (services/compute_router.py). The one GPU
+    # Where queued coding work runs (services/llm/compute_router.py). The one GPU
     # is the user's while he is active (speech models), so queued tasks then go
     # to a free cloud model or wait; local runs happen while he is away.
     # Code may leave the machine this way; personal data never does (the
@@ -616,7 +616,7 @@ class Settings(BaseSettings):
     # Ollama model-name fragments that mean speech is in use (comma-separated).
     speech_models: str = "gemma3"
     ollama_api_base: str = "http://localhost:11434"
-    # How Life Graph asks Ollama to hold its local models (services/local_runtime.py).
+    # How Life Graph asks Ollama to hold its local models (services/llm/local_runtime.py).
     # One context size for every Life Graph request, or Ollama loads a second copy.
     local_llm_num_ctx: int = 16384
     # Hours of user_timezone ("7-23") in which the model stays loaded until the
@@ -634,7 +634,7 @@ class Settings(BaseSettings):
     cloud_rate_limit_cooldown_seconds: int = 3600
     # NVIDIA build.nvidia.com free API (LiteLLM's nvidia_nim/ provider).
     nvidia_nim_api_key: str = ""
-    # Job 1, free LLM offers (services/llm_offers.py, docs/specs/free-llm-offers.md).
+    # Job 1, free LLM offers (services/llm/offers.py, docs/specs/free-llm-offers.md).
     # Tenants it runs for (comma-separated); empty = off.
     offers_tenants: str = ""
     # News searches for new free tiers, credits and promotions (one per line).

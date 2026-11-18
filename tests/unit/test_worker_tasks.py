@@ -425,7 +425,7 @@ async def test_failure_mining_sums_patterns(fake_session, monkeypatch):
     miner.run = _run
     monkeypatch.setattr("life_graph.services.failure_mining.FailurePatternMiner", lambda **k: miner)
     monkeypatch.setattr(
-        "life_graph.services.llm_client.LMStudioClient", lambda *a, **k: MagicMock()
+        "life_graph.services.llm.client.LMStudioClient", lambda *a, **k: MagicMock()
     )
 
     out = await tasks.failure_pattern_mining({})

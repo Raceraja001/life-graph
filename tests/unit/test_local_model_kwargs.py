@@ -9,8 +9,8 @@ about "hi" before writing 12 of greeting.
 import pytest
 
 from life_graph.config import settings
-from life_graph.services import local_runtime
-from life_graph.services.resilient_llm import _local_model_kwargs
+from life_graph.services.llm import local_runtime
+from life_graph.services.llm.resilient import _local_model_kwargs
 
 
 @pytest.mark.parametrize(

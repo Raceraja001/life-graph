@@ -453,7 +453,8 @@ async def warm():
     import asyncio
 
     from life_graph.config import settings
-    from life_graph.services import lead, local_runtime
+    from life_graph.services import lead
+    from life_graph.services.llm import local_runtime
 
     task = asyncio.create_task(local_runtime.warm(lead.local_model(), settings.lm_embedding_model))
     _warming.add(task)

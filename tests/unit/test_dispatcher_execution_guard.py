@@ -17,19 +17,19 @@ from dataclasses import dataclass
 import pytest
 
 import life_graph.drivers.dispatcher as disp_mod
-import life_graph.services.compute_router as router_mod
+import life_graph.services.llm.compute_router as router_mod
 from life_graph.core.budget import BudgetDecision
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.dispatcher import TaskDispatcher, _changed_paths
 from life_graph.drivers.execution_guard import ORDERED_DISPATCH_STAGES
-from life_graph.services.compute_router import (
+from life_graph.services.dev.verifiers import VerifierResult
+from life_graph.services.llm.compute_router import (
     CLOUD_PERSONA,
     OPENCODE_PERSONA,
     Snapshot,
     carries_personal_data,
     decide,
 )
-from life_graph.services.dev.verifiers import VerifierResult
 
 
 class _Session:

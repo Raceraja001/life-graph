@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from life_graph.config import settings
 from life_graph.models.db import AdvisorSession, Preference
-from life_graph.services.resilient_llm import ResilientLLMExhaustedError
+from life_graph.services.llm.resilient import ResilientLLMExhaustedError
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker

@@ -3,7 +3,7 @@ import json
 import pytest
 
 from life_graph.agents.orchestrator import AgentOrchestrator
-from life_graph.services.claude_cli_reply import ClaudeCliResult
+from life_graph.services.llm.claude_cli_reply import ClaudeCliResult
 
 
 @pytest.mark.asyncio

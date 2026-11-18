@@ -303,9 +303,9 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
 
     # Free models adopted through a model_adoption approval join the cloud
-    # model list (services/llm_offers.py, compute_router.set_adopted).
+    # model list (services/llm/offers.py, compute_router.set_adopted).
     with startup_step(report, "adopted_models"):
-        from life_graph.services.llm_offers import refresh_adopted
+        from life_graph.services.llm.offers import refresh_adopted
         from life_graph.storage.database import async_session as _session
 
         async with _session() as session:

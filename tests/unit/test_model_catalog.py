@@ -1,6 +1,6 @@
 import pytest
 
-from life_graph.services import model_catalog
+from life_graph.services.llm import model_catalog
 
 
 class _FakeResponse:

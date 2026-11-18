@@ -413,7 +413,7 @@ def test_get_spend_tracker_is_a_singleton():
 @pytest.fixture
 def cloud_client(monkeypatch):
     """An LMStudioClient in hybrid mode with a fake cloud chain and local path."""
-    from life_graph.services import llm_client as llm_client_module
+    from life_graph.services.llm import client as llm_client_module
 
     monkeypatch.setattr(settings, "use_hybrid_llm", True)
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
@@ -997,7 +997,7 @@ async def test_cloud_chat_releases_the_reservation_when_the_provider_fails(
     client, calls, tracker = cloud_client
     monkeypatch.setattr(settings, "monthly_spend_cap_usd", 10.0)
 
-    from life_graph.services import llm_client as llm_client_module
+    from life_graph.services.llm import client as llm_client_module
 
     class ExplodingResilient:
         async def chat(self, messages, **kwargs):
@@ -1020,7 +1020,7 @@ async def test_cloud_chat_releases_the_reservation_when_cancelled(cloud_client, 
     client, _calls, tracker = cloud_client
     monkeypatch.setattr(settings, "monthly_spend_cap_usd", 10.0)
 
-    from life_graph.services import llm_client as llm_client_module
+    from life_graph.services.llm import client as llm_client_module
 
     class CancelledResilient:
         async def chat(self, messages, **kwargs):
@@ -1041,7 +1041,7 @@ async def test_repeated_failures_do_not_exhaust_the_budget(cloud_client, monkeyp
     monkeypatch.setattr(settings, "monthly_spend_cap_usd", 1.0)
     monkeypatch.setattr(settings, "per_task_spend_cap_usd", 0.0)
 
-    from life_graph.services import llm_client as llm_client_module
+    from life_graph.services.llm import client as llm_client_module
 
     class ExplodingResilient:
         async def chat(self, messages, **kwargs):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from life_graph.services.local_model_registry import (
+from life_graph.services.llm.local_model_registry import (
     LOCAL_MODEL_REGISTRY,
     RTX_5080_VRAM_GB,
     evaluate_gpu_scheduler_justification,

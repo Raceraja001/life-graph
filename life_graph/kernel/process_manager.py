@@ -718,7 +718,7 @@ class ProcessManager:
         held_done: dict | None = None
         token_count = 0
 
-        from life_graph.services.resilient_llm import only_models
+        from life_graph.services.llm.resilient import only_models
 
         # A personal request may fail over only to local models.
         pin: Any = (

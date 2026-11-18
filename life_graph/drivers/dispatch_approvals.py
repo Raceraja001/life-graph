@@ -232,7 +232,7 @@ class ApprovalFilingMixin:
         try:
             from life_graph.services.dev.github_pr import landed_diff
             from life_graph.services.dev.pr_description import draft_pr_description
-            from life_graph.services.llm_client import get_resilient_llm
+            from life_graph.services.llm.client import get_resilient_llm
 
             diff_text = await landed_diff(repo_path, base, head)
             return await draft_pr_description(

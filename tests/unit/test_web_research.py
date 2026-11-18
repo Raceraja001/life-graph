@@ -226,7 +226,8 @@ async def test_research_says_so_when_nothing_is_backed(monkeypatch):
 
 def test_research_models_only_reorder_the_free_list(monkeypatch):
     from life_graph.config import settings
-    from life_graph.services import compute_router, workers
+    from life_graph.services import workers
+    from life_graph.services.llm import compute_router
 
     monkeypatch.setattr(compute_router, "cloud_models", lambda: ["or/a:free", "or/b:free"])
     research = workers.ENVELOPES["research"]

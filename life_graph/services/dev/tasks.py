@@ -893,7 +893,7 @@ async def claim_next_queued(session_factory: async_sessionmaker[AsyncSession]) -
     one whose predecessor can no longer merge is marked failed, along with
     the rest of its plan as the scan reaches them.
     """
-    from life_graph.services import compute_router
+    from life_graph.services.llm import compute_router
 
     stopped: list[tuple[AgentTask, AgentTask, str]] = []
     claimed: AgentTask | None = None
@@ -1049,7 +1049,7 @@ async def _after_queued_run(
     once more for OpenCode, which the router only runs while the user is away
     and enough RAM is free; it stays local (``local_only``).
     """
-    from life_graph.services import compute_router
+    from life_graph.services.llm import compute_router
 
     async with session_factory() as session:
         task = await session.get(AgentTask, uuid.UUID(task_id))

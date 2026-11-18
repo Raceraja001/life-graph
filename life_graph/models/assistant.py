@@ -280,7 +280,7 @@ class Invoice(Base):
 
 
 class LlmOffer(Base):
-    """A free LLM model, tier, credit or promotion found (services/llm_offers.py).
+    """A free LLM model, tier, credit or promotion found (services/llm/offers.py).
 
     ``terms`` holds what the reader found out (limits, expires_on, needs_signup,
     needs_card, trains_on_prompts, commercial_use; each may be "unknown");

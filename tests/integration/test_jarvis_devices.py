@@ -216,7 +216,7 @@ async def test_voice_is_transcribed_locally_and_spoken_back(client, monkeypatch)
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_the_app_can_warm_the_local_model(client, monkeypatch):
-    from life_graph.services import local_runtime
+    from life_graph.services.llm import local_runtime
 
     _, token = await _pair(client)
     warmed = []

@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from life_graph.services.llm.resilient import ResilientLLMExhaustedError
 from life_graph.services.multi_model_advisor import MultiModelAdvisor
-from life_graph.services.resilient_llm import ResilientLLMExhaustedError
 
 
 def _make_advisor() -> MultiModelAdvisor:

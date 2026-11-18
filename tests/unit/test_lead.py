@@ -97,7 +97,7 @@ class _FakeOrchestrator:
         self.model = model
 
     async def run(self, messages, system_prompt=None, tools=None):
-        from life_graph.services.resilient_llm import _allowed_fallbacks
+        from life_graph.services.llm.resilient import _allowed_fallbacks
 
         _FakeOrchestrator.seen = {
             "model": self.model,

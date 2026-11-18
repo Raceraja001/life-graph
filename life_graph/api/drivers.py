@@ -401,7 +401,7 @@ class PresenceUpdate(BaseModel):
 
 
 async def _compute_status(tenant_id: str) -> dict:
-    from life_graph.services import compute_router
+    from life_graph.services.llm import compute_router
 
     snap = await compute_router.snapshot(async_session, tenant_id)
     sample = compute_router.decide("code-fixer-local", {}, snap)
@@ -421,7 +421,7 @@ async def _compute_status(tenant_id: str) -> dict:
     summary="Where queued coding work runs right now: local GPU, free cloud model, or later",
 )
 async def get_compute_status():
-    """The routing facts (services/compute_router.py) and what a nightly
+    """The routing facts (services/llm/compute_router.py) and what a nightly
     local-model task would do if it were claimed now."""
     return success_response(data=await _compute_status(get_current_tenant_id()))
 
@@ -449,7 +449,7 @@ async def put_presence(body: PresenceUpdate):
     """Mode "active" keeps queued coding work off the GPU; "away" lets it run
     locally even if speech models are loaded; "auto" goes back to detecting
     it from chat, Telegram and voice activity."""
-    from life_graph.services import compute_router
+    from life_graph.services.llm import compute_router
 
     tenant_id = get_current_tenant_id()
     if not await compute_router.set_presence(tenant_id, body.mode, body.minutes):

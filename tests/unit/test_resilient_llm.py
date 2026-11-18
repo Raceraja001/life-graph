@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import life_graph.services.resilient_llm as rl
-from life_graph.services.resilient_llm import ResilientLLM, ResilientLLMExhaustedError
+import life_graph.services.llm.resilient as rl
+from life_graph.services.llm.resilient import ResilientLLM, ResilientLLMExhaustedError
 
 
 def _resp(text="ok"):

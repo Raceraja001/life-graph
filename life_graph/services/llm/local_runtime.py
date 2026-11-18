@@ -11,7 +11,7 @@ being reloaded:
 * Requests that ask for a different context size load a second copy, so every
   Life Graph caller must ask for the same one. Ollama's OpenAI-style /v1
   endpoint ignores ``num_ctx`` and ``keep_alive`` altogether
-  (services/llm_client.py uses the native API for that reason).
+  (services/llm/client.py uses the native API for that reason).
 * Ollama unloads a model 5 minutes after its last request, and the phone is
   used now and then, so nearly every phone question started cold. In the
   owner's waking hours the model is now held until the end of them; at night

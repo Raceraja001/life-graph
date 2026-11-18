@@ -28,7 +28,7 @@ import httpx
 from sqlalchemy import func, select
 
 from life_graph.config import settings
-from life_graph.services.local_model_registry import (
+from life_graph.services.llm.local_model_registry import (
     PERSONAL_DATA_TASKS,
     RTX_5080_VRAM_GB,
     select_backend_for_task,
@@ -72,7 +72,7 @@ def _has_key(model: str) -> bool:
     return False
 
 
-# Models adopted through a model_adoption approval (services/llm_offers.py),
+# Models adopted through a model_adoption approval (services/llm/offers.py),
 # in score order; appended after the configured ones. Loaded at startup and
 # refreshed whenever an adoption is approved or an adopted model goes away.
 _adopted: list[str] = []

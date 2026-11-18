@@ -139,7 +139,7 @@ def test_detect_knowledge_gaps_surfaces_low_confidence_and_superseded():
 
 
 async def test_lm_client_embed_falls_back_to_ollama(monkeypatch):
-    from life_graph.services.llm_client import LMStudioClient
+    from life_graph.services.llm.client import LMStudioClient
 
     client = LMStudioClient(base_url="http://localhost:11435/v1")
 

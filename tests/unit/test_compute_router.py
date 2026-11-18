@@ -7,8 +7,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from life_graph.config import settings
-from life_graph.services import compute_router as cr
-from life_graph.services.compute_router import Snapshot, decide
+from life_graph.services.llm import compute_router as cr
+from life_graph.services.llm.compute_router import Snapshot, decide
 from tests.unit.fakes import FakeSession, session_factory, sql
 
 AWAY = Snapshot(active=None, local_hours=True, free_gb=30.0, cloud=())
@@ -197,7 +197,7 @@ async def test_snapshot_benched_cloud_route_has_no_models(monkeypatch):
 
 
 async def test_last_activity_picks_the_latest_source():
-    from life_graph.services.compute_router import last_activity
+    from life_graph.services.llm.compute_router import last_activity
 
     chat, telegram, voice = NOW - timedelta(minutes=50), None, NOW - timedelta(minutes=5)
     session = FakeSession(chat, telegram, voice.replace(tzinfo=None))

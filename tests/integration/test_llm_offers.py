@@ -35,7 +35,7 @@ async def client():
 @pytest.fixture(autouse=True)
 def _keys_and_reset(monkeypatch):
     from life_graph.config import settings
-    from life_graph.services import compute_router
+    from life_graph.services.llm import compute_router
 
     monkeypatch.setattr(settings, "openrouter_api_key", "test-key")
     monkeypatch.setattr(settings, "dev_cloud_models", "openrouter/base:free")
@@ -78,7 +78,8 @@ async def _add_offer(model_id: str, status: str = "new", evaluation: dict | None
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_catalog_diff_baseline_new_and_gone(monkeypatch):
-    from life_graph.services import compute_router, llm_offers
+    from life_graph.services.llm import compute_router
+    from life_graph.services.llm import offers as llm_offers
     from life_graph.storage.database import async_session
 
     provider = f"test{uuid.uuid4().hex[:6]}"  # never the real catalogs' snapshots
@@ -131,7 +132,8 @@ async def test_catalog_diff_baseline_new_and_gone(monkeypatch):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_news_scan_records_validated_offers(monkeypatch):
-    from life_graph.services import llm_offers, workers
+    from life_graph.services import workers
+    from life_graph.services.llm import offers as llm_offers
     from life_graph.storage.database import async_session
 
     page = "https://example.com/groq-free"
@@ -187,8 +189,9 @@ async def _coro(value):
 async def test_evaluation_files_an_adoption_and_approving_adopts(monkeypatch):
     from life_graph.models.assistant import LlmOffer
     from life_graph.models.db import Approval
-    from life_graph.services import compute_router, llm_offers, model_eval
     from life_graph.services.approvals import ApprovalService
+    from life_graph.services.llm import compute_router, model_eval
+    from life_graph.services.llm import offers as llm_offers
     from life_graph.storage.database import async_session
 
     offer_id = await _add_offer("openrouter/good:free")
@@ -235,7 +238,8 @@ async def test_evaluation_files_an_adoption_and_approving_adopts(monkeypatch):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_a_failed_smoke_test_costs_nothing_more(monkeypatch):
-    from life_graph.services import llm_offers, model_eval
+    from life_graph.services.llm import model_eval
+    from life_graph.services.llm import offers as llm_offers
     from life_graph.storage.database import async_session
 
     await _add_offer("openrouter/mute:free")
@@ -255,7 +259,7 @@ async def test_a_failed_smoke_test_costs_nothing_more(monkeypatch):
 @skip_on_db_error
 async def test_the_daily_cap_holds(monkeypatch):
     from life_graph.config import settings
-    from life_graph.services import llm_offers
+    from life_graph.services.llm import offers as llm_offers
     from life_graph.storage.database import async_session
 
     monkeypatch.setattr(settings, "offers_max_evals_per_day", 0)
@@ -285,7 +289,7 @@ async def test_api_lists_and_queues(client):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_brief_line_reports_what_changed():
-    from life_graph.services import llm_offers
+    from life_graph.services.llm import offers as llm_offers
     from life_graph.storage.database import async_session
 
     await _add_offer("openrouter/fresh:free", status="new")
@@ -299,7 +303,8 @@ async def test_brief_line_reports_what_changed():
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_the_same_provider_twice_is_one_offer_with_merged_terms(monkeypatch):
-    from life_graph.services import llm_offers, workers
+    from life_graph.services import workers
+    from life_graph.services.llm import offers as llm_offers
     from life_graph.storage.database import async_session
 
     pages = {"https://a.com/x": "a", "https://b.com/y": "b"}
@@ -339,7 +344,8 @@ async def test_the_same_provider_twice_is_one_offer_with_merged_terms(monkeypatc
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_an_unreachable_model_is_retried_not_failed(monkeypatch):
-    from life_graph.services import llm_offers, model_eval
+    from life_graph.services.llm import model_eval
+    from life_graph.services.llm import offers as llm_offers
     from life_graph.storage.database import async_session
 
     await _add_offer("openrouter/busy:free")

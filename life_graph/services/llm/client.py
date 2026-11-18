@@ -246,18 +246,18 @@ class LMStudioClient:
     # Ollama's OpenAI-style /v1 ignores num_ctx and keep_alive (measured
     # 2026-10-22): a /v1 call loaded qwen3:14b at the shared 32k context
     # (14.4 GB) beside Jarvis's 16k copy, and let it go after 5 minutes. The
-    # native API takes both (services/local_runtime.py).
+    # native API takes both (services/llm/local_runtime.py).
 
     @property
     def _is_ollama(self) -> bool:
-        from life_graph.services.local_runtime import is_ollama
+        from life_graph.services.llm.local_runtime import is_ollama
 
         return is_ollama(self._base_url)
 
     async def _ollama_post(self, path: str, body: dict[str, Any], timeout: float) -> dict:
         import httpx
 
-        from life_graph.services.local_runtime import ollama_base
+        from life_graph.services.llm.local_runtime import ollama_base
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(f"{ollama_base()}{path}", json=body)
@@ -272,7 +272,7 @@ class LMStudioClient:
         max_tokens: int,
         response_format: dict | None,
     ) -> str:
-        from life_graph.services import local_runtime
+        from life_graph.services.llm import local_runtime
 
         body: dict[str, Any] = {
             "model": model.removeprefix("ollama_chat/").removeprefix("ollama/"),
@@ -300,7 +300,7 @@ class LMStudioClient:
             return ""
 
     async def _ollama_embed(self, texts: list[str]) -> list[list[float]]:
-        from life_graph.services import local_runtime
+        from life_graph.services.llm import local_runtime
 
         data = await self._ollama_post(
             "/api/embed",

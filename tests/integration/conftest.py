@@ -315,10 +315,10 @@ def minio_available() -> bool:
 
 @pytest.fixture(autouse=True)
 def _no_speech_on_the_gpu(monkeypatch):
-    """The queue router (services/compute_router.py) holds local coding work
+    """The queue router (services/llm/compute_router.py) holds local coding work
     while a speech model is loaded in Ollama. Whatever this machine has
     loaded must not decide whether a test's queued task gets claimed."""
-    from life_graph.services import compute_router
+    from life_graph.services.llm import compute_router
 
     async def none():
         return None

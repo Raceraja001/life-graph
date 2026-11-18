@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock
 
-from life_graph.services.llm_offers import file_adoption
+from life_graph.services.llm.offers import file_adoption
 from tests.unit.fakes import FakeSession
 
 

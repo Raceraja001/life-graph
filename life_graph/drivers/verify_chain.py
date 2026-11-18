@@ -60,7 +60,7 @@ def runs_on_local_model(driver_name: str, persona_model: str | None) -> bool:
         # Not local, but just as unable to spend: the cloud driver refuses a
         # model that isn't free and fails over only to free ones
         # (drivers/cloud.py).
-        from life_graph.services.compute_router import is_free_cloud_model
+        from life_graph.services.llm.compute_router import is_free_cloud_model
 
         return is_free_cloud_model(persona_model)
     if driver_name == "opencode":
