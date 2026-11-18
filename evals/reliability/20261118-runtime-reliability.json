@@ -17,7 +17,7 @@
         "ok": true,
         "errors": []
       },
-      "seconds_after_kill": 40.3,
+      "seconds_after_kill": 40.1,
       "leftover_containers": 0,
       "leftover_networks": 0,
       "pass": true
@@ -38,13 +38,13 @@
     },
     "sigterm_drains": {
       "exit": 0,
-      "seconds_to_exit": 6.5,
+      "seconds_to_exit": 6.7,
       "task_after": "completed",
       "pass": true
     },
     "sigkill_standby_recovers": {
       "final": "completed",
-      "seconds_to_done": 33.35,
+      "seconds_to_done": 48.21,
       "agent_runs": 2,
       "pass": true,
       "note": "2 = the run the SIGKILL cut off, plus exactly one recovery run"

@@ -47,6 +47,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -344,6 +345,12 @@ async def main() -> None:
         os.environ["LIFE_GRAPH_AGENT_CONTEXT_TOKENS"] = str(args.context)
     settings.verifier_sandbox = "docker"
     settings.driver_claude_sandbox = args.runtime
+    if args.runtime == "none" and any(e.startswith("claude_code") for e in args.engine):
+        print(
+            "WARNING: --runtime none runs the real Claude Code CLI ON THIS HOST, with a shell "
+            "(run_command) and your CLI login. Use --runtime task unless you mean it.",
+            file=sys.stderr,
+        )
     # Its own instance label (task_runtime.instance_id): a dev-task worker's
     # startup sweep removes this install's runtimes with no running task row,
     # which a script's runtimes never have (seen 2026-11-18).

@@ -859,8 +859,10 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         # git_aware: links committed at HEAD and unchanged are the project's,
         # not the agent's. Only asked of an intact worktree, so the git
         # commands it runs read the origin's config, never a planted one.
+        # In a thread: a big worktree is a long walk plus two git calls, and on
+        # the event loop that stalled lease heartbeats and the API.
         escaping = (
-            escaping_symlinks(run.worktree, git_aware=True)
+            await asyncio.to_thread(escaping_symlinks, run.worktree, git_aware=True)
             if result.success and run.worktree is not None and intact
             else []
         )

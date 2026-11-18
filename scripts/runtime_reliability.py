@@ -75,6 +75,8 @@ def _env(scratch: Path, fake_seconds: int, extra: dict | None = None) -> dict:
 
 
 class Worker:
+    started: list[Worker] = []
+
     def __init__(self, scratch: Path, name: str, fake_seconds: int = 4, extra: dict | None = None):
         # Lives as long as the worker process it captures.
         self.log = open(scratch / f"worker-{name}.log", "w")  # noqa: SIM115
@@ -83,6 +85,7 @@ class Worker:
             env=_env(scratch, fake_seconds, extra), cwd=str(ROOT),
             stdout=self.log, stderr=subprocess.STDOUT,
         )  # fmt: skip
+        Worker.started.append(self)
 
     def stop(self, sig=signal.SIGTERM, timeout=60) -> int | None:
         if self.proc.poll() is None:
@@ -339,12 +342,17 @@ async def main() -> int:
     ap.add_argument("--out", default="")
     ap.add_argument("--i-know-this-is-a-throwaway-db", action="store_true")
     args = ap.parse_args()
-    url = os.environ.get("LIFE_GRAPH_DATABASE_URL", "")
-    if not args.i_know_this_is_a_throwaway_db and not any(
-        k in url for k in ("55499", "test", "throwaway")
-    ):
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(os.environ.get("LIFE_GRAPH_DATABASE_URL", "").replace("+asyncpg", ""))
+    db_name = parts.path.lstrip("/")
+    # The database NAME (or the known throwaway port) decides -- not a
+    # substring anywhere in the URL, where a password could match.
+    throwaway = any(k in db_name for k in ("test", "throwaway")) or parts.port == 55499
+    if not (throwaway or args.i_know_this_is_a_throwaway_db):
         print(
-            "refusing: LIFE_GRAPH_DATABASE_URL does not look like a throwaway database",
+            f"refusing: database {db_name!r} on port {parts.port} does not look like a "
+            "throwaway one (name containing 'test'/'throwaway', or port 55499)",
             file=sys.stderr,
         )
         return 2
@@ -354,10 +362,15 @@ async def main() -> int:
     (scratch / "fake-claude.sh").chmod(0o755)
     tenant = f"reliability_{uuid.uuid4().hex[:6]}"
     project = await _project(scratch, tenant)
-    report = {
-        "runtime": await runtime_checks(scratch),
-        "worker": await worker_checks(scratch, tenant, project),
-    }
+    try:
+        report = {
+            "runtime": await runtime_checks(scratch),
+            "worker": await worker_checks(scratch, tenant, project),
+        }
+    finally:
+        # Never leave a worker behind, whatever failed.
+        for w in Worker.started:
+            w.stop(signal.SIGKILL, timeout=10)
     flat = {**report["runtime"], **report["worker"]}
     report["passed"] = sum(1 for v in flat.values() if v.get("pass"))
     report["total"] = len(flat)

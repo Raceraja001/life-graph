@@ -728,6 +728,8 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "lease": props.get("lease"),
         "cancel_requested_at": props.get("cancel_requested_at"),
         "timeout_seconds": props.get("timeout_seconds"),
+        # Why a queued task has not started (claim-time WIP limits).
+        "waiting": props.get("waiting") if task.status == "queued" else None,
     }
 
 
@@ -1053,6 +1055,10 @@ async def _notify_plan_stopped(task: AgentTask, prev: AgentTask, stage: str) -> 
         logger.warning("Could not send the plan-stopped notification", exc_info=True)
 
 
+def _without(props: dict, key: str) -> dict:
+    return {k: v for k, v in props.items() if k != key}
+
+
 async def _running_counts(session: AsyncSession) -> tuple[dict, dict]:
     """Running AgentTasks per tenant and per (tenant, project) -- every kind,
     exactly what the dispatcher's WIP check counts."""
@@ -1114,6 +1120,27 @@ async def claim_next_queued(
             not_full.append(
                 or_(AgentTask.project_id.is_(None), AgentTask.project_id.notin_(full_projects))
             )
+        if full_tenants or full_projects:
+            # Say why they wait, once (no history spam): a held task used to
+            # fail loudly; now it waits, and the reason must be visible.
+            await session.execute(
+                text(
+                    "UPDATE agent_tasks SET properties = properties || jsonb_build_object("
+                    "'waiting', jsonb_build_object('reason', CAST(:reason AS text),"
+                    " 'since', CAST(:now AS text)))"
+                    " WHERE status = 'queued' AND properties->>'kind' = :kind"
+                    " AND properties->'waiting' IS NULL"
+                    " AND (tenant_id = ANY(CAST(:tenants AS text[]))"
+                    "      OR project_id = ANY(CAST(:projects AS uuid[])))"
+                ),
+                {
+                    "reason": "the project or tenant is at its limit of running tasks",
+                    "now": datetime.now(UTC).isoformat(),
+                    "kind": KIND,
+                    "tenants": full_tenants,
+                    "projects": full_projects,
+                },
+            )
         candidates = (
             (
                 await session.execute(
@@ -1155,7 +1182,7 @@ async def claim_next_queued(
                 task.status = "running"
                 task.started_at = now
                 task.status_history = _history(task, "running", "started")
-                task.properties = {**props, "lease": lease}
+                task.properties = {**_without(props, "waiting"), "lease": lease}
                 claimed = task
                 break
             if not allow_unattended and not props.get("interactive"):
@@ -1200,7 +1227,7 @@ async def claim_next_queued(
             task.status = "running"
             task.started_at = now
             task.status_history = _history(task, "running", note)
-            task.properties = {**(task.properties or {}), "lease": lease}
+            task.properties = {**_without(task.properties or {}, "waiting"), "lease": lease}
             claimed = task
             break
         await session.commit()

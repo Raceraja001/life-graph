@@ -149,7 +149,8 @@ def worktree_intact(worktree: Path, origin: str | Path) -> bool:
 
 
 # Bounds the walk: an agent can create files faster than we want to stat them.
-_SYMLINK_SCAN_LIMIT = 200_000
+# High enough for a JS worktree after `npm install`; past it, fail closed.
+_SYMLINK_SCAN_LIMIT = 1_000_000
 
 
 def _unchanged_tracked_links(base: Path) -> set[str]:
@@ -157,22 +158,31 @@ def _unchanged_tracked_links(base: Path) -> set[str]:
 
     Those are the project's own (the owner committed them), not the agent's.
     Only called once the worktree's .git link is known intact, so these git
-    commands read the origin's own repository config.
+    commands read the origin's own repository config. Any git failure
+    (timeout, no commits yet) returns an empty set: every escaping link is
+    then counted -- fail closed.
     """
     import subprocess
 
-    def git(*args: str) -> str:
-        res = subprocess.run(
-            ["git", "-C", str(base), *args], capture_output=True, text=True, timeout=30
-        )
-        return res.stdout if res.returncode == 0 else ""
+    def git(*args: str) -> str | None:
+        try:
+            res = subprocess.run(
+                ["git", "-C", str(base), *args], capture_output=True, text=True, timeout=30
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return res.stdout if res.returncode == 0 else None
 
+    listed = git("ls-files", "-s", "-z")
+    changed_out = git("diff", "--name-only", "-z", "HEAD")
+    if listed is None or changed_out is None:
+        return set()
     tracked = {
-        line.split("\t", 1)[1]
-        for line in git("ls-files", "-s").splitlines()
-        if line.startswith("120000 ") and "\t" in line
+        entry.split("\t", 1)[1]
+        for entry in listed.split("\0")
+        if entry.startswith("120000 ") and "\t" in entry
     }
-    changed = set(git("diff", "--name-only", "HEAD").splitlines())
+    changed = {p for p in changed_out.split("\0") if p}
     return tracked - changed
 
 
@@ -194,10 +204,16 @@ def escaping_symlinks(worktree: Path, limit: int = 20, *, git_aware: bool = Fals
         base = Path(worktree).resolve()
     except (TypeError, OSError):
         return []
+    # The project's own links are known BEFORE the walk, so they never take
+    # a place under `limit` (20 committed links used to hide the agent's).
+    own = _unchanged_tracked_links(base) if git_aware else set()
     found: list[str] = []
     seen = 0
     for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
-        if ".git" in dirnames:
+        # Only the worktree's own top-level .git dir is git's business (and
+        # worktree_intact checks it). A ".git" anywhere else, or one that is a
+        # symlink, is checked like any other entry.
+        if Path(dirpath) == base and ".git" in dirnames and not (base / ".git").is_symlink():
             dirnames.remove(".git")
         for name in [*dirnames, *filenames]:
             seen += 1
@@ -212,14 +228,12 @@ def escaping_symlinks(worktree: Path, limit: int = 20, *, git_aware: bool = Fals
             except OSError:
                 target = None
             if target is None or (target != base and base not in target.parents):
-                found.append(str(path.relative_to(base)))
+                rel = str(path.relative_to(base))
+                if rel in own:
+                    continue
+                found.append(rel)
                 if len(found) >= limit:
-                    break
-        if len(found) >= limit:
-            break
-    if found and git_aware:
-        own = _unchanged_tracked_links(base)
-        found = [f for f in found if f not in own]
+                    return found
     return found
 
 
