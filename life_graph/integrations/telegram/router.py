@@ -331,8 +331,8 @@ async def _converse(chat_id: int, tenant_id: str, question: str, *, voice: bool 
 
 
 async def _record_transaction(chat_id: int, tenant_id: str, text: str) -> None:
-    """/txn <bank alert text>: record it in money (services/money.py)."""
-    from life_graph.services import money
+    """/txn <bank alert text>: record it in money (services/finance/money.py)."""
+    from life_graph.services.finance import money
     from life_graph.storage.database import async_session
 
     txn = money.parse_alert(text)

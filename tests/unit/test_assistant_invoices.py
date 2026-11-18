@@ -9,7 +9,7 @@ import pytest
 
 from life_graph.config import settings
 from life_graph.models.assistant import Invoice
-from life_graph.services import invoices
+from life_graph.services.finance import invoices
 
 
 def test_items_are_cleaned_and_totals_rounded():

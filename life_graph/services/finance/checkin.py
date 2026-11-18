@@ -2,7 +2,7 @@
 
 docs/specs/money-checkin-and-app-health.md (Job 5 of
 docs/design/11_persona_roster_plan.md). Plain code over the imported
-transactions (services/money.py), no model: every figure is a sum of rows,
+transactions (services/finance/money.py), no model: every figure is a sum of rows,
 so it can be checked against them.
 
 * **This period** is the month so far (the 1st to today); it is compared with

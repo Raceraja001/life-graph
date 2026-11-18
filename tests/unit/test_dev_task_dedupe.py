@@ -10,7 +10,7 @@ from life_graph.services.dev import tasks as dev_tasks
 from tests.unit.fakes import FakeSession, session_factory, sql
 
 PROJECT = {"id": str(uuid.uuid4()), "name": "life-graph"}
-INSTRUCTION = "Write unit tests for `merchant_from` in life_graph/services/money.py"
+INSTRUCTION = "Write unit tests for `merchant_from` in life_graph/services/finance/money.py"
 
 
 def _open_task(status: str = "queued") -> AgentTask:

@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from life_graph.services import money
+from life_graph.services.finance import money
 
 NOW = datetime(2026, 10, 14, 6, 0, tzinfo=UTC)
 

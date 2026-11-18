@@ -237,7 +237,7 @@ class StudyReview(Base):
 
 
 class Invoice(Base):
-    """An invoice the user issues to a client (services/invoices.py).
+    """An invoice the user issues to a client (services/finance/invoices.py).
 
     ``items`` is a list of ``{description, quantity, unit_price}``; the totals
     are computed by the service and stored, so a later edit to the tax rule

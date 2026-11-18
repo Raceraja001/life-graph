@@ -8,9 +8,9 @@ from life_graph.services.night_shift import lines, short_title
 def test_short_title_for_nightly_test_tasks():
     title = (
         "Write unit tests, in a new file tests/unit/test_money_merchant_from.py, for "
-        "`merchant_from` in life_graph/services/money.py, which has none. Read the function…"
+        "`merchant_from` in life_graph/services/finance/money.py, which has none. Read the function…"
     )
-    assert short_title(title) == "tests for merchant_from (services/money.py)"
+    assert short_title(title) == "tests for merchant_from (services/finance/money.py)"
     assert short_title("Fix the 422 in kernel.py") == "Fix the 422 in kernel.py"
     assert short_title("x" * 120).endswith("…") and len(short_title("x" * 120)) == 78
 

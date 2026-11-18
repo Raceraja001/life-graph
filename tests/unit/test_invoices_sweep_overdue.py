@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from life_graph.services.invoices import sweep_overdue
+from life_graph.services.finance.invoices import sweep_overdue
 from tests.unit.fakes import FakeSession, session_factory, sql
 
 

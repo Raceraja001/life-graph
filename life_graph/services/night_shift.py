@@ -24,7 +24,7 @@ _TEST_TITLE = re.compile(r"for `([\w.]+)` in ([\w/.]+)")
 
 
 def short_title(title: str | None) -> str:
-    """A readable line for a task: 'tests for merchant_from (services/money.py)'
+    """A readable line for a task: 'tests for merchant_from (services/finance/money.py)'
     rather than the whole nightly instruction."""
     text = (title or "").strip()
     m = _TEST_TITLE.search(text)

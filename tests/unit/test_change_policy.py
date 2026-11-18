@@ -16,8 +16,8 @@ from tests.unit.fakes import FakeSession
         (["tests/unit/test_a.py"], "tests"),
         (["tests/unit/test_a.py", "docs/notes.md"], "tests"),
         (["docs/design/10.md", "README.md"], "docs"),
-        (["life_graph/services/money.py", "tests/unit/test_money.py"], "code"),
-        (["life_graph/services/money.py"], "code"),
+        (["life_graph/services/finance/money.py", "tests/unit/test_money.py"], "code"),
+        (["life_graph/services/finance/money.py"], "code"),
         ([], "code"),
     ],
 )
@@ -33,7 +33,7 @@ def test_protected_hits_defaults_and_project_globs():
         "AGENTS.md",
         ".env",
         "life_graph/drivers/local.py",
-        "life_graph/services/money.py",
+        "life_graph/services/finance/money.py",
     ]
     assert cp.protected_hits(files) == files[:5]
     assert cp.protected_hits(files, ["life_graph/drivers/*"]) == files[:6]
