@@ -301,7 +301,7 @@ class ClaudeCodeDriver:
             sandbox.SandboxUnavailableError: sandboxing is configured on
                 but docker, the image, or the container itself is not
                 available. Never falls back to the host path — see
-                driver_claude_sandbox's docstring in config.py.
+                driver_claude_sandbox's comment in config/drivers.py.
         """
         api_key = _api_key()
         if not sandbox.driver_sandbox_enabled():
