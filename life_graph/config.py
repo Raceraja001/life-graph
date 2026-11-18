@@ -758,7 +758,7 @@ class Settings(BaseSettings):
     interview_question_ttl_days: int = 7  # Unanswered questions expire after this
     brief_hour_utc: int = 2  # Daily brief composition hour (02:00 UTC ≈ 07:30 IST)
     # Bills, to-dos, expiring documents and timed reminders written as
-    # notifications for the phone to post (services/due_notifications.py).
+    # notifications for the phone to post (services/notifications/due.py).
     # False keeps the phone quiet about them; the brief still lists them.
     phone_due_notifications: bool = True
     # Local hour (user_timezone) after which the daily "N study cards due" nudge

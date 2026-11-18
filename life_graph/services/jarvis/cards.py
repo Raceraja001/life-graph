@@ -168,7 +168,7 @@ def _masked(account: Any, local_only: set[str] | None) -> bool:
 
 
 def _bills(result: str, local_only: set[str] | None) -> list[dict[str, Any]]:
-    from life_graph.services.due_notifications import short_amount
+    from life_graph.services.notifications.due import short_amount
 
     out = []
     for b in _payload(result, ("items",)).get("items") or []:

@@ -1,4 +1,4 @@
-"""Due items as phone notifications (services/due_notifications.py): what is
+"""Due items as phone notifications (services/notifications/due.py): what is
 due, lead times, the dedup key, wording, and the write's dedup — no database."""
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from life_graph.services import due_notifications as dn
+from life_graph.services.notifications import due as dn
 
 TODAY = date(2026, 10, 21)
 IST = ZoneInfo("Asia/Kolkata")

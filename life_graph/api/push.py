@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from life_graph.api.responses import success_response
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.services.webpush import PushService
+from life_graph.services.notifications.webpush import PushService
 from life_graph.storage.database import async_session
 
 router = APIRouter(prefix="/push", tags=["push"])

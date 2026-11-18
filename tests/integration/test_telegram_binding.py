@@ -19,7 +19,7 @@ import pytest_asyncio
 from sqlalchemy import delete
 
 from life_graph.models.db import TelegramBinding, TelegramPairingCode
-from life_graph.services.telegram_binding import PairingError, TelegramBindingService
+from life_graph.services.notifications.telegram_binding import PairingError, TelegramBindingService
 from life_graph.storage.database import async_session
 from tests.integration.conftest import skip_on_db_error
 

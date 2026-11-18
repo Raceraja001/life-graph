@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from life_graph.core.events import Event, EventType, event_bus
 from life_graph.models.db import Notification
-from life_graph.services.webpush import PushService
+from life_graph.services.notifications.webpush import PushService
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)

@@ -175,8 +175,8 @@ async def test_buttons_on_due_items_mark_paid_and_snooze(client, monkeypatch):
     from life_graph.connectors.bills import bills_due
     from life_graph.connectors.models import ConnectorItem
     from life_graph.models.db import Intention, Notification
-    from life_graph.services import due_notifications
-    from life_graph.services import notification_actions as na
+    from life_graph.services.notifications import actions as na
+    from life_graph.services.notifications import due as due_notifications
     from life_graph.storage.database import async_session
 
     evening = _at(DAY, 19)

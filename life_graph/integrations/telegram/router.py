@@ -39,7 +39,7 @@ from life_graph.integrations.telegram import media as tg_media
 from life_graph.integrations.telegram.client import TelegramClient, TelegramError
 from life_graph.services import assistant_chat
 from life_graph.services.capture import CaptureService
-from life_graph.services.telegram_binding import PairingError, TelegramBindingService
+from life_graph.services.notifications.telegram_binding import PairingError, TelegramBindingService
 
 logger = logging.getLogger(__name__)
 

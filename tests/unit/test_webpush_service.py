@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from life_graph.models.db import PushSubscription
-from life_graph.services.webpush import PushService
+from life_graph.services.notifications.webpush import PushService
 
 
 class _FakeResult:
@@ -88,7 +88,7 @@ async def test_save_subscription_upserts_no_dup_on_same_endpoint(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr("life_graph.services.webpush.get_current_tenant_id", lambda: "t1")
+    monkeypatch.setattr("life_graph.services.notifications.webpush.get_current_tenant_id", lambda: "t1")
 
     svc = PushService(session_factory)
     sub = {"endpoint": "https://push.example/a", "keys": {"p256dh": "p1", "auth": "a1"}}
@@ -109,7 +109,7 @@ async def test_delete_subscription_removes_by_endpoint(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr("life_graph.services.webpush.get_current_tenant_id", lambda: "t1")
+    monkeypatch.setattr("life_graph.services.notifications.webpush.get_current_tenant_id", lambda: "t1")
 
     svc = PushService(session_factory)
     await svc.delete_subscription("https://push.example/a")
@@ -129,18 +129,18 @@ async def test_delete_subscription_is_tenant_scoped(monkeypatch):
 
     svc = PushService(session_factory)
 
-    monkeypatch.setattr("life_graph.services.webpush.get_current_tenant_id", lambda: "t2")
+    monkeypatch.setattr("life_graph.services.notifications.webpush.get_current_tenant_id", lambda: "t2")
     await svc.delete_subscription("https://push.example/a")
     assert [s.endpoint for s in store] == ["https://push.example/a"]  # not owned by t2 — untouched
 
-    monkeypatch.setattr("life_graph.services.webpush.get_current_tenant_id", lambda: "t1")
+    monkeypatch.setattr("life_graph.services.notifications.webpush.get_current_tenant_id", lambda: "t1")
     await svc.delete_subscription("https://push.example/a")
     assert store == []  # owned by t1 — deleted
 
 
 @pytest.mark.asyncio
 async def test_send_to_tenant_noop_when_vapid_key_unset(monkeypatch):
-    monkeypatch.setattr("life_graph.services.webpush.settings.vapid_private_key", "")
+    monkeypatch.setattr("life_graph.services.notifications.webpush.settings.vapid_private_key", "")
 
     def session_factory():
         raise AssertionError("should not open a session when VAPID key is unset")
@@ -162,10 +162,10 @@ async def test_send_prunes_dead_subscription(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr("life_graph.services.webpush.settings.vapid_private_key", "server-key")
-    monkeypatch.setattr("life_graph.services.webpush.settings.vapid_subject", "mailto:a@b.com")
+    monkeypatch.setattr("life_graph.services.notifications.webpush.settings.vapid_private_key", "server-key")
+    monkeypatch.setattr("life_graph.services.notifications.webpush.settings.vapid_subject", "mailto:a@b.com")
 
-    with patch("life_graph.services.webpush.webpush") as mock_webpush:
+    with patch("life_graph.services.notifications.webpush.webpush") as mock_webpush:
 
         def side_effect(subscription_info, data, **kw):
             if "dead" in subscription_info["endpoint"]:
@@ -198,9 +198,9 @@ async def test_send_to_tenant_swallows_non_prune_errors(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr("life_graph.services.webpush.settings.vapid_private_key", "server-key")
+    monkeypatch.setattr("life_graph.services.notifications.webpush.settings.vapid_private_key", "server-key")
 
-    with patch("life_graph.services.webpush.webpush") as mock_webpush:
+    with patch("life_graph.services.notifications.webpush.webpush") as mock_webpush:
         from pywebpush import WebPushException
 
         resp = MagicMock()
@@ -226,9 +226,9 @@ async def test_send_to_tenant_continues_after_transport_error(monkeypatch):
     def session_factory():
         return _FakeSession(store)
 
-    monkeypatch.setattr("life_graph.services.webpush.settings.vapid_private_key", "server-key")
+    monkeypatch.setattr("life_graph.services.notifications.webpush.settings.vapid_private_key", "server-key")
 
-    with patch("life_graph.services.webpush.webpush") as mock_webpush:
+    with patch("life_graph.services.notifications.webpush.webpush") as mock_webpush:
 
         def side_effect(subscription_info, data, **kw):
             if "flaky-transport" in subscription_info["endpoint"]:

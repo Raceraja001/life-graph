@@ -236,7 +236,7 @@ async def _errands(tenant_id: str, now: datetime) -> list[dict[str, Any]]:
     asked for, which is what the owner was shown on the notification.
     """
     from life_graph.models.db import Notification
-    from life_graph.services.notification_actions import ERRAND_APPROVAL
+    from life_graph.services.notifications.actions import ERRAND_APPROVAL
     from life_graph.storage.database import async_session
 
     since = now - timedelta(days=ERRAND_DAYS)
@@ -449,7 +449,7 @@ def _document_due_rows(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _todo_due_rows(todos: list[dict[str, Any]], today: date) -> list[dict[str, Any]]:
-    from life_graph.services.due_notifications import OVERDUE_DAYS
+    from life_graph.services.notifications.due import OVERDUE_DAYS
 
     out = []
     for t in todos:
@@ -485,7 +485,7 @@ def due_rows(src: dict[str, Any], today: date) -> list[dict[str, Any]]:
 
 def insights(src: dict[str, Any], today: date) -> list[dict[str, Any]]:
     """The fixed rules, most urgent first."""
-    from life_graph.services.due_notifications import document_text, short_amount
+    from life_graph.services.notifications.due import document_text, short_amount
 
     out: list[dict[str, Any]] = []
     for e in src.get("errands") or []:

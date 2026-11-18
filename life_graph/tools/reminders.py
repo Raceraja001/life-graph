@@ -2,7 +2,7 @@
 
 "Remind me to call Murugan at 6", typed or spoken on the phone, becomes a
 time ``Intention`` (services/reminders.py); when it is due,
-services/due_notifications.py posts it to the phone. The chat stream shows the
+services/notifications/due.py posts it to the phone. The chat stream shows the
 result as a ``reminded`` event, and the voice reply lists it (api/jarvis.py),
 from the run's task id stored with the reminder.
 

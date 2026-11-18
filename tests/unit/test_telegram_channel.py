@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from life_graph.integrations.telegram.client import TelegramError
-from life_graph.services.telegram_delivery import TelegramDeliveryHandler
+from life_graph.services.notifications.telegram_delivery import TelegramDeliveryHandler
 from life_graph.watchers.channels.telegram_channel import TelegramChannel
 
 

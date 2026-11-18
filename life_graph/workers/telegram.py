@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 
-from life_graph.services.telegram_binding import TelegramBindingService
+from life_graph.services.notifications.telegram_binding import TelegramBindingService
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)

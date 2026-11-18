@@ -408,7 +408,7 @@ def phone_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     The phone is the owner's own screen, but what it is sent leaves this
     machine (the tunnel, the handset), so a ``local_only`` account's items
-    reach it as due notifications do (services/due_notifications.py): when,
+    reach it as due notifications do (services/notifications/due.py): when,
     and what kind, never the title, people, payee or amount. Standard
     accounts pass unchanged. Returns copies; the input is not modified.
     """

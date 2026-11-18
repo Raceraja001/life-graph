@@ -15,8 +15,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from life_graph.services import due_notifications as dn
-from life_graph.services import notification_actions as na
+from life_graph.services.notifications import actions as na
+from life_graph.services.notifications import due as dn
 from life_graph.services.reminders import (
     NEED_A_TIME,
     WhenError,

@@ -229,7 +229,7 @@ async def run(session_factory, now: datetime | None = None) -> dict[str, Any]:
 async def act(session, tenant_id: str, intention_id: str, action: str, now: datetime, tz: Any):
     """Done, Tomorrow (09:00, owner's day) or Drop; returns the row, or None if not theirs."""
     from life_graph.models.db import Intention
-    from life_graph.services.notification_actions import ActionRefusedError, snooze_until
+    from life_graph.services.notifications.actions import ActionRefusedError, snooze_until
 
     if action not in ACTIONS:
         raise ActionRefusedError("That button isn't offered for this nudge.")

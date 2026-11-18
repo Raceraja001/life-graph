@@ -30,7 +30,7 @@ class ApprovalNotificationHandler:
         self._subscribed = False
         self._session_factory = session_factory or async_session
         if push is None:
-            from life_graph.services.webpush import PushService
+            from life_graph.services.notifications.webpush import PushService
 
             push = PushService(self._session_factory)
         self._push = push

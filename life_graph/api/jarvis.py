@@ -22,7 +22,7 @@ there. The contract is the app's (life-graph-android docs/PLAN.md):
 
 v3 (docs/PLAN-v3.md): notifications carry ``kind`` and ``actions``, and
 ``POST /jarvis/notifications/{id}/action`` takes one
-(services/notification_actions.py); ``GET /jarvis/brief/latest`` speaks the
+(services/notifications/actions.py); ``GET /jarvis/brief/latest`` speaks the
 newest brief; ``GET /jarvis/reminders`` and ``.../{id}/cancel``. Jarvis's
 reminder_set reaches the chat as ``{type: reminded, id, text, at}`` and the
 voice reply as ``reminded``.
@@ -1253,7 +1253,7 @@ async def notifications(after: str | None = None, limit: int = 20):
 
 
 def _notification_row(n) -> dict:
-    from life_graph.services.notification_actions import actions_for, kind_of
+    from life_graph.services.notifications.actions import actions_for, kind_of
 
     meta = getattr(n, "extra_metadata", None) or {}
     kind = kind_of(getattr(n, "source_type", None), meta)
@@ -1302,7 +1302,7 @@ async def notification_action(notification_id: str, body: NotificationAction):
     button is not offered for it or was already used.
     """
     from life_graph.connectors.tools import user_tz
-    from life_graph.services import notification_actions as na
+    from life_graph.services.notifications import actions as na
 
     tenant_id = get_current_tenant_id()
     async with async_session() as session:
@@ -1825,8 +1825,8 @@ async def open_nudges(limit: int = 50):
 )
 async def act_on_nudge(nudge_id: str, body: NudgeAction):
     from life_graph.connectors.tools import user_tz
-    from life_graph.services import notification_actions as na
     from life_graph.services import nudges
+    from life_graph.services.notifications import actions as na
 
     tenant_id = get_current_tenant_id()
     async with async_session() as session:
