@@ -4,9 +4,11 @@ An ambient-action persona (``ops`` today, ``cody`` soon — see
 ``kernel.ambient.AMBIENT_ACTION``) runs read-only on a schedule and ends its
 reply with ONLY a JSON array of proposed actions. ``ActionProposalBridge``
 (``services/action_proposal_bridge.py``) parses that array and routes each
-item through the autonomy engine. These constants are appended verbatim to a
-persona's ``system_prompt`` in ``kernel/personas.py`` so every persona that
-opts into propose mode emits a JSON shape the bridge already understands.
+item through the autonomy engine. A persona's prompt file puts one in with
+``<<command_propose_contract>>`` or ``<<agent_task_propose_contract>>``
+(``kernel/builtin_personas/``, loaded by ``kernel/persona_files.py``), so every
+persona that opts into propose mode emits a JSON shape the bridge already
+understands.
 
 ``COMMAND_PROPOSE_CONTRACT`` is the original ops contract (shell-command
 proposals), moved here unchanged from its former inline location in the ops
