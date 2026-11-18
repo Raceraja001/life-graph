@@ -150,3 +150,166 @@ tasks:
             s.add("a"); s.add("b")
             s._items[0]["done"] = True
             assert s.stats() == {"total": 2, "done": 1, "open": 1}
+
+  # ── Added 2026-11-18 (secure-execution-runtime Stage 5): other kinds of work ──
+  # `setup` files are written before the fixture is committed, so the engine
+  # starts from a repo that already has the bug / the old shape in it.
+
+  - id: py-bugfix
+    fixture: python-todo
+    category: bugfix
+    setup:
+      app/store.py: |
+        """An in-memory to-do list: the logic the unit tests cover."""
+
+        from __future__ import annotations
+
+
+        class Store:
+            def __init__(self) -> None:
+                self._items: list[dict] = []
+
+            def add(self, title: str) -> dict:
+                clean = (title or "").strip()
+                if not clean:
+                    raise ValueError("title is required")
+                item = {"id": len(self._items), "title": clean, "done": False}
+                self._items.append(item)
+                return item
+
+            def list(self) -> list[dict]:
+                return self._items
+    instruction: >-
+      The test suite (tests/test_store.py) fails. Find and fix the bug or bugs in app/
+      without changing the tests. Callers must not be able to change the store's items
+      through what list() returns.
+    hidden_test:
+      path: tests/test_hidden.py
+      command: [python, -m, pytest, -q, tests/test_hidden.py, tests/test_store.py]
+      content: |
+        from app.store import Store
+
+        def test_ids_start_at_one_and_are_unique():
+            s = Store()
+            ids = [s.add(t)["id"] for t in ("a", "b", "c")]
+            assert ids == [1, 2, 3]
+
+        def test_list_is_a_copy():
+            s = Store()
+            s.add("a")
+            s.list()[0]["title"] = "hacked"
+            s.list().clear()
+            assert [i["title"] for i in s.list()] == ["a"]
+
+  - id: py-refactor
+    fixture: python-todo
+    category: refactor
+    instruction: >-
+      Rename Store.list() to Store.all() everywhere it is defined or used (app/ and
+      tests/). Keep list() working as a thin alias that calls all(), for old callers.
+      Behaviour must not change.
+    hidden_test:
+      path: tests/test_hidden.py
+      command: [python, -m, pytest, -q, tests/test_hidden.py]
+      content: |
+        import inspect
+        from app import server
+        from app.store import Store
+
+        def test_all_returns_copies():
+            s = Store()
+            s.add("a")
+            got = s.all()
+            got[0]["title"] = "x"
+            assert s.all()[0]["title"] == "a"
+
+        def test_list_still_works_and_matches():
+            s = Store()
+            s.add("a"); s.add("b")
+            assert s.list() == s.all()
+
+        def test_server_uses_the_new_name():
+            assert "store.all()" in inspect.getsource(server)
+
+  - id: py-multifile
+    fixture: python-todo
+    category: multi_file
+    instruction: >-
+      Add deleting a to-do over HTTP: DELETE /api/todos/<id> in app/server.py, backed by
+      a new Store.remove(item_id) in app/store.py that deletes and returns the item and
+      raises KeyError when there is none. Respond 204 with no body on success, 404 with
+      {"error": "not found"} when the id does not exist or is not a number.
+    hidden_test:
+      path: tests/test_hidden.py
+      command: [python, -m, pytest, -q, tests/test_hidden.py]
+      content: |
+        import json
+        import threading
+        import urllib.error
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+
+        import pytest
+        from app import server
+
+        @pytest.fixture
+        def base():
+            server.store = server.Store()
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+            threading.Thread(target=httpd.serve_forever, daemon=True).start()
+            yield f"http://127.0.0.1:{httpd.server_address[1]}"
+            httpd.shutdown()
+
+        def call(method, url, body=None):
+            data = json.dumps(body).encode() if body is not None else None
+            req = urllib.request.Request(url, data=data, method=method,
+                                         headers={"content-type": "application/json"})
+            try:
+                with urllib.request.urlopen(req) as r:
+                    return r.status, r.read()
+            except urllib.error.HTTPError as e:
+                return e.code, e.read()
+
+        def test_delete_removes(base):
+            call("POST", f"{base}/api/todos", {"title": "a"})
+            status, body = call("DELETE", f"{base}/api/todos/1")
+            assert status == 204 and body == b""
+            assert json.loads(call("GET", f"{base}/api/todos")[1]) == []
+
+        def test_delete_missing_is_404(base):
+            assert call("DELETE", f"{base}/api/todos/9")[0] == 404
+            assert call("DELETE", f"{base}/api/todos/abc")[0] == 404
+
+        def test_store_remove_raises_keyerror():
+            with pytest.raises(KeyError):
+                server.Store().remove(5)
+
+  - id: py-validate
+    fixture: python-todo
+    category: edge_cases
+    instruction: >-
+      Tighten Store.add in app/store.py: collapse any run of whitespace inside the title
+      to a single space (after trimming the ends), and reject titles longer than 100
+      characters after that with ValueError("title too long"). Empty titles stay
+      rejected as now.
+    hidden_test:
+      path: tests/test_hidden.py
+      command: [python, -m, pytest, -q, tests/test_hidden.py]
+      content: |
+        import pytest
+        from app.store import Store
+
+        def test_collapses_inner_whitespace():
+            assert Store().add("  buy \t\n  milk  ")["title"] == "buy milk"
+
+        def test_exactly_100_is_fine_101_is_not():
+            assert len(Store().add("x" * 100)["title"]) == 100
+            with pytest.raises(ValueError, match="title too long"):
+                Store().add("x" * 101)
+
+        def test_long_only_because_of_spaces_is_fine():
+            assert Store().add("a" + " " * 200 + "b")["title"] == "a b"
+
+        def test_empty_still_rejected():
+            with pytest.raises(ValueError):
+                Store().add(" \t ")

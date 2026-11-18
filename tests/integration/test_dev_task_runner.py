@@ -338,3 +338,122 @@ async def test_a_moved_head_is_not_landed_and_the_worktree_is_cleaned(project, v
     assert await _resume(project, task_id, saved) is None
     assert await _approvals(task_id) == []
     assert not wt.exists()  # not kept around forever
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_task_waits_while_its_project_is_at_the_wip_limit(project, no_local_runner):
+    """Found by scripts/runtime_reliability.py (2026-11-18): the runner claimed a
+    third task for a project already running two, and the dispatcher failed it
+    ("Project WIP limit reached"). It must wait in the queue instead."""
+    from life_graph.api.dependencies import get_project_registry
+    from life_graph.drivers.dispatch_stats import MAX_WIP_PER_PROJECT
+    from life_graph.services.dev import tasks as dev_tasks
+    from life_graph.storage.database import async_session
+
+    from life_graph.api.dependencies import get_persona_service
+
+    # A tenant and project of their own: other tests leave rows "running" in
+    # the shared ones, and the tenant limit would block this one too.
+    tenant = f"wip_{uuid.uuid4().hex[:6]}"
+    await get_persona_service().seed_builtins(tenant)
+    project = await get_project_registry().register(
+        tenant, {"name": f"wip-{uuid.uuid4().hex[:6]}", "path": str(Path.cwd())}
+    )
+    ids = []
+    for i in range(MAX_WIP_PER_PROJECT + 1):
+        d = await dev_tasks.create_dev_task(
+            async_session, tenant, instruction=f"WIP {i} {uuid.uuid4().hex}", project=project,
+            persona_name="code-fixer",
+        )  # fmt: skip
+        ids.append(d["id"])
+    claimed = []
+    while True:
+        task = await dev_tasks.claim_next_queued(async_session, runner_id="wip")
+        if task is None:
+            break
+        claimed.append(str(task.id))
+    ours = [i for i in ids if i in claimed]
+    assert len(ours) == MAX_WIP_PER_PROJECT
+    waiting = next(i for i in ids if i not in claimed)
+    assert (await _row(waiting)).status == "queued"
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_tasks_of_a_full_project_never_starve_another_project(no_local_runner):
+    """More blocked tasks than the claim's scan window must not hide a task
+    that could run: full projects are excluded in the query itself."""
+    from life_graph.api.dependencies import get_persona_service, get_project_registry
+    from life_graph.drivers.dispatch_stats import MAX_WIP_PER_PROJECT
+    from life_graph.models.db import AgentTask
+    from life_graph.services.dev import tasks as dev_tasks
+    from life_graph.storage.database import async_session
+
+    tenant = f"starve_{uuid.uuid4().hex[:6]}"
+    await get_persona_service().seed_builtins(tenant)
+    reg = get_project_registry()
+    full = await reg.register(tenant, {"name": f"full-{uuid.uuid4().hex[:4]}", "path": str(Path.cwd())})
+    other = await reg.register(tenant, {"name": f"other-{uuid.uuid4().hex[:4]}", "path": str(Path.cwd())})
+    async with async_session() as s:
+        for _ in range(MAX_WIP_PER_PROJECT):  # the full project is already at its limit
+            s.add(AgentTask(id=uuid.uuid4(), tenant_id=tenant, agent_name="dev_task", title="busy",
+                            status="running", project_id=uuid.UUID(full["id"]),
+                            properties={"kind": "dev_task"}))  # fmt: skip
+        await s.commit()
+    for i in range(dev_tasks._QUEUE_SCAN_LIMIT + 5):
+        await dev_tasks.create_dev_task(
+            async_session, tenant, instruction=f"blocked {i} {uuid.uuid4().hex}", project=full,
+            persona_name="code-fixer",
+        )  # fmt: skip
+    wanted = await dev_tasks.create_dev_task(
+        async_session, tenant, instruction=f"runnable {uuid.uuid4().hex}", project=other,
+        persona_name="code-fixer",
+    )  # fmt: skip
+    claimed = []
+    while (task := await dev_tasks.claim_next_queued(async_session, runner_id="starve")) is not None:
+        claimed.append(str(task.id))
+    assert wanted["id"] in claimed
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_task_held_for_wip_says_why_and_the_note_clears_on_claim(no_local_runner):
+    from life_graph.api.dependencies import get_persona_service, get_project_registry
+    from life_graph.drivers.dispatch_stats import MAX_WIP_PER_PROJECT
+    from life_graph.models.db import AgentTask
+    from life_graph.services.dev import tasks as dev_tasks
+    from life_graph.storage.database import async_session
+
+    tenant = f"held_{uuid.uuid4().hex[:6]}"
+    await get_persona_service().seed_builtins(tenant)
+    proj = await get_project_registry().register(
+        tenant, {"name": f"held-{uuid.uuid4().hex[:4]}", "path": str(Path.cwd())}
+    )
+    busy = []
+    async with async_session() as s:
+        for _ in range(MAX_WIP_PER_PROJECT):
+            row = AgentTask(id=uuid.uuid4(), tenant_id=tenant, agent_name="dev_task", title="busy",
+                            status="running", project_id=uuid.UUID(proj["id"]),
+                            properties={"kind": "dev_task"})  # fmt: skip
+            s.add(row)
+            busy.append(row.id)
+        await s.commit()
+    held = await dev_tasks.create_dev_task(
+        async_session, tenant, instruction=f"held {uuid.uuid4().hex}", project=proj,
+        persona_name="code-fixer",
+    )  # fmt: skip
+    while await dev_tasks.claim_next_queued(async_session, runner_id="held") is not None:
+        pass
+    row = await _row(held["id"])
+    assert row.status == "queued"
+    assert "limit of running tasks" in row.properties["waiting"]["reason"]
+    async with async_session() as s:
+        for pk in busy:
+            (await s.get(AgentTask, pk)).status = "completed"
+        await s.commit()
+    claimed = []
+    while (t := await dev_tasks.claim_next_queued(async_session, runner_id="held")) is not None:
+        claimed.append(str(t.id))
+    assert held["id"] in claimed
+    assert "waiting" not in (await _row(held["id"])).properties

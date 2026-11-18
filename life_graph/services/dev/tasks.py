@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import and_, or_, select, text
 
 from life_graph.config import settings
+from life_graph.drivers.dispatch_stats import MAX_WIP_PER_PROJECT, MAX_WIP_PER_TENANT
 from life_graph.drivers.execution_guard import recover_interrupted_dispatch
 from life_graph.models.db import AgentTask, Approval, VerificationRun
 
@@ -727,6 +728,8 @@ def serialize(task: AgentTask, approvals: list[Approval]) -> dict[str, Any]:
         "lease": props.get("lease"),
         "cancel_requested_at": props.get("cancel_requested_at"),
         "timeout_seconds": props.get("timeout_seconds"),
+        # Why a queued task has not started (claim-time WIP limits).
+        "waiting": props.get("waiting") if task.status == "queued" else None,
     }
 
 
@@ -1052,6 +1055,31 @@ async def _notify_plan_stopped(task: AgentTask, prev: AgentTask, stage: str) -> 
         logger.warning("Could not send the plan-stopped notification", exc_info=True)
 
 
+def _without(props: dict, key: str) -> dict:
+    return {k: v for k, v in props.items() if k != key}
+
+
+async def _running_counts(session: AsyncSession) -> tuple[dict, dict]:
+    """Running AgentTasks per tenant and per (tenant, project) -- every kind,
+    exactly what the dispatcher's WIP check counts."""
+    from sqlalchemy import func
+
+    rows = (
+        await session.execute(
+            select(AgentTask.tenant_id, AgentTask.project_id, func.count(AgentTask.id))
+            .where(AgentTask.status == "running")
+            .group_by(AgentTask.tenant_id, AgentTask.project_id)
+        )
+    ).all()
+    tenant: dict = {}
+    project: dict = {}
+    for tenant_id, project_id, n in rows:
+        tenant[tenant_id] = tenant.get(tenant_id, 0) + n
+        if project_id is not None:
+            project[(tenant_id, project_id)] = n
+    return tenant, project
+
+
 async def claim_next_queued(
     session_factory: async_sessionmaker[AsyncSession],
     *,
@@ -1075,6 +1103,44 @@ async def claim_next_queued(
     # One snapshot per tenant per claim: where the GPU stands right now.
     snaps: dict[str, compute_router.Snapshot] = {}
     async with session_factory() as session:
+        # The dispatcher's WIP limits (drivers/dispatch_stats.py), applied at
+        # claim time: a task whose project or tenant is full waits in the
+        # queue. Claimed anyway, the dispatcher failed it outright ("Project
+        # WIP limit reached") -- found by scripts/runtime_reliability.py when
+        # three starts for one project arrived together. Excluded in the query
+        # itself, so blocked tasks never fill the scan window and starve
+        # everyone else.
+        tenant_wip, project_wip = await _running_counts(session)
+        full_tenants = [t for t, n in tenant_wip.items() if n >= MAX_WIP_PER_TENANT]
+        full_projects = [p for (_t, p), n in project_wip.items() if n >= MAX_WIP_PER_PROJECT]
+        not_full = []
+        if full_tenants:
+            not_full.append(AgentTask.tenant_id.notin_(full_tenants))
+        if full_projects:
+            not_full.append(
+                or_(AgentTask.project_id.is_(None), AgentTask.project_id.notin_(full_projects))
+            )
+        if full_tenants or full_projects:
+            # Say why they wait, once (no history spam): a held task used to
+            # fail loudly; now it waits, and the reason must be visible.
+            await session.execute(
+                text(
+                    "UPDATE agent_tasks SET properties = properties || jsonb_build_object("
+                    "'waiting', jsonb_build_object('reason', CAST(:reason AS text),"
+                    " 'since', CAST(:now AS text)))"
+                    " WHERE status = 'queued' AND properties->>'kind' = :kind"
+                    " AND properties->'waiting' IS NULL"
+                    " AND (tenant_id = ANY(CAST(:tenants AS text[]))"
+                    "      OR project_id = ANY(CAST(:projects AS uuid[])))"
+                ),
+                {
+                    "reason": "the project or tenant is at its limit of running tasks",
+                    "now": datetime.now(UTC).isoformat(),
+                    "kind": KIND,
+                    "tenants": full_tenants,
+                    "projects": full_projects,
+                },
+            )
         candidates = (
             (
                 await session.execute(
@@ -1083,6 +1149,7 @@ async def claim_next_queued(
                         _kind_filter(),
                         AgentTask.status == "queued",
                         AgentTask.properties["run_mode"].astext == QUEUE_MODE,
+                        *not_full,
                     )
                     # start_now first (IS NULL sorts false first), then oldest.
                     .order_by(
@@ -1104,13 +1171,18 @@ async def claim_next_queued(
         }
         for task in candidates:
             props = task.properties or {}
+            if (
+                tenant_wip.get(task.tenant_id, 0) >= MAX_WIP_PER_TENANT
+                or project_wip.get((task.tenant_id, task.project_id), 0) >= MAX_WIP_PER_PROJECT
+            ):
+                continue
             if props.get("start_now"):
                 # Exactly what an immediate start used to do: run now, as
                 # asked, without waiting on the GPU router or a plan gate.
                 task.status = "running"
                 task.started_at = now
                 task.status_history = _history(task, "running", "started")
-                task.properties = {**props, "lease": lease}
+                task.properties = {**_without(props, "waiting"), "lease": lease}
                 claimed = task
                 break
             if not allow_unattended and not props.get("interactive"):
@@ -1155,7 +1227,7 @@ async def claim_next_queued(
             task.status = "running"
             task.started_at = now
             task.status_history = _history(task, "running", note)
-            task.properties = {**(task.properties or {}), "lease": lease}
+            task.properties = {**_without(task.properties or {}, "waiting"), "lease": lease}
             claimed = task
             break
         await session.commit()

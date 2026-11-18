@@ -292,7 +292,10 @@ async def test_a_rewritten_worktree_git_link_is_neither_verified_nor_landed(
     result = await _dispatch(disp, project_id=str(uuid.uuid4()), isolate_workdir=True)
 
     assert result.success is False
-    assert result.error == "Worktree .git was modified by the driver — not verified or landed"
+    assert result.error == (
+        "Worktree tampered with by the driver (worktree .git no longer links to the "
+        "origin repository) — not verified or landed"
+    )
     assert result.metadata == {"needs_human": True, "worktree_tampered": True}
     assert chain.runs == 0
     [[tamper]] = record["approvals"]

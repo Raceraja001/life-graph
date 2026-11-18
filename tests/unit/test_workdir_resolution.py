@@ -213,3 +213,107 @@ async def test_an_unsafe_base_branch_name_is_ignored(tmp_path):
     assert await _pinned_start(tmp_path, "--upload-pack=evil") is None
     assert await _pinned_start(tmp_path, "main; rm -rf /") is None
     assert await _pinned_start(tmp_path, None) is None
+
+
+# ── Symlinks leaving the worktree (work order Stage 5 hardening) ──
+
+
+def test_a_link_out_of_the_worktree_is_found(tmp_path):
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    wt = tmp_path / "wt"
+    (wt / "src").mkdir(parents=True)
+    secret = tmp_path / "secret.txt"
+    secret.write_text("host secret")
+    (wt / "src" / "notes.txt").symlink_to(secret)
+    (wt / "up").symlink_to("../")
+    (wt / "dangling").symlink_to("/nonexistent/elsewhere")
+    assert sorted(escaping_symlinks(wt)) == ["dangling", "src/notes.txt", "up"]
+
+
+def test_links_inside_the_worktree_and_git_are_fine(tmp_path):
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    wt = tmp_path / "wt"
+    (wt / "docs").mkdir(parents=True)
+    (wt / "docs" / "README.md").write_text("x")
+    (wt / "README.md").symlink_to("docs/README.md")
+    (wt / ".git").mkdir()
+    (wt / ".git" / "weird").symlink_to("/etc")  # git's own business, not scanned
+    assert escaping_symlinks(wt) == []
+
+
+def test_not_a_path_is_not_a_crash():
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    assert escaping_symlinks(object()) == []
+
+
+def test_a_committed_link_is_the_projects_own_but_a_changed_one_is_flagged(tmp_path):
+    import subprocess
+
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    wt = tmp_path / "repo"
+    wt.mkdir()
+    (wt / "tool").symlink_to("/usr/bin/env")  # committed by the owner
+    subprocess.run(["git", "init", "-q"], cwd=wt, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=wt, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i"],
+        cwd=wt, check=True,
+    )  # fmt: skip
+    assert escaping_symlinks(wt, git_aware=True) == []
+    assert escaping_symlinks(wt) == ["tool"]  # without git, every escaping link
+    (wt / "leak").symlink_to("/etc/passwd")  # the agent's
+    (wt / "tool").unlink()
+    (wt / "tool").symlink_to("/etc/shadow")  # retargeted by the agent
+    assert sorted(escaping_symlinks(wt, git_aware=True)) == ["leak", "tool"]
+
+
+def _commit_all(wt):
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=wt, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=wt, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "i"],
+        cwd=wt, check=True,
+    )  # fmt: skip
+
+
+def test_many_committed_links_cannot_hide_the_agents_link(tmp_path):
+    """Review 2026-11-18: the git filter ran after the 20-finding cap, so 20
+    committed links filled it and the planted one was never looked at."""
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    wt = tmp_path / "repo"
+    wt.mkdir()
+    for i in range(25):
+        (wt / f"l{i:02d}").symlink_to("/usr/share/doc")
+    _commit_all(wt)
+    (wt / "zz_leak").symlink_to("/etc/passwd")
+    assert escaping_symlinks(wt, git_aware=True) == ["zz_leak"]
+
+
+def test_a_symlink_named_git_below_the_top_is_checked(tmp_path):
+    """Review 2026-11-18: every ".git" was skipped, so src/.git -> /etc hid."""
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    wt = tmp_path / "wt"
+    (wt / "src").mkdir(parents=True)
+    (wt / "src" / ".git").symlink_to("/etc")
+    assert escaping_symlinks(wt) == ["src/.git"]
+
+
+def test_without_commits_every_escaping_link_counts(tmp_path):
+    import subprocess
+
+    from life_graph.drivers.workdir import escaping_symlinks
+
+    wt = tmp_path / "repo"
+    wt.mkdir()
+    (wt / "tool").symlink_to("/usr/bin/env")
+    subprocess.run(["git", "init", "-q"], cwd=wt, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=wt, check=True)  # indexed, never committed
+    assert escaping_symlinks(wt, git_aware=True) == ["tool"]

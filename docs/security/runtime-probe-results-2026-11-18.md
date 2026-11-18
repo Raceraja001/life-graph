@@ -103,3 +103,19 @@ The verifier's check phase uses `--network none` and is not affected.
 - OpenCode inside the runtime. It is not moved there yet.
 - Long-running concurrent tasks under memory pressure on the shared WSL box.
 - Prod configuration. Prod's images are still not built, and prod has not been switched to `task`.
+
+## Stage 5 re-probe (`runtime-probe-20261118.json`)
+
+Same probe, on the code with all review fixes, plus a new attack:
+
+| Check | Result |
+|---|---|
+| The agent plants `leak_abs -> /home/raja/.ssh/id_rsa` and `leak_rel -> ../../../../../../etc/passwd` in its worktree from inside the container | planting works, since a symlink is just a file. **`escaping_symlinks` flags both, so the dispatcher vetoes the run as tampering before any host-side reader (verifiers, PR description, review model, landing) touches the worktree.** |
+| Host ports reachable through the bridge gateway | 0 |
+| Proxy: api.anthropic.com / example.com | 200 / 403 |
+| Deadline, orphan sweep, teardown | ok / 0 left / ok |
+
+Why this matters: inside the container the agent cannot read a host file through such a link,
+because the link resolves inside the container. But code on the host that trusts the worktree
+would follow it. Before this fix, a planted link could have carried a host secret into a
+verifier's evidence, a PR description, or a review-model prompt.

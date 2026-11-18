@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import uuid
 from pathlib import Path
@@ -145,6 +146,95 @@ def worktree_intact(worktree: Path, origin: str | Path) -> bool:
     except (OSError, RuntimeError):
         return False
     return expected in target.parents
+
+
+# Bounds the walk: an agent can create files faster than we want to stat them.
+# High enough for a JS worktree after `npm install`; past it, fail closed.
+_SYMLINK_SCAN_LIMIT = 1_000_000
+
+
+def _unchanged_tracked_links(base: Path) -> set[str]:
+    """Symlinks committed at HEAD and not changed in the worktree.
+
+    Those are the project's own (the owner committed them), not the agent's.
+    Only called once the worktree's .git link is known intact, so these git
+    commands read the origin's own repository config. Any git failure
+    (timeout, no commits yet) returns an empty set: every escaping link is
+    then counted -- fail closed.
+    """
+    import subprocess
+
+    def git(*args: str) -> str | None:
+        try:
+            res = subprocess.run(
+                ["git", "-C", str(base), *args], capture_output=True, text=True, timeout=30
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return res.stdout if res.returncode == 0 else None
+
+    listed = git("ls-files", "-s", "-z")
+    changed_out = git("diff", "--name-only", "-z", "HEAD")
+    if listed is None or changed_out is None:
+        return set()
+    tracked = {
+        entry.split("\t", 1)[1]
+        for entry in listed.split("\0")
+        if entry.startswith("120000 ") and "\t" in entry
+    }
+    changed = {p for p in changed_out.split("\0") if p}
+    return tracked - changed
+
+
+def escaping_symlinks(worktree: Path, limit: int = 20, *, git_aware: bool = False) -> list[str]:
+    """Symlinks in *worktree* whose target lies outside it (relative paths).
+
+    The worktree is the agent's. A link it plants -- ``notes.txt ->
+    ~/.ssh/id_rsa`` -- is read by host-side code that trusts the worktree:
+    verifiers reading changed files, the PR description and review models
+    reading the diff, the landing commit. The agent's own container cannot see
+    the host; the host-side reader can, so one link would carry a host file
+    out. A link that stays inside the worktree is fine (repos use them).
+    Dangling links count when their target would be outside. The walk skips
+    ``.git`` and stops after ``limit`` findings. With ``git_aware`` (only for a
+    worktree whose .git link is intact), links committed at HEAD and left
+    unchanged are not counted: the agent did not make them.
+    """
+    try:
+        base = Path(worktree).resolve()
+    except (TypeError, OSError):
+        return []
+    # The project's own links are known BEFORE the walk, so they never take
+    # a place under `limit` (20 committed links used to hide the agent's).
+    own = _unchanged_tracked_links(base) if git_aware else set()
+    found: list[str] = []
+    seen = 0
+    for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
+        # Only the worktree's own top-level .git dir is git's business (and
+        # worktree_intact checks it). A ".git" anywhere else, or one that is a
+        # symlink, is checked like any other entry.
+        if Path(dirpath) == base and ".git" in dirnames and not (base / ".git").is_symlink():
+            dirnames.remove(".git")
+        for name in [*dirnames, *filenames]:
+            seen += 1
+            if seen > _SYMLINK_SCAN_LIMIT:
+                found.append("(scan limit reached: too many files to check)")
+                return found
+            path = Path(dirpath) / name
+            if not path.is_symlink():
+                continue
+            try:
+                target = Path(os.path.realpath(path))
+            except OSError:
+                target = None
+            if target is None or (target != base and base not in target.parents):
+                rel = str(path.relative_to(base))
+                if rel in own:
+                    continue
+                found.append(rel)
+                if len(found) >= limit:
+                    return found
+    return found
 
 
 async def diff_against_head(workdir: Path) -> str:

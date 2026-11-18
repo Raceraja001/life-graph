@@ -2,6 +2,58 @@
 
 Run `python scripts/bench_drivers.py --engine … --repeat N`. The tasks are in `../driver_tasks.yaml`. Each task runs on a fresh copy of a fixture app. Pass or fail is decided by a **hidden test** written in afterwards and run in the verifier sandbox, never by the engine's own claims.
 
+## 2026-11-18: 10 tasks in 5 categories; claude_code in the task runtime (`20261118T120452Z.json`, `20261118T121045Z.json`)
+
+Work order Stage 5 (`docs/work-orders/secure-execution-runtime.md`).
+
+**Setup:**
+- 4 new tasks: `py-bugfix` (two bugs, the tests already failing), `py-refactor` (a rename
+  across app and tests, plus an alias), `py-multifile` (a store method and an HTTP route) and
+  `py-validate` (edge cases).
+- Each new hidden test was checked to FAIL on the starting repo and PASS on a reference fix
+  before any engine ran.
+- New measurements: the project's own checks (`build_ok_diff` + `tests_pass`) compared with
+  the hidden test, runtime duration, peak container CPU and memory, and cost.
+- Git SHA and image tags are recorded in each JSON file.
+- RTX 5080, WSL2, Docker 29.7.2. Images: driver `life-graph-claude-driver:wo-test`, verifiers
+  `life-graph-verifier:wo-test` / `:node-wo-test`. These are test tags built from this branch's
+  Dockerfiles.
+
+| Engine | Passed | Own checks agree with hidden test | False positives | Avg s | Cost* | Peak container RAM / CPU |
+|---|---|---|---|---|---|---|
+| claude_code, task runtime | **10/10**† | 10/10 | 0 | 20 | $0.66 / 10 runs | 173 MiB / 60 % |
+| local + `ollama_chat/gpt-oss:20b` (no container) | 9/10 | 10/10 | 0 | 27 | $0 | n/a (in-process) |
+
+| Category | claude_code | gpt-oss:20b |
+|---|---|---|
+| feature (6) | 6/6 | 6/6 |
+| bugfix | 1/1† (and 2/2 on rerun) | 0/1 (and 0/2 on rerun) |
+| refactor | 1/1 | 1/1 |
+| multi_file | 1/1 | 1/1 |
+| edge_cases | 1/1 | 1/1 |
+
+\* What the CLI reports. It runs on the OAuth subscription, not the API budget.
+
+† The first run's `py-bugfix` failed after 7 s with "stream ended without a result" and an
+incomplete teardown. That run overlapped `scripts/runtime_reliability.py`, whose workers'
+startup sweep removed the benchmark's runtime: the benchmark ran under the same instance
+label and had no task row, so its runtime looked orphaned. Scripts now run under their own
+instance label. Rerun alone, it passed 2/2 (`20261118T121045Z.json`).
+
+**Findings:**
+- **Both engines are reliable on single-file features, refactors and multi-file changes.**
+  The gap is the two-bug fix. gpt-oss:20b failed it 3 times out of 3: once with no net change,
+  and twice with a shallow copy that the hidden test rejects. Claude Code fixed both bugs every
+  time it ran unhindered.
+- **The project's own verifier chain never passed wrong work:** 0 false positives in 14 runs.
+  On this task set, the checks the dispatcher runs before landing agree with the hidden ground
+  truth.
+- **Overhead of the task runtime:** about 3 s startup (network, proxy and container; see the
+  probe results). The agent container peaks at 173–226 MiB and ~60 % of one CPU against
+  4g / 4 CPU limits.
+- **Coverage is still small:** 10 tasks, 2 fixture apps, 1 repeat (2 for the bugfix). Treat it
+  as a regression baseline, not a capability claim.
+
 ## 2026-10-19: free cloud models, 6 tasks × 1 (`20261019T154737Z.json`)
 
 The `cloud` engine is the cloud driver (`drivers/cloud.py`) that `code-fixer-cloud` runs on
