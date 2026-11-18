@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-18 09:59 UTC` from `master` @ `5b3f052`
+Generated `2026-11-18 10:54 UTC` from `master` @ `e581c52`
 
 ---
 
@@ -16,23 +16,23 @@ Generated `2026-11-18 09:59 UTC` from `master` @ `5b3f052`
 
 | | |
 |---|---|
-| HTTP operations | **394** across 341 paths, 46 tags |
+| HTTP operations | **395** across 342 paths, 46 tags |
 | Database tables | **88** |
 | Migrations | **59** (head: `059_durable_capabilities_and_standing_rules`) |
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
-| Config settings | **304** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5014** in 520 files |
+| Config settings | **310** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5039** in 522 files |
 | Dashboard pages | **23** |
-| Python | 559 files, 138,644 lines |
+| Python | 562 files, 139,737 lines |
 
 ---
 
 ## HTTP API
 
-394 operations, grouped by OpenAPI tag.
+395 operations, grouped by OpenAPI tag.
 
 ### `assistant` — 41
 
@@ -187,6 +187,34 @@ Generated `2026-11-18 09:59 UTC` from `master` @ `5b3f052`
 | GET | `/api/v1/autonomy/trust/scores` | List Scores |
 | GET | `/api/v1/autonomy/trust/scores/{score_id}` | Get Score |
 
+### `drivers` — 23
+
+| Method | Path | Summary |
+|---|---|---|
+| GET | `/api/v1/kernel/drivers` | List registered drivers |
+| GET | `/api/v1/kernel/drivers/compute` | Where queued coding work runs right now: local GPU, free cloud model, or later |
+| PUT | `/api/v1/kernel/drivers/compute/presence` | Set the active/away switch (auto clears it) |
+| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
+| GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
+| GET | `/api/v1/kernel/drivers/night-shift` | What the coding engines did: merged, waiting for you and why, failed and why |
+| GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
+| GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
+| POST | `/api/v1/kernel/drivers/projects/bootstrap` | Idea to app: scaffold, version, register and optionally plan a new app |
+| POST | `/api/v1/kernel/drivers/projects/{project_id}/findings` | Report a production failure; queues a fix task (de-duplicated) |
+| GET | `/api/v1/kernel/drivers/scorecards` | Per driver and model: success, bounces, merges, cost |
+| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
+| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
+| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
+| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
+| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
+| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/cancel` | Cancel a queued or running dev task |
+| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
+| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
+| GET | `/api/v1/kernel/drivers/templates` | App templates a new project can start from |
+
 ### `self-improving` — 23
 
 | Method | Path | Summary |
@@ -214,33 +242,6 @@ Generated `2026-11-18 09:59 UTC` from `master` @ `5b3f052`
 | POST | `/api/v1/self-improving/prompt-versions/{version_id}/activate` | Activate a prompt version |
 | POST | `/api/v1/self-improving/prompt-versions/{version_id}/rollback` | Rollback to a previous prompt version |
 | GET | `/api/v1/self-improving/status` | How much the loop has to learn from |
-
-### `drivers` — 22
-
-| Method | Path | Summary |
-|---|---|---|
-| GET | `/api/v1/kernel/drivers` | List registered drivers |
-| GET | `/api/v1/kernel/drivers/compute` | Where queued coding work runs right now: local GPU, free cloud model, or later |
-| PUT | `/api/v1/kernel/drivers/compute/presence` | Set the active/away switch (auto clears it) |
-| POST | `/api/v1/kernel/drivers/dispatch` | Dispatch a task to a driver (testing) |
-| GET | `/api/v1/kernel/drivers/failures` | Failed dev tasks with their primary cause |
-| GET | `/api/v1/kernel/drivers/night-shift` | What the coding engines did: merged, waiting for you and why, failed and why |
-| GET | `/api/v1/kernel/drivers/plans` | Plan tasks, each with its tasks counted by stage |
-| GET | `/api/v1/kernel/drivers/plans/{plan_id}` | One plan: spec, criteria and its tasks in order |
-| POST | `/api/v1/kernel/drivers/projects/bootstrap` | Idea to app: scaffold, version, register and optionally plan a new app |
-| POST | `/api/v1/kernel/drivers/projects/{project_id}/findings` | Report a production failure; queues a fix task (de-duplicated) |
-| GET | `/api/v1/kernel/drivers/scorecards` | Per driver and model: success, bounces, merges, cost |
-| GET | `/api/v1/kernel/drivers/stats` | Driver performance stats |
-| GET | `/api/v1/kernel/drivers/tasks` | List dev tasks with PR and merge state |
-| POST | `/api/v1/kernel/drivers/tasks` | Start a dev task in the background |
-| GET | `/api/v1/kernel/drivers/tasks/auto-merge-status` | Trust-gate numbers auto_open_pr/auto_merge actually check, per persona/project |
-| GET | `/api/v1/kernel/drivers/tasks/dependency-audit-readiness` | Which registered projects can actually run no_vulnerable_deps_in_diff |
-| GET | `/api/v1/kernel/drivers/tasks/stats` | Merge rate and timing per persona/project, from dev task history |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}` | Get one dev task |
-| POST | `/api/v1/kernel/drivers/tasks/{task_id}/conformance` | Re-check a task's spec against the project's current code |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/diff` | The change a landed dev task made, as a unified diff |
-| GET | `/api/v1/kernel/drivers/tasks/{task_id}/steps` | Every recorded step of a dev task's driver runs, in order |
-| GET | `/api/v1/kernel/drivers/templates` | App templates a new project can start from |
 
 ### `admin` — 20
 
@@ -1027,16 +1028,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 403 | 4165 |
-| `tests/integration/` | 116 | 837 |
+| `tests/unit/` | 404 | 4181 |
+| `tests/integration/` | 117 | 846 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **520** | **5014** |
+| **total** | **522** | **5039** |
 
 ---
 
 ## Configuration
 
-304 settings, all overridable by environment variable.
+310 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1204,6 +1205,12 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_BOOTSTRAP_ROOT` | `''` |
 | `LIFE_GRAPH_BOOTSTRAP_CREATE_GITHUB` | `False` |
 | `LIFE_GRAPH_DEV_TASK_RUNNER_ENABLED` | `True` |
+| `LIFE_GRAPH_DEV_TASK_RUNNER_MODE` | `'api'` |
+| `LIFE_GRAPH_DEV_RUNNER_MAX_CONCURRENCY` | `3` |
+| `LIFE_GRAPH_DEV_RUNNER_HEARTBEAT_SECONDS` | `30` |
+| `LIFE_GRAPH_DEV_RUNNER_LEASE_STALE_SECONDS` | `180` |
+| `LIFE_GRAPH_DEV_RUNNER_CANCEL_POLL_SECONDS` | `3` |
+| `LIFE_GRAPH_DEV_RUNNER_DRAIN_SECONDS` | `1500` |
 | `LIFE_GRAPH_TRAJECTORY_STEP_MAX_CHARS` | `16000` |
 | `LIFE_GRAPH_TRAJECTORY_OPT_OUT_TENANTS` | `''` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |
