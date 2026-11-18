@@ -97,7 +97,7 @@ Alongside the runtime, and for every driver on the host:
 
 1. Build the prod images and switch prod to `task`; deploy is owner-gated.
 2. Stage 3: route immediate starts through the runner, add a per-task lease/heartbeat, make dev-task cancel reach the driver, and implement a real land-only resume.
-3. OpenCode into the runtime, with an Ollama egress rule.
+3. OpenCode into the runtime, with an Ollama egress rule. Parked until then (2026-11-18, `driver_opencode_enabled=false`): fewer completed tasks than the local driver in prod, no shell on the host.
 4. Pin image digests; record a `runtime_images.lock`.
 6. Verifier setup phase onto an isolated network with a registry-only allowlist.
 5. Stage 4: a long-lived workspace container plus streamed events for reconnectable sessions.

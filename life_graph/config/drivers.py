@@ -35,6 +35,12 @@ class DriverSettings(BaseModel):
     driver_claude_code_api_key: str = ""
     # OpenCode driver (drivers/opencode.py). Unavailable until the binary exists:
     #   npm install --prefix ~/.local/opencode opencode-ai
+    # Parked 2026-11-18 (owner): in prod it completed fewer tasks than the local
+    # driver (19/46 vs 46/90 over 60 days), it runs on the host with no shell,
+    # and its config there was broken. Off: the driver reports unavailable and
+    # failed nightly local runs are no longer escalated to it. The code stays;
+    # the way back is moving it into the task runtime (ADR follow-up 3).
+    driver_opencode_enabled: bool = False
     driver_opencode_bin: str = "opencode"
     driver_opencode_model: str = "ollama/qwen3-coder:30b"
     driver_opencode_ollama_base: str = "http://localhost:11434/v1"
