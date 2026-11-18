@@ -1,4 +1,4 @@
-# JVM sandbox image for the verifier chain (life_graph/services/sandbox.py),
+# JVM sandbox image for the verifier chain (life_graph/services/dev/sandbox.py),
 # used for projects whose registry sets `sandbox_toolchain: jvm` — Kotlin,
 # Java and Android projects built with Gradle.
 #

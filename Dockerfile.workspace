@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # ── NOD sandbox image: minimal workspace ─────────────────────
 # The other half of the errand sandbox chassis (compose.sandbox.yaml,
-# life_graph/services/sandbox.py): a scratch Linux box an errand can be
+# life_graph/services/dev/sandbox.py): a scratch Linux box an errand can be
 # handed to unpack a download, reshape a file or run a short script, with
 # nothing of the host in it.
 #

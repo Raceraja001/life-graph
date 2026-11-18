@@ -1,4 +1,4 @@
-# Node sandbox image for the verifier chain (life_graph/services/sandbox.py),
+# Node sandbox image for the verifier chain (life_graph/services/dev/sandbox.py),
 # used for projects whose registry sets `sandbox_toolchain: node`.
 #
 # Same contract as docker/verifier: checks run here, read-only, with no

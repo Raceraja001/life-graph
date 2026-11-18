@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # ── NOD sandbox image: the browser's only way out ────────────
 # The third part of the errand sandbox chassis (compose.sandbox.yaml,
-# life_graph/services/sandbox.py). The browser container has no gateway, so
+# life_graph/services/dev/sandbox.py). The browser container has no gateway, so
 # the only way a browser errand reaches a real site is this container: a
 # forward proxy that judges every destination the browser asks for — the first
 # navigation, every redirect hop, every sub-resource and fetch() — and then
