@@ -18,7 +18,9 @@ At the start of every session, fetch the latest remote default branch and read:
 
 1. `CHARTER.md` — product intent and invariants.
 2. `docs/STATE.md` — generated current inventory; verify it is fresh.
-3. `docs/AI_WORK_ORDER.md` — active implementation priorities and acceptance criteria.
+3. The active work order — currently `docs/work-orders/secure-execution-runtime.md` (P0).
+   `docs/AI_WORK_ORDER.md` is closed (all milestones complete); keep it as the history of
+   the security/authorization/browser work.
 4. `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md` — longer-term strategy.
 5. This file — collaboration and communication protocol.
 
@@ -53,6 +55,9 @@ Never call work complete because code exists or unit tests pass. Distinguish: Pr
 - Clearly report what was tested with mocks versus real services, containers, browsers and deployed infrastructure.
 - Do not claim production readiness or security guarantees beyond the evidence.
 
+> **Note (2026-11-18):** the browser-security milestone below is complete (see
+> `docs/AI_WORK_ORDER.md` status and `docs/OPERATIONS.md`); kept for its rules.
+
 ## 5. Active browser-security milestone
 
 The immediate focus is closing the remaining P0 isolated-browser security integration gaps recorded in `docs/AI_WORK_ORDER.md`. Re-check the latest code and deployment state before acting; the following are investigation targets, not assumptions that they remain open:
@@ -79,7 +84,7 @@ Do not ask Raja to repeat information already present in repository documents. I
 
 ## 7. Current handoff
 
-**Active work order:** `docs/AI_WORK_ORDER.md`  
+**Active work order:** `docs/work-orders/secure-execution-runtime.md`  
 **Strategy:** `docs/LIFE_GRAPH_IMPROVEMENT_PLAN.md`
 
 At the beginning of each session, replace this handoff with verified current information:
@@ -93,29 +98,17 @@ At the beginning of each session, replace this handoff with verified current inf
 
 Do not preserve stale status as current. Keep historical evidence in the work-order progress log or commit history.
 
-### Current (2026-11-17 08:10 UTC)
+### Current (2026-11-18)
 
-- **Checked at / branch / base SHA:** 2026-11-17 08:10 UTC on `master`, merging Track A (`8f4d140`) and Track B (`d3703b9`) from base `74d3002`.
-- **Current milestone:** Parallel Execution of Track A (Production Pipeline Wiring & CI Regression Gates) and Track B (Improvement Plan §3 Research Directions A, C and §3.B Decision Revisit Delivery).
+- **Checked at / branch / base SHA:** 2026-11-18 on `feat/secure-task-runtime`, base `master` `0987505`.
+- **Current milestone:** Secure execution runtime: Stage 0 (report) done; Stage 1 (ADR, threat model) and Stage 2 (claude_code vertical slice) implemented on the branch.
 - **Verified status:**
-  - **Track A — Durable execution guard wired into dispatcher:** *Implemented, Integrated, Unit-tested.* `drivers/dispatcher.py` builds an `ExecutionCheckpointTracker` in `_prepare_packet` and records all eight `ORDERED_DISPATCH_STAGES` across the pipeline (`prepared`, `budget_checked`, `driver_executed`, `worktree_verified`, `files_checked`, `verifier_completed`, `landed`, `finished`), with the tampered-worktree path recording `ok=False`. Step 6c calls `verify_independent_completion` before `_land_verified_work`, so a driver that claims success cannot land without an independent verifier verdict and an observed file change.
-  - **Track A — Two wiring defects fixed during integration:**
-    1. Gate read pre-bounce verifier verdicts (vetoed rescued tasks); `_DispatchRun` now carries `verifier_results`, and `_bounce_task` updates them.
-    2. File list was only read for `code`/`code_change`; `_observe_files_changed` now reads diff for all five code task types (`code`, `code_change`, `bugfix`, `refactor`, `feature`) and re-reads after a bounce.
-  - **Track A — Strict personal-data routing wired into compute router:** *Implemented, Integrated, Unit-tested.* `services/compute_router.decide` checks `carries_personal_data` ahead of other rules, refusing cloud outright and answering local-or-wait via `select_backend_for_task` with empty cloud model list.
-  - **Track A — Evaluation gates in CI:** *Implemented, Integrated.* `.github/workflows/ci.yml` runs `scripts/eval_memory_benchmark.py --verify` and `scripts/eval_confidence_calibration.py --verify` after the unit suite. Both pass locally (exit 0).
-  - **Track B — §3.C adaptive early exit:** *Implemented, Integrated, Unit-tested.* `life_graph/services/memory/retrieval.py` — `assess_hit_evidence` scores the top hybrid hit on calibrated confidence (`decompose_memory_confidence`) and entailment (`verify_claim_support`); at `>= 0.92` confidence with `>= 0.85` entailment or full keyword coverage, entity expansion and `_with_neighbours` are skipped.
-  - **Track B — §3.C abstention indicator:** *Implemented, Integrated, Unit-tested.* `retrieve` returns `RetrievalResult` (a `list` subclass) carrying `abstain`, `abstention_reason` (`contradictory_evidence` / `unresolvable_missing_evidence`), per-memory assessment, and `early_exit`; returned rows carry `retrieval_evidence`.
-  - **Track B — §3.A epistemic status & lineage:** *Implemented, Integrated, Unit-tested.* `POST /search/ask` returns `epistemic_status` (`explicitly_stated` / `inferred` / `stale` / `contradicted` / `unsupported`, worst-first) and `source_lineage` (`resolve_memory_lineage` per cited memory).
-  - **Track B — §3.B decision revisit delivery:** *Implemented, Integrated, Unit-tested.* `BriefComposer._decision_revisit_lines` queries active decisions with predictions and flagged memories, calls `assess_decision_revisit`, and renders a "Revisit a decision" section in the daily brief body, metadata, and evidence.
-- **Evidence:**
-  - Track A: `tests/unit/test_dispatcher_execution_guard.py` (24 tests passed).
-  - Track B: `tests/unit/test_adaptive_retrieval.py` (16 passed) + `tests/unit/test_brief_decision_revisit.py` (15 passed) + `tests/unit/test_decision_experience_workflow.py` (4 passed) = 35 passed.
-  - CI verification scripts: `python scripts/eval_memory_benchmark.py --verify` (exit 0) and `python scripts/eval_confidence_calibration.py --verify` (exit 0).
-  - Full unit suite: 5410 passed, 2 pre-existing environment-related failed (`test_diff_scoped_verifiers.py::test_lint_clean_diff_*`), 24 skipped.
-  - Code hygiene: `ruff check life_graph/` clean; `python scripts/gen_state.py --html --check` clean.
+  - **Per-task runtime** (`services/dev/task_runtime.py`, `driver_claude_sandbox=task`): *Implemented, Unit-tested, Docker-tested locally, run end to end on one real task.* Not deployed.
+  - **Host hygiene:** allowlisted env and process-group kill for host-run CLIs. Bash is denied on the host by default. Agent code is not run on the host by verifiers. *Implemented, Unit-tested.*
+  - **Checkpoints:** the dispatch checkpoint trail is persisted to `agent_tasks.properties` (it was already on master; the 2026-11-17 note saying it was in memory only was stale). It now records the verifier verdict and the final outcome.
+- **Evidence:** `docs/security/runtime-probe-results-2026-11-18.md`; unit suite 5742 passed; `tests/unit/test_task_runtime_docker.py` (real docker) 3 passed.
 - **Open risks/blockers:**
-  - The checkpoint trail is currently held in memory on `_DispatchRun` during dispatch execution; persisting `tracker.to_dict()` into `agent_tasks.properties` across restarts is the next operational slice for full crash recovery.
-  - Section 3 early-exit latency/cost savings are reasoned (2 fewer round-trips); empirical latency benchmark measurement on large memory set is pending.
-- **Next smallest action:** Persist `run.tracker.to_dict()` into task row properties and run memory benchmark comparison.
-- **Latest commits:** `8f4d140` (Track A) and `d3703b9` (Track B) merged into `master`.
+  - Prod has `VERIFIER_SANDBOX=docker` and `DRIVER_CLAUDE_SANDBOX=docker` but none of those images are built, so every code task fails closed (12/12 in 14 days). The prod OpenCode config is invalid. Owner decision needed.
+  - Immediate starts bypass the runner lock; dev-task cancel does not stop the driver; land-only resume is not implemented (Stage 3).
+- **Next smallest action:** owner approves building the prod images and switching prod to `task`, then Stage 3 design.
+- **Latest commit:** see the PR for `feat/secure-task-runtime`.

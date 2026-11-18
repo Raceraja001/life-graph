@@ -208,3 +208,32 @@ Before implementation, report:
 After approval, submit a focused PR containing the problem statement, ADR/threat model, code/tests, operational configuration and deployment notes, security limitations, benchmark results, and updated handoff/work-order docs.
 
 **Definition of success:** Life Graph executes a real software task in a task-isolated environment, survives process interruption, verifies the result and returns an auditable diff—without granting the coding agent unrestricted host access.
+
+## Status (updated 2026-11-18)
+
+| Stage | State | Evidence |
+|---|---|---|
+| 0 — current truth | Done | Stage 0 report (PR description); gaps verified against `0987505` |
+| 1 — boundary design | Done | `docs/design/adr-secure-task-runtime.md` (ADR + threat model) |
+| 2 — vertical slice (claude_code) | Implemented, not deployed | `services/dev/task_runtime.py`; `docs/security/runtime-probe-results-2026-11-18.md`; one real task end to end |
+| 3 — durable worker boundary | Not started | Known gaps: immediate starts bypass the runner lock; cancel doesn't reach the driver; no land-only resume; no per-task lease |
+| 4 — interactive sessions/UI | Not started | — |
+| 5 — benchmark and hardening | First probe set recorded | Probes + docker tests; no benchmark expansion yet |
+
+Acceptance criteria:
+
+- [x] Current architecture and runtime behaviour documented from source (Stage 0 report, ADR).
+- [x] Every supported driver has an explicit documented execution boundary (`docs/OPERATIONS.md`, "Dev-agent execution runtime").
+- [x] Shell-capable execution is sandboxed by default or explicitly unavailable. Host Bash is denied for claude_code; OpenCode bash is denied; host verifiers don't run agent code.
+- [x] Sandbox failure is fail-closed; no silent host fallback (unit tests + real-docker test).
+- [x] Every task gets an isolated writable workspace (dev tasks: per-task worktree; the runtime refuses anything outside the scratch root).
+- [x] Host secrets and credentials are not inherited by default (container env validated; host env allowlisted).
+- [x] Resource and timeout limits are enforced (probe: pids, tmpfs, memory, deadline).
+- [~] Task state survives API/worker restarts. Re-queue and recovery existed already; checkpoints now carry verdicts. Land-only resume is Stage 3.
+- [~] Duplicate execution and concurrent workspace corruption prevented. Workspaces are per task; the runner-lock bypass for immediate starts is Stage 3.
+- [x] Logs, events and runtime metadata are auditable (labels + `result.metadata.runtime`). Live streaming is Stage 4.
+- [x] Existing verifier, approval, diff and PR workflows still work (unit suite green; no policy changed).
+- [x] Failure and cleanup paths have automated tests.
+- [x] Security boundary tests have recorded results.
+- [x] Documentation/work-order status reconciled (this file, AGENT_COMMUNICATION, AI_WORK_ORDER closed, specs).
+- [x] No unsupported production-security claim made (ADR "Residual risks").

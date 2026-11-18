@@ -34,7 +34,8 @@ Complete the remaining high-priority security work before expanding autonomous c
 - Test the actual execution path, tenant/session separation, cleanup and failure-closed behavior.
 - Keep approvals bound to the exact action and consume one-use capabilities atomically.
 
-**Important:** The latest reviewed work order reports exact-action approvals and durable authorization as implemented and tested, while isolated browser runtime integration remains incomplete/partially implemented. Re-check the current default branch and deployed configuration before relying on that status.
+**Important:** The latest reviewed work order reports exact-action approvals and durable authorization as implemented and tested, and (as of 2026-11-18) isolated browser runtime integration as complete. The current P0 is
+the coding-agent execution runtime: `docs/work-orders/secure-execution-runtime.md`. Re-check the current default branch and deployed configuration before relying on that status.
 
 ### P1 — Trustworthy, explainable memory
 
@@ -145,7 +146,7 @@ Investigate adaptive retrieval: retrieve more when evidence is insufficient, sto
 
 | Order | Work | Priority |
 |---|---|---|
-| 1 | Finish isolated browser runtime integration and adversarial verification | P0 |
+| 1 | Secure per-task execution runtime for coding agents (browser isolation: done) | P0 |
 | 2 | Complete evidence-lineage and confidence evaluation | P1 |
 | 3 | Establish reproducible memory benchmarks and regression datasets | P1 |
 | 4 | Integrate decision, prediction and causal memory into one workflow | P2 |

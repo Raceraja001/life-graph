@@ -50,6 +50,10 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
         "models (free public models, no tenant data) from any tenant join it"
     ),
     ("workers/tasks.py", "run_all_consolidations"): "tenant discovery — selects distinct tenant_id",
+    ("services/dev/task_runtime.py", "sweep_orphans"): (
+        "runner-process cleanup: reads only the ids of running tasks across all "
+        "tenants so no tenant's live container is removed; returns no task data"
+    ),
     ("workers/tasks.py", "run_all_merge_suggestions"): "tenant discovery",
     ("workers/tasks.py", "run_all_research"): "tenant discovery",
     ("workers/tasks.py", "run_nightly_self_heal"): "tenant discovery",

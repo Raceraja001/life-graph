@@ -762,6 +762,16 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
                 logger.info("Marked dev task %s completed: already landed before restart", task.id)
                 continue
 
+            if action == "already_failed":
+                # The dispatch finished and failed; only the row's final write
+                # was lost. Re-running would pay to fail again.
+                task.status = "failed"
+                task.error = task.error or "The dispatch had already failed before the restart"
+                task.completed_at = now
+                task.status_history = _history(task, "failed", "dispatch failed before restart")
+                failed += 1
+                continue
+
             done = int(props.get("interrupt_requeues") or 0)
             if done >= INTERRUPT_REQUEUES:
                 task.status = "failed"
@@ -778,9 +788,12 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
                 props["checkpoint"] = build_checkpoint(
                     task,
                     stage="land_only",
+                    # Honest about today's behaviour: run_claimed() re-runs the
+                    # whole dispatch (the crashed worktree is gone). A true
+                    # land-only resume is work-order Stage 3.
                     resume_instructions=(
-                        "Task verification already passed before restart; land verified "
-                        "changes without re-dispatching LLM."
+                        "Verification had passed before the restart; the task is re-run "
+                        "from the start (land-only resume is not implemented yet)."
                     ),
                 )
             else:

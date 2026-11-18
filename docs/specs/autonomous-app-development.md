@@ -57,7 +57,8 @@ watch. On 2026-10-13 a human had to rescue it from:
    integration test.
 
 ### Phase 2 — Engines and hands-off approvals — BUILT
-7. **OpenCode driver.** `opencode run` headless in the sandbox; unavailable
+7. **OpenCode driver.** `opencode run` headless **on the host** (bash denied, allowlisted
+   env; tests run in the verifier sandbox; not yet in the task runtime); unavailable
    until the binary is installed, then compared on the scorecards.
 8. **Auto-approval policy for plans.**
    - A small plan (at most `auto_plan_max_tasks` tasks, touching no
@@ -83,10 +84,12 @@ watch. On 2026-10-13 a human had to rescue it from:
     - Creating the GitHub remote is stubbed (a local bare repo).
 13. **Commercial switches.**
     - **Auth:** `driver_claude_code_auth = oauth | api_key`. The API-key
-      mode passes `ANTHROPIC_API_KEY` into the sandbox instead of the
+      mode passes `ANTHROPIC_API_KEY` (by name) into the driver container instead of the
       personal login.
     - **Recording consent:** a per-tenant opt-out for step recording.
-    - **Isolation:** per-tenant sandbox and worktree directories.
+    - **Isolation:** per-tenant scratch and worktree directories. Process isolation is
+      `driver_claude_sandbox` (`task` = the per-task runtime,
+      `docs/design/adr-secure-task-runtime.md`); a worktree alone isolates files only.
 
 ## What is stubbed, and how to switch it on
 

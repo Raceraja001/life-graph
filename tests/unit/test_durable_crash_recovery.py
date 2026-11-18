@@ -397,7 +397,8 @@ async def test_a_verified_run_is_re_queued_to_land_only():
     assert task.properties["interrupt_requeues"] == 1
     assert task.properties["resume_action"] == "land_only"
     assert task.properties["checkpoint"]["stage"] == "land_only"
-    assert "without re-dispatching LLM" in task.properties["checkpoint"]["resume_instructions"]
+    # Honest: the task is re-run today (land-only resume is work-order Stage 3).
+    assert "re-run from the start" in task.properties["checkpoint"]["resume_instructions"]
     assert task.status_history[-1]["note"] == "re-queued to land verified changes after restart"
 
 
@@ -463,6 +464,59 @@ async def test_landed_work_is_completed_even_with_no_re_queues_left():
             "interrupt_requeues": dev_tasks.INTERRUPT_REQUEUES,
         }
     )
+
+    failed, _ = await _recover(task)
+
+    assert failed == 0
+    assert task.status == "completed"
+
+
+# ── 3. the checkpoint says what the stage decided, not only that it ran ──
+
+
+def _trail_with(*stages: tuple[str, bool]) -> dict:
+    tracker = ExecutionCheckpointTracker(task_id=str(uuid.uuid4()), tenant_id="t1")
+    for stage, ok in stages:
+        tracker.record_stage(stage, ok=ok)
+    return tracker.to_dict()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_verification_is_not_read_as_verified_work():
+    """verifier_completed used to be recorded whatever the verdict; a failed
+    check then read as 'verified' after a restart."""
+    trail = _trail_with(
+        ("prepared", True), ("driver_executed", True), ("files_checked", True),
+        ("verifier_completed", False),
+    )  # fmt: skip
+    task = _abandoned({"checkpoints": trail})
+
+    failed, _ = await _recover(task)
+
+    assert failed == 0
+    assert task.status == "queued"
+    assert task.properties.get("resume_action") is None
+    assert task.properties["checkpoint"]["stage"] == "re_dispatch_in_clean_worktree"
+
+
+@pytest.mark.asyncio
+async def test_a_dispatch_that_finished_failing_stays_failed():
+    """'finished' was recorded before the row's final status; a crash in between
+    turned a failed dispatch into 'completed'."""
+    trail = _trail_with(("prepared", True), ("verifier_completed", False), ("finished", False))
+    task = _abandoned({"checkpoints": trail})
+
+    failed, _ = await _recover(task)
+
+    assert failed == 1
+    assert task.status == "failed"
+    assert "interrupt_requeues" not in task.properties
+
+
+@pytest.mark.asyncio
+async def test_a_dispatch_that_finished_succeeding_is_still_completed():
+    trail = _trail_with(("prepared", True), ("landed", True), ("finished", True))
+    task = _abandoned({"checkpoints": trail})
 
     failed, _ = await _recover(task)
 

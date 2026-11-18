@@ -173,7 +173,8 @@ crossed with a three-tier risk classifier, plus trust scoring, shadow-mode gradu
 approval queue, an append-only audit log, and a kill switch.
 
 **Drivers** — how a proposal becomes a real code change: dispatch into an isolated git
-worktree, run tools, pass a verifier chain, optionally face a dissenting second-opinion
+worktree (which isolates *files*; *processes* are contained by the per-task runtime,
+`docs/design/adr-secure-task-runtime.md`), run tools, pass a verifier chain, optionally face a dissenting second-opinion
 model, then land.
 
 **Judgment** — decisions recorded with predictions attached, resolved against outcomes,

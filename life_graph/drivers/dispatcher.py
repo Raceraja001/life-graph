@@ -778,7 +778,18 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             await self._second_opinion_review(run)
 
         if run.tracker:
-            run.tracker.record_stage("verifier_completed")
+            # The verdict, not just "the verifier ran": recovery reads the last
+            # ok checkpoint, and a failed or inconclusive verification must not
+            # read as verified work after a restart.
+            if run.unverifiable:
+                verdict = "unverifiable"
+            elif run.result is not None and run.result.success:
+                verdict = "passed"
+            else:
+                verdict = "failed"
+            run.tracker.record_stage(
+                "verifier_completed", ok=verdict == "passed", metadata={"verdict": verdict}
+            )
             await self._persist_checkpoint(run)
 
         # Step 6c: the driver's own claim of success is not evidence. Re-check
@@ -1048,7 +1059,10 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
     async def _finish_dispatch(self, run: _DispatchRun) -> None:
         """Step 7: record stats and emit the result event."""
         if run.tracker:
-            run.tracker.record_stage("finished")
+            # ok mirrors the outcome: a crash between here and the row's final
+            # status write must not turn a failed dispatch into "completed".
+            succeeded = bool(run.result is not None and run.result.success)
+            run.tracker.record_stage("finished", ok=succeeded, metadata={"success": succeeded})
             await self._persist_checkpoint(run)
         result = run.result
         if run.spec_text:

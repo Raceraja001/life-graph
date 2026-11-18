@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
+from life_graph.config import settings
 from life_graph.services.dev import sandbox
 from life_graph.services.dev.acceptance import is_js_test_ref, is_safe_test_ref
 
@@ -177,19 +178,44 @@ _VENV_DIRS: tuple[str, ...] = (".venv", "venv", "env")
 _BIN_DIRS: tuple[str, ...] = ("bin", "Scripts")
 
 
+def host_execution_allowed() -> bool:
+    """Whether a host-side check may run agent-controlled code.
+
+    The worktree is the agent's: a ``.venv/bin/ruff`` (or ``python``, or
+    ``pip-audit``) inside it is a program the agent wrote, and a test suite
+    is code the agent wrote. With the verifier sandbox off, running either
+    means running agent code on the host as this process's user, so it is
+    refused unless ``verifier_allow_host_execution`` says the host is a
+    disposable dev box. A fresh worktree has no venv of its own, so nothing
+    legitimate is lost by not looking there.
+    """
+    return bool(getattr(settings, "verifier_allow_host_execution", False))
+
+
+_HOST_EXECUTION_REFUSED = (
+    "refused to run agent-written code on the host: verifier_sandbox is 'none' "
+    "(set verifier_sandbox=docker, or verifier_allow_host_execution=true on a "
+    "disposable dev box)"
+)
+
+
 def _project_tool(workdir: Path, tool: str) -> str | None:
-    """Find *tool* in the project's own virtualenv, else on PATH."""
-    for venv in _VENV_DIRS:
-        for bindir in _BIN_DIRS:
-            for name in (tool, f"{tool}.exe"):
-                candidate = workdir / venv / bindir / name
-                if candidate.is_file():
-                    return str(candidate)
+    """Find *tool* in the project's own virtualenv (host execution allowed only), else on PATH."""
+    if host_execution_allowed():
+        for venv in _VENV_DIRS:
+            for bindir in _BIN_DIRS:
+                for name in (tool, f"{tool}.exe"):
+                    candidate = workdir / venv / bindir / name
+                    if candidate.is_file():
+                        return str(candidate)
     return shutil.which(tool)
 
 
 def _project_python(workdir: Path) -> str | None:
     """The interpreter the project's tests should run under."""
+    if not host_execution_allowed():
+        # Callers refuse before getting here; never hand back a worktree binary.
+        return None
     for venv in _VENV_DIRS:
         for bindir, name in (("bin", "python"), ("Scripts", "python.exe")):
             candidate = workdir / venv / bindir / name
@@ -421,11 +447,15 @@ async def _verify_tests_pass(workdir: Path, ctx: dict) -> tuple[bool | None, dic
     """Run the project's test suite. Inconclusive if it has no runner."""
     if sandbox.enabled():
         return await _sandboxed_tests(workdir, ctx)
+    if not host_execution_allowed():
+        return None, {"note": _HOST_EXECUTION_REFUSED}
     python = _project_python(workdir)
     if python is None:
         return None, {"note": "no Python interpreter found for this project"}
     try:
-        result = subprocess.run(
+        # In a thread: a 120s suite on the event loop stalled the whole API.
+        result = await asyncio.to_thread(
+            subprocess.run,
             [python, "-m", "pytest", str(workdir), "-q", "--tb=line", "-x"],
             capture_output=True,
             text=True,
@@ -483,6 +513,8 @@ async def _verify_acceptance_tests_pass(workdir: Path, ctx: dict) -> tuple[bool 
         except sandbox.SandboxUnavailableError as exc:
             return None, {"note": str(exc), "sandbox": "docker"}
     else:
+        if not host_execution_allowed():
+            return None, {"note": _HOST_EXECUTION_REFUSED}
         python = _project_python(workdir)
         if python is None:
             return None, {"note": "no Python interpreter found for this project"}
@@ -862,8 +894,9 @@ async def _verify_no_vulnerable_deps_in_diff(workdir: Path, ctx: dict) -> tuple[
         # have checked a completely different project's — a false pass
         # that is worse than the inconclusive result it was standing in
         # for. Only a venv actually inside this project's own workdir can
-        # be trusted to be *this* project's environment.
-        for venv_dir in _VENV_DIRS:
+        # be trusted to be *this* project's environment -- and that venv is
+        # inside the agent's worktree, so it runs only with host execution on.
+        for venv_dir in _VENV_DIRS if host_execution_allowed() else ():
             for bindir in _BIN_DIRS:
                 candidate = workdir / venv_dir / bindir / "pip-audit"
                 if candidate.is_file():

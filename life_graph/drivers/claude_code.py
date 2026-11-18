@@ -25,6 +25,7 @@ from pathlib import Path
 from life_graph.config import settings
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import render_memory_block
+from life_graph.drivers.host_exec import host_driver_env, kill_process_group
 from life_graph.drivers.steps import parse_claude_stream
 from life_graph.drivers.workdir import remove_worktree, resolve_workdir
 from life_graph.services.dev import sandbox
@@ -194,6 +195,26 @@ class ClaudeCodeDriver:
 
         prompt = self._format_prompt(packet)
 
+        # On the host the CLI's Bash tool would run as this process's user
+        # with nothing in between: deny it unless the operator said the host
+        # is disposable. In a container it is the container's shell.
+        host_shell_denied = not sandbox.driver_sandbox_enabled() and not getattr(
+            settings, "driver_allow_host_shell", False
+        )
+        if host_shell_denied and cli_tools is not None and "Bash" in cli_tools:
+            cli_tools = [t for t in cli_tools if t != "Bash"]
+            if not cli_tools:
+                return DriverResult(
+                    success=False,
+                    error=(
+                        "This persona needs a shell, and the claude_code driver has no "
+                        "sandbox: set driver_claude_sandbox=task (or, on a disposable "
+                        "dev box, driver_allow_host_shell=true)"
+                    ),
+                    duration_ms=int((time.monotonic() - start) * 1000),
+                    metadata={"exit_status": "refused_host_shell"},
+                )
+
         cwd, worktree = await resolve_workdir(packet, workdir)
         try:
             # stream-json (which -p only allows with --verbose) instead of
@@ -215,16 +236,24 @@ class ClaudeCodeDriver:
                 denied = _disallowed_cli_tools(cli_tools)
                 if denied:
                     args += [_DISALLOWED_TOOLS_FLAG, ",".join(denied)]
+            elif host_shell_denied:
+                # Unscoped dispatch: the CLI's own permissions decide, which a
+                # host settings.json can widen. Bash is denied regardless.
+                args += [_DISALLOWED_TOOLS_FLAG, "Bash"]
 
             sandboxed = sandbox.driver_sandbox_enabled()
+            boundary = settings.driver_claude_sandbox if sandboxed else "host"
+            audit: dict = {}
             try:
-                returncode, out, err = await self._exec_cli(args, cwd, timeout)
+                returncode, out, err = await self._exec_cli(
+                    args, cwd, timeout, packet=packet, audit=audit
+                )
             except TimeoutError:
                 return DriverResult(
                     success=False,
                     error=f"claude_code timed out after {timeout}s",
                     duration_ms=int((time.monotonic() - start) * 1000),
-                    metadata={"exit_status": "timeout"},
+                    metadata={"exit_status": "timeout", "boundary": boundary, **audit},
                 )
             except sandbox.SandboxUnavailableError as exc:
                 # Fail closed: sandboxing was asked for and could not run —
@@ -234,7 +263,7 @@ class ClaudeCodeDriver:
                     success=False,
                     error=f"claude_code sandbox unavailable: {exc}",
                     duration_ms=int((time.monotonic() - start) * 1000),
-                    metadata={"exit_status": "sandbox_unavailable"},
+                    metadata={"exit_status": "sandbox_unavailable", "boundary": boundary, **audit},
                 )
 
             duration = int((time.monotonic() - start) * 1000)
@@ -260,6 +289,11 @@ class ClaudeCodeDriver:
                     "workdir": str(cwd),
                     "isolated": worktree is not None,
                     "sandboxed": sandboxed,
+                    # Which execution boundary this run had: "host", "docker"
+                    # (legacy open-network container) or "task" (task_runtime).
+                    "boundary": boundary,
+                    "host_shell": "denied" if host_shell_denied else "allowed",
+                    **audit,
                 },
             )
         except FileNotFoundError:
@@ -290,10 +324,20 @@ class ClaudeCodeDriver:
 
     # ── Internals ─────────────────────────────────────────────
 
-    async def _exec_cli(self, args: list[str], cwd: Path, timeout: int) -> tuple[int, bytes, bytes]:
+    async def _exec_cli(
+        self,
+        args: list[str],
+        cwd: Path,
+        timeout: int,
+        *,
+        packet: ContextPacket | None = None,
+        audit: dict | None = None,
+    ) -> tuple[int, bytes, bytes]:
         """Run the CLI invocation, sandboxed or on the host per settings.
 
-        Returns ``(returncode, stdout, stderr)``.
+        Returns ``(returncode, stdout, stderr)``. With the task runtime,
+        *audit* receives its metadata under ``"runtime"`` (image id, network,
+        egress allowlist, limits, teardown result), on success and failure.
 
         Raises:
             TimeoutError: the run did not finish within *timeout*, on
@@ -305,17 +349,21 @@ class ClaudeCodeDriver:
         """
         api_key = _api_key()
         if not sandbox.driver_sandbox_enabled():
+            # Allowlisted environment, never the API process's own (database
+            # URL, provider keys, LIFE_GRAPH_*); own session so a timeout can
+            # kill whatever the CLI started, not just the CLI.
             proc = await asyncio.create_subprocess_exec(
                 *args,
                 cwd=str(cwd),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, "ANTHROPIC_API_KEY": api_key} if api_key else None,
+                env=host_driver_env({"ANTHROPIC_API_KEY": api_key} if api_key else None),
+                start_new_session=True,
             )
             try:
                 out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except TimeoutError:
-                proc.kill()
+                await kill_process_group(proc)
                 await proc.communicate()
                 raise
             return proc.returncode, out, err
@@ -326,9 +374,15 @@ class ClaudeCodeDriver:
             creds_source = Path(settings.driver_claude_code_creds_path).expanduser()
             creds_dir = await sandbox.stage_credentials(creds_source)
         try:
-            result = await sandbox.run_driver(
-                args, cwd, creds_dir, timeout=timeout, api_key=api_key
-            )
+            if sandbox.task_runtime_enabled():
+                result = await self._run_in_task_runtime(
+                    args, cwd, creds_dir, timeout=timeout, api_key=api_key, packet=packet,
+                    audit=audit,
+                )  # fmt: skip
+            else:
+                result = await sandbox.run_driver(
+                    args, cwd, creds_dir, timeout=timeout, api_key=api_key
+                )
         except sandbox.SandboxUnavailableError as exc:
             if "timed out" in str(exc):
                 raise TimeoutError(str(exc)) from exc
@@ -337,6 +391,59 @@ class ClaudeCodeDriver:
             if creds_dir is not None:
                 shutil.rmtree(creds_dir, ignore_errors=True)
         return result.returncode, result.stdout.encode(), result.stderr.encode()
+
+    @staticmethod
+    async def _run_in_task_runtime(
+        args: list[str],
+        cwd: Path,
+        creds_dir: Path | None,
+        *,
+        timeout: int,
+        api_key: str | None,
+        packet: ContextPacket | None,
+        audit: dict | None,
+    ) -> sandbox.SandboxResult:
+        """The claude_code CLI in its per-task runtime (services/dev/task_runtime.py)."""
+        from life_graph.services.dev import task_runtime
+
+        env = {
+            # Nothing but the API and the token refresh: no telemetry, no
+            # update checks, no error reporting — the allowlist would refuse
+            # them anyway, and each refusal is a slow retry.
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            "DISABLE_AUTOUPDATER": "1",
+            # An agent that runs Python in its shell otherwise leaves
+            # __pycache__/*.pyc in the worktree, and so in the landed diff
+            # (seen in the first end-to-end run, 2026-11-18).
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "CLAUDE_CONFIG_DIR": "/tmp/.claude" if api_key else "/claude-config",
+        }
+        req = task_runtime.RuntimeRequest(
+            task_id=str(packet.task_id) if packet else "unknown",
+            tenant_id=str(packet.tenant_id) if packet else "unknown",
+            driver="claude_code",
+            image=settings.driver_claude_sandbox_image,
+            # The image's own binary, not args[0] (the host's configured path).
+            command=(sandbox.DRIVER_CLI, *args[1:]),
+            workspace=cwd,
+            credentials=None if api_key else creds_dir,
+            env=env,
+            secret_env={"ANTHROPIC_API_KEY": api_key} if api_key else {},
+            egress_allowlist=tuple(settings.driver_runtime_egress_allowlist_list),
+            memory=settings.driver_claude_sandbox_memory,
+            cpus=settings.driver_claude_sandbox_cpus,
+            pids_limit=settings.driver_runtime_pids_limit,
+            timeout=timeout,
+        )
+        try:
+            outcome = await task_runtime.runtime.run(req)
+        except sandbox.SandboxUnavailableError as exc:
+            if audit is not None and getattr(exc, "runtime_metadata", None):
+                audit["runtime"] = exc.runtime_metadata
+            raise
+        if audit is not None:
+            audit["runtime"] = outcome.metadata
+        return sandbox.SandboxResult(outcome.returncode, outcome.stdout, outcome.stderr)
 
     @staticmethod
     def _format_prompt(packet: ContextPacket) -> str:

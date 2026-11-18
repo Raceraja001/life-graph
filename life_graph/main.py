@@ -340,6 +340,14 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
             if interrupted:
                 logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
 
+    with startup_step(report, "dev_task_runtime_sweep"):
+        # After recovery, so the tasks it just re-queued count as not running:
+        # their containers, networks and staged tokens are leftovers now.
+        if is_dev_task_runner:
+            from life_graph.services.dev.task_runtime import sweep_orphans
+
+            await sweep_orphans(async_session)
+
     with startup_step(report, "dev_outcome_recorder"):
         from life_graph.services.dev.outcomes import dev_outcome_recorder
 

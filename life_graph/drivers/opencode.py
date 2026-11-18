@@ -28,7 +28,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import shutil
 import sys
 import tempfile
@@ -39,6 +38,7 @@ from pathlib import Path
 from life_graph.config import settings
 from life_graph.drivers import self_check
 from life_graph.drivers.base import ContextPacket, DriverResult
+from life_graph.drivers.host_exec import host_driver_env, kill_process_group
 from life_graph.drivers.steps import number
 from life_graph.drivers.workdir import diff_against_head, remove_worktree, resolve_workdir
 
@@ -238,6 +238,8 @@ class OpencodeDriver:
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            # Its own process group, so a timeout reaches what it started.
+            start_new_session=True,
         )
         # Read as it streams: communicate() under wait_for dropped everything
         # on a timeout, so a 20-minute run left no steps (task cce99bf5).
@@ -254,7 +256,7 @@ class OpencodeDriver:
         try:
             await asyncio.wait_for(proc.wait(), timeout=timeout)
         except TimeoutError:
-            proc.kill()
+            await kill_process_group(proc)
             await proc.wait()
             # A child still holding the pipe would keep the readers open.
             _, pending = await asyncio.wait(readers, timeout=5)
@@ -274,7 +276,10 @@ class OpencodeDriver:
             config_file = config_dir / "opencode.json"
             config_file.write_text(json.dumps(_config(packet, cwd)))
             prompt = self._prompt(packet)
-            env = {**os.environ, "OPENCODE_CONFIG": str(config_file)}
+            # Allowlisted, not the API process's environment: OpenCode runs
+            # on the host, and its tools (and its run_tests MCP child) would
+            # otherwise see the database URL and every provider key.
+            env = host_driver_env({"OPENCODE_CONFIG": str(config_file)})
             deadline = start + timeout
             steps: list[dict] = []
             texts: list[str] = []

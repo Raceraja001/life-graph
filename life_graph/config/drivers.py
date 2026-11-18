@@ -109,7 +109,8 @@ class DriverSettings(BaseModel):
     # verifier sandbox this needs network (the CLI calls the Anthropic API),
     # so isolation is filesystem + capabilities, not network denial. With
     # "docker", a missing daemon or image fails the dispatch rather than
-    # silently falling back to unsandboxed host execution.
+    # silently falling back to unsandboxed host execution. "task" is the
+    # per-task runtime below (network allowlisted through a proxy); prefer it.
     driver_claude_sandbox: str = "none"
     driver_claude_sandbox_image: str = "life-graph-claude-driver:latest"
     driver_claude_sandbox_memory: str = "4g"
@@ -118,6 +119,49 @@ class DriverSettings(BaseModel):
     # sandboxed dispatch (life_graph/services/dev/sandbox.py:stage_credentials).
     # Never mounted live — see driver_claude_sandbox's docstring above.
     driver_claude_code_creds_path: str = "~/.claude/.credentials.json"
+
+    # ── Per-task execution runtime (services/dev/task_runtime.py) ──
+    # driver_claude_sandbox="task" runs the claude_code driver in a per-task
+    # runtime: its own internal network whose only way out is a per-task
+    # egress proxy allowing just the hosts below, the worktree as the only
+    # writable host path (refused unless it sits under the dispatch scratch
+    # root), labels for audit and orphan cleanup, an in-container deadline,
+    # and every spec checked by sandbox.validate_spec. docker is the older
+    # open-network container, kept as the rollback; none is the host.
+    driver_runtime_egress_image: str = "life-graph-sandbox-egress:dev"
+    # Hostnames (optionally https://host[:port]) the driver may reach through
+    # the proxy. The Claude CLI talks to the API and refreshes its OAuth
+    # token; everything else (telemetry, update checks) is switched off.
+    driver_runtime_egress_allowlist: str = (
+        "api.anthropic.com,console.anthropic.com,platform.claude.com,claude.ai"
+    )
+    driver_runtime_pids_limit: int = 512
+    # Grace between the in-container deadline and the host-side kill.
+    driver_runtime_kill_grace_seconds: int = 15
+
+    # ── Host execution (no container) ──
+    # With no driver sandbox, a coding CLI's shell runs on the host as this
+    # process's user. Off: the claude_code driver's Bash tool is denied on
+    # the host (OpenCode's bash already is, driver_opencode_allow_bash).
+    # Turning this on is a statement that the host is a disposable dev box.
+    driver_allow_host_shell: bool = False
+    # Extra variable names a host-run driver CLI may inherit. Host-run
+    # drivers otherwise get only PATH/HOME/locale-style variables -- never
+    # the API process's database URL, tokens or LIFE_GRAPH_* configuration.
+    driver_host_env_passthrough: str = ""
+    # With verifier_sandbox="none", checks that EXECUTE the agent's code
+    # (pytest, acceptance tests) or a binary found inside the agent's
+    # worktree are inconclusive unless this is on: on the host they would run
+    # agent-written code as this process's user.
+    verifier_allow_host_execution: bool = False
+
+    @property
+    def driver_runtime_egress_allowlist_list(self) -> list[str]:
+        return [h.strip() for h in self.driver_runtime_egress_allowlist.split(",") if h.strip()]
+
+    @property
+    def driver_host_env_passthrough_list(self) -> list[str]:
+        return [n.strip() for n in self.driver_host_env_passthrough.split(",") if n.strip()]
 
     @property
     def trajectory_opt_out_tenants_list(self) -> list[str]:
