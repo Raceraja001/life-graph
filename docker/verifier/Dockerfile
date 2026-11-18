@@ -1,4 +1,4 @@
-# Sandbox image for the verifier chain (life_graph/services/sandbox.py).
+# Sandbox image for the verifier chain (life_graph/services/dev/sandbox.py).
 #
 # Verifiers run code an agent just wrote — a test suite is arbitrary code —
 # so they run here instead of on the host. The image carries a fallback
@@ -10,7 +10,7 @@ FROM ghcr.io/astral-sh/uv:0.12.14 AS uv
 
 FROM python:3.12-slim
 COPY --from=uv /uv /usr/local/bin/uv
-# mypy: the types_clean_diff check (life_graph/services/proof_checks.py),
+# mypy: the types_clean_diff check (life_graph/services/dev/proof_checks.py),
 # run against the project's own venv via --python-executable.
 RUN pip install --no-cache-dir "pytest==9.1.1" "ruff==0.16.1" "mypy==1.15.0"
 # Test suites commonly create throwaway repositories (git init in tmp dirs).

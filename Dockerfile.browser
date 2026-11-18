@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # ── NOD sandbox image: headless Chromium ─────────────────────
 # One half of the errand sandbox chassis (compose.sandbox.yaml,
-# life_graph/services/sandbox.py). A browser errand drives a page the owner
+# life_graph/services/dev/sandbox.py). A browser errand drives a page the owner
 # did not write, so the browser never runs on the host and never runs beside
 # the application's credentials: it runs here, as a non-root user, on an
 # internal-only network, with no host path mounted in.
