@@ -101,13 +101,13 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
     # is the answer, not the query key. The chat id is the scope: a partial unique
     # index guarantees at most one active binding per chat, so this can never
     # return another tenant's row by accident.
-    ("services/telegram_binding.py", "_active_binding_for_chat"): (
+    ("services/notifications/telegram_binding.py", "_active_binding_for_chat"): (
         "resolves chat_id -> tenant; filtering by tenant would beg the question"
     ),
-    ("services/telegram_binding.py", "touch"): (
+    ("services/notifications/telegram_binding.py", "touch"): (
         "keyed by chat_id, which the partial unique index scopes to one tenant"
     ),
-    ("services/telegram_binding.py", "purge_expired_codes"): (
+    ("services/notifications/telegram_binding.py", "purge_expired_codes"): (
         "housekeeping sweep of expired codes across every tenant, like the crons above"
     ),
     ("self_improving/optimizer_service.py", "_finish"): (

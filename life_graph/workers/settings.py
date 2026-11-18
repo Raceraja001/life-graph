@@ -89,7 +89,9 @@ class WorkerSettings:
         # The daily brief cron runs in THIS process, so its BRIEF_COMPOSED
         # event is only heard by handlers subscribed here.
         try:
-            from life_graph.services.telegram_delivery import telegram_delivery_handler
+            from life_graph.services.notifications.telegram_delivery import (
+                telegram_delivery_handler,
+            )
 
             telegram_delivery_handler.subscribe()
         except Exception:
@@ -216,7 +218,7 @@ class WorkerSettings:
             run_at_startup=False,
         ),
         # Bills, to-dos, expiring documents and timed reminders as phone
-        # notifications (services/due_notifications.py); idempotent per item.
+        # notifications (services/notifications/due.py); idempotent per item.
         cron(
             "life_graph.workers.due_notifications.write_due_notifications",
             minute={4, 19, 34, 49},

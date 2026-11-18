@@ -4,7 +4,7 @@
 ``actions`` it offers; ``POST /jarvis/notifications/{id}/action`` performs one
 (api/jarvis.py). What a notification is comes from what wrote it:
 
-* services/due_notifications.py rows (``source_type="due_item"``) name the
+* services/notifications/due.py rows (``source_type="due_item"``) name the
   item in their metadata (``item``, ``item_id``): bill, task, document,
   reminder. Rows written before ``item_id`` was stored are "other", without
   buttons: there is nothing for a button to find.
@@ -76,7 +76,7 @@ def utcnow() -> datetime:
 
 
 def kind_of(source_type: str | None, meta: dict[str, Any] | None) -> str:
-    from life_graph.services.due_notifications import SOURCE_TYPE
+    from life_graph.services.notifications.due import SOURCE_TYPE
 
     meta = meta or {}
     if source_type == "brief":
@@ -167,7 +167,7 @@ async def perform(
     elif kind == "reminder":
         at = await _reminder(session, tenant_id, meta["item_id"], action, now, tz)
     else:  # snooze_1d on a bill or to-do
-        from life_graph.services.due_notifications import snooze_metadata
+        from life_graph.services.notifications.due import snooze_metadata
 
         at = snooze_until(action, now, tz)
         meta = snooze_metadata(meta, at, notification.id)

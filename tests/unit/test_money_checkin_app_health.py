@@ -162,7 +162,7 @@ async def test_send_urgent_uses_push_and_telegram():
     push = AsyncMock(return_value=0)
     tg = AsyncMock(return_value=True)
     with (
-        patch("life_graph.services.webpush.PushService") as push_cls,
+        patch("life_graph.services.notifications.webpush.PushService") as push_cls,
         patch("life_graph.watchers.channels.telegram_channel.TelegramChannel") as tg_cls,
     ):
         push_cls.return_value.send_to_tenant = push

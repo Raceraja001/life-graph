@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from life_graph.core.events import Event, EventType
-from life_graph.services.push_delivery import PushDeliveryHandler
+from life_graph.services.notifications.push_delivery import PushDeliveryHandler
 
 
 class _FakeNotification:
@@ -59,7 +59,7 @@ async def test_on_brief_fetches_body_and_sends_push(monkeypatch):
     def session_factory():
         return _FakeSession(row)
 
-    monkeypatch.setattr("life_graph.services.push_delivery.async_session", session_factory)
+    monkeypatch.setattr("life_graph.services.notifications.push_delivery.async_session", session_factory)
 
     handler = PushDeliveryHandler()
     handler._push.send_to_tenant = AsyncMock(return_value=1)
@@ -79,7 +79,7 @@ async def test_on_brief_swallows_send_failure(monkeypatch):
     def session_factory():
         return _FakeSession(row)
 
-    monkeypatch.setattr("life_graph.services.push_delivery.async_session", session_factory)
+    monkeypatch.setattr("life_graph.services.notifications.push_delivery.async_session", session_factory)
 
     handler = PushDeliveryHandler()
     handler._push.send_to_tenant = AsyncMock(side_effect=RuntimeError("boom"))
@@ -94,7 +94,7 @@ async def test_on_brief_swallows_send_failure(monkeypatch):
 async def test_subscribe_is_idempotent(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "life_graph.services.push_delivery.event_bus.subscribe",
+        "life_graph.services.notifications.push_delivery.event_bus.subscribe",
         lambda event_type, handler: calls.append((event_type, handler)),
     )
 

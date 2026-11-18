@@ -51,7 +51,7 @@ class AutonomousApprovalProducer:
 
     def _get_push_service(self) -> Any:
         if self._push_service is None:
-            from life_graph.services.webpush import PushService
+            from life_graph.services.notifications.webpush import PushService
 
             self._push_service = PushService(async_session)
         return self._push_service

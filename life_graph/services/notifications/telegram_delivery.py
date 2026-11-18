@@ -1,6 +1,6 @@
 """Deliver the daily brief to Telegram when BRIEF_COMPOSED fires.
 
-Modelled on :mod:`life_graph.services.push_delivery`, which does the same job
+Modelled on :mod:`life_graph.services.notifications.push_delivery`, which does the same job
 for Web Push. Kept as a separate handler rather than folded into that one so
 that a tenant with no paired chat, or no push subscription, still gets the
 other channel.

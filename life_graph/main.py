@@ -251,21 +251,21 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
 
     # Startup — wire daily brief -> Web Push delivery
     with startup_step(report, "push_delivery"):
-        from life_graph.services.push_delivery import push_delivery_handler
+        from life_graph.services.notifications.push_delivery import push_delivery_handler
 
         push_delivery_handler.subscribe()
         logger.info("Web push brief delivery enabled")
 
     # Startup — wire daily brief -> Telegram delivery
     with startup_step(report, "telegram_delivery"):
-        from life_graph.services.telegram_delivery import telegram_delivery_handler
+        from life_graph.services.notifications.telegram_delivery import telegram_delivery_handler
 
         telegram_delivery_handler.subscribe()
         logger.info("Telegram brief delivery enabled")
 
     # Startup — wire a filed approval (driver_pr/merge/plan/deploy/...) -> push/Telegram
     with startup_step(report, "approval_notifications"):
-        from life_graph.services.approval_notifications import approval_notification_handler
+        from life_graph.services.notifications.approval import approval_notification_handler
 
         approval_notification_handler.subscribe()
         logger.info("Approval-filed notifications enabled")

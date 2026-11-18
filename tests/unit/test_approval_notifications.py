@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from life_graph.core.events import Event, EventType
-from life_graph.services.approval_notifications import ApprovalNotificationHandler
+from life_graph.services.notifications.approval import ApprovalNotificationHandler
 
 
 class _FakePush:

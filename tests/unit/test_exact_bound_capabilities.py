@@ -611,7 +611,7 @@ def _card(**meta):
 async def _tap(card, action: str) -> str:
     from zoneinfo import ZoneInfo
 
-    from life_graph.services import notification_actions as na
+    from life_graph.services.notifications import actions as na
     from tests.unit.fakes import FakeSession
 
     return await na.perform(
@@ -664,7 +664,7 @@ async def test_a_card_that_cannot_name_the_action_is_refused_not_widened(owner_t
     A capability with nothing to pin it to one action is not what the card
     described, so the tap mints nothing at all.
     """
-    from life_graph.services import notification_actions as na
+    from life_graph.services.notifications import actions as na
 
     card = _card(**{missing: None})
 

@@ -1,7 +1,7 @@
 """Timed reminders the owner asks Jarvis for (life-graph-android docs/PLAN-v3.md).
 
 A reminder is an ``Intention`` with ``trigger_type="time"``; once its time
-comes, services/due_notifications.py writes it as a phone notification (kind
+comes, services/notifications/due.py writes it as a phone notification (kind
 ``reminder``, with Done / In 1 hour / Tomorrow buttons).
 
 ``parse_when`` turns what the model passes as ``at`` into a time. ISO-8601 is

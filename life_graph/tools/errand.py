@@ -20,7 +20,7 @@ What this module adds is the two ends the engine deliberately leaves open:
    errand that ran anyway (``docs/AI_WORK_ORDER.md`` §3).
 2. **A way to ask the owner.** A step the policy will not authorise on its own
    becomes a ``critical`` notification with Approve/Reject buttons on the phone
-   (``services/notification_actions.py``). Tapping Approve issues an
+   (``services/notifications/actions.py``). Tapping Approve issues an
    :class:`~life_graph.autonomy.approvals.AuthorizationCapability`; handing its
    id back as ``capability_id`` lets the same errand run through.
 
@@ -77,7 +77,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 #: ``source_type`` (and metadata ``item``) on the card the phone shows. Kept in
-#: step with ``services/notification_actions.py``, which reads both.
+#: step with ``services/notifications/actions.py``, which reads both.
 APPROVAL_SOURCE = "errand_approval"
 
 #: Most steps one tool call may carry. The engine's own limit is fifty
@@ -433,7 +433,7 @@ def approval_notification(
     It also carries the exact identity of the step: which run, which position
     in it, which element, and a digest of the whole action. Tapping Approve
     mints a capability bound to all four
-    (``services/notification_actions.py``), so the tap authorises that one
+    (``services/notifications/actions.py``), so the tap authorises that one
     action and not the next plan that ends in a similar-looking click. The
     digest is not the value — nothing the owner typed or the vault holds is
     in this metadata.
@@ -465,7 +465,7 @@ def approval_notification(
             # whose it might have been belongs in the question.
             "tainted": _tainted(),
         },
-        # The phone polls for these, as services/due_notifications.py does.
+        # The phone polls for these, as services/notifications/due.py does.
         is_delivered=True,
         delivered_at=now,
         source_type=APPROVAL_SOURCE,

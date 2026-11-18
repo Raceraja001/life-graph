@@ -19,7 +19,7 @@ from life_graph.core.trust import TrustTier
 from life_graph.integrations.telegram import media as tg_media
 from life_graph.integrations.telegram import router as tg_router
 from life_graph.models.db import CaptureEvent, TelegramBinding, TelegramPairingCode
-from life_graph.services.telegram_binding import TelegramBindingService
+from life_graph.services.notifications.telegram_binding import TelegramBindingService
 from life_graph.storage.database import async_session
 from tests.integration.conftest import skip_on_db_error
 

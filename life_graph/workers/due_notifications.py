@@ -1,5 +1,5 @@
 """Every 15 minutes: write the owner's due items as phone notifications
-(services/due_notifications.py).
+(services/notifications/due.py).
 
 Often rather than a few fixed times so a timed reminder reaches the phone
 within a quarter of an hour of its time. Bills, to-dos and documents are only
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 async def write_due_notifications(ctx: dict | None = None) -> dict:
     from life_graph.config import settings
-    from life_graph.services import due_notifications
+    from life_graph.services.notifications import due as due_notifications
 
     if not settings.phone_due_notifications:
         return {"status": "skipped", "reason": "phone_due_notifications off"}

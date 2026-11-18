@@ -244,7 +244,7 @@ async def test_end_to_end_errand_pause_owner_approval_resume_and_replay_denial(m
     from life_graph.autonomy.approvals.durable_store import attach_durable_stores
     from life_graph.core.tenant import tenant_scope
     from life_graph.models.db import Notification
-    from life_graph.services import notification_actions
+    from life_graph.services.notifications import actions as notification_actions
     from life_graph.storage.database import async_session
     from life_graph.tools import errand as errand_tool
 

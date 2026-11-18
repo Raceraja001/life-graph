@@ -38,7 +38,7 @@ from life_graph.integrations.telegram.poller import (
     LEASE_KEY,
 )
 from life_graph.models.db import TelegramBinding
-from life_graph.services.telegram_binding import TelegramBindingService
+from life_graph.services.notifications.telegram_binding import TelegramBindingService
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)

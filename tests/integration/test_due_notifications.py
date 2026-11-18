@@ -1,5 +1,5 @@
 """Due items as phone notifications, against the database
-(services/due_notifications.py).
+(services/notifications/due.py).
 
 A bill from mail, a to-do, a document and a timed reminder are seeded for one
 tenant; a run writes one notification each, a second run at the same time
@@ -131,7 +131,7 @@ async def _rows():
 @skip_on_db_error
 async def test_due_items_are_written_once_per_lead_time():
     from life_graph.models.assistant import Document
-    from life_graph.services import due_notifications
+    from life_graph.services.notifications import due as due_notifications
     from life_graph.storage.database import async_session
 
     evening = _at(DAY, 19)

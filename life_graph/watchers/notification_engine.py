@@ -125,9 +125,9 @@ class NotificationEngine:
             await self._queue_event(tenant_id, event, status="digest_pending")
 
     async def _send_urgent(self, tenant_id: str, event: dict[str, Any]) -> bool:
-        """Web Push and Telegram, as approvals are (services/approval_notifications.py).
+        """Web Push and Telegram, as approvals are (services/notifications/approval.py).
         True when at least one reached a device or chat."""
-        from life_graph.services.webpush import PushService
+        from life_graph.services.notifications.webpush import PushService
         from life_graph.watchers.channels.telegram_channel import TelegramChannel
 
         title = str(event.get("title") or "Alert")
