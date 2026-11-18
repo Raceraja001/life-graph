@@ -1,4 +1,4 @@
-"""Unit tests for day_row in life_graph.services.jarvis_memory.
+"""Unit tests for day_row in life_graph.services.jarvis.memory.
 
 Tests cover the three decision points in day_row:
 1. with_source parameter (True/False)
@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 
-from life_graph.services import jarvis_memory as jm
+from life_graph.services.jarvis import memory as jm
 
 NOW = None  # Not needed for day_row tests
 

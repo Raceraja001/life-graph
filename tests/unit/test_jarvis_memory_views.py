@@ -1,5 +1,5 @@
 """GET /jarvis/memory/overview, /memory/search and /entities/{id}
-(services/jarvis_memory.py): each memory's kind, people and projects told
+(services/jarvis/memory.py): each memory's kind, people and projects told
 apart, the overview's parts failing on their own, and every query scoped to
 the device's tenant. No database: sources are faked or their SQL inspected."""
 
@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from life_graph.services import jarvis_memory as jm
+from life_graph.services.jarvis import memory as jm
 from tests.unit.fakes import FakeResult, FakeSession, session_factory, sql
 
 NOW = datetime(2026, 10, 25, 9, 42, tzinfo=UTC)

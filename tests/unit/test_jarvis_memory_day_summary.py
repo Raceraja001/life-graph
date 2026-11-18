@@ -1,4 +1,4 @@
-from life_graph.services.jarvis_memory import day_summary
+from life_graph.services.jarvis.memory import day_summary
 
 
 def test_day_summary_jarvis_with_colon():

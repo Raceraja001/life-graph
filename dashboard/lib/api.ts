@@ -346,7 +346,7 @@ export const api = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload shape matches the rest of this file's untyped API surface.
       request<any>("PATCH", `/memories/${id}`, body),
     pendingCount: () => GET<{ data?: { count?: number } }>(`/memories/pending/count`),
-    // The store's own counts (services/jarvis_memory.py overview); total is null if it failed.
+    // The store's own counts (services/jarvis/memory.py overview); total is null if it failed.
     total: () =>
       GET<{ data?: { counts?: { total?: number | null } } }>("/jarvis/memory/overview").then(
         (r) => r?.data?.counts?.total ?? null,

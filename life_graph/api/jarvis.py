@@ -28,15 +28,15 @@ reminder_set reaches the chat as ``{type: reminded, id, text, at}`` and the
 voice reply as ``reminded``.
 
 v4 (docs/PLAN-v4.md, S1): ``GET /jarvis/today`` is the whole Today screen in
-one call (services/jarvis_today.py), each part failing on its own; ``POST
+one call (services/jarvis/today.py), each part failing on its own; ``POST
 /jarvis/bills/{item_id}/paid`` is its "Mark paid". ``GET /jarvis/app/latest``
 and ``.../app/download/{file}`` offer the newest APK from ``app_release_dir``.
 
-v4 S2: ``GET /jarvis/plan`` (services/jarvis_plan.py); ``GET
+v4 S2: ``GET /jarvis/plan`` (services/jarvis/plan.py); ``GET
 /jarvis/memory/overview``, ``.../memory/search`` and ``/jarvis/entities/{id}``
-(services/jarvis_memory.py); ``GET /jarvis/contacts`` and ``.../mail/waiting``
-(services/jarvis_inbox.py). The chat stream gains ``{type: card, card}``
-events built from tool results (services/jarvis_cards.py), and the voice
+(services/jarvis/memory.py); ``GET /jarvis/contacts`` and ``.../mail/waiting``
+(services/jarvis/inbox.py). The chat stream gains ``{type: card, card}``
+events built from tool results (services/jarvis/cards.py), and the voice
 reply a ``cards`` list.
 
 Where Jarvis ran (``route``: personal = this PC's model, general = a cloud
@@ -300,7 +300,7 @@ async def _start_chat(body: ChatRequest, conversation_id: uuid.UUID | None):
 
 async def _app_frames(inner, tenant_id: str | None = None):
     """The dashboard stream's frames, in the app's event shapes, each tool
-    result's answer cards after its own event (services/jarvis_cards.py)."""
+    result's answer cards after its own event (services/jarvis/cards.py)."""
     state: dict = {}
     async for chunk in inner.body_iterator:
         text = chunk.decode() if isinstance(chunk, bytes) else chunk
@@ -323,7 +323,7 @@ async def _app_frames(inner, tenant_id: str | None = None):
 
 async def _local_only(state: dict, tenant_id: str | None) -> set[str] | None:
     """The tenant's local_only account names, read once per stream (None: unknown)."""
-    from life_graph.services import jarvis_cards
+    from life_graph.services.jarvis import cards as jarvis_cards
 
     if "local_only" not in state:
         state["local_only"] = (
@@ -334,7 +334,7 @@ async def _local_only(state: dict, tenant_id: str | None) -> set[str] | None:
 
 async def _card_events(event: dict, state: dict, tenant_id: str | None) -> list[dict]:
     """``{type: card, card}`` for each card a tool result makes; none otherwise."""
-    from life_graph.services import jarvis_cards
+    from life_graph.services.jarvis import cards as jarvis_cards
 
     name = event.get("name")
     if event.get("type") != "tool_result" or name not in jarvis_cards.CARD_TOOLS:
@@ -821,7 +821,7 @@ async def _tool_results(stream_key: str):
     close the stream, so the listener is stopped and the key freed here.
     """
     from life_graph.services.chat_stream import get_chat_stream_bus
-    from life_graph.services.jarvis_cards import CARD_TOOLS
+    from life_graph.services.jarvis.cards import CARD_TOOLS
 
     bus = get_chat_stream_bus()
     events = bus.subscribe(stream_key)
@@ -847,7 +847,7 @@ async def _tool_results(stream_key: str):
 
 
 async def _cards(tenant_id: str, results: list[tuple[str, str]]) -> list[dict]:
-    from life_graph.services import jarvis_cards
+    from life_graph.services.jarvis import cards as jarvis_cards
 
     if not results:
         return []
@@ -1457,9 +1457,9 @@ async def cancel_reminder(reminder_id: str):
 @router.get("/today", summary="The Today screen in one call")
 async def today():
     """Counts, insights, schedule, what is due, money, work, study and what
-    Jarvis learnt (services/jarvis_today.py). A source that fails leaves its
+    Jarvis learnt (services/jarvis/today.py). A source that fails leaves its
     part null or empty; the call itself does not fail for it."""
-    from life_graph.services.jarvis_today import today_screen
+    from life_graph.services.jarvis.today import today_screen
 
     return success_response(data=await today_screen(get_current_tenant_id()))
 
@@ -1486,9 +1486,9 @@ async def bill_paid(item_id: str):
 @router.get("/plan", summary="The next days: events, what is due, reminders, to-dos")
 async def plan(days: int = Query(7, ge=1, le=31)):
     """One row per day from today in the owner's time zone, empty days
-    included (services/jarvis_plan.py). A source that fails leaves its kind
+    included (services/jarvis/plan.py). A source that fails leaves its kind
     empty; the call itself does not fail for it."""
-    from life_graph.services import jarvis_plan
+    from life_graph.services.jarvis import plan as jarvis_plan
 
     return success_response(data=await jarvis_plan.plan(get_current_tenant_id(), days))
 
@@ -1496,9 +1496,9 @@ async def plan(days: int = Query(7, ge=1, le=31)):
 @router.get("/memory/overview", summary="What Jarvis remembers: counts, people, rules, days")
 async def memory_overview():
     """Counts, the people, projects and things memories mention, the rules,
-    the newest memories and the days (services/jarvis_memory.py). A part that
+    the newest memories and the days (services/jarvis/memory.py). A part that
     fails is null or empty; the call itself does not fail for it."""
-    from life_graph.services import jarvis_memory
+    from life_graph.services.jarvis import memory as jarvis_memory
 
     return success_response(data=await jarvis_memory.overview(get_current_tenant_id()))
 
@@ -1507,7 +1507,7 @@ async def memory_overview():
 async def memory_search(q: str = "", limit: int = Query(30, ge=1, le=100)):
     """By meaning and by words (the store's hybrid search). A blank query is
     an empty list; 503 when the embedding service is down."""
-    from life_graph.services import jarvis_memory
+    from life_graph.services.jarvis import memory as jarvis_memory
 
     try:
         return success_response(data=await jarvis_memory.search(q, limit))
@@ -1520,7 +1520,7 @@ async def memory_search(q: str = "", limit: int = Query(30, ge=1, le=100)):
 @router.get("/entities/{entity_id}", summary="One person, project or thing, and what is known")
 async def entity(entity_id: str):
     """404 when the id is not a UUID or not one of this tenant's entities."""
-    from life_graph.services import jarvis_memory
+    from life_graph.services.jarvis import memory as jarvis_memory
 
     try:
         ident = uuid.UUID(entity_id)
@@ -1535,15 +1535,15 @@ async def entity(entity_id: str):
 @router.get("/contacts", summary="Your contacts, or those matching q")
 async def contacts(q: str = ""):
     """Every word of *q* in the name, an address or the organisation; a blank
-    *q* lists them by name (services/jarvis_inbox.py)."""
-    from life_graph.services import jarvis_inbox
+    *q* lists them by name (services/jarvis/inbox.py)."""
+    from life_graph.services.jarvis import inbox as jarvis_inbox
 
     return success_response(data=await jarvis_inbox.contacts(get_current_tenant_id(), q))
 
 
 @router.get("/mail/waiting", summary="Mail waiting on your reply, longest wait first")
 async def mail_waiting():
-    from life_graph.services import jarvis_inbox
+    from life_graph.services.jarvis import inbox as jarvis_inbox
 
     return success_response(data=await jarvis_inbox.mail_waiting(get_current_tenant_id()))
 

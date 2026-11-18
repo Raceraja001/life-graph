@@ -1,4 +1,4 @@
-"""GET /jarvis/contacts and /jarvis/mail/waiting (services/jarvis_inbox.py):
+"""GET /jarvis/contacts and /jarvis/mail/waiting (services/jarvis/inbox.py):
 the rows the app reads, local_only accounts kept off the phone, a failed read
 as an empty list, and the device's tenant asked. No database: the store is faked."""
 
@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 import pytest
 
 from life_graph.connectors import store
-from life_graph.services import jarvis_inbox as ji
+from life_graph.services.jarvis import inbox as ji
 from tests.unit.fakes import FakeSession, session_factory, sql
 
 NOW = datetime(2026, 10, 25, 9, 42, tzinfo=UTC)

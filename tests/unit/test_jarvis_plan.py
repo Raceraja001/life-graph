@@ -1,4 +1,4 @@
-"""GET /jarvis/plan (services/jarvis_plan.py): one row per day in the owner's
+"""GET /jarvis/plan (services/jarvis/plan.py): one row per day in the owner's
 time zone, each item on its day, each source failing on its own, local_only
 accounts masked, and every query scoped to the device's tenant. No database:
 sources are faked or their SQL inspected."""
@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from life_graph.services import jarvis_plan as jp
+from life_graph.services.jarvis import plan as jp
 from tests.unit.fakes import FakeSession, session_factory, sql
 
 IST = ZoneInfo("Asia/Kolkata")
