@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-17 13:33 UTC` from `master` @ `6530d94`
+Generated `2026-11-18 03:46 UTC` from `master` @ `3fda5ec`
 
 ---
 
@@ -24,9 +24,9 @@ Generated `2026-11-17 13:33 UTC` from `master` @ `6530d94`
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
 | Config settings | **296** (prefix `LIFE_GRAPH_`) |
-| Test functions | **4939** in 513 files |
+| Test functions | **4943** in 514 files |
 | Dashboard pages | **23** |
-| Python | 518 files, 137,686 lines |
+| Python | 547 files, 138,023 lines |
 
 ---
 
@@ -854,7 +854,7 @@ Generated `2026-11-17 13:33 UTC` from `master` @ `6530d94`
 | **code-fixer** — Makes small, focused code changes in a registered project. File tools only — no shell — and every change is verified and offered as a PR for approval. | `claude_code` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 2 |
 | **code-fixer-local** — Code Fixer on a local model: the code never leaves the machine. Set its model to a local model that fits the GPU: ollama_chat/gpt-oss:20b scored best on the driver benchmark (evals/driver_bench/README.md). Same verification and PR approval as Code Fixer. | `local` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
 | **code-fixer-opencode** — Code Fixer on OpenCode, an open-source coding agent, with a local model: the code never leaves the machine. An alternative engine to code-fixer-local; compare them on the Agent scorecards. | `opencode` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
-| **code-fixer-cloud** — Code Fixer on a free cloud model, for queued work while the GPU is busy with speech (services/compute_router.py). The code leaves the machine; personal context does not. Free models only, never paid. Its model is the first of dev_cloud_models; change it here. | `cloud` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
+| **code-fixer-cloud** — Code Fixer on a free cloud model, for queued work while the GPU is busy with speech (services/llm/compute_router.py). The code leaves the machine; personal context does not. Free models only, never paid. Its model is the first of dev_cloud_models; change it here. | `cloud` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
 | **code-fixer-auto** — Code Fixer that picks its driver per project from the record of merged vs rejected PRs: the free local model unless its work on that project keeps getting rejected, then Claude Code. | `auto` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 4 |
 | **tutor** — Tracks what you're learning, guides you, and checks understanding. | `—` | — | — | 3 |
 | **scout** — Ambiently researches topics useful to the user and surfaces findings. | `—` | — | — | 4 |
@@ -1027,10 +1027,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 396 | 4090 |
+| `tests/unit/` | 397 | 4094 |
 | `tests/integration/` | 116 | 837 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **513** | **4939** |
+| **total** | **514** | **4943** |
 
 ---
 
