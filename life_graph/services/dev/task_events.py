@@ -67,7 +67,7 @@ def _clean_data(data: dict | None) -> dict:
         raw = json.dumps(data, default=str)
     except (TypeError, ValueError):
         return {"unserializable": True}
-    raw = redact(raw)
+    raw = redact(raw).replace("\\u0000", "")
     if len(raw) > MAX_DATA_CHARS:
         return {"truncated": True, "original_chars": len(raw)}
     try:
@@ -97,10 +97,13 @@ def emit(
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
-    if _queue is None or _consumer is None or _consumer.done():
+    if _queue is None or _consumer is None or _consumer.done() or _consumer.get_loop() is not loop:
         _queue = asyncio.Queue()
         _consumer = loop.create_task(_consume(_queue), name="dev-task-events")
-    body = redact(str(content or ""))
+    raw = str(content or "")
+    # Truncate first (bounded work on the event loop), then redact; NUL cannot
+    # be stored by Postgres in text or jsonb.
+    body = redact(raw[: MAX_CONTENT_CHARS * 2]).replace("\x00", "")
     event = {
         "tenant_id": str(tenant_id),
         "task_id": tid,
@@ -109,7 +112,7 @@ def emit(
         "content": body[:MAX_CONTENT_CHARS],
         "data": {
             **_clean_data(data),
-            **({"original_chars": len(body)} if len(body) > MAX_CONTENT_CHARS else {}),
+            **({"original_chars": len(raw)} if len(raw) > MAX_CONTENT_CHARS else {}),
         },
     }
     _queue.put_nowait(event)
@@ -160,18 +163,7 @@ async def _write(batch: list[dict]) -> None:
             if tid in _capped:
                 continue
             params = {**event, "data": json.dumps(event["data"])}
-            for attempt in range(3):
-                try:
-                    async with session.begin_nested():
-                        seq = (await session.execute(_INSERT, params)).scalar_one()
-                    break
-                except Exception as exc:
-                    if "uq_dev_task_events_task_seq" in str(exc) and attempt < 2:
-                        continue
-                    if "foreign key" in str(exc).lower():
-                        seq = 0  # no such task row: drop it
-                        break
-                    raise
+            seq = await _insert_one(session, params)
             if seq >= MAX_EVENTS_PER_TASK:
                 _capped.add(tid)
                 marker = {
@@ -181,9 +173,28 @@ async def _write(batch: list[dict]) -> None:
                     "content": f"event log capped at {MAX_EVENTS_PER_TASK} events",
                     "data": "{}",
                 }
-                async with session.begin_nested():
-                    await session.execute(_INSERT, marker)
+                await _insert_one(session, marker)
         await session.commit()
+
+
+async def _insert_one(session, params: dict) -> int:
+    """Insert one event; 0 when it was dropped. Never raises.
+
+    One event that cannot be stored (no task row, a value Postgres rejects)
+    is skipped on its own savepoint -- it must not take the rest of the batch
+    with it.
+    """
+    for attempt in range(3):
+        try:
+            async with session.begin_nested():
+                return (await session.execute(_INSERT, params)).scalar_one()
+        except Exception as exc:
+            if "uq_dev_task_events_task_seq" in str(exc) and attempt < 2:
+                continue
+            if "foreign key" not in str(exc).lower():
+                logger.warning("Dropped a dev task event: %s", str(exc)[:200])
+            return 0
+    return 0
 
 
 async def read_events(

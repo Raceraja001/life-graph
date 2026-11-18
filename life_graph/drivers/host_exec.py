@@ -121,8 +121,25 @@ async def communicate_streaming(
                 err.extend(chunk)
 
     async def run() -> None:
-        await asyncio.gather(read_out(), read_err())
+        # A TaskGroup: if one reader fails, the other is cancelled too.
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(read_out())
+            tg.create_task(read_err())
         await proc.wait()
 
-    await asyncio.wait_for(run(), timeout=timeout)
+    try:
+        await asyncio.wait_for(run(), timeout=timeout)
+    except* (ValueError, asyncio.LimitOverrunError, asyncio.IncompleteReadError) as group:
+        # A line beyond the pipe's buffer limit (STREAM_LIMIT): report it as
+        # a plain error; the caller kills and reaps the process.
+        raise StreamReadError(str(group.exceptions[0])) from group.exceptions[0]
     return bytes(out), bytes(err)
+
+
+class StreamReadError(RuntimeError):
+    """Reading a CLI's output failed (e.g. a line over STREAM_LIMIT)."""
+
+
+# Pipes for streamed CLIs read line by line: asyncio's default 64 KiB line
+# limit is less than one stream-json event that carries a whole file read.
+STREAM_LIMIT = 16 * 1024 * 1024

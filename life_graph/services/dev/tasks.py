@@ -306,6 +306,16 @@ async def _run(
         logger.warning("Dev task %s failed to dispatch: %s", task_id, exc, exc_info=True)
         error = str(exc)[:2000]
 
+    # Every event of the run is written BEFORE the row says it is over: a
+    # viewer that sees a terminal status stops reading, so anything still
+    # queued after that would never be shown.
+    from life_graph.services.dev import task_events
+
+    task_events.emit(
+        tenant_id, task_id, "status", status,
+        data={"error": (error or "")[:500]} if error else None,
+    )  # fmt: skip
+    await task_events.flush()
     async with session_factory() as session:
         task = await session.get(AgentTask, pk)
         task.status = status
@@ -314,13 +324,6 @@ async def _run(
         task.completed_at = datetime.now(UTC)
         task.status_history = _history(task, status, error)
         await session.commit()
-    from life_graph.services.dev import task_events
-
-    task_events.emit(
-        tenant_id, task_id, "status", status,
-        data={"error": (error or "")[:500]} if error else None,
-    )  # fmt: skip
-    await task_events.flush()
 
 
 def _resume_point(trail: dict | None) -> dict | None:

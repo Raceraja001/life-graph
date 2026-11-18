@@ -95,3 +95,58 @@ def test_stream_json_lines_become_session_events(monkeypatch):
     assert "pytest -q" in emitted[2][1]
     assert emitted[3][1] == "2 passed"
     assert all(kw["source"] == "agent" for _, _, kw in emitted)
+
+
+# ── Review fixes (2026-11-18) ──
+
+
+async def test_a_200kb_stream_json_line_is_read_whole():
+    """asyncio's default 64 KiB line limit killed runs whose stream-json
+    carried a big file read; the pipe is created with STREAM_LIMIT."""
+    import sys
+
+    from life_graph.drivers.host_exec import STREAM_LIMIT
+
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", "print('x' * 200_000); print('end')",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=STREAM_LIMIT,
+    )  # fmt: skip
+    lines = []
+    out, _ = await communicate_streaming(proc, 10, lines.append)
+    assert len(lines) == 2 and len(lines[0]) == 200_001
+    assert out.endswith(b"end\n")
+
+
+async def test_a_line_over_the_limit_is_a_clean_error_and_the_cli_is_reaped(tmp_path, monkeypatch):
+    import sys
+
+    from life_graph.drivers.host_exec import StreamReadError
+
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", "import time; print('x' * 5000, flush=True); time.sleep(30)",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=1024,
+        start_new_session=True,
+    )  # fmt: skip
+    with pytest.raises(StreamReadError):
+        await communicate_streaming(proc, 10, lambda _l: None)
+    from life_graph.drivers.host_exec import kill_process_group
+
+    await kill_process_group(proc)
+    assert await asyncio.wait_for(proc.wait(), 5) is not None
+
+
+def test_redaction_catches_secrets_inside_commands_and_json():
+    from life_graph.services.redaction import redact
+
+    cases = {
+        '{"command": "export GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123"}': "ghp_abcdef",
+        '{"content": "line1\nAPI_KEY=supersecretvalue123\n"}': "supersecretvalue123",
+        "postgresql://life_graph:hunter2pass@db:5432/x": "hunter2pass",
+        "key sk-ant-api03-abc_DEF-ghi_jklmnopqrstuvwxyz0123456789": "_jklmnop",
+        "token github_pat_11ABCDEFG0123456789_abcdefghijklmnop": "github_pat_11",
+        "glpat-abcdefghijklmnopqrstuv": "glpat-abc",
+        "xoxb-1234567890-abcdefghij": "xoxb-1234",
+    }
+    for text, secret in cases.items():
+        assert secret not in redact(text), text
+    assert redact("plain text with no secrets") == "plain text with no secrets"

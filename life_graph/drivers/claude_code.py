@@ -27,6 +27,7 @@ from life_graph.config import settings
 from life_graph.drivers.base import ContextPacket, DriverResult
 from life_graph.drivers.context import render_memory_block
 from life_graph.drivers.host_exec import (
+    STREAM_LIMIT,
     communicate_streaming,
     host_driver_env,
     kill_process_group,
@@ -411,6 +412,7 @@ class ClaudeCodeDriver:
                 stderr=asyncio.subprocess.PIPE,
                 env=host_driver_env({"ANTHROPIC_API_KEY": api_key} if api_key else None),
                 start_new_session=True,
+                limit=STREAM_LIMIT,
             )
             try:
                 out, err = await communicate_streaming(proc, timeout, _LiveStream(packet))
@@ -419,9 +421,10 @@ class ClaudeCodeDriver:
                 with contextlib.suppress(Exception):
                     await proc.communicate()
                 raise
-            except asyncio.CancelledError:
-                # A cancel (dev-task runner) must stop the CLI and whatever it
-                # started, not leave them running unattended -- and reap it.
+            except (asyncio.CancelledError, Exception):
+                # A cancel (dev-task runner), or reading its output failed: stop
+                # the CLI and whatever it started -- never leave it running
+                # unattended -- and reap it.
                 await kill_process_group(proc)
                 with contextlib.suppress(Exception):
                     await asyncio.wait_for(proc.wait(), 5)

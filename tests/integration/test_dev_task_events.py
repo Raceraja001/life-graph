@@ -262,3 +262,18 @@ async def test_a_real_runner_pass_records_the_lifecycle(project, monkeypatch):
     assert ("tool_call", "ls") in kinds
     assert kinds[-1] == ("status", "completed")
     assert seen[t["id"]] == 600
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_nul_byte_or_a_bad_event_never_drops_the_batch(project, monkeypatch):
+    """Review 2026-11-18: Postgres rejects NUL; one rejected insert used to
+    roll back every event in the batch."""
+    from life_graph.services.dev import task_events
+
+    t = await _task(project)
+    task_events.emit(TENANT, t["id"], "tool_result", "binary\x00file", data={"x": "a\x00b"})
+    task_events.emit(TENANT, t["id"], "text", "after the NUL")
+    await task_events.flush()
+    contents = [e["content"] for e in await _events(t["id"])]
+    assert contents == ["binaryfile", "after the NUL"]

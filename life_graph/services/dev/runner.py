@@ -307,15 +307,16 @@ class DevTaskRunner:
                 task = await session.get(AgentTask, uuid.UUID(tid))
                 if task is None or task.status != "running":
                     return
+                from life_graph.services.dev import task_events
+
+                # Events first, then the terminal status (see tasks._run).
+                task_events.emit(task.tenant_id, tid, "status", "cancelled")
+                await task_events.flush()
                 task.status = "cancelled"
                 task.error = "Cancelled on request"
                 task.completed_at = datetime.now(UTC)
                 task.status_history = _history(task, "cancelled", "cancelled while running")
                 await session.commit()
-                from life_graph.services.dev import task_events
-
-                task_events.emit(task.tenant_id, tid, "status", "cancelled")
-                await task_events.flush()
         except Exception:
             logger.warning("Could not record the cancel of dev task %s", tid, exc_info=True)
 

@@ -1525,6 +1525,13 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         v_results: list[VerifierResult],
         session: AsyncSession,
     ) -> None:
+        """Persist one verifier-chain run (attempt 2 is the post-bounce re-check).
+
+        ``verification_runs.task_id`` references ``agent_tasks``, so a run is
+        recorded only for dispatches that have a task row (dashboard dev tasks);
+        the test endpoint's throwaway ids have none. Best-effort, in a
+        savepoint: failing to record must never fail the dispatch.
+        """
         for r in v_results:
             verdict = (
                 "passed" if r.passed is True else "inconclusive" if r.passed is None else "failed"
@@ -1534,13 +1541,6 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 data={"verifier": r.verifier, "verdict": verdict, "attempt": attempt},
                 source="verifier",
             )  # fmt: skip
-        """Persist one verifier-chain run (attempt 2 is the post-bounce re-check).
-
-        ``verification_runs.task_id`` references ``agent_tasks``, so a run is
-        recorded only for dispatches that have a task row (dashboard dev tasks);
-        the test endpoint's throwaway ids have none. Best-effort, in a
-        savepoint: failing to record must never fail the dispatch.
-        """
         try:
             from life_graph.models.db import AgentTask, VerificationRun
 
