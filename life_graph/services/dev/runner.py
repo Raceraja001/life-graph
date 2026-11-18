@@ -270,6 +270,12 @@ class DevTaskRunner:
         self._running[tid] = run
         run.add_done_callback(lambda _t, tid=tid: self._done(tid))
         logger.info("Dev-task runner %s started task %s (%s)", self.id, tid, task.title)
+        from life_graph.services.dev import task_events
+
+        task_events.emit(
+            getattr(task, "tenant_id", None), tid, "status", "running",
+            data={"runner": self.id, "unattended": tid in self._unattended},
+        )  # fmt: skip
 
     def _done(self, tid: str) -> None:
         self._running.pop(tid, None)
@@ -301,6 +307,11 @@ class DevTaskRunner:
                 task = await session.get(AgentTask, uuid.UUID(tid))
                 if task is None or task.status != "running":
                     return
+                from life_graph.services.dev import task_events
+
+                # Events first, then the terminal status (see tasks._run).
+                task_events.emit(task.tenant_id, tid, "status", "cancelled")
+                await task_events.flush()
                 task.status = "cancelled"
                 task.error = "Cancelled on request"
                 task.completed_at = datetime.now(UTC)

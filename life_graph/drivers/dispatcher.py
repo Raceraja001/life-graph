@@ -67,6 +67,7 @@ from life_graph.drivers.workdir import (
     resolve_workdir,
     worktree_intact,
 )
+from life_graph.services.dev import task_events
 from life_graph.services.dev.change_policy import policy_from_project
 from life_graph.services.dev.verifiers import (  # noqa: F401  (failure_text: re-exported)
     BOUNCE_TASK_MARKER,
@@ -123,6 +124,15 @@ async def _discard_worktree(worktree: Path | None, origin: str) -> None:
         project_context={"path": origin},
     )  # fmt: skip
     await remove_worktree(packet, Path(worktree), repo_path=origin)
+
+
+def _driver_timeout(driver: Any, run: Any) -> int:
+    """The driver's own per-call limit, or the task's (bounded) override."""
+    own = int(getattr(driver, "dispatch_timeout", 300))
+    override = getattr(run, "timeout_seconds", None) if run is not None else None
+    if not override:
+        return own
+    return max(30, min(int(override), int(settings.dev_task_max_timeout_seconds)))
 
 
 @dataclass(frozen=True)
@@ -234,6 +244,8 @@ class _DispatchRun:
     interactive: bool
     spec_first: bool
     acceptance_tests: list[str] | None
+    # A per-task ceiling for each driver call (Stage 4); None = the driver's own.
+    timeout_seconds: int | None = None
     project_uuid: Any = None
     packet: ContextPacket | None = None
     persona: Any = None
@@ -309,6 +321,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         isolate_workdir: bool = False,
         spec_first: bool = False,
         acceptance_tests: list[str] | None = None,
+        timeout_seconds: int | None = None,
     ) -> DriverResult:
         """Dispatch a task through the full driver pipeline.
 
@@ -360,6 +373,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
             interactive=interactive,
             spec_first=spec_first,
             acceptance_tests=acceptance_tests,
+            timeout_seconds=timeout_seconds,
         )
 
         try:
@@ -389,6 +403,10 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 persona=run.persona,
                 project_id=run.project_uuid,
             )
+            task_events.emit(
+                tenant_id, task_id, "driver", f"driver {run.driver.name}",
+                data={"driver": run.driver.name, "persona": persona_name}, source="dispatcher",
+            )  # fmt: skip
 
             # Step 3b: Governor budget gate — refuse before spending, not after.
             denied = await self._budget_gate(run)
@@ -622,6 +640,13 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 props["checkpoints"] = run.tracker.to_dict()
                 task.properties = props
                 await session.commit()
+            last = run.tracker.checkpoints[-1] if run.tracker.checkpoints else None
+            if last is not None:
+                meta = {k: v for k, v in (last.metadata or {}).items() if k != "resume"}
+                task_events.emit(
+                    run.tenant_id, run.task_id, "stage", last.stage,
+                    data={"ok": last.ok, "attempt": last.attempt, **meta}, source="dispatcher",
+                )  # fmt: skip
         except Exception:
             logger.warning(
                 "Could not persist dispatch checkpoints for task %s", run.task_id, exc_info=True
@@ -786,9 +811,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                     f"{code_context}\n"
                     "Check these callers before changing a signature or return shape."
                 )
-        result = await driver.dispatch(
-            packet, run.workdir, timeout=getattr(driver, "dispatch_timeout", 300)
-        )
+        result = await driver.dispatch(packet, run.workdir, timeout=_driver_timeout(driver, run))
         run.result = result
         if run.tracker:
             run.tracker.record_stage(
@@ -1452,7 +1475,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
 
         # Re-dispatch
         bounce_result = await driver.dispatch(
-            bounced_packet, workdir, timeout=getattr(driver, "dispatch_timeout", 300)
+            bounced_packet, workdir, timeout=_driver_timeout(driver, run)
         )
         await self._emit_steps(tenant_id, task_id, driver.name, 2, bounce_result)
 
@@ -1509,6 +1532,15 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         the test endpoint's throwaway ids have none. Best-effort, in a
         savepoint: failing to record must never fail the dispatch.
         """
+        for r in v_results:
+            verdict = (
+                "passed" if r.passed is True else "inconclusive" if r.passed is None else "failed"
+            )
+            task_events.emit(
+                tenant_id, task_id, "verify", f"{r.verifier}: {verdict}",
+                data={"verifier": r.verifier, "verdict": verdict, "attempt": attempt},
+                source="verifier",
+            )  # fmt: skip
         try:
             from life_graph.models.db import AgentTask, VerificationRun
 

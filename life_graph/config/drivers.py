@@ -81,6 +81,11 @@ class DriverSettings(BaseModel):
     # On SIGTERM the worker stops claiming and waits this long for running
     # tasks before cancelling them (they are then recovered on the next start).
     dev_runner_drain_seconds: int = 1500
+    # Live session events (dev_task_events) are operational, not the study
+    # record (agent_run_steps): expired after this many days at runner start.
+    dev_task_events_retention_days: int = 14
+    # Ceiling for a per-task timeout_seconds given at creation (Stage 4).
+    dev_task_max_timeout_seconds: int = 3600
 
     # ── Agent runs: trajectories, review, PRs, sandboxes ──
     # Per-step content cap for recorded agent runs (services/dev/trajectories.py).

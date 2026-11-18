@@ -38,7 +38,7 @@ class FakeDocker:
             return "run proxy" if "--detach" in argv else "run driver"
         return " ".join(argv[1:3])
 
-    async def __call__(self, argv, *, timeout, container=None, env=None):
+    async def __call__(self, argv, *, timeout, container=None, env=None, on_stdout_line=None):
         self.calls.append(list(argv))
         self.envs.append(env)
         verb = self.verb(argv)

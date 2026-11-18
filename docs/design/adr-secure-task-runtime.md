@@ -132,3 +132,43 @@ Remaining:
   There is no cross-process takeover of stale leases while a live runner holds the lock,
   because only the lock holder may run tasks.
 - Prod still needs `dev.sh` and its systemd unit updated at the prod switch.
+
+## Stage 4: live session and UI (2026-11-18)
+
+**Decision:** a read-only, reconnectable session view, not an interactive terminal. The
+owner chose this on 2026-11-18: every action stays the agent's and is audited, and there is
+no human-typed path into the agent's container. The session is a durable event log, not a
+socket, so a reload or a dropped connection resumes from the last sequence number with no
+gaps and no repeats.
+
+| Piece | Where |
+|---|---|
+| Event log | `dev_task_events` (migration 060), written by `services/dev/task_events.py`: one ordered in-process writer, batched inserts, per-task `seq`, redacted and capped, a unique (task, seq) constraint against cross-process races |
+| Sources | runner (claimed, cancelled, final status), dispatcher (each checkpoint stage, driver choice, every verifier verdict), claude_code (each stream-json line while the CLI runs: text, tool calls, tool results, on the host and inside the task runtime), task runtime (network ready, container starting, teardown), API (cancel requested) |
+| Read | long-poll `/events?after&wait` (the dashboard; works with the Bearer header) and SSE `/events/stream` (resumes from `Last-Event-ID`); both tenant-checked |
+| Controls | cancel (Stage 3) and a per-task `timeout_seconds` (capped) |
+| UI (life-graph-ui) | run page: live session panel with reconnect and follow-mode scroll, execution panel (boundary, image, allowlist, limits, uid, mounts, teardown, lease heartbeat age), two-click Cancel, changed files and diff |
+
+Evidence:
+- `tests/integration/test_dev_task_events.py` (9 tests): order, redaction, cap, an exact
+  cursor, long-poll latency and early return on a finished task, tenant isolation, API and
+  SSE resume, a real runner pass with a timeout override.
+- `tests/unit/test_live_stream.py`: lines are streamed before the process exits, a broken
+  viewer never breaks the run, stream-json maps to events.
+- life-graph-ui `tests/live-session.spec.ts` (Playwright, API stubbed): ordered stream, a
+  dropped connection resumed from the cursor, the runtime panel, two-click cancel.
+- **Real end-to-end run:** this API on a throwaway DB, the dashboard dev server, and a fake
+  CLI that streams stream-json.
+  - All 23 events reached the page in order, and the task landed `lg/task-…`.
+  - A reload mid-run resumed with 0 duplicates.
+  - Cancel from the page ended the task as `cancelled`.
+
+Found by that run and fixed:
+- **Rate limit:** the page's polling hit the API's 60-requests-a-minute limit. It is now
+  batched.
+- **Bytecode on the branch:** `build_ok`/`build_ok_diff` used `py_compile`, which wrote
+  `__pycache__/*.pyc` into the agent's worktree, and the landing commit put that on the
+  task branch. The syntax check now compiles in memory.
+
+Not done (by choice): an interactive shell into the container, and live streaming for the
+local driver (its steps still arrive at the end of the attempt).

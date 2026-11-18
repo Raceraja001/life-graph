@@ -1035,3 +1035,39 @@ class AgentRunStep(Base):
     )
 
     __table_args__ = (Index("ix_agent_run_steps_task", "tenant_id", "task_id", "attempt", "seq"),)
+
+
+class DevTaskEvent(Base):
+    """One live event of a dev task: what its session view streams.
+
+    Work order Stage 4. Written while the task runs (runner lifecycle,
+    dispatcher stages, the agent's own steps as the CLI streams them, verifier
+    verdicts, runtime start/teardown) by services/dev/task_events.py, and read
+    by ``GET /kernel/drivers/tasks/{id}/events`` from a sequence number, so a
+    viewer that reconnects picks up exactly where it left off. ``content`` is
+    redacted and capped at write time. Operational, not the study record --
+    that is ``agent_run_steps`` -- and expired after
+    ``dev_task_events_retention_days``.
+    """
+
+    __tablename__ = "dev_task_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agent_tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="runner")
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    __table_args__ = (
+        UniqueConstraint("task_id", "seq", name="uq_dev_task_events_task_seq"),
+        Index("ix_dev_task_events_tenant_task_seq", "tenant_id", "task_id", "seq"),
+        Index("ix_dev_task_events_created", "created_at"),
+    )

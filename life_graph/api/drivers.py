@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from life_graph.api.responses import success_response
@@ -287,6 +287,16 @@ class DevTaskCreate(BaseModel):
             "budget cap applies to it unless every model it uses is local."
         ),
     )
+    timeout_seconds: int | None = Field(
+        None,
+        ge=60,
+        le=86400,
+        description=(
+            "Per-call time limit for the agent, in seconds (each driver call, "
+            "including one bounce). Capped by dev_task_max_timeout_seconds; "
+            "default: the driver's own limit."
+        ),
+    )
 
 
 @router.post(
@@ -325,6 +335,7 @@ async def create_dev_task(body: DevTaskCreate):
         spec_first=body.spec_first or body.plan_only,
         verify_chain=["no_diff_in_plan"] if body.plan_only else None,
         start=not body.queue,
+        timeout_seconds=body.timeout_seconds,
     )
     return success_response(data=task)
 
@@ -466,6 +477,110 @@ async def get_dev_task(task_id: str):
     if data is None:
         raise HTTPException(status_code=404, detail="Dev task not found")
     return success_response(data=data)
+
+
+def _task_uuid(task_id: str) -> str:
+    try:
+        return str(uuid.UUID(task_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Dev task not found") from None
+
+
+@router.get(
+    "/tasks/{task_id}/events",
+    summary="The task's live session events after a sequence number (long-poll)",
+)
+async def get_dev_task_events(
+    task_id: str,
+    after: int = Query(0, ge=0, description="Return events with seq > after"),
+    limit: int = Query(200, ge=1, le=500),
+    wait: float = Query(
+        0, ge=0, le=25, description="Seconds to wait for the first new event (long-poll)"
+    ),
+):
+    """Reconnectable by construction: ask for ``after=<last seq you have>``.
+
+    With ``wait`` the call holds until there is something new, the task ends,
+    or the wait runs out -- the dashboard's live session view loops on this.
+    ``next_after`` is the cursor for the next call; ``live`` says whether more
+    can still come.
+    """
+    from life_graph.services.dev import task_events
+
+    tid = _task_uuid(task_id)
+    tenant_id = get_current_tenant_id()
+    events, status_ = await task_events.wait_for_events(
+        async_session, tenant_id, tid, after=after, limit=limit, wait=wait
+    )
+    if status_ is None:
+        raise HTTPException(status_code=404, detail="Dev task not found")
+    return success_response(
+        data={
+            "events": events,
+            "next_after": events[-1]["seq"] if events else after,
+            "status": status_,
+            "live": status_ not in task_events.TERMINAL_STATUSES,
+        }
+    )
+
+
+@router.get(
+    "/tasks/{task_id}/events/stream",
+    summary="The task's live session as Server-Sent Events (resumes from Last-Event-ID)",
+)
+async def stream_dev_task_events(
+    task_id: str,
+    request: Request,
+    after: int = Query(0, ge=0),
+):
+    """``text/event-stream``: one ``event: <kind>`` per row, ``id`` = seq, so a
+    client that reconnects with ``Last-Event-ID`` resumes without gaps. Ends
+    once the task is over and everything was sent. For clients that can set
+    headers (the CLI, scripts); the dashboard long-polls ``/events``."""
+    import asyncio
+    import json
+
+    from fastapi.responses import StreamingResponse
+
+    from life_graph.services.dev import task_events
+
+    tid = _task_uuid(task_id)
+    tenant_id = get_current_tenant_id()
+    async with async_session() as session:
+        if await task_events.task_status(session, tenant_id, tid) is None:
+            raise HTTPException(status_code=404, detail="Dev task not found")
+    last = request.headers.get("last-event-id")
+    cursor = int(last) if last and last.isdigit() else after
+
+    async def gen():
+        nonlocal cursor
+        idle = 0.0
+        while True:
+            if await request.is_disconnected():
+                return
+            events, status_ = await task_events.wait_for_events(
+                async_session, tenant_id, tid, after=cursor, limit=200, wait=10
+            )
+            for ev in events:
+                cursor = ev["seq"]
+                yield f"id: {ev['seq']}\nevent: {ev['kind']}\ndata: {json.dumps(ev)}\n\n"
+            if events:
+                idle = 0.0
+            elif status_ is None or status_ in task_events.TERMINAL_STATUSES:
+                yield f"event: end\ndata: {json.dumps({'status': status_})}\n\n"
+                return
+            else:
+                idle += 10
+                yield ": keep-alive\n\n"
+                if idle > 3600:
+                    return
+            await asyncio.sleep(0)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/tasks/{task_id}/cancel", summary="Cancel a queued or running dev task")

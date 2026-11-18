@@ -243,8 +243,25 @@ def _limits(*, memory: str, cpus: str) -> list[str]:
     ]
 
 
+async def _kill_container(container: str | None) -> None:
+    if not container:
+        return
+    killer = await asyncio.create_subprocess_exec(
+        "docker",
+        "kill",
+        container,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    await killer.wait()
+
+
 async def _exec(
-    argv: list[str], timeout: int, container: str | None = None, env: dict | None = None
+    argv: list[str],
+    timeout: int,
+    container: str | None = None,
+    env: dict | None = None,
+    on_stdout_line=None,
 ) -> SandboxResult:
     """Run a docker CLI command, killing the container itself on timeout.
 
@@ -260,38 +277,29 @@ async def _exec(
             # Extra variables for the docker CLI itself (e.g. a key passed to
             # the container by name); the parent environment is kept.
             env={**os.environ, **env} if env else None,
+            limit=16 * 1024 * 1024,  # a streamed line can be a whole file read
         )
     except FileNotFoundError as exc:
         raise SandboxUnavailableError("docker CLI not found") from exc
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.CancelledError:
-        # Cancelling the docker client does not stop the container it started.
-        if container:
-            killer = await asyncio.create_subprocess_exec(
-                "docker",
-                "kill",
-                container,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await killer.wait()
-        with contextlib.suppress(ProcessLookupError):
-            proc.kill()
-        raise
+        from life_graph.drivers.host_exec import communicate_streaming
+
+        out, err = await communicate_streaming(proc, timeout, on_stdout_line)
     except TimeoutError:
-        if container:
-            killer = await asyncio.create_subprocess_exec(
-                "docker",
-                "kill",
-                container,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await killer.wait()
+        await _kill_container(container)
         proc.kill()
         await proc.communicate()
         raise SandboxUnavailableError(f"sandboxed command timed out after {timeout}s") from None
+    except (asyncio.CancelledError, Exception) as exc:
+        # Cancelled, or reading its output failed (e.g. a line over the pipe
+        # limit): the container must not be left running -- killing the docker
+        # client alone does not stop it.
+        await _kill_container(container)
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        if isinstance(exc, asyncio.CancelledError):
+            raise
+        raise SandboxUnavailableError(f"reading the sandboxed command failed: {exc}") from exc
     return SandboxResult(
         returncode=proc.returncode if proc.returncode is not None else -1,
         stdout=out.decode("utf-8", errors="replace"),

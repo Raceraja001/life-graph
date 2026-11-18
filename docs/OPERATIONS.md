@@ -566,3 +566,27 @@ poll as the fallback.
     if the worktree's diff still matches the SHA-256 recorded when it was verified.
     Otherwise the task is re-run once.
   - **Landed, PR approval lost:** exactly one approval is filed.
+
+### Live session and cancel (dashboard)
+
+The run page (`/dev-tasks/:id`) shows a task's **live session**: runner lifecycle, dispatcher
+stages, each step the agent takes as its CLI streams it, verifier verdicts, and runtime
+start/teardown. It is read-only by design. Nobody types into the agent's container; Cancel
+is the one control.
+
+- **Storage:** `dev_task_events` (migration 060). Each event has a per-task `seq`, is
+  redacted (`services/redaction.py`), is capped at 4,000 characters, and a task keeps at
+  most 5,000 events. Events expire after `LIFE_GRAPH_DEV_TASK_EVENTS_RETENTION_DAYS` (14),
+  at runner start.
+- **Read:** `GET /api/v1/kernel/drivers/tasks/{id}/events?after=<seq>&wait=<s>` is a
+  long-poll. It returns when something new arrives, when the task ends, or after `wait` (at
+  most 25 s). `GET …/events/stream` is SSE (`text/event-stream`) for clients that can set
+  headers, and resumes from `Last-Event-ID`. Both check the tenant.
+- **Rate limit:** the API allows 60 requests per minute per tenant. The page batches the
+  session poll (at least 3 s between calls while events flow), refreshes the task every
+  10 s, and refetches recorded steps only when the status changes. Measured: an open run
+  page never hit the limit, where the first version did.
+- **Per-task time limit:** `timeout_seconds` on `POST /kernel/drivers/tasks`, capped by
+  `LIFE_GRAPH_DEV_TASK_MAX_TIMEOUT_SECONDS` (3600).
+- **Cancel:** the page's Cancel button takes two clicks.
+  `POST /kernel/drivers/tasks/{id}/cancel` does the same.
