@@ -70,8 +70,8 @@ class DriverSettings(BaseModel):
     dev_task_runner_mode: str = "api"
     # Tasks one runner executes at once; at most one of them unattended
     # (queued/nightly work shares one local GPU). Interactive starts may use
-    # the rest.
-    dev_runner_max_concurrency: int = 2
+    # the rest: 3 keeps two dashboard starts from waiting behind a nightly run.
+    dev_runner_max_concurrency: int = 3
     # The runner refreshes properties.lease on each running task this often;
     # a lease older than dev_runner_lease_stale_seconds reads as "not alive".
     dev_runner_heartbeat_seconds: int = 30

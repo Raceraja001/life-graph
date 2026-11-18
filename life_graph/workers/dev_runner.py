@@ -106,16 +106,20 @@ async def main() -> int:
 
     from life_graph.services.dev.runner import DevTaskRunner, set_local_runner
     from life_graph.services.dev.task_runtime import sweep_orphans
-    from life_graph.services.dev.tasks import fail_interrupted, release_runner_lock
+    from life_graph.services.dev.tasks import (
+        fail_interrupted,
+        release_runner_lock,
+        runner_lock_alive,
+    )
     from life_graph.storage.database import async_session
 
     try:
-        interrupted = await fail_interrupted(async_session)
+        runner = DevTaskRunner(async_session, lock_alive=lambda: runner_lock_alive(lock))
+        interrupted = await fail_interrupted(async_session, runner_id=runner.id)
         if interrupted:
             logger.warning("Marked %d interrupted dev task(s) as failed", interrupted)
         await sweep_orphans(async_session)
 
-        runner = DevTaskRunner(async_session)
         set_local_runner(runner)
         forever = asyncio.create_task(runner.run_forever(), name="dev-runner")
         stopper = asyncio.create_task(stop.wait())
@@ -127,6 +131,9 @@ async def main() -> int:
             with contextlib.suppress(asyncio.CancelledError):
                 await forever
         stopper.cancel()
+        if runner.lock_lost:
+            # Non-zero so a supervisor restarts us; the restart re-takes the lock.
+            return 3
     finally:
         set_local_runner(None)
         try:

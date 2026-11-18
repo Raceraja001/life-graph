@@ -364,7 +364,38 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         # Queued dev tasks (nightly suggestions) run here, where the drivers
         # are registered, one at a time.
         if is_dev_task_runner:
-            app.state.dev_task_queue = asyncio.create_task(run_queue(async_session))
+            app.state.dev_task_queue = asyncio.create_task(
+                run_queue(async_session, app.state.dev_task_runner_lock)
+            )
+        elif settings.dev_task_runner_mode != "worker" and settings.dev_task_runner_enabled:
+            # Lost the lock race at startup: keep trying, so start buttons
+            # don't depend on whichever process happened to win.
+            app.state.dev_task_standby = asyncio.create_task(_dev_runner_standby(app))
+
+
+async def _dev_runner_standby(app: FastAPI) -> None:
+    """API mode, lock held elsewhere: take over as the runner when it is free."""
+    import asyncio
+
+    from life_graph.services.dev.task_runtime import sweep_orphans
+    from life_graph.services.dev.tasks import acquire_runner_lock, fail_interrupted, run_queue
+    from life_graph.storage.database import async_session, engine
+
+    while True:
+        await asyncio.sleep(30)
+        try:
+            conn = await acquire_runner_lock(engine)
+        except Exception:
+            logger.debug("Dev-task runner lock retry failed", exc_info=True)
+            continue
+        if conn is None:
+            continue
+        logger.warning("This API process is now the dev-task runner")
+        app.state.dev_task_runner_lock = conn
+        await fail_interrupted(async_session)
+        await sweep_orphans(async_session)
+        app.state.dev_task_queue = asyncio.create_task(run_queue(async_session, conn))
+        return
 
 
 @asynccontextmanager
@@ -484,6 +515,14 @@ async def lifespan(app: FastAPI):
     # failed by fail_interrupted on the next start).
     if app.state.dev_task_queue is not None:
         app.state.dev_task_queue.cancel()
+        # Let the cancellation finish (agent processes/containers killed,
+        # runtimes torn down) before the lock is released below.
+        import asyncio
+
+        await asyncio.wait([app.state.dev_task_queue], timeout=30)
+    standby = getattr(app.state, "dev_task_standby", None)
+    if standby is not None:
+        standby.cancel()
     if app.state.dev_task_runner_lock is not None:
         from life_graph.services.dev.tasks import release_runner_lock
 

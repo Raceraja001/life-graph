@@ -197,3 +197,59 @@ async def _noop():
 
 async def _noop_list():
     return []
+
+
+async def test_heartbeat_and_cancel_checks_keep_running_during_the_drain(monkeypatch):
+    """Review 2026-11-18: stop() used to cancel the background loops at once,
+    so a cancel during a 25-minute drain did nothing and leases went stale."""
+    monkeypatch.setattr("life_graph.services.dev.tasks.QUEUE_POLL_SECONDS", 0.01)
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "dev_runner_heartbeat_seconds", 0)  # max(1, 0) -> 1 s
+    monkeypatch.setattr(settings, "dev_runner_cancel_poll_seconds", 0)
+    beats, checks = [], []
+    gate = Gate()
+    r = DevTaskRunner(None, claim=Queue([_task()]), run_task=gate, listen=False)
+
+    async def beat():
+        beats.append(1)
+
+    async def check():
+        checks.append(1)
+        return []
+
+    r.heartbeat = beat
+    r.check_cancels = check
+    forever = asyncio.get_running_loop().create_task(r.run_forever())
+    for _ in range(100):
+        if r.running:
+            break
+        await asyncio.sleep(0.01)
+
+    async def finish_later():
+        await asyncio.sleep(2.5)
+        gate.release.set()
+
+    asyncio.get_running_loop().create_task(finish_later())
+    await r.stop(drain_seconds=10)
+    forever.cancel()
+    await asyncio.gather(forever, return_exceptions=True)
+    assert beats, "the heartbeat stopped during the drain"
+    assert len(checks) >= 2, "cancel checks stopped during the drain"
+
+
+async def test_a_lost_lock_stops_claiming(monkeypatch):
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "dev_runner_heartbeat_seconds", 0)
+
+    async def gone():
+        return False
+
+    r = DevTaskRunner(None, claim=Queue([]), run_task=Gate(), listen=False, lock_alive=gone)
+    r.heartbeat = _noop
+    await r._check_lock()
+    await asyncio.sleep(0.05)
+    assert r.lock_lost is True
+    assert r._stopping is True
+    assert await r.fill() == 0

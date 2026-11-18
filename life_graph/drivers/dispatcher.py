@@ -102,6 +102,29 @@ DEFAULT_COST_CAP_USD = 2.0
 MIN_TRUST_THRESHOLD = 0.6
 
 
+async def _head_sha(workdir: Any) -> str | None:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "rev-parse", "HEAD", cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )  # fmt: skip
+        out, _ = await proc.communicate()
+        return out.decode().strip() or None if proc.returncode == 0 else None
+    except Exception:
+        return None
+
+
+async def _discard_worktree(worktree: Path | None, origin: str) -> None:
+    """Remove a kept worktree that will not be landed (best-effort)."""
+    if worktree is None or not Path(worktree).exists():
+        return
+    packet = ContextPacket(
+        task_id=uuid.uuid4(), tenant_id="-", task_type="code", instruction="-",
+        project_context={"path": origin},
+    )  # fmt: skip
+    await remove_worktree(packet, Path(worktree), repo_path=origin)
+
+
 @dataclass(frozen=True)
 class _NamedDriver:
     """Stands in for a driver no longer registered, on a resume (name only)."""
@@ -458,12 +481,18 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
         if not branch:
             if worktree is None or not worktree.is_dir() or not worktree_intact(worktree, origin):
                 logger.info("Task %s: kept worktree gone or not intact; re-running", task_id)
+                await _discard_worktree(worktree, origin)
                 return None
             diff = await diff_against_head(worktree)
-            if hashlib.sha256(diff.encode()).hexdigest() != saved.get("diff_sha256"):
+            same_diff = hashlib.sha256(diff.encode()).hexdigest() == saved.get("diff_sha256")
+            # HEAD pinned too: a moved HEAD could carry extra commits under a
+            # matching diff.
+            same_head = not saved.get("head") or await _head_sha(worktree) == saved["head"]
+            if not (same_diff and same_head):
                 logger.warning(
                     "Task %s: worktree changed since it was verified; re-running", task_id
                 )
+                await _discard_worktree(worktree, origin)
                 return None
 
         run = _DispatchRun(
@@ -977,6 +1006,7 @@ class TaskDispatcher(DriverStatsMixin, ApprovalFilingMixin):
                 # proving it is unchanged since it was verified.
                 diff = await diff_against_head(run.workdir)
                 metadata["resume"] = {
+                    "head": await _head_sha(run.workdir),
                     "worktree": str(run.worktree),
                     "worktree_origin": str(run.worktree_origin),
                     "diff_sha256": hashlib.sha256(diff.encode()).hexdigest(),

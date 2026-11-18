@@ -40,7 +40,7 @@ import logging
 import os
 import socket
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -119,6 +119,7 @@ class DevTaskRunner:
         claim: ClaimFn | None = None,
         run_task: RunFn | None = None,
         listen: bool = True,
+        lock_alive: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         from life_graph.services.dev import tasks as dev_tasks
 
@@ -128,6 +129,9 @@ class DevTaskRunner:
         self._claim = claim or dev_tasks.claim_next_queued
         self._run_task = run_task or dev_tasks.run_claimed
         self._listen = listen
+        self._lock_alive = lock_alive
+        self.lock_lost = False
+        self._beats = 0
         self._running: dict[str, asyncio.Task] = {}
         self._unattended: set[str] = set()
         self._cancelling: set[str] = set()
@@ -163,13 +167,13 @@ class DevTaskRunner:
                     await asyncio.wait_for(self._wake.wait(), timeout=QUEUE_POLL_SECONDS)
                 self._wake.clear()
         finally:
-            for t in self._bg:
-                t.cancel()
             # Cancelled from outside (API shutdown): stop everything now. Left
-            # by stop(): that call drains running tasks itself -- cancelling
-            # them here would defeat the drain (found by the worker smoke
-            # test, 2026-11-18: SIGTERM cut a run off in 0.8 s, not after 3).
+            # by stop(): that call drains running tasks itself, with the
+            # heartbeat and cancel loops still on (cancelling either here
+            # would defeat the drain or make cancels wait for it -- both found
+            # in review / the worker smoke test, 2026-11-18).
             if not self._stopping:
+                self._stop_background()
                 await self._cancel_all()
 
     async def fill(self) -> int:
@@ -208,6 +212,12 @@ class DevTaskRunner:
             logger.info("Dev-task runner draining %d task(s), up to %ss", len(self._running), drain)
             await asyncio.wait(list(self._running.values()), timeout=drain)
         await self._cancel_all()
+        self._stop_background()
+
+    def _stop_background(self) -> None:
+        for t in self._bg:
+            t.cancel()
+        self._bg = []
 
     async def check_cancels(self) -> list[str]:
         """Cancel every running task whose row asks for it. Returns their ids."""
@@ -313,6 +323,29 @@ class DevTaskRunner:
                 await self.heartbeat()
             except Exception:
                 logger.debug("Lease heartbeat failed", exc_info=True)
+            await self._check_lock()
+            self._beats += 1
+            # Every few beats: recover runs whose lease went stale (a runner
+            # that died without a restart of this one).
+            if self._beats % 4 == 0 and not self.lock_lost:
+                try:
+                    from life_graph.services.dev.tasks import fail_interrupted
+
+                    await fail_interrupted(self._sf, runner_id=self.id)
+                except Exception:
+                    logger.debug("Stale-lease recovery failed", exc_info=True)
+
+    async def _check_lock(self) -> None:
+        if self._lock_alive is None or self.lock_lost or self._stopping:
+            return
+        if await self._lock_alive():
+            return
+        # Another process may now hold the lock and claim work. Our running
+        # tasks keep heartbeating (their leases stay fresh, so nobody else
+        # recovers them); we stop claiming and drain.
+        self.lock_lost = True
+        logger.error("Dev-task runner %s lost the runner lock; draining and stopping", self.id)
+        asyncio.get_running_loop().create_task(self.stop())
 
     async def _cancel_loop(self) -> None:
         while True:
@@ -341,7 +374,13 @@ class DevTaskRunner:
                     driver_conn = raw.driver_connection
                     await driver_conn.add_listener(NOTIFY_CHANNEL, on_notify)
                     try:
-                        await asyncio.Event().wait()
+                        # A dropped connection loses the listener silently:
+                        # ping it, and reconnect when the ping fails.
+                        while True:
+                            await asyncio.sleep(30)
+                            await asyncio.wait_for(driver_conn.fetchval("SELECT 1"), 10)
+                            # Anything announced while we were not listening.
+                            self.wake()
                     finally:
                         with contextlib.suppress(Exception):
                             await driver_conn.remove_listener(NOTIFY_CHANNEL, on_notify)

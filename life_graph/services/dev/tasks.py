@@ -219,7 +219,9 @@ async def _run(
     set_tenant_context(tenant_id)
     pk = uuid.UUID(task_id)
     async with session_factory() as session:
-        task = await session.get(AgentTask, pk)
+        # Row-locked: request_cancel's JSONB merge waits for this write instead
+        # of being overwritten by it.
+        task = await session.get(AgentTask, pk, with_for_update=True)
         task.status = "running"
         task.started_at = datetime.now(UTC)
         task.status_history = _history(task, "running")
@@ -247,18 +249,22 @@ async def _run(
         if resume_point is not None:
             # Verified (or landed) before the restart: finish from there, with
             # no second agent run, when the kept worktree/branch allows it.
-            async with session_factory() as session:
-                result = await dispatcher.resume_landing(
-                    tenant_id=tenant_id,
-                    task_id=task_id,
-                    instruction=instruction,
-                    task_type=task_type,
-                    project_id=project_id,
-                    persona_name=persona_name,
-                    session=session,
-                    saved=resume_point,
-                )
-                await session.commit()
+            try:
+                async with session_factory() as session:
+                    result = await dispatcher.resume_landing(
+                        tenant_id=tenant_id,
+                        task_id=task_id,
+                        instruction=instruction,
+                        task_type=task_type,
+                        project_id=project_id,
+                        persona_name=persona_name,
+                        session=session,
+                        saved=resume_point,
+                    )
+                    await session.commit()
+            except Exception:
+                logger.warning("Resume of task %s failed; running it again", task_id, exc_info=True)
+                result = None
             if result is None and resume_point.get("landed_branch"):
                 # Already on a branch and nothing more could be done from
                 # here: never re-run the agent for work that already landed.
@@ -734,6 +740,29 @@ async def acquire_runner_lock(engine: AsyncEngine) -> AsyncConnection | None:
     return conn
 
 
+async def runner_lock_alive(conn: AsyncConnection) -> bool:
+    """Whether *conn*'s Postgres session still holds the runner lock.
+
+    A session-level advisory lock is lost silently when its connection drops
+    (Postgres restart, a killed backend). The runner checks this on every
+    heartbeat and stops claiming when it is gone.
+    """
+    try:
+        held = (
+            await conn.execute(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory'"
+                    " AND classid = 0 AND objid = :k AND granted AND pid = pg_backend_pid())"
+                ),
+                {"k": RUNNER_LOCK_KEY},
+            )
+        ).scalar()
+        await conn.commit()
+        return bool(held)
+    except Exception:
+        return False
+
+
 async def release_runner_lock(conn: AsyncConnection) -> None:
     """Release the lock, then hand the connection back.
 
@@ -754,7 +783,9 @@ INTERRUPT_REQUEUES = 1
 _INTERRUPTED = "Interrupted: the API restarted while this task was running"
 
 
-async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) -> int:
+async def fail_interrupted(
+    session_factory: async_sessionmaker[AsyncSession], *, runner_id: str | None = None
+) -> int:
     """Recover dev tasks abandoned by a previous process.
 
     That is every ``running`` task, and ``queued`` tasks that were meant to
@@ -797,8 +828,29 @@ async def fail_interrupted(session_factory: async_sessionmaker[AsyncSession]) ->
             .all()
         )
         now = datetime.now(UTC)
+        from life_graph.services.dev.runner import lease_is_stale
+
         for task in rows:
             props = dict(task.properties or {})
+            lease = props.get("lease")
+            # Ours (still running here), or another runner's that is still
+            # heartbeating: not abandoned. Without this a standby that took
+            # over a lock whose connection had dropped would re-queue live runs
+            # and execute them a second time. A stale lease is recovered by the
+            # periodic pass in the runner.
+            if (
+                task.status == "running"
+                and isinstance(lease, dict)
+                and lease.get("runner")
+                and (lease["runner"] == runner_id or not lease_is_stale(lease, now))
+            ):
+                continue
+            if props.get("cancel_requested_at"):
+                # Asked to stop before the restart: honour it, don't re-run.
+                task.status = "cancelled"
+                task.completed_at = now
+                task.status_history = _history(task, "cancelled", "cancel requested before restart")
+                continue
             # What the dispatcher got through before the process died, read
             # from the stage trail it flushed on every step
             # (TaskDispatcher._persist_checkpoint). Without this the recovery
@@ -1287,7 +1339,9 @@ async def task_diff(session: AsyncSession, tenant_id: str, task_id: str) -> dict
     }
 
 
-async def run_queue(session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def run_queue(
+    session_factory: async_sessionmaker[AsyncSession], lock_conn: AsyncConnection | None = None
+) -> None:
     """Run dev tasks forever: the runner-lock holder's lifespan task.
 
     Kept as the entry point main.py and the worker call; the work is
@@ -1296,7 +1350,8 @@ async def run_queue(session_factory: async_sessionmaker[AsyncSession]) -> None:
     """
     from life_graph.services.dev.runner import DevTaskRunner, set_local_runner
 
-    runner = DevTaskRunner(session_factory)
+    lock_alive = (lambda: runner_lock_alive(lock_conn)) if lock_conn is not None else None
+    runner = DevTaskRunner(session_factory, lock_alive=lock_alive)
     set_local_runner(runner)
     try:
         await runner.run_forever()

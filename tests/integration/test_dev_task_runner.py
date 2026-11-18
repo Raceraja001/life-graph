@@ -319,3 +319,22 @@ async def test_landed_work_gets_exactly_one_approval(project, verified_worktree)
     assert first.success and second.success
     assert second.metadata["resumed"] == "already_landed"
     assert [a.kind for a in await _approvals(task_id)] == ["driver_pr"]
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_moved_head_is_not_landed_and_the_worktree_is_cleaned(project, verified_worktree):
+    """Review 2026-11-18: the diff hash alone could match over extra commits."""
+    origin, wt = verified_worktree
+    saved = await _resume_point(wt, origin)
+    saved["head"] = _git(wt, "rev-parse", "HEAD").strip()
+    _git(wt, "stash", "-q")
+    (wt / "other.py").write_text("y = 1\n")
+    _git(wt, "add", "other.py")
+    _git(wt, "commit", "-qm", "a commit nobody verified")
+    _git(wt, "stash", "pop", "-q")
+    task_id = str(uuid.uuid4())
+
+    assert await _resume(project, task_id, saved) is None
+    assert await _approvals(task_id) == []
+    assert not wt.exists()  # not kept around forever
