@@ -202,6 +202,15 @@ class ClaudeCodeDriver:
             settings, "driver_allow_host_shell", False
         )
         if host_shell_denied and cli_tools is not None and "Bash" in cli_tools:
+            # Loud, not silent: the persona asked for a shell and runs without
+            # one, so it cannot run tests or builds itself.
+            logger.warning(
+                "claude_code task %s: Bash removed from the persona's tools — no driver "
+                "sandbox (driver_claude_sandbox=%s); set it to 'task' to give the agent a "
+                "contained shell",
+                packet.task_id,
+                settings.driver_claude_sandbox,
+            )
             cli_tools = [t for t in cli_tools if t != "Bash"]
             if not cli_tools:
                 return DriverResult(

@@ -238,6 +238,13 @@ async def _run(
         # Read from the row, not passed in: a fanned-out plan task usually
         # reaches here via run_queue(), which only has the row to go on.
         acceptance_tests = list((task.properties or {}).get("acceptance_tests") or []) or None
+        # A previous attempt's stage trail must not decide this attempt's
+        # recovery: if this run crashed before its first checkpoint flush,
+        # the old "finished, failed" trail would mark it failed unrun.
+        if (task.properties or {}).get("checkpoints"):
+            props = dict(task.properties)
+            props["previous_checkpoints"] = props.pop("checkpoints")
+            task.properties = props
         await session.commit()
 
     status, error, result_data = "failed", None, {}

@@ -50,6 +50,10 @@ BASE_ENV_KEYS: tuple[str, ...] = (
     "XDG_CACHE_HOME",
     "XDG_STATE_HOME",
     "XDG_RUNTIME_DIR",
+    # Where the Claude CLI keeps its login and which endpoint it talks to:
+    # locations, not credentials.
+    "CLAUDE_CONFIG_DIR",
+    "ANTHROPIC_BASE_URL",
     "SSL_CERT_FILE",
     "SSL_CERT_DIR",
     "NODE_EXTRA_CA_CERTS",

@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 import sys
 import tempfile
@@ -279,7 +280,14 @@ class OpencodeDriver:
             # Allowlisted, not the API process's environment: OpenCode runs
             # on the host, and its tools (and its run_tests MCP child) would
             # otherwise see the database URL and every provider key.
-            env = host_driver_env({"OPENCODE_CONFIG": str(config_file)})
+            extra = {"OPENCODE_CONFIG": str(config_file)}
+            # A cloud model needs its own provider's key (OpenCode reads
+            # <PROVIDER>_API_KEY); that one key, never the others.
+            provider = settings.driver_opencode_model.partition("/")[0]
+            key_name = f"{provider.upper().replace('-', '_')}_API_KEY"
+            if provider and provider != "ollama" and os.environ.get(key_name):
+                extra[key_name] = os.environ[key_name]
+            env = host_driver_env(extra)
             deadline = start + timeout
             steps: list[dict] = []
             texts: list[str] = []

@@ -67,6 +67,11 @@ r["env_credential_shaped"] = [k for k in os.environ
 # Network, direct (no proxy)
 def tcp(host, port, t=3):
     s = socket.create_connection((host, port), timeout=t); s.close(); return "connected"
+def tcp_ok(host, port):
+    try:
+        socket.create_connection((host, port), timeout=1.5).close(); return True
+    except OSError:
+        return False
 r["dns_external"] = attempt(lambda: socket.getaddrinfo("example.com", 443)[0][4][0])
 for name, (h, p) in {"internet_1111_443": ("1.1.1.1", 443), "internet_8888_53": ("8.8.8.8", 53),
                      "docker_gw_postgres": ("172.17.0.1", 55432), "docker_gw_redis": ("172.17.0.1", 56379),
@@ -74,6 +79,21 @@ for name, (h, p) in {"internet_1111_443": ("1.1.1.1", 443), "internet_8888_53": 
                      "metadata_169254": ("169.254.169.254", 80), "lan_192168_1_1": ("192.168.1.1", 80)}.items():
     r["direct_" + name] = attempt(lambda h=h, p=p: tcp(h, p))
 r["resolve_host_docker_internal"] = attempt(lambda: socket.getaddrinfo("host.docker.internal", 80)[0][4][0])
+
+# The bridge's own gateway address (.1 of this container's subnet): with plain
+# --internal the HOST held this address and answered on every 0.0.0.0 port.
+def own_ip():
+    import fcntl, struct
+    for name in os.listdir("/sys/class/net"):
+        if name == "lo":
+            continue
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        packed = fcntl.ioctl(s.fileno(), 0x8915, struct.pack("256s", name.encode()[:15]))
+        return socket.inet_ntoa(packed[20:24])
+gw = ".".join(own_ip().split(".")[:3]) + ".1"
+r["bridge_gateway"] = gw
+ports = [int(x) for x in os.environ.get("PROBE_HOST_PORTS", "").split() if x]
+r["bridge_gateway_open_host_ports"] = [p for p in ports if tcp_ok(gw, p)]
 
 # Network, through the proxy
 proxy = os.environ.get("HTTPS_PROXY", "")
@@ -119,6 +139,18 @@ print("PROBE_JSON=" + json.dumps(r))
 """
 
 
+def _host_listening_ports() -> list[int]:
+    """Every TCP port the host listens on for all addresses (0.0.0.0 / ::)."""
+    out = subprocess.run(["ss", "-ltnH"], capture_output=True, text=True).stdout
+    ports = set()
+    for line in out.splitlines():
+        local = line.split()[3] if len(line.split()) > 3 else ""
+        host, _, port = local.rpartition(":")
+        if host in ("0.0.0.0", "*", "[::]") and port.isdigit():
+            ports.add(int(port))
+    return sorted(ports)
+
+
 def _git(*args: str, cwd: Path) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
 
@@ -155,7 +187,11 @@ async def main() -> int:
         t0 = time.monotonic()
         out = await rt.run(
             task_runtime.RuntimeRequest(
-                task_id=str(uuid.uuid4()), command=("python3", "-c", PROBE), timeout=180, **base
+                task_id=str(uuid.uuid4()),
+                command=("python3", "-c", PROBE),
+                timeout=300,
+                env={"PROBE_HOST_PORTS": " ".join(map(str, _host_listening_ports()))},
+                **base,
             )
         )
         report["startup_and_probe_seconds"] = round(time.monotonic() - t0, 1)

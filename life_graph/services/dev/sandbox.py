@@ -1000,6 +1000,10 @@ def _bind_violations(bind: Bind) -> list[str]:
     if path.is_symlink():
         bad.append(f"bind source {src!r} is a symlink")
     resolved = path.resolve()
+    # What is validated must be exactly what docker mounts: a source with a
+    # symlinked middle component, or "..", resolves somewhere else.
+    if str(resolved) != src:
+        bad.append(f"bind source {src!r} is not a canonical path (resolves to {resolved})")
     if not resolved.is_dir():
         bad.append(f"bind source {src!r} is not an existing directory")
     roots = allowed_bind_roots()

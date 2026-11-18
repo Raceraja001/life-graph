@@ -30,6 +30,7 @@ These are observations from one machine. They are evidence for the design, not a
 | DNS `example.com`, `host.docker.internal` | name resolution fails | ✔ |
 | Direct TCP: 1.1.1.1:443, 8.8.8.8:53, 192.168.1.1:80, 169.254.169.254:80 | network unreachable | ✔ |
 | Direct TCP to host-published ports via 172.17.0.1: 55432 (Postgres), 56379 (Redis), 11434 (Ollama), 8080 (API) | network unreachable | ✔ |
+| Host services via the bridge's own gateway address (`.1` of the task subnet), all 26 host ports listening on `0.0.0.0` | **none reachable** (after the fix below) | ✔ |
 | Proxy `CONNECT api.anthropic.com:443` | `200 Connection Established` | allowed ✔ |
 | Proxy `CONNECT example.com:443`, `github.com:443` | `403 Forbidden` | ✔ |
 | Proxy `CONNECT api.anthropic.com:22` | `403 Forbidden` | ✔ |
@@ -49,6 +50,38 @@ These are observations from one machine. They are evidence for the design, not a
 | Missing image | refused before anything was created (0 networks created) |
 | `$HOME` as the workspace | refused by the validator ("outside the runtime's bind roots") before docker was called |
 
+## Finding fixed during review: the bridge gateway
+
+The first version created a plain `docker network create --internal` network. An
+independent review pointed out that such a network drops *forwarded* traffic, but the host
+still holds the bridge's gateway address. The first probe set never tested that address.
+Tested by hand, it was a real hole: from inside an internal network, the host's own
+services bound to `0.0.0.0` answered on the gateway:
+
+- 2222 (sshd)
+- 3006 (the prod web UI)
+- 3050
+- 3390
+- 8015, 8016
+- 8085
+- 8095
+- 8188
+
+Only docker-published ports were dropped.
+
+Fix: the network is now created with
+`com.docker.network.bridge.gateway_mode_ipv{4,6}=isolated` (docker ≥ 28), which gives the
+host no address on the bridge at all. The runtime checks the option took effect and
+refuses to run otherwise. Re-probed: 0 of 26 host ports reachable, while container-to-proxy
+DNS and traffic still work. The probe script now always runs this check.
+
+The same hole still applies to things this PR does not change:
+
+- the legacy `driver_claude_sandbox=docker` mode (default bridge, which also has open egress);
+- the verifier sandbox's dependency-setup phase (default bridge, network on).
+
+The verifier's check phase uses `--network none` and is not affected.
+
 ## End to end: one real task
 
 `scripts/runtime_e2e_smoke.py`, same machine and images, plus `life-graph-verifier:wo-test`.
@@ -59,7 +92,8 @@ These are observations from one machine. They are evidence for the design, not a
   - The CLI reached the API through the allowlisting proxy.
 - **Verification:** `tests_pass` ran in the network-less verifier sandbox and passed, 2 tests.
 - **Diff:** correct changes to `calc.py` and `tests/test_calc.py`. The origin repo was untouched, and teardown was ok.
-- **Defect found:** the agent's own `python` runs left `__pycache__/*.pyc` files in the diff. Fixed by setting `PYTHONDONTWRITEBYTECODE=1` in the driver env. That fix has not been re-run end to end.
+- **Defect found:** the agent's own `python` runs left `__pycache__/*.pyc` files in the diff. Fixed by setting `PYTHONDONTWRITEBYTECODE=1` in the driver env.
+- **Re-run on the final code** (isolated network): success, 7 turns, 19 s. The diff has only `calc.py` and `tests/test_calc.py` (no `.pyc`); `tests_pass` passed; teardown ok.
 - **Cost:** the CLI reported a notional $0.137. OAuth runs bill the subscription, not the API; the Governor still books the reported figure.
 
 ## Not yet tested

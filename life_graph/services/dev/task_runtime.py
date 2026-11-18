@@ -142,6 +142,26 @@ def _origin(entry: str) -> str:
     return entry if "://" in entry else f"https://{entry}"
 
 
+_ISOLATED_GATEWAY_OPTS = (
+    "com.docker.network.bridge.gateway_mode_ipv4",
+    "com.docker.network.bridge.gateway_mode_ipv6",
+)
+
+
+def instance_id() -> str:
+    """A stable id for this Life Graph install: its edition and database.
+
+    Prod and dev run on one docker daemon with different databases; labelling
+    runtimes with this keeps each one's sweep to its own containers.
+    """
+    import hashlib
+    from urllib.parse import urlsplit
+
+    db = urlsplit(settings.database_url.replace("+asyncpg", "")).path.lstrip("/")
+    edition = getattr(settings, "edition", "") or ""
+    return hashlib.sha256(f"{edition}|{db}".encode()).hexdigest()[:12]
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -176,6 +196,9 @@ class DockerTaskRuntime:
         }
         labels = {
             RUNTIME_LABEL: "1",
+            # Which Life Graph install made it: prod and dev share one docker
+            # daemon, and one's sweep must never remove the other's live task.
+            f"{RUNTIME_LABEL}.instance": instance_id(),
             f"{RUNTIME_LABEL}.task": str(req.task_id),
             f"{RUNTIME_LABEL}.tenant": str(req.tenant_id),
             f"{RUNTIME_LABEL}.driver": req.driver,
@@ -219,7 +242,6 @@ class DockerTaskRuntime:
             )
             # 124: coreutils timeout fired inside the container; 137 after -k.
             if res.returncode in (124, 137) and time.monotonic() - start >= req.timeout:
-                meta["timed_out"] = True
                 raise SandboxUnavailableError(f"sandboxed command timed out after {req.timeout}s")
             if res.returncode in (125, 126, 127) and not res.stdout:
                 raise SandboxUnavailableError(
@@ -233,13 +255,20 @@ class DockerTaskRuntime:
             err.runtime_metadata = meta  # type: ignore[attr-defined]
             raise err from exc
         except SandboxUnavailableError as exc:
+            # Both the in-container deadline and the host-side kill say this.
+            if "timed out" in str(exc):
+                meta["timed_out"] = True
             # The same dict: teardown below still lands in it.
             exc.runtime_metadata = meta  # type: ignore[attr-defined]
             raise
         finally:
             meta["finished_at"] = _now()
             meta["duration_ms"] = int((time.monotonic() - start) * 1000)
-            meta["teardown"] = await self.teardown(names)
+            try:
+                meta["teardown"] = await self.teardown(names)
+            except Exception as exc:  # never mask the run's own outcome
+                logger.error("task runtime teardown raised: %s", exc)
+                meta["teardown"] = {"ok": False, "errors": [f"teardown raised: {exc}"]}
 
     async def teardown(self, names: dict[str, str]) -> dict:
         """Remove one runtime's container, proxy and network. Idempotent."""
@@ -267,11 +296,12 @@ class DockerTaskRuntime:
         token on disk otherwise.
         """
         report: dict = {"containers": [], "networks": [], "credentials": 0, "errors": []}
+        # Only this install's: the other edition on the same daemon has its own
+        # database, so its running tasks are not in active_task_ids.
+        mine = ["--filter", f"label={RUNTIME_LABEL}=1"]
+        mine += ["--filter", f"label={RUNTIME_LABEL}.instance={instance_id()}"]
         fmt = f'{{{{.Names}}}}|{{{{.Label "{RUNTIME_LABEL}.task"}}}}'
-        res = await self._docker(
-            ["docker", "ps", "-a", "--filter", f"label={RUNTIME_LABEL}=1", "--format", fmt],
-            timeout=30,
-        )
+        res = await self._docker(["docker", "ps", "-a", *mine, "--format", fmt], timeout=30)
         if res.returncode != 0:
             report["errors"].append(f"ps: {res.stderr.strip()[-200:]}")
         for line in (res.stdout or "").splitlines():
@@ -283,10 +313,7 @@ class DockerTaskRuntime:
                 else:
                     report["errors"].append(f"rm {name}: {rm.stderr.strip()[-200:]}")
         nfmt = f'{{{{.Name}}}}|{{{{.Label "{RUNTIME_LABEL}.task"}}}}'
-        res = await self._docker(
-            ["docker", "network", "ls", "--filter", f"label={RUNTIME_LABEL}=1", "--format", nfmt],
-            timeout=30,
-        )
+        res = await self._docker(["docker", "network", "ls", *mine, "--format", nfmt], timeout=30)
         if res.returncode != 0:
             report["errors"].append(f"network ls: {res.stderr.strip()[-200:]}")
         for line in (res.stdout or "").splitlines():
@@ -326,18 +353,37 @@ class DockerTaskRuntime:
         return res.stdout.strip()
 
     async def _create_network(self, name: str, labels: dict[str, str]) -> None:
+        # --internal alone is not enough: it drops forwarded traffic, but the
+        # host still holds an address on the bridge, and a container reached
+        # host services bound to 0.0.0.0 through it (probe 2026-11-18: the prod
+        # UI on :3006, ComfyUI, sshd on :2222). "isolated" gateway mode (docker
+        # >= 28) gives the host no address on the bridge at all.
         argv = ["docker", "network", "create", "--internal"]
+        for opt in _ISOLATED_GATEWAY_OPTS:
+            argv += ["-o", f"{opt}=isolated"]
         for key in sorted(labels):
             argv += ["--label", f"{key}={labels[key]}"]
         res = await self._docker([*argv, name], timeout=30)
         if res.returncode != 0:
-            raise SandboxUnavailableError(f"could not create runtime network: {res.stderr[-300:]}")
-        # Internal is what makes the bridge gateway-less. Checked, not assumed.
+            raise SandboxUnavailableError(
+                f"could not create an isolated runtime network (needs docker >= 28): "
+                f"{res.stderr[-300:]}"
+            )
+        # Both properties checked, not assumed: an older daemon may accept and
+        # ignore the option.
         check = await self._docker(
-            ["docker", "network", "inspect", "--format", "{{.Internal}}", name], timeout=30
-        )
-        if check.returncode != 0 or check.stdout.strip().lower() != "true":
-            raise SandboxUnavailableError(f"runtime network {name} is not internal")
+            [
+                "docker", "network", "inspect", "--format",
+                '{{.Internal}}|{{index .Options "' + _ISOLATED_GATEWAY_OPTS[0] + '"}}',
+                name,
+            ],
+            timeout=30,
+        )  # fmt: skip
+        internal, _, mode = (check.stdout or "").strip().partition("|")
+        if check.returncode != 0 or internal.lower() != "true" or mode != "isolated":
+            raise SandboxUnavailableError(
+                f"runtime network {name} is not internal with an isolated gateway"
+            )
 
     async def _ensure_outbound(self) -> None:
         res = await self._docker(["docker", "network", "inspect", OUTBOUND_NETWORK], timeout=30)

@@ -28,6 +28,9 @@ SPEC = (
 def _host_mode(monkeypatch):
     monkeypatch.setattr(verifiers_mod.sandbox, "enabled", lambda: False)
     monkeypatch.setattr(verifiers_mod, "_project_python", lambda _workdir: sys.executable)
+    # Host execution of agent-written tests is refused by default now; these
+    # tests are about conformance reporting on the host path, so opt in.
+    monkeypatch.setattr(verifiers_mod.settings, "verifier_allow_host_execution", True)
 
 
 def _git(repo, *args):

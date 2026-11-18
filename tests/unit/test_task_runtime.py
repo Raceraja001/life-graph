@@ -48,7 +48,7 @@ class FakeDocker:
         if hit is not None:
             return hit
         if verb == "network inspect" and "--format" in argv:
-            return SandboxResult(0, "true\n", "")
+            return SandboxResult(0, "true|isolated\n", "")
         if verb == "image inspect":
             return SandboxResult(0, "sha256:abc\n", "")
         if verb == "run driver":
@@ -213,7 +213,7 @@ async def test_a_missing_image_fails_before_anything_is_created(roots):
 
 
 async def test_a_network_that_is_not_internal_is_refused_and_removed(roots):
-    docker = FakeDocker(**{"network inspect": SandboxResult(0, "false\n", "")})
+    docker = FakeDocker(**{"network inspect": SandboxResult(0, "false|isolated\n", "")})
     with pytest.raises(sandbox.SandboxUnavailableError, match="not internal"):
         await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
     assert not docker.has("run driver")
@@ -348,3 +348,67 @@ def test_running_as_root_is_still_refused_for_the_driver(roots, monkeypatch):
     names = {"container": "lg-rt-x", "proxy": "lg-rt-egress-x", "network": "lg-rt-net-0123456789"}
     with pytest.raises(sandbox.SandboxPolicyError, match="root"):
         rt._driver_spec(_req(roots), names, {})
+
+
+async def test_the_network_gives_the_host_no_address_on_the_bridge(roots):
+    """--internal alone left the host reachable on the bridge gateway (probe
+    2026-11-18: host services bound to 0.0.0.0 answered). Isolated gateway mode
+    is requested and then checked."""
+    docker = FakeDocker()
+    await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    net = docker.first("network create")
+    assert "com.docker.network.bridge.gateway_mode_ipv4=isolated" in net
+    assert "com.docker.network.bridge.gateway_mode_ipv6=isolated" in net
+
+
+async def test_a_daemon_that_ignores_isolated_mode_is_refused(roots):
+    docker = FakeDocker(**{"network inspect": SandboxResult(0, "true|\n", "")})
+    with pytest.raises(sandbox.SandboxUnavailableError, match="isolated gateway"):
+        await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    assert not docker.has("run driver")
+    assert docker.has("network rm")
+
+
+async def test_everything_is_labelled_with_this_install(roots):
+    docker = FakeDocker()
+    await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    label = f"life-graph.runtime.instance={task_runtime.instance_id()}"
+    assert label in " ".join(docker.first("run driver"))
+    assert label in " ".join(docker.first("run proxy"))
+    assert label in " ".join(docker.first("network create"))
+
+
+async def test_the_sweep_never_looks_at_another_installs_runtimes(roots):
+    """Prod and dev share one docker daemon; each has its own database, so the
+    other's running task is never in active_task_ids."""
+    docker = FakeDocker()
+    await task_runtime.DockerTaskRuntime(docker).sweep(set())
+    want = f"label=life-graph.runtime.instance={task_runtime.instance_id()}"
+    assert want in docker.first("ps -a")
+    assert want in docker.first("network ls")
+
+
+def test_instance_id_differs_between_editions(monkeypatch):
+    monkeypatch.setattr(settings, "database_url", "postgresql+asyncpg://u:p@h:1/life_graph")
+    monkeypatch.setattr(settings, "edition", "prod")
+    prod = task_runtime.instance_id()
+    monkeypatch.setattr(settings, "database_url", "postgresql+asyncpg://u:p@h:1/life_graph_dev")
+    monkeypatch.setattr(settings, "edition", "dev")
+    assert task_runtime.instance_id() != prod
+
+
+def test_a_bind_must_be_its_own_canonical_path(roots):
+    wt = roots["worktree"]
+    sneaky = f"{wt.parent}/../{wt.parent.name}/{wt.name}"  # resolves inside, mounts as given
+    spec = SandboxSpec(name="x", image="img", binds=(Bind(sneaky, "/work"),))
+    assert any("canonical" in v for v in sandbox.spec_violations(spec))
+
+
+async def test_a_teardown_that_raises_does_not_mask_the_outcome(roots):
+    async def boom(argv):
+        raise RuntimeError("docker CLI vanished")
+
+    docker = FakeDocker(**{"network rm": boom})
+    out = await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    assert out.returncode == 0
+    assert out.metadata["teardown"]["ok"] is False
