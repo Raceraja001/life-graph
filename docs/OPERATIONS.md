@@ -532,3 +532,37 @@ dispatches fail with `exit_status=sandbox_unavailable`. They never fall back to 
 
 Set `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=docker` (previous container behaviour) and restart.
 There is no schema change.
+
+### Dev-task runner (where tasks execute)
+
+Every dev task goes through one runner (`services/dev/runner.py`). That runner sits in
+whichever process holds the Postgres advisory lock `LGDV`. Other processes only write rows
+and wake it: in-process directly, across processes with `NOTIFY lg_dev_tasks`, with a 60 s
+poll as the fallback.
+
+| `LIFE_GRAPH_DEV_TASK_RUNNER_MODE` | Who runs tasks | API restart |
+|---|---|---|
+| `api` (default) | the API process holding the lock | interrupts running tasks (recovered on start) |
+| `worker` | `python -m life_graph.workers.dev_runner` | does **not** touch running tasks |
+
+- **Starting the worker.** `start.sh` starts the worker when the mode is `worker`, and
+  `stop.sh` stops it. A self-managed launcher such as `dev.sh` needs the same line:
+  `"$VENV/bin/python" -m life_graph.workers.dev_runner`.
+- **A second worker** waits for the lock as a hot standby. It never runs tasks alongside
+  the first.
+- **Limits:** `DEV_RUNNER_MAX_CONCURRENCY` (2) tasks at once, at most one of them
+  unattended (nightly or queued work shares the GPU). "Start now" tasks are claimed first.
+- **Lease:** `properties.lease` records the runner id, the claim time and a heartbeat,
+  refreshed every 30 s.
+- **Cancel:** `POST /api/v1/kernel/drivers/tasks/{id}/cancel`.
+  - A queued task is cancelled at once.
+  - For a running task, the runner kills the agent's process group or container
+    (measured at 0.3 s) and records `cancelled`.
+- **Stop or restart the worker:** SIGTERM drains running tasks for up to
+  `DEV_RUNNER_DRAIN_SECONDS` (1500). Anything still running after that stays `running`
+  and is recovered on the next start.
+- **Recovery.** At start, recovery reads each task's checkpoint trail:
+  - **Verified but not landed:** landed from the kept worktree without a second agent run,
+    if the worktree's diff still matches the SHA-256 recorded when it was verified.
+    Otherwise the task is re-run once.
+  - **Landed, PR approval lost:** exactly one approval is filed.

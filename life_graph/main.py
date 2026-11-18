@@ -288,19 +288,9 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
 
     # Startup — register agent drivers
     with startup_step(report, "agent_drivers"):
-        from life_graph.drivers.claude_code import ClaudeCodeDriver
-        from life_graph.drivers.local import LocalDriver
-        from life_graph.drivers.registry import driver_registry
+        from life_graph.drivers.setup import register_default_drivers
 
-        driver_registry.register(LocalDriver())
-        driver_registry.register(ClaudeCodeDriver())
-        from life_graph.drivers.opencode import OpencodeDriver
-
-        driver_registry.register(OpencodeDriver())
-        from life_graph.drivers.cloud import CloudDriver
-
-        driver_registry.register(CloudDriver())
-        logger.info("Agent drivers registered: %s", [d.name for d in driver_registry.list_all()])
+        logger.info("Agent drivers registered: %s", register_default_drivers())
 
     # Free models adopted through a model_adoption approval join the cloud
     # model list (services/llm/offers.py, compute_router.set_adopted).
@@ -321,7 +311,11 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         from life_graph.services.dev.tasks import acquire_runner_lock
         from life_graph.storage.database import engine
 
-        if settings.dev_task_runner_enabled:
+        if settings.dev_task_runner_mode == "worker":
+            # The dedicated worker (python -m life_graph.workers.dev_runner)
+            # holds the lock and runs tasks; this API only queues and inspects.
+            logger.info("Dev tasks run in the dedicated worker (dev_task_runner_mode=worker)")
+        elif settings.dev_task_runner_enabled:
             app.state.dev_task_runner_lock = await acquire_runner_lock(engine)
             if app.state.dev_task_runner_lock is None:
                 logger.warning(
@@ -370,7 +364,38 @@ async def _start_extended_domains(app: FastAPI, report: StartupReport) -> None:
         # Queued dev tasks (nightly suggestions) run here, where the drivers
         # are registered, one at a time.
         if is_dev_task_runner:
-            app.state.dev_task_queue = asyncio.create_task(run_queue(async_session))
+            app.state.dev_task_queue = asyncio.create_task(
+                run_queue(async_session, app.state.dev_task_runner_lock)
+            )
+        elif settings.dev_task_runner_mode != "worker" and settings.dev_task_runner_enabled:
+            # Lost the lock race at startup: keep trying, so start buttons
+            # don't depend on whichever process happened to win.
+            app.state.dev_task_standby = asyncio.create_task(_dev_runner_standby(app))
+
+
+async def _dev_runner_standby(app: FastAPI) -> None:
+    """API mode, lock held elsewhere: take over as the runner when it is free."""
+    import asyncio
+
+    from life_graph.services.dev.task_runtime import sweep_orphans
+    from life_graph.services.dev.tasks import acquire_runner_lock, fail_interrupted, run_queue
+    from life_graph.storage.database import async_session, engine
+
+    while True:
+        await asyncio.sleep(30)
+        try:
+            conn = await acquire_runner_lock(engine)
+        except Exception:
+            logger.debug("Dev-task runner lock retry failed", exc_info=True)
+            continue
+        if conn is None:
+            continue
+        logger.warning("This API process is now the dev-task runner")
+        app.state.dev_task_runner_lock = conn
+        await fail_interrupted(async_session)
+        await sweep_orphans(async_session)
+        app.state.dev_task_queue = asyncio.create_task(run_queue(async_session, conn))
+        return
 
 
 @asynccontextmanager
@@ -490,6 +515,14 @@ async def lifespan(app: FastAPI):
     # failed by fail_interrupted on the next start).
     if app.state.dev_task_queue is not None:
         app.state.dev_task_queue.cancel()
+        # Let the cancellation finish (agent processes/containers killed,
+        # runtimes torn down) before the lock is released below.
+        import asyncio
+
+        await asyncio.wait([app.state.dev_task_queue], timeout=30)
+    standby = getattr(app.state, "dev_task_standby", None)
+    if standby is not None:
+        standby.cancel()
     if app.state.dev_task_runner_lock is not None:
         from life_graph.services.dev.tasks import release_runner_lock
 

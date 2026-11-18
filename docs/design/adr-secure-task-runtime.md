@@ -101,3 +101,34 @@ Alongside the runtime, and for every driver on the host:
 4. Pin image digests; record a `runtime_images.lock`.
 6. Verifier setup phase onto an isolated network with a registry-only allowlist.
 5. Stage 4: a long-lived workspace container plus streamed events for reconnectable sessions.
+
+## Stage 3: durable worker boundary (2026-11-18)
+
+**Decision:** keep one source of truth (the `agent_tasks` rows, the `LGDV` advisory lock and
+the `SKIP LOCKED` claim) and add one runner object that owns all execution. It can run
+outside the API (`dev_task_runner_mode=worker`). No second queue, no Redis job and no ARQ
+(an ARQ job's timeout and retry would re-run a coding agent).
+
+| Gap from Stage 0 | Now |
+|---|---|
+| "Start now" ran as an `asyncio.create_task` in any API process, skipping the lock | queued with `start_now` and woken (`NOTIFY`); only the lock holder runs it |
+| WIP limits were a count that two starts could both pass | the runner counts in one process: max N, at most one unattended |
+| No per-task lease | `properties.lease` heartbeat; an atomic JSONB merge, so it never clobbers checkpoints |
+| Cancel didn't stop the driver | cancel flag → the runner cancels the run → process group / container killed → `cancelled` |
+| `land_only` was a label only | `TaskDispatcher.resume_landing` lands the kept worktree (diff SHA-256 must match), or files the lost PR approval once |
+| An API restart killed running agents | worker mode: API restarts don't touch them; worker SIGTERM drains |
+
+Evidence:
+- `tests/unit/test_dev_runner.py`.
+- `tests/integration/test_dev_task_runner.py`, against a real Postgres: claim order,
+  queue-only start, cancel, heartbeat merge, and a real-git land-only resume, including
+  the refusal when the worktree changed after verification.
+- A worker-process smoke run against a throwaway database with a fake CLI: pickup ~2 s via
+  `NOTIFY`, cancel 0.26 s with the child process killed, SIGTERM drained for the full 3 s
+  window, and the next start recovered the task.
+
+Remaining:
+- A worker killed with SIGKILL leaves its tasks `running` until the next worker start.
+  There is no cross-process takeover of stale leases while a live runner holds the lock,
+  because only the lock holder may run tasks.
+- Prod still needs `dev.sh` and its systemd unit updated at the prod switch.

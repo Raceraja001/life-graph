@@ -522,3 +522,55 @@ async def test_a_dispatch_that_finished_succeeding_is_still_completed():
 
     assert failed == 0
     assert task.status == "completed"
+
+
+# ── 4. recovery never takes a run another live runner holds (review, 2026-11-18) ──
+
+
+def _lease(runner, *, age_seconds=0):
+    from datetime import timedelta
+
+    at = (datetime.now(UTC) - timedelta(seconds=age_seconds)).isoformat()
+    return {"runner": runner, "claimed_at": at, "heartbeat_at": at}
+
+
+@pytest.mark.asyncio
+async def test_a_run_with_a_fresh_lease_of_another_runner_is_left_alone():
+    """A standby that took over a dropped lock must not re-queue live runs."""
+    task = _abandoned({"lease": _lease("other-runner")})
+
+    failed = await dev_tasks.fail_interrupted(lambda: _RecoverySession([task]), runner_id="me")
+
+    assert failed == 0
+    assert task.status == "running"
+    assert "interrupt_requeues" not in task.properties
+
+
+@pytest.mark.asyncio
+async def test_a_run_whose_lease_went_stale_is_recovered():
+    task = _abandoned({"lease": _lease("dead-runner", age_seconds=10_000)})
+
+    await dev_tasks.fail_interrupted(lambda: _RecoverySession([task]), runner_id="me")
+
+    assert task.status == "queued"
+    assert task.properties["interrupt_requeues"] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_runners_own_live_runs_are_not_recovered():
+    task = _abandoned({"lease": _lease("me", age_seconds=10_000)})
+
+    await dev_tasks.fail_interrupted(lambda: _RecoverySession([task]), runner_id="me")
+
+    assert task.status == "running"
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_requested_before_the_restart_is_honoured():
+    task = _abandoned({"cancel_requested_at": datetime.now(UTC).isoformat()})
+
+    failed, _ = await _recover(task)
+
+    assert failed == 0
+    assert task.status == "cancelled"
+    assert task.properties.get("run_mode") is None

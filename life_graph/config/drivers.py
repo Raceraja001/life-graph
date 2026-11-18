@@ -62,6 +62,25 @@ class DriverSettings(BaseModel):
     # the dev-task runner. Without it, the database advisory lock still keeps
     # it from running alongside the real one (services/dev/tasks.py).
     dev_task_runner_enabled: bool = True
+    # Where dev tasks execute (services/dev/runner.py). "api": the API process
+    # holding the runner lock runs them (an API restart interrupts them).
+    # "worker": a separate `python -m life_graph.workers.dev_runner` process
+    # holds the lock and runs them; API processes only queue and inspect, so a
+    # deploy or API restart no longer cuts a running agent off.
+    dev_task_runner_mode: str = "api"
+    # Tasks one runner executes at once; at most one of them unattended
+    # (queued/nightly work shares one local GPU). Interactive starts may use
+    # the rest: 3 keeps two dashboard starts from waiting behind a nightly run.
+    dev_runner_max_concurrency: int = 3
+    # The runner refreshes properties.lease on each running task this often;
+    # a lease older than dev_runner_lease_stale_seconds reads as "not alive".
+    dev_runner_heartbeat_seconds: int = 30
+    dev_runner_lease_stale_seconds: int = 180
+    # How often the runner checks for cancel requests (also woken by NOTIFY).
+    dev_runner_cancel_poll_seconds: int = 3
+    # On SIGTERM the worker stops claiming and waits this long for running
+    # tasks before cancelling them (they are then recovered on the next start).
+    dev_runner_drain_seconds: int = 1500
 
     # ── Agent runs: trajectories, review, PRs, sandboxes ──
     # Per-step content cap for recorded agent runs (services/dev/trajectories.py).

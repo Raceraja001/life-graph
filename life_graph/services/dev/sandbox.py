@@ -44,6 +44,7 @@ cannot drift apart.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 import os
@@ -264,6 +265,20 @@ async def _exec(
         raise SandboxUnavailableError("docker CLI not found") from exc
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.CancelledError:
+        # Cancelling the docker client does not stop the container it started.
+        if container:
+            killer = await asyncio.create_subprocess_exec(
+                "docker",
+                "kill",
+                container,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await killer.wait()
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        raise
     except TimeoutError:
         if container:
             killer = await asyncio.create_subprocess_exec(

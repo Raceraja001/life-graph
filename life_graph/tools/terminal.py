@@ -101,6 +101,7 @@ async def run_command(command: str, working_directory: str | None = None) -> str
                 stdin=asyncio.subprocess.DEVNULL,
                 cwd=str(cwd),
                 env=shell_allowlist.child_env(),
+                start_new_session=True,
             )
         else:
             process = await asyncio.create_subprocess_shell(
@@ -108,12 +109,21 @@ async def run_command(command: str, working_directory: str | None = None) -> str
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(cwd),
+                start_new_session=True,
             )
 
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=COMMAND_TIMEOUT_SECONDS,
-        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=COMMAND_TIMEOUT_SECONDS,
+            )
+        except (TimeoutError, asyncio.CancelledError):
+            # A timed-out or cancelled command (dev-task cancel) used to keep
+            # running: kill its whole process group.
+            from life_graph.drivers.host_exec import kill_process_group
+
+            await kill_process_group(process)
+            raise
 
         stdout_str = stdout.decode("utf-8", errors="replace")[:MAX_OUTPUT_CHARS]
         stderr_str = stderr.decode("utf-8", errors="replace")[:MAX_OUTPUT_CHARS]

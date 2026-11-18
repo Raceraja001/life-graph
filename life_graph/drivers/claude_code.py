@@ -15,6 +15,7 @@ this driver (same pattern as the era-4 advisor's missing API keys).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -374,6 +375,13 @@ class ClaudeCodeDriver:
             except TimeoutError:
                 await kill_process_group(proc)
                 await proc.communicate()
+                raise
+            except asyncio.CancelledError:
+                # A cancel (dev-task runner) must stop the CLI and whatever it
+                # started, not leave them running unattended -- and reap it.
+                await kill_process_group(proc)
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(proc.wait(), 5)
                 raise
             return proc.returncode, out, err
 
