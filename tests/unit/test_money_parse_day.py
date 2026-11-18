@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 
-from life_graph.services.money import parse_day
+from life_graph.services.finance.money import parse_day
 
 # Test numeric format
 

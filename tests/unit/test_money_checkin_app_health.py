@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from life_graph.services import app_health, money_checkin
+from life_graph.services import app_health
+from life_graph.services.finance import checkin as money_checkin
 
 
 def test_periods_compare_the_same_days_of_last_month():

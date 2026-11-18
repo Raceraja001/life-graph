@@ -696,10 +696,10 @@ class BriefComposer:
         return f"{total} {word} waiting{age}: {kinds}."
 
     async def _money_checkin_lines(self, tenant_id: str, now: datetime) -> list[str]:
-        """Monday's money check-in, cloud-safe (services/money_checkin.py, Job 5)."""
+        """Monday's money check-in, cloud-safe (services/finance/checkin.py, Job 5)."""
         try:
             from life_graph.connectors.tools import user_tz
-            from life_graph.services import money_checkin
+            from life_graph.services.finance import checkin as money_checkin
 
             today = now.astimezone(user_tz()).date()
             async with self._session_factory() as session:

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from life_graph.services.money import sweep_budgets
+from life_graph.services.finance.money import sweep_budgets
 from tests.unit.fakes import FakeSession, session_factory
 
 
@@ -15,7 +15,7 @@ async def test_sweep_budgets_no_budgets():
 
     # Mock the summary function
     with patch(
-        "life_graph.services.money.summary",
+        "life_graph.services.finance.money.summary",
         return_value={
             "month": "2026-10",
             "total_spent": 1000.0,
@@ -58,7 +58,7 @@ async def test_sweep_budgets_no_alerts_sent():
 
     # Mock summary response
     with patch(
-        "life_graph.services.money.summary",
+        "life_graph.services.finance.money.summary",
         return_value={
             "month": "2026-10",
             "total_spent": 1000.0,
@@ -95,7 +95,7 @@ async def test_sweep_budgets_alert_already_sent():
 
     # Mock summary response
     with patch(
-        "life_graph.services.money.summary",
+        "life_graph.services.finance.money.summary",
         return_value={
             "month": "2026-10",
             "total_spent": 1000.0,
@@ -132,7 +132,7 @@ async def test_sweep_budgets_over_budget():
 
     # Mock summary response
     with patch(
-        "life_graph.services.money.summary",
+        "life_graph.services.finance.money.summary",
         return_value={
             "month": "2026-10",
             "total_spent": 1000.0,
@@ -169,7 +169,7 @@ async def test_sweep_budgets_under_budget():
 
     # Mock summary response
     with patch(
-        "life_graph.services.money.summary",
+        "life_graph.services.finance.money.summary",
         return_value={
             "month": "2026-10",
             "total_spent": 1000.0,
@@ -206,7 +206,7 @@ async def test_sweep_budgets_budget_has_zero_limit():
 
     # Mock summary response
     with patch(
-        "life_graph.services.money.summary",
+        "life_graph.services.finance.money.summary",
         return_value={
             "month": "2026-10",
             "total_spent": 1000.0,
@@ -248,7 +248,7 @@ async def test_sweep_budgets_budget_with_none_alerts_sent():
 
     # Mock summary response
     with patch(
-        "life_graph.services.money.summary",
+        "life_graph.services.finance.money.summary",
         return_value={
             "month": "2026-10",
             "total_spent": 1000.0,
@@ -285,7 +285,7 @@ async def test_sweep_budgets_at_80_percent():
 
     # Mock summary response - exactly at 80%
     with patch(
-        "life_graph.services.money.summary",
+        "life_graph.services.finance.money.summary",
         return_value={
             "month": "2026-10",
             "total_spent": 1000.0,

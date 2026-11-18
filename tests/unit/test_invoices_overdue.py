@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from life_graph.services.invoices import overdue_count
+from life_graph.services.finance.invoices import overdue_count
 from tests.unit.fakes import FakeSession, sql
 
 

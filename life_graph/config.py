@@ -795,7 +795,7 @@ class Settings(BaseSettings):
     # speaches offers mp3|flac|wav|pcm (no opus); Telegram voice notes take mp3 or ogg/opus.
     tts_format: str = "mp3"
 
-    # ── Invoices (services/invoices.py) ────────────────
+    # ── Invoices (services/finance/invoices.py) ────────────────
     invoice_seller_name: str = ""  # shown on invoices and signed under emails
     invoice_seller_details: str = ""  # address, tax id… separated by "|"
 

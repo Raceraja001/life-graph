@@ -158,7 +158,7 @@ class BudgetIn(BaseModel):
 
 @router.post("/money/import")
 async def import_statement(body: CsvImport) -> dict[str, Any]:
-    from life_graph.services import money
+    from life_graph.services.finance import money
 
     tenant_id = get_current_tenant_id()
     txns, problems = money.parse_csv(body.csv)
@@ -174,7 +174,7 @@ async def import_statement(body: CsvImport) -> dict[str, Any]:
 
 @router.post("/money/alerts")
 async def import_alerts(body: AlertImport) -> dict[str, Any]:
-    from life_graph.services import money
+    from life_graph.services.finance import money
 
     tenant_id = get_current_tenant_id()
     parsed = [money.parse_alert(t) for t in body.texts]
@@ -189,7 +189,7 @@ async def import_alerts(body: AlertImport) -> dict[str, Any]:
 async def list_transactions(
     month: str | None = None, category: str | None = None
 ) -> dict[str, Any]:
-    from life_graph.services import money
+    from life_graph.services.finance import money
 
     tenant_id = get_current_tenant_id()
     try:
@@ -203,7 +203,7 @@ async def list_transactions(
 
 @router.patch("/money/transactions/{txn_id}")
 async def recategorise(txn_id: str, body: TxnPatch) -> dict[str, Any]:
-    from life_graph.services import money
+    from life_graph.services.finance import money
 
     tenant_id = get_current_tenant_id()
     async with async_session() as session:
@@ -222,7 +222,7 @@ async def recategorise(txn_id: str, body: TxnPatch) -> dict[str, Any]:
 
 @router.get("/money/summary")
 async def money_summary(month: str | None = None) -> dict[str, Any]:
-    from life_graph.services import money
+    from life_graph.services.finance import money
 
     tenant_id = get_current_tenant_id()
     try:
@@ -236,7 +236,7 @@ async def money_summary(month: str | None = None) -> dict[str, Any]:
 @router.get("/money/checkin")
 async def money_checkin() -> dict[str, Any]:
     """Job 5: the month so far against the same days last month, with budgets."""
-    from life_graph.services import money_checkin as mc
+    from life_graph.services.finance import checkin as mc
 
     async with async_session() as session:
         data = await mc.checkin(session, get_current_tenant_id(), _today())
@@ -255,7 +255,7 @@ async def apps_health() -> dict[str, Any]:
 
 @router.get("/money/categories")
 async def money_categories() -> dict[str, Any]:
-    from life_graph.services import money
+    from life_graph.services.finance import money
 
     return success_response(list(money.CATEGORIES))
 
@@ -289,7 +289,7 @@ async def list_budgets() -> dict[str, Any]:
 async def put_budget(category: str, body: BudgetIn) -> dict[str, Any]:
     from decimal import Decimal
 
-    from life_graph.services import money
+    from life_graph.services.finance import money
 
     tenant_id = get_current_tenant_id()
     async with async_session() as session:
@@ -727,7 +727,7 @@ class PaidIn(BaseModel):
 
 
 async def _invoice(session, tenant_id: str, invoice_id: str):
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
 
     inv = await invoices.get(session, tenant_id, _uuid(invoice_id))
     if inv is None:
@@ -737,7 +737,7 @@ async def _invoice(session, tenant_id: str, invoice_id: str):
 
 @router.get("/invoices")
 async def list_invoices(status: str | None = None) -> dict[str, Any]:
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
 
     tenant_id = get_current_tenant_id()
     async with async_session() as session:
@@ -747,7 +747,7 @@ async def list_invoices(status: str | None = None) -> dict[str, Any]:
 
 @router.post("/invoices", status_code=201)
 async def create_invoice(body: InvoiceIn) -> dict[str, Any]:
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
 
     tenant_id = get_current_tenant_id()
     data = body.model_dump()
@@ -764,7 +764,7 @@ async def create_invoice(body: InvoiceIn) -> dict[str, Any]:
 
 @router.get("/invoices/{invoice_id}")
 async def get_invoice(invoice_id: str) -> dict[str, Any]:
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
 
     async with async_session() as session:
         inv = await _invoice(session, get_current_tenant_id(), invoice_id)
@@ -775,7 +775,7 @@ async def get_invoice(invoice_id: str) -> dict[str, Any]:
 async def invoice_html(invoice_id: str):
     from fastapi.responses import HTMLResponse
 
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
 
     async with async_session() as session:
         inv = await _invoice(session, get_current_tenant_id(), invoice_id)
@@ -784,7 +784,7 @@ async def invoice_html(invoice_id: str):
 
 @router.patch("/invoices/{invoice_id}")
 async def edit_invoice(invoice_id: str, body: InvoicePatch) -> dict[str, Any]:
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
 
     changes = body.model_dump(exclude_unset=True)
     if body.items is not None:
@@ -803,7 +803,7 @@ async def edit_invoice(invoice_id: str, body: InvoicePatch) -> dict[str, Any]:
 @router.post("/invoices/{invoice_id}/send")
 async def send_invoice(invoice_id: str) -> dict[str, Any]:
     """Mark sent and return the email draft. Nothing is mailed from here."""
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
 
     async with async_session() as session:
         inv = await _invoice(session, get_current_tenant_id(), invoice_id)
@@ -820,7 +820,7 @@ async def send_invoice(invoice_id: str) -> dict[str, Any]:
 
 @router.post("/invoices/{invoice_id}/paid")
 async def paid_invoice(invoice_id: str, body: PaidIn) -> dict[str, Any]:
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
 
     async with async_session() as session:
         inv = await _invoice(session, get_current_tenant_id(), invoice_id)
@@ -835,7 +835,7 @@ async def paid_invoice(invoice_id: str, body: PaidIn) -> dict[str, Any]:
 
 @router.post("/invoices/{invoice_id}/void")
 async def void_invoice(invoice_id: str) -> dict[str, Any]:
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
 
     async with async_session() as session:
         inv = await _invoice(session, get_current_tenant_id(), invoice_id)

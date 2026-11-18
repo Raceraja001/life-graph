@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 
 from life_graph.models.assistant import MoneyTransaction
-from life_graph.services.money import list_transactions
+from life_graph.services.finance.money import list_transactions
 from tests.unit.fakes import FakeSession, sql
 
 

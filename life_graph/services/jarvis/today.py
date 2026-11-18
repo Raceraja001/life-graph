@@ -187,7 +187,7 @@ async def _brief(tenant_id: str) -> dict[str, Any] | None:
 
 
 async def _money(tenant_id: str, today: date) -> dict[str, Any] | None:
-    from life_graph.services import money
+    from life_graph.services.finance import money
     from life_graph.storage.database import async_session
 
     async with async_session() as session:

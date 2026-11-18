@@ -99,7 +99,7 @@ async def documents_expiring(days: int = 90) -> str:
     },
 )
 async def spending_summary(month: str | None = None) -> str:
-    from life_graph.services import money
+    from life_graph.services.finance import money
     from life_graph.storage.database import async_session
 
     tenant = _tenant()
@@ -123,7 +123,7 @@ async def spending_summary(month: str | None = None) -> str:
     parameters_schema={"type": "object", "properties": {}},
 )
 async def money_checkin() -> str:
-    from life_graph.services import money_checkin as mc
+    from life_graph.services.finance import checkin as mc
     from life_graph.storage.database import async_session
 
     tenant = _tenant()
@@ -395,7 +395,7 @@ async def draft_study_cards(
     parameters_schema={"type": "object", "properties": {}},
 )
 async def invoices_status() -> str:
-    from life_graph.services import invoices
+    from life_graph.services.finance import invoices
     from life_graph.storage.database import async_session
 
     tenant = _tenant()

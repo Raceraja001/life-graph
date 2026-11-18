@@ -53,7 +53,8 @@ async def _add(rows):
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_checkin_figures_match_the_rows(client):
-    from life_graph.services import money, money_checkin
+    from life_graph.services.finance import checkin as money_checkin
+    from life_graph.services.finance import money
     from life_graph.storage.database import async_session
 
     today = date.today()
