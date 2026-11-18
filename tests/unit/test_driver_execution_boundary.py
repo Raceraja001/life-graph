@@ -202,3 +202,11 @@ async def test_opencode_gets_an_allowlisted_environment(tmp_path, monkeypatch):
     await opencode_mod.OpencodeDriver(binary="opencode").dispatch(_packet(), tmp_path)
     assert "LIFE_GRAPH_DATABASE_URL" not in seen["env"]
     assert "OPENCODE_CONFIG" in seen["env"]
+
+
+async def test_opencode_is_parked_by_default(monkeypatch):
+    assert settings.driver_opencode_enabled is False
+    monkeypatch.setattr("shutil.which", lambda _b: "/usr/bin/opencode")
+    assert await opencode_mod.OpencodeDriver(binary="opencode").available() is False
+    monkeypatch.setattr(settings, "driver_opencode_enabled", True)
+    assert await opencode_mod.OpencodeDriver(binary="opencode").available() is True

@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, or_, select, text
 
+from life_graph.config import settings
 from life_graph.drivers.execution_guard import recover_interrupted_dispatch
 from life_graph.models.db import AgentTask, Approval, VerificationRun
 
@@ -1045,7 +1046,9 @@ def _escalatable(task: AgentTask) -> bool:
     result = task.result or {}
     original = props.get("routed_from") or task.assigned_agent
     return (
-        task.status == "failed"
+        # OpenCode is parked unless switched back on (config/drivers.py).
+        settings.driver_opencode_enabled
+        and task.status == "failed"
         and props.get("origin") == "nightly"
         and original == "code-fixer-local"
         and not props.get("escalated_from")

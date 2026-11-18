@@ -112,7 +112,8 @@ async def test_requeues_stop_after_the_limit(created, benched):
     assert created == []  # exhausted models are not the model's failure
 
 
-async def test_failed_nightly_local_run_is_handed_to_opencode(created, benched):
+async def test_failed_nightly_local_run_is_handed_to_opencode(created, benched, monkeypatch):
+    monkeypatch.setattr(dev_tasks.settings, "driver_opencode_enabled", True)
     task = _task()
     await _after(task)
     (call,) = created
@@ -127,7 +128,8 @@ async def test_failed_nightly_local_run_is_handed_to_opencode(created, benched):
     assert task.properties["escalated_to"] == dev_tasks.ESCALATION_PERSONA
 
 
-async def test_a_failed_cloud_run_escalates_as_its_original_persona(created, benched):
+async def test_a_failed_cloud_run_escalates_as_its_original_persona(created, benched, monkeypatch):
+    monkeypatch.setattr(dev_tasks.settings, "driver_opencode_enabled", True)
     task = _task(
         assigned_agent="code-fixer-cloud",
         properties={"route": "cloud", "routed_from": "code-fixer-local"},
@@ -158,3 +160,13 @@ async def test_a_missing_task_is_ignored(created, benched):
     session = FakeSession()
     await dev_tasks._after_queued_run(session_factory(session), str(uuid.uuid4()))
     assert created == [] and session.commits == 0
+
+
+async def test_a_parked_opencode_gets_no_escalations(created, benched, monkeypatch):
+    """OpenCode is parked by default (2026-11-18): a failed nightly local run
+    stays failed instead of being queued for it."""
+    monkeypatch.setattr(dev_tasks.settings, "driver_opencode_enabled", False)
+    task = _task()
+    await _after(task)
+    assert created == []
+    assert "escalated_to" not in (task.properties or {})

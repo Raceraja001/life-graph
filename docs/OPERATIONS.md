@@ -498,7 +498,7 @@ Where coding drivers run, and how to run them safely. Design and threat model:
 | `claude_code`, `DRIVER_CLAUDE_SANDBOX=task` | per-task container; worktree is the only host path; internal network; egress only via allowlisting proxy | yes, inside the container | built in code, validated (no `LIFE_GRAPH_*`, no secrets) |
 | `claude_code`, `=docker` (legacy) | container on docker's default bridge (open network) | yes, inside the container | as above, minus the network policy |
 | `claude_code`, `=none` | host, as the API user | **denied** unless `DRIVER_ALLOW_HOST_SHELL=true` | allowlist (`drivers/host_exec.py`) |
-| `opencode` | host, as the API user | **denied** unless `DRIVER_OPENCODE_ALLOW_BASH=true` | allowlist |
+| `opencode` (**parked**: `DRIVER_OPENCODE_ENABLED=false`, reports unavailable) | host, as the API user | **denied** unless `DRIVER_OPENCODE_ALLOW_BASH=true` | allowlist |
 | `local` | in the API process | `run_command`: `TOOL_SHELL_MODE=allowlist` (read-only programs) | `shell_allowlist.child_env()` |
 | verifiers | `VERIFIER_SANDBOX=docker`: `--network none` container. `=none`: code-executing checks are **inconclusive** unless `VERIFIER_ALLOW_HOST_EXECUTION=true` | — | — |
 

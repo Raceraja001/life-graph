@@ -217,6 +217,9 @@ class OpencodeDriver:
         return settings.driver_opencode_timeout_seconds
 
     async def available(self) -> bool:
+        if not settings.driver_opencode_enabled:
+            logger.debug("opencode unavailable: parked (driver_opencode_enabled=false)")
+            return False
         found = shutil.which(self._binary) is not None or Path(self._binary).is_file()
         if not found:
             logger.debug("opencode unavailable: %r not found", self._binary)
