@@ -90,7 +90,7 @@ async def check_runtime_health(ctx: dict | None = None, *, now: datetime | None 
                         tenant_id=tenant,
                         priority="important" if issue.severity == "critical" else "info",
                         title=f"Dev-task runtime: {issue.code.replace('_', ' ')}"[:500],
-                        body=f"{issue.detail}. See GET /api/v1/observe/system (runtime) "
+                        body=f"{issue.detail}. See GET /api/v1/kernel/observability/system (runtime) "
                         "and docs/OPERATIONS.md, 'Runtime health'.",
                         extra_metadata={
                             "kind": SOURCE_TYPE,

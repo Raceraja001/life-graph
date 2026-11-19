@@ -641,7 +641,7 @@ is the one control.
 
 ### Runtime health
 
-`GET /api/v1/observe/system` has a `runtime` section: `status` (`ok`, `warning` or `critical`),
+`GET /api/v1/kernel/observability/system` has a `runtime` section: `status` (`ok`, `warning` or `critical`),
 plus counts for the runner, tasks and containers, and the list of `issues`. It is install-wide,
 so it carries counts and issue codes only, never task data
 (`services/dev/runtime_health.py`). Every 10 minutes the **arq worker** checks it. That is a

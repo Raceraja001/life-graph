@@ -1,6 +1,6 @@
 """Health of the dev-task runtime: runner, leases, queue, failures, containers.
 
-One report for the dashboard (``GET /observe/system`` -> ``runtime``) and the
+One report for the dashboard (``GET /kernel/observability/system`` -> ``runtime``) and the
 alert job (workers/runtime_health.py). Install-wide by design: the runner is
 one per database and claims across tenants, so this returns **counts and
 issue codes only**, never task ids, instructions or errors.

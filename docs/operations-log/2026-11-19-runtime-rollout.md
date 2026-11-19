@@ -96,6 +96,56 @@ The limits did not change. The agent never prints secrets, never raises the $10 
 - **Note:** one token now lives in two `.env` files. A rotation (`claude setup-token`) must update both, or dev can get its own token.
 - **Rollback:** `~/life-graph-backups/dev-runtime-20261119/dev.env.before`, then `./dev.sh restart`.
 
+## Hardening round (later on 2026-11-19)
+
+### D11. #265 was already deployed
+- The periodic sweep code is in prod's files, and the dev-runner unit restarted at 07:00:48, after the `prod-20261119-0700` release.
+
+### D12. Test tools inside the container: the read-only project env (PR #267, released as `prod-20261119-1005`)
+- **What:** the project's cached verifier venv is mounted read-only at `/venv`, and the driver image carries the verifier's pinned `pytest`/`ruff`/`mypy`/`uv`. Image: `life-graph-claude-driver:a3aa3f4-cli2.1.328`; policy version `2026-11-19.1`.
+- **Egress unchanged.** That was the constraint. `pip install` still fails.
+- **Review:** an independent review found no way to poison the env. Follow-ups applied before merge:
+  - the bind rule allows only a direct, finished cache entry, read-only even if the cache sits inside a writable root;
+  - any env build error lets the agent run on without tools;
+  - the doc claim about bounces was corrected;
+  - the probe gained a real-container check of the read-only mount.
+- **Verified in prod:** task d4bb67c6 completed. The agent itself ran `ruff format --check`, `ruff check` and `pytest` (37 passed) inside the container. The run recorded `tool_env: mounted read-only`, policy `2026-11-19.1` and `login=oauth_token`, with a 13-line test-only diff, no cache files, and 0 leftovers.
+- **Rollback:** `LIFE_GRAPH_DRIVER_RUNTIME_PROJECT_TOOLS=false`, or `.env` from `prod.env.before-a3aa3f4`.
+
+### D13. Monitoring (PR #268, released as `prod-20261119-1005`)
+- **What:** `runtime_health` reports the runner lock, stale leases, queue wait, 24 h failures, orphans past the 5-minute floor, and agent container CPU/memory, as counts and codes only. It appears as the `runtime` section of `GET /api/v1/kernel/observability/system`.
+- **Alerts:** an arq cron every 10 minutes writes one owner notification per issue per 6 hours. It runs in the arq worker, a different process from the dev-task worker.
+- **Fixed after release:** the docs and the alert text named the wrong path (`/observe/system`). This PR fixes it.
+
+### D14. Concurrency under pressure (local evidence, on the prod docker daemon)
+- `scripts/runtime_pressure.py`, with its own instance label.
+- **Light run (6 jobs):** all checks pass.
+- **Heavy run (13 jobs, 2 GB limits):**
+  - 11 ran together, and the host kept at least 18 GB free;
+  - the memory hog was OOM-killed alone (exit 137) and the fork bomb was capped at 124 pids;
+  - all teardowns succeeded and nothing was left behind.
+- **The 12th runtime could not start:** "all predefined address pools have been fully subnetted". Each runtime has its own network, and 18 of the daemon's ~32 default pools are held by other stacks. It failed closed, with a clear error and no host fallback.
+- **Decision:** prod stays at concurrency 1 (max 3).
+- **Recommended fix (not done):** allocate runtime networks from a dedicated private range (e.g. `/28`s from `10.213.0.0/16`) with `--subnet`, so the daemon config, and with it every container's restart, is not touched.
+
+### D15. Backup and restore (verified by a read-only check)
+- **Mechanism:** `life_graph_backup` runs `pg_dump -Fc` daily at 14:00 UTC and at each start, keeps 30 days, and stores to `/mnt/h/DevTools/Backups/life-graph` (7 GB, 165 dumps). A drill runs on Sundays.
+- **The newest dump (03:46 UTC) restores:** 11–13 s into a throwaway container, and the relational rows match prod exactly as of the dump time.
+- **Problems found, not fixed:**
+  - **The AGE graph does not restore.** The `ag_label` COPY fails on `fk_graph_oid`, the label catalog comes back empty, and a cypher query crashed the copy (signal 11). The weekly drill only counts rows and tolerates restore errors, so it doesn't catch this.
+  - **The off-site restic copy has failed since 2026-11-12:** 183 "repository unreachable" attempts, all recorded as `status=success`.
+  - Local dumps sit on the same SSD as prod, unencrypted and world-readable.
+
+### D16. Repeated-failure drills against prod (harmless pulse tasks, 10:09–10:22 UTC)
+
+| Drill | What happened | Result |
+|---|---|---|
+| A: SIGKILL the worker twice (mid-run, then mid-recovery) | systemd restarted it both times. History: `queued > running > running > queued > running > running > completed` | Completed with **1 agent run**. The killed run's proxy and network were swept at 10:15:40 |
+| B: API restart mid-task, then cancel | The task stayed `running` through the API restart. It was cancelled by 10:15:30, 35 s after its container started, with the API restart in between | `cancelled`, 0 leftovers afterwards |
+| C: 3 worker restarts back to back, with a task queued in between | – | Completed with **1 agent run**, 0 leftovers |
+| D: a stand-in orphan (prod instance label, a finished task's id), with the worker left running | The health panel flagged `orphan_containers=1` at 10:21:22, once past the 5-minute floor. **The periodic sweep removed it at 10:21:41, with the same worker pid**, so #265 works in prod | 0 leftovers |
+| Alerts | At 10:13 the arq job wrote `stale_leases` (important; real, from drill A's kill) and `failures` (info) to `raja`, with dedup keys for the 6-hour window | – |
+
 ## Results
 
 | Step | Time | Result |
