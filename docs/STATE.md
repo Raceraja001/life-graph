@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-19 10:01 UTC` from `master` @ `e16e2e0`
+Generated `2026-11-19 10:06 UTC` from `master` @ `6970981`
 
 ---
 
@@ -22,11 +22,11 @@ Generated `2026-11-19 10:01 UTC` from `master` @ `e16e2e0`
 | Event types | **79** |
 | Built-in personas | **13** |
 | Agent tools | **15** |
-| Scheduled jobs | **34** |
-| Config settings | **315** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5098** in 526 files |
+| Scheduled jobs | **35** |
+| Config settings | **316** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5107** in 527 files |
 | Dashboard pages | **23** |
-| Python | 563 files, 140,799 lines |
+| Python | 565 files, 141,239 lines |
 
 ---
 
@@ -896,11 +896,12 @@ Generated `2026-11-19 10:01 UTC` from `master` @ `e16e2e0`
 
 ## Scheduled jobs
 
-34 ARQ cron jobs (times are UTC).
+35 ARQ cron jobs (times are UTC).
 
 | Job | Schedule | Function |
 |---|---|---|
 | `check_approval_timeouts` | every 5 min | `life_graph.workers.tasks.check_approval_timeouts` |
+| `check_runtime_health` | hourly at :03,:13,:23,:33,:43,:53 | `life_graph.workers.runtime_health.check_runtime_health` |
 | `close_claude_code_sessions` | hourly at :04,:14,:24,:34,:44,:54 | `life_graph.workers.claude_code_sessions.close_claude_code_sessions` |
 | `decay_trust_scores` | 05:00 | `life_graph.workers.tasks.decay_trust_scores` |
 | `distill_idle_conversations` | every 15 min | `life_graph.workers.distill.distill_idle_conversations` |
@@ -1031,16 +1032,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 407 | 4227 |
+| `tests/unit/` | 408 | 4236 |
 | `tests/integration/` | 118 | 859 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **526** | **5098** |
+| **total** | **527** | **5107** |
 
 ---
 
 ## Configuration
 
-315 settings, all overridable by environment variable.
+316 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1217,6 +1218,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DEV_RUNNER_DRAIN_SECONDS` | `1500` |
 | `LIFE_GRAPH_DEV_TASK_EVENTS_RETENTION_DAYS` | `14` |
 | `LIFE_GRAPH_DEV_TASK_MAX_TIMEOUT_SECONDS` | `3600` |
+| `LIFE_GRAPH_RUNTIME_HEALTH_ALERT_TENANTS` | `''` |
 | `LIFE_GRAPH_TRAJECTORY_STEP_MAX_CHARS` | `16000` |
 | `LIFE_GRAPH_TRAJECTORY_OPT_OUT_TENANTS` | `''` |
 | `LIFE_GRAPH_DRIVER_SECOND_OPINION_ENABLED` | `False` |
