@@ -44,6 +44,10 @@ uses its own small ``psycopg2`` pool against ``settings.database_url_sync``.
   :data:`~.capability.STORE_UNAVAILABLE`, which is a denial and not an
   exception, so one database blip aborts a step rather than a process.
 
+A revoke that cannot reach it also *raises*, like an insert: its return value
+says how much was revoked, and "nothing" is not an honest answer for an
+outage that left every mandate live.
+
 **Clock skew.** Every expiry and consumption comparison is made against the
 database's own ``now()``-free parameter: the caller's ``now`` is passed in and
 compared inside the statement, so a worker with a skewed clock cannot widen
@@ -368,6 +372,11 @@ class DurableCapabilityStore:
 
         Conditional on ``revoked = false``, so a double tap on a kill switch
         reports one revocation rather than two.
+
+        Raises :class:`StoreUnavailableError` when the database cannot be
+        reached. ``False`` means "it was already revoked", so returning it for
+        an outage would tell the owner a live mandate was ended when it was
+        not; a revocation that did not happen must be reported.
         """
         try:
             with self.engine.begin() as conn:
@@ -380,15 +389,23 @@ class DurableCapabilityStore:
                 )
         except Exception as exc:
             logger.error("Durable capability store unreachable on revoke: %s", exc)
-            return False
+            raise StoreUnavailableError(
+                "the authorization store is unavailable; nothing was revoked"
+            ) from exc
         return bool(result.rowcount)
 
     def revoke_all(self, *, tenant_id: str, task_id: str | None = None) -> int:
         """Revoke a tenant's live capabilities (optionally one task's).
 
-        What the kill switch and "stop this task" call. Tenant-scoped in the
-        statement, not in the caller: a missing filter here would be a
-        cross-tenant revocation.
+        Meant for the kill switch and "stop this task", but not called by
+        either yet (pausing autonomy, autonomy/kill_switch.py, does not revoke
+        capabilities today). Tenant-scoped in the statement, not in the
+        caller: a missing filter here would be a cross-tenant revocation.
+
+        Raises :class:`StoreUnavailableError` when the database cannot be
+        reached: ``0`` means "nothing was live", and reporting that for an
+        outage would leave every mandate standing behind a kill switch that
+        said it had worked.
         """
         clause = "UPDATE capabilities SET revoked = true WHERE tenant_id = :tenant_id "
         clause += "AND revoked = false"
@@ -401,7 +418,9 @@ class DurableCapabilityStore:
                 result = conn.execute(text(clause), params)
         except Exception as exc:
             logger.error("Durable capability store unreachable on revoke_all: %s", exc)
-            return 0
+            raise StoreUnavailableError(
+                "the authorization store is unavailable; nothing was revoked"
+            ) from exc
         return int(result.rowcount or 0)
 
     # -- housekeeping -----------------------------------------------------

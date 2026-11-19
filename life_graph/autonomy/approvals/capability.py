@@ -332,7 +332,9 @@ class DurableBackend(Protocol):
     Every method fails closed. A read that cannot reach the database returns
     ``None`` (which the caller reads as :data:`UNKNOWN`), a consume returns
     :data:`STORE_UNAVAILABLE`, and an insert raises — because an issue that
-    silently did not persist would tell the owner their tap worked.
+    silently did not persist would tell the owner their tap worked. A revoke
+    raises too, for the same reason in reverse: "nothing to revoke" for an
+    outage would tell the owner a mandate was ended when it was still live.
     """
 
     def insert(self, capability: AuthorizationCapability) -> None:
@@ -358,11 +360,17 @@ class DurableBackend(Protocol):
         ...
 
     def revoke(self, capability_id: str) -> bool:
-        """End one capability. True if this call was the one that ended it."""
+        """End one capability. True if this call was the one that ended it.
+
+        Raises when the store cannot be reached; never ``False`` for an outage.
+        """
         ...
 
     def revoke_all(self, *, tenant_id: str, task_id: str | None = None) -> int:
-        """Revoke a tenant's (optionally one task's) live capabilities."""
+        """Revoke a tenant's (optionally one task's) live capabilities.
+
+        Raises when the store cannot be reached; never ``0`` for an outage.
+        """
         ...
 
     def purge_expired(self, now: datetime) -> int:
@@ -642,8 +650,11 @@ class CapabilityStore:
     def revoke_all(self, *, tenant_id: str, task_id: str | None = None) -> int:
         """Revoke a tenant's capabilities (optionally one task's). Returns the count.
 
-        What the kill switch and "stop this task" call: a task that is being
-        abandoned should not leave a live mandate behind it.
+        Meant for the kill switch and "stop this task" — a task that is being
+        abandoned should not leave a live mandate behind it — but neither
+        calls it yet: pausing autonomy (autonomy/kill_switch.py) does not
+        revoke capabilities today. With a durable backend, an unreachable
+        database raises ``StoreUnavailableError`` rather than returning 0.
         """
         backend = self._durable
         if backend is not None:

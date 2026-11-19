@@ -984,6 +984,23 @@ def test_reading_and_consuming_against_an_unreachable_store_deny(unreachable):
     assert check.reason in cap.CHECK_REASONS
 
 
+def test_revoking_against_an_unreachable_store_raises_rather_than_reporting_nothing(
+    unreachable,
+):
+    """M1 (audit 2026-11-19): ``revoke`` returned False and ``revoke_all`` 0
+    on a database error — the answers for "already revoked" and "nothing was
+    live". A kill switch reading those would say it worked while every
+    mandate stayed live."""
+    from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
+
+    with pytest.raises(StoreUnavailableError):
+        unreachable.revoke("cap_whatever")
+    with pytest.raises(StoreUnavailableError):
+        unreachable.revoke_all(tenant_id=DB_TENANT)
+    with pytest.raises(StoreUnavailableError):
+        unreachable.revoke_all(tenant_id=DB_TENANT, task_id="task-7")
+
+
 @pytest.mark.asyncio
 async def test_an_errand_is_denied_when_the_authorization_store_is_down(unreachable):
     """Fail closed end to end: no capability resolves, so no click happens."""
