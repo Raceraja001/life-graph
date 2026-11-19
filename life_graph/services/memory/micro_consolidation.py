@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import cast, func, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 
+from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory, MemorySession
 from life_graph.scoring.importance import ImportanceTagger
@@ -116,8 +117,12 @@ class MicroConsolidator:
             logger.info("Micro-consolidation %s: no memories — skipping", session_id)
             return report
 
-        # Step 2 — Dedup against existing memories
-        dedup_count = await self._dedup_against_existing(session_memories)
+        # Step 2 — Dedup against existing memories. Opt-in: it supersedes the
+        # newer memory, which hides a correction that embeds close to the fact
+        # it corrects (settings.micro_consolidation_dedup).
+        dedup_count = 0
+        if settings.micro_consolidation_dedup:
+            dedup_count = await self._dedup_against_existing(session_memories)
         report.duplicates_removed = dedup_count
 
         # Refresh list if we removed any

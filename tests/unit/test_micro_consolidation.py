@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy.dialects import postgresql
 
+from life_graph.config import settings
 from life_graph.core.tenant import tenant_scope
 from life_graph.services.memory.micro_consolidation import MicroConsolidator
 from life_graph.storage import graph as graph_module
@@ -135,6 +136,49 @@ class TestDedup:
         with tenant_scope("acme"):
             assert await consolidator._dedup_against_existing([older_in_session]) == 0
         assert session.statements == []
+
+
+class TestDedupSwitch:
+    """Dedup supersedes the newer memory with no LLM check, so a correction
+    ("I no longer use X") that embeds >= 0.95 to the fact it corrects would be
+    hidden. It is opt-in: ``micro_consolidation_dedup`` defaults to off."""
+
+    def _wired(self, monkeypatch, enabled):
+        monkeypatch.setattr(settings, "micro_consolidation_dedup", enabled)
+        old = _mem(embedding=(1.0, 0.01, 0.0), created_at=NOW - timedelta(days=3))
+        new = _mem(embedding=(1.0, 0.0, 0.0))
+        consolidator, session = _consolidator([new, old])
+        consolidator._gather_session_memories = AsyncMock(return_value=[new])
+        consolidator._rescore_importance = AsyncMock(return_value=0)
+        consolidator._update_graph = AsyncMock(return_value=(0, 0))
+        return consolidator, session
+
+    def test_off_by_default(self):
+        from life_graph.config.memory import MemorySettings
+
+        assert MemorySettings().micro_consolidation_dedup is False
+
+    @pytest.mark.asyncio
+    async def test_off_the_step_is_skipped(self, monkeypatch):
+        consolidator, session = self._wired(monkeypatch, enabled=False)
+
+        with tenant_scope("acme"):
+            report = await consolidator.run(uuid.uuid4())
+
+        assert report.duplicates_removed == 0
+        consolidator._store.search_similar.assert_not_awaited()
+        assert session.statements == []
+
+    @pytest.mark.asyncio
+    async def test_on_a_near_duplicate_is_superseded(self, monkeypatch):
+        consolidator, session = self._wired(monkeypatch, enabled=True)
+
+        with tenant_scope("acme"):
+            report = await consolidator.run(uuid.uuid4())
+
+        assert report.duplicates_removed == 1
+        consolidator._store.search_similar.assert_awaited_once()
+        assert len(session.statements) == 1
 
 
 # ── Graph ─────────────────────────────────────────────────────
