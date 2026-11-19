@@ -235,6 +235,9 @@ class _Session:
     async def get(self, model, pk):
         return self.obj
 
+    async def refresh(self, _obj, **_kw):
+        pass  # resolve() re-reads the row under a lock (FOR UPDATE NOWAIT)
+
     async def flush(self):
         pass
 

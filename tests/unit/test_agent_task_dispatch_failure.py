@@ -30,9 +30,7 @@ from life_graph.services.approvals import ApprovalService
 def _autonomy_not_paused():
     """These tests exercise real execution, not the kill-switch itself
     (see test_kill_switch.py) -- keep _run_action's guard a no-op here."""
-    with patch(
-        "life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=False)
-    ):
+    with patch("life_graph.autonomy.kill_switch.is_autonomy_paused", AsyncMock(return_value=False)):
         yield
 
 
@@ -172,7 +170,9 @@ def agent_task_execute_pending_raising():
 @pytest.mark.asyncio
 async def test_dispatch_raise_marks_failed_not_wedged(agent_task_service_raising):
     svc, disp = agent_task_service_raising  # disp.dispatch_task raises DispatchError("wip limit")
-    auto = make_auto_action(kind="agent_task", instruction="X", action_command=None, agent_id="cody")
+    auto = make_auto_action(
+        kind="agent_task", instruction="X", action_command=None, agent_id="cody"
+    )
     # must NOT raise out of _run_action
     await svc._run_action("t1", auto, timeout_seconds=60)
     assert auto.status == "failure"
@@ -187,7 +187,9 @@ async def test_dispatch_generic_exception_also_marks_failed_not_wedged(agent_tas
     hit the broad backstop and are handled identically."""
     svc, disp = agent_task_service_raising
     disp.dispatch_task = AsyncMock(side_effect=RuntimeError("orchestrator crashed"))
-    auto = make_auto_action(kind="agent_task", instruction="X", action_command=None, agent_id="cody")
+    auto = make_auto_action(
+        kind="agent_task", instruction="X", action_command=None, agent_id="cody"
+    )
 
     await svc._run_action("t1", auto, timeout_seconds=60)
 
@@ -238,7 +240,8 @@ async def test_audit_log_records_the_instruction_for_agent_task(agent_task_servi
     so the audit row was empty — log the instruction instead."""
     svc, disp = agent_task_service_raising
     disp.dispatch_task = AsyncMock(
-        side_effect=None, return_value=MagicMock(success=True, output="ok", error=None, duration_ms=5)
+        side_effect=None,
+        return_value=MagicMock(success=True, output="ok", error=None, duration_ms=5),
     )
     auto = make_auto_action(
         kind="agent_task", instruction="Fix the flaky test_worker_retry test", action_command=None
@@ -294,6 +297,9 @@ class _FakeApprovalSession:
     async def get(self, model, pk):
         assert str(pk) == str(self._appr.id)
         return self._appr
+
+    async def refresh(self, _obj, **_kw):
+        pass  # resolve() re-reads the row under a lock (FOR UPDATE NOWAIT)
 
     async def flush(self):
         self.flushed = True

@@ -7,6 +7,7 @@ re-runs the same check from the 15-minute sync job.
 
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -17,7 +18,9 @@ from tests.unit.fakes import FakeSession, session_factory, sql
 
 def _merge_appr(**payload):
     return SimpleNamespace(
-        status="pending", payload={"driver": "local", "project_id": "p1", **payload}
+        id=uuid.uuid4(),
+        status="pending",
+        payload={"driver": "local", "project_id": "p1", **payload},
     )
 
 
@@ -38,16 +41,36 @@ async def test_retries_only_merges_that_asked_for_auto_merge(auto_merge):
     green = _merge_appr(auto_merge=True, green=True)
     still_running = _merge_appr(auto_merge=True)
     manual = _merge_appr(auto_merge=False, green=True)
-    session = FakeSession([green, still_running, manual])
+    # The sweep, then one locking re-read per auto-merge candidate.
+    session = FakeSession([green, still_running, manual], green, still_running)
 
     result = await approvals.retry_auto_merges(session_factory(session))
 
     assert result == {"tried": 2, "merged": 1}
     assert auto_merge == [("local", "p1", True), ("local", "p1", True)]
     assert green.status == "approved" and manual.status == "pending"
-    assert session.commits == 1
+    assert session.commits == 2  # one per claimed row: each lock is held for one merge
     text = sql(session.statements[0])
     assert "'driver_merge'" in text and "'pending'" in text
+    assert len(session.statements) == 3  # manual (no auto_merge) is never locked
+
+
+async def test_a_merge_someone_is_resolving_is_skipped_not_merged_twice(auto_merge):
+    """H4: resolve() holds the row lock while a person's approve runs; the
+    sweep claims each row with FOR UPDATE SKIP LOCKED, so a locked (or by now
+    resolved) row comes back empty and is left alone."""
+    being_approved = _merge_appr(auto_merge=True, green=True)
+    free = _merge_appr(auto_merge=True, green=True)
+    # The claim of the first finds nothing (skipped); the second is claimed.
+    session = FakeSession([being_approved, free], None, free)
+
+    result = await approvals.retry_auto_merges(session_factory(session))
+
+    assert result == {"tried": 1, "merged": 1}
+    assert being_approved.status == "pending" and free.status == "approved"
+    claim = sql(session.statements[1])
+    assert "FOR UPDATE SKIP LOCKED" in claim
+    assert "'pending'" in claim
 
 
 async def test_nothing_pending_is_a_no_op(auto_merge):

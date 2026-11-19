@@ -187,6 +187,7 @@ class ApprovalService:
         appr = await self.session.get(Approval, pk)
         if appr is None or appr.tenant_id != tenant_id:
             raise LookupError(approval_id)
+        await self._claim(appr)
         if appr.status != "pending":
             raise ApprovalAlreadyResolvedError(appr.status)
 
@@ -225,6 +226,35 @@ class ApprovalService:
 
         await self.session.flush()
         return self._serialize(appr)
+
+    async def _claim(self, appr: Approval) -> None:
+        """Lock *appr*'s row for this transaction and re-read it.
+
+        Side effects (a merge, a deploy of up to ten minutes) run before the
+        caller commits, so without a lock two approvals of the same item at
+        once — the phone and the dashboard, or a client retrying after its
+        own timeout — both read ``pending`` and both ran the side effect.
+
+        ``SELECT ... FOR UPDATE NOWAIT``: the row stays locked until the
+        caller commits or rolls back, and a second resolve that arrives
+        meanwhile is told at once that the item is being resolved (the
+        same 409 as an already-resolved item) instead of waiting out the
+        first one's deploy. If the first one fails and rolls back, the lock
+        goes with it and the item is pending again, as before. The re-read
+        matters too: the status checked afterwards is the committed one,
+        not what this session read before the lock.
+        """
+        from sqlalchemy.exc import DBAPIError, InvalidRequestError
+
+        try:
+            await self.session.refresh(appr, with_for_update={"nowait": True})
+        except DBAPIError as exc:
+            if _lock_not_available(exc):
+                raise ApprovalAlreadyResolvedError("being resolved") from None
+            raise
+        except InvalidRequestError:
+            # Deleted between the read and the lock.
+            raise LookupError(str(appr.id)) from None
 
     async def _apply_driver_pr(self, appr: Approval, approve: bool) -> None:
         """Push a verified task branch and open its PR (approve). Reject: no-op.
@@ -1093,6 +1123,13 @@ class ApprovalService:
                 )
 
 
+def _lock_not_available(exc: Exception) -> bool:
+    """True when *exc* is Postgres refusing a ``NOWAIT`` lock (SQLSTATE 55P03)."""
+    orig = getattr(exc, "orig", None)
+    code = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+    return code == "55P03"
+
+
 def _num(value: Any) -> str | None:
     """JSON-safe rendering of a Numeric/Decimal accuracy value."""
     return None if value is None else str(value)
@@ -1141,6 +1178,11 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
     re-runs the same check (same trust bar, CI still enforced by the merge
     itself) on approvals whose PR asked for auto-merge. Called by the
     15-minute ``sync_dev_task_prs`` job.
+
+    Each approval is claimed with ``FOR UPDATE SKIP LOCKED`` and committed on
+    its own: one that a person is approving right now (``resolve`` holds its
+    row lock) is skipped rather than merged twice, and the lock on each row
+    lasts one merge attempt, not the whole sweep.
     """
     from datetime import timedelta
 
@@ -1160,10 +1202,19 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
             .scalars()
             .all()
         )
-        for appr in rows:
+        candidates = [a for a in rows if (a.payload or {}).get("auto_merge")]
+        for candidate in candidates:
+            appr = (
+                await session.execute(
+                    select(Approval)
+                    .where(Approval.id == candidate.id, Approval.status == "pending")
+                    .with_for_update(skip_locked=True)
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one_or_none()
+            if appr is None:
+                continue  # being resolved by someone else, or already resolved
             payload = appr.payload or {}
-            if not payload.get("auto_merge"):
-                continue
             tried += 1
             svc = ApprovalService(session)
             await svc.maybe_auto_merge(
@@ -1171,7 +1222,7 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
             )
             if appr.status == "approved":
                 merged += 1
-        await session.commit()
+            await session.commit()  # releases this row's lock
     if tried:
         logger.info("Auto-merge retry: %d of %d pending merges went through", merged, tried)
     return {"tried": tried, "merged": merged}
