@@ -39,6 +39,30 @@ def parse_redis_settings() -> RedisSettings:
     return RedisSettings(host=host, port=port, database=db)
 
 
+def configure_worker_logging() -> None:
+    """Give the worker the API's logging setup, with secrets masked (audit M22).
+
+    The worker never called ``setup_logging``: the root logger had no handler,
+    so warnings reached stderr through Python's last-resort handler, INFO was
+    dropped, and nothing could mask the Telegram bot token the poller (which
+    runs here) may log. Now the root logger gets the same stdout handler,
+    format and level as the API, with :class:`SecretMaskFilter` on it.
+
+    ``arq`` configures its own ``arq`` logger and handler before this runs.
+    That handler keeps its format and gets the mask too; propagation is
+    turned off so each arq line is printed once, not also by the root handler.
+    Safe to call more than once.
+    """
+    from life_graph.core.logging import add_secret_mask, setup_logging
+
+    setup_logging(format=settings.log_format, level=settings.log_level)
+    arq_logger = logging.getLogger("arq")
+    if arq_logger.handlers:
+        arq_logger.propagate = False
+        for handler in arq_logger.handlers:
+            add_secret_mask(handler)
+
+
 class WorkerSettings:
     """ARQ worker configuration.
 
@@ -58,6 +82,11 @@ class WorkerSettings:
         the whole worker process — ARQ's Worker.run() has no surrounding
         try/except around on_startup other than CancelledError.
         """
+        try:
+            configure_worker_logging()
+        except Exception:
+            logger.warning("Worker logging setup failed", exc_info=True)
+
         try:
             from life_graph.services.findings_bridge import findings_bridge_handler
 
