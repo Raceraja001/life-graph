@@ -345,6 +345,18 @@ class DevTaskRunner:
                     await fail_interrupted(self._sf, runner_id=self.id)
                 except Exception:
                     logger.debug("Stale-lease recovery failed", exc_info=True)
+                # Then the runtimes such a run left behind. The startup sweep
+                # cannot catch them: when the worker restarts, the dead run's
+                # task still reads as running (prod 2026-11-19: a SIGKILL left
+                # its egress proxy and network until the next start). Only
+                # runtimes whose task is not running, and that are older than
+                # a claim race, are removed.
+                try:
+                    from life_graph.services.dev.task_runtime import sweep_orphans
+
+                    await sweep_orphans(self._sf, expire_events=False)
+                except Exception:
+                    logger.debug("Periodic runtime sweep failed", exc_info=True)
 
     async def _check_lock(self) -> None:
         if self._lock_alive is None or self.lock_lost or self._stopping:
