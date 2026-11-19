@@ -80,6 +80,22 @@ The limits did not change. The agent never prints secrets, never raises the $10 
 - **Found:** in the D4 SIGKILL test, the killed run left its egress proxy and network. The restarted worker's startup sweep kept them, because the task still read as `running`.
 - **Fix:** the runner's recovery pass (every 4 heartbeats) also sweeps runtimes whose task is not running and that are at least 5 minutes old. The age floor avoids racing a task that is being claimed.
 
+### D10. The dev edition matches prod (main checkout, :8180)
+- **Found:**
+  - The main checkout was 38 commits behind master (still at 92f42b4) and its dev edition was down.
+  - Its `.env` still had `DRIVER_CLAUDE_SANDBOX=docker` and no token, so a sandboxed dev task would refuse.
+  - The dev API was bound to `0.0.0.0`.
+- **Done (owner: "fix that too"):**
+  - Fast-forwarded the clean checkout to master and started dev (dev DB → 060).
+  - Set the same runtime keys as prod: `task` mode, the same image tags, 1 task at once, `127.0.0.1`.
+  - Copied prod's `setup-token` token into dev's `.env` without printing it.
+- **Verified:**
+  - Dev health returns 200 from WSL and from Windows `localhost:8180`, and the dev API listens on `127.0.0.1` only.
+  - A throwaway container logged in with the dev token and answered.
+  - The dev runner stays off (`DEV_TASK_RUNNER_ENABLED=false`).
+- **Note:** one token now lives in two `.env` files. A rotation (`claude setup-token`) must update both, or dev can get its own token.
+- **Rollback:** `~/life-graph-backups/dev-runtime-20261119/dev.env.before`, then `./dev.sh restart`.
+
 ## Results
 
 | Step | Time | Result |
