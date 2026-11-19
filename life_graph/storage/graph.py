@@ -325,8 +325,13 @@ class GraphStore:
         await conn.execute('SET search_path = ag_catalog, "$user", public')
 
     async def close(self) -> None:
-        """Close the shared connection pool."""
-        await close_pool()
+        """Release this instance. A no-op: the pool is shared by the process.
+
+        Instances are cheap handles on the one process-wide pool. This used to
+        call :func:`close_pool`, so one job finishing (micro-consolidation,
+        after every session end) closed the pool under every concurrent graph
+        query. Process shutdown is the only place to call :func:`close_pool`.
+        """
 
     # ── Core Cypher Execution ─────────────────────────────────
 
@@ -514,6 +519,48 @@ class GraphStore:
         if results:
             return str(results[0]["v"])
         return ""
+
+    async def create_edge_if_absent(
+        self,
+        from_label: str,
+        from_name: str,
+        to_label: str,
+        to_name: str,
+        edge_label: str,
+        properties: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
+    ) -> str:
+        """Create an edge unless the two vertices are already joined by one.
+
+        The existing-edge check ignores direction, so a symmetric relation
+        such as ``related_to`` written ``a->b`` once and ``b->a`` later is
+        still one edge. AGE has no reliable ``MERGE`` across versions (see
+        :meth:`upsert_vertex`), so this matches first, then creates.
+
+        Returns:
+            The new edge's graph ID, or ``""`` when the edge already existed or
+            either vertex is missing from this tenant.
+        """
+        tid = _resolve_tenant(tenant_id)
+        existing = await self.execute_cypher(
+            f"MATCH (a:{_safe_label(from_label)})-[e:{_safe_label(edge_label)}]-"
+            f"(b:{_safe_label(to_label)}) "
+            f"WHERE a.name = $from_name AND a.tenant_id = $tid "
+            f"AND b.name = $to_name AND b.tenant_id = $tid "
+            f"RETURN id(e) LIMIT 1",
+            params={"from_name": from_name, "to_name": to_name, "tid": tid},
+        )
+        if existing:
+            return ""
+        return await self.create_edge(
+            from_label,
+            from_name,
+            to_label,
+            to_name,
+            edge_label,
+            properties=properties,
+            tenant_id=tid,
+        )
 
     # ── Traversal ─────────────────────────────────────────────
 

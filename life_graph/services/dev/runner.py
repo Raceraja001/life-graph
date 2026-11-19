@@ -59,6 +59,10 @@ NOTIFY_CHANNEL = "lg_dev_tasks"
 
 _local_runner: DevTaskRunner | None = None
 
+# Fire-and-forget tasks (the lost-lock stop). The loop holds tasks only
+# weakly, so an unreferenced one can be garbage-collected mid-run (audit L6).
+_detached: set[asyncio.Task[Any]] = set()
+
 
 def set_local_runner(runner: DevTaskRunner | None) -> None:
     """Register the runner living in this process (None when it stops)."""
@@ -368,7 +372,11 @@ class DevTaskRunner:
         # recovers them); we stop claiming and drain.
         self.lock_lost = True
         logger.error("Dev-task runner %s lost the runner lock; draining and stopping", self.id)
-        asyncio.get_running_loop().create_task(self.stop())
+        # Its own task, not awaited here: stop() cancels the heartbeat loop
+        # this runs in. Kept referenced until it finishes.
+        stop = asyncio.get_running_loop().create_task(self.stop())
+        _detached.add(stop)
+        stop.add_done_callback(_detached.discard)
 
     async def _cancel_loop(self) -> None:
         while True:
