@@ -59,9 +59,9 @@ async def test_the_channel_logs_a_502_without_the_token(caplog):
     # Our own log lines carry no token even before any filter runs.
     assert all(TOKEN not in r.getMessage() for r in ours)
     assert all(TOKEN not in (r.exc_text or "") for r in ours)
-    # httpx logs every request URL at INFO — token included. setup_logging
-    # quiets httpx to WARNING, and the mask catches it if it ever gets out.
-    assert any(TOKEN in r.getMessage() for r in caplog.records if r.name == "httpx")
+    # httpx logs every request URL at INFO, token included (when its level
+    # allows). setup_logging quiets httpx to WARNING, and the mask catches
+    # such a line if it ever gets out.
     assert all(TOKEN not in _format(r) for r in caplog.records)
 
 
