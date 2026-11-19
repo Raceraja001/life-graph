@@ -146,6 +146,30 @@ The limits did not change. The agent never prints secrets, never raises the $10 
 | D: a stand-in orphan (prod instance label, a finished task's id), with the worker left running | The health panel flagged `orphan_containers=1` at 10:21:22, once past the 5-minute floor. **The periodic sweep removed it at 10:21:41, with the same worker pid**, so #265 works in prod | 0 leftovers |
 | Alerts | At 10:13 the arq job wrote `stale_leases` (important; real, from drill A's kill) and `failures` (info) to `raja`, with dedup keys for the 6-hour window | – |
 
+### D17. The four follow-ups, done in parallel (PRs #270–#272, released as `prod-20261119-1114`)
+- **#270, subnet pool.** Runtime networks get a `/28` from `10.213.0.0/16`. That range was checked against WSL, docker, Tailscale and the Windows LAN, and it doesn't touch the daemon config. Retries on overlap; fails closed after 8.
+  - Local proof: 23 runtimes started, 20 at once; the old ceiling was 11.
+  - Probe: isolation is unchanged. The probe also stopped assuming `/24` networks when computing the gateway.
+  - Policy is now `2026-11-19.2`.
+- **#271, setup egress.** Verifier setup runs on an internal network whose only exit is the egress proxy, allowing only that toolchain's registries plus a per-project `sandbox_setup_allow`. Before that, a manifest scanner refuses URL, VCS, index-override and path sources, so the check is inconclusive, never passed.
+  - The scanner finds no problem in any real project: pulse, life-graph, life-graph-android, uzhavu.
+  - Prod proof with prod code: pulse built through the proxy, and a `https://example.com/...?t=SECRET` requirement was refused.
+  - **Still open:** the allowed registries accept uploads (`npm publish`), so code running during setup could still publish data.
+- **#272, backups.**
+  - Root cause: `ag_label` restored before `ag_graph` under a parallel `pg_restore`. Also, `restore.sh --clean` doubled the vertices.
+  - Fix: restore into an empty database in a fixed order and stop on the first error. `restore.sh` restores into a staging database and swaps it in. Each dump gets a `.graph` inventory taken from the same snapshot.
+  - The drill now fails on restore errors, inventory or cypher mismatches, and sequence drift.
+  - A failed off-site upload is recorded as `partial` or `failed` and notifies the owner after 24 h.
+  - **Live in prod, 11:15:** backup ok, 203 MB with 18 graph labels and a `.graph` file, recorded as `partial` (off-site unreachable). The old code logged `success`.
+- **Smoke after release:** task 7b74c57d completed on policy `.2`, `tool_env` mounted read-only, the agent ran pytest (37) and ruff itself, 6/6 checks, 0 leftovers.
+- **Nightly batch run early (10:48):** queued 5 life-graph tasks.
+  - In daytime they go to the free cloud models, which are rate-limited (429), so the runner put them back on the queue, as designed ("wait for night").
+  - **Decision:** I did not force the local model onto the GPU in daytime (owner's compute routing). They run in tonight's local window, and the 21:00 job adds none, because 5 are already open.
+- **Owner actions:**
+  - restart the restic rest-server on the laptop (`raja-lap` answers Tailscale ping, but the port refuses connections);
+  - optionally tighten the Windows ACL on `H:\DevTools\Backups` (Authenticated Users can modify) — the `icacls` command is in PR #272;
+  - decide on encrypting local dumps.
+
 ## Results
 
 | Step | Time | Result |
