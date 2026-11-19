@@ -747,10 +747,16 @@ def durable():
     from sqlalchemy import create_engine
 
     from life_graph.autonomy.approvals.durable_store import DurableCapabilityStore
-    from life_graph.config import settings
+    from life_graph.config import settings, sqlalchemy_sync_url
 
+    # The same driver-naming the app's own sync_engine() uses: on SQLAlchemy
+    # 2.1 a bare postgresql:// URL means psycopg (v3), which is not installed.
+    # Unnoticed until CI first ran these tests against a real database.
     engine = create_engine(
-        settings.database_url_sync, pool_size=RACERS + 4, max_overflow=4, future=True
+        sqlalchemy_sync_url(settings.database_url_sync),
+        pool_size=RACERS + 4,
+        max_overflow=4,
+        future=True,
     )
 
     def wipe() -> None:
