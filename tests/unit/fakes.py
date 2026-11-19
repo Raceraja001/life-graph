@@ -122,7 +122,7 @@ class FakeSession:
     async def flush(self) -> None:
         pass
 
-    async def refresh(self, _obj) -> None:
+    async def refresh(self, _obj, **_kwargs) -> None:
         pass
 
     async def close(self) -> None:

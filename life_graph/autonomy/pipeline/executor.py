@@ -6,6 +6,7 @@ Runs shell commands in restricted subprocess with timeout.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from dataclasses import dataclass
@@ -28,7 +29,7 @@ class CommandExecutor:
     """Sandboxed command executor with timeout and restricted environment.
 
     Runs commands via asyncio subprocess with:
-    - Configurable timeout (kills process on expiry)
+    - Configurable timeout (kills the command's whole process group on expiry)
     - Restricted PATH (only essential system binaries)
     - stdout/stderr capture
     - Duration tracking
@@ -69,6 +70,9 @@ class CommandExecutor:
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
                 env=env,
+                # Its own process group, so a timeout kills what the shell
+                # started too, not just /bin/sh.
+                start_new_session=True,
             )
 
             try:
@@ -83,11 +87,11 @@ class CommandExecutor:
                     timeout_seconds,
                     command[:100],
                 )
-                try:
-                    process.kill()
-                    await process.wait()
-                except ProcessLookupError:
-                    pass
+                from life_graph.drivers.host_exec import kill_process_group
+
+                await kill_process_group(process)
+                with contextlib.suppress(TimeoutError, ProcessLookupError):
+                    await asyncio.wait_for(process.wait(), timeout=10)
                 stdout_bytes = b""
                 stderr_bytes = f"Process killed: timeout after {timeout_seconds}s".encode()
 

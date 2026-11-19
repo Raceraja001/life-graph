@@ -62,6 +62,11 @@ class CoreSettings(BaseModel):
     # production means no HTTP caller is the owner and every privileged
     # provenance claim is floored at EXTERNAL — fail closed, by design.
     owner_api_keys: str = ""  # Comma-separated: LIFE_GRAPH_OWNER_API_KEYS
+    # POST /approvals/{id}/approve|reject only from the owner: a key in
+    # owner_api_keys or a paired phone (api/approvals.py). Off by default:
+    # turn it on once the dashboard's key is listed in owner_api_keys, or the
+    # dashboard gets 403 and only the phone can decide.
+    approvals_require_owner: bool = False
     # A paired phone's token stops working after this many days unused
     # (services/devices.py authenticate; re-pair to get a new one). 0 = never.
     device_token_idle_days: int = Field(default=60, ge=0)

@@ -37,6 +37,11 @@ logger = logging.getLogger(__name__)
 _RECONCILE_TTL_SECONDS = 60.0
 _last_reconciled: dict[str, float] = {}
 
+# How long an approved deploy command may run before it is stopped.
+DEPLOY_TIMEOUT_SECONDS = 600
+# After SIGKILL to a timed-out command's group: how long to wait to reap it.
+_REAP_TIMEOUT_SECONDS = 10
+
 
 class ApprovalAlreadyResolvedError(Exception):
     """Raised when approve/reject is called on an already-resolved item."""
@@ -187,6 +192,7 @@ class ApprovalService:
         appr = await self.session.get(Approval, pk)
         if appr is None or appr.tenant_id != tenant_id:
             raise LookupError(approval_id)
+        await self._claim(appr)
         if appr.status != "pending":
             raise ApprovalAlreadyResolvedError(appr.status)
 
@@ -225,6 +231,36 @@ class ApprovalService:
 
         await self.session.flush()
         return self._serialize(appr)
+
+    async def _claim(self, appr: Approval) -> None:
+        """Lock *appr*'s row for this transaction and re-read it.
+
+        Side effects (a merge, a deploy of up to ten minutes) run before the
+        caller commits, so without a lock two approvals of the same item at
+        once — the phone and the dashboard, or a client retrying after its
+        own timeout — both read ``pending`` and both ran the side effect.
+
+        ``SELECT ... FOR UPDATE NOWAIT``: the row stays locked until the
+        caller commits or rolls back, and a second resolve that arrives
+        meanwhile is told at once that the item is being resolved (the
+        same 409 as an already-resolved item) instead of waiting out the
+        first one's deploy. If the first one fails and rolls back, the lock
+        goes with it and the item is pending again, as before. The re-read
+        matters too: the status checked afterwards is the committed one,
+        not what this session read before the lock.
+        """
+        from sqlalchemy.exc import DBAPIError, InvalidRequestError
+
+        try:
+            await self.session.refresh(appr, with_for_update={"nowait": True})
+        except DBAPIError as exc:
+            if _lock_not_available(exc):
+                raise ApprovalAlreadyResolvedError("being resolved") from None
+            raise
+        except InvalidRequestError:
+            # Deleted between the read and the lock.
+            raise LookupError(str(appr.id)) from None
+        await _exempt_from_idle_timeout(self.session)
 
     async def _apply_driver_pr(self, appr: Approval, approve: bool) -> None:
         """Push a verified task branch and open its PR (approve). Reject: no-op.
@@ -497,10 +533,13 @@ class ApprovalService:
                 cwd=repo,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,  # its own process group: a timeout kills all of it
             )
-            out, err = await asyncio.wait_for(proc.communicate(), timeout=600)
+            out, err = await _communicate_or_kill(proc, DEPLOY_TIMEOUT_SECONDS)
         except TimeoutError as exc:
-            raise ApprovalActionError("deploy command timed out after 600s") from exc
+            raise ApprovalActionError(
+                f"deploy command timed out after {DEPLOY_TIMEOUT_SECONDS}s and was stopped"
+            ) from exc
         except OSError as exc:
             raise ApprovalActionError(f"deploy command could not run: {exc}") from exc
 
@@ -1093,6 +1132,42 @@ class ApprovalService:
                 )
 
 
+async def _exempt_from_idle_timeout(session: Any) -> None:
+    """``SET LOCAL idle_in_transaction_session_timeout = 0`` on Postgres.
+
+    The engine sets that timeout (storage/database.py, 600 s by default) so a
+    forgotten transaction cannot pin a connection. A claimed approval holds
+    its row lock in an open transaction *on purpose* while the side effect
+    runs, and the connection is idle that whole time: a deploy may take
+    ``DEPLOY_TIMEOUT_SECONDS`` plus the smoke check and rollback. Without
+    this, a slow but successful deploy had its connection closed by the
+    server, the final commit failed, the approval stayed pending and a retry
+    deployed again. ``LOCAL`` scopes it to this transaction only; the side
+    effects themselves are bounded by their own timeouts.
+
+    A no-op on any other dialect, and for test doubles with no bind.
+    """
+    get_bind = getattr(session, "get_bind", None)
+    if get_bind is None:
+        return
+    try:
+        dialect = get_bind().dialect.name
+    except Exception:  # noqa: BLE001 - unbound session: nothing to configure
+        return
+    if dialect != "postgresql":
+        return
+    from sqlalchemy import text
+
+    await session.execute(text("SET LOCAL idle_in_transaction_session_timeout = 0"))
+
+
+def _lock_not_available(exc: Exception) -> bool:
+    """True when *exc* is Postgres refusing a ``NOWAIT`` lock (SQLSTATE 55P03)."""
+    orig = getattr(exc, "orig", None)
+    code = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+    return code == "55P03"
+
+
 def _num(value: Any) -> str | None:
     """JSON-safe rendering of a Numeric/Decimal accuracy value."""
     return None if value is None else str(value)
@@ -1112,6 +1187,29 @@ def _post_deploy_plan(meta: dict) -> str:
     return f"Then the smoke check:\n\n{smoke}\n\n{tail}"
 
 
+async def _communicate_or_kill(proc: Any, timeout: float) -> tuple[bytes, bytes]:
+    """``proc.communicate()`` under *timeout*; on expiry, stop the command.
+
+    ``wait_for`` only cancels the read: the command itself (a deploy, a smoke
+    check, a rollback) kept running, and a retry started a second one beside
+    it. *proc* must have been started with ``start_new_session=True``, so
+    SIGKILL to its process group reaches the shell and everything it started.
+    The process is reaped before ``TimeoutError`` is re-raised.
+    """
+    import asyncio
+    import contextlib
+
+    from life_graph.drivers.host_exec import kill_process_group
+
+    try:
+        return await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except TimeoutError:
+        await kill_process_group(proc)
+        with contextlib.suppress(TimeoutError, ProcessLookupError):
+            await asyncio.wait_for(proc.wait(), timeout=_REAP_TIMEOUT_SECONDS)
+        raise
+
+
 async def _run_shell(command: str, cwd: str, timeout: int) -> tuple[int, str]:
     """Run an operator-set shell command in *cwd*: (exit code, combined output)."""
     import asyncio
@@ -1122,10 +1220,11 @@ async def _run_shell(command: str, cwd: str, timeout: int) -> tuple[int, str]:
             cwd=cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True,  # its own process group: a timeout kills all of it
         )
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        out, _ = await _communicate_or_kill(proc, timeout)
     except TimeoutError:
-        return 124, f"timed out after {timeout}s"
+        return 124, f"timed out after {timeout}s and was stopped"
     except OSError as exc:
         return 127, f"could not run: {exc}"
     return proc.returncode or 0, out.decode(errors="replace")
@@ -1141,6 +1240,11 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
     re-runs the same check (same trust bar, CI still enforced by the merge
     itself) on approvals whose PR asked for auto-merge. Called by the
     15-minute ``sync_dev_task_prs`` job.
+
+    Each approval is claimed with ``FOR UPDATE SKIP LOCKED`` and committed on
+    its own: one that a person is approving right now (``resolve`` holds its
+    row lock) is skipped rather than merged twice, and the lock on each row
+    lasts one merge attempt, not the whole sweep.
     """
     from datetime import timedelta
 
@@ -1160,10 +1264,22 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
             .scalars()
             .all()
         )
-        for appr in rows:
+        candidates = [a for a in rows if (a.payload or {}).get("auto_merge")]
+        for candidate in candidates:
+            appr = (
+                await session.execute(
+                    select(Approval)
+                    .where(Approval.id == candidate.id, Approval.status == "pending")
+                    .with_for_update(skip_locked=True)
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one_or_none()
+            if appr is None:
+                continue  # being resolved by someone else, or already resolved
+            # The merge (gh, possibly waiting on the network) runs while this
+            # row lock is held: exempt the transaction from the idle timeout.
+            await _exempt_from_idle_timeout(session)
             payload = appr.payload or {}
-            if not payload.get("auto_merge"):
-                continue
             tried += 1
             svc = ApprovalService(session)
             await svc.maybe_auto_merge(
@@ -1171,7 +1287,7 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
             )
             if appr.status == "approved":
                 merged += 1
-        await session.commit()
+            await session.commit()  # releases this row's lock
     if tried:
         logger.info("Auto-merge retry: %d of %d pending merges went through", merged, tried)
     return {"tried": tried, "merged": merged}

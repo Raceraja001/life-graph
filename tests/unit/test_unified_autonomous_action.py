@@ -28,6 +28,9 @@ class _FakeSession:
         assert str(pk) == str(self._appr.id)
         return self._appr
 
+    async def refresh(self, _obj, **_kw):
+        pass  # resolve() re-reads the row under a lock (FOR UPDATE NOWAIT)
+
     async def flush(self):
         self.flushed = True
 

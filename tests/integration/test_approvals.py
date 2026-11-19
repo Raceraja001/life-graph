@@ -111,3 +111,125 @@ class TestResolve:
         approval_id = await _seed_approval(OTHER_TENANT)
         resp = await client.post(f"/api/v1/approvals/{approval_id}/approve")
         assert resp.status_code in (404, 500)
+
+
+class TestConcurrentResolve:
+    """H4 (audit 2026-11-19): two resolves of one item at once run its side
+    effect once. ``resolve()`` locks the row (FOR UPDATE NOWAIT) before it
+    checks the status, so the second is told 409 instead of running it again."""
+
+    @skip_on_db_error
+    async def test_two_approvals_at_once_run_the_side_effect_once(self, client, monkeypatch):
+        import asyncio
+
+        from life_graph.services.approvals import ApprovalService
+
+        approval_id = await _seed_approval()
+        calls = []
+
+        async def slow_merge(self, tenant_id, appr, approve):
+            calls.append(str(appr.id))
+            await asyncio.sleep(0.5)  # a merge or deploy still running
+
+        monkeypatch.setattr(ApprovalService, "_apply_merge", slow_merge)
+
+        url = f"/api/v1/approvals/{approval_id}/approve"
+        first, second = await asyncio.gather(client.post(url), client.post(url))
+
+        codes = sorted([first.status_code, second.status_code])
+        assert codes == [200, 409], (first.text, second.text)
+        assert calls == [approval_id]
+
+    @skip_on_db_error
+    async def test_a_held_row_is_409_and_pending_again_after_a_rollback(self, client):
+        from sqlalchemy import select
+
+        from life_graph.models.db import Approval
+        from life_graph.storage.database import async_session
+
+        approval_id = await _seed_approval()
+        url = f"/api/v1/approvals/{approval_id}/approve"
+        async with async_session() as holder:
+            await holder.execute(
+                select(Approval).where(Approval.id == uuid.UUID(approval_id)).with_for_update()
+            )
+            busy = await client.post(url)
+            assert busy.status_code == 409, busy.text
+            assert "being resolved" in busy.text
+            await holder.rollback()  # e.g. the first approve's side effect failed
+
+        done = await client.post(url)
+        assert done.status_code == 200, done.text
+        assert done.json()["data"]["status"] == "approved"
+
+    @skip_on_db_error
+    async def test_the_auto_merge_sweep_skips_a_row_being_resolved(self, monkeypatch):
+        from sqlalchemy import select
+
+        from life_graph.models.db import Approval
+        from life_graph.services import approvals
+        from life_graph.storage.database import async_session
+
+        async with async_session() as session:
+            row = Approval(
+                tenant_id=TENANT,
+                kind="driver_merge",
+                source="test",
+                title="Merge test PR",
+                status="pending",
+                payload={"auto_merge": True, "driver": "local"},
+            )
+            session.add(row)
+            await session.commit()
+            mine = row.id
+
+        seen = []
+
+        async def record(self, appr, driver_name, project_id, auto_merge):
+            seen.append(appr.id)
+
+        monkeypatch.setattr(approvals.ApprovalService, "maybe_auto_merge", record)
+
+        async with async_session() as holder:
+            await holder.execute(select(Approval).where(Approval.id == mine).with_for_update())
+            await approvals.retry_auto_merges(async_session)
+            assert mine not in seen
+            await holder.rollback()
+
+        await approvals.retry_auto_merges(async_session)
+        assert mine in seen
+
+    @skip_on_db_error
+    async def test_the_claimed_transaction_is_exempt_from_the_idle_timeout(self, monkeypatch):
+        """The engine's idle_in_transaction_session_timeout (storage/database.py)
+        would close a connection idling through a long deploy. Inside a claimed
+        resolve it is 0; the next transaction on the connection has it back."""
+        from sqlalchemy import text
+
+        from life_graph.services.approvals import ApprovalService
+        from life_graph.storage.database import async_session
+
+        approval_id = await _seed_approval()
+        seen = {}
+
+        async def look(self, tenant_id, appr, approve):
+            seen["inside"] = (
+                await self.session.execute(text("SHOW idle_in_transaction_session_timeout"))
+            ).scalar()
+
+        monkeypatch.setattr(ApprovalService, "_apply_merge", look)
+
+        async with async_session() as session:
+            before = (
+                await session.execute(text("SHOW idle_in_transaction_session_timeout"))
+            ).scalar()
+            await session.commit()
+            await ApprovalService(session).resolve(TENANT, approval_id, "approve")
+            await session.commit()
+            after = (
+                await session.execute(text("SHOW idle_in_transaction_session_timeout"))
+            ).scalar()
+            await session.rollback()
+
+        assert seen["inside"] == "0"
+        assert after == before  # LOCAL: scoped to the claimed transaction only
