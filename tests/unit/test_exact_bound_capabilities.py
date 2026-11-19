@@ -30,6 +30,7 @@ they check is also checked against the in-process store, which always runs.
 
 from __future__ import annotations
 
+import os
 import threading
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -710,8 +711,19 @@ def _postgres_available() -> bool:
     return True
 
 
+_POSTGRES_AVAILABLE = _postgres_available()
+
+# CI's integration job sets this when it runs this file against its migrated
+# test database. There a missing table is a broken setup, not a reason to
+# skip, and a skip would report the Postgres half as green without running it.
+if not _POSTGRES_AVAILABLE and os.environ.get("LIFE_GRAPH_REQUIRE_POSTGRES_TESTS") == "1":
+    raise RuntimeError(
+        "LIFE_GRAPH_REQUIRE_POSTGRES_TESTS=1 but the capabilities table is not "
+        "reachable; run the migrations (python -m alembic upgrade head) first"
+    )
+
 requires_postgres = pytest.mark.skipif(
-    not _postgres_available(),
+    not _POSTGRES_AVAILABLE,
     reason=(
         "needs the capabilities table from migration 059 "
         "(python -m alembic upgrade head). The same properties are checked "
