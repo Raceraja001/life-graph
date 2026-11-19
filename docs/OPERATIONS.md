@@ -511,12 +511,38 @@ docker build -t life-graph-verifier:py3.12 docker/verifier              # verifi
 # .env
 LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=task
 LIFE_GRAPH_VERIFIER_SANDBOX=docker
+LIFE_GRAPH_DRIVER_CLAUDE_CODE_OAUTH_TOKEN=<from `claude setup-token`, see below>
 ```
 
 Restart the API. Check it with `python scripts/runtime_security_probe.py --image
 life-graph-claude-driver:latest`: it should report no host paths, no LIFE_GRAPH_* variables,
 unreachable direct network, and 403 from the proxy for unlisted hosts. A missing image makes
 dispatches fail with `exit_status=sandbox_unavailable`. They never fall back to the host.
+
+### Claude login for sandboxed runs
+
+A sandboxed `claude_code` run (`task` or `docker`) in OAuth mode uses a **long-lived token**:
+
+```bash
+claude setup-token        # in WSL, as the user the API runs as; opens the browser once
+# put the printed token in .env (it is a secret; never commit it):
+LIFE_GRAPH_DRIVER_CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+```
+
+- The container gets it as `CLAUDE_CODE_OAUTH_TOKEN`, passed by name. Docker reads the value
+  from its own environment, so it is never on a command line. The CLI's config dir is a
+  throwaway `/tmp/.claude` in the container. Nothing from `~/.claude` is mounted.
+- The token does not refresh, so nothing needs writing back.
+- With no token, sandboxed dispatch refuses (`sandbox_unavailable`, message names `claude
+  setup-token`). Each run's metadata records `login` (`oauth_token`, `api_key` or
+  `staged_copy`).
+- **Why not copy `~/.claude` in (the old way):** if the host's access token had expired, the
+  CLI in the container refreshed it inside the throwaway copy. The refresh token rotated, and
+  the host's own login was revoked ("OAuth session expired and could not be refreshed"; prod,
+  2026-11-19). That copy is still there behind
+  `LIFE_GRAPH_DRIVER_CLAUDE_CODE_ALLOW_STAGED_LOGIN=true`, for a login you don't otherwise use.
+- The host login (`claude` → `/login`) is separate: host-mode runs and your own sessions use it.
+- Rotate: `claude setup-token` again, replace the value, restart the API.
 
 ### Inspect and clean up
 

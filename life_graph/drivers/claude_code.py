@@ -143,6 +143,21 @@ def _api_key() -> str | None:
     return key
 
 
+_NO_SANDBOX_LOGIN = (
+    "claude_code sandbox needs a long-lived login: run `claude setup-token` and set "
+    "LIFE_GRAPH_DRIVER_CLAUDE_CODE_OAUTH_TOKEN. Copying ~/.claude into the container "
+    "revokes the host's own login when the CLI refreshes it (docs/OPERATIONS.md, "
+    "'Claude login for sandboxed runs')"
+)
+
+
+def _oauth_token() -> str | None:
+    """The long-lived login (``claude setup-token``) for a sandboxed run, if set."""
+    return (
+        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or settings.driver_claude_code_oauth_token or None
+    )
+
+
 class _LiveStream:
     """Turns the CLI's stream-json lines into live session events (Stage 4).
 
@@ -431,20 +446,33 @@ class ClaudeCodeDriver:
                 raise
             return proc.returncode, out, err
 
-        # API-key mode stages no personal credentials at all.
+        # API-key mode stages no personal credentials at all. OAuth mode uses
+        # the long-lived token (nothing copied, nothing refreshed); copying
+        # the host's login file is a legacy opt-in, since a refresh inside
+        # the container revokes the host's copy.
         creds_dir = None
+        oauth_token = None
         if not api_key:
-            creds_source = Path(settings.driver_claude_code_creds_path).expanduser()
-            creds_dir = await sandbox.stage_credentials(creds_source)
+            oauth_token = _oauth_token()
+            if not oauth_token:
+                if not settings.driver_claude_code_allow_staged_login:
+                    raise sandbox.SandboxUnavailableError(_NO_SANDBOX_LOGIN)
+                creds_source = Path(settings.driver_claude_code_creds_path).expanduser()
+                creds_dir = await sandbox.stage_credentials(creds_source)
+        if audit is not None:
+            # Which login the container got (never the value).
+            audit["login"] = (
+                "api_key" if api_key else "oauth_token" if oauth_token else "staged_copy"
+            )
         try:
             if sandbox.task_runtime_enabled():
                 result = await self._run_in_task_runtime(
                     args, cwd, creds_dir, timeout=timeout, api_key=api_key, packet=packet,
-                    audit=audit,
+                    audit=audit, oauth_token=oauth_token,
                 )  # fmt: skip
             else:
                 result = await sandbox.run_driver(
-                    args, cwd, creds_dir, timeout=timeout, api_key=api_key
+                    args, cwd, creds_dir, timeout=timeout, api_key=api_key, oauth_token=oauth_token
                 )
         except sandbox.SandboxUnavailableError as exc:
             if "timed out" in str(exc):
@@ -465,9 +493,19 @@ class ClaudeCodeDriver:
         api_key: str | None,
         packet: ContextPacket | None,
         audit: dict | None,
+        oauth_token: str | None = None,
     ) -> sandbox.SandboxResult:
         """The claude_code CLI in its per-task runtime (services/dev/task_runtime.py)."""
         from life_graph.services.dev import task_runtime
+
+        # Both secrets go by NAME (docker reads the value from its own
+        # environment), with a throwaway config dir on the container's tmpfs.
+        if api_key:
+            secret_env = {"ANTHROPIC_API_KEY": api_key}
+        elif oauth_token:
+            secret_env = {"CLAUDE_CODE_OAUTH_TOKEN": oauth_token}
+        else:
+            secret_env = {}
 
         env = {
             # Nothing but the API and the token refresh: no telemetry, no
@@ -479,7 +517,7 @@ class ClaudeCodeDriver:
             # __pycache__/*.pyc in the worktree, and so in the landed diff
             # (seen in the first end-to-end run, 2026-11-18).
             "PYTHONDONTWRITEBYTECODE": "1",
-            "CLAUDE_CONFIG_DIR": "/tmp/.claude" if api_key else "/claude-config",
+            "CLAUDE_CONFIG_DIR": "/tmp/.claude" if secret_env else "/claude-config",
         }
         req = task_runtime.RuntimeRequest(
             task_id=str(packet.task_id) if packet else "unknown",
@@ -489,9 +527,9 @@ class ClaudeCodeDriver:
             # The image's own binary, not args[0] (the host's configured path).
             command=(sandbox.DRIVER_CLI, *args[1:]),
             workspace=cwd,
-            credentials=None if api_key else creds_dir,
+            credentials=None if secret_env else creds_dir,
             env=env,
-            secret_env={"ANTHROPIC_API_KEY": api_key} if api_key else {},
+            secret_env=secret_env,
             egress_allowlist=tuple(settings.driver_runtime_egress_allowlist_list),
             memory=settings.driver_claude_sandbox_memory,
             cpus=settings.driver_claude_sandbox_cpus,
