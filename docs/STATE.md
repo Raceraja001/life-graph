@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-18 13:23 UTC` from `master` @ `3be4270`
+Generated `2026-11-19 05:13 UTC` from `master` @ `6ce846a`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-18 13:23 UTC` from `master` @ `3be4270`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
-| Config settings | **312** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5069** in 524 files |
+| Config settings | **314** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5079** in 525 files |
 | Dashboard pages | **23** |
-| Python | 563 files, 140,585 lines |
+| Python | 563 files, 140,641 lines |
 
 ---
 
@@ -1031,16 +1031,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 405 | 4198 |
+| `tests/unit/` | 406 | 4208 |
 | `tests/integration/` | 118 | 859 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **524** | **5069** |
+| **total** | **525** | **5079** |
 
 ---
 
 ## Configuration
 
-312 settings, all overridable by environment variable.
+314 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1197,6 +1197,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_TIMEOUT_SECONDS` | `1200` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_AUTH` | `'oauth'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_API_KEY` | `''` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_CODE_OAUTH_TOKEN` | `''` |
 | `LIFE_GRAPH_DRIVER_OPENCODE_ENABLED` | `False` |
 | `LIFE_GRAPH_DRIVER_OPENCODE_BIN` | `'opencode'` |
 | `LIFE_GRAPH_DRIVER_OPENCODE_MODEL` | `'ollama/qwen3-coder:30b'` |
@@ -1239,6 +1240,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_MEMORY` | `'4g'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_CPUS` | `'4'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_CREDS_PATH` | `'~/.claude/.credentials.json'` |
+| `LIFE_GRAPH_DRIVER_CLAUDE_CODE_ALLOW_STAGED_LOGIN` | `False` |
 | `LIFE_GRAPH_DRIVER_RUNTIME_EGRESS_IMAGE` | `'life-graph-sandbox-egress:dev'` |
 | `LIFE_GRAPH_DRIVER_RUNTIME_EGRESS_ALLOWLIST` | `'api.anthropic.com,console.anthropic.com,platform.claude.…` |
 | `LIFE_GRAPH_DRIVER_RUNTIME_PIDS_LIMIT` | `512` |
