@@ -40,11 +40,13 @@ router = APIRouter(prefix="/watchers", tags=["watchers"])
 
 
 def _get_tenant() -> str:
-    """Get current tenant ID from context."""
-    try:
-        return get_current_tenant_id()
-    except Exception:
-        return "default"
+    """Get current tenant ID from context.
+
+    Fails closed: with no tenant context this raises (a 500 through the
+    global handler) instead of reading and writing the "default" tenant's
+    watchers, which is someone else's data in a multi-tenant deployment.
+    """
+    return get_current_tenant_id()
 
 
 # ── Watcher Config ────────────────────────────────────────────────────────────
