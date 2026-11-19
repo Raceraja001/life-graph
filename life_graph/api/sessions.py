@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
+# Micro-consolidations in flight: the loop holds tasks only weakly, so an
+# unreferenced one can be garbage-collected mid-run (audit L6).
+_background: set[asyncio.Task[None]] = set()
+
 
 # ── Request schemas ──────────────────────────────────────────
 
@@ -170,10 +174,12 @@ async def end_session(
         await scorer.record_outcome(session_id, outcome)
 
     # Trigger micro-consolidation (non-blocking background task)
-    asyncio.create_task(
+    task = asyncio.create_task(
         _run_micro_consolidation(session_id),
         name=f"micro-consolidate-{session_id}",
     )
+    _background.add(task)
+    task.add_done_callback(_background.discard)
 
     logger.info("Ended session %s (memories=%d)", session_id, memory_count)
     return success_response(data=SessionResponse.model_validate(sess))

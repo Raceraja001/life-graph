@@ -31,6 +31,10 @@ from sqlalchemy import event as sa_event
 
 logger = logging.getLogger(__name__)
 
+# Deferred emits in flight. The loop keeps only a weak reference to a task, so
+# one nobody holds can be garbage-collected before it runs (audit L6).
+_pending_emits: set[asyncio.Task[Any]] = set()
+
 
 class EventType(StrEnum):
     """All event types emitted within the Life Graph system."""
@@ -271,6 +275,8 @@ async def emit_after_commit(
     def _schedule(_session: Any) -> None:
         def _spawn() -> None:
             task = loop.create_task(target.emit(event_type, payload, source=source))
+            _pending_emits.add(task)
+            task.add_done_callback(_pending_emits.discard)
             task.add_done_callback(_log_task_failure)
 
         loop.call_soon_threadsafe(_spawn)
