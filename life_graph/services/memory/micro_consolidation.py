@@ -15,7 +15,6 @@ to the nightly :class:`ConsolidationPipeline`.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import time
@@ -199,23 +198,33 @@ class MicroConsolidator:
             if mem.embedding is None or mem.status != "active":
                 continue
 
-            # Search for similar memories (excluding self)
+            # Nearest active memories of this tenant (search_similar scopes to
+            # the current tenant). It returns rows, not scores, so the cosine
+            # is computed here; self is skipped below. This called
+            # ``search_by_embedding``, which never existed: the AttributeError
+            # was swallowed and nothing was ever deduped (audit H8, 2026-11-19).
+            embedding = [float(x) for x in mem.embedding]
             try:
-                similar = await self._store.search_by_embedding(
-                    embedding=mem.embedding,
-                    limit=5,
-                    threshold=self._DEDUP_THRESHOLD,
+                candidates = await self._store.search_similar(
+                    embedding=embedding,
+                    limit=6,
+                    filters={"status": "active"},
                 )
             except Exception:
-                logger.debug("Dedup search failed for %s", mem.id)
+                logger.warning("Dedup search failed for %s", mem.id, exc_info=True)
                 continue
 
-            for existing, similarity in similar:
-                if existing.id == mem.id:
+            similar: list[tuple[Memory, float]] = []
+            for existing in candidates:
+                if existing.id == mem.id or existing.embedding is None:
                     continue
                 if existing.status != "active":
                     continue
+                score = _cosine_similarity(embedding, [float(x) for x in existing.embedding])
+                if score >= self._DEDUP_THRESHOLD:
+                    similar.append((existing, score))
 
+            for existing, similarity in similar:
                 # This memory is a near-duplicate of an existing one
                 # Keep the older one (it has more history)
                 if existing.created_at <= mem.created_at:
@@ -325,10 +334,14 @@ class MicroConsolidator:
             if not entity_names:
                 continue
 
-            # Upsert vertices
+            # Upsert vertices. The edges below must match each vertex by the
+            # label it was written with: they matched ``Entity`` only, so an
+            # edge to a Person/Project/Technology never landed (audit H8).
             canonical_names: list[str] = []
-            for name in entity_names:
+            labels: dict[str, str] = {}
+            for name in sorted(entity_names):
                 label = infer_label(name, context=mem.content)
+                labels[name] = label
                 try:
                     await graph.upsert_vertex(
                         label=label,
@@ -349,10 +362,12 @@ class MicroConsolidator:
                 for i, src in enumerate(canonical_names):
                     for dst in canonical_names[i + 1 :]:
                         try:
-                            await graph.create_edge(
-                                from_label="Entity",
+                            # Match-or-create, so a re-run does not add the
+                            # same edge again; counted only when one landed.
+                            edge_id = await graph.create_edge_if_absent(
+                                from_label=labels[src],
                                 from_name=src,
-                                to_label="Entity",
+                                to_label=labels[dst],
                                 to_name=dst,
                                 edge_label="related_to",
                                 properties={
@@ -360,11 +375,12 @@ class MicroConsolidator:
                                 },
                                 tenant_id=mem.tenant_id,
                             )
-                            edges_created += 1
                         except Exception:
-                            pass  # Edge may already exist
+                            logger.debug("Failed to create edge %s -> %s", src, dst, exc_info=True)
+                            continue
+                        if edge_id:
+                            edges_created += 1
 
-        with contextlib.suppress(Exception):
-            await graph.close()
-
+        # No graph.close(): the pool is process-wide, and closing it here broke
+        # every graph query running at the same moment (audit H8).
         return entities_created, edges_created
