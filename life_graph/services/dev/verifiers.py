@@ -18,6 +18,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
 
 from life_graph.config import settings
+from life_graph.core.redaction import SECRET_SHAPES
 from life_graph.services.dev import sandbox
 from life_graph.services.dev.acceptance import is_js_test_ref, is_safe_test_ref
 
@@ -792,19 +793,21 @@ _MAX_SCANNED_FILE_BYTES = 2_000_000
 # assets and test fixtures. Each pattern here is a real credential format
 # that has no other legitimate reason to appear in a diff. Named so the
 # evidence can say *what* matched without ever echoing the matched text.
-_SECRET_PATTERNS: tuple[tuple[str, str], ...] = (
-    ("aws_access_key_id", r"AKIA[0-9A-Z]{16}"),
-    ("private_key_block", r"-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
-    ("github_pat_classic", r"ghp_[A-Za-z0-9]{36}"),
-    ("github_pat_fine_grained", r"github_pat_[A-Za-z0-9_]{22,}"),
-    ("slack_token", r"xox[baprs]-[A-Za-z0-9-]{10,}"),
-    ("stripe_live_key", r"sk_live_[A-Za-z0-9]{24,}"),
-    ("anthropic_api_key", r"sk-ant-[A-Za-z0-9\-_]{20,}"),
-    ("openai_api_key", r"sk-proj-[A-Za-z0-9\-_]{20,}"),
-    ("google_api_key", r"AIza[0-9A-Za-z\-_]{35}"),
-    ("npm_token", r"npm_[A-Za-z0-9]{36}"),
-)
-_SECRET_RE = [(name, re.compile(pat)) for name, pat in _SECRET_PATTERNS]
+#
+# The patterns are the high-confidence subset of the canonical list in
+# core/redaction.py (audit H1: one list, not three drifting copies). The
+# generic ``sk-`` and JWT shapes are left out on purpose. Evidence keeps the
+# names this gate has always reported.
+_EVIDENCE_NAMES = {
+    "aws_key": "aws_access_key_id",
+    "pem": "private_key_block",
+    "anthropic_key": "anthropic_api_key",
+    "openai_project_key": "openai_api_key",
+    "google_key": "google_api_key",
+}
+_SECRET_RE: list[tuple[str, re.Pattern[str]]] = [
+    (_EVIDENCE_NAMES.get(s.kind, s.kind), s.pattern) for s in SECRET_SHAPES if s.high_confidence
+]
 
 # AWS's own documented placeholder, used in nearly every S3/IAM tutorial and
 # copied into countless test fixtures. It matches aws_access_key_id but is
@@ -821,7 +824,7 @@ async def _verify_no_secrets_in_diff(workdir: Path, ctx: dict) -> tuple[bool, di
     Pure regex over each changed file's current content — no subprocess, no
     sandbox, so it runs identically whether sandboxing is on or not and adds
     no meaningful latency. High-confidence patterns only (see
-    :data:`_SECRET_PATTERNS`); this catches an agent that echoed a live key
+    :data:`_SECRET_RE`); this catches an agent that echoed a live key
     into a config file or committed a staged credentials file, not every
     possible secret shape.
 

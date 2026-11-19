@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from life_graph.core.events import EventBus, EventType, emit_after_commit
+from life_graph.core.redaction import redact_secrets
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
 from life_graph.models.db import CaptureEvent, Correction
@@ -84,6 +85,9 @@ class CaptureService:
     ) -> CaptureEvent:
         """Universal capture ingress with SHA-256 dedup (10-min window per surface).
 
+        ``content`` is secret-redacted (:func:`redact_secrets`) before it is
+        hashed and stored.
+
         If the same content hash + surface is found within the last 10 minutes,
         the existing event is marked as ``duplicate`` and returned instead.
 
@@ -106,7 +110,16 @@ class CaptureService:
         resolved_tier = (
             coerce_tier(trust_tier) if trust_tier is not None else classify_surface(surface)
         )
-        content = without_nul(content)
+        # Secrets are redacted here, server-side, for every surface: clients
+        # redact too, but an old or third-party client may not, and a key in
+        # a capture becomes a memory and can be echoed back to Telegram.
+        # Redacting BEFORE hashing is deliberate: the hash describes what is
+        # stored, so two captures that differ only in the secret dedup as one
+        # (their stored rows would be identical anyway). A retry of the same
+        # capture goes through the same redaction, so it still dedups; only a
+        # row stored before this change (hash of unredacted text) can miss a
+        # match, once, inside its 10-minute window.
+        content = redact_secrets(without_nul(content))
         properties = without_nul(properties)
         now = occurred_at or captured_at(properties) or datetime.now(UTC)
         content_hash = hashlib.sha256(content.encode()).hexdigest()
