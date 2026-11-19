@@ -115,7 +115,7 @@ async def main() -> int:
                 pids_limit=args.pids, timeout=args.seconds + 60, tmp_size="64m",
             ))  # fmt: skip
             return {"kind": kind, "exit": out.returncode, "stdout": out.stdout.strip()[-120:],
-                    "seconds": round(time.monotonic() - t0, 1),
+                    "seconds": round(time.monotonic() - t0, 1), "subnet": out.metadata.get("subnet"),
                     "teardown": out.metadata.get("teardown", {}).get("ok")}  # fmt: skip
         except sandbox.SandboxUnavailableError as exc:
             meta = getattr(exc, "runtime_metadata", {}) or {}

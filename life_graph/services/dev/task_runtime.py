@@ -45,6 +45,8 @@ hosts with it. See the ADR's residual-risk section.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import ipaddress
 import logging
 import os
 import shutil
@@ -73,7 +75,10 @@ logger = logging.getLogger(__name__)
 # Bumped whenever what a runtime container is allowed changes, so a task's
 # recorded metadata says which rules it ran under.
 # 2026-11-19.1: the project's cached verifier env may be mounted read-only.
-POLICY_VERSION = "2026-11-19.1"
+# 2026-11-19.2: the internal network gets an explicit subnet from
+#   driver_runtime_subnet_pool (same internal + isolated-gateway network; only
+#   where its addresses come from changed).
+POLICY_VERSION = "2026-11-19.2"
 
 OUTBOUND_NETWORK = "lg-rt-outbound"
 EGRESS_PORT = 8080
@@ -160,6 +165,53 @@ _ISOLATED_GATEWAY_OPTS = (
     "com.docker.network.bridge.gateway_mode_ipv4",
     "com.docker.network.bridge.gateway_mode_ipv6",
 )
+
+# How many subnets one runtime tries before it fails closed.
+SUBNET_ATTEMPTS = 8
+
+
+def _subnet_candidates(rid: str, pool: str, prefix: int) -> list[str]:
+    """Up to SUBNET_ATTEMPTS distinct /``prefix`` subnets of ``pool`` for ``rid``.
+
+    Derived from the runtime id, so concurrent runtimes spread over the pool
+    (a collision costs one retry) and a run is reproducible in tests.
+
+    Raises:
+        SandboxUnavailableError: the pool is not a private network, or the
+            prefix does not fit inside it.
+    """
+    try:
+        net = ipaddress.ip_network(pool.strip(), strict=True)
+    except ValueError as exc:
+        raise SandboxUnavailableError(
+            f"driver_runtime_subnet_pool {pool!r} is not a network: {exc}"
+        ) from exc
+    if net.version != 4 or not net.is_private:
+        raise SandboxUnavailableError(
+            f"driver_runtime_subnet_pool {pool!r} must be a private IPv4 range"
+        )
+    # /29 is the smallest that holds the gateway reservation, proxy and driver.
+    if not net.prefixlen <= prefix <= 29:
+        raise SandboxUnavailableError(
+            f"driver_runtime_subnet_prefix /{prefix} does not fit in {pool}"
+            f" (allowed: /{net.prefixlen} to /29)"
+        )
+    slots = 2 ** (prefix - net.prefixlen)
+    size = 2 ** (32 - prefix)
+    picked: list[str] = []
+    for i in range(SUBNET_ATTEMPTS * 4):
+        if len(picked) >= min(SUBNET_ATTEMPTS, slots):
+            break
+        idx = int(hashlib.sha256(f"{rid}:{i}".encode()).hexdigest(), 16) % slots
+        cand = str(ipaddress.ip_network((int(net.network_address) + idx * size, prefix)))
+        if cand not in picked:
+            picked.append(cand)
+    return picked
+
+
+def _overlaps(res: SandboxResult) -> bool:
+    """Docker refused the subnet because another network already holds it."""
+    return "overlap" in (res.stderr or "").lower()
 
 
 def _event(req: RuntimeRequest, kind: str, content: str, data: dict | None = None) -> None:
@@ -266,7 +318,7 @@ class DockerTaskRuntime:
             spec = self._driver_spec(req, names, labels)
             meta["user"] = spec.user
             meta["binds"] = [{"target": b.target, "read_only": b.read_only} for b in spec.binds]
-            await self._create_network(names["network"], labels)
+            meta["subnet"] = await self._create_network(names["network"], labels, rid)
             _event(req, "runtime", "isolated network ready", {"network": names["network"]})
             if req.egress_allowlist:
                 meta["egress_image"] = settings.driver_runtime_egress_image
@@ -412,7 +464,8 @@ class DockerTaskRuntime:
             )
         return res.stdout.strip()
 
-    async def _create_network(self, name: str, labels: dict[str, str]) -> None:
+    async def _create_network(self, name: str, labels: dict[str, str], rid: str = "") -> str | None:
+        """Create the runtime's internal network; return its explicit subnet, if any."""
         # --internal alone is not enough: it drops forwarded traffic, but the
         # host still holds an address on the bridge, and a container reached
         # host services bound to 0.0.0.0 through it (probe 2026-11-18: the prod
@@ -423,11 +476,31 @@ class DockerTaskRuntime:
             argv += ["-o", f"{opt}=isolated"]
         for key in sorted(labels):
             argv += ["--label", f"{key}={labels[key]}"]
-        res = await self._docker([*argv, name], timeout=30)
-        if res.returncode != 0:
+        pool = (settings.driver_runtime_subnet_pool or "").strip()
+        # None: docker's default pools (the old behaviour). Otherwise only
+        # subnets of the pool; never a fallback to the default pools.
+        subnets: list[str | None] = (
+            list(_subnet_candidates(rid or name, pool, int(settings.driver_runtime_subnet_prefix)))
+            if pool
+            else [None]
+        )
+        res: SandboxResult | None = None
+        for subnet in subnets:
+            extra = ["--subnet", subnet] if subnet else []
+            res = await self._docker([*argv, *extra, name], timeout=30)
+            if res.returncode == 0:
+                break
+            if not (subnet and _overlaps(res)):
+                raise SandboxUnavailableError(
+                    f"could not create an isolated runtime network (needs docker >= 28): "
+                    f"{res.stderr[-300:]}"
+                )
+            logger.info("runtime subnet %s is taken; trying another", subnet)
+        else:
             raise SandboxUnavailableError(
-                f"could not create an isolated runtime network (needs docker >= 28): "
-                f"{res.stderr[-300:]}"
+                f"could not create an isolated runtime network: {len(subnets)} subnets of"
+                f" {pool} were all taken (driver_runtime_subnet_pool): "
+                f"{(res.stderr if res else '')[-200:]}"
             )
         # Both properties checked, not assumed: an older daemon may accept and
         # ignore the option.
@@ -444,6 +517,7 @@ class DockerTaskRuntime:
             raise SandboxUnavailableError(
                 f"runtime network {name} is not internal with an isolated gateway"
             )
+        return subnet
 
     async def _ensure_outbound(self) -> None:
         res = await self._docker(["docker", "network", "inspect", OUTBOUND_NETWORK], timeout=30)

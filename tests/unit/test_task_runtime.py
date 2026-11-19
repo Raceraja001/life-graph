@@ -370,6 +370,113 @@ async def test_a_daemon_that_ignores_isolated_mode_is_refused(roots):
     assert docker.has("network rm")
 
 
+# ── Where the network's addresses come from ────────────────────
+
+_OVERLAP = SandboxResult(
+    1, "", "Error response from daemon: invalid pool request: Pool overlaps with other one"
+)
+
+
+async def test_the_network_gets_a_subnet_from_the_configured_pool(roots, monkeypatch):
+    """Docker's default pools ran out at 12 concurrent runtimes (2026-11-19)."""
+    import ipaddress
+
+    monkeypatch.setattr(settings, "driver_runtime_subnet_pool", "10.213.0.0/16")
+    monkeypatch.setattr(settings, "driver_runtime_subnet_prefix", 28)
+    docker = FakeDocker()
+    out = await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    net = docker.first("network create")
+    subnet = ipaddress.ip_network(net[net.index("--subnet") + 1])
+    assert subnet.prefixlen == 28
+    assert subnet.subnet_of(ipaddress.ip_network("10.213.0.0/16"))
+    assert out.metadata["subnet"] == str(subnet)
+    # The rest of the policy is unchanged.
+    assert "--internal" in net
+    assert "com.docker.network.bridge.gateway_mode_ipv4=isolated" in net
+    assert net[-1].startswith("lg-rt-net-")
+
+
+def test_subnet_candidates_are_distinct_spread_and_in_range():
+    import ipaddress
+
+    pool = ipaddress.ip_network("10.213.0.0/16")
+    a = task_runtime._subnet_candidates("aaaa", str(pool), 28)
+    b = task_runtime._subnet_candidates("bbbb", str(pool), 28)
+    assert len(a) == task_runtime.SUBNET_ATTEMPTS == len(set(a))
+    assert a != b and a == task_runtime._subnet_candidates("aaaa", str(pool), 28)
+    assert all(ipaddress.ip_network(s).subnet_of(pool) for s in a + b)
+    # A pool smaller than the attempt count yields each subnet once.
+    assert len(task_runtime._subnet_candidates("x", "10.213.0.0/27", 28)) == 2
+
+
+@pytest.mark.parametrize(
+    ("pool", "prefix"),
+    [("8.8.0.0/16", 28), ("not-a-net", 28), ("10.213.0.0/16", 12), ("10.213.0.0/16", 30)],
+)
+async def test_a_bad_subnet_pool_fails_closed(roots, monkeypatch, pool, prefix):
+    monkeypatch.setattr(settings, "driver_runtime_subnet_pool", pool)
+    monkeypatch.setattr(settings, "driver_runtime_subnet_prefix", prefix)
+    docker = FakeDocker()
+    with pytest.raises(sandbox.SandboxUnavailableError, match="driver_runtime_subnet"):
+        await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    assert not docker.has("network create")
+    assert not docker.has("run driver")
+
+
+async def test_a_taken_subnet_is_retried_with_another(roots, monkeypatch):
+    monkeypatch.setattr(settings, "driver_runtime_subnet_pool", "10.213.0.0/16")
+    tries: list[str] = []
+
+    async def create(argv):
+        tries.append(argv[argv.index("--subnet") + 1])
+        return _OVERLAP if len(tries) < 3 else SandboxResult(0, "netid\n", "")
+
+    docker = FakeDocker(**{"network create": create})
+    out = await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    assert out.returncode == 0
+    assert len(tries) == 3 == len(set(tries))
+    assert out.metadata["subnet"] == tries[-1]
+    assert docker.has("run driver")
+
+
+async def test_every_subnet_taken_fails_closed_without_a_fallback(roots, monkeypatch):
+    monkeypatch.setattr(settings, "driver_runtime_subnet_pool", "10.213.0.0/16")
+    docker = FakeDocker(**{"network create": _OVERLAP})
+    with pytest.raises(sandbox.SandboxUnavailableError, match="all taken"):
+        await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    creates = [c for c in docker.calls if docker.verb(c) == "network create"]
+    assert len(creates) == task_runtime.SUBNET_ATTEMPTS
+    # Never a network from docker's default pools, never a container.
+    assert all("--subnet" in c and "--internal" in c for c in creates)
+    assert not docker.has("run driver") and not docker.has("run proxy")
+    assert docker.has("network rm")
+
+
+async def test_a_non_overlap_create_error_is_not_retried(roots, monkeypatch):
+    monkeypatch.setattr(settings, "driver_runtime_subnet_pool", "10.213.0.0/16")
+    docker = FakeDocker(**{"network create": SandboxResult(1, "", "permission denied")})
+    with pytest.raises(sandbox.SandboxUnavailableError, match="permission denied"):
+        await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    assert sum(docker.verb(c) == "network create" for c in docker.calls) == 1
+
+
+async def test_an_empty_pool_keeps_dockers_default_pools(roots, monkeypatch):
+    monkeypatch.setattr(settings, "driver_runtime_subnet_pool", "")
+    docker = FakeDocker()
+    out = await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
+    net = docker.first("network create")
+    assert "--subnet" not in net
+    labels = [x for i, x in enumerate(net) if i and net[i - 1] == "--label"]
+    assert net == [
+        "docker", "network", "create", "--internal",
+        "-o", "com.docker.network.bridge.gateway_mode_ipv4=isolated",
+        "-o", "com.docker.network.bridge.gateway_mode_ipv6=isolated",
+        *[x for lab in labels for x in ("--label", lab)],
+        out.metadata["network"],
+    ]  # fmt: skip
+    assert out.metadata["subnet"] is None
+
+
 async def test_everything_is_labelled_with_this_install(roots):
     docker = FakeDocker()
     await task_runtime.DockerTaskRuntime(docker).run(_req(roots))

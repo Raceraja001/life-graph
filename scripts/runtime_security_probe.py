@@ -84,17 +84,25 @@ for name, (h, p) in {"internet_1111_443": ("1.1.1.1", 443), "internet_8888_53": 
     r["direct_" + name] = attempt(lambda h=h, p=p: tcp(h, p))
 r["resolve_host_docker_internal"] = attempt(lambda: socket.getaddrinfo("host.docker.internal", 80)[0][4][0])
 
-# The bridge's own gateway address (.1 of this container's subnet): with plain
-# --internal the HOST held this address and answered on every 0.0.0.0 port.
-def own_ip():
+# The bridge's own gateway address (first host of this container's subnet):
+# with plain --internal the HOST held this address and answered on every
+# 0.0.0.0 port. Read from the interface's netmask, not assumed to be a /24:
+# runtime networks get a /28 from driver_runtime_subnet_pool.
+def own_ip_and_mask():
     import fcntl, struct
     for name in os.listdir("/sys/class/net"):
         if name == "lo":
             continue
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        packed = fcntl.ioctl(s.fileno(), 0x8915, struct.pack("256s", name.encode()[:15]))
-        return socket.inet_ntoa(packed[20:24])
-gw = ".".join(own_ip().split(".")[:3]) + ".1"
+        req = struct.pack("256s", name.encode()[:15])
+        ip = socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, req)[20:24])  # SIOCGIFADDR
+        mask = socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x891B, req)[20:24])  # SIOCGIFNETMASK
+        return ip, mask
+import ipaddress
+_ip, _mask = own_ip_and_mask()
+_subnet = ipaddress.ip_network(f"{_ip}/{_mask}", strict=False)
+gw = str(_subnet.network_address + 1)
+r["own_subnet"] = str(_subnet)
 r["bridge_gateway"] = gw
 # With gateway_mode_ipv4=isolated the network has no gateway, so docker hands
 # .1 to the first container on it -- the egress proxy, which listens on its

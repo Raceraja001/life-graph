@@ -576,6 +576,30 @@ LIFE_GRAPH_DRIVER_CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
   prune --filter label=life-graph.runtime=1`. Never remove the shared `lg-rt-outbound`
   network while a task is running.
 
+### Runtime network addresses
+
+Each runtime's internal network gets an explicit `/28` from
+`LIFE_GRAPH_DRIVER_RUNTIME_SUBNET_POOL` (default `10.213.0.0/16`, prefix
+`LIFE_GRAPH_DRIVER_RUNTIME_SUBNET_PREFIX=28`, so 4096 networks). Docker's default address
+pools hold about 31 networks and the other stacks on this shared daemon use most of them: on
+2026-11-19 the 12th concurrent runtime failed with "all predefined address pools have been
+fully subnetted". The daemon config is not changed (that would restart every container).
+
+- The subnet is derived from the runtime id. If another network holds it, docker says
+  "Pool overlaps", and the runtime tries another one, 8 at most. After that the dispatch
+  fails closed (`sandbox_unavailable`). It never falls back to docker's default pools or to
+  the host. The rest of the network policy is unchanged: internal, isolated gateway, same
+  labels, same proxy. The chosen subnet is in the run's metadata (`runtime.subnet`).
+- The pool must be private IPv4 and must not overlap anything the host routes. On
+  2026-11-19, `10.213.0.0/16` was clear of WSL (`172.17.192.0/20`, `10.255.255.254`), every
+  docker network (`172.18-31/16`, `192.168.0-79/20`), Tailscale (`100.64.0.0/10`) and the
+  Windows LAN (`10.78.60.0/24`). Check again with `ip route` and `ipconfig` after joining a
+  new network (a VPN or another Wi-Fi), and move the pool if it now overlaps.
+- An empty pool means docker picks from its default pools (the old behaviour).
+- Evidence: `evals/reliability/20261119-runtime-pressure-subnet-pool.json` (23 runtimes, 20 at
+  once, all started) and `docs/security/runtime-probe-20261119-subnet-pool.json` (isolation
+  unchanged).
+
 ### Rollback
 
 Set `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX=docker` (previous container behaviour) and restart.
