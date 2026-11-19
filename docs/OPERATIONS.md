@@ -639,6 +639,28 @@ is the one control.
 - **Cancel:** the page's Cancel button takes two clicks.
   `POST /kernel/drivers/tasks/{id}/cancel` does the same.
 
+### Runtime health
+
+`GET /api/v1/observe/system` has a `runtime` section: `status` (`ok`, `warning` or `critical`),
+plus counts for the runner, tasks and containers, and the list of `issues`. It is install-wide,
+so it carries counts and issue codes only, never task data
+(`services/dev/runtime_health.py`). Every 10 minutes the **arq worker** checks it. That is a
+different process from the dev-task worker, so a dead dev-task worker is still noticed. It
+writes one owner notification per issue per 6-hour window (`source_type=runtime_health`), sent
+to `LIFE_GRAPH_RUNTIME_HEALTH_ALERT_TENANTS` or, if that is empty, to the tenants who created
+dev tasks in the last 30 days.
+
+| Code | Severity | Meaning | First look |
+|---|---|---|---|
+| `runner_down` | critical | Nobody holds the runner lock | `systemctl --user status life-graph-dev-runner`, `logs/dev-runner.log` |
+| `stale_leases` | critical | A running task stopped heartbeating | The runner recovers it after 180 s; if not, the worker is wedged: restart the unit |
+| `queue_stuck` | warning | A start-now task has waited 30 min | Concurrency limit, or the WIP limits (`waiting` on the task) |
+| `failures` | warning | 5 or more failed tasks in 24 h | `GET /kernel/drivers/failures` |
+| `orphans` | warning | Containers or networks left by tasks that are not running, older than 5 min | The periodic sweep should remove them; see "Inspect and clean up" |
+| `memory_pressure` | warning | An agent container is at 90% or more of its memory limit | `docker stats`; consider `DRIVER_CLAUDE_SANDBOX_MEMORY` |
+| `docker_unavailable` | warning | Containers could not be listed while tasks use them | The docker daemon |
+| `db_unavailable` | critical | The database check failed | Postgres |
+
 ### Benchmark and reliability checks
 
 - **Benchmark:**

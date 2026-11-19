@@ -58,6 +58,11 @@ _INTENTIONAL_GLOBAL: dict[tuple[str, str], str] = {
         "the runner writes the final status of a task it is itself running, by the id "
         "it claimed; tenancy was checked when the cancel was requested"
     ),
+    ("services/dev/runtime_health.py", "collect"): (
+        "deployment-level health of the one dev-task runner (it claims across tenants): "
+        "lock holder, lease ages, queue depth and failure counts; returns counts and "
+        "issue codes only, never task data"
+    ),
     ("services/dev/task_runtime.py", "sweep_orphans"): (
         "runner-process cleanup: reads only the ids of running tasks across all "
         "tenants so no tenant's live container is removed; returns no task data"

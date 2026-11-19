@@ -1,0 +1,743 @@
+{
+ "jobs": 13,
+ "limits": {
+  "memory": "2g",
+  "cpus": "2",
+  "pids": 128
+ },
+ "mem_available_gb": {
+  "before": 28.6,
+  "min": 18.26
+ },
+ "peak_concurrent_agents": 11,
+ "results": [
+  {
+   "kind": "burn",
+   "exit": 0,
+   "stdout": "burned",
+   "seconds": 61.8,
+   "teardown": true
+  },
+  {
+   "kind": "burn",
+   "exit": 0,
+   "stdout": "burned",
+   "seconds": 61.5,
+   "teardown": true
+  },
+  {
+   "kind": "burn",
+   "exit": 0,
+   "stdout": "burned",
+   "seconds": 61.2,
+   "teardown": true
+  },
+  {
+   "kind": "burn",
+   "exit": 0,
+   "stdout": "burned",
+   "seconds": 61.6,
+   "teardown": true
+  },
+  {
+   "kind": "fill",
+   "exit": 0,
+   "stdout": "filled",
+   "seconds": 65.3,
+   "teardown": true
+  },
+  {
+   "kind": "fill",
+   "exit": 0,
+   "stdout": "filled",
+   "seconds": 63.2,
+   "teardown": true
+  },
+  {
+   "kind": "fill",
+   "exit": 0,
+   "stdout": "filled",
+   "seconds": 65.1,
+   "teardown": true
+  },
+  {
+   "kind": "fill",
+   "exit": 0,
+   "stdout": "filled",
+   "seconds": 64.7,
+   "teardown": true
+  },
+  {
+   "kind": "fill",
+   "exit": 0,
+   "stdout": "filled",
+   "seconds": 66.0,
+   "teardown": true
+  },
+  {
+   "kind": "fill",
+   "exit": 0,
+   "stdout": "filled",
+   "seconds": 62.5,
+   "teardown": true
+  },
+  {
+   "kind": "hog",
+   "exit": 137,
+   "stdout": "",
+   "seconds": 9.2,
+   "teardown": true
+  },
+  {
+   "kind": "bomb",
+   "exit": 0,
+   "stdout": "capped 124",
+   "seconds": 1.5,
+   "teardown": true
+  },
+  {
+   "kind": "ok",
+   "error": "could not create an isolated runtime network (needs docker >= 28): Error response from daemon: all predefined address pools have been fully subnetted\n",
+   "seconds": 0.3,
+   "teardown": true
+  }
+ ],
+ "checks": {
+  "burners_finished": true,
+  "fillers_held_memory": true,
+  "hog_oom_killed_alone": true,
+  "bomb_capped": true,
+  "ok_finished": false,
+  "all_teardowns_ok": true,
+  "nothing_left": true,
+  "host_headroom": true
+ },
+ "passed": false,
+ "samples": [
+  {
+   "t": 141678.0,
+   "mem_available_gb": 28.6,
+   "containers": []
+  },
+  {
+   "t": 141683.1,
+   "mem_available_gb": 18.26,
+   "containers": [
+    {
+     "name": "lg-rt-19544732c6da48b6",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-d519cda1b18045ed",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-8b0f48ccdacc4837",
+     "cpu": "99.94%",
+     "mem": "1.909GiB / 2GiB",
+     "mem_pct": "95.47%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-aaae6e3a0faf481c",
+     "cpu": "199.36%",
+     "mem": "1.863MiB / 2GiB",
+     "mem_pct": "0.09%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-cffc3870b1d24b62",
+     "cpu": "198.61%",
+     "mem": "1.961MiB / 2GiB",
+     "mem_pct": "0.10%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-a84f47c46cd04bff",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.51%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-af811b748e894710",
+     "cpu": "196.51%",
+     "mem": "2.148MiB / 2GiB",
+     "mem_pct": "0.10%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-f72721fdd61e4944",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-ecbd9b084c294a48",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.51%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-5601d0c3514e4966",
+     "cpu": "13.99%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-dc2de75d5ee74331",
+     "cpu": "198.88%",
+     "mem": "2.445MiB / 2GiB",
+     "mem_pct": "0.12%",
+     "pids": "7"
+    }
+   ]
+  },
+  {
+   "t": 141690.5,
+   "mem_available_gb": 19.99,
+   "containers": [
+    {
+     "name": "lg-rt-19544732c6da48b6",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-d519cda1b18045ed",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-aaae6e3a0faf481c",
+     "cpu": "198.46%",
+     "mem": "1.629MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-cffc3870b1d24b62",
+     "cpu": "197.18%",
+     "mem": "1.633MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-a84f47c46cd04bff",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-af811b748e894710",
+     "cpu": "200.13%",
+     "mem": "1.637MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-f72721fdd61e4944",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-ecbd9b084c294a48",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-5601d0c3514e4966",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-dc2de75d5ee74331",
+     "cpu": "197.35%",
+     "mem": "2.246MiB / 2GiB",
+     "mem_pct": "0.11%",
+     "pids": "7"
+    }
+   ]
+  },
+  {
+   "t": 141697.8,
+   "mem_available_gb": 19.84,
+   "containers": [
+    {
+     "name": "lg-rt-19544732c6da48b6",
+     "cpu": "6.83%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-d519cda1b18045ed",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-aaae6e3a0faf481c",
+     "cpu": "199.99%",
+     "mem": "1.629MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-cffc3870b1d24b62",
+     "cpu": "198.82%",
+     "mem": "1.633MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-a84f47c46cd04bff",
+     "cpu": "6.25%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.52%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-af811b748e894710",
+     "cpu": "199.98%",
+     "mem": "1.637MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-f72721fdd61e4944",
+     "cpu": "8.06%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.51%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-ecbd9b084c294a48",
+     "cpu": "5.27%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.51%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-5601d0c3514e4966",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-dc2de75d5ee74331",
+     "cpu": "201.42%",
+     "mem": "11.87MiB / 2GiB",
+     "mem_pct": "0.58%",
+     "pids": "9"
+    }
+   ]
+  },
+  {
+   "t": 141705.0,
+   "mem_available_gb": 19.38,
+   "containers": [
+    {
+     "name": "lg-rt-19544732c6da48b6",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-d519cda1b18045ed",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-aaae6e3a0faf481c",
+     "cpu": "197.15%",
+     "mem": "1.629MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-cffc3870b1d24b62",
+     "cpu": "197.10%",
+     "mem": "1.652MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-a84f47c46cd04bff",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-af811b748e894710",
+     "cpu": "196.98%",
+     "mem": "1.637MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-f72721fdd61e4944",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-ecbd9b084c294a48",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.51%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-5601d0c3514e4966",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-dc2de75d5ee74331",
+     "cpu": "197.98%",
+     "mem": "2.25MiB / 2GiB",
+     "mem_pct": "0.11%",
+     "pids": "7"
+    }
+   ]
+  },
+  {
+   "t": 141712.2,
+   "mem_available_gb": 19.7,
+   "containers": [
+    {
+     "name": "lg-rt-19544732c6da48b6",
+     "cpu": "8.13%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.52%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-d519cda1b18045ed",
+     "cpu": "6.81%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.52%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-aaae6e3a0faf481c",
+     "cpu": "197.25%",
+     "mem": "1.629MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-cffc3870b1d24b62",
+     "cpu": "200.68%",
+     "mem": "2.711MiB / 2GiB",
+     "mem_pct": "0.13%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-a84f47c46cd04bff",
+     "cpu": "6.88%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-af811b748e894710",
+     "cpu": "200.72%",
+     "mem": "2.508MiB / 2GiB",
+     "mem_pct": "0.12%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-f72721fdd61e4944",
+     "cpu": "7.42%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-ecbd9b084c294a48",
+     "cpu": "7.02%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.51%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-5601d0c3514e4966",
+     "cpu": "6.47%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-dc2de75d5ee74331",
+     "cpu": "199.98%",
+     "mem": "2.25MiB / 2GiB",
+     "mem_pct": "0.11%",
+     "pids": "7"
+    }
+   ]
+  },
+  {
+   "t": 141719.4,
+   "mem_available_gb": 19.67,
+   "containers": [
+    {
+     "name": "lg-rt-19544732c6da48b6",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-d519cda1b18045ed",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-aaae6e3a0faf481c",
+     "cpu": "197.27%",
+     "mem": "1.629MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-cffc3870b1d24b62",
+     "cpu": "196.21%",
+     "mem": "1.809MiB / 2GiB",
+     "mem_pct": "0.09%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-a84f47c46cd04bff",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-af811b748e894710",
+     "cpu": "196.73%",
+     "mem": "1.637MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-f72721fdd61e4944",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-ecbd9b084c294a48",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.51%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-5601d0c3514e4966",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-dc2de75d5ee74331",
+     "cpu": "196.15%",
+     "mem": "2.25MiB / 2GiB",
+     "mem_pct": "0.11%",
+     "pids": "7"
+    }
+   ]
+  },
+  {
+   "t": 141726.6,
+   "mem_available_gb": 19.64,
+   "containers": [
+    {
+     "name": "lg-rt-19544732c6da48b6",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-d519cda1b18045ed",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-aaae6e3a0faf481c",
+     "cpu": "195.82%",
+     "mem": "1.629MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-cffc3870b1d24b62",
+     "cpu": "197.10%",
+     "mem": "1.805MiB / 2GiB",
+     "mem_pct": "0.09%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-a84f47c46cd04bff",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-af811b748e894710",
+     "cpu": "196.21%",
+     "mem": "1.637MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-f72721fdd61e4944",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-ecbd9b084c294a48",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.51%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-5601d0c3514e4966",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-dc2de75d5ee74331",
+     "cpu": "195.68%",
+     "mem": "2.25MiB / 2GiB",
+     "mem_pct": "0.11%",
+     "pids": "7"
+    }
+   ]
+  },
+  {
+   "t": 141733.8,
+   "mem_available_gb": 19.53,
+   "containers": [
+    {
+     "name": "lg-rt-19544732c6da48b6",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-d519cda1b18045ed",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-aaae6e3a0faf481c",
+     "cpu": "197.92%",
+     "mem": "1.676MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-cffc3870b1d24b62",
+     "cpu": "199.12%",
+     "mem": "1.836MiB / 2GiB",
+     "mem_pct": "0.09%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-a84f47c46cd04bff",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-af811b748e894710",
+     "cpu": "198.79%",
+     "mem": "1.637MiB / 2GiB",
+     "mem_pct": "0.08%",
+     "pids": "7"
+    },
+    {
+     "name": "lg-rt-f72721fdd61e4944",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.49%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-ecbd9b084c294a48",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.51%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-5601d0c3514e4966",
+     "cpu": "0.00%",
+     "mem": "1.57GiB / 2GiB",
+     "mem_pct": "78.50%",
+     "pids": "4"
+    },
+    {
+     "name": "lg-rt-dc2de75d5ee74331",
+     "cpu": "198.37%",
+     "mem": "2.25MiB / 2GiB",
+     "mem_pct": "0.11%",
+     "pids": "7"
+    }
+   ]
+  },
+  {
+   "t": 141741.0,
+   "mem_available_gb": 22.62,
+   "containers": []
+  }
+ ]
+}
