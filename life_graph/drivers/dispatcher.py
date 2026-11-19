@@ -167,6 +167,8 @@ def tenant_scratch_root(tenant_id: str) -> str:
 # the agent controls). One list, so the first attempt and the bounce agree.
 SANDBOX_SETTINGS: tuple[str, ...] = (
     "sandbox_setup",
+    # Extra hosts (and "path") setup may fetch from (services/dev/setup_guard.py).
+    "sandbox_setup_allow",
     "sandbox_test_command",
     "sandbox_test_timeout",
     "sandbox_toolchain",

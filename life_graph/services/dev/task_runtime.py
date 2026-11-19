@@ -45,6 +45,7 @@ hosts with it. See the ADR's residual-risk section.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import ipaddress
 import logging
@@ -52,7 +53,7 @@ import os
 import shutil
 import time
 import uuid
-from collections.abc import Callable  # noqa: TC003
+from collections.abc import AsyncIterator, Callable, Sequence  # noqa: TC003
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -87,6 +88,11 @@ DEADLINE_BIN = "/usr/bin/timeout"
 # to a task claimed after the sweep read which tasks are running.
 PERIODIC_MIN_AGE_SECONDS = 300
 _SHARED_LABEL = f"{RUNTIME_LABEL}.shared"
+# Verifier setups (sandbox.prepare_*) borrow this runtime's network and proxy
+# (setup_egress). No task row tracks them, so the sweep removes a setup's
+# leftovers only once they are older than any setup may run.
+SETUP_TASK_LABEL = "verifier-setup"
+SETUP_MAX_AGE_SECONDS = sandbox.SETUP_TIMEOUT + 300
 
 
 class DockerRunner(Protocol):
@@ -145,6 +151,22 @@ class RuntimeRequest:
     tmp_size: str = "512m"
     # Each stdout line as it arrives (the live session view); not policy.
     on_stdout_line: Callable[[str], None] | None = field(default=None, compare=False)
+
+
+@dataclass(frozen=True)
+class SetupEgress:
+    """Where one verifier setup runs: its network, its proxy, its container name."""
+
+    # The name the setup container must run under (teardown removes it too).
+    container: str
+    network: str
+    proxy_host: str
+    proxy_port: int
+    labels: dict[str, str]
+
+    @property
+    def proxy_url(self) -> str:
+        return f"http://{self.proxy_host}:{self.proxy_port}"
 
 
 @dataclass
@@ -323,7 +345,9 @@ class DockerTaskRuntime:
             if req.egress_allowlist:
                 meta["egress_image"] = settings.driver_runtime_egress_image
                 meta["egress_image_id"] = await self._image_id(settings.driver_runtime_egress_image)
-                await self._start_proxy(names["proxy"], names["network"], labels, req)
+                await self._start_proxy(
+                    names["proxy"], names["network"], labels, req.egress_allowlist
+                )
             argv = sandbox.docker_run_argv(spec, detach=False)
             grace = max(5, int(settings.driver_runtime_kill_grace_seconds))
             _event(req, "runtime", "agent container starting", {"rid": rid})
@@ -370,6 +394,52 @@ class DockerTaskRuntime:
                 {"teardown": meta["teardown"], "exit_code": meta.get("exit_code")},
             )
 
+    @contextlib.asynccontextmanager
+    async def setup_egress(self, allowlist: Sequence[str]) -> AsyncIterator[SetupEgress]:
+        """A network for one verifier setup whose only way out is the egress proxy.
+
+        The same pieces as a task runtime -- a fresh internal network with an
+        isolated gateway (checked), and a per-setup egress proxy relaying only
+        to *allowlist* on 443 -- so a setup that reads agent-edited manifests
+        cannot fetch from, or send to, any other host. Network, proxy and the
+        setup container (by the name yielded) are always removed afterwards.
+
+        Raises:
+            SandboxUnavailableError: empty allowlist, no egress image, or the
+                network or proxy could not be made. Setup must then not run.
+        """
+        if not allowlist:
+            raise SandboxUnavailableError("setup egress refused: empty allowlist")
+        rid = uuid.uuid4().hex[:16]
+        names = {
+            "container": f"lg-verify-setup-{rid}",
+            "proxy": f"lg-rt-egress-{rid}",
+            "network": f"{RUNTIME_NETWORK_PREFIX}{rid}",
+        }
+        labels = {
+            RUNTIME_LABEL: "1",
+            f"{RUNTIME_LABEL}.instance": instance_id(),
+            f"{RUNTIME_LABEL}.task": SETUP_TASK_LABEL,
+            f"{RUNTIME_LABEL}.policy": POLICY_VERSION,
+            f"{RUNTIME_LABEL}.rid": rid,
+        }
+        try:
+            await self._image_id(settings.driver_runtime_egress_image)
+            await self._create_network(names["network"], labels)
+            await self._start_proxy(names["proxy"], names["network"], labels, tuple(allowlist))
+            yield SetupEgress(
+                container=names["container"],
+                network=names["network"],
+                proxy_host=names["proxy"],
+                proxy_port=EGRESS_PORT,
+                labels=labels,
+            )
+        finally:
+            try:
+                await self.teardown(names)
+            except Exception as exc:  # never mask the setup's own outcome
+                logger.error("setup egress teardown raised: %s", exc)
+
     async def teardown(self, names: dict[str, str]) -> dict:
         """Remove one runtime's container, proxy and network. Idempotent."""
         errors: list[str] = []
@@ -408,6 +478,12 @@ class DockerTaskRuntime:
             age = _age_seconds(created)
             return age is not None and age >= min_age_seconds
 
+        def removable(task: str, created: str) -> bool:
+            if task == SETUP_TASK_LABEL:
+                age = _age_seconds(created)
+                return age is not None and age >= SETUP_MAX_AGE_SECONDS
+            return task not in active_task_ids and old_enough(created)
+
         # Only this install's: the other edition on the same daemon has its own
         # database, so its running tasks are not in active_task_ids.
         mine = ["--filter", f"label={RUNTIME_LABEL}=1"]
@@ -418,7 +494,7 @@ class DockerTaskRuntime:
             report["errors"].append(f"ps: {res.stderr.strip()[-200:]}")
         for line in (res.stdout or "").splitlines():
             name, task, created = (line.split("|", 2) + ["", ""])[:3]
-            if name and task not in active_task_ids and old_enough(created):
+            if name and removable(task, created):
                 rm = await self._docker(["docker", "rm", "-f", name], timeout=30)
                 if rm.returncode == 0 or _missing(rm):
                     report["containers"].append(name)
@@ -430,7 +506,7 @@ class DockerTaskRuntime:
             report["errors"].append(f"network ls: {res.stderr.strip()[-200:]}")
         for line in (res.stdout or "").splitlines():
             name, task, created = (line.split("|", 2) + ["", ""])[:3]
-            if name and task not in active_task_ids and old_enough(created):
+            if name and removable(task, created):
                 rm = await self._docker(["docker", "network", "rm", name], timeout=30)
                 if rm.returncode == 0 or _missing(rm):
                     report["networks"].append(name)
@@ -531,7 +607,7 @@ class DockerTaskRuntime:
             raise SandboxUnavailableError(f"could not create outbound network: {res.stderr[-300:]}")
 
     async def _start_proxy(
-        self, name: str, network: str, labels: dict[str, str], req: RuntimeRequest
+        self, name: str, network: str, labels: dict[str, str], allowlist: Sequence[str]
     ) -> None:
         """The per-task egress proxy: the internal network's only way out.
 
@@ -558,7 +634,10 @@ class DockerTaskRuntime:
             "--allowed-port", "443",
             "--idle-timeout", "600",
         ]  # fmt: skip
-        for entry in req.egress_allowlist:
+        if not allowlist:
+            # No --allowed-origin would mean no origin fence at all.
+            raise SandboxUnavailableError("egress proxy refused: empty allowlist")
+        for entry in allowlist:
             argv += ["--allowed-origin", _origin(entry)]
         res = await self._docker(argv, timeout=60)
         if res.returncode != 0:

@@ -9,12 +9,17 @@ worktree isolation in :mod:`life_graph.drivers.workdir` separates the agent's
 With ``LIFE_GRAPH_VERIFIER_SANDBOX=docker`` each check runs in a throwaway
 container instead, in two phases:
 
-1. **Setup** (network on). Installs the project's dependencies into a venv
-   keyed by the image, the setup command and the dependency manifests. The
-   worktree is mounted read-only and nothing from the host besides it is
-   visible, so a malicious build backend reaches the network but no secrets.
-   The venv is built under a temporary name and renamed into place only on
-   success, so a half-built or concurrent setup is never reused.
+1. **Setup** (registries only). Installs the project's dependencies into a
+   venv keyed by the image, the setup command and the dependency manifests.
+   The worktree is mounted read-only and nothing from the host besides it is
+   visible. The manifests are agent-edited, so they are checked first
+   (:mod:`setup_guard`: no direct URL, VCS, index override or outside path
+   unless the registry's ``sandbox_setup_allow`` says so), and the container
+   sits on an internal network whose only way out is the task runtime's
+   egress proxy, allowing just the toolchain's package registries
+   (``verifier_setup_egress_*``). A build script that phones home reaches
+   nothing else. The venv is built under a temporary name and renamed into
+   place only on success, so a half-built or concurrent setup is never reused.
 2. **Check** (``--network none``). Worktree and venv both read-only, root
    filesystem read-only, all capabilities dropped, no privilege escalation,
    memory/CPU/PID limits, host uid. A read-only worktree also means test code
@@ -335,12 +340,72 @@ def _env_key(
 _setup_locks: dict[str, asyncio.Lock] = {}
 
 
-async def prepare_env(workdir: Path, setup: str | None = None) -> Path:
+def _check_manifests(
+    workdir: Path, toolchain: str, allow, gradle_manifests: tuple[str, ...] = ()
+) -> None:
+    """Refuse setup for manifests that fetch from outside the allowed registries.
+
+    Runs before the cache lookup, so a cached env is never handed out for
+    manifests the policy refuses. See :mod:`setup_guard`.
+    """
+    from life_graph.services.dev import setup_guard
+
+    setup_guard.check(workdir, toolchain, allow, gradle_manifests=gradle_manifests)
+
+
+@contextlib.asynccontextmanager
+async def _setup_egress(toolchain: str, allow):
+    """The setup container's network: internal, out only via the egress proxy.
+
+    Yields a :class:`task_runtime.SetupEgress`. The proxy relays only to the
+    toolchain's registries (``verifier_setup_egress_<toolchain>``) plus the
+    project registry's ``sandbox_setup_allow`` hosts.
+    """
+    from life_graph.services.dev import setup_guard, task_runtime
+
+    hosts = setup_guard.egress_hosts(toolchain, allow)
+    async with task_runtime.runtime.setup_egress(hosts) as egress:
+        yield egress
+
+
+def _setup_net_args(egress, toolchain: str) -> list[str]:
+    """``docker run`` arguments that put a setup container behind *egress*.
+
+    The network is what enforces it (no route but the proxy); the proxy
+    variables are what make the tools use the proxy at all.
+    """
+    url = egress.proxy_url
+    args = ["--network", egress.network]
+    for key in sorted(egress.labels):
+        args += ["--label", f"{key}={egress.labels[key]}"]
+    args += ["--label", f"{RUNTIME_LABEL}.role=setup"]
+    for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
+        args += ["-e", f"{name}={url}"]
+    if toolchain == "node":
+        args += ["-e", f"npm_config_proxy={url}", "-e", f"npm_config_https_proxy={url}"]
+    return args
+
+
+def _jvm_proxy_options(egress) -> str:
+    """JVM system properties for the proxy: the wrapper and Gradle ignore *_PROXY."""
+    host, port = egress.proxy_host, egress.proxy_port
+    return (
+        f"-Dhttps.proxyHost={host} -Dhttps.proxyPort={port} "
+        f"-Dhttp.proxyHost={host} -Dhttp.proxyPort={port}"
+    )
+
+
+async def prepare_env(workdir: Path, setup: str | None = None, *, allow=None) -> Path:
     """Return a host directory holding the project's venv, building it if needed.
 
+    *allow* is the project registry's ``sandbox_setup_allow``: extra hosts
+    (and ``path``) the manifests and the setup's egress may use.
+
     Raises:
-        SandboxUnavailableError: docker or the image is missing, or setup failed.
+        SandboxUnavailableError: docker or the image is missing, setup failed,
+            or the manifests were refused (:class:`setup_guard.SetupRefusedError`).
     """
+    _check_manifests(workdir, "python", allow)
     image_id = await _image_id()
     command = setup or DEFAULT_SETUP
     key = _env_key(workdir, image_id, command)
@@ -356,38 +421,43 @@ async def prepare_env(workdir: Path, setup: str | None = None) -> Path:
         partial = root / f"{key}.partial-{uuid.uuid4().hex[:8]}"
         partial.mkdir()
         (partial / ".uv-cache").mkdir()
-        container = f"lg-verify-setup-{uuid.uuid4().hex[:12]}"
-        argv = [
-            "docker",
-            "run",
-            "--rm",
-            "--name",
-            container,
-            *_limits(memory=settings.verifier_sandbox_memory, cpus=settings.verifier_sandbox_cpus),
-            "-e",
-            "HOME=/tmp",
-            "-e",
-            f"UV_CACHE_DIR={VENV}/.uv-cache",
-            "-e",
-            "UV_LINK_MODE=copy",
-            "-e",
-            f"UV_PROJECT_ENVIRONMENT={VENV}",
-            "-e",
-            "UV_PYTHON_DOWNLOADS=never",
-            "-v",
-            f"{workdir}:{WORK}:ro",
-            "-v",
-            f"{partial}:{VENV}",
-            "-w",
-            WORK,
-            "--entrypoint",
-            "sh",
-            settings.verifier_sandbox_image,
-            "-c",
-            _CREATE_VENV + command,
-        ]
         try:
-            res = await _exec(argv, timeout=SETUP_TIMEOUT, container=container)
+            async with _setup_egress("python", allow) as egress:
+                container = egress.container
+                argv = [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--name",
+                    container,
+                    *_setup_net_args(egress, "python"),
+                    *_limits(
+                        memory=settings.verifier_sandbox_memory,
+                        cpus=settings.verifier_sandbox_cpus,
+                    ),
+                    "-e",
+                    "HOME=/tmp",
+                    "-e",
+                    f"UV_CACHE_DIR={VENV}/.uv-cache",
+                    "-e",
+                    "UV_LINK_MODE=copy",
+                    "-e",
+                    f"UV_PROJECT_ENVIRONMENT={VENV}",
+                    "-e",
+                    "UV_PYTHON_DOWNLOADS=never",
+                    "-v",
+                    f"{workdir}:{WORK}:ro",
+                    "-v",
+                    f"{partial}:{VENV}",
+                    "-w",
+                    WORK,
+                    "--entrypoint",
+                    "sh",
+                    settings.verifier_sandbox_image,
+                    "-c",
+                    _CREATE_VENV + command,
+                ]
+                res = await _exec(argv, timeout=SETUP_TIMEOUT, container=container)
             if res.returncode != 0:
                 raise SandboxUnavailableError(
                     f"sandbox setup failed (exit {res.returncode}): "
@@ -416,7 +486,7 @@ async def _node_image_id() -> str:
     return res.stdout.strip()
 
 
-async def prepare_node_env(workdir: Path, setup: str | None = None) -> Path:
+async def prepare_node_env(workdir: Path, setup: str | None = None, *, allow=None) -> Path:
     """Return a host directory holding the project's ``node_modules``, installing if needed.
 
     The manifests are copied out of the read-only worktree into the cache
@@ -426,10 +496,11 @@ async def prepare_node_env(workdir: Path, setup: str | None = None) -> Path:
 
     Raises:
         SandboxUnavailableError: docker or the image is missing, no
-            package.json, or the install failed.
+            package.json, the install failed, or the manifests were refused.
     """
     if not (workdir / "package.json").is_file() or (workdir / "package.json").is_symlink():
         raise SandboxUnavailableError("node toolchain, but the project has no package.json")
+    _check_manifests(workdir, "node", allow)
     image_id = await _node_image_id()
     command = setup or NODE_DEFAULT_SETUP
     key = "node-" + _env_key(workdir, image_id, command, _NODE_MANIFESTS)
@@ -443,38 +514,43 @@ async def prepare_node_env(workdir: Path, setup: str | None = None) -> Path:
         root.mkdir(parents=True, exist_ok=True)
         partial = root / f"{key}.partial-{uuid.uuid4().hex[:8]}"
         partial.mkdir()
-        container = f"lg-verify-node-setup-{uuid.uuid4().hex[:12]}"
         copy = " ".join(
             f"if [ -f {WORK}/{m} ] && [ ! -L {WORK}/{m} ]; then cp {WORK}/{m} /deps/; fi;"
             for m in _NODE_MANIFESTS
         )
-        argv = [
-            "docker",
-            "run",
-            "--rm",
-            "--name",
-            container,
-            *_limits(memory=settings.verifier_sandbox_memory, cpus=settings.verifier_sandbox_cpus),
-            "-e",
-            "HOME=/tmp",
-            "-e",
-            "npm_config_cache=/tmp/.npm",
-            "-e",
-            "npm_config_update_notifier=false",
-            "-v",
-            f"{workdir}:{WORK}:ro",
-            "-v",
-            f"{partial}:/deps",
-            "-w",
-            "/deps",
-            "--entrypoint",
-            "sh",
-            settings.verifier_sandbox_node_image,
-            "-c",
-            f"set -e; {copy} {command}",
-        ]
         try:
-            res = await _exec(argv, timeout=SETUP_TIMEOUT, container=container)
+            async with _setup_egress("node", allow) as egress:
+                container = egress.container
+                argv = [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--name",
+                    container,
+                    *_setup_net_args(egress, "node"),
+                    *_limits(
+                        memory=settings.verifier_sandbox_memory,
+                        cpus=settings.verifier_sandbox_cpus,
+                    ),
+                    "-e",
+                    "HOME=/tmp",
+                    "-e",
+                    "npm_config_cache=/tmp/.npm",
+                    "-e",
+                    "npm_config_update_notifier=false",
+                    "-v",
+                    f"{workdir}:{WORK}:ro",
+                    "-v",
+                    f"{partial}:/deps",
+                    "-w",
+                    "/deps",
+                    "--entrypoint",
+                    "sh",
+                    settings.verifier_sandbox_node_image,
+                    "-c",
+                    f"set -e; {copy} {command}",
+                ]
+                res = await _exec(argv, timeout=SETUP_TIMEOUT, container=container)
             if res.returncode != 0 or not (partial / "node_modules").is_dir():
                 raise SandboxUnavailableError(
                     f"node sandbox setup failed (exit {res.returncode}): "
@@ -501,7 +577,7 @@ async def _jvm_image_id() -> str:
     return res.stdout.strip()
 
 
-async def prepare_gradle_env(workdir: Path, setup: str | None = None) -> Path:
+async def prepare_gradle_env(workdir: Path, setup: str | None = None, *, allow=None) -> Path:
     """Return a host directory holding a Gradle home with the project's
     distribution and dependencies, filling it if needed.
 
@@ -521,6 +597,7 @@ async def prepare_gradle_env(workdir: Path, setup: str | None = None) -> Path:
     wrapper = workdir / "gradlew"
     if not wrapper.is_file() or wrapper.is_symlink():
         raise SandboxUnavailableError("jvm toolchain, but the project has no gradlew wrapper")
+    _check_manifests(workdir, "jvm", allow, _GRADLE_MANIFESTS)
     image_id = await _jvm_image_id()
     tasks = setup or ("compileDebugUnitTestKotlin" if _is_android(workdir) else "testClasses")
     # The recipe version is in the key: a changed recipe never reuses a home
@@ -539,7 +616,6 @@ async def prepare_gradle_env(workdir: Path, setup: str | None = None) -> Path:
         partial = root / f"{key}.partial-{uuid.uuid4().hex[:8]}"
         partial.mkdir()
         (partial / "lg-resolve.gradle").write_text(_GRADLE_RESOLVE_ALL)
-        container = f"lg-verify-jvm-setup-{uuid.uuid4().hex[:12]}"
         gradle = f"./gradlew {_GRADLE_FLAGS} {_GRADLE_JVMARGS}"
         script = (
             f"cp -a {WORK}/. /tmp/work/ && cd /tmp/work && rm -f local.properties && chmod +x gradlew && "
@@ -547,34 +623,42 @@ async def prepare_gradle_env(workdir: Path, setup: str | None = None) -> Path:
             f"{gradle} --continue {tasks}; "
             "ls -d /gradle/wrapper/dists/*/*/gradle-* >/dev/null"
         )
-        argv = [
-            "docker",
-            "run",
-            "--rm",
-            "--name",
-            container,
-            *_limits(
-                memory=settings.verifier_sandbox_jvm_memory, cpus=settings.verifier_sandbox_cpus
-            ),
-            "--tmpfs",
-            "/tmp:rw,exec,size=4g",
-            "-e",
-            "HOME=/tmp",
-            "-e",
-            "GRADLE_USER_HOME=/gradle",
-            *_JVM_HOME_ENV,
-            "-v",
-            f"{workdir}:{WORK}:ro",
-            "-v",
-            f"{partial}:/gradle",
-            "--entrypoint",
-            "sh",
-            settings.verifier_sandbox_jvm_image,
-            "-c",
-            script,
-        ]
         try:
-            res = await _exec(argv, timeout=SETUP_TIMEOUT, container=container)
+            async with _setup_egress("jvm", allow) as egress:
+                container = egress.container
+                argv = [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--name",
+                    container,
+                    *_setup_net_args(egress, "jvm"),
+                    *_limits(
+                        memory=settings.verifier_sandbox_jvm_memory,
+                        cpus=settings.verifier_sandbox_cpus,
+                    ),
+                    "--tmpfs",
+                    "/tmp:rw,exec,size=4g",
+                    "-e",
+                    "HOME=/tmp",
+                    "-e",
+                    "GRADLE_USER_HOME=/gradle",
+                    "-e",
+                    "ANDROID_USER_HOME=/tmp/.android",
+                    # The check's -Duser.home plus the proxy: Java ignores *_PROXY.
+                    "-e",
+                    f"JAVA_TOOL_OPTIONS=-Duser.home=/tmp {_jvm_proxy_options(egress)}",
+                    "-v",
+                    f"{workdir}:{WORK}:ro",
+                    "-v",
+                    f"{partial}:/gradle",
+                    "--entrypoint",
+                    "sh",
+                    settings.verifier_sandbox_jvm_image,
+                    "-c",
+                    script,
+                ]
+                res = await _exec(argv, timeout=SETUP_TIMEOUT, container=container)
             if res.returncode != 0 or not (partial / "wrapper" / "dists").is_dir():
                 raise SandboxUnavailableError(
                     f"jvm sandbox setup failed (exit {res.returncode}): "

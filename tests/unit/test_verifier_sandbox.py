@@ -9,6 +9,7 @@ everything above them mocks the docker CLI.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import shutil
 import subprocess
 import textwrap
@@ -26,7 +27,16 @@ def docker_mode(monkeypatch, tmp_path):
 
     monkeypatch.setattr(settings, "verifier_sandbox", "docker")
     monkeypatch.setattr(settings, "verifier_sandbox_cache_dir", str(tmp_path / "envs"))
+    monkeypatch.setattr(sandbox, "_setup_egress", _fake_setup_egress)
     return settings
+
+
+@contextlib.asynccontextmanager
+async def _fake_setup_egress(toolchain, allow):
+    """Setup's network and proxy (tested in test_setup_guard.py), stubbed out."""
+    from life_graph.services.dev.task_runtime import SetupEgress
+
+    yield SetupEgress("lg-verify-setup-test", "lg-rt-net-test", "lg-rt-egress-test", 8080, {})
 
 
 # ── Routing and fail-closed ──────────────────────────────────
@@ -52,7 +62,7 @@ async def test_sandbox_never_uses_a_worktree_venv(docker_mode, tmp_path, monkeyp
     planted.chmod(0o755)
     seen = {}
 
-    async def fake_prepare(workdir, setup=None):
+    async def fake_prepare(workdir, setup=None, allow=None):
         seen["setup"] = setup
         return tmp_path / "envs" / "k"
 

@@ -1408,6 +1408,9 @@ class _ProjectOpsSettings(BaseModel):
     did not declare them, so pydantic dropped them and the API could not set them."""
 
     sandbox_toolchain: Literal["python", "node", "jvm", ""] | None = None
+    # Hosts (or "path") the verifier setup may fetch from beyond the toolchain's
+    # registries (services/dev/setup_guard.py). Each entry is re-checked at use.
+    sandbox_setup_allow: list[str] | None = Field(None, max_length=20)
     sandbox_js_test_runner: Literal["vitest", "jest", ""] | None = None
     sandbox_start_command: str | None = Field(None, max_length=1000)
     sandbox_app_port: int | None = Field(None, ge=0, le=65535)

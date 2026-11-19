@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 
 # scan_metadata keys the user sets (not the scanner); preserved across scans.
 #   sandbox_setup         dependency install command for the verifier sandbox
+#   sandbox_setup_allow   hosts (and "path") setup may fetch from beyond the toolchain's
+#                          package registries: direct URL / VCS / index entries in the
+#                          manifests, and the setup's egress (services/dev/setup_guard.py)
 #   sandbox_test_command  what tests_pass runs, e.g. "python -m pytest -q tests/unit"
 #   sandbox_test_timeout  seconds tests_pass may take
 #   sandbox_toolchain     "python" (default), "node" or "jvm" (Gradle): which verifier image checks run in
@@ -76,6 +79,7 @@ logger = logging.getLogger(__name__)
 _USER_META_KEYS = frozenset(
     {
         "sandbox_setup",
+        "sandbox_setup_allow",
         "sandbox_test_command",
         "sandbox_test_timeout",
         "sandbox_toolchain",

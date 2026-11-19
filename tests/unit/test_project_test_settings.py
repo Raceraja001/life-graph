@@ -17,7 +17,7 @@ def captured(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "verifier_sandbox", "docker")
     seen = {}
 
-    async def fake_prepare(workdir, setup=None):
+    async def fake_prepare(workdir, setup=None, allow=None):
         seen["setup"] = setup
         return tmp_path / "venv"
 

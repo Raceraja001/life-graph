@@ -250,7 +250,9 @@ async def mechanical_autofix(workdir: Path, ctx: dict) -> dict:
     ruff: str | None = None
     if sandbox.enabled():
         try:
-            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            venv = await sandbox.prepare_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
             candidate = venv / "bin" / "ruff"
             ruff = str(candidate) if candidate.is_file() else None
         except sandbox.SandboxUnavailableError:
@@ -333,7 +335,9 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
         # sandbox runs Gradle from the cached distribution, offline.
         try:
             tasks = sandbox.gradle_tasks(command)
-            home = await sandbox.prepare_gradle_env(workdir, ctx.get("sandbox_setup"))
+            home = await sandbox.prepare_gradle_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
             result = await sandbox.run(tasks, workdir, gradle_home=home, timeout=timeout)
         except ValueError as exc:
             return None, {"note": f"sandbox_test_command does not parse: {exc}"}
@@ -355,10 +359,14 @@ async def _sandboxed_tests(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
         argv = default
     try:
         if node:
-            deps = await sandbox.prepare_node_env(workdir, ctx.get("sandbox_setup"))
+            deps = await sandbox.prepare_node_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
             result = await sandbox.run(argv, workdir, node_deps=deps, timeout=timeout)
         else:
-            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            venv = await sandbox.prepare_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
             result = await sandbox.run(argv, workdir, venv=venv, timeout=timeout)
     except sandbox.SandboxUnavailableError as exc:
         return None, {"note": str(exc), "sandbox": "docker", "command": argv}
@@ -507,7 +515,9 @@ async def _verify_acceptance_tests_pass(workdir: Path, ctx: dict) -> tuple[bool 
     args = ["-m", "pytest", "-q", "--tb=short", "-p", "no:cacheprovider", *refs]
     if sandbox.enabled():
         try:
-            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            venv = await sandbox.prepare_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
             timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
             result = await sandbox.run(["python", *args], workdir, venv=venv, timeout=timeout)
         except sandbox.SandboxUnavailableError as exc:
@@ -570,7 +580,9 @@ async def _js_acceptance_tests(
         return None, {"note": f"unknown sandbox_js_test_runner {runner!r}"}
     timeout = int(ctx.get("sandbox_test_timeout") or _DEFAULT_TEST_TIMEOUT)
     try:
-        deps = await sandbox.prepare_node_env(workdir, ctx.get("sandbox_setup"))
+        deps = await sandbox.prepare_node_env(
+            workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+        )
     except sandbox.SandboxUnavailableError as exc:
         return None, {"note": str(exc), "sandbox": "docker"}
     runs = []
@@ -642,12 +654,16 @@ async def _verify_app_e2e_pass(workdir: Path, ctx: dict) -> tuple[bool | None, d
     )
     try:
         if sandbox.node_toolchain(ctx):
-            deps = await sandbox.prepare_node_env(workdir, ctx.get("sandbox_setup"))
+            deps = await sandbox.prepare_node_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
             result = await sandbox.run(
                 ["bash", "-c", script], workdir, node_deps=deps, timeout=timeout
             )
         else:
-            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            venv = await sandbox.prepare_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
             result = await sandbox.run(["bash", "-c", script], workdir, venv=venv, timeout=timeout)
     except sandbox.SandboxUnavailableError as exc:
         return None, {"note": str(exc), "sandbox": "docker"}
@@ -876,7 +892,9 @@ async def _verify_no_vulnerable_deps_in_diff(workdir: Path, ctx: dict) -> tuple[
     pip_audit: str | None = None
     if sandbox.enabled():
         try:
-            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            venv = await sandbox.prepare_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
             candidate = venv / "bin" / "pip-audit"
             pip_audit = str(candidate) if candidate.is_file() else None
         except sandbox.SandboxUnavailableError:

@@ -275,7 +275,7 @@ def sandboxed(monkeypatch, tmp_path):
 
     calls = {}
 
-    async def prepare_env(workdir, setup=None):
+    async def prepare_env(workdir, setup=None, allow=None):
         calls["setup"] = setup
         return tmp_path / "venv"
 
@@ -431,7 +431,7 @@ async def test_self_check_is_silent_when_tests_pass_or_none_changed(
     from life_graph.drivers import self_check
     from life_graph.services.dev import sandbox
 
-    async def prepare_env(workdir, setup=None):
+    async def prepare_env(workdir, setup=None, allow=None):
         return workdir
 
     async def passing(argv, workdir, **_):

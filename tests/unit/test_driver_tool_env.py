@@ -112,7 +112,7 @@ async def test_the_driver_mounts_the_projects_env_and_points_the_tools_at_it(
 ):
     seen = {}
 
-    async def fake_prepare(workdir, setup=None):
+    async def fake_prepare(workdir, setup=None, allow=None):
         seen["prepare"] = (workdir, setup)
         return cache
 

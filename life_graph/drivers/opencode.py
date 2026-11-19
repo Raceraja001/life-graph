@@ -71,6 +71,13 @@ def _can_run_tests(packet: ContextPacket) -> bool:
     )
 
 
+def _allow_csv(raw) -> str:
+    """sandbox_setup_allow (a list or a comma string) as one env value."""
+    if not raw:
+        return ""
+    return raw if isinstance(raw, str) else ",".join(str(x) for x in raw)
+
+
 def _run_tests_server(packet: ContextPacket, workdir: Path) -> dict | None:
     """OpenCode's way to run tests: the sandbox-only run_tests tool, served
     over MCP (tools/run_tests_mcp.py). Bash stays denied."""
@@ -82,6 +89,7 @@ def _run_tests_server(packet: ContextPacket, workdir: Path) -> dict | None:
     env = {
         "LG_RUN_TESTS_WORKDIR": str(workdir),
         "LG_RUN_TESTS_SETUP": ctx.get("sandbox_setup") or "",
+        "LG_RUN_TESTS_SETUP_ALLOW": _allow_csv(ctx.get("sandbox_setup_allow")),
         "LG_RUN_TESTS_TOOLCHAIN": ctx.get("sandbox_toolchain") or "python",
         "LG_RUN_TESTS_COMMAND": ctx.get("sandbox_test_command") or "",
         "LIFE_GRAPH_VERIFIER_SANDBOX": settings.verifier_sandbox,
@@ -91,6 +99,10 @@ def _run_tests_server(packet: ContextPacket, workdir: Path) -> dict | None:
         "LIFE_GRAPH_VERIFIER_SANDBOX_CACHE_DIR": str(settings.verifier_sandbox_cache_dir),
         "LIFE_GRAPH_VERIFIER_SANDBOX_CPUS": str(settings.verifier_sandbox_cpus),
         "LIFE_GRAPH_VERIFIER_SANDBOX_MEMORY": str(settings.verifier_sandbox_memory),
+        # Setup's egress (services/dev/setup_guard.py): same proxy, same hosts.
+        "LIFE_GRAPH_DRIVER_RUNTIME_EGRESS_IMAGE": settings.driver_runtime_egress_image,
+        "LIFE_GRAPH_VERIFIER_SETUP_EGRESS_PYTHON": settings.verifier_setup_egress_python,
+        "LIFE_GRAPH_VERIFIER_SETUP_EGRESS_JVM": settings.verifier_setup_egress_jvm,
     }
     return {
         "type": "local",

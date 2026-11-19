@@ -140,6 +140,20 @@ class DriverSettings(BaseModel):
     verifier_sandbox_cache_dir: str = ""  # cached project venvs; "" = ~/.cache/life-graph/...
     verifier_sandbox_memory: str = "4g"
     verifier_sandbox_cpus: str = "4"
+    # The sandbox's setup phase reads agent-edited manifests, so it runs on an
+    # internal network whose only way out is the task runtime's egress proxy
+    # (driver_runtime_egress_image), relaying only to these hosts on 443 per
+    # toolchain, plus the project registry's sandbox_setup_allow hosts. The
+    # manifests are also checked first (services/dev/setup_guard.py).
+    verifier_setup_egress_python: str = "pypi.org,files.pythonhosted.org"
+    verifier_setup_egress_node: str = "registry.npmjs.org"
+    # The Gradle wrapper (services.gradle.org redirects to downloads.gradle.org),
+    # the plugin portal, Maven Central and Google's Maven (Android).
+    verifier_setup_egress_jvm: str = (
+        "services.gradle.org,downloads.gradle.org,downloads.gradle-dn.com,"
+        "plugins.gradle.org,plugins-artifacts.gradle.org,repo.maven.apache.org,"
+        "repo1.maven.org,dl.google.com,maven.google.com"
+    )
     # Where the claude_code driver itself executes. "none" runs it on the
     # host as this process's user (scoped only by the CLI's own
     # --allowedTools/--permission-mode). "docker" runs it in a container

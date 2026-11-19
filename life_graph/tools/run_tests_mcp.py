@@ -33,6 +33,7 @@ async def run_tests(paths: list[str] | str) -> str:
         return '{"error": "run_tests is not configured for this task"}'
     ctx = {
         "sandbox_setup": os.environ.get("LG_RUN_TESTS_SETUP") or None,
+        "sandbox_setup_allow": os.environ.get("LG_RUN_TESTS_SETUP_ALLOW") or None,
         "sandbox_toolchain": os.environ.get("LG_RUN_TESTS_TOOLCHAIN") or "python",
         "sandbox_test_command": os.environ.get("LG_RUN_TESTS_COMMAND") or None,
     }
