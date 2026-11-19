@@ -110,7 +110,7 @@ def test_related_tests_are_the_ones_importing_the_changed_module(repo):
 def _fake_sandbox(monkeypatch, stdout):
     calls = []
 
-    async def prepare_env(workdir, setup=None):
+    async def prepare_env(workdir, setup=None, allow=None):
         return workdir
 
     async def run(argv, workdir, **kw):

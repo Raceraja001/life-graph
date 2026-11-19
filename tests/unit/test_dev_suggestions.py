@@ -76,7 +76,7 @@ async def test_test_findings(tmp_path, monkeypatch, returncode, stdout, expected
 
     monkeypatch.setattr(settings, "verifier_sandbox", "docker")
 
-    async def fake_prepare(root, setup=None):
+    async def fake_prepare(root, setup=None, allow=None):
         return tmp_path / "venv"
 
     async def fake_run(argv, workdir, **kw):

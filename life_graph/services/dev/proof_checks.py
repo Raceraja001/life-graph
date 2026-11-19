@@ -298,7 +298,9 @@ async def diff_coverage(workdir: Path, ctx: dict) -> tuple[bool | None, dict]:
     if not sandbox.enabled():
         return None, {"note": "diff coverage needs the docker sandbox"}
     try:
-        venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+        venv = await sandbox.prepare_env(
+            workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+        )
         res = await sandbox.run(
             ["sh", "-c", _COVERAGE_SCRIPT, "sh", *tests],
             workdir,
@@ -575,7 +577,9 @@ async def tests_catch_mutants(workdir: Path, ctx: dict) -> tuple[bool | None, di
         for p in Path(tmp).iterdir():
             p.chmod(0o644)
         try:
-            venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+            venv = await sandbox.prepare_env(
+                workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+            )
             res = await sandbox.run(
                 ["python", "/mutants/run.py"],
                 workdir,
@@ -641,7 +645,9 @@ async def types_clean_diff(workdir: Path, ctx: dict) -> tuple[bool | None, dict]
         *py,
     ]
     try:
-        venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+        venv = await sandbox.prepare_env(
+            workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+        )
         res = await sandbox.run(argv, workdir, venv=venv, timeout=300)
     except sandbox.SandboxUnavailableError as exc:
         return None, {"note": str(exc)}

@@ -161,6 +161,7 @@ class ContextPacketBuilder:
                     key: (project.scan_metadata or {}).get(key)
                     for key in (
                         "sandbox_setup",
+                        "sandbox_setup_allow",
                         "sandbox_test_command",
                         "sandbox_test_timeout",
                         "sandbox_toolchain",

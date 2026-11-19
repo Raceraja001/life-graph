@@ -205,7 +205,9 @@ async def test_findings(root: Path, meta: dict[str, Any]) -> list[Finding]:
     if not command or not sandbox.enabled():
         return []
     try:
-        venv = await sandbox.prepare_env(root, meta.get("sandbox_setup"))
+        venv = await sandbox.prepare_env(
+            root, meta.get("sandbox_setup"), allow=meta.get("sandbox_setup_allow")
+        )
         res = await sandbox.run(
             shlex.split(command),
             root,

@@ -7,6 +7,7 @@ against real throwaway git repositories.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 from pathlib import Path
 
@@ -37,7 +38,15 @@ def captured(monkeypatch):
                 Path(a.rsplit(":", 1)[0], "wrapper", "dists").mkdir(parents=True, exist_ok=True)
         return sandbox.SandboxResult(0, "BUILD SUCCESSFUL", "")
 
+    @contextlib.asynccontextmanager
+    async def fake_setup_egress(toolchain, allow):
+        # Setup's network and proxy are pinned in test_setup_guard.py.
+        from life_graph.services.dev.task_runtime import SetupEgress
+
+        yield SetupEgress("lg-verify-setup-test", "lg-rt-net-test", "lg-rt-egress-test", 8080, {})
+
     monkeypatch.setattr(sandbox, "_exec", fake_exec)
+    monkeypatch.setattr(sandbox, "_setup_egress", fake_setup_egress)
     return calls
 
 
@@ -60,7 +69,8 @@ async def test_setup_resolves_and_compiles_but_never_runs_tests(tmp_path, monkey
     assert "-I /gradle/lg-resolve.gradle lgResolveAll;" in script
     assert "--continue compileDebugUnitTestKotlin;" in script
     assert "testDebugUnitTest" not in script and " test;" not in script  # tests never run here
-    assert "--network" not in setup  # setup is the phase with network
+    # Setup has network, but only the internal one behind the egress proxy.
+    assert setup[setup.index("--network") + 1] == "lg-rt-net-test"
     assert f"{work}:/work:ro" in setup  # worktree read-only even in setup
     assert (home / "lg-resolve.gradle").is_file()
     # Cached: a second call does not run setup again.

@@ -207,7 +207,9 @@ async def _project_tool_env(cwd: Path, packet: ContextPacket | None) -> tuple[Pa
     if toolchain != "python":
         return None, f"not mounted: {toolchain} toolchain"
     try:
-        venv = await sandbox.prepare_env(Path(cwd), ctx.get("sandbox_setup"))
+        venv = await sandbox.prepare_env(
+            Path(cwd), ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+        )
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 - a convenience must never fail the dispatch

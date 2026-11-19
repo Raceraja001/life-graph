@@ -106,6 +106,7 @@ async def check_conformance(
 
     base_ctx = {
         "sandbox_setup": meta.get("sandbox_setup"),
+        "sandbox_setup_allow": meta.get("sandbox_setup_allow"),
         "sandbox_test_timeout": meta.get("sandbox_test_timeout"),
         "sandbox_toolchain": meta.get("sandbox_toolchain"),
         "sandbox_js_test_runner": meta.get("sandbox_js_test_runner"),

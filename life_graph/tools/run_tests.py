@@ -123,7 +123,9 @@ async def run_tests(paths: list[str] | str) -> str:
     if toolchain == "jvm":
         return await _run_gradle_tests(workdir, ctx, cleaned)
     try:
-        venv = await sandbox.prepare_env(workdir, ctx.get("sandbox_setup"))
+        venv = await sandbox.prepare_env(
+            workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+        )
         result = await sandbox.run(
             ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "--tb=short", *cleaned],
             workdir,
@@ -161,7 +163,9 @@ async def _run_gradle_tests(workdir, ctx: dict, paths: list[str]) -> str:
         return json.dumps({"error": "Name a test source file, e.g. app/src/test/java/x/FooTest.kt"})
     try:
         tasks = sandbox.gradle_tasks(ctx.get("sandbox_test_command"))
-        home = await sandbox.prepare_gradle_env(workdir, ctx.get("sandbox_setup"))
+        home = await sandbox.prepare_gradle_env(
+            workdir, ctx.get("sandbox_setup"), allow=ctx.get("sandbox_setup_allow")
+        )
         result = await sandbox.run(
             [*tasks, *filters], workdir, gradle_home=home, timeout=RUN_TIMEOUT
         )
