@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Quality Audit</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#62605a;--line:#e3e0d8;--card:#fff;--hi:#b42318;--hib:#fdecea;--med:#a15c00;--medb:#fff4e0;--low:#2f5d8a;--lowb:#e8f0f8;--ok:#1f7a45;--okb:#e6f4ec;--code:#f1efe9}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151514;--fg:#e9e7e1;--mut:#a29f97;--line:#2e2d2a;--card:#1d1c1a;--hi:#ff8a7a;--hib:#3a1d1a;--med:#f0b35a;--medb:#33270f;--low:#8fb8e3;--lowb:#16263a;--ok:#7fcf9c;--okb:#14281c;--code:#262522}}
+:root[data-theme="dark"]{--bg:#151514;--fg:#e9e7e1;--mut:#a29f97;--line:#2e2d2a;--card:#1d1c1a;--hi:#ff8a7a;--hib:#3a1d1a;--med:#f0b35a;--medb:#33270f;--low:#8fb8e3;--lowb:#16263a;--ok:#7fcf9c;--okb:#14281c;--code:#262522}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1060px;margin:0 auto;padding:28px 16px 80px}
+h1{font-size:1.7rem;margin:0 0 4px}h2{font-size:1.25rem;margin:40px 0 10px;padding-top:8px;border-top:1px solid var(--line)}h3{font-size:1.05rem;margin:22px 0 8px}
+.sub{color:var(--mut);margin:0 0 20px}
+code{font:12.5px/1.4 ui-monospace,Consolas,monospace;background:var(--code);padding:1px 4px;border-radius:4px;word-break:break-word}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{color:var(--mut);font-weight:600}
+.wrap{overflow-x:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.tile b{display:block;font-size:1.35rem}.tile span{color:var(--mut);font-size:13px}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.h{color:var(--hi);background:var(--hib)}.m{color:var(--med);background:var(--medb)}.l{color:var(--low);background:var(--lowb)}.g{color:var(--ok);background:var(--okb)}
+details{background:var(--card);border:1px solid var(--line);border-radius:8px;margin:8px 0;padding:0 12px}
+summary{cursor:pointer;padding:10px 0;font-weight:600;list-style-position:outside}
+summary .t{font-weight:400;color:var(--mut);font-size:13px;margin-left:6px}
+details dl{display:grid;grid-template-columns:120px 1fr;gap:4px 12px;margin:0 0 12px}
+details dt{color:var(--mut);font-size:13px}details dd{margin:0}
+@media (max-width:640px){details dl{grid-template-columns:1fr}details dt{margin-top:6px}}
+.note{background:var(--card);border-left:3px solid var(--med);padding:8px 12px;border-radius:4px}
+ul{padding-left:20px}li{margin:3px 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Life Graph code quality audit</h1>
+<p class="sub">Read-only, evidence-based baseline · master <code>3380d81</code> · 19 Nov 2026 · no code was changed</p>
+
+<h2>1. Executive summary</h2>
+<p>Life Graph is a large codebase: 142k lines of application code and 110k lines of tests. The basics are clean. Ruff and formatting pass, master CI is green, and integration tests run against a real Postgres with pgvector and AGE. Deprecated Pydantic, SQLAlchemy and asyncio patterns are almost entirely gone. 84% of public service functions have docstrings. The dev-agent container runtime was hardened and reviewed this week.</p>
+<p>The weaknesses fall into five themes:</p>
+<ul>
+<li><b>Trust boundaries are weaker than the design says.</b>
+  <ul>
+  <li>Approvals are meant to be "the person decides", but any service key can approve, and the request body names who decided.</li>
+  <li>A project's <code>backup_check_command</code> runs as a shell command on the host, set through an ordinary API key, with no approval step.</li>
+  <li>The redaction used for Claude Code transcripts and Telegram misses current API-key shapes (5 of 5 tested leaked).</li>
+  </ul></li>
+<li><b>Side effects are not idempotent.</b>
+  <ul>
+  <li>Approving the same item twice at once can deploy twice: there is no row lock, and a timed-out deploy is never killed.</li>
+  <li>Capture deduplication overwrites the original event's status, and Telegram replays can create duplicate memories.</li>
+  </ul></li>
+<li><b>Database transactions are held open across slow calls.</b> Capture holds a transaction open during the language-model extraction step. Postgres has no idle or statement timeout to reclaim it, and the connection budget is about 45 per process.</li>
+<li><b>Tests pass when the code fails.</b>
+  <ul>
+  <li>266 integration-test assertions accept HTTP 500.</li>
+  <li>There is no coverage measurement.</li>
+  <li>About 7.7k lines of services and API code are never imported by any test.</li>
+  <li>Migration downgrades and model/schema drift are never tested.</li>
+  </ul></li>
+<li><b>Builds aren't reproducible.</b> <code>uv.lock</code> is stale and unused, every dependency is an open <code>&gt;=</code> range, and CI has no vulnerability scan.</li>
+</ul>
+<div class="note"><b>Context for severity.</b> No finding is exploitable without a valid API key, apart from metrics flooding, which needs none. Prod binds to 127.0.0.1, and the key holders are your own tools: Claude Code hooks, the MCP server, the phone and the dashboard. That is why nothing is rated Critical. The High items matter because they turn "a tool holding a key" into "runs host shell, approves its own merge, or deploys twice". That breaks the autonomy design's guarantees, and the impact grows as soon as more keys or users exist.</div>
+
+<h3>Count by priority</h3>
+<div class="grid">
+<div class="tile"><b>0</b><span>Critical</span></div>
+<div class="tile"><b style="color:var(--hi)">9</b><span>High</span></div>
+<div class="tile"><b style="color:var(--med)">22</b><span>Medium</span></div>
+<div class="tile"><b style="color:var(--low)">20</b><span>Low</span></div>
+</div>
+<p>Of these 51 findings, 14 are confirmed defects, 11 potential security issues, 8 architectural concerns, 14 maintainability concerns and 4 optimization opportunities. I re-read the code behind every High finding myself; the Medium and Low findings come from the reviewers' reports with file and line evidence.</p>
+
+<h2>2. Measurable baseline</h2>
+<p>These are the numbers to track. Re-measure after each improvement round.</p>
+<div class="wrap"><table>
+<tr><th>Metric</th><th>Now</th><th>Suggested target</th></tr>
+<tr><td>App code / files</td><td>142,179 lines / 566 files</td><td>track</td></tr>
+<tr><td>Test functions / files</td><td>5,152 / 528 (409 unit, 118 integration)</td><td>track</td></tr>
+<tr><td>Ruff check / format</td><td>clean / clean</td><td>keep</td></tr>
+<tr><td>Static type check (mypy)</td><td>not configured</td><td><code>api/</code> and <code>core/</code> strict, then ratchet</td></tr>
+<tr><td>Test coverage</td><td>not measured</td><td>measure; no-regression floor</td></tr>
+<tr><td>Modules no test imports</td><td>92 of 265 (about 7.7k lines)</td><td>&lt; 40</td></tr>
+<tr><td>Integration asserts accepting 500</td><td>266 in 30 files</td><td>0, enforced by lint</td></tr>
+<tr><td>Routes with a typed <code>response_model</code></td><td>2 of 399 (0.5%)</td><td>Tier-1 routers first</td></tr>
+<tr><td>Error body shapes</td><td>4</td><td>1</td></tr>
+<tr><td><code>except Exception</code> sites</td><td>570 (58% logged with traceback, 17% without, 10.5% silent)</td><td>silent &lt; 5%</td></tr>
+<tr><td>Uses of <code>Any</code></td><td>1,851</td><td>track</td></tr>
+<tr><td>Function-local <code>life_graph</code> imports</td><td>1,505 in 233 files</td><td>falling; import contracts</td></tr>
+<tr><td>Functions over 100 / over 200 lines</td><td>78 / 7 (longest 494)</td><td>complexity ratchet, no new ones</td></tr>
+<tr><td>Files over 1,000 lines</td><td>17</td><td>falling</td></tr>
+<tr><td>Ad-hoc <code>async_session()</code> in <code>api/</code></td><td>166 (against 18 handlers using <code>Depends(get_session)</code>)</td><td>falling</td></tr>
+<tr><td><code>.commit()</code> / <code>.rollback()</code> sites</td><td>378 / 11</td><td>track</td></tr>
+<tr><td>Calls to slow services awaited inside an open session</td><td>about 30 (static scan)</td><td>0 on hot paths</td></tr>
+<tr><td>Fire-and-forget <code>create_task</code> with no reference kept</td><td>3</td><td>0</td></tr>
+<tr><td>Dependency specifiers that are open <code>&gt;=</code> ranges</td><td>42 of 44; lock unused</td><td>locked, with <code>uv lock --check</code> in CI</td></tr>
+<tr><td>CI security scan / migration downgrade test</td><td>none / none</td><td>both present</td></tr>
+<tr><td>Docstrings on public service functions</td><td>83.6%</td><td>keep</td></tr>
+</table></div>
+
+<h2>3. Architecture overview</h2>
+<p><b>Request path.</b> <code>main.py</code> builds the FastAPI app. Each request passes through RequestID, Auth (global; exempt paths are in <code>api/auth.py:22-38</code>), Tenant, RateLimit and Logging. The app mounts 55 router modules with 399 routes. Routers get singletons from <code>runtime.py</code>: 52 cached <code>get_*</code> providers, a documented service-locator choice. Many routers open their own DB sessions and commit inside the handler. That puts business logic in the API layer: <code>api/assistant.py</code> has 40 session opens, and <code>api/kernel.py</code> has a 203-line chat-stream route.</p>
+<p><b>Layers below the API:</b></p>
+<ul>
+<li><code>services/</code>: domain logic, six packages plus about 92 flat modules and 57 alias shims.</li>
+<li><code>core/</code>: memory manager, tenant, evidence, trust and the event bus.</li>
+<li><code>storage/</code>: <code>postgres.py</code>, <code>hybrid.py</code> and <code>graph.py</code> for AGE.</li>
+<li>The agent stack: <code>agents/orchestrator</code>, then <code>kernel/process_manager</code>, then <code>drivers/</code>, then <code>services/dev/*</code>, which uses the container task runtime.</li>
+<li><code>autonomy/</code>: a separate approval queue and pipeline.</li>
+<li><code>watchers/</code>: a separate notification engine.</li>
+</ul>
+<p>Background work runs as 35 arq cron jobs in <code>workers/</code> plus the dedicated dev-task runner.</p>
+<p><b>Boundary health.</b> The layers are mostly respected, with leaks in both directions:</p>
+<ul>
+<li><code>storage</code> imports <code>api</code> twice, and <code>services</code> imports <code>api</code> twice. Both directions are wrong.</li>
+<li><code>core</code> imports <code>services</code> 9 times.</li>
+<li>41% of files rely on imports inside functions to work around import cycles.</li>
+<li>There are two overlapping subsystems:
+  <ul>
+  <li>Approvals: the main approvals list in <code>services/approvals.py</code> and the separate autonomy approval queue in <code>autonomy/approvals/</code>, which copies its items into that list.</li>
+  <li>Notifications: kernel notification records and watcher deliveries, kept in two separate tables.</li>
+  </ul></li>
+</ul>
+
+<h2>4. Findings</h2>
+<p>Each row expands. <b>Type</b> is one of: confirmed defect, maintainability, architectural, potential security, or optimization. <b>Change risk</b> is the risk of making the fix, not of leaving the problem. <b>Size</b> is S (hours), M (days) or L (a week or more).</p>
+
+<h3><span class="pill h">High</span></h3>
+
+<details><summary>H1 · Secret redaction misses modern API-key shapes <span class="t">potential security · S · quick win</span></summary><dl>
+<dt>Where</dt><dd><code>life_graph/core/redaction.py:33-39</code>, used by <code>integrations/claude_code/transport.py:97,106</code> (all Claude Code capture content) and <code>integrations/telegram/router.py:314,378</code></dd>
+<dt>Evidence</dt><dd>The pattern <code>\bsk-[A-Za-z0-9]{16,}\b</code> stops at the first hyphen. I ran <code>redact_secrets()</code> on <code>sk-ant-api03-…</code>, <code>sk-proj-…</code>, <code>sk-or-v1-…</code>, <code>AIza…</code> and <code>github_pat_…</code>: all <b>five leaked</b>. A separate module, <code>services/redaction.py:16-27</code>, already covers them, and a third pattern list sits at <code>services/dev/verifiers.py:795-806</code>. Capture ingest has no server-side redaction.</dd>
+<dt>Why it matters</dt><dd>Claude Code transcripts are exactly where Anthropic and OpenRouter keys appear. They become stored captures and memories, and they can be echoed to Telegram.</dd>
+<dt>Fix</dt><dd>
+  <ol>
+  <li>Make one canonical pattern set, the union of the three lists.</li>
+  <li>Have <code>core.redaction</code> delegate to it.</li>
+  <li>Also redact server-side in <code>services/capture.py</code>.</li>
+  <li>Consider a one-off scan of existing captures for these key shapes. This is an owner decision.</li>
+  </ol></dd>
+<dt>Change risk</dt><dd>Low. It only adds patterns; at worst, some prose starting with <code>sk-</code> gets redacted.</dd>
+<dt>Regression test</dt><dd>A parametrised test running every key shape through all three redaction functions and through the capture transport, asserting the raw secret never survives.</dd>
+</dl></details>
+
+<details><summary>H2 · Any service key can make the host run shell commands, with no approval <span class="t">potential security · M · long-term</span></summary><dl>
+<dt>Where</dt><dd><code>api/kernel.py:1423-1431</code> (<code>deploy_command</code>, <code>smoke_command</code>, <code>rollback_command</code> and <code>backup_check_command</code> are free strings), the register and update routes at <code>:1565-1597</code> and <code>:1673-1692</code>, <code>watchers/app_uptime_watcher.py:152-153,215-223</code>, and <code>services/approvals.py:1115-1120</code> (<code>create_subprocess_shell</code>)</dd>
+<dt>Evidence</dt><dd>The hourly <code>run_watchers</code> job calls <code>_run_shell(meta["backup_check_command"], project["path"], …)</code> for every tenant. No approval or owner check sits anywhere on that path. Deploy commands do at least run behind an approval.</dd>
+<dt>Why it matters</dt><dd>Holding any key amounts to a shell on the home server as the worker user. That includes keys held by agents and tools.</dd>
+<dt>Fix</dt><dd>Require an owner-verified caller (<code>ingress_for(request).owner_verified</code>) to set any <code>*_command</code> field. Better still, file an approval when a command changes, and run only commands whose hash was approved.</dd>
+<dt>Change risk</dt><dd>Medium. The dashboard and phone flows that edit projects need the owner key.</dd>
+<dt>Regression test</dt><dd>A PATCH of <code>backup_check_command</code> with a non-owner key returns 403. The watcher refuses a command whose hash was not approved.</dd>
+</dl></details>
+
+<details><summary>H3 · The human approval gate is not tied to the owner's identity <span class="t">architectural / potential security · S · quick win</span></summary><dl>
+<dt>Where</dt><dd><code>api/approvals.py:44-56</code> (<code>resolved_by = body.resolved_by</code> unless the caller is a paired phone) and <code>:95-105</code>. <code>ingress_for()</code> is used only at <code>api/memories.py:91,423</code>.</dd>
+<dt>Evidence</dt><dd>The approve and reject routes accept any service key. The MCP server deliberately leaves out approve (<code>mcp_server.py:60-65</code>), but a client holding the same key can POST <code>/approvals/{id}/approve</code> directly.</dd>
+<dt>Why it matters</dt><dd>An agent can approve its own merge, deploy or plan. The audit field <code>resolved_by</code> is written by the caller, so the record can't be trusted either. Your rule that approvals belong to the owner is only enforced by convention.</dd>
+<dt>Fix</dt><dd>Require <code>owner_verified</code> (an owner key or a paired device) on approve and reject. Derive <code>resolved_by</code> from the caller's identity, not the request body.</dd>
+<dt>Change risk</dt><dd>Low to medium. Any client that approves needs the owner key.</dd>
+<dt>Regression test</dt><dd>A non-owner key gets 403 on approve, and a <code>resolved_by</code> value in the body is ignored.</dd>
+</dl></details>
+
+<details><summary>H4 · Two approvals of the same item at once both run its side effect; timed-out deploys keep running <span class="t">confirmed defect · M</span></summary><dl>
+<dt>Where</dt><dd><code>services/approvals.py:187-191</code> (<code>session.get</code>, then a status check with no <code>with_for_update</code>; no row locking anywhere in the file), <code>:469-546</code> (deploy, then smoke test, then rollback, all inside the request), <code>:495-503</code> and <code>:1120-1129</code> (on timeout the code raises or returns 124 but never kills the process), and <code>retry_auto_merges</code> at <code>:1134-1170</code></dd>
+<dt>Evidence</dt><dd>The commit happens only at <code>api/approvals.py:80</code>, after side effects that can last up to 600 seconds. Until then a second request still sees the item as pending. The cron job that retries auto-merges also reads the same pending rows without a lock.</dd>
+<dt>Why it matters</dt><dd>A client timeout followed by a retry, or approving from the phone and the dashboard, gives two concurrent deploys or merges. A timed-out deploy is left running while its retry starts.</dd>
+<dt>Fix</dt><dd>
+  <ol>
+  <li>Claim the row atomically first: <code>UPDATE … SET status='applying' WHERE id=:id AND status='pending' RETURNING …</code>.</li>
+  <li>Then run the side effect.</li>
+  <li>On timeout, start the command with <code>start_new_session=True</code> and kill its whole process group with <code>killpg</code>.</li>
+  <li>Longer term, run deploys as worker jobs.</li>
+  </ol></dd>
+<dt>Change risk</dt><dd>Medium. It adds an <code>applying</code> status that the UI must handle.</dd>
+<dt>Regression test</dt><dd>Two <code>resolve()</code> calls run concurrently on one deploy approval give one shell call and one 409. <code>_run_shell("sleep 30 &amp; sleep 30", …, 1)</code> leaves no child process behind.</dd>
+</dl></details>
+
+<details><summary>H5 · 266 integration-test assertions accept HTTP 500 <span class="t">confirmed defect (tests) · M · quick win per file</span></summary><dl>
+<dt>Where</dt><dd><code>tests/integration/*</code>: 266 <code>status_code in (…, 500)</code> in 30 files. Worst: <code>test_self_improving.py</code> (17), <code>test_pagination.py</code> (17), <code>test_research.py</code> (14), <code>test_kernel_tasks.py</code> (14). Examples: <code>test_advisor.py:90</code>; <code>test_evidence.py:104-111</code> skips on a 500 and reports it as "DB unavailable".</dd>
+<dt>Why it matters</dt><dd>With Postgres up in CI, a crashing route still passes or skips green. This bypasses the narrowed <code>skip_on_db_error</code> (<code>conftest.py:171-193</code>). It hides bugs in exactly the modules that have no unit tests.</dd>
+<dt>Fix</dt><dd>Replace these checks with the existing <code>assert_ok(resp, expected)</code> helper (<code>conftest.py:196</code>). Make inline skips call <code>db_reachable()</code>. Add a CI grep guard that bans <code>500)</code> inside a <code>status_code in (</code> check.</dd>
+<dt>Change risk</dt><dd>Low for production. Expect a burst of red tests: real bugs surfacing. Do it one file at a time.</dd>
+<dt>Regression test</dt><dd>The lint guard itself.</dd>
+</dl></details>
+
+<details><summary>H6 · Builds are not reproducible: a stale, unused lock, open-ended ranges and no vulnerability scan <span class="t">potential security · M · quick win</span></summary><dl>
+<dt>Where</dt><dd><code>pyproject.toml</code> (42 of 44 dependencies are <code>&gt;=</code> ranges), <code>uv.lock</code> (last committed 3 Oct; missing <code>pytest-xdist</code> and <code>playwright</code>), <code>.github/workflows/ci.yml:75,130,280</code> (<code>pip install -e</code>), <code>Dockerfile:19-25</code>, and the CI cache key <code>ci.yml:58-62</code> (keyed on <code>pyproject.toml</code>; a cache hit installs with <code>--no-deps</code>)</dd>
+<dt>Evidence</dt><dd>Nothing runs <code>uv sync</code>, <code>uv export</code> or <code>--frozen</code>. <code>pip-audit</code> is installed but only used by the dev agent's own check; CI has no audit job, and there is no dependabot or renovate config. The ranges allow major-version jumps, for example <code>fastmcp&gt;=2.0</code> resolving to 3.x, and <code>litellm</code>, which has had a supply-chain incident.</dd>
+<dt>Why it matters</dt><dd>A compromised or breaking release flows straight into prod. CI may test frozen old versions while a fresh build pulls new ones.</dd>
+<dt>Fix</dt><dd>
+  <ol>
+  <li>Run <code>uv lock</code>.</li>
+  <li>Install from the lock in CI and Docker (<code>uv sync --frozen</code>, or <code>uv export</code> then <code>pip install --require-hashes</code>).</li>
+  <li>Add <code>uv lock --check</code> to CI.</li>
+  <li>Add a <code>pip-audit</code> job and dependabot.</li>
+  <li>Key the CI cache on <code>uv.lock</code>.</li>
+  <li>Cap major versions of fast-moving libraries.</li>
+  </ol></dd>
+<dt>Change risk</dt><dd>Low to medium. The first lock may change resolved versions, so run the full suite.</dd>
+<dt>Regression test</dt><dd>The <code>uv lock --check</code> CI step.</dd>
+</dl></details>
+
+<details><summary>H7 · Capture holds a DB transaction open during the language-model call, with no server-side timeouts <span class="t">confirmed defect (reliability/performance) · S-M · quick win</span></summary><dl>
+<dt>Where</dt><dd><code>services/capture_processors.py:138-146</code> (a SELECT starts a transaction), <code>:202</code> (<code>await …extract(content, capture=True)</code>, LLM-first), first commit at <code>:226</code>. Engine settings: <code>storage/database.py:7-14</code>.</dd>
+<dt>Evidence</dt><dd>The author fixed the same problem for the later wait (comment at <code>:225</code>), but not for extraction. The same pattern appears in:
+  <ul>
+  <li><code>api/sessions.py:196-216</code>: an LLM summary inside the request transaction, with a racy <code>ended_at</code> check.</li>
+  <li><code>workers/embeddings.py:79-113</code>: one embedding call per memory inside a session, although <code>embed_batch_async</code> exists.</li>
+  <li><code>services/transcript_distiller.py:73-132</code>.</li>
+  </ul>
+  No <code>statement_timeout</code>, <code>idle_in_transaction_session_timeout</code> or <code>command_timeout</code> is set anywhere.</dd>
+<dt>Why it matters</dt><dd>Each process can open about 45 connections: SQLAlchemy 10+20, the graph pool 10 and the approvals pool 5. Prod and dev share one Postgres. A burst of captures can use them all up, and nothing reclaims connections left idle inside a transaction.</dd>
+<dt>Fix</dt><dd>
+  <ul>
+  <li>Read the data, commit or close the session, make the LLM call, then reopen the session to write.</li>
+  <li>Set <code>server_settings</code> on the engine with <code>idle_in_transaction_session_timeout</code> of 60 s and a statement timeout. Long jobs can opt out with <code>SET LOCAL</code>.</li>
+  <li>Batch the embeddings.</li>
+  <li>Document a connection budget.</li>
+  </ul></dd>
+<dt>Change risk</dt><dd>Low for the session split. Medium for timeouts, because long consolidation or backfill jobs need an explicit exemption.</dd>
+<dt>Regression test</dt><dd>Mock <code>extract</code> to sleep and assert <code>session.in_transaction()</code> is false meanwhile. Add a config test for <code>server_settings</code>.</dd>
+</dl></details>
+
+<details><summary>H8 · The session-end job closes the shared graph pool; its duplicate check is dead and its links are lost <span class="t">confirmed defect · S · quick win</span></summary><dl>
+<dt>Where</dt><dd><code>services/memory/micro_consolidation.py:204</code> (calls <code>search_by_embedding</code>, a method that exists nowhere in the repo), <code>:331-363</code> (vertices get inferred labels, but edges match only <code>Entity</code>), <code>:367-368</code> (<code>graph.close()</code>), <code>storage/graph.py:327-329</code> (<code>close()</code> calls the process-wide <code>close_pool()</code>)</dd>
+<dt>Evidence</dt><dd>The job runs after every <code>POST /sessions/{id}/end</code>. Three faults:
+  <ul>
+  <li>The missing method raises <code>AttributeError</code>, which is swallowed at debug level, so <code>duplicates_removed</code> is always 0.</li>
+  <li>Edges to Person, Project or Technology vertices never match, yet <code>edges_created</code> is still counted.</li>
+  <li>Where edges do match, <code>CREATE</code> makes a duplicate edge on each run.</li>
+  </ul></dd>
+<dt>Why it matters</dt><dd>Graph queries running at the same moment fail when the pool closes, and the next call rebuilds it. A memory feature is silently doing nothing.</dd>
+<dt>Fix</dt><dd>
+  <ul>
+  <li>Remove the close call; keep <code>close_pool()</code> for shutdown only.</li>
+  <li>Call the real <code>search_similar</code>.</li>
+  <li>Pass the inferred labels to the edge match.</li>
+  <li>Use match-or-create for edges.</li>
+  <li>Count only edges actually created.</li>
+  </ul></dd>
+<dt>Change risk</dt><dd>Low for the pool fix. Medium for dedup, because it starts superseding memories; use a conservative threshold and keep it within one tenant.</dd>
+<dt>Regression test</dt><dd>The pool is still open after <code>_update_graph</code>. Two near-identical embeddings give <code>duplicates_removed == 1</code>. A fake graph store receives the inferred labels.</dd>
+</dl></details>
+
+<details><summary>H9 · The two approval stores drift apart; an owner's reject can be silently ignored <span class="t">confirmed defect · M · quick win</span></summary><dl>
+<dt>Where</dt><dd><code>services/autonomous_approvals.py:236-278</code> (copies each autonomy-queue item into the main approvals list as <code>kind="autonomous_action"</code>), <code>autonomy/approvals/service.py:258-300</code> (<code>check_expirations</code>), <code>autonomy/approvals/router.py:58,85</code>, <code>services/approvals.py:1013-1093</code></dd>
+<dt>Evidence</dt><dd><code>autonomy/approvals/service.py</code> never touches the copied row in the main list. When an autonomy item auto-approves on expiry, its copy stays pending. If the owner later taps Reject on that copy, the "already resolved" error is treated as a harmless repeat tap and logged at info level. The copy then shows rejected while the action was actually approved.</dd>
+<dt>Why it matters</dt><dd>The owner sees one decision and the system acts on the other.</dd>
+<dt>Fix</dt><dd>Close the copied row in the same transaction on every autonomy-queue resolution: resolve, batch and expiry. Alternatively, make the main list a view over the queue. When the two decisions differ, return a conflict instead of reporting success.</dd>
+<dt>Change risk</dt><dd>Medium. This is the human-in-the-loop path.</dd>
+<dt>Regression test</dt><dd>Expire an item that is set to be told to the owner first, and assert its copy is resolved. A reject after an auto-approve returns a conflict.</dd>
+</dl></details>
+
+<h3><span class="pill m">Medium</span></h3>
+<div class="wrap"><table>
+<tr><th>#</th><th>Finding · type</th><th>Evidence (file:line)</th><th>Recommended fix</th><th>Change risk · size</th><th>Regression test</th></tr>
+<tr><td>M1</td><td>The kill switch never revokes live capabilities, and revocation reports 0 when the database fails · architectural</td><td><code>autonomy/approvals/durable_store.py:386-405</code> (<code>except: return 0</code>). The only caller of <code>revoke_all</code> is its wrapper at <code>capability.py:650</code>. The docstrings promise that the kill switch calls it.</td><td>Raise <code>StoreUnavailableError</code>, and call <code>revoke_all</code> from the pause and stop-task paths, or correct the docstrings.</td><td>Low · S</td><td>Pausing autonomy leaves 0 live capabilities; a store failure raises.</td></tr>
+<tr><td>M2</td><td>The documented error format is not what clients receive; the TypeScript SDK can't read 279 error sites · confirmed defect (contract)</td><td><code>api/responses.py:3-5</code> documents <code>{"error":{…}}</code>. <code>main.py:562-605</code> registers no <code>HTTPException</code> handler. <code>sdks/typescript/src/client.ts:214-218</code> reads only <code>parsed.error</code>. 4 error shapes are in use.</td><td>Add a Starlette <code>HTTPException</code> handler that maps errors into <code>error_response</code>, and route the invalid-cursor error through it too.</td><td>Medium (clients that read <code>.detail</code>) · S-M</td><td>Contract test: 401, 404, 409 and 422 all have <code>error.code</code> and <code>request_id</code>.</td></tr>
+<tr><td>M3</td><td>Raw exception text sent to clients · potential security</td><td><code>main.py:790-795</code>: unauthenticated <code>/health</code> returns <code>str(e)</code> of the DB error (localhost-bound in prod). <code>api/graph.py:133,162,213,253,294</code>: <code>detail=f"…{exc}"</code>. <code>api/drivers.py</code>: dispatch errors.</td><td>Return a fixed message plus <code>request_id</code>, and log the detail on the server.</td><td>Low · S</td><td>A mocked DB error containing "password authentication failed for user x" is absent from the body.</td></tr>
+<tr><td>M4</td><td>Raw-Cypher <code>columns</code> are spliced into the SQL without validation · potential security</td><td><code>api/graph.py:41</code> (<code>list[str]</code>, no pattern), <code>storage/graph.py:355,369</code>. The write-keyword filter at <code>api/graph.py:186-190</code> checks only <code>cypher</code>. Only the admin tenant can call it.</td><td>Validate each column against <code>LABEL_PATTERN</code> and cap the list length.</td><td>Low · S</td><td><code>columns=["v agtype) --"]</code> returns 422.</td></tr>
+<tr><td>M5</td><td>Auth is open under the default configuration · potential security</td><td><code>config/core.py:25</code> sets <code>environment="development"</code>. <code>api/auth.py:96-97</code> skips auth when no keys are configured. The middleware falls back to a "dev" tenant. There is no startup guard.</td><td>Default to production, or refuse to start without keys unless bound to 127.0.0.1.</td><td>Medium (local scripts must set the environment) · S</td><td>Settings with no environment and no keys raise at startup.</td></tr>
+<tr><td>M6</td><td>SSRF through tenant webhooks, notification webhooks and <code>health_url</code> · potential security</td><td><code>api/admin.py:113-117</code> (URL only <code>min_length</code>), <code>:335-382</code> (<code>/test</code> echoes the target's status or <code>str(e)</code>, which lets a caller probe internal ports), <code>integrations/webhook.py:118-127</code>, <code>app_uptime_watcher.py:50</code> (<code>follow_redirects=True</code>). <code>services/safe_fetch.check_url</code> exists but these paths don't use it.</td><td>Run <code>check_url</code> when a URL is created and on every delivery. Turn off redirects. <code>/test</code> returns only "delivered" or "failed".</td><td>Low · S</td><td>A webhook to 127.0.0.1 or 169.254.169.254 returns 422.</td></tr>
+<tr><td>M7</td><td>Unauthenticated metrics flooding and tenant-id exposure · confirmed defect</td><td><code>api/auth.py:45</code> matches exempt paths with <code>startswith</code>, so <code>/brain&lt;anything&gt;</code> and <code>/docsX</code> skip auth. <code>core/metrics.py:125-135</code> normalises only UUIDs, so every unique path adds a label. <code>/metrics</code> is public and labels series with <code>tenant_id</code>.</td><td>Label by route template or "unmatched", match exempt paths only at segment boundaries, and protect <code>/metrics</code>.</td><td>Low · S</td><td>1000 random <code>/brain/x{i}</code> requests leave the label count unchanged.</td></tr>
+<tr><td>M8</td><td>Watcher routes fall back to the "default" tenant · potential security</td><td><code>api/watchers.py:42-47</code> (<code>except Exception: return "default"</code>, used 15 times). Five other files carry copies of the tenant lookup.</td><td>Use <code>get_current_tenant_id()</code>, which fails closed, and keep one <code>current_tenant_or_none()</code> in <code>core/tenant.py</code>.</td><td>Low · S</td><td>A call with no tenant context errors instead of returning "default" rows.</td></tr>
+<tr><td>M9</td><td>Capture deduplication rewrites the original event; Telegram replays duplicate memories · confirmed defect</td><td><code>services/capture.py:126-128</code> sets <code>dup.status="duplicate"</code> on the original row, which the retry sweep then never retries. The dedup window is ±10 minutes of "now" (<code>:110-127</code>). The Telegram message date and id are not used (<code>integrations/telegram/router.py:221-231</code>). The index is not unique, and the 90-second poller lease is renewed only once per batch.</td><td>Leave the original row alone. Pass the message date as <code>captured_at</code>. Add a partial unique index on the message id with <code>ON CONFLICT DO NOTHING</code>. Renew the lease per update.</td><td>Low-Medium (needs a migration) · M</td><td>The same update 20 minutes later still gives one CaptureEvent; the original's status is unchanged.</td></tr>
+<tr><td>M10</td><td>Untyped or unvalidated API inputs · confirmed defect</td><td><code>api/internal_sync.py:43-50</code> takes a <code>dict</code> and writes <b>active</b> memories with unbounded importance (<code>services/cross_system_sync.py:157-175</code>). Its per-item try block can't catch DB errors, so one bad item fails the whole batch. The key is compared with <code>!=</code> against an empty default. <code>models/schemas.py:567-588</code> has free-text status and priority with no bounds, and <code>services/delegation.py:257-268</code> calls <code>setattr</code> for any key.</td><td>Pydantic <code>AnalyticsItem</code> and <code>AnalyticsBatch</code> models with bounds, inserted as <code>pending</code>. <code>Literal</code> or <code>StrEnum</code> for status, priority and kind, with <code>le=</code> bounds. Compare the key with <code>compare_digest</code> and refuse an empty one.</td><td>Medium (the Uzhavu payload contract) · M</td><td><code>importance=5</code> returns 422; <code>status:"banana"</code> returns 422.</td></tr>
+<tr><td>M11</td><td>Response types are untyped (2 of 399 routes) · architectural</td><td><code>api/responses.py:91-94</code> (<code>data: Any</code> returns <code>dict</code>). Removing response models was deliberate (<code>api/openapi_examples.py:5</code>). There is no mypy.</td><td>A generic <code>Envelope[T]</code>, adopted one router at a time, starting with memories, search and graph. Run mypy strict on <code>api/</code> and <code>core/</code>.</td><td>Medium (a schema mismatch becomes a 500) · L</td><td>OpenAPI snapshot plus validation of responses against the schema.</td></tr>
+<tr><td>M12</td><td>Lower layers import the API package · architectural</td><td><code>storage/postgres.py:585,836</code> import <code>api.responses.decode_cursor</code>. <code>services/claude_code_sessions.py:305-334</code> calls a route function. <code>services/memory/page.py:509</code> imports <code>api.memories._transition</code>. The guard test <code>tests/unit/test_runtime_module.py:50-64</code> is too narrow to catch these.</td><td>Move the cursor helpers to <code>core/</code> and the session and transition logic into services. Widen the guard to an AST scan.</td><td>Low-Medium · S-M</td><td>Importing storage or workers leaves <code>life_graph.api</code> out of <code>sys.modules</code>.</td></tr>
+<tr><td>M13</td><td>1,505 function-local imports hide the dependency graph · maintainability</td><td>233 files, top: <code>api/jarvis.py</code> (75), <code>workers/tasks.py</code> (52), <code>runtime.py</code> (49). No import-linter.</td><td>Add import-linter contracts in report-only mode, then remove import cycles one package at a time. Add ruff PLC0415 later as a ratchet.</td><td>Low (the linter) · L</td><td>The import-linter run in CI.</td></tr>
+<tr><td>M14</td><td>Tool-allowlist logic is duplicated, and the copies differ · architectural (safety-related)</td><td><code>kernel/process_manager.py:592-612</code> strips <code>PERSONAL_TOOLS</code> and <code>TEMPORARY_BLOCKED_TOOLS</code>. <code>drivers/local.py:155-162</code>, which says it mirrors that code, does neither.</td><td>One function, <code>resolve_run_tools(persona, override, cloud, temporary)</code>, used in both places.</td><td>Medium (re-run the agent benchmark) · M</td><td>Table-driven tests over cloud, temporary and override cases.</td></tr>
+<tr><td>M15</td><td>Very long functions, with no complexity gate · maintainability</td><td><code>agents/orchestrator.py:71-564</code> <code>run</code> (494 lines, 37 branches), <code>kernel/process_manager.py:505-807</code>, <code>main.py:111-373</code>, <code>core/memory_manager.py:332-584</code>, <code>drivers/local.py:89-335</code>, <code>workers/tasks.py:382-624</code>, <code>api/kernel.py:936-1138</code>.</td><td>A ruff C901 or PLR0915 baseline that allows the existing offenders and blocks new ones; split the orchestrator into its phases.</td><td>Medium (the core loop) · M-L</td><td>The existing orchestrator tests and the agent benchmark.</td></tr>
+<tr><td>M16</td><td>Business logic sits in route handlers, and routes call other routes · architectural</td><td><code>api/assistant.py</code> (40 session opens, 25 commits). <code>api/jarvis.py:282-299</code> calls the kernel chat route. <code>:787</code>, <code>:992</code> and <code>:1059</code> import private helpers from other routers.</td><td>A <code>services/chat_turn.py</code> shared by <code>/kernel</code> and <code>/jarvis</code>.</td><td>Medium (streaming responses) · M-L</td><td>A test that <code>/jarvis/chat</code> and <code>/kernel</code> chat-stream send the same event sequence.</td></tr>
+<tr><td>M17</td><td>Test coverage gaps · maintainability</td><td>No coverage tool runs (<code>pytest-cov</code> is declared but unused). 92 modules (about 7.7k lines) are never imported by any test: <code>workflow_engine.py</code> (675 lines), <code>adversarial_advisor.py</code> (652), <code>transcript_extractor.py</code> (525), <code>shared_context.py</code>, <code>delegation.py</code>. 14 Postgres-backed capability-store tests (<code>tests/unit/test_exact_bound_capabilities.py:700-718</code>) never run in CI. Tenant isolation is only checked statically (<code>test_tenant_scoping.py</code> passes any function that mentions "tenant").</td><td>Run <code>--cov</code> in both jobs with a no-regression floor. Run the tests marked <code>requires_postgres</code> in the integration job. Add a parametrised cross-tenant HTTP test across the main routers.</td><td>Low · S (coverage) to L (tests)</td><td>The tests themselves.</td></tr>
+<tr><td>M18</td><td>No migration downgrade or schema-drift test · maintainability</td><td>CI runs only <code>alembic upgrade head</code> (<code>ci.yml:290</code>). No <code>compare_metadata</code> check. Some downgrades delete data (<code>040:40</code>, <code>041:29</code>, <code>042:29</code>, <code>038:86</code>).</td><td>A CI step that upgrades to head, downgrades to base, then upgrades to head again, plus a check that autogenerate finds no differences.</td><td>Medium (may expose broken downgrades) · M</td><td>The CI step.</td></tr>
+<tr><td>M19</td><td>Synchronous file storage calls block the event loop; transcript ingest is O(n²) and loses updates · confirmed defect (performance)</td><td><code>api/transcript_ingest.py:77,87</code> calls the synchronous MinIO download and upload, re-uploading the whole growing object on every batch with no row lock. The same synchronous calls appear in <code>transcript_distiller.py:87,125</code>, <code>distillation.py:166</code> and <code>multimodal.py:388,529,607</code>.</td><td>Use <code>asyncio.to_thread</code>, append-only chunk objects, and <code>FOR UPDATE</code>.</td><td>Medium (storage format) · M</td><td>Two concurrent ingests of N lines give a count of 2N.</td></tr>
+<tr><td>M20</td><td>Failures returned as 200 with empty results · confirmed defect</td><td><code>storage/hybrid.py:367-455</code> (<code>entity_context</code> swallows graph and DB errors, so the 503 at <code>api/graph.py:156-163</code> never fires). <code>services/study.py:114-136</code>.</td><td>Return <code>meta.degraded</code> or a 503 for infrastructure errors.</td><td>Low-Medium · S-M</td><td>A store that raises gives a 503 or a degraded flag.</td></tr>
+<tr><td>M21</td><td>Undeclared optional dependencies, so features silently never work · confirmed defect</td><td><code>aiosmtplib</code> (<code>watchers/channels/email_channel.py:49-53</code>, so email alerts never send), <code>python-docx</code> (<code>extraction/parsers.py:69-77</code>), <code>asyncssh</code>. <code>openai</code> and GitPython arrive only through other packages.</td><td>Declare them as extras, and report missing optional packages in the health check.</td><td>Low · S</td><td>Each optional module imports under its extra.</td></tr>
+<tr><td>M22</td><td>The Telegram bot token can reach the logs; the worker never configures logging · potential security</td><td><code>integrations/telegram/client.py:169,209-212</code>: the token is in the URL, and <code>HTTPStatusError</code> messages include the full URL. They are logged at <code>poller.py:155-158</code> and <code>telegram_channel.py:86</code>. <code>workers/settings.py</code> never calls <code>setup_logging</code>.</td><td>Raise a URL-free error, add a log filter that masks <code>/bot\d+:…/</code>, and set up logging when the worker starts.</td><td>Low · S</td><td>A mocked 502 HTML response produces a log with no token.</td></tr>
+</table></div>
+
+<h3><span class="pill l">Low</span></h3>
+<div class="wrap"><table>
+<tr><th>#</th><th>Finding · type</th><th>Evidence</th><th>Fix · size</th></tr>
+<tr><td>L1</td><td>57 old-name alias modules left from the restructure, nearly unused · maintainability (kept on purpose)</td><td>52 have zero importers. The other 5 appear only in the alias modules' own tests or in docstrings. <code>services/notifications/__init__.py:10-11</code> says they are kept for other branches.</td><td>Set a removal date, add a test that no repo code imports them, then delete. <b>Deleting needs your OK.</b> · S</td></tr>
+<tr><td>L2</td><td>18 of 67 schema classes are dead or shadowed by other classes of the same name · maintainability</td><td><code>models/schemas.py</code>: 16 are never used. <code>WorkflowCreate:765</code> and <code>SharedContextCreate:847</code> differ from the classes actually used in <code>api/</code>, and <code>Challenge*</code> is duplicated.</td><td>Delete them (needs your OK) and keep one source per name · S</td></tr>
+<tr><td>L3</td><td>HTTP status chosen by matching text in the error message · maintainability</td><td><code>ValueError</code> maps to 404 in 30 places, 400 in 11, 422 in 11 and 409 in 2. <code>api/connectors.py:75-76</code> and <code>api/memory_links.py:65</code> match on message text. <code>api/agent_tasks.py:95,110</code> turns "depth exceeded" into a 404.</td><td>Domain exception types mapped centrally, and check <code>sqlstate</code> 23505 for duplicates · M</td></tr>
+<tr><td>L4</td><td>Vector search quality drops as archived rows grow · optimization</td><td><code>storage/postgres.py:475-512</code>: the tenant and status filters are applied after the vector index scan, with <code>ef_search=100</code> and no <code>iterative_scan</code>.</td><td><code>SET LOCAL hnsw.iterative_scan</code>, or a partial index on active rows · S</td></tr>
+<tr><td>L5</td><td><code>/drivers/dispatch</code> runs a whole coding-agent run inside the HTTP request · architectural</td><td><code>api/drivers.py:190-245</code> skips the runner's lock, concurrency limits and budget check.</td><td>Queue it through <code>create_dev_task</code>, or turn the route off in prod · S</td></tr>
+<tr><td>L6</td><td>Background tasks started with no reference kept · maintainability</td><td><code>core/events.py:271-275</code> (the hand-off that triggers capture processing), <code>api/sessions.py:173</code>, <code>services/dev/runner.py:371</code>. Python can garbage-collect such tasks before they finish.</td><td>Keep them in a module-level set, the way <code>connectors.py:192</code> does · S</td></tr>
+<tr><td>L7</td><td>95 broad excepts log without a traceback; some failures logged at debug · maintainability</td><td><code>api/sessions.py:380</code>, <code>watchers/notification_engine.py:101</code>, <code>services/dev/runner.py:335</code> (lease heartbeat at debug).</td><td>Use <code>exc_info=True</code>, ruff <code>BLE001</code> and <code>TRY400</code> as a ratchet, and escalate repeated heartbeat failures · S</td></tr>
+<tr><td>L8</td><td>Agent messaging reports a task id that was never saved · confirmed defect</td><td><code>services/agent_messaging.py:61-87</code> (two commits, no rollback, <code>expire_on_commit=False</code>).</td><td>One commit, a rollback in the except, and return an error field · S</td></tr>
+<tr><td>L9</td><td>The MCP-over-HTTP server forwards different credentials from the caller's · potential security</td><td><code>mcp_server.py:78-87</code> forwards only <code>authorization</code> and otherwise injects the server's own key. A tool argument <code>tenant_id</code> overrides the caller's tenant.</td><td>Forward whatever credential the caller sent, and ignore the tool's <code>tenant_id</code> over HTTP · S</td></tr>
+<tr><td>L10</td><td>Admin limit unbounded; key comparisons not constant-time · potential security</td><td><code>api/admin.py:893-905</code> (<code>limit: int = 20</code>, any tenant), <code>api/auth.py:121</code> (checks the key with <code>in</code>).</td><td><code>Query(le=200)</code>, an owner dependency, and <code>compare_digest</code> · S</td></tr>
+<tr><td>L11</td><td>Webhook retries carry no stable delivery id · maintainability</td><td><code>integrations/webhook.py:104-112</code> stamps a new timestamp on each attempt (arq allows 3 tries).</td><td>Send an <code>X-Webhook-Delivery</code> id · S</td></tr>
+<tr><td>L12</td><td>Dev-task dedup is check-then-insert with no unique index · confirmed race (rare)</td><td><code>services/dev/tasks.py:137-160</code>. An earlier incident created 979 duplicate tasks.</td><td>A partial unique index on open tasks; clean up existing duplicates first · M</td></tr>
+<tr><td>L13</td><td>Nightly decay job loads every memory, embeddings included · optimization</td><td><code>jobs/consolidation.py:586-608</code> uses only 6 scalar fields.</td><td>Select only those columns, or count in SQL · S</td></tr>
+<tr><td>L14</td><td>Pure-Python O(n²) cosine similarity in clustering and linking · optimization</td><td><code>jobs/consolidation.py:68-80,244-264</code>, <code>services/memory/links.py:263-289</code> (worker only).</td><td>A numpy matrix, or pgvector · S</td></tr>
+<tr><td>L15</td><td>Graph setup and queue connections redone on every call · optimization</td><td><code>storage/graph.py:383-384</code> runs <code>LOAD 'age'</code> and sets the search path on every query. 10 sites create a new arq Redis pool per call, for example <code>api/transcript_ingest.py:108-112</code>.</td><td>Do the graph setup once when the connection pool is created, and share one arq pool · S</td></tr>
+<tr><td>L16</td><td>Three notification subsystems and two record tables · architectural</td><td><code>kernel/notification_engine.py</code>, <code>watchers/notification_engine.py</code>, <code>services/notifications/</code>.</td><td>Document the split and rename the watcher engine; merging tables is long-term · S / L</td></tr>
+<tr><td>L17</td><td>Architecture docs are stale · maintainability</td><td><code>docs/ARCHITECTURE.md:33</code> claims "45 endpoints" (there are 399), <code>:44</code> claims "768-dim" (bge-m3 produces 1024), <code>:51</code> claims "2 crons" (there are 35). <code>CLAUDE.md:74</code> and <code>AGENTS.md:122</code> point to <code>config.py</code>, which is now a package. <code>docs/STATE.md</code> is current.</td><td>Link to the generated <code>STATE.md</code> instead of hard-coding numbers, and add a "last verified" date · S</td></tr>
+<tr><td>L18</td><td>Small helpers copied across modules · maintainability</td><td><code>_cosine*</code> 3 copies, <code>_utcnow</code> 7, <code>_iso</code> 4, the jarvis <code>_bills</code> and <code>_tasks</code> helpers 2 each. LLM calls themselves are well centralised.</td><td>A shared <code>core/util</code> module and one jarvis data module · S</td></tr>
+<tr><td>L19</td><td>Test and CI clutter · maintainability</td><td>66 separate <code>client</code> fixtures; 169 wall-clock calls and real sleeps in tests. The "Start API server" CI step (<code>ci.yml:301-304</code>) runs in the background and is never checked. Unused dependencies: <code>orjson</code>, <code>testcontainers</code>, and <code>httpx</code> listed twice.</td><td>A client-factory fixture, an injected clock, delete or make that CI step a real check, and prune the dependencies · S-M</td></tr>
+<tr><td>L20</td><td>Repo hygiene · maintainability</td><td><code>cold_start_*.json</code> and <code>uv.err</code> are tracked at the root. <code>services/memory_benchmark.py</code> (1712 lines, eval only) sits in the runtime package. The Dockerfile uses Python 3.11 while CI and the prod venv use 3.12; this affects the VPS image only.</td><td>Untrack those files and add them to <code>.gitignore</code>, move the benchmark to <code>evals/</code>, and move the image to 3.12 · S</td></tr>
+</table></div>
+
+<h2>5. Quick wins vs long-term improvements</h2>
+<h3>Quick wins: about 1–2 weeks of small PRs, low risk, each with its own regression test</h3>
+<ol>
+<li><b>Security batch</b>, one PR each:
+  <ul>
+  <li>H1: merge the redaction patterns.</li>
+  <li>H3: owner-only approve and reject.</li>
+  <li>M3: fixed error text.</li>
+  <li>M4: validate Cypher column names.</li>
+  <li>M7: exempt-path boundaries and metrics labels.</li>
+  <li>M8: watcher tenant fails closed.</li>
+  <li>M6: SSRF check on webhooks.</li>
+  <li>M22: Telegram token kept out of logs.</li>
+  <li>L10: constant-time key comparison.</li>
+  </ul></li>
+<li><b>Correctness batch:</b>
+  <ul>
+  <li>H8: graph pool, dedup and edge labels.</li>
+  <li>H4 part 1: claim the approval row atomically, and kill the process group on timeout.</li>
+  <li>M9: stop overwriting the original capture event.</li>
+  <li>M1: raise on revoke failure.</li>
+  <li>L6: keep references to background tasks.</li>
+  <li>L8: agent messaging rollback.</li>
+  </ul></li>
+<li><b>Reliability:</b>
+  <ul>
+  <li>H7: split the capture session around the LLM call, and set idle-in-transaction and statement timeouts.</li>
+  <li>Batch the embeddings.</li>
+  </ul></li>
+<li><b>Supply chain:</b>
+  <ul>
+  <li>H6: lock, install frozen, lock check, pip-audit, dependabot.</li>
+  <li>M21: declare the optional extras.</li>
+  </ul></li>
+<li><b>Test honesty:</b>
+  <ul>
+  <li>H5: add the lint guard, then fix the 30 files one at a time.</li>
+  <li>M17: turn on coverage measurement and run the Postgres-marked unit tests in CI.</li>
+  </ul></li>
+<li><b>Docs:</b> L17, and an approvals page explaining which store is authoritative for each kind (needed before H9).</li>
+</ol>
+<h3>Long-term: plan these, each behind tests written first</h3>
+<ul>
+<li><b>Approvals:</b> H2 (owner-approved, hash-pinned host commands), H9 (one approval store, or the main list as a view over the queue), and deploys moved to worker jobs (H4 part 2).</li>
+<li><b>API contract:</b> M2 (one error format), M11 (<code>Envelope[T]</code> and mypy, a router at a time), M10, and L3 (domain exception types).</li>
+<li><b>Boundaries:</b>
+  <ul>
+  <li>M12 and M13: import contracts, then remove import cycles.</li>
+  <li>M16: move chat-turn logic into a service.</li>
+  <li>M14: one shared tool-allowlist function.</li>
+  <li>M15: a complexity ratchet, and split the orchestrator into its phases.</li>
+  <li>Continue grouping services into domain packages.</li>
+  <li>L1: delete the aliases after your OK.</li>
+  </ul></li>
+<li><b>Tests:</b>
+  <ul>
+  <li>M17: behavioural tests that one tenant can't read another's data, and unit tests for the 92 modules no test imports.</li>
+  <li>M18: migration downgrade and drift checks in CI.</li>
+  </ul></li>
+<li><b>Data and performance:</b>
+  <ul>
+  <li>M9 and L12: unique indexes for idempotency.</li>
+  <li>M19: async storage for transcripts.</li>
+  <li>L4: vector search settings.</li>
+  </ul></li>
+</ul>
+
+<h2>6. Rules for doing the fixes without destabilising prod</h2>
+<ul>
+<li>One finding per PR. Write the regression test first and see it fail on master.</li>
+<li>For anything touching approvals, capture or the dev-agent loop, run the reliability eval and the agent benchmark before merging.</li>
+<li>Two changes alter behaviour you rely on, so release them one at a time with a quick live check: owner-only approvals (H3), and statement timeouts (H7).</li>
+<li>Deleting code (L1 aliases, L2 dead schemas) and any one-off scan of past captures (H1) wait for your explicit OK.</li>
+<li>Re-measure the baseline in section 2 after each batch.</li>
+</ul>
+
+<h2>7. What was checked and found sound</h2>
+<p>These are listed so they don't get re-flagged:</p>
+<ul>
+<li>The f-string SQL in <code>storage/postgres.py:474,512</code> only splices constants.</li>
+<li>Cypher value escaping is sound.</li>
+<li>All 61 migrations are on one linear chain, and every new NOT NULL column has a default.</li>
+<li>The global exception handler doesn't leak internals.</li>
+<li>Every <code>except BaseException</code> re-raises, and <code>CancelledError</code> is handled correctly.</li>
+<li>No <code>pickle</code>, <code>yaml.load</code> or <code>eval</code> in app code.</li>
+<li>Uploaded filenames are sanitised.</li>
+<li>WebSocket auth is correct, and device tokens are limited to an allowlist.</li>
+<li>Effectively every outbound httpx call has a timeout.</li>
+<li>arq cron jobs can't run twice at once.</li>
+<li>Database transactions used for locking commit straight away (the dev runner's advisory lock).</li>
+<li>Integration tests use an isolated, truncated test DB.</li>
+<li>LLM calls go through one resilient client.</li>
+</ul>
+<p class="sub">Method: five parallel read-only reviewers, one per group of audit areas, using static AST scans and greps over the 566 app files. I re-read the code behind every High finding and several Mediums myself, and ran the redaction leak test locally. No tests were run against the app, no services or databases were called, and no repo files changed apart from this report.</p>
+</main>
+</body>
+</html>

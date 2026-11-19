@@ -187,3 +187,49 @@ The limits did not change. The agent never prints secrets, never raises the $10 
 - **Bind:** set `LIFE_GRAPH_BIND_HOST=0.0.0.0`.
 - **Code:** move `prod` back to an earlier tag. Never go further back than `22021b1` (the #263 release): older code copies the host login into containers and revokes it.
 - **Backups:** `~/life-graph-backups/prod-runtime-switch-20261119/`.
+
+### D18. Code quality audit quick wins (#274–#278), released 13:45 UTC
+
+The read-only audit (`docs/audits/2026-11-19-code-quality-audit.html`) found 0 critical, 9 high, 22 medium and 20 low findings. The quick wins were fixed in five parallel PRs, one batch each. Every regression test was shown to fail on the old code. Each PR was reviewed and green in CI before merge. Release tag `prod-20261119-1345`, rollback `90cc730`.
+
+| PR | Findings | Decision taken in review |
+|---|---|---|
+| #276 | H1 single secret-pattern list (sk-ant, sk-proj, sk-or, AIza, PEM, github_pat, …) and server-side redaction at capture ingest. M9: dedup no longer overwrites the original capture's status; Telegram captures use the message's own date. M22: the Telegram token is masked in logs, and the arq worker now configures logging | Redact **before** hashing, so the hash matches what is stored. The worker log now carries INFO lines |
+| #275 | H6 `uv.lock` regenerated, `uv lock --check`, pip-audit job, dependabot. M21 optional deps declared (watchers extra, python-docx); orjson and testcontainers dropped. H5 ratchet on integration asserts that accept 500 (266 → 197). M17 coverage in CI (unit 68%, integration 52%); Postgres capability tests now run in CI | **pip-audit is report-only.** filelock (13 CVEs) and opentelemetry-api are pinned by litellm and pr-agent upstream. CI and Docker still install with pip, not from the lock |
+| #274 | H8: the micro-consolidation job no longer closes the shared graph pool; its search call is fixed; edges use the vertices' real labels and match-or-create. H7: capture commits before the language-model extraction; idle-in-transaction timeout added; embeddings are batched. L6: background-task references are kept | **Dedup is behind `micro_consolidation_dedup`, default off.** It supersedes the newer memory, and a negated update ("I no longer use X") can be ≥0.95 cosine to the old one. **Idle timeout is 600 s**, because the session-end summary and the transcript distiller still hold a transaction across a language-model call |
+| #278 | H4: approval rows are claimed with `FOR UPDATE NOWAIT`, so a second approve gets 409; the auto-merge sweep uses `SKIP LOCKED`; timed-out commands have their whole process group killed. M1: revoke raises when the store is unavailable. H3: `resolved_by` comes from the caller's identity; owner-only approvals are behind a setting | The approval transaction runs `SET LOCAL idle_in_transaction_session_timeout = 0`, because a deploy plus its smoke check can exceed the 600 s idle timeout from #274. **`approvals_require_owner` stays off:** the dashboard key is not known to be in `LIFE_GRAPH_OWNER_API_KEYS` |
+| #277 | M3: fixed error messages (`/health`, graph routes). M4: Cypher column validation. M7: exempt paths match whole segments only; metrics are labelled by route template. M8: the watcher tenant lookup fails closed. M6: SSRF guard on webhooks (create and every delivery), no redirects, `/test` returns only delivered or failed. L10: constant-time key check; admin job limit ≤200 | `health_url` was left alone (often a LAN app). Prod and dev both have **0** tenant webhooks and notification channels, so nothing existing is blocked |
+
+**Live checks after release:**
+- health 200, no error text in the body;
+- `/brainX` returns 401 and `/docs` returns 200;
+- 0 raw-path metric labels;
+- an Anthropic-style key is redacted;
+- Postgres reports `idle_in_transaction_session_timeout` as 10min;
+- dedup and owner-only approvals are off;
+- dev runner active; approvals list OK;
+- the worker logs at INFO.
+
+The runtime panel shows `failures` (info), from earlier failed tasks.
+
+**Waiting for the owner:**
+- Put the dashboard key in `LIFE_GRAPH_OWNER_API_KEYS`, then turn on `LIFE_GRAPH_APPROVALS_REQUIRE_OWNER` (release it on its own).
+- Decide whether to enable micro-consolidation dedup.
+- A one-off scan of past captures for leaked keys.
+- Whether `/metrics` should stay public (it still has `tenant_id` labels).
+- Owner-only `/admin`.
+- Default environment = production (M5).
+- One approval store (H9).
+- Deleting the 57 alias modules and 18 dead schemas.
+
+**Follow-ups, no owner decision needed:**
+- Lower the idle timeout once the session-end summary and the distiller are split.
+- Install from the lock in CI and Docker, and cap major versions.
+- Make pip-audit blocking once upstream allows the fixed versions.
+- Set a coverage floor.
+- Wire `revoke_all` into the kill switch.
+- `/autonomy/approvals/{id}/resolve` still trusts the body's `resolved_by`.
+- Unique index on the Telegram message id.
+- Convert the remaining 197 asserts that accept 500.
+
+**Rollback:** move `prod` back to `90cc730` (or an earlier tag no older than `22021b1`) and run `./dev.sh restart`. No migrations were added in this release.
