@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-19 13:19 UTC` from `master` @ `4351b26`
+Generated `2026-11-19 13:28 UTC` from `master` @ `e73d90b`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-19 13:19 UTC` from `master` @ `4351b26`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **35** |
-| Config settings | **321** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5173** in 531 files |
+| Config settings | **323** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5207** in 536 files |
 | Dashboard pages | **23** |
-| Python | 566 files, 142,372 lines |
+| Python | 566 files, 142,518 lines |
 
 ---
 
@@ -1032,16 +1032,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 412 | 4302 |
+| `tests/unit/` | 417 | 4336 |
 | `tests/integration/` | 118 | 859 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **531** | **5173** |
+| **total** | **536** | **5207** |
 
 ---
 
 ## Configuration
 
-321 settings, all overridable by environment variable.
+323 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1072,6 +1072,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DATABASE_URL_SYNC` | `'postgresql://life_graph:life_graph@localhost:5432/life_g…` |
 | `LIFE_GRAPH_DATABASE_POOL_SIZE` | `10` |
 | `LIFE_GRAPH_DATABASE_MAX_OVERFLOW` | `20` |
+| `LIFE_GRAPH_DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS` | `600000` |
 | `LIFE_GRAPH_REDIS_URL` | `'redis://localhost:6379/0'` |
 | `LIFE_GRAPH_GRAPH_ENABLED` | `True` |
 | `LIFE_GRAPH_MINIO_ENDPOINT` | `'localhost:9000'` |
@@ -1105,6 +1106,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_CONTRADICTION_SIMILARITY_THRESHOLD` | `0.75` |
 | `LIFE_GRAPH_MERGE_REVIEW_LOW` | `0.85` |
 | `LIFE_GRAPH_MERGE_SUGGEST_SCAN_LIMIT` | `200` |
+| `LIFE_GRAPH_MICRO_CONSOLIDATION_DEDUP` | `False` |
 | `LIFE_GRAPH_CAPTURE_LLM_CLEAN` | `True` |
 | `LIFE_GRAPH_EXTRACTION_LANGUAGE_GUARD` | `True` |
 | `LIFE_GRAPH_EXTRACTION_TAG_ONLY_ENTITIES` | `True` |
