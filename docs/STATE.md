@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-19 05:13 UTC` from `master` @ `6ce846a`
+Generated `2026-11-19 06:41 UTC` from `master` @ `0b04aeb`
 
 ---
 
@@ -24,7 +24,7 @@ Generated `2026-11-19 05:13 UTC` from `master` @ `6ce846a`
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
 | Config settings | **314** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5079** in 525 files |
+| Test functions | **5081** in 525 files |
 | Dashboard pages | **23** |
 | Python | 563 files, 140,641 lines |
 
@@ -855,7 +855,7 @@ Generated `2026-11-19 05:13 UTC` from `master` @ `6ce846a`
 | ~~scribe~~ (retired) — Writes and maintains documentation, READMEs, and guides. | `—` | — | — | 3 |
 | ~~uzhavu-ops~~ (retired) — Operates the Uzhavu platform — deploy checks, incident diagnosis, and fixes. | `claude_code` | `deploy_check`, `incident_fix` | `build_ok_diff`, `tests_pass` | 6 |
 | **dependency-updater** — Turns dependency-watcher findings into safe upgrade PRs, running project tests before landing. | `claude_code` | `dependency_update` | `tests_pass`, `diff_within_scope` | 7 |
-| **code-fixer** — Makes small, focused code changes in a registered project. File tools only — no shell — and every change is verified and offered as a PR for approval. | `claude_code` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 2 |
+| **code-fixer** — Makes small, focused code changes in a registered project. Files plus a shell that exists only inside its per-task container — and every change is verified and offered as a PR for approval. | `claude_code` | `code_change` | `build_ok_diff`, `lint_clean_diff` | 3 |
 | **code-fixer-local** — Code Fixer on a local model: the code never leaves the machine. Set its model to a local model that fits the GPU: ollama_chat/gpt-oss:20b scored best on the driver benchmark (evals/driver_bench/README.md). Same verification and PR approval as Code Fixer. | `local` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
 | **code-fixer-opencode** — Code Fixer on OpenCode, an open-source coding agent, with a local model: the code never leaves the machine. An alternative engine to code-fixer-local; compare them on the Agent scorecards. | `opencode` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
 | **code-fixer-cloud** — Code Fixer on a free cloud model, for queued work while the GPU is busy with speech (services/llm/compute_router.py). The code leaves the machine; personal context does not. Free models only, never paid. Its model is the first of dev_cloud_models; change it here. | `cloud` | `code_change` | `build_ok_diff`, `lint_clean_diff`, `diff_within_scope`, `tests_exercise_code` | 5 |
@@ -1031,10 +1031,10 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 406 | 4208 |
+| `tests/unit/` | 406 | 4210 |
 | `tests/integration/` | 118 | 859 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **525** | **5079** |
+| **total** | **525** | **5081** |
 
 ---
 
