@@ -40,10 +40,15 @@ AUTH_EXEMPT_EXACT = frozenset(
 
 
 def is_exempt_path(path: str) -> bool:
-    """Check if a path is exempt from auth and tenant requirements."""
+    """Check if a path is exempt from auth and tenant requirements.
+
+    Prefixes match only on a path-segment boundary: ``/brain`` and
+    ``/brain/app.js`` are exempt, ``/brainX`` is not (a bare ``startswith``
+    let any path that merely began with an exempt word skip auth).
+    """
     if path in AUTH_EXEMPT_EXACT:
         return True
-    return any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES)
+    return any(path == prefix or path.startswith(prefix + "/") for prefix in AUTH_EXEMPT_PREFIXES)
 
 
 def extract_api_key(headers: Any, query_params: Any) -> str | None:

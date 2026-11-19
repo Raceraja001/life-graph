@@ -21,7 +21,7 @@ from starlette.responses import JSONResponse, Response
 from life_graph.api.auth import is_exempt_path, verify_service_key
 from life_graph.api.device_access import device_may_call, route_path
 from life_graph.config import settings
-from life_graph.core.metrics import track_request
+from life_graph.core.metrics import route_label, track_request
 from life_graph.core.rate_limit import check_rate_limit
 from life_graph.core.tenant import set_tenant_context
 
@@ -236,10 +236,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             },
         )
 
-        # Track metrics
+        # Track metrics, labelled by route template — never the raw path, or
+        # every distinct URL a caller sends becomes a new series.
         track_request(
             method=request.method,
-            path=request.url.path,
+            path=route_label(request.scope),
             status=response.status_code,
             duration=duration_ms / 1000,
         )

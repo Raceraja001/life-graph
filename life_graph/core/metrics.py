@@ -80,12 +80,46 @@ if PROMETHEUS_AVAILABLE:
     )
 
 
+UNMATCHED_ROUTE = "unmatched"
+_KNOWN_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
+
+
+def route_label(scope: dict) -> str:
+    """The metric label for a request: its matched route template.
+
+    ``/api/v1/memories/{memory_id}`` rather than the raw path, and a mount's
+    prefix (``/brain``) for anything served under it. A request no route
+    matched (a 404, or one rejected by middleware before routing) is
+    ``unmatched`` — labelling by raw path let any caller create a new
+    Prometheus series per request.
+    """
+    route = scope.get("route")
+    path = getattr(route, "path", None)
+    if isinstance(path, str) and path:
+        return path
+    # A mounted sub-app (the /brain static files, /mcp) leaves no "route" in
+    # the scope a middleware sees, so match the app's own mount prefixes.
+    from starlette.routing import Mount
+
+    raw = scope.get("path", "")
+    app_routes = getattr(getattr(scope.get("app"), "router", None), "routes", ())
+    for r in app_routes:
+        if isinstance(r, Mount) and r.path and (raw == r.path or raw.startswith(r.path + "/")):
+            return r.path
+    return UNMATCHED_ROUTE
+
+
 def track_request(method: str, path: str, status: int, duration: float) -> None:
-    """Record request metrics."""
+    """Record request metrics.
+
+    ``path`` should be a route template (see :func:`route_label`); IDs are
+    still normalised for callers that pass a raw path.
+    """
     if not PROMETHEUS_AVAILABLE:
         return
     # Normalize path to remove IDs for cardinality control
     normalized = _normalize_path(path)
+    method = method if method in _KNOWN_METHODS else "OTHER"
     REQUEST_COUNT.labels(method=method, path=normalized, status=str(status)).inc()
     REQUEST_DURATION.labels(method=method, path=normalized).observe(duration)
 
