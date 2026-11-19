@@ -209,8 +209,13 @@ class TelegramClient:
         try:
             body = response.json()
         except ValueError:
-            response.raise_for_status()
-            raise TelegramError(f"{method}: non-JSON response") from None
+            # Not raise_for_status(): HTTPStatusError's message embeds the
+            # request URL, and the URL carries the bot token (audit M22). No
+            # error_code either: a proxy's 404 page is not Telegram rejecting
+            # the token, so the poller backs off rather than stopping.
+            raise TelegramError(
+                f"{method}: non-JSON response (HTTP {response.status_code})"
+            ) from None
 
         if not body.get("ok"):
             params = body.get("parameters") or {}

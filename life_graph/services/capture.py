@@ -11,9 +11,10 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
 from life_graph.core.events import EventBus, EventType, emit_after_commit
+from life_graph.core.redaction import redact_secrets
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
 from life_graph.models.db import CaptureEvent, Correction
@@ -58,6 +59,24 @@ def captured_at(properties: dict | None) -> datetime | None:
     return min(at, datetime.now(UTC))
 
 
+def _duplicate_view(original: CaptureEvent) -> CaptureEvent:
+    """A transient copy of *original* with ``status = "duplicate"``.
+
+    The duplicate status describes this ingest call, not the stored event.
+    Setting it on the original row (as ingest once did) relabelled a capture
+    that was still ``received`` and waiting for processing, and the retry
+    sweep only retries ``received`` rows, so it was never processed (audit M9,
+    2026-11-19). Callers and the API response still read ``status ==
+    "duplicate"`` and the original's ``id``; the copy is never added to a
+    session, so nothing about it is written.
+    """
+    values = {attr.key: getattr(original, attr.key) for attr in inspect(CaptureEvent).column_attrs}
+    if isinstance(values.get("properties"), dict):
+        values["properties"] = dict(values["properties"])
+    values["status"] = "duplicate"
+    return CaptureEvent(**values)
+
+
 class CaptureService:
     """Manages capture event ingestion, dedup, corrections, and queries.
 
@@ -84,8 +103,13 @@ class CaptureService:
     ) -> CaptureEvent:
         """Universal capture ingress with SHA-256 dedup (10-min window per surface).
 
-        If the same content hash + surface is found within the last 10 minutes,
-        the existing event is marked as ``duplicate`` and returned instead.
+        ``content`` is secret-redacted (:func:`redact_secrets`) before it is
+        hashed and stored.
+
+        If the same content hash + surface is found within 10 minutes of the
+        event's time, a detached copy of the existing event with ``status``
+        ``"duplicate"`` is returned instead (:func:`_duplicate_view`); the
+        stored row itself is not modified.
 
         Args:
             tenant_id: Tenant scope.
@@ -106,7 +130,16 @@ class CaptureService:
         resolved_tier = (
             coerce_tier(trust_tier) if trust_tier is not None else classify_surface(surface)
         )
-        content = without_nul(content)
+        # Secrets are redacted here, server-side, for every surface: clients
+        # redact too, but an old or third-party client may not, and a key in
+        # a capture becomes a memory and can be echoed back to Telegram.
+        # Redacting BEFORE hashing is deliberate: the hash describes what is
+        # stored, so two captures that differ only in the secret dedup as one
+        # (their stored rows would be identical anyway). A retry of the same
+        # capture goes through the same redaction, so it still dedups; only a
+        # row stored before this change (hash of unredacted text) can miss a
+        # match, once, inside its 10-minute window.
+        content = redact_secrets(without_nul(content))
         properties = without_nul(properties)
         now = occurred_at or captured_at(properties) or datetime.now(UTC)
         content_hash = hashlib.sha256(content.encode()).hexdigest()
@@ -125,8 +158,7 @@ class CaptureService:
             )
         )
         if dup := existing.scalars().first():
-            dup.status = "duplicate"
-            return dup
+            return _duplicate_view(dup)
 
         event = CaptureEvent(
             id=uuid.uuid4(),
