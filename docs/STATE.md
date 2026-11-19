@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-19 10:58 UTC` from `master` @ `7c6c42f`
+Generated `2026-11-19 11:16 UTC` from `master` @ `c33c562`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-19 10:58 UTC` from `master` @ `7c6c42f`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **35** |
-| Config settings | **318** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5114** in 527 files |
+| Config settings | **321** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5151** in 528 files |
 | Dashboard pages | **23** |
-| Python | 565 files, 141,323 lines |
+| Python | 566 files, 142,182 lines |
 
 ---
 
@@ -1032,16 +1032,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 408 | 4243 |
+| `tests/unit/` | 409 | 4280 |
 | `tests/integration/` | 118 | 859 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **527** | **5114** |
+| **total** | **528** | **5151** |
 
 ---
 
 ## Configuration
 
-318 settings, all overridable by environment variable.
+321 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1237,6 +1237,9 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_VERIFIER_SANDBOX_CACHE_DIR` | `''` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_MEMORY` | `'4g'` |
 | `LIFE_GRAPH_VERIFIER_SANDBOX_CPUS` | `'4'` |
+| `LIFE_GRAPH_VERIFIER_SETUP_EGRESS_PYTHON` | `'pypi.org,files.pythonhosted.org'` |
+| `LIFE_GRAPH_VERIFIER_SETUP_EGRESS_NODE` | `'registry.npmjs.org'` |
+| `LIFE_GRAPH_VERIFIER_SETUP_EGRESS_JVM` | `'services.gradle.org,downloads.gradle.org,downloads.gradl…` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX` | `'none'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_IMAGE` | `'life-graph-claude-driver:latest'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_SANDBOX_MEMORY` | `'4g'` |
