@@ -294,11 +294,14 @@ def test_an_approval_decided_on_the_phone_says_so():
     from life_graph.api.approvals import ResolveBody, resolver
 
     phone = SimpleNamespace(state=SimpleNamespace(device_id="d-9"))
-    owner = SimpleNamespace(state=SimpleNamespace())
+    other = SimpleNamespace(state=SimpleNamespace(), headers={}, query_params={})
     spoof = ResolveBody(resolved_by="raja")
     assert resolver(phone, spoof) == "phone:d-9"  # the body cannot name someone else
     assert resolver(phone, None) == "phone:d-9"
-    assert resolver(owner, spoof) == "raja" and resolver(owner, None) is None
+    # Nor can it off the phone (H3): who decided is the server's to say;
+    # tests/unit/test_approvals_owner_identity.py covers each kind of caller.
+    assert resolver(other, spoof) != "raja"
+    assert resolver(other, spoof) == resolver(other, None)
 
 
 def _row(exposure, **over):
