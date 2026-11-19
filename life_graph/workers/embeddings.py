@@ -35,8 +35,8 @@ async def generate_embeddings_batch(
 ) -> dict:
     """ARQ task: generate embeddings for a batch of memories.
 
-    Loads memories by ID, calls the embedding service for each, and
-    persists the resulting vectors.  Processes in chunks of
+    Loads memories by ID, embeds each chunk in one batch call (outside a
+    transaction), and persists the resulting vectors.  Processes in chunks of
     ``BATCH_SIZE`` to keep individual transactions short.
 
     Job execution is tracked via a :class:`JobRun` record.
@@ -84,31 +84,43 @@ async def generate_embeddings_batch(
                     )
                 )
                 memories = result.scalars().all()
+                # End the read transaction before embedding: the embedder can
+                # be slow (a remote model, a cold sentence-transformers load)
+                # and the connection sat idle in a transaction meanwhile
+                # (audit H7). The rows stay usable (expire_on_commit is off);
+                # setting their vectors below opens a fresh transaction.
+                await session.commit()
+                if not memories:
+                    continue
 
-                for memory in memories:
-                    try:
-                        # embed_async, not embed: embed() is synchronous, so
-                        # awaiting it raised TypeError on every row — caught
-                        # below, so no bulk-imported memory ever got a vector
-                        # while the job reported success (code review,
-                        # 2026-10-22).
-                        embedding = await embedding_service.embed_async(memory.content)
-                        if not embedding:
-                            # Backend down or empty text. Leave the row
-                            # unembedded so the re-embed job picks it up,
-                            # rather than counting it as done.
-                            failed += 1
-                            continue
-                        memory.embedding = embedding
-                        memory.embedding_model = current_embedding_model()
-                        processed += 1
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to embed memory %s: %s",
-                            memory.id,
-                            exc,
-                        )
+                # One batch call per chunk, the same async path re-embed uses
+                # (workers/reembed.py), not one round trip per memory. Async,
+                # not embed_batch: the sync path always used sentence-
+                # transformers, whatever backend search queries with.
+                try:
+                    vectors = await embedding_service.embed_batch_async(
+                        [m.content or "" for m in memories], batch_size=BATCH_SIZE
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to embed %d memories (chunk %d): %s", len(memories), i, exc
+                    )
+                    failed += len(memories)
+                    continue
+
+                vectors = list(vectors or [])
+                model_name = current_embedding_model()
+                for index, memory in enumerate(memories):
+                    embedding = vectors[index] if index < len(vectors) else None
+                    if not embedding:
+                        # Backend down or empty text. Leave the row
+                        # unembedded so the re-embed job picks it up,
+                        # rather than counting it as done.
                         failed += 1
+                        continue
+                    memory.embedding = embedding
+                    memory.embedding_model = model_name
+                    processed += 1
 
                 await session.commit()
 
