@@ -96,8 +96,23 @@ def own_ip():
         return socket.inet_ntoa(packed[20:24])
 gw = ".".join(own_ip().split(".")[:3]) + ".1"
 r["bridge_gateway"] = gw
+# With gateway_mode_ipv4=isolated the network has no gateway, so docker hands
+# .1 to the first container on it -- the egress proxy, which listens on its
+# own port. Reaching that port is the proxy, not the host (seen 2026-11-19
+# when the prod API, also on 8080, joined PROBE_HOST_PORTS).
+try:
+    _proxy_ip = socket.gethostbyname(os.environ.get("HTTPS_PROXY", "").split("//", 1)[1].rsplit(":", 1)[0])
+except Exception:
+    _proxy_ip = ""
+r["bridge_gateway_is_egress_proxy"] = gw == _proxy_ip
 ports = [int(x) for x in os.environ.get("PROBE_HOST_PORTS", "").split() if x]
-r["bridge_gateway_open_host_ports"] = [p for p in ports if tcp_ok(gw, p)]
+open_ports = [p for p in ports if tcp_ok(gw, p)]
+if r["bridge_gateway_is_egress_proxy"]:
+    # Any open port other than the proxy's own would still be a finding.
+    _proxy_port = int(os.environ.get("HTTPS_PROXY", "").rsplit(":", 1)[1].strip("/"))
+    r["bridge_gateway_proxy_port"] = _proxy_port
+    open_ports = [p for p in open_ports if p != _proxy_port]
+r["bridge_gateway_open_host_ports"] = open_ports
 
 # Network, through the proxy
 proxy = os.environ.get("HTTPS_PROXY", "")

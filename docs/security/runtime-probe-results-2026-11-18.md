@@ -140,3 +140,12 @@ The first run of this probe reported the orphan as not swept. That was a bug in 
 the runtime: since the Stage 5 fix the probe labels its runtimes as a separate instance
 (`-script`), but its crashed-caller child process did not, so the sweep correctly left the
 child's container alone. The child now carries the same instance label.
+
+**False positive, 2026-11-19 (prod settings):** the same probe reported `bridge_gateway_open_host_ports:
+[8080]`. With `gateway_mode_ipv4=isolated` the network has no gateway, so docker gives `.1` to the
+first container on it: the egress proxy, which listens on 8080. The prod API had just started
+listening on `0.0.0.0:8080` (its `.env` sets `LIFE_GRAPH_BIND_HOST=0.0.0.0`), so 8080 joined the
+probe's port list. Every other host port answered nothing, and the real gateways (`docker0` and
+friends) stayed unreachable. Reproduced on a throwaway isolated network: the first container got
+`.1`, and the network reported no gateway. The probe now records `bridge_gateway_is_egress_proxy`
+and leaves the proxy's own port out of `bridge_gateway_open_host_ports`.
