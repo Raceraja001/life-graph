@@ -130,7 +130,7 @@ async def list_entities(
         logger.exception("Failed to list graph entities")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Graph query failed: {exc}",
+            detail="Graph query failed. See the server log (X-Request-ID).",
         ) from exc
 
     entities: list[GraphEntity] = []
@@ -159,7 +159,7 @@ async def get_entity(name: str):
         logger.exception("Failed to get entity context for %s", name)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Graph query failed: {exc}",
+            detail="Graph query failed. See the server log (X-Request-ID).",
         ) from exc
 
 
@@ -210,7 +210,7 @@ async def execute_cypher(body: CypherQuery):
         logger.exception("Cypher query failed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cypher query error: {exc}",
+            detail="Cypher query error. See the server log (X-Request-ID).",
         ) from exc
 
 
@@ -250,7 +250,7 @@ async def find_path(
         logger.exception("Path query failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Graph query failed: {exc}",
+            detail="Graph query failed. See the server log (X-Request-ID).",
         ) from exc
 
     return success_response(
@@ -291,7 +291,7 @@ async def hybrid_search(body: GraphSearchRequest):
         logger.exception("Hybrid search failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Hybrid search error: {exc}",
+            detail="Hybrid search failed. See the server log (X-Request-ID).",
         ) from exc
 
     return success_response(
