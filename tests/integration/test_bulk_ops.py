@@ -12,7 +12,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 
 @pytest_asyncio.fixture
@@ -38,7 +38,7 @@ class TestBulkDelete:
             "/api/v1/admin/bulk/delete",
             json={"filter": {}, "confirm": False},
         )
-        assert r.status_code in (400, 500)
+        assert_ok(r, 400)
         body = r.json()
         # FastAPI HTTPException produces a "detail" key
         assert "detail" in body
@@ -52,7 +52,7 @@ class TestBulkDelete:
             json={"filter": {"tags": ["test"]}, "confirm": False},
         )
         # Should succeed even if DB is empty — just reports match_count=0
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -69,7 +69,7 @@ class TestBulkDelete:
             "/api/v1/admin/bulk/delete",
             json={"filter": {"status": "archived"}, "confirm": True},
         )
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -92,7 +92,7 @@ class TestBulkDelete:
                 "confirm": False,
             },
         )
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -107,7 +107,7 @@ class TestBulkDelete:
             "/api/v1/admin/bulk/delete",
             json={"confirm": False},
         )
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
 
 # ── Bulk Import ──────────────────────────────────────────────
@@ -127,7 +127,7 @@ class TestBulkImport:
                 "generate_embeddings": False,
             },
         )
-        assert r.status_code in (201, 500)
+        assert_ok(r, 201)
 
         if r.status_code == 201:
             body = r.json()
@@ -144,7 +144,7 @@ class TestBulkImport:
             "/api/v1/admin/bulk/import",
             json={"memories": memories, "generate_embeddings": False},
         )
-        assert r.status_code in (201, 500)
+        assert_ok(r, 201)
 
         if r.status_code == 201:
             body = r.json()
@@ -161,7 +161,7 @@ class TestBulkImport:
         )
         # Pydantic max_length=500 does NOT enforce min_length, so this may
         # succeed with imported=0 or be rejected by additional validation.
-        assert r.status_code in (201, 422, 500)
+        assert r.status_code in (201, 422)
 
         if r.status_code == 201:
             body = r.json()
@@ -177,7 +177,7 @@ class TestBulkImport:
             "/api/v1/admin/bulk/import",
             json={"memories": memories, "generate_embeddings": False},
         )
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -197,7 +197,7 @@ class TestBulkImport:
                 "generate_embeddings": False,
             },
         )
-        assert r.status_code in (201, 500)
+        assert_ok(r, 201)
 
         if r.status_code == 201:
             body = r.json()
@@ -215,7 +215,7 @@ class TestBulkImport:
                 "generate_embeddings": False,
             },
         )
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -228,7 +228,7 @@ class TestBulkImport:
                 "generate_embeddings": False,
             },
         )
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -238,4 +238,4 @@ class TestBulkImport:
             "/api/v1/admin/bulk/import",
             json={"generate_embeddings": False},
         )
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)

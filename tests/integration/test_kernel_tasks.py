@@ -17,7 +17,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test_kernel_tenant",
@@ -80,7 +80,7 @@ class TestCreateTask:
                 "input": {"message": "Hello"},
             },
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -97,7 +97,7 @@ class TestCreateTask:
                 "input": {"message": "test"},
             },
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -114,7 +114,7 @@ class TestCreateTask:
             },
         )
         # 400 (persona not found) or 500 (DB unreachable)
-        assert response.status_code in (400, 500)
+        assert_ok(response, 400)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -137,7 +137,7 @@ class TestCreateTask:
                 "max_retries": 3,
             },
         )
-        assert response.status_code in (201, 500)
+        assert_ok(response, 201)
 
         if response.status_code == 201:
             task = response.json()["data"]
@@ -158,7 +158,7 @@ class TestCreateTask:
                 "input": {"message": "Simple task"},
             },
         )
-        assert response.status_code in (201, 500)
+        assert_ok(response, 201)
 
         if response.status_code == 201:
             task = response.json()["data"]
@@ -173,7 +173,7 @@ class TestListTasks:
     async def test_list_tasks_returns_200(self, client: AsyncClient):
         """Listing tasks returns 200 with pagination metadata."""
         response = await client.get("/api/v1/kernel/tasks")
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
         if response.status_code == 200:
             body = response.json()
@@ -196,7 +196,7 @@ class TestListTasks:
             "/api/v1/kernel/tasks",
             params={"status": "queued"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
         if response.status_code == 200:
             tasks = response.json()["data"]
@@ -214,7 +214,7 @@ class TestListTasks:
             "/api/v1/kernel/tasks",
             params={"agent_name": "cody"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
         if response.status_code == 200:
             tasks = response.json()["data"]
@@ -229,7 +229,7 @@ class TestListTasks:
             "/api/v1/kernel/tasks",
             params={"limit": 5, "offset": 0},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
         if response.status_code == 200:
             body = response.json()
@@ -247,7 +247,7 @@ class TestGetTask:
         response = await client.get(
             f"/api/v1/kernel/tasks/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -256,7 +256,7 @@ class TestGetTask:
         response = await client.get(
             "/api/v1/kernel/tasks/not-a-uuid",
         )
-        assert response.status_code in (422, 500)
+        assert_ok(response, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -284,7 +284,7 @@ class TestGetTask:
         detail_resp = await client.get(
             f"/api/v1/kernel/tasks/{task_id}",
         )
-        assert detail_resp.status_code in (200, 500)
+        assert_ok(detail_resp, 200)
 
         task = detail_resp.json()["data"]
         assert task["id"] == task_id
@@ -311,7 +311,7 @@ class TestCancelTask:
         response = await client.post(
             f"/api/v1/kernel/tasks/{fake_id}/cancel",
         )
-        assert response.status_code in (404, 500)
+        assert_ok(response, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -336,7 +336,7 @@ class TestCancelTask:
         cancel_resp = await client.post(
             f"/api/v1/kernel/tasks/{task_id}/cancel",
         )
-        assert cancel_resp.status_code in (200, 500)
+        assert_ok(cancel_resp, 200)
 
         if cancel_resp.status_code == 200:
             data = cancel_resp.json()["data"]

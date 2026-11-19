@@ -17,6 +17,17 @@ class StorageSettings(BaseModel):
     database_url_sync: str = "postgresql://life_graph:life_graph@localhost:5432/life_graph"
     database_pool_size: int = Field(default=10, ge=1)
     database_max_overflow: int = Field(default=20, ge=0)
+    database_idle_in_transaction_timeout_ms: int = Field(default=600_000, ge=0)
+    """Postgres ``idle_in_transaction_session_timeout`` for the app's engine.
+
+    A connection left idle inside an open transaction longer than this is
+    closed by the server, so a forgotten session cannot pin a pooled
+    connection (and its locks) forever (audit H7, 2026-11-19). 0 turns it off.
+    The default is deliberately generous: a few paths still hold a
+    transaction across an LLM call (the session-end summary, the transcript
+    distiller), and a local model can take minutes. Lower it once those are
+    split. No ``statement_timeout`` is set: consolidation and backfill jobs
+    run long statements on purpose."""
 
     # ── Redis ──────────────────────────────────────────
     redis_url: str = "redis://localhost:6379/0"

@@ -2,7 +2,9 @@
 #
 # Jobs:
 #   lint   — ruff check + format verification
-#   test   — unit + integration tests against real pgvector+MinIO
+#   lockfile — uv.lock matches pyproject.toml
+#   dependency-audit — pip-audit of uv.lock (report-only for now)
+#   test   — unit + integration tests against real pgvector+MinIO, with coverage
 #   sdk-ts — TypeScript SDK build check
 #
 # Triggers on every pull request, whatever its base branch. Dev-agent PRs
@@ -37,6 +39,69 @@ jobs:
       - name: Check formatting
         run: ruff format --check life_graph/
 
+  # uv.lock is the record of exactly which versions the dependency ranges in
+  # pyproject.toml resolve to. It went stale for six weeks (2026-10-03 to
+  # 11-19) because nothing checked it; `uv lock --check` fails when the two
+  # disagree, so a dependency change must come with `uv lock` in the same PR.
+  # The uv version is pinned so a uv release cannot change the lock format
+  # under an unchanged pyproject.
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.12.14
+
+      - name: Check uv.lock matches pyproject.toml
+        run: uv lock --check
+
+  # Known vulnerabilities in the locked dependency set (every extra included,
+  # so it covers what a full deployment can install).
+  #
+  # TODO(audit H6): make this blocking (delete the `|| ...` fallback below).
+  # It is REPORT-ONLY because the first run found advisories that cannot be
+  # fixed from this repo yet:
+  #   - filelock 3.32.7 (13 CVEs, fixed in 4.2.1): litellm 1.105.1 requires
+  #     filelock<4.0, and pr-agent pins that litellm.
+  #   - opentelemetry-api 1.45.1 (CVE-2026-126360, fixed in 1.45.2): pr-agent
+  #     pins opentelemetry-api.
+  # Findings still show as warnings on the run and in the job summary.
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv and pip-audit
+        run: pip install uv==0.12.14 "pip-audit>=2.7"
+
+      - name: Export the locked requirements
+        run: uv export --frozen --all-extras --no-emit-project --format requirements-txt -o locked-requirements.txt
+
+      - name: pip-audit (report-only, see TODO above)
+        run: |
+          set +e
+          pip-audit -r locked-requirements.txt --disable-pip --no-deps \
+            --progress-spinner off --format markdown --output audit.md
+          status=$?
+          set -e
+          {
+            echo "## pip-audit of uv.lock"
+            cat audit.md 2>/dev/null || echo "(no report written)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat audit.md 2>/dev/null || true
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::pip-audit found known vulnerabilities (exit $status); see the job summary. Report-only until the TODO in ci.yml is done."
+          fi
+
   # Not gated on lint. From 2026-11-13 to 11-16 a handful of ruff errors
   # failed lint on every push, and with needs: lint both test jobs were
   # skipped -- fifteen merges reached master without the suite running once.
@@ -54,12 +119,13 @@ jobs:
 
       # The installed packages themselves, not just pip's downloads: the
       # install took ~90 s a job even with the download cache. Keyed on
-      # pyproject.toml, so any dependency change installs afresh.
+      # uv.lock, which the lockfile job keeps in step with pyproject.toml, so
+      # any dependency change (and every lock refresh) installs afresh.
       - uses: actions/cache@v4
         id: site-packages
         with:
           path: ${{ env.pythonLocation }}
-          key: site-packages-${{ runner.os }}-py312-${{ hashFiles('pyproject.toml') }}
+          key: site-packages-${{ runner.os }}-py312-${{ hashFiles('uv.lock') }}
 
       - name: Install dependencies
         run: |
@@ -84,7 +150,19 @@ jobs:
       - name: Run unit tests
         # -n auto: parallel, and it fails if two workers collect different test
         # ids (e.g. a uuid4() in a parametrize id), which keeps -n usable locally.
-        run: python -m pytest tests/unit/ -n auto -q --tb=short
+        # Coverage is measured but not yet gated (no --cov-fail-under): the
+        # first runs set the baseline a threshold can be chosen from.
+        run: >-
+          python -m pytest tests/unit/ -n auto -q --tb=short
+          --cov=life_graph --cov-report=xml:coverage-unit.xml --cov-report=term
+
+      - name: Upload unit coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: coverage-unit.xml
+          if-no-files-found: warn
 
       # The two evaluation laboratories are regression gates, not reports: each
       # --verify re-runs the committed suite and exits non-zero when a quality
@@ -121,7 +199,7 @@ jobs:
         id: site-packages
         with:
           path: ${{ env.pythonLocation }}
-          key: site-packages-${{ runner.os }}-py312-${{ hashFiles('pyproject.toml') }}
+          key: site-packages-${{ runner.os }}-py312-${{ hashFiles('uv.lock') }}
 
       - name: Install dependencies
         run: |
@@ -259,12 +337,12 @@ jobs:
 
       # The installed packages themselves, not just pip's downloads: the
       # install took ~90 s a job even with the download cache. Keyed on
-      # pyproject.toml, so any dependency change installs afresh.
+      # uv.lock (see the unit-tests job).
       - uses: actions/cache@v4
         id: site-packages
         with:
           path: ${{ env.pythonLocation }}
-          key: site-packages-${{ runner.os }}-py312-${{ hashFiles('pyproject.toml') }}
+          key: site-packages-${{ runner.os }}-py312-${{ hashFiles('uv.lock') }}
 
       - name: Install dependencies
         run: |
@@ -298,13 +376,36 @@ jobs:
             -c "SELECT version_num FROM alembic_version;" \
             -c "SELECT to_regclass('public.memories') IS NOT NULL AS memories_exists;"
 
-      - name: Start API server
-        run: |
-          LIFE_GRAPH_PROFILE=full python -m uvicorn life_graph.main:app --port 8000 &
-          sleep 10
+      # There used to be a "Start API server" step here: uvicorn on :8000,
+      # backgrounded, then `sleep 10`. Nothing checked it came up and no test
+      # talks to :8000 -- the integration suite drives the app in-process
+      # through httpx's ASGITransport -- so it only cost ten seconds.
 
       - name: Run integration tests
-        run: python -m pytest tests/integration/ -q --tb=short
+        run: >-
+          python -m pytest tests/integration/ -q --tb=short
+          --cov=life_graph --cov-report=xml:coverage-integration.xml --cov-report=term
+
+      # The Postgres half of tests/unit/test_exact_bound_capabilities.py is
+      # skipped wherever there is no migrated database, which is every unit
+      # job -- so until this step it had never run in CI. It runs after the
+      # integration suite because that suite's session fixture is what creates
+      # and migrates the test database these tests connect to.
+      # LIFE_GRAPH_REQUIRE_POSTGRES_TESTS turns "skipped, no database" into a
+      # collection error here, so a broken database cannot pass as green.
+      - name: Run Postgres-backed unit tests
+        if: ${{ !cancelled() }}
+        env:
+          LIFE_GRAPH_REQUIRE_POSTGRES_TESTS: "1"
+        run: python -m pytest tests/unit/test_exact_bound_capabilities.py -q --tb=short -rs
+
+      - name: Upload integration coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-integration
+          path: coverage-integration.xml
+          if-no-files-found: warn
 
       - name: Postgres logs on failure
         if: failure()

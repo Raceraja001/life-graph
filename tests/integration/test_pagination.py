@@ -12,7 +12,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 
 @pytest_asyncio.fixture
@@ -63,7 +63,7 @@ class TestMemoryPagination:
     async def test_list_memories_basic_shape(self, client: AsyncClient):
         """Response has the standard paginated envelope."""
         r = await client.get("/api/v1/memories/", params={"limit": 5})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -75,7 +75,7 @@ class TestMemoryPagination:
     async def test_list_memories_data_is_list(self, client: AsyncClient):
         """The data field must always be a list (possibly empty)."""
         r = await client.get("/api/v1/memories/", params={"limit": 5})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -89,7 +89,7 @@ class TestMemoryPagination:
             "/api/v1/memories/",
             params={"limit": 5, "include_total": "true"},
         )
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -104,7 +104,7 @@ class TestMemoryPagination:
     async def test_list_memories_total_absent_by_default(self, client: AsyncClient):
         """Without include_total, meta.total should be null."""
         r = await client.get("/api/v1/memories/", params={"limit": 5})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -127,7 +127,7 @@ class TestMemoryPagination:
     async def test_list_memories_has_more_false_when_empty(self, client: AsyncClient):
         """On an empty DB, has_more must be false."""
         r = await client.get("/api/v1/memories/", params={"limit": 100})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -140,7 +140,7 @@ class TestMemoryPagination:
     async def test_list_memories_next_cursor_null_when_no_more(self, client: AsyncClient):
         """When has_more is false, next_cursor should be null."""
         r = await client.get("/api/v1/memories/", params={"limit": 100})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -152,7 +152,7 @@ class TestMemoryPagination:
     async def test_list_memories_respects_limit(self, client: AsyncClient):
         """The data array must not exceed the requested limit."""
         r = await client.get("/api/v1/memories/", params={"limit": 3})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -163,10 +163,10 @@ class TestMemoryPagination:
     async def test_list_memories_limit_validation(self, client: AsyncClient):
         """limit=0 or limit > 100 should be rejected (422)."""
         r = await client.get("/api/v1/memories/", params={"limit": 0})
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
         r2 = await client.get("/api/v1/memories/", params={"limit": 999})
-        assert r2.status_code in (422, 500)
+        assert_ok(r2, 422)
 
 
 # ── Session Pagination ───────────────────────────────────────
@@ -180,7 +180,7 @@ class TestSessionPagination:
     async def test_list_sessions_basic_shape(self, client: AsyncClient):
         """Response has the standard paginated envelope."""
         r = await client.get("/api/v1/sessions/", params={"limit": 5})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -192,7 +192,7 @@ class TestSessionPagination:
     async def test_list_sessions_data_is_list(self, client: AsyncClient):
         """The data field must always be a list."""
         r = await client.get("/api/v1/sessions/", params={"limit": 5})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -206,7 +206,7 @@ class TestSessionPagination:
             "/api/v1/sessions/",
             params={"limit": 5, "include_total": "true"},
         )
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -221,7 +221,7 @@ class TestSessionPagination:
     async def test_list_sessions_total_absent_by_default(self, client: AsyncClient):
         """Without include_total, meta.total should be null."""
         r = await client.get("/api/v1/sessions/", params={"limit": 5})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -235,14 +235,14 @@ class TestSessionPagination:
             "/api/v1/sessions/",
             params={"limit": 5, "cursor": "invalidcursor"},
         )
-        assert r.status_code in (200, 400, 422, 500)
+        assert r.status_code in (200, 400, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_sessions_respects_limit(self, client: AsyncClient):
         """The data array must not exceed the requested limit."""
         r = await client.get("/api/v1/sessions/", params={"limit": 3})
-        assert r.status_code in (200, 500)
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -253,10 +253,10 @@ class TestSessionPagination:
     async def test_list_sessions_limit_validation(self, client: AsyncClient):
         """limit=0 or limit > 100 should be rejected (422)."""
         r = await client.get("/api/v1/sessions/", params={"limit": 0})
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
         r2 = await client.get("/api/v1/sessions/", params={"limit": 999})
-        assert r2.status_code in (422, 500)
+        assert_ok(r2, 422)
 
 
 # ── Cross-Endpoint Envelope Consistency ──────────────────────

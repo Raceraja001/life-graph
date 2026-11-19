@@ -25,6 +25,7 @@ single place rather than per-handler.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -200,6 +201,21 @@ async def _handle_start(
 # ── Capture ───────────────────────────────────────────────────────
 
 
+def _message_time(msg: dict[str, Any]) -> datetime | None:
+    """The message's own ``date`` (Unix seconds) as UTC, never in the future.
+
+    None when absent or unusable, so ingest falls back to its own default.
+    """
+    raw = msg.get("date")
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
+        return None
+    try:
+        at = datetime.fromtimestamp(raw, UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
+    return min(at, datetime.now(UTC))
+
+
 async def _capture(
     msg: dict[str, Any],
     chat_id: int,
@@ -223,6 +239,10 @@ async def _capture(
         surface="telegram",
         content=text[:MAX_CAPTURE_CHARS],
         modality="text",
+        # Dated by Telegram, not by arrival: a replayed update (lost offset,
+        # lease handover) then falls inside the original's dedup window
+        # instead of becoming a second capture of the same message.
+        occurred_at=_message_time(msg),
         trust_tier=tier,
         properties={
             "chat_id": chat_id,

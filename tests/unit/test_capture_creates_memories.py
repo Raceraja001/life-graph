@@ -38,6 +38,7 @@ class _FakeSession:
     def __init__(self, capture_evt) -> None:
         self._capture_evt = capture_evt
         self.committed = False
+        self._in_tx = False
 
     async def __aenter__(self):
         return self
@@ -45,11 +46,17 @@ class _FakeSession:
     async def __aexit__(self, *exc) -> bool:
         return False
 
+    def in_transaction(self) -> bool:
+        """Like AsyncSession: a statement autobegins, commit ends it."""
+        return self._in_tx
+
     async def execute(self, _stmt):
+        self._in_tx = True
         evt = self._capture_evt
         return SimpleNamespace(scalars=lambda: SimpleNamespace(first=lambda: evt))
 
     async def commit(self) -> None:
+        self._in_tx = False
         self.committed = True
 
 
@@ -292,6 +299,34 @@ class TestFailureIsolation:
         )
 
         harness.manager.store_facts.assert_not_awaited()
+
+
+class TestNoTransactionDuringExtraction:
+    """Extraction is LLM-first and can take minutes. The capture's SELECT used
+    to leave its session idle in a transaction for all of it, holding a pooled
+    connection per capture (audit H7, 2026-11-19)."""
+
+    @pytest.mark.asyncio
+    async def test_the_session_is_not_in_a_transaction_while_extracting(self, harness, monkeypatch):
+        seen: list[bool] = []
+
+        class _WatchingPipeline:
+            async def extract(self, _content, *, capture=False):
+                seen.append(harness.session.in_transaction())
+                return harness.extraction
+
+        monkeypatch.setattr(
+            "life_graph.api.dependencies.get_extraction_pipeline", lambda: _WatchingPipeline()
+        )
+
+        await harness.run()
+
+        assert seen == [False]
+        # The writes after it still land and are committed.
+        harness.manager.store_facts.assert_awaited_once()
+        assert harness.capture_evt.status == "processed"
+        assert harness.session.committed
+        assert not harness.session.in_transaction()
 
 
 class TestActivityTrailSurfaces:

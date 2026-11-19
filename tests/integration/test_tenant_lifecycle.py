@@ -17,7 +17,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 
 @pytest_asyncio.fixture
@@ -41,7 +41,7 @@ class TestTenantProvision:
         """Valid tenant_id + plan should return 201 with tenant details."""
         payload = {"tenant_id": "testco123", "plan": "free"}
         r = await admin_client.post("/api/v1/admin/tenants/provision", json=payload)
-        assert r.status_code in (201, 409, 500)
+        assert r.status_code in (201, 409)
 
         if r.status_code == 201:
             body = r.json()
@@ -57,7 +57,7 @@ class TestTenantProvision:
         """tenant_id with special characters like '!' must be rejected (422)."""
         payload = {"tenant_id": "ABC!", "plan": "free"}
         r = await admin_client.post("/api/v1/admin/tenants/provision", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -65,7 +65,7 @@ class TestTenantProvision:
         """tenant_id with uppercase letters violates the regex pattern (422)."""
         payload = {"tenant_id": "MyTenant", "plan": "free"}
         r = await admin_client.post("/api/v1/admin/tenants/provision", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -73,7 +73,7 @@ class TestTenantProvision:
         """tenant_id shorter than 3 characters must be rejected (422)."""
         payload = {"tenant_id": "ab", "plan": "free"}
         r = await admin_client.post("/api/v1/admin/tenants/provision", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -81,7 +81,7 @@ class TestTenantProvision:
         """Invalid plan value 'platinum' must be rejected (422)."""
         payload = {"tenant_id": "testco456", "plan": "platinum"}
         r = await admin_client.post("/api/v1/admin/tenants/provision", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -89,14 +89,14 @@ class TestTenantProvision:
         """Missing tenant_id field must be rejected (422)."""
         payload = {"plan": "free"}
         r = await admin_client.post("/api/v1/admin/tenants/provision", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_provision_empty_body(self, admin_client: AsyncClient):
         """Completely empty body must be rejected (422)."""
         r = await admin_client.post("/api/v1/admin/tenants/provision", json={})
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -106,7 +106,7 @@ class TestTenantProvision:
             tid = f"plantest-{plan}-{uuid.uuid4().hex[:6]}"
             payload = {"tenant_id": tid, "plan": plan}
             r = await admin_client.post("/api/v1/admin/tenants/provision", json=payload)
-            assert r.status_code in (201, 500)
+            assert_ok(r, 201)
 
 
 # ── Get Tenant Summary ──────────────────────────────────────────
@@ -121,7 +121,7 @@ class TestTenantGet:
         """Fetching a nonexistent tenant should return 404 (or 500 if no DB)."""
         fake_id = f"nonexistent-{uuid.uuid4().hex[:8]}"
         r = await admin_client.get(f"/api/v1/admin/tenants/{fake_id}")
-        assert r.status_code in (404, 500)
+        assert_ok(r, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -158,7 +158,7 @@ class TestTenantDeactivate:
         """Deactivating a nonexistent tenant should return 404 (or 500)."""
         fake_id = f"nope-{uuid.uuid4().hex[:8]}"
         r = await admin_client.post(f"/api/v1/admin/tenants/{fake_id}/deactivate")
-        assert r.status_code in (404, 500)
+        assert_ok(r, 404)
 
 
 # ── Tenant Reactivate ──────────────────────────────────────────
@@ -173,7 +173,7 @@ class TestTenantReactivate:
         """Reactivating a nonexistent tenant should return 404 (or 500)."""
         fake_id = f"nope-{uuid.uuid4().hex[:8]}"
         r = await admin_client.post(f"/api/v1/admin/tenants/{fake_id}/reactivate")
-        assert r.status_code in (404, 500)
+        assert_ok(r, 404)
 
 
 # ── Tenant Deletion ────────────────────────────────────────────
@@ -188,7 +188,7 @@ class TestTenantDelete:
         """Deleting a nonexistent tenant should return 404 (or 500)."""
         fake_id = f"ghost-{uuid.uuid4().hex[:8]}"
         r = await admin_client.delete(f"/api/v1/admin/tenants/{fake_id}")
-        assert r.status_code in (404, 500)
+        assert_ok(r, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -202,4 +202,4 @@ class TestTenantDelete:
 
         if provision_r.status_code == 201:
             r = await admin_client.delete(f"/api/v1/admin/tenants/{tid}")
-            assert r.status_code in (409, 500)
+            assert_ok(r, 409)

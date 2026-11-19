@@ -109,6 +109,15 @@ class MemorySettings(BaseModel):
     # the producer queues them as merge approvals for the user to confirm.
     merge_review_low: float = 0.85
     merge_suggest_scan_limit: int = 200  # max active memories scanned per tenant per run
+    micro_consolidation_dedup: bool = False
+    """Let the post-session micro-consolidation supersede near-duplicates.
+
+    Off by default. The step marks a session's *newer* memory superseded when
+    an older active one is at cosine >= 0.95, with no LLM check. A negation or
+    update ("I no longer use X" next to "I use X") can clear 0.95 with bge-m3,
+    so the correction would be hidden behind the stale fact. Off, the step is
+    skipped and ``duplicates_removed`` stays 0; ingest-time dedup and the
+    nightly merge suggestions are unaffected (audit H8 review, 2026-11-19)."""
 
     # ── Capture Quality ──────────────────────────────────────
     capture_llm_clean: bool = True  # LLM as primary extractor on the capture path

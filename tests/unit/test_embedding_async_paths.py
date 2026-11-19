@@ -143,6 +143,7 @@ class _WorkerSession:
     def __init__(self, memories):
         self._memories = memories
         self.statements = []
+        self._in_tx = False
 
     async def __aenter__(self):
         return self
@@ -150,32 +151,94 @@ class _WorkerSession:
     async def __aexit__(self, *_a):
         return False
 
+    def in_transaction(self):
+        """Like AsyncSession: a statement autobegins, commit ends it."""
+        return self._in_tx
+
     def add(self, _obj):
-        pass
+        self._in_tx = True
 
     async def execute(self, stmt):
+        self._in_tx = True
         self.statements.append(stmt)
         return _Result(self._memories if stmt.is_select else [])
 
     async def commit(self):
-        pass
+        self._in_tx = False
 
 
 class _AsyncOnlyService:
     """embed() is sync, as on the real service; awaiting it raised TypeError."""
 
-    def __init__(self, vectors):
+    def __init__(self, vectors, session=None):
         self._vectors = dict(vectors)
+        self._session = session
+        self.batches: list[list[str]] = []
+        self.in_transaction_during_call: list[bool] = []
 
     def embed(self, text):  # pragma: no cover - must not be used
         raise AssertionError("worker used the sync embed()")
 
-    async def embed_async(self, text):
-        return self._vectors.get(text, [])
+    def embed_batch(self, texts, batch_size=32):  # pragma: no cover - must not be used
+        raise AssertionError("worker used the sync embed_batch()")
+
+    async def embed_async(self, text):  # pragma: no cover - must not be used
+        raise AssertionError("worker embedded one memory at a time")
+
+    async def embed_batch_async(self, texts, batch_size=32):
+        self.batches.append(list(texts))
+        if self._session is not None:
+            self.in_transaction_during_call.append(self._session.in_transaction())
+        return [self._vectors.get(t, []) for t in texts]
 
 
 @pytest.mark.asyncio
-async def test_bulk_import_worker_writes_vectors_via_embed_async(monkeypatch):
+async def test_bulk_import_worker_embeds_each_chunk_in_one_call_outside_a_transaction(
+    monkeypatch,
+):
+    """One batch call per chunk (audit 2026-11-19), with the read transaction
+    ended first so a slow embedder does not pin a connection."""
+    import life_graph.api.dependencies as deps
+    import life_graph.workers.embeddings as worker
+
+    a, b = _Mem("a"), _Mem("b")
+    session = _WorkerSession([a, b])
+    service = _AsyncOnlyService({"a": [0.1], "b": [0.2]}, session=session)
+    monkeypatch.setattr(worker, "async_session", lambda: session)
+    monkeypatch.setattr(deps, "get_embedding_service", lambda: service)
+
+    result = await worker.generate_embeddings_batch({}, [str(a.id), str(b.id)], "acme")
+
+    assert result == {"processed": 2, "failed": 0, "total": 2}
+    assert service.batches == [["a", "b"]]
+    assert service.in_transaction_during_call == [False]
+    assert (a.embedding, b.embedding) == ([0.1], [0.2])
+
+
+@pytest.mark.asyncio
+async def test_bulk_import_worker_counts_a_failed_batch_as_failed(monkeypatch):
+    import life_graph.api.dependencies as deps
+    import life_graph.workers.embeddings as worker
+
+    a, b = _Mem("a"), _Mem("b")
+    session = _WorkerSession([a, b])
+    service = _AsyncOnlyService({})
+    service.embed_batch_async = _raise_async
+    monkeypatch.setattr(worker, "async_session", lambda: session)
+    monkeypatch.setattr(deps, "get_embedding_service", lambda: service)
+
+    result = await worker.generate_embeddings_batch({}, [str(a.id), str(b.id)], "acme")
+
+    assert result == {"processed": 0, "failed": 2, "total": 2}
+    assert a.embedding is None and b.embedding is None
+
+
+async def _raise_async(*_a, **_kw):
+    raise RuntimeError("embedder down")
+
+
+@pytest.mark.asyncio
+async def test_bulk_import_worker_writes_vectors_via_embed_batch_async(monkeypatch):
     import life_graph.api.dependencies as deps
     import life_graph.workers.embeddings as worker
 
