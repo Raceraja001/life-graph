@@ -234,6 +234,32 @@ async def main() -> int:
             ).escaping_symlinks(worktree),
         }
 
+        # 1b. The project env mount (PR #267): readable, never writable.
+        env_dir = sandbox._cache_root() / f"probe-{uuid.uuid4().hex[:12]}"
+        env_dir.mkdir(parents=True)
+        (env_dir / "marker").write_text("verifier-owned")
+        try:
+            out = await rt.run(task_runtime.RuntimeRequest(
+                task_id=str(uuid.uuid4()), timeout=60, tool_env=env_dir.resolve(),
+                command=("sh", "-c", "cat /venv/marker; "
+                         "touch /venv/x 2>/dev/null && echo CREATE_OK || echo CREATE_NO; "
+                         "(echo y > /venv/marker) 2>/dev/null && echo WRITE_OK || echo WRITE_NO; "
+                         "rm -f /venv/marker 2>/dev/null; "
+                         "[ -e /venv/marker ] && echo DELETE_NO || echo DELETE_OK"),
+                **base,
+            ))  # fmt: skip
+            report["tool_env_mount"] = {
+                "readable": "verifier-owned" in out.stdout,
+                "write_refused": all(
+                    s in out.stdout for s in ("CREATE_NO", "WRITE_NO", "DELETE_NO")
+                ),
+                "host_copy_intact": (env_dir / "marker").read_text() == "verifier-owned"
+                and not (env_dir / "x").exists(),
+                "bind": [b for b in out.metadata.get("binds", []) if b["target"] == "/venv"],
+            }
+        finally:
+            shutil.rmtree(env_dir, ignore_errors=True)
+
         # 2. The in-container deadline.
         t0 = time.monotonic()
         try:

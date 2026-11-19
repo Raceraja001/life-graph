@@ -161,6 +161,61 @@ def _oauth_token() -> str | None:
     return (raw or "").strip() or None
 
 
+# Always set in the task runtime: tool caches live on the container's /tmp,
+# and uv never reaches for the network (the egress allowlist would refuse it).
+_TOOL_CACHE_ENV = {
+    "PYTEST_ADDOPTS": "-p no:cacheprovider",
+    "RUFF_NO_CACHE": "true",
+    "MYPY_CACHE_DIR": "/tmp/.mypy_cache",
+    "UV_CACHE_DIR": "/tmp/.uv-cache",
+    "UV_OFFLINE": "1",
+    "UV_PYTHON_DOWNLOADS": "never",
+}
+
+# Set when the project's environment is mounted at /venv: its tools come
+# first, `uv run` uses it as is (no sync into the read-only mount, no .venv
+# created in the worktree), and the project imports from the worktree the way
+# the verifiers import it (sandbox.py, PYTHONPATH=/work:/work/src).
+_PROJECT_ENV_VARS = {
+    "VIRTUAL_ENV": sandbox.VENV,
+    "PATH": f"{sandbox.VENV}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "PYTHONPATH": f"{sandbox.WORK}:{sandbox.WORK}/src",
+    "UV_PROJECT_ENVIRONMENT": sandbox.VENV,
+    "UV_NO_SYNC": "1",
+}
+
+
+async def _project_tool_env(cwd: Path, packet: ContextPacket | None) -> tuple[Path | None, str]:
+    """The project's cached verifier environment for the task runtime, or why not.
+
+    The same :func:`sandbox.prepare_env` call the verifiers make, with the
+    same registry setup command, so the driver and the checks share one
+    environment (usually a cache hit). On a first attempt the manifests are
+    the project's own; on a bounce they are the worktree's as attempt 1 left
+    them, which is what the verifiers and the run_tests tool already build
+    from, so this adds no new input. A first build takes extra wall time
+    before the agent starts; it does not count against the agent's
+    in-container time limit. Best-effort: without it the agent still works,
+    it just cannot run tests (and says so).
+    """
+    if not settings.driver_runtime_project_tools:
+        return None, "off"
+    if settings.verifier_sandbox != "docker":
+        return None, "not mounted: verifier sandbox is off"
+    ctx = packet.project_context if packet else {}
+    toolchain = (ctx.get("sandbox_toolchain") or "python").strip().lower()
+    if toolchain != "python":
+        return None, f"not mounted: {toolchain} toolchain"
+    try:
+        venv = await sandbox.prepare_env(Path(cwd), ctx.get("sandbox_setup"))
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - a convenience must never fail the dispatch
+        logger.warning("claude_code: project environment unavailable for the runtime: %s", exc)
+        return None, f"unavailable: {type(exc).__name__}: {str(exc)[:200]}"
+    return venv, "mounted read-only"
+
+
 class _LiveStream:
     """Turns the CLI's stream-json lines into live session events (Stage 4).
 
@@ -521,7 +576,15 @@ class ClaudeCodeDriver:
             # (seen in the first end-to-end run, 2026-11-18).
             "PYTHONDONTWRITEBYTECODE": "1",
             "CLAUDE_CONFIG_DIR": "/tmp/.claude" if secret_env else "/claude-config",
+            # The image carries pytest/ruff/mypy (docker/claude-driver): their
+            # caches go to /tmp, never into the worktree (the landed diff).
+            **_TOOL_CACHE_ENV,
         }
+        tool_env, tool_note = await _project_tool_env(cwd, packet)
+        if tool_env is not None:
+            env.update(_PROJECT_ENV_VARS)
+        if audit is not None:
+            audit["tool_env"] = tool_note
         req = task_runtime.RuntimeRequest(
             task_id=str(packet.task_id) if packet else "unknown",
             tenant_id=str(packet.tenant_id) if packet else "unknown",
@@ -531,6 +594,7 @@ class ClaudeCodeDriver:
             command=(sandbox.DRIVER_CLI, *args[1:]),
             workspace=cwd,
             credentials=None if secret_env else creds_dir,
+            tool_env=tool_env,
             env=env,
             secret_env=secret_env,
             egress_allowlist=tuple(settings.driver_runtime_egress_allowlist_list),

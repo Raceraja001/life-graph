@@ -181,6 +181,12 @@ class DriverSettings(BaseModel):
     driver_runtime_pids_limit: int = 512
     # Grace between the in-container deadline and the host-side kill.
     driver_runtime_kill_grace_seconds: int = 15
+    # Mount the project's cached verifier environment (the same one the
+    # verifiers build with sandbox.prepare_env) read-only at /venv in the
+    # driver's task runtime, so the agent can run its own tests offline. The
+    # egress allowlist is unchanged: nothing is installed at run time.
+    # Python toolchain only; needs verifier_sandbox=docker.
+    driver_runtime_project_tools: bool = True
 
     # ── Host execution (no container) ──
     # With no driver sandbox, a coding CLI's shell runs on the host as this

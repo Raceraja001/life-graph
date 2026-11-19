@@ -519,6 +519,28 @@ life-graph-claude-driver:latest`: it should report no host paths, no LIFE_GRAPH_
 unreachable direct network, and 403 from the proxy for unlisted hosts. A missing image makes
 dispatches fail with `exit_status=sandbox_unavailable`. They never fall back to the host.
 
+### Test tools inside the driver container
+
+The agent's shell can run the project's tests offline (Python projects):
+
+- Before the agent runs, the driver gets the project's cached verifier environment. It is the
+  same `sandbox.prepare_env` call, with the same registry `sandbox_setup`, that the verifiers
+  use (usually a cache hit). On a bounce the manifests are those attempt 1 left, which is what
+  the verifiers already build from. A first build adds wall time before the agent starts, but
+  it does not count against the agent's time limit.
+- The task runtime mounts that one directory **read-only** at `/venv`. The agent cannot change
+  the environment the verifiers trust, and cannot see other projects' environments.
+  `sandbox.readonly_bind_roots()` allows the verifier cache only read-only and never the cache
+  root itself.
+- The driver image carries the verifier's pinned `pytest`/`ruff`/`mypy`/`uv`; a unit test keeps
+  the pins equal. Rebuild both images after a pin change.
+- `PATH=/venv/bin:…`, `UV_NO_SYNC=1`, `UV_OFFLINE=1`, and the pytest/ruff/mypy cache settings
+  keep tools on the mount and caches out of the worktree.
+- **The egress allowlist is unchanged.** `pip install` still fails, by design.
+- Each run's metadata has `tool_env` (`mounted read-only`, `off`, `not mounted: …` or
+  `unavailable: …`). To turn it off, set `LIFE_GRAPH_DRIVER_RUNTIME_PROJECT_TOOLS=false`.
+- Node and JVM projects are not covered yet.
+
 ### Claude login for sandboxed runs
 
 A sandboxed `claude_code` run (`task` or `docker`) in OAuth mode uses a **long-lived token**:
