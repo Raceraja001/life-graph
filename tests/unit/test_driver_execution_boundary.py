@@ -215,3 +215,40 @@ async def test_opencode_is_parked_by_default(monkeypatch):
     assert await opencode_mod.OpencodeDriver(binary="opencode").available() is False
     monkeypatch.setattr(settings, "driver_opencode_enabled", True)
     assert await opencode_mod.OpencodeDriver(binary="opencode").available() is True
+
+
+def _code_fixer_tools():
+    from life_graph.kernel.persona_files import load_builtin_personas
+
+    (defn,) = [p for p in load_builtin_personas() if p["name"] == "code-fixer"]
+    return defn["allowed_tools"]
+
+
+async def test_code_fixer_gets_no_shell_on_the_host(host_capture, tmp_path):
+    # code-fixer holds run_command (2026-11-19) for its container; on the host
+    # the driver still strips it.
+    assert "run_command" in _code_fixer_tools()
+    result = await ClaudeCodeDriver(binary="claude").dispatch(
+        _packet(allowed_tools=_code_fixer_tools()), tmp_path
+    )
+    args = host_capture["args"]
+    assert result.metadata["host_shell"] == "denied"
+    assert "Bash" not in args[args.index("--allowedTools") + 1].split(",")
+    assert "Bash" in args[args.index("--disallowedTools") + 1].split(",")
+
+
+async def test_code_fixer_gets_a_shell_inside_the_task_runtime(task_mode, tmp_path, monkeypatch):
+    got = {}
+
+    async def fake_run(req):
+        got["req"] = req
+        return task_runtime.RuntimeOutcome(0, '{"result": "ok"}', "", {"runtime": "task"})
+
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
+    await ClaudeCodeDriver(binary="claude").dispatch(
+        _packet(allowed_tools=_code_fixer_tools()), tmp_path
+    )
+    cmd = got["req"].command
+    assert "Bash" in cmd[cmd.index("--allowedTools") + 1].split(",")
+    if "--disallowedTools" in cmd:
+        assert "Bash" not in cmd[cmd.index("--disallowedTools") + 1].split(",")
