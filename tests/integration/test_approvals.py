@@ -198,3 +198,38 @@ class TestConcurrentResolve:
 
         await approvals.retry_auto_merges(async_session)
         assert mine in seen
+
+    @skip_on_db_error
+    async def test_the_claimed_transaction_is_exempt_from_the_idle_timeout(self, monkeypatch):
+        """The engine's idle_in_transaction_session_timeout (storage/database.py)
+        would close a connection idling through a long deploy. Inside a claimed
+        resolve it is 0; the next transaction on the connection has it back."""
+        from sqlalchemy import text
+
+        from life_graph.services.approvals import ApprovalService
+        from life_graph.storage.database import async_session
+
+        approval_id = await _seed_approval()
+        seen = {}
+
+        async def look(self, tenant_id, appr, approve):
+            seen["inside"] = (
+                await self.session.execute(text("SHOW idle_in_transaction_session_timeout"))
+            ).scalar()
+
+        monkeypatch.setattr(ApprovalService, "_apply_merge", look)
+
+        async with async_session() as session:
+            before = (
+                await session.execute(text("SHOW idle_in_transaction_session_timeout"))
+            ).scalar()
+            await session.commit()
+            await ApprovalService(session).resolve(TENANT, approval_id, "approve")
+            await session.commit()
+            after = (
+                await session.execute(text("SHOW idle_in_transaction_session_timeout"))
+            ).scalar()
+            await session.rollback()
+
+        assert seen["inside"] == "0"
+        assert after == before  # LOCAL: scoped to the claimed transaction only

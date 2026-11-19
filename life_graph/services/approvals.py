@@ -260,6 +260,7 @@ class ApprovalService:
         except InvalidRequestError:
             # Deleted between the read and the lock.
             raise LookupError(str(appr.id)) from None
+        await _exempt_from_idle_timeout(self.session)
 
     async def _apply_driver_pr(self, appr: Approval, approve: bool) -> None:
         """Push a verified task branch and open its PR (approve). Reject: no-op.
@@ -1131,6 +1132,35 @@ class ApprovalService:
                 )
 
 
+async def _exempt_from_idle_timeout(session: Any) -> None:
+    """``SET LOCAL idle_in_transaction_session_timeout = 0`` on Postgres.
+
+    The engine sets that timeout (storage/database.py, 600 s by default) so a
+    forgotten transaction cannot pin a connection. A claimed approval holds
+    its row lock in an open transaction *on purpose* while the side effect
+    runs, and the connection is idle that whole time: a deploy may take
+    ``DEPLOY_TIMEOUT_SECONDS`` plus the smoke check and rollback. Without
+    this, a slow but successful deploy had its connection closed by the
+    server, the final commit failed, the approval stayed pending and a retry
+    deployed again. ``LOCAL`` scopes it to this transaction only; the side
+    effects themselves are bounded by their own timeouts.
+
+    A no-op on any other dialect, and for test doubles with no bind.
+    """
+    get_bind = getattr(session, "get_bind", None)
+    if get_bind is None:
+        return
+    try:
+        dialect = get_bind().dialect.name
+    except Exception:  # noqa: BLE001 - unbound session: nothing to configure
+        return
+    if dialect != "postgresql":
+        return
+    from sqlalchemy import text
+
+    await session.execute(text("SET LOCAL idle_in_transaction_session_timeout = 0"))
+
+
 def _lock_not_available(exc: Exception) -> bool:
     """True when *exc* is Postgres refusing a ``NOWAIT`` lock (SQLSTATE 55P03)."""
     orig = getattr(exc, "orig", None)
@@ -1246,6 +1276,9 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
             ).scalar_one_or_none()
             if appr is None:
                 continue  # being resolved by someone else, or already resolved
+            # The merge (gh, possibly waiting on the network) runs while this
+            # row lock is held: exempt the transaction from the idle timeout.
+            await _exempt_from_idle_timeout(session)
             payload = appr.payload or {}
             tried += 1
             svc = ApprovalService(session)

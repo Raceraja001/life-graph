@@ -103,3 +103,21 @@ async def test_the_sync_job_retries_first_and_survives_a_failure(monkeypatch):
 
     assert order == ["retry", "sync"]
     assert result["auto_merge_retry"]["error"] is True and result["settled"] == 0
+
+
+async def test_each_claimed_merge_is_exempt_from_the_idle_timeout_on_postgres(auto_merge):
+    """The merge runs while the row lock is held; the per-row transaction is
+    exempt from the engine's idle-in-transaction timeout (SET LOCAL)."""
+    green = _merge_appr(auto_merge=True, green=True)
+
+    class _PgSession(FakeSession):
+        def get_bind(self, *_a, **_k):
+            return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+    session = _PgSession([green], green, None)
+
+    await approvals.retry_auto_merges(session_factory(session))
+
+    texts = [str(s) for s in session.statements]
+    assert "FOR UPDATE SKIP LOCKED" in sql(session.statements[1])
+    assert texts[2] == "SET LOCAL idle_in_transaction_session_timeout = 0"

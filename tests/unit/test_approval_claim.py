@@ -155,3 +155,62 @@ async def test_the_api_answers_409_while_the_item_is_being_resolved(monkeypatch)
         await api._resolve(str(uuid.uuid4()), "approve", None, "t", SimpleNamespace())
     assert info.value.status_code == 409
     assert info.value.detail == "Approval already being resolved"
+
+
+# ── The claimed transaction is exempt from the idle timeout ──────────────
+
+
+class _BoundSession(_Session):
+    """A session bound to an engine of *dialect*; records refresh/execute order."""
+
+    def __init__(self, appr, dialect: str, **kw):
+        super().__init__(appr, **kw)
+        self.dialect = dialect
+        self.events: list[str] = []
+
+    def get_bind(self, *_a, **_k):
+        return SimpleNamespace(dialect=SimpleNamespace(name=self.dialect))
+
+    async def refresh(self, obj, **kwargs):
+        self.events.append("lock")
+        await super().refresh(obj, **kwargs)
+
+    async def execute(self, stmt, *_a, **_k):
+        self.events.append(str(stmt))
+
+
+SET_LOCAL = "SET LOCAL idle_in_transaction_session_timeout = 0"
+
+
+async def test_on_postgres_the_lock_is_followed_by_set_local_idle_timeout_off(side_effects):
+    """storage/database.py gives every connection a 600 s idle-in-transaction
+    timeout. A claimed approval idles in its transaction on purpose while a
+    deploy runs (up to DEPLOY_TIMEOUT_SECONDS plus smoke and rollback), so
+    without this a slow but successful deploy lost its connection, the commit
+    failed and a retry deployed again."""
+    appr = _approval()
+    session = _BoundSession(appr, "postgresql")
+
+    await approvals_mod.ApprovalService(session).resolve("t", str(appr.id), "approve")
+
+    assert session.events == ["lock", SET_LOCAL]
+    assert side_effects == [appr.id]  # and the side effect ran after both
+
+
+async def test_no_set_local_when_the_lock_was_refused(side_effects):
+    appr = _approval()
+    locked = OperationalError("SELECT ... FOR UPDATE NOWAIT", {}, _PgError("55P03"))
+    session = _BoundSession(appr, "postgresql", refresh_error=locked)
+
+    with pytest.raises(approvals_mod.ApprovalAlreadyResolvedError):
+        await approvals_mod.ApprovalService(session).resolve("t", str(appr.id), "approve")
+    assert SET_LOCAL not in session.events
+
+
+async def test_other_dialects_get_no_set_local(side_effects):
+    appr = _approval()
+    session = _BoundSession(appr, "sqlite")
+
+    await approvals_mod.ApprovalService(session).resolve("t", str(appr.id), "approve")
+
+    assert session.events == ["lock"]
