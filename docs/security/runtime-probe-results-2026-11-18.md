@@ -119,3 +119,24 @@ Why this matters: inside the container the agent cannot read a host file through
 because the link resolves inside the container. But code on the host that trusts the worktree
 would follow it. Before this fix, a planted link could have carried a host secret into a
 verifier's evidence, a PR description, or a review-model prompt.
+
+## Release-image probe, 2026-11-19 (`runtime-probe-20261119-821beec.json`)
+
+Run against the images built for the production switch from master 821beec:
+`life-graph-claude-driver:821beec-cli2.1.272` and `life-graph-sandbox-egress:821beec`.
+
+| Check | Result |
+|---|---|
+| Capabilities, no-new-privileges, seccomp | none / 1 / filter |
+| Host paths, docker socket, `LIFE_GRAPH_*` variables | none visible |
+| Direct internet, LAN, metadata, docker gateway | unreachable (`Network is unreachable`) |
+| External DNS from inside | fails (no resolver reachable) |
+| Host ports reachable through the bridge gateway | 0 |
+| Proxy: api.anthropic.com / not listed / github / wrong port / loopback / metadata | 200 / 403 / 403 / 403 / 403 / 403 |
+| Planted escaping symlinks | both flagged |
+| Deadline, orphan sweep, missing image, home as workspace | ok / 1 removed, 0 left / refused / refused |
+
+The first run of this probe reported the orphan as not swept. That was a bug in the probe, not
+the runtime: since the Stage 5 fix the probe labels its runtimes as a separate instance
+(`-script`), but its crashed-caller child process did not, so the sweep correctly left the
+child's container alone. The child now carries the same instance label.

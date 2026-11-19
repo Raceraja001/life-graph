@@ -233,10 +233,14 @@ async def main() -> int:
             }  # fmt: skip
 
         # 3. A caller that dies mid-run leaves a container; the sweep removes it.
+        # The child must carry this script's instance label (the "-script"
+        # edition above), or the sweep rightly leaves its container alone.
         orphan_task = str(uuid.uuid4())
         child = subprocess.Popen(
             [sys.executable, "-c", (
                 "import asyncio,sys;from pathlib import Path;"
+                "from life_graph.config import settings;"
+                f"settings.edition={settings.edition!r};"
                 "from life_graph.services.dev import task_runtime as t;"
                 f"asyncio.run(t.DockerTaskRuntime().run(t.RuntimeRequest(task_id='{orphan_task}',"
                 f"tenant_id='probe',driver='probe',image='{args.image}',command=('sleep','600'),"

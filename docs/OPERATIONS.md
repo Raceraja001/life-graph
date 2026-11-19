@@ -550,7 +550,7 @@ poll as the fallback.
   `"$VENV/bin/python" -m life_graph.workers.dev_runner`.
 - **A second worker** waits for the lock as a hot standby. It never runs tasks alongside
   the first.
-- **Limits:** `DEV_RUNNER_MAX_CONCURRENCY` (2) tasks at once, at most one of them
+- **Limits:** `DEV_RUNNER_MAX_CONCURRENCY` (default 3) tasks at once, at most one of them
   unattended (nightly or queued work shares the GPU). "Start now" tasks are claimed first.
 - **Lease:** `properties.lease` records the runner id, the claim time and a heartbeat,
   refreshed every 30 s.
