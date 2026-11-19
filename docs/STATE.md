@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-19 07:03 UTC` from `master` @ `cace653`
+Generated `2026-11-19 10:01 UTC` from `master` @ `e16e2e0`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-19 07:03 UTC` from `master` @ `cace653`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **34** |
-| Config settings | **314** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5084** in 525 files |
+| Config settings | **315** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5098** in 526 files |
 | Dashboard pages | **23** |
-| Python | 563 files, 140,695 lines |
+| Python | 563 files, 140,799 lines |
 
 ---
 
@@ -1031,16 +1031,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 406 | 4213 |
+| `tests/unit/` | 407 | 4227 |
 | `tests/integration/` | 118 | 859 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **525** | **5084** |
+| **total** | **526** | **5098** |
 
 ---
 
 ## Configuration
 
-314 settings, all overridable by environment variable.
+315 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1245,6 +1245,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_DRIVER_RUNTIME_EGRESS_ALLOWLIST` | `'api.anthropic.com,console.anthropic.com,platform.claude.…` |
 | `LIFE_GRAPH_DRIVER_RUNTIME_PIDS_LIMIT` | `512` |
 | `LIFE_GRAPH_DRIVER_RUNTIME_KILL_GRACE_SECONDS` | `15` |
+| `LIFE_GRAPH_DRIVER_RUNTIME_PROJECT_TOOLS` | `True` |
 | `LIFE_GRAPH_DRIVER_ALLOW_HOST_SHELL` | `False` |
 | `LIFE_GRAPH_DRIVER_HOST_ENV_PASSTHROUGH` | `''` |
 | `LIFE_GRAPH_VERIFIER_ALLOW_HOST_EXECUTION` | `False` |
