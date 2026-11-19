@@ -172,7 +172,20 @@ async def system(session: AsyncSession, app_state: Any) -> dict[str, Any]:
         "queue": {"queued": counts.get("queued", 0), "running": counts.get("running", 0)},
         "drivers": drivers,
         "ollama": await _ollama(),
+        "runtime": await _runtime_health(),
     }
+
+
+async def _runtime_health() -> dict[str, Any]:
+    """Dev-task runtime health (services/dev/runtime_health.py): counts and codes only."""
+    from life_graph.services.dev import runtime_health
+    from life_graph.storage.database import async_session
+
+    try:
+        return (await runtime_health.collect(async_session)).as_dict()
+    except Exception as exc:  # noqa: BLE001 - one panel must not break the page
+        logger.warning("runtime health failed: %s", exc)
+        return {"status": "unknown", "issues": [{"code": "check_failed", "detail": str(exc)}]}
 
 
 # ── Agents ────────────────────────────────────────────────────

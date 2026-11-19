@@ -175,6 +175,7 @@ class WorkerSettings:
         "life_graph.workers.tasks.tick_scheduled_jobs",
         "life_graph.workers.telegram.purge_telegram_pairing_codes",
         "life_graph.workers.capture_sweep.sweep_stuck_captures",
+        "life_graph.workers.runtime_health.check_runtime_health",
         "life_graph.workers.episodes.write_daily_episodes",
         "life_graph.workers.claude_code_sessions.close_claude_code_sessions",
         "life_graph.workers.due_notifications.write_due_notifications",
@@ -229,6 +230,14 @@ class WorkerSettings:
         cron(
             "life_graph.workers.capture_sweep.sweep_stuck_captures",
             minute={7, 22, 37, 52},
+            run_at_startup=False,
+        ),
+        # Dev-task runtime health: runner lock, stale leases, stuck queue,
+        # failures, orphan containers, memory (services/dev/runtime_health.py).
+        # In this process, not the dev-task worker's, so its death is noticed.
+        cron(
+            "life_graph.workers.runtime_health.check_runtime_health",
+            minute={3, 13, 23, 33, 43, 53},
             run_at_startup=False,
         ),
         # Ended or idle Claude Code sessions are summarised and consolidated
