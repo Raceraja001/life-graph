@@ -28,11 +28,17 @@ class DriverSettings(BaseModel):
     # fallback cut a real plan-only run off mid-exploration of this repo;
     # 1200 matches the local driver.
     driver_claude_code_timeout_seconds: int = 1200
-    # "oauth" = the personal Claude login (staged into the sandbox); "api_key"
-    # = ANTHROPIC_API_KEY under Anthropic's commercial terms, required for a
-    # service sold to others. Prefer the env var to this setting for the key.
+    # "oauth" = the personal Claude login; "api_key" = ANTHROPIC_API_KEY under
+    # Anthropic's commercial terms, required for a service sold to others.
+    # Prefer the env var to this setting for the key.
     driver_claude_code_auth: str = "oauth"
     driver_claude_code_api_key: str = ""
+    # The login a SANDBOXED claude_code run uses in oauth mode: a long-lived
+    # token from `claude setup-token`, handed to the container as
+    # CLAUDE_CODE_OAUTH_TOKEN (by name, never on a command line). It does not
+    # refresh, so nothing is copied in and nothing needs writing back.
+    # Unset: sandboxed dispatch refuses, unless the legacy copy below is on.
+    driver_claude_code_oauth_token: str = ""
     # OpenCode driver (drivers/opencode.py). Unavailable until the binary exists:
     #   npm install --prefix ~/.local/opencode opencode-ai
     # Parked 2026-11-18 (owner): in prod it completed fewer tasks than the local
@@ -145,10 +151,17 @@ class DriverSettings(BaseModel):
     driver_claude_sandbox_image: str = "life-graph-claude-driver:latest"
     driver_claude_sandbox_memory: str = "4g"
     driver_claude_sandbox_cpus: str = "4"
-    # The CLI's own OAuth token file, staged into a throwaway copy for each
-    # sandboxed dispatch (life_graph/services/dev/sandbox.py:stage_credentials).
-    # Never mounted live — see driver_claude_sandbox's docstring above.
+    # The CLI's own OAuth token file. Only with the legacy flag below is it
+    # staged into a throwaway copy for each sandboxed dispatch
+    # (life_graph/services/dev/sandbox.py:stage_credentials). Never mounted live.
     driver_claude_code_creds_path: str = "~/.claude/.credentials.json"
+    # Legacy: copy the host's login file into each sandboxed run when no
+    # driver_claude_code_oauth_token is set. Off because it revokes the host
+    # login: if the host's access token has expired, the CLI in the container
+    # refreshes it inside the throwaway copy, the refresh token rotates, and
+    # the host's copy is dead (prod, 2026-11-19). On only for a throwaway
+    # login you do not otherwise use.
+    driver_claude_code_allow_staged_login: bool = False
 
     # ── Per-task execution runtime (services/dev/task_runtime.py) ──
     # driver_claude_sandbox="task" runs the claude_code driver in a per-task

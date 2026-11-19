@@ -21,6 +21,11 @@ def sandboxed(monkeypatch):
     from life_graph.config import settings
 
     monkeypatch.setattr(settings, "driver_claude_sandbox", "docker")
+    # These tests exercise the legacy staged copy; the long-lived token path
+    # is in test_claude_code_sandbox_login.py.
+    monkeypatch.setattr(settings, "driver_claude_code_allow_staged_login", True)
+    monkeypatch.setattr(settings, "driver_claude_code_oauth_token", "")
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
 
 
 def _packet(**overrides):
@@ -43,7 +48,7 @@ async def test_dispatch_stages_credentials_and_calls_run_driver(tmp_path, sandbo
 
     seen = {}
 
-    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None):
+    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
         seen["argv"] = argv
         seen["workdir"] = workdir
         seen["credentials_dir"] = credentials_dir
@@ -74,7 +79,7 @@ async def test_credentials_are_cleaned_up_even_on_failure(tmp_path, sandboxed, m
 
     staged_dirs = []
 
-    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None):
+    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
         staged_dirs.append(credentials_dir)
         raise RuntimeError("boom")
 
@@ -115,7 +120,7 @@ async def test_sandbox_unavailable_never_falls_back_to_the_host(tmp_path, sandbo
     creds.write_text("{}")
     monkeypatch.setattr(settings, "driver_claude_code_creds_path", str(creds))
 
-    async def unavailable(argv, workdir, credentials_dir, *, timeout, api_key=None):
+    async def unavailable(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
         raise sandbox.SandboxUnavailableError("image not built")
 
     monkeypatch.setattr(sandbox, "run_driver", unavailable)
@@ -142,7 +147,7 @@ async def test_sandbox_timeout_reports_as_timeout_not_a_generic_error(
     creds.write_text("{}")
     monkeypatch.setattr(settings, "driver_claude_code_creds_path", str(creds))
 
-    async def timed_out(argv, workdir, credentials_dir, *, timeout, api_key=None):
+    async def timed_out(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
         raise sandbox.SandboxUnavailableError(f"sandboxed command timed out after {timeout}s")
 
     monkeypatch.setattr(sandbox, "run_driver", timed_out)
@@ -237,7 +242,7 @@ async def test_dispatch_streams_and_returns_every_step(tmp_path, sandboxed, monk
         ]
     )
 
-    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None):
+    async def fake_run_driver(argv, workdir, credentials_dir, *, timeout, api_key=None, oauth_token=None):
         seen["argv"] = argv
         return sandbox.SandboxResult(0, stream, "")
 

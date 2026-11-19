@@ -619,6 +619,7 @@ async def run_driver(
     *,
     timeout: int = 300,
     api_key: str | None = None,
+    oauth_token: str | None = None,
 ) -> SandboxResult:
     """Run the claude_code driver's CLI invocation inside a container.
 
@@ -629,16 +630,14 @@ async def run_driver(
 
     - filesystem: only *workdir* and *credentials_dir* are visible from the
       host; root filesystem is read-only with a tmpfs /tmp scratch.
-    - credentials: *credentials_dir* should hold a throwaway copy of just
-      the OAuth token (see :func:`stage_credentials`), never the live
-      ``~/.claude`` — that directory also carries session history and other
-      projects' context that has no business inside this container.
-      Mounted read-write (not ``:ro``): confirmed by hand that the CLI
-      refreshes its own access token from the refresh token and writes the
-      result back before using it — a read-only mount left it using a
-      stale access token and failing every call with a 401. Since this is
-      always the throwaway copy, not the live file, that write has nothing
-      to corrupt.
+    - credentials: preferably *oauth_token*, the long-lived
+      ``claude setup-token`` login, passed by name. It does not refresh.
+      The legacy alternative is *credentials_dir*, a throwaway copy of the
+      login file (see :func:`stage_credentials`), never the live
+      ``~/.claude``. It is mounted read-write because the CLI refreshes an
+      expired access token in place, and that refresh rotates the refresh
+      token, which REVOKES the host's own copy (prod, 2026-11-19). That is
+      why the copy is opt-in (driver_claude_code_allow_staged_login).
     - capabilities/resources: same caps-dropped, no-new-privileges,
       pids/memory/cpu limits as the verifier sandbox, and the container
       runs as the host uid so files it writes land owned correctly for the
@@ -656,13 +655,15 @@ async def run_driver(
         # key never appears in a process listing the way -e VAR=value would.
         auth = ["-e", "ANTHROPIC_API_KEY", "-e", "CLAUDE_CONFIG_DIR=/tmp/.claude"]
         client_env = {"ANTHROPIC_API_KEY": api_key}
+    elif oauth_token:
+        # The long-lived login, by name like the API key; nothing is mounted.
+        auth = ["-e", "CLAUDE_CODE_OAUTH_TOKEN", "-e", "CLAUDE_CONFIG_DIR=/tmp/.claude"]
+        client_env = {"CLAUDE_CODE_OAUTH_TOKEN": oauth_token}
     else:
         if credentials_dir is None:
             raise SandboxUnavailableError("claude_code sandbox needs credentials or an API key")
-        # rw, not :ro: the CLI refreshes its own access token in place from
-        # the refresh token and needs to write the result back — this is
-        # still only the throwaway copy from stage_credentials(), never the
-        # live ~/.claude, so a write here has nothing to corrupt.
+        # Legacy staged copy, rw: the CLI writes a refreshed token back into
+        # it (and in doing so revokes the host's copy -- see the docstring).
         auth = [
             "-e",
             "CLAUDE_CONFIG_DIR=/claude-config",
@@ -975,8 +976,9 @@ RUNTIME_LABEL = "life-graph.runtime"
 _LABEL_KEY = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 # Variable names a spec may pass through *by name* (``-e NAME``: the value
 # comes from the docker client's own environment and never appears in the
-# argv). Only the commercial-terms API key, and only for a driver container.
-PASSTHROUGH_ENV_ALLOWED = frozenset({"ANTHROPIC_API_KEY"})
+# argv). Only the driver's own login -- the commercial-terms API key or the
+# long-lived `claude setup-token` token -- and only for a driver container.
+PASSTHROUGH_ENV_ALLOWED = frozenset({"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"})
 # Characters that would change what ``--mount`` means.
 _BIND_UNSAFE = re.compile(r"[,=\n\r\x00\"']")
 

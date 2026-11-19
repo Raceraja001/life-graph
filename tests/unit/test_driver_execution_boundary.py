@@ -53,6 +53,11 @@ def host_capture(monkeypatch):
 @pytest.fixture
 def task_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "driver_claude_sandbox", "task")
+    # These tests exercise the legacy staged copy; the long-lived token path
+    # is in test_claude_code_sandbox_login.py.
+    monkeypatch.setattr(settings, "driver_claude_code_allow_staged_login", True)
+    monkeypatch.setattr(settings, "driver_claude_code_oauth_token", "")
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     creds = tmp_path / ".credentials.json"
     creds.write_text('{"token": "t"}')
     monkeypatch.setattr(settings, "driver_claude_code_creds_path", str(creds))
