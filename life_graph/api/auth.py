@@ -51,6 +51,21 @@ def is_exempt_path(path: str) -> bool:
     return any(path == prefix or path.startswith(prefix + "/") for prefix in AUTH_EXEMPT_PREFIXES)
 
 
+def _key_in(candidate: str, keys: list[str]) -> bool:
+    """Constant-time membership test for an API key.
+
+    ``candidate in keys`` exits at the first differing character, which leaks
+    a key's prefix through response timing. Every key is compared (no early
+    exit across the list either), as bytes so a non-ASCII candidate can't
+    raise from :func:`secrets.compare_digest`.
+    """
+    given = candidate.encode()
+    found = False
+    for key in keys:
+        found |= compare_digest(given, key.encode())
+    return found
+
+
 def extract_api_key(headers: Any, query_params: Any) -> str | None:
     """Extract a candidate API key from request-like headers/query params.
 
@@ -124,7 +139,7 @@ def verify_service_key(request: Request) -> str | None:
             detail="No API keys configured on server",
         )
 
-    if api_key not in valid_keys:
+    if not _key_in(api_key, valid_keys):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",

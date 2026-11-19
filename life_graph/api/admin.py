@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
@@ -894,7 +894,7 @@ class JobRunResponse(BaseModel):
     summary="List recent job runs",
 )
 async def list_job_runs(
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=200),
     tenant_id: str | None = None,
     job_name: str | None = None,
 ):
