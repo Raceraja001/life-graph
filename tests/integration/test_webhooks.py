@@ -16,7 +16,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 
 @pytest_asyncio.fixture
@@ -46,7 +46,7 @@ class TestWebhookCreate:
         r = await admin_client.post("/api/v1/admin/webhooks", json=payload)
 
         # 201 when the DB is available; 500 if not — both are acceptable
-        assert r.status_code in (201, 500), f"Unexpected status: {r.status_code}"
+        assert_ok(r, 201)
 
         if r.status_code == 201:
             body = r.json()
@@ -66,7 +66,7 @@ class TestWebhookCreate:
             "events": "*",
         }
         r = await admin_client.post("/api/v1/admin/webhooks", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -78,7 +78,7 @@ class TestWebhookCreate:
             "events": "*",
         }
         r = await admin_client.post("/api/v1/admin/webhooks", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -89,7 +89,7 @@ class TestWebhookCreate:
             "events": "*",
         }
         r = await admin_client.post("/api/v1/admin/webhooks", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -101,7 +101,7 @@ class TestWebhookCreate:
             "events": "*",
         }
         r = await admin_client.post("/api/v1/admin/webhooks", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -113,14 +113,14 @@ class TestWebhookCreate:
             "events": "*",
         }
         r = await admin_client.post("/api/v1/admin/webhooks", json=payload)
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_empty_body(self, admin_client: AsyncClient):
         """Completely empty body must be rejected with 422."""
         r = await admin_client.post("/api/v1/admin/webhooks", json={})
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
 
 # ── Webhook Listing ─────────────────────────────────────────────
@@ -134,7 +134,7 @@ class TestWebhookList:
     async def test_list_webhooks(self, admin_client: AsyncClient):
         """Listing webhooks should return 200 with an array (or 500 if no DB)."""
         r = await admin_client.get("/api/v1/admin/webhooks")
-        assert r.status_code in (200, 500), f"Unexpected status: {r.status_code}"
+        assert_ok(r, 200)
 
         if r.status_code == 200:
             body = r.json()
@@ -154,14 +154,14 @@ class TestWebhookDelete:
         """Deleting a nonexistent webhook should return 404 (or 500 if no DB)."""
         fake_id = str(uuid.uuid4())
         r = await admin_client.delete(f"/api/v1/admin/webhooks/{fake_id}")
-        assert r.status_code in (404, 500), f"Unexpected status: {r.status_code}"
+        assert_ok(r, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_delete_invalid_uuid(self, admin_client: AsyncClient):
         """Deleting with an invalid UUID format should return 422."""
         r = await admin_client.delete("/api/v1/admin/webhooks/not-a-uuid")
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
 
 
 # ── Webhook Test Ping ───────────────────────────────────────────
@@ -176,11 +176,11 @@ class TestWebhookTestPing:
         """Testing a nonexistent webhook should return 404 (or 500 if no DB)."""
         fake_id = str(uuid.uuid4())
         r = await admin_client.post(f"/api/v1/admin/webhooks/{fake_id}/test")
-        assert r.status_code in (404, 500), f"Unexpected status: {r.status_code}"
+        assert_ok(r, 404)
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_ping_invalid_uuid(self, admin_client: AsyncClient):
         """Testing with an invalid UUID format should return 422."""
         r = await admin_client.post("/api/v1/admin/webhooks/not-a-uuid/test")
-        assert r.status_code in (422, 500)
+        assert_ok(r, 422)
