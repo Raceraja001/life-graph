@@ -77,6 +77,9 @@ POLICY_VERSION = "2026-11-18.1"
 OUTBOUND_NETWORK = "lg-rt-outbound"
 EGRESS_PORT = 8080
 DEADLINE_BIN = "/usr/bin/timeout"
+# The runner's periodic sweep keeps runtimes younger than this: one may belong
+# to a task claimed after the sweep read which tasks are running.
+PERIODIC_MIN_AGE_SECONDS = 300
 _SHARED_LABEL = f"{RUNTIME_LABEL}.shared"
 
 
@@ -182,6 +185,24 @@ def _now() -> str:
 def _missing(res: SandboxResult) -> bool:
     text = (res.stderr or "").lower()
     return "no such" in text or "not found" in text
+
+
+def _age_seconds(created: str, now: datetime | None = None) -> float | None:
+    """Age of a docker ``CreatedAt`` value, or None when it cannot be read.
+
+    Containers print ``2026-11-19 06:41:26 +0000 UTC``; networks add
+    nanoseconds (``06:41:26.380002525``). The zone name is dropped and the
+    numeric offset kept.
+    """
+    parts = created.strip().split()
+    if len(parts) < 3:
+        return None
+    clock = parts[1].split(".", 1)[0]
+    try:
+        stamp = datetime.strptime(f"{parts[0]} {clock} {parts[2]}", "%Y-%m-%d %H:%M:%S %z")
+    except ValueError:
+        return None
+    return ((now or datetime.now(UTC)) - stamp).total_seconds()
 
 
 class DockerTaskRuntime:
@@ -307,7 +328,11 @@ class DockerTaskRuntime:
         return {"ok": not errors, "errors": errors}
 
     async def sweep(
-        self, active_task_ids: set[str], *, creds_max_age_seconds: int | None = None
+        self,
+        active_task_ids: set[str],
+        *,
+        creds_max_age_seconds: int | None = None,
+        min_age_seconds: int = 0,
     ) -> dict:
         """Remove runtime leftovers whose task is not running.
 
@@ -315,32 +340,40 @@ class DockerTaskRuntime:
         nothing this module did not create is touched. Staged credential
         copies older than the longest possible dispatch are deleted too: a
         crash between ``stage_credentials`` and its ``finally`` leaves a live
-        token on disk otherwise.
+        token on disk otherwise. With ``min_age_seconds``, anything younger
+        (or of unknown age) is kept.
         """
         report: dict = {"containers": [], "networks": [], "credentials": 0, "errors": []}
+
+        def old_enough(created: str) -> bool:
+            if not min_age_seconds:
+                return True
+            age = _age_seconds(created)
+            return age is not None and age >= min_age_seconds
+
         # Only this install's: the other edition on the same daemon has its own
         # database, so its running tasks are not in active_task_ids.
         mine = ["--filter", f"label={RUNTIME_LABEL}=1"]
         mine += ["--filter", f"label={RUNTIME_LABEL}.instance={instance_id()}"]
-        fmt = f'{{{{.Names}}}}|{{{{.Label "{RUNTIME_LABEL}.task"}}}}'
+        fmt = f'{{{{.Names}}}}|{{{{.Label "{RUNTIME_LABEL}.task"}}}}|{{{{.CreatedAt}}}}'
         res = await self._docker(["docker", "ps", "-a", *mine, "--format", fmt], timeout=30)
         if res.returncode != 0:
             report["errors"].append(f"ps: {res.stderr.strip()[-200:]}")
         for line in (res.stdout or "").splitlines():
-            name, _, task = line.partition("|")
-            if name and task not in active_task_ids:
+            name, task, created = (line.split("|", 2) + ["", ""])[:3]
+            if name and task not in active_task_ids and old_enough(created):
                 rm = await self._docker(["docker", "rm", "-f", name], timeout=30)
                 if rm.returncode == 0 or _missing(rm):
                     report["containers"].append(name)
                 else:
                     report["errors"].append(f"rm {name}: {rm.stderr.strip()[-200:]}")
-        nfmt = f'{{{{.Name}}}}|{{{{.Label "{RUNTIME_LABEL}.task"}}}}'
+        nfmt = f'{{{{.Name}}}}|{{{{.Label "{RUNTIME_LABEL}.task"}}}}|{{{{.CreatedAt}}}}'
         res = await self._docker(["docker", "network", "ls", *mine, "--format", nfmt], timeout=30)
         if res.returncode != 0:
             report["errors"].append(f"network ls: {res.stderr.strip()[-200:]}")
         for line in (res.stdout or "").splitlines():
-            name, _, task = line.partition("|")
-            if name and task not in active_task_ids:
+            name, task, created = (line.split("|", 2) + ["", ""])[:3]
+            if name and task not in active_task_ids and old_enough(created):
                 rm = await self._docker(["docker", "network", "rm", name], timeout=30)
                 if rm.returncode == 0 or _missing(rm):
                     report["networks"].append(name)
@@ -510,8 +543,14 @@ class DockerTaskRuntime:
 runtime = DockerTaskRuntime()
 
 
-async def sweep_orphans(session_factory) -> dict | None:
-    """Startup hook: remove runtime leftovers for tasks that are not running.
+async def sweep_orphans(session_factory, *, expire_events: bool = True) -> dict | None:
+    """Remove runtime leftovers for tasks that are not running.
+
+    Runs at startup (with ``expire_events``) and from the runner's periodic
+    recovery pass (without it). The periodic pass leaves anything younger
+    than :data:`PERIODIC_MIN_AGE_SECONDS` alone: a task claimed between the
+    "which tasks are running" query and the docker listing would otherwise
+    look orphaned.
 
     Best-effort and silent when docker is absent (a host without the task
     runtime has nothing to sweep).
@@ -526,12 +565,15 @@ async def sweep_orphans(session_factory) -> dict | None:
         async with session_factory() as session:
             rows = await session.execute(select(AgentTask.id).where(AgentTask.status == "running"))
             active = {str(r) for r in rows.scalars().all()}
-        report = await runtime.sweep(active)
-        from life_graph.services.dev import task_events
+        if expire_events:
+            report = await runtime.sweep(active)
+            from life_graph.services.dev import task_events
 
-        report["events_expired"] = await task_events.expire(
-            session_factory, settings.dev_task_events_retention_days
-        )
+            report["events_expired"] = await task_events.expire(
+                session_factory, settings.dev_task_events_retention_days
+            )
+        else:
+            report = await runtime.sweep(active, min_age_seconds=PERIODIC_MIN_AGE_SECONDS)
     except Exception as exc:  # never block startup on cleanup
         logger.warning("task runtime sweep failed: %s", exc)
         return None

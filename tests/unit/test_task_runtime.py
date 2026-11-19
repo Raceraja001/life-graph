@@ -12,6 +12,7 @@ import contextlib
 import os
 import time
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -412,3 +413,77 @@ async def test_a_teardown_that_raises_does_not_mask_the_outcome(roots):
     out = await task_runtime.DockerTaskRuntime(docker).run(_req(roots))
     assert out.returncode == 0
     assert out.metadata["teardown"]["ok"] is False
+
+
+# ── Periodic sweep (2026-11-19: a SIGKILLed worker left its proxy + network) ──
+
+
+def test_docker_created_at_is_read_for_containers_and_networks():
+    from datetime import datetime as dt
+
+    now = dt(2026, 11, 19, 6, 51, 26, tzinfo=UTC)
+    assert task_runtime._age_seconds("2026-11-19 06:41:26 +0000 UTC", now) == 600
+    assert task_runtime._age_seconds("2026-11-19 06:41:26.380002525 +0000 UTC", now) == 600
+    assert task_runtime._age_seconds("2026-11-19 12:11:26 +0530 IST", now) == 600
+    assert task_runtime._age_seconds("", now) is None
+    assert task_runtime._age_seconds("yesterday", now) is None
+
+
+async def test_periodic_sweep_keeps_young_and_unknown_age_runtimes(roots, monkeypatch):
+    dead = str(uuid.uuid4())
+    listing = SandboxResult(
+        0,
+        f"lg-rt-old|{dead}|2026-11-19 06:00:00 +0000 UTC\n"
+        f"lg-rt-young|{dead}|2026-11-19 06:59:00 +0000 UTC\n"
+        f"lg-rt-unknown|{dead}|\n",
+        "",
+    )
+    nets = SandboxResult(0, f"lg-rt-net-old|{dead}|2026-11-19 06:00:00.5 +0000 UTC\n", "")
+    docker = FakeDocker(**{"ps -a": listing, "network ls": nets})
+    fixed = datetime(2026, 11, 19, 7, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr(
+        task_runtime, "_age_seconds", lambda c, now=None, f=task_runtime._age_seconds: f(c, fixed)
+    )
+
+    report = await task_runtime.DockerTaskRuntime(docker).sweep(set(), min_age_seconds=300)
+
+    assert report["containers"] == ["lg-rt-old"]
+    assert report["networks"] == ["lg-rt-net-old"]
+    assert "CreatedAt" in " ".join(docker.first("ps -a"))
+
+
+async def test_sweep_orphans_periodic_mode_uses_the_age_floor_and_skips_event_expiry(monkeypatch):
+    from life_graph.services.dev import task_events
+
+    seen = {}
+
+    class _Rows:
+        def scalars(self):
+            return self
+
+        def all(self):
+            return []
+
+    class _Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def execute(self, *_):
+            return _Rows()
+
+    async def fake_sweep(active, **kw):
+        seen["kw"] = kw
+        return {"containers": [], "networks": [], "credentials": 0, "errors": []}
+
+    async def no_expire(*a, **k):
+        raise AssertionError("the periodic pass must not expire events")
+
+    monkeypatch.setattr(task_runtime.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(task_runtime.runtime, "sweep", fake_sweep)
+    monkeypatch.setattr(task_events, "expire", no_expire)
+
+    await task_runtime.sweep_orphans(lambda: _Session(), expire_events=False)
+    assert seen["kw"] == {"min_age_seconds": task_runtime.PERIODIC_MIN_AGE_SECONDS}
