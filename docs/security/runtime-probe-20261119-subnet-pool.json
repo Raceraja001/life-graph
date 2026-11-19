@@ -1,0 +1,284 @@
+{
+  "image": "life-graph-claude-driver:a3aa3f4-cli2.1.328",
+  "policy_version": "2026-11-19.2",
+  "startup_and_probe_seconds": 3.1,
+  "inside": {
+    "identity": {
+      "uid": 1000,
+      "gid": 1000,
+      "CapEff": "0000000000000000",
+      "CapBnd": "0000000000000000",
+      "NoNewPrivs": "1",
+      "Seccomp": "2"
+    },
+    "setuid_root": {
+      "ok": false,
+      "error": "PermissionError: [Errno 1] Operation not permitted"
+    },
+    "sudo_present": false,
+    "root_listing": [
+      ".dockerenv",
+      "bin",
+      "boot",
+      "dev",
+      "etc",
+      "home",
+      "lib",
+      "lib64",
+      "media",
+      "mnt",
+      "opt",
+      "proc",
+      "root",
+      "run",
+      "sbin",
+      "srv",
+      "sys",
+      "tmp",
+      "usr",
+      "var",
+      "work"
+    ],
+    "work_listing": [
+      ".git",
+      "app.py"
+    ],
+    "exists_host_mnt": false,
+    "exists_host_home": false,
+    "exists_root_home": true,
+    "exists_docker_sock": false,
+    "exists_run_docker_sock": false,
+    "exists_host_env_file": false,
+    "read_shadow": {
+      "ok": false,
+      "error": "PermissionError: [Errno 13] Permission denied: '/etc/shadow'"
+    },
+    "write_root": {
+      "ok": false,
+      "error": "OSError: [Errno 30] Read-only file system: '/probe'"
+    },
+    "write_usr": {
+      "ok": false,
+      "error": "OSError: [Errno 30] Read-only file system: '/usr/probe'"
+    },
+    "write_etc": {
+      "ok": false,
+      "error": "OSError: [Errno 30] Read-only file system: '/etc/probe'"
+    },
+    "write_work": {
+      "ok": true,
+      "value": 1
+    },
+    "write_tmp": {
+      "ok": true,
+      "value": 1
+    },
+    "git_dir_target": {
+      "ok": true,
+      "value": "gitdir: /tmp/lg-tenants/probe/lg_dispatch_probe_81f171/origin/.git/worktrees/wt_probe"
+    },
+    "plant_symlinks": {
+      "ok": true,
+      "value": "planted"
+    },
+    "env_names": [
+      "GPG_KEY",
+      "HOME",
+      "HOSTNAME",
+      "HTTPS_PROXY",
+      "HTTP_PROXY",
+      "LANG",
+      "PATH",
+      "PROBE_HOST_PORTS",
+      "PYTHON_SHA256",
+      "PYTHON_VERSION",
+      "TZ",
+      "http_proxy",
+      "https_proxy"
+    ],
+    "env_app_config": [],
+    "env_credential_shaped": [
+      "GPG_KEY"
+    ],
+    "dns_external": {
+      "ok": false,
+      "error": "gaierror: [Errno -3] Temporary failure in name resolution"
+    },
+    "direct_internet_1111_443": {
+      "ok": false,
+      "error": "OSError: [Errno 101] Network is unreachable"
+    },
+    "direct_internet_8888_53": {
+      "ok": false,
+      "error": "OSError: [Errno 101] Network is unreachable"
+    },
+    "direct_docker_gw_postgres": {
+      "ok": false,
+      "error": "OSError: [Errno 101] Network is unreachable"
+    },
+    "direct_docker_gw_redis": {
+      "ok": false,
+      "error": "OSError: [Errno 101] Network is unreachable"
+    },
+    "direct_docker_gw_ollama": {
+      "ok": false,
+      "error": "OSError: [Errno 101] Network is unreachable"
+    },
+    "direct_docker_gw_api": {
+      "ok": false,
+      "error": "OSError: [Errno 101] Network is unreachable"
+    },
+    "direct_metadata_169254": {
+      "ok": false,
+      "error": "OSError: [Errno 101] Network is unreachable"
+    },
+    "direct_lan_192168_1_1": {
+      "ok": false,
+      "error": "OSError: [Errno 101] Network is unreachable"
+    },
+    "resolve_host_docker_internal": {
+      "ok": false,
+      "error": "gaierror: [Errno -3] Temporary failure in name resolution"
+    },
+    "own_subnet": "10.213.212.240/28",
+    "bridge_gateway": "10.213.212.241",
+    "bridge_gateway_is_egress_proxy": true,
+    "bridge_gateway_proxy_port": 8080,
+    "bridge_gateway_open_host_ports": [],
+    "proxy_allowlisted_api": {
+      "ok": true,
+      "value": "HTTP/1.1 200 Connection Established"
+    },
+    "proxy_not_allowlisted": {
+      "ok": true,
+      "value": "HTTP/1.1 403 Forbidden"
+    },
+    "proxy_github": {
+      "ok": true,
+      "value": "HTTP/1.1 403 Forbidden"
+    },
+    "proxy_allowlisted_wrong_port": {
+      "ok": true,
+      "value": "HTTP/1.1 403 Forbidden"
+    },
+    "proxy_docker_gw_postgres": {
+      "ok": true,
+      "value": "HTTP/1.1 403 Forbidden"
+    },
+    "proxy_metadata": {
+      "ok": true,
+      "value": "HTTP/1.1 403 Forbidden"
+    },
+    "proxy_loopback": {
+      "ok": true,
+      "value": "HTTP/1.1 403 Forbidden"
+    },
+    "pids_limit": {
+      "ok": true,
+      "value": {
+        "spawned": 253,
+        "stopped_by": "BlockingIOError"
+      }
+    },
+    "tmp_quota": {
+      "ok": false,
+      "error": "OSError: [Errno 28] No space left on device"
+    },
+    "memory_limit": {
+      "returncode": -9,
+      "stdout": ""
+    }
+  },
+  "runtime_metadata": {
+    "runtime": "task",
+    "policy_version": "2026-11-19.2",
+    "rid": "1621cde5a4a34c54",
+    "container": "lg-rt-1621cde5a4a34c54",
+    "proxy": "lg-rt-egress-1621cde5a4a34c54",
+    "network": "lg-rt-net-1621cde5a4a34c54",
+    "image": "life-graph-claude-driver:a3aa3f4-cli2.1.328",
+    "limits": {
+      "memory": "512m",
+      "cpus": "1",
+      "pids": 256,
+      "timeout_s": 300,
+      "tmp": "256m"
+    },
+    "egress_allowlist": [
+      "api.anthropic.com",
+      "console.anthropic.com",
+      "platform.claude.com",
+      "claude.ai"
+    ],
+    "started_at": "2026-11-19T10:46:27.118409+00:00",
+    "image_id": "sha256:ff88ae9c287349559d20e80a51647932256ed5c827039cbc651d1369927d2cef",
+    "user": "1000:1000",
+    "binds": [
+      {
+        "target": "/work",
+        "read_only": false
+      }
+    ],
+    "subnet": "10.213.212.240/28",
+    "egress_image": "life-graph-sandbox-egress:6ce846a",
+    "egress_image_id": "sha256:888e2bba495b1950643528007c60f26687f96465d1c0bd5811816b115a1b869a",
+    "exit_code": 0,
+    "finished_at": "2026-11-19T10:46:29.528189+00:00",
+    "duration_ms": 2409,
+    "teardown": {
+      "ok": true,
+      "errors": []
+    }
+  },
+  "host_side": {
+    "probe_file_landed_in_worktree": true,
+    "origin_untouched": true,
+    "escaping_symlinks_flagged": [
+      "leak_rel",
+      "leak_abs"
+    ]
+  },
+  "tool_env_mount": {
+    "readable": true,
+    "write_refused": true,
+    "host_copy_intact": true,
+    "bind": [
+      {
+        "target": "/venv",
+        "read_only": true
+      }
+    ]
+  },
+  "deadline": {
+    "raised": true,
+    "message": "sandboxed command timed out after 3s",
+    "seconds": 5.3,
+    "teardown": {
+      "ok": true,
+      "errors": []
+    }
+  },
+  "orphan": {
+    "containers_after_caller_killed": 1,
+    "sweep": {
+      "containers": [
+        "lg-rt-f4775fd3c20f487d"
+      ],
+      "networks": [
+        "lg-rt-net-f4775fd3c20f487d"
+      ],
+      "credentials": 0,
+      "errors": []
+    },
+    "containers_after_sweep": 0
+  },
+  "missing_image": {
+    "raised": true,
+    "message": "runtime image 'life-graph-does-not-exist:none' not found \u2014 build it before enabling the task runtime (docs/OPERATIONS.md, 'Dev-agent execution runtime')",
+    "networks_created": 0
+  },
+  "home_as_workspace": {
+    "raised": true,
+    "message": "task runtime policy refused the spec: sandbox spec 'lg-rt-e33b463774c3412f': bind source '/home/raja' is outside the runtime's bind roots (/tmp/lg-tenants, /home/raja/.cache/life-graph/driver-creds, /home/raja/.cache/life-graph/verifier-envs)"
+  }
+}

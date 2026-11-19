@@ -191,6 +191,16 @@ class DriverSettings(BaseModel):
     # egress allowlist is unchanged: nothing is installed at run time.
     # Python toolchain only; needs verifier_sandbox=docker.
     driver_runtime_project_tools: bool = True
+    # Where each runtime's internal network gets its subnet. Docker's default
+    # address pools hold only ~31 networks and the other stacks on a shared
+    # daemon use most of them (2026-11-19: the 12th concurrent runtime failed
+    # with "all predefined address pools have been fully subnetted"). An
+    # explicit /28 per network from this private range, which nothing else on
+    # the host routes (checked 2026-11-19: WSL, docker, Tailscale, the Windows
+    # LAN), lifts that ceiling to 4096 without touching the daemon config.
+    # Must be RFC1918/private. Empty: docker picks from its default pools.
+    driver_runtime_subnet_pool: str = "10.213.0.0/16"
+    driver_runtime_subnet_prefix: int = 28
 
     # ── Host execution (no container) ──
     # With no driver sandbox, a coding CLI's shell runs on the host as this
