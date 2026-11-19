@@ -78,8 +78,18 @@ class WebhookChannel:
             "X-Signature-256": f"sha256={signature}",
         }
 
+        # The URL is tenant-supplied: refuse private/local targets on every
+        # send (LIFE_GRAPH_FETCH_ALLOW_HOSTS opts a LAN host back in).
+        from life_graph.services.safe_fetch import FetchBlockedError, check_url
+
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            await check_url(url)
+        except FetchBlockedError as exc:
+            logger.warning("Webhook to %s refused: %s", url, exc)
+            return False
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
                 resp = await client.post(url, content=body, headers=headers)
 
             if resp.status_code < 300:

@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select, update
 
 from life_graph.api.responses import success_response
+from life_graph.api.url_guard import require_public_url
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
 from life_graph.watchers.schemas import (
@@ -47,6 +48,21 @@ def _get_tenant() -> str:
     watchers, which is someone else's data in a multi-tenant deployment.
     """
     return get_current_tenant_id()
+
+
+async def _require_webhook_url(config: dict) -> None:
+    """A webhook channel's ``config["url"]``, when given, must be a public
+    http(s) address (422 otherwise). A channel saved without one stays
+    allowed, as before; it simply cannot deliver."""
+    url = config.get("url")
+    if url is None:
+        return
+    if not isinstance(url, str):
+        raise HTTPException(
+            status_code=422,
+            detail="config.url must be a string",
+        )
+    await require_public_url(url, field="config.url")
 
 
 # ── Watcher Config ────────────────────────────────────────────────────────────
@@ -434,6 +450,8 @@ async def create_notification_channel(body: NotificationChannelCreate):
 
     tenant_id = _get_tenant()
     now = datetime.now(UTC)
+    if body.channel_type == "webhook":
+        await _require_webhook_url(body.config)
 
     channel = NotificationChannel(
         id=uuid.uuid4(),
@@ -486,6 +504,8 @@ async def update_notification_channel(
             )
 
         update_data = body.model_dump(exclude_unset=True)
+        if channel.channel_type == "webhook" and update_data.get("config") is not None:
+            await _require_webhook_url(update_data["config"])
         if update_data:
             for key, value in update_data.items():
                 setattr(channel, key, value)
