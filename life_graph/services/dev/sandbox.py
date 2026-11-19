@@ -1008,6 +1008,18 @@ def allowed_bind_roots() -> tuple[Path, ...]:
     )
 
 
+def readonly_bind_roots() -> tuple[Path, ...]:
+    """Host directories a :class:`Bind` may come from ONLY when read-only.
+
+    The verifier's cached project environments (:func:`prepare_env`): the
+    driver gets its project's one, read-only, so it can run the tests it
+    writes without network. Read-only matters twice over: the agent cannot
+    change the environment the verifiers later trust, and it cannot reach
+    any other project's (only the one directory is mounted).
+    """
+    return (_cache_root().resolve(),)
+
+
 def _bind_violations(bind: Bind) -> list[str]:
     bad: list[str] = []
     src, dst = str(bind.source), str(bind.target)
@@ -1031,11 +1043,19 @@ def _bind_violations(bind: Bind) -> list[str]:
         bad.append(f"bind source {src!r} is not a canonical path (resolves to {resolved})")
     if not resolved.is_dir():
         bad.append(f"bind source {src!r} is not an existing directory")
+
+    def under(roots: tuple[Path, ...]) -> bool:
+        return any(resolved != root and root in resolved.parents for root in roots)
+
     roots = allowed_bind_roots()
-    if not any(resolved != root and root in resolved.parents for root in roots):
+    ro_roots = readonly_bind_roots()
+    if under(ro_roots) and not under(roots):
+        if not bind.read_only:
+            bad.append(f"bind source {src!r} may only be mounted read-only")
+    elif not under(roots):
         bad.append(
             f"bind source {src!r} is outside the runtime's bind roots"
-            f" ({', '.join(str(r) for r in roots)})"
+            f" ({', '.join(str(r) for r in roots + ro_roots)})"
         )
     return bad
 

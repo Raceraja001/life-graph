@@ -11,12 +11,21 @@
 # working local install at build time.
 #
 # Build: docker/claude-driver/build.sh
+FROM ghcr.io/astral-sh/uv:0.12.14 AS uv
+
 FROM python:3.12-slim
 # git: the CLI's own Bash tool uses it for context (git diff/log), not for
 # committing — landing commits happen on the host afterward, via hardened git.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+# The verifier image's toolchain, same pins (docker/verifier/Dockerfile; a unit
+# test keeps them equal). The project's cached verifier venv is mounted
+# read-only at /venv with --system-site-packages, so these are the pytest/ruff
+# /mypy it falls back to, exactly as in the verifiers. Installed at build time:
+# the runtime's egress allowlist reaches no package index.
+COPY --from=uv /uv /usr/local/bin/uv
+RUN pip install --no-cache-dir "pytest==9.1.1" "ruff==0.16.1" "mypy==1.15.0"
 COPY claude-bin /usr/local/bin/claude
 RUN chmod +x /usr/local/bin/claude
 # Never run as root; the sandbox also passes --user explicitly.

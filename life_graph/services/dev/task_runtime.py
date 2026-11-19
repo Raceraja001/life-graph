@@ -72,7 +72,8 @@ logger = logging.getLogger(__name__)
 
 # Bumped whenever what a runtime container is allowed changes, so a task's
 # recorded metadata says which rules it ran under.
-POLICY_VERSION = "2026-11-18.1"
+# 2026-11-19.1: the project's cached verifier env may be mounted read-only.
+POLICY_VERSION = "2026-11-19.1"
 
 OUTBOUND_NETWORK = "lg-rt-outbound"
 EGRESS_PORT = 8080
@@ -123,6 +124,10 @@ class RuntimeRequest:
     workspace: Path
     credentials: Path | None = None
     credentials_target: str = "/claude-config"
+    # The project's cached verifier environment (sandbox.prepare_env), mounted
+    # read-only so the agent can run its tests offline.
+    tool_env: Path | None = None
+    tool_env_target: str = sandbox.VENV
     env: dict[str, str] = field(default_factory=dict)
     # NAME -> value, handed to the docker client only and passed into the
     # container by name (sandbox.PASSTHROUGH_ENV_ALLOWED limits the names).
@@ -505,6 +510,10 @@ class DockerTaskRuntime:
         binds = [Bind(str(Path(req.workspace).resolve()), sandbox.WORK)]
         if req.credentials is not None:
             binds.append(Bind(str(Path(req.credentials).resolve()), req.credentials_target))
+        if req.tool_env is not None:
+            binds.append(
+                Bind(str(Path(req.tool_env).resolve()), req.tool_env_target, read_only=True)
+            )
         env = {"HOME": "/tmp", "LANG": "C.UTF-8", "TZ": "UTC", **req.env}
         if req.egress_allowlist:
             proxy = f"http://{names['proxy']}:{EGRESS_PORT}"
