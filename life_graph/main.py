@@ -787,10 +787,13 @@ async def health_check():
             "status": "healthy",
             "latency_ms": round((time.monotonic() - t0) * 1000, 1),
         }
-    except Exception as e:
+    except Exception:
+        # /health is unauthenticated: the driver's message can carry the DB
+        # host, user and role names, so it goes to the log, not the body.
+        logger.exception("Health check: Postgres probe failed")
         checks["postgres"] = {
             "status": "unhealthy",
-            "error": str(e),
+            "error": "database unreachable",
             "latency_ms": round((time.monotonic() - t0) * 1000, 1),
         }
     pg_ok = checks["postgres"]["status"] == "healthy"
@@ -803,6 +806,10 @@ async def health_check():
         "latency_ms": round((time.monotonic() - t0) * 1000, 1),
     }
     if redis_status != "ok":
+        # check_redis returns "error: <exception text>"; keep only the kind.
+        if redis_status.startswith("error"):
+            logger.warning("Health check: Redis probe failed: %s", redis_status)
+            redis_status = "error"
         checks["redis"]["error"] = redis_status
 
     # Knowledge graph (non-critical). Apache AGE is a compiled extension that

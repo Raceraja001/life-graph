@@ -10,6 +10,7 @@ while semantic search silently returns nothing.
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -21,6 +22,8 @@ from sqlalchemy import text
 from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -84,8 +87,15 @@ async def memory_health() -> JSONResponse:
                     {"t": tenant_id},
                 )
             ).one_or_none()
-    except Exception as e:  # noqa: BLE001 — any failure here is the answer
-        checks["postgres"] = {"status": "unhealthy", "error": str(e), "latency_ms": _ms(t0)}
+    except Exception:  # noqa: BLE001 — any failure here is the answer
+        # The driver's message can name the DB host, user and role: log it,
+        # return a fixed string.
+        logger.exception("Memory health: Postgres probe failed")
+        checks["postgres"] = {
+            "status": "unhealthy",
+            "error": "database unreachable",
+            "latency_ms": _ms(t0),
+        }
         return JSONResponse(
             status_code=503,
             content={"status": "unhealthy", "profile": settings.profile, "checks": checks},

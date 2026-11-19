@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
@@ -29,6 +29,7 @@ from life_graph.api.openapi_examples import (
     WEBHOOK_LIST,
 )
 from life_graph.api.responses import encode_cursor, paginated_response, success_response
+from life_graph.api.url_guard import require_public_url
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import (
@@ -256,6 +257,7 @@ async def create_webhook(body: WebhookCreate):
     A shared secret is used for HMAC signature verification.
     """
     tenant_id = get_current_tenant_id()
+    await require_public_url(body.url)
     webhook = TenantWebhook(
         tenant_id=tenant_id,
         url=body.url,
@@ -339,8 +341,10 @@ async def delete_webhook(webhook_id: uuid.UUID):
 async def test_webhook(webhook_id: uuid.UUID):
     """Send a test event payload to a webhook URL.
 
-    Delivers a synthetic 'test.ping' event and reports the
-    HTTP status and response time from the target.
+    Delivers a synthetic 'test.ping' event and reports only whether it was
+    ``delivered`` (a 2xx) or ``failed``. The target's status code and any
+    connection error stay in the server log: echoing them let a caller map
+    which internal hosts and ports answer.
     """
     tenant_id = get_current_tenant_id()
     async with async_session() as session:
@@ -351,6 +355,10 @@ async def test_webhook(webhook_id: uuid.UUID):
                 detail=f"Webhook {webhook_id} not found",
             )
 
+    # Rows created before the create-time check, or whose host now resolves
+    # privately, are refused here too.
+    await require_public_url(webhook.url)
+
     test_payload = {
         "event": "test.ping",
         "tenant_id": tenant_id,
@@ -358,27 +366,22 @@ async def test_webhook(webhook_id: uuid.UUID):
         "timestamp": datetime.now(UTC).isoformat(),
     }
 
+    delivered = False
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
             resp = await client.post(webhook.url, json=test_payload)
-        delivery_status = "delivered" if resp.status_code < 400 else "failed"
-        return success_response(
-            data={
-                "webhook_id": str(webhook_id),
-                "delivery_status": delivery_status,
-                "http_status": resp.status_code,
-                "url": webhook.url,
-            }
-        )
-    except Exception as e:
-        return success_response(
-            data={
-                "webhook_id": str(webhook_id),
-                "delivery_status": "error",
-                "error": str(e),
-                "url": webhook.url,
-            }
-        )
+        delivered = 200 <= resp.status_code < 300
+        if not delivered:
+            logger.info("Webhook %s test got HTTP %d", webhook_id, resp.status_code)
+    except Exception:
+        logger.warning("Webhook %s test delivery failed", webhook_id, exc_info=True)
+    return success_response(
+        data={
+            "webhook_id": str(webhook_id),
+            "delivery_status": "delivered" if delivered else "failed",
+            "url": webhook.url,
+        }
+    )
 
 
 # ── Tenant Lifecycle ─────────────────────────────────────────
@@ -891,7 +894,7 @@ class JobRunResponse(BaseModel):
     summary="List recent job runs",
 )
 async def list_job_runs(
-    limit: int = 20,
+    limit: int = Query(20, ge=1, le=200),
     tenant_id: str | None = None,
     job_name: str | None = None,
 ):

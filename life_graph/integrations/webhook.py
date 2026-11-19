@@ -31,6 +31,7 @@ from sqlalchemy import select
 
 from life_graph.core.events import Event, EventBus, EventType
 from life_graph.models.db import TenantWebhook
+from life_graph.services.safe_fetch import FetchBlockedError, check_url
 from life_graph.storage.database import async_session
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,15 @@ async def deliver_webhook(
         if not webhook or not webhook.active:
             return {"status": "skipped", "reason": "webhook inactive or not found"}
 
+        # Checked on every delivery, not only at registration: older rows were
+        # never checked, and a public name can later resolve to a private
+        # address. Not raised — a retry would hit the same refusal.
+        try:
+            await check_url(webhook.url)
+        except FetchBlockedError as exc:
+            logger.warning("Webhook %s not delivered, URL refused: %s", webhook.id, exc)
+            return {"status": "skipped", "reason": "url not allowed"}
+
         # Build the signed envelope
         body = json.dumps(
             {
@@ -115,7 +125,10 @@ async def deliver_webhook(
         signature = sign_payload(webhook.secret, body)
 
         try:
-            async with httpx.AsyncClient(timeout=DELIVERY_TIMEOUT) as client:
+            # No redirects: a 3xx to an internal address would skip the check.
+            async with httpx.AsyncClient(
+                timeout=DELIVERY_TIMEOUT, follow_redirects=False
+            ) as client:
                 resp = await client.post(
                     webhook.url,
                     content=body,

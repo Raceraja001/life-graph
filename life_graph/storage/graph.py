@@ -39,6 +39,10 @@ DEFAULT_GRAPH_TENANT = "default"
 # Anything looser lets ``Entity) RETURN n //`` comment out the tenant filter.
 LABEL_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
 
+# Result-column aliases are spliced into ``AS (<col> agtype, ...)`` the same
+# way, so they get the same identifier check, and a cap on how many.
+MAX_CYPHER_COLUMNS = 32
+
 # A $param outside a string literal. Literals are matched first so that text
 # already in the query (edge properties, say) is never read as a placeholder.
 _PLACEHOLDER = re.compile(r"'(?:\\.|[^'\\])*'|\$(\w+)")
@@ -356,6 +360,11 @@ class GraphStore:
         """
         if columns is None:
             columns = ["v"]
+        if not columns or len(columns) > MAX_CYPHER_COLUMNS:
+            raise ValueError(f"Cypher needs 1..{MAX_CYPHER_COLUMNS} result columns")
+        for c in columns:
+            if not isinstance(c, str) or not re.fullmatch(LABEL_PATTERN, c):
+                raise ValueError(f"Invalid Cypher result column: {c!r}")
 
         col_spec = ", ".join(f"{c} agtype" for c in columns)
 

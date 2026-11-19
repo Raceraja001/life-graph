@@ -11,14 +11,19 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.storage.graph import DEFAULT_GRAPH_TENANT, LABEL_PATTERN, graph_available
+from life_graph.storage.graph import (
+    DEFAULT_GRAPH_TENANT,
+    LABEL_PATTERN,
+    MAX_CYPHER_COLUMNS,
+    graph_available,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +43,14 @@ class CypherQuery(BaseModel):
 
     cypher: str = Field(..., min_length=1, description="Cypher query string")
     params: dict[str, Any] | None = Field(None, description="Optional query parameters")
-    columns: list[str] | None = Field(None, description="Result column names (default: ['v'])")
+    # Spliced into ``AS (<col> agtype, ...)`` by storage/graph.py, so each must
+    # be a bare identifier.
+    columns: list[Annotated[str, StringConstraints(pattern=LABEL_PATTERN)]] | None = Field(
+        None,
+        min_length=1,
+        max_length=MAX_CYPHER_COLUMNS,
+        description="Result column names (default: ['v'])",
+    )
 
 
 class GraphEntity(BaseModel):
@@ -130,7 +142,7 @@ async def list_entities(
         logger.exception("Failed to list graph entities")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Graph query failed: {exc}",
+            detail="Graph query failed. See the server log (X-Request-ID).",
         ) from exc
 
     entities: list[GraphEntity] = []
@@ -159,7 +171,7 @@ async def get_entity(name: str):
         logger.exception("Failed to get entity context for %s", name)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Graph query failed: {exc}",
+            detail="Graph query failed. See the server log (X-Request-ID).",
         ) from exc
 
 
@@ -210,7 +222,7 @@ async def execute_cypher(body: CypherQuery):
         logger.exception("Cypher query failed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cypher query error: {exc}",
+            detail="Cypher query error. See the server log (X-Request-ID).",
         ) from exc
 
 
@@ -250,7 +262,7 @@ async def find_path(
         logger.exception("Path query failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Graph query failed: {exc}",
+            detail="Graph query failed. See the server log (X-Request-ID).",
         ) from exc
 
     return success_response(
@@ -291,7 +303,7 @@ async def hybrid_search(body: GraphSearchRequest):
         logger.exception("Hybrid search failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Hybrid search error: {exc}",
+            detail="Hybrid search failed. See the server log (X-Request-ID).",
         ) from exc
 
     return success_response(
