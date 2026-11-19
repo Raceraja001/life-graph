@@ -11,14 +11,19 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
-from life_graph.storage.graph import DEFAULT_GRAPH_TENANT, LABEL_PATTERN, graph_available
+from life_graph.storage.graph import (
+    DEFAULT_GRAPH_TENANT,
+    LABEL_PATTERN,
+    MAX_CYPHER_COLUMNS,
+    graph_available,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +43,14 @@ class CypherQuery(BaseModel):
 
     cypher: str = Field(..., min_length=1, description="Cypher query string")
     params: dict[str, Any] | None = Field(None, description="Optional query parameters")
-    columns: list[str] | None = Field(None, description="Result column names (default: ['v'])")
+    # Spliced into ``AS (<col> agtype, ...)`` by storage/graph.py, so each must
+    # be a bare identifier.
+    columns: list[Annotated[str, StringConstraints(pattern=LABEL_PATTERN)]] | None = Field(
+        None,
+        min_length=1,
+        max_length=MAX_CYPHER_COLUMNS,
+        description="Result column names (default: ['v'])",
+    )
 
 
 class GraphEntity(BaseModel):
