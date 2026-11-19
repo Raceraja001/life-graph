@@ -179,6 +179,12 @@ class CaptureProcessors:
                 said_at.set(late(getattr(capture_evt, "occurred_at", None)))
 
                 # ── 1. Run extraction pipeline ──────────────────────
+                # End the read transaction first: extraction is LLM-first and
+                # can take minutes, and the SELECT above left this session
+                # holding a pooled connection idle in a transaction for all of
+                # it (audit H7). capture_evt stays usable (expire_on_commit is
+                # off); the writes below open a fresh transaction.
+                await session.commit()
                 facts: list[ExtractedFact] = []
                 try:
                     from life_graph.core.tenant import has_tenant_context, set_tenant_context
