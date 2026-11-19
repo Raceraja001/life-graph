@@ -34,16 +34,66 @@ read-only into the sidecar (e.g. `minio_data:/minio-data:ro`). Without it, uploa
 originals (voice notes, images, documents) have no backup — only the memories
 extracted from them do.
 
+Each dump has a sibling `life_graph_<timestamp>.graph` manifest: the Apache AGE label
+inventory (`graph|label|kind|rows`) read from the **same snapshot** as the dump
+(`pg_dump --snapshot`), so a restore can be held to exact graph counts.
+
+`job_runs.status` for `backup`: `success` (dump, and the off-site copy when one is
+configured), `partial` (dump fine, off-site copy skipped or failed — `error` says why),
+`failed` (no dump). `backup_offsite` retries are `success` or `failed`. A failed backup,
+a failed drill, and an off-site copy that has not succeeded for `OFFSITE_ALERT_HOURS`
+(default 24) each write an owner notification (`notifications.source_type='backup'`,
+once per kind per UTC day; recipients `BACKUP_ALERT_TENANTS`, else the tenant with the
+most memories).
+
+### Restoring an Apache AGE graph (why `restore.sh` is not a plain `pg_restore`)
+
+AGE's catalog lives in two extension tables, `ag_catalog.ag_graph` and
+`ag_catalog.ag_label`, and `ag_label` has a foreign key onto `ag_graph`. pg_restore does
+not order data by foreign keys, so:
+
+- `pg_restore -j N` loads `ag_label` alongside `ag_graph`, the COPY fails
+  `fk_graph_oid`, and the graph returns with its vertex/edge tables but **zero labels**;
+  cypher on that database crashed the server process (signal 11).
+- `pg_restore --clean` into an existing database fails ("table X is for label X") and
+  appends every vertex a second time.
+
+`scripts/lib_backup.sh` (`restore_dump`) restores only into an empty database, in four
+steps: schema → `ag_graph` then `ag_label` rows (serial) → all other data → indexes and
+constraints (`RESTORE_JOBS` parallelism is safe for the last two). `restore.sh` restores
+into a staging database, verifies it, and only then renames the current database to
+`<name>_before_restore_<timestamp>` and the staging one into place. `ag_graph.graphid`
+keeps the source's OID while the restored schema gets a new one; AGE 1.5 works with
+that (MATCH, CREATE with existing and new labels were tested), so it is left as is.
+
 ### What the restore drill verifies
 
-1. Latest dump restores into a scratch database (`life_graph_verify`) on the same server.
-2. Row counts for `memories`, `sessions`, `capture_events`, `decisions`, `predictions`,
+1. Latest dump restores into a scratch database (`life_graph_verify`) on the same server,
+   using the procedure above. **Any** pg_restore error fails the drill.
+2. Graph: `ag_graph`/`ag_label` rows, rows per label, vertex and edge totals equal the
+   dump's manifest (older dumps without one: the live graph); every label table has a
+   catalog row; every label's id sequence is ahead of its data. Only then does cypher
+   run — a `MATCH` per label must return the manifest's count. (Cypher on a broken
+   catalog can crash the server, and the drill runs on the live server.)
+3. Row counts for `memories`, `sessions`, `capture_events`, `decisions`, `predictions`,
    `agent_tasks` — restored `memories` count must be ≥ 90% of live (`MIN_ROW_RATIO`).
    Each table is looked up in whichever schema holds it (`public` or `life_graph`);
    the drill log and `job_runs` result name tables schema-qualified.
-3. Embedding sample: restored DB must contain non-null embeddings with the right dimensions.
-4. Warns if the latest dump is older than 48h (nightly backup broken).
-5. Scratch database is dropped afterwards; outcome recorded in `job_runs`.
+4. Embedding sample: restored DB must contain non-null embeddings with the right dimensions.
+5. Warns if the latest dump is older than 48h (nightly backup broken).
+6. Scratch database is dropped afterwards; outcome recorded in `job_runs` (with the
+   graph numbers under `result.graph`); a failure also notifies the owner.
+
+### Who can read the dumps
+
+Dumps are plaintext: every memory, every message. The scripts run under `umask 077` and
+`chmod 600` their output, which works on a Linux filesystem (the `backup_data` volume).
+On a Windows drive mounted into WSL (DrvFs, e.g. `/mnt/h`) without the `metadata` mount
+option, chmod is silently ignored and every file shows `rwxrwxrwx`; what actually
+controls access there is the Windows ACL. Restrict the backup folder on the Windows side
+(remove `Authenticated Users` / `Users`, keep your account, `SYSTEM`, `Administrators`),
+or mount the drive with `metadata` (`/etc/wsl.conf` `[automount] options = "metadata"`).
+Encrypting local dumps is not implemented; the off-site copy is encrypted by restic.
 
 **Untested backups don't count.** A `restore_drill` failure means your backups may be garbage — treat it as a P0.
 
@@ -62,10 +112,14 @@ With `MINIO_DATA_DIR` set, restic backs up the raw MinIO directory (which dedupl
 between runs) and skips the local `minio_*.tar.gz`, which would re-upload in full nightly.
 
 The off-site step is **best-effort**: the local dump has already succeeded, so an
-unreachable repository is recorded in `job_runs` (`offsite: false`, `offsite_error`)
-instead of failing the job. `backup.sh` probes the repository first
-(`RESTIC_PROBE_TIMEOUT`, default 60s), because restic otherwise retries an offline
-backend for about 15 minutes. Check for a run of `offsite: false` in the weekly review.
+unreachable repository does not fail the backup — the run is recorded as
+`status='partial'` (`offsite: false`, `offsite_error`), a retry that still cannot upload
+as `failed`, and after `OFFSITE_ALERT_HOURS` without a good copy the owner is notified.
+(Before this, both were recorded as `success`, which hid a week of failed uploads.)
+`backup.sh` probes the repository first (`RESTIC_PROBE_TIMEOUT`, default 60s), because
+restic otherwise retries an offline backend for about 15 minutes. "Repository
+unreachable" with the host answering on Tailscale but the port refusing means the
+rest-server on the repository host is not running.
 
 | Variable | Purpose |
 |---|---|
@@ -243,7 +297,11 @@ stat -c '%a %n' ~/.config/life-graph/vault.key   # expect 600
 # 1. Provision the stack (postgres up, app down)
 docker compose -f docker-compose.production.yml up -d postgres
 
-# 2. Restore the latest dump (interactive confirmation)
+# 2. Restore the latest dump (interactive confirmation; --yes skips it). Restores into a
+#    staging database, verifies the graph against life_graph_<TIMESTAMP>.graph, then
+#    swaps it in and keeps the old database as life_graph_before_restore_<ts>.
+#    Never use plain `pg_restore --clean` or `pg_restore -j` (see "Restoring an Apache
+#    AGE graph" above).
 docker compose -f docker-compose.production.yml run --rm backup \
   bash /scripts/restore.sh /backups/life_graph_<TIMESTAMP>.dump
 
@@ -259,7 +317,7 @@ curl -fsS http://localhost/health
 
 ## Monitoring Checklist (weekly)
 
-- [ ] `job_runs` shows a `backup` success for every night this week
+- [ ] `job_runs` shows a `backup` success for every night this week (`partial` = off-site copy missing)
 - [ ] `job_runs` shows a `restore_drill` success for Sunday
 - [ ] Off-site repo (`restic snapshots`) grew this week
 - [ ] Backup volume disk usage under control (`ls -lh /backups`)

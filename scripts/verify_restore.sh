@@ -2,9 +2,20 @@
 # Life Graph Restore-Verification Drill ("The Lifeline", F0)
 #
 # Restores the most recent pg_dump into a scratch database on the same
-# server, verifies row counts and embedding samples against the live
-# database, records the outcome in the live job_runs table, then drops
-# the scratch database. Untested backups don't count.
+# server (with the same procedure restore.sh uses), verifies it, records the
+# outcome in the live job_runs table, then drops the scratch database.
+# Untested backups don't count.
+#
+# The drill FAILS (job_runs status=failed + an owner notification) when:
+#   - pg_restore reports any error;
+#   - the Apache AGE graph differs from the dump's manifest
+#     (life_graph_<ts>.graph, written by backup.sh from the dump's own
+#     snapshot): ag_graph/ag_label rows, rows per label, vertex or edge totals;
+#     without a manifest (older dumps) the live graph is the baseline;
+#   - label tables and catalog disagree, or a label's id sequence is behind;
+#   - a cypher MATCH on any label fails or returns a different count;
+#   - a checked table is missing, memories < MIN_ROW_RATIO of live, or the
+#     restored copy has no embeddings while live has them.
 #
 # Usage:
 #   ./scripts/verify_restore.sh                        # verify latest dump
@@ -17,10 +28,16 @@
 #   BACKUP_DIR     — Backup directory           (default: ./backups)
 #   VERIFY_DB      — Scratch database name      (default: life_graph_verify)
 #   MIN_ROW_RATIO  — Required scratch/live row ratio for memories (default: 0.90)
+#   RESTORE_JOBS   — pg_restore parallelism for data/indexes (default: 1)
 #
 # Exit codes: 0 = verified, 1 = drill failed (backup unusable or checks failed)
 
 set -uo pipefail
+umask 077
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=lib_backup.sh
+source "$SCRIPT_DIR/lib_backup.sh"
 
 DB_USER=${PGUSER:-life_graph}
 DB_NAME=${PGDATABASE:-life_graph}
@@ -30,38 +47,34 @@ VERIFY_DB=${VERIFY_DB:-life_graph_verify}
 MIN_ROW_RATIO=${MIN_ROW_RATIO:-0.90}
 
 STARTED_AT=$(date -u +"%Y-%m-%d %H:%M:%S+00")
+WORK=$(mktemp -d)
 
 log() { echo "[$(date)] $*"; }
 
 psql_live() {
-    psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -tA -c "$1"
+    psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -X -tA -c "$1"
 }
 
 psql_scratch() {
-    psql -h "$DB_HOST" -U "$DB_USER" -d "$VERIFY_DB" -tA -c "$1"
-}
-
-record_job_run() {
-    # record_job_run <status> <result_json> [error_text]
-    local status=$1
-    local result=$2
-    local error=${3:-}
-    psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -q -c \
-        "INSERT INTO job_runs (id, tenant_id, job_name, status, started_at, completed_at, result, error, attempt, created_at)
-         VALUES (gen_random_uuid(), 'system', 'restore_drill', '$status', '$STARTED_AT', now(),
-                 '$result'::jsonb, $( [ -n "$error" ] && echo "'$error'" || echo "NULL" ), 1, now())" \
-        || log "WARNING: could not record job run in job_runs"
+    psql -h "$DB_HOST" -U "$DB_USER" -d "$VERIFY_DB" -X -tA -c "$1"
 }
 
 cleanup_scratch() {
-    psql -h "$DB_HOST" -U "$DB_USER" -d postgres -q -c \
+    psql -h "$DB_HOST" -U "$DB_USER" -d postgres -X -q -c \
         "DROP DATABASE IF EXISTS $VERIFY_DB WITH (FORCE)" 2>/dev/null || true
 }
 
+RESULT_JSON=""
+
 fail() {
     log "DRILL FAILED: $1"
-    record_job_run "failed" "{}" "$1"
+    local result="{}"
+    [ -n "$RESULT_JSON" ] && result="$RESULT_JSON}"
+    record_job_run "restore_drill" "failed" "$result" "$1"
+    notify_owner "restore_drill_failed" "important" "Restore drill FAILED" \
+        "The weekly restore drill could not prove the latest backup is restorable: $1"
     cleanup_scratch
+    rm -rf "$WORK"
     exit 1
 }
 
@@ -85,18 +98,44 @@ fi
 
 # -- Create scratch database and restore -------------------------------
 cleanup_scratch
-psql -h "$DB_HOST" -U "$DB_USER" -d postgres -q -c "CREATE DATABASE $VERIFY_DB" \
+psql -h "$DB_HOST" -U "$DB_USER" -d postgres -X -q -c "CREATE DATABASE $VERIFY_DB" \
     || fail "could not create scratch database $VERIFY_DB"
 
-# AGE and pgvector emit ignorable ownership/extension warnings on restore;
-# the row-count and embedding checks below are the real gate.
-RESTORE_ERRORS=$(pg_restore -h "$DB_HOST" -U "$DB_USER" -d "$VERIFY_DB" \
-    --no-owner --no-privileges "$DUMP_FILE" 2>&1 | grep -c "error:" || true)
-log "pg_restore finished ($RESTORE_ERRORS errors reported, warnings tolerated)"
+# Errors are no longer tolerated: the old "warnings tolerated" restore hid a
+# graph whose AGE catalog never came back.
+if restore_dump "$VERIFY_DB" "$DUMP_FILE" "$WORK/restore.log"; then
+    RESTORE_ERRORS=0
+    log "pg_restore finished without errors"
+else
+    RESTORE_ERRORS=$(grep -c 'error:' "$WORK/restore.log" || true)
+    grep 'error:' "$WORK/restore.log" | head -5
+    fail "pg_restore reported errors ($RESTORE_ERRORS): $(grep -m1 'error:' "$WORK/restore.log" | head -c 300)"
+fi
+
+RESULT_JSON="{\"dump\": \"$(basename "$DUMP_FILE")\", \"dump_age_hours\": $DUMP_AGE_HOURS, \"restore_errors\": $RESTORE_ERRORS"
+
+# -- Apache AGE graph -------------------------------------------------------
+MANIFEST="${DUMP_FILE%.dump}.graph"
+if [ -f "$MANIFEST" ]; then
+    BASELINE=manifest
+    cp "$MANIFEST" "$WORK/expected"
+else
+    # Dumps taken before manifests existed: compare with the live graph.
+    BASELINE=live
+    log "WARNING: no manifest $(basename "$MANIFEST") — comparing the graph with live instead"
+    graph_counts "$DB_NAME" > "$WORK/expected" || fail "cannot read the live graph inventory"
+fi
+if check_graph "$VERIFY_DB" "$WORK/expected" "$BASELINE"; then
+    RESULT_JSON+=", \"graph\": $GRAPH_JSON"
+    log "  graph: $GRAPH_JSON"
+else
+    RESULT_JSON+=", \"graph\": $GRAPH_JSON"
+    fail "$GRAPH_ERROR"
+fi
 
 # -- Verification checks ------------------------------------------------
 TABLES="memories sessions capture_events decisions predictions agent_tasks"
-RESULT_JSON="{\"dump\": \"$(basename "$DUMP_FILE")\", \"dump_age_hours\": $DUMP_AGE_HOURS, \"restore_errors\": $RESTORE_ERRORS, \"tables\": {"
+RESULT_JSON+=", \"tables\": {"
 FIRST=1
 
 for tbl in $TABLES; do
@@ -110,7 +149,7 @@ for tbl in $TABLES; do
     qualified="$schema.$tbl"
     live_count=$(psql_live "SELECT count(*) FROM $qualified")
     scratch_count=$(psql_scratch "SELECT count(*) FROM $qualified" 2>/dev/null) \
-        || fail "table $qualified missing from restored backup"
+        || { RESULT_JSON+="}"; fail "table $qualified missing from restored backup"; }
     [ $FIRST -eq 1 ] || RESULT_JSON+=", "
     FIRST=0
     RESULT_JSON+="\"$qualified\": {\"live\": $live_count, \"restored\": $scratch_count}"
@@ -118,16 +157,16 @@ for tbl in $TABLES; do
 
     if [ "$tbl" = "memories" ] && [ "$live_count" -gt 0 ]; then
         ratio_ok=$(psql_live "SELECT $scratch_count >= ceil($live_count * $MIN_ROW_RATIO)")
-        [ "$ratio_ok" = "t" ] || fail "memories row count too low: restored=$scratch_count live=$live_count (min ratio $MIN_ROW_RATIO)"
+        [ "$ratio_ok" = "t" ] || { RESULT_JSON+="}"; fail "memories row count too low: restored=$scratch_count live=$live_count (min ratio $MIN_ROW_RATIO)"; }
     fi
 done
 RESULT_JSON+="}"
 
 # -- Embedding sample check ---------------------------------------------
 live_embedded=$(psql_live "SELECT count(*) FROM memories WHERE embedding IS NOT NULL")
-if [ "$live_embedded" -gt 0 ]; then
+if [ "${live_embedded:-0}" -gt 0 ]; then
     restored_embedded=$(psql_scratch "SELECT count(*) FROM memories WHERE embedding IS NOT NULL")
-    [ "$restored_embedded" -gt 0 ] || fail "restored backup has zero embeddings but live has $live_embedded"
+    [ "${restored_embedded:-0}" -gt 0 ] || fail "restored backup has zero embeddings but live has $live_embedded"
     sample_dim=$(psql_scratch "SELECT vector_dims(embedding) FROM memories WHERE embedding IS NOT NULL LIMIT 1")
     RESULT_JSON+=", \"embeddings\": {\"live\": $live_embedded, \"restored\": $restored_embedded, \"sample_dims\": $sample_dim}"
     log "  embeddings: live=$live_embedded restored=$restored_embedded dims=$sample_dim"
@@ -136,6 +175,7 @@ RESULT_JSON+="}"
 
 # -- Success ------------------------------------------------------------
 cleanup_scratch
-record_job_run "success" "$RESULT_JSON"
+rm -rf "$WORK"
+record_job_run "restore_drill" "success" "$RESULT_JSON"
 log "DRILL PASSED — backup is restorable"
 exit 0
