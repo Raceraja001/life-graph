@@ -11,6 +11,7 @@ with no token it refuses. The old copy is an explicit opt-in.
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -159,3 +160,71 @@ def test_the_token_setting_counts_as_a_configured_secret(monkeypatch):
     monkeypatch.setattr(settings, "driver_claude_code_oauth_token", TOKEN)
     bad = sandbox._env_violations({"HARMLESS_NAME": TOKEN})
     assert any("configured credential" in b or "provider key" in b for b in bad)
+
+
+async def test_api_key_mode_wins_over_a_configured_token(oauth, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "driver_claude_sandbox", "task")
+    monkeypatch.setattr(settings, "driver_claude_code_auth", "api_key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-api03-" + "k" * 40)
+    monkeypatch.setattr(settings, "driver_claude_code_oauth_token", TOKEN)
+    got = {}
+
+    async def fake_run(req):
+        got["req"] = req
+        return task_runtime.RuntimeOutcome(0, '{"result": "ok"}', "", {"runtime": "task"})
+
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
+    result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path)
+
+    assert set(got["req"].secret_env) == {"ANTHROPIC_API_KEY"}
+    assert result.metadata["login"] == "api_key"
+
+
+async def test_a_padded_token_is_stripped(oauth, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "driver_claude_sandbox", "task")
+    monkeypatch.setattr(settings, "driver_claude_code_oauth_token", f"  {TOKEN}\n")
+    got = {}
+
+    async def fake_run(req):
+        got["req"] = req
+        return task_runtime.RuntimeOutcome(0, '{"result": "ok"}', "", {"runtime": "task"})
+
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
+    await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path)
+    assert got["req"].secret_env == {"CLAUDE_CODE_OAUTH_TOKEN": TOKEN}
+
+
+async def test_the_real_docker_argv_never_carries_the_token(oauth, monkeypatch):
+    # End to end through the real spec builder and argv renderer, with the
+    # token set ONLY in os.environ (so the settings-secret check cannot help).
+    import shutil
+
+    from life_graph.drivers.dispatcher import tenant_scratch_root
+
+    monkeypatch.setattr(settings, "driver_claude_sandbox", "task")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", TOKEN)
+    work = Path(tenant_scratch_root("t1")) / f"lg_dispatch_logintest_{uuid.uuid4().hex[:6]}"
+    work.mkdir(parents=True)
+    got = {}
+
+    async def fake_run(req):
+        got["req"] = req
+        return task_runtime.RuntimeOutcome(0, '{"result": "ok"}', "", {"runtime": "task"})
+
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
+    try:
+        await ClaudeCodeDriver(binary="claude").dispatch(_packet(), work)
+        rid = "0123456789abcdef"
+        names = {
+            "container": f"lg-rt-{rid}",
+            "network": f"lg-rt-net-{rid}",
+            "proxy": f"lg-rt-egress-{rid}",
+        }
+        spec = task_runtime.DockerTaskRuntime()._driver_spec(got["req"], names, {})
+        argv = sandbox.docker_run_argv(spec)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+    assert "CLAUDE_CODE_OAUTH_TOKEN" in argv
+    assert not any(TOKEN in a for a in argv)
+    assert TOKEN not in str(spec.env)

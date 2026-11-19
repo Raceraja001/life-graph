@@ -152,10 +152,13 @@ _NO_SANDBOX_LOGIN = (
 
 
 def _oauth_token() -> str | None:
-    """The long-lived login (``claude setup-token``) for a sandboxed run, if set."""
-    return (
-        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or settings.driver_claude_code_oauth_token or None
-    )
+    """The long-lived login (``claude setup-token``) for a sandboxed run, if set.
+
+    Stripped: a stray space or newline pasted into .env would otherwise fail
+    as an unexplained 401.
+    """
+    raw = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or settings.driver_claude_code_oauth_token
+    return (raw or "").strip() or None
 
 
 class _LiveStream:
