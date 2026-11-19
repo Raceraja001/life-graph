@@ -1049,9 +1049,14 @@ def _bind_violations(bind: Bind) -> list[str]:
 
     roots = allowed_bind_roots()
     ro_roots = readonly_bind_roots()
-    if under(ro_roots) and not under(roots):
+    if under(ro_roots):
+        # Checked first, so a cache configured inside a writable root is
+        # still read-only. Only one finished env: a direct child of the
+        # cache root, never a half-built ".partial-" directory.
         if not bind.read_only:
             bad.append(f"bind source {src!r} may only be mounted read-only")
+        if resolved.parent not in ro_roots or ".partial-" in resolved.name:
+            bad.append(f"bind source {src!r} is not a finished cached environment")
     elif not under(roots):
         bad.append(
             f"bind source {src!r} is outside the runtime's bind roots"

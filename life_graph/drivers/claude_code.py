@@ -190,9 +190,13 @@ async def _project_tool_env(cwd: Path, packet: ContextPacket | None) -> tuple[Pa
 
     The same :func:`sandbox.prepare_env` call the verifiers make, with the
     same registry setup command, so the driver and the checks share one
-    environment. Built here, before the agent runs, it comes from the
-    project's own manifests rather than ones the agent edited. Best-effort:
-    without it the agent still works, it just cannot run tests (and says so).
+    environment (usually a cache hit). On a first attempt the manifests are
+    the project's own; on a bounce they are the worktree's as attempt 1 left
+    them, which is what the verifiers and the run_tests tool already build
+    from, so this adds no new input. A first build takes extra wall time
+    before the agent starts; it does not count against the agent's
+    in-container time limit. Best-effort: without it the agent still works,
+    it just cannot run tests (and says so).
     """
     if not settings.driver_runtime_project_tools:
         return None, "off"
@@ -204,9 +208,11 @@ async def _project_tool_env(cwd: Path, packet: ContextPacket | None) -> tuple[Pa
         return None, f"not mounted: {toolchain} toolchain"
     try:
         venv = await sandbox.prepare_env(Path(cwd), ctx.get("sandbox_setup"))
-    except sandbox.SandboxUnavailableError as exc:
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - a convenience must never fail the dispatch
         logger.warning("claude_code: project environment unavailable for the runtime: %s", exc)
-        return None, f"unavailable: {str(exc)[:200]}"
+        return None, f"unavailable: {type(exc).__name__}: {str(exc)[:200]}"
     return venv, "mounted read-only"
 
 

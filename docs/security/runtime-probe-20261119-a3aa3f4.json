@@ -1,7 +1,7 @@
 {
   "image": "life-graph-claude-driver:a3aa3f4-cli2.1.328",
   "policy_version": "2026-11-19.1",
-  "startup_and_probe_seconds": 3.2,
+  "startup_and_probe_seconds": 3.1,
   "inside": {
     "identity": {
       "uid": 1000,
@@ -75,7 +75,7 @@
     },
     "git_dir_target": {
       "ok": true,
-      "value": "gitdir: /tmp/lg-tenants/probe/lg_dispatch_probe_786d29/origin/.git/worktrees/wt_probe"
+      "value": "gitdir: /tmp/lg-tenants/probe/lg_dispatch_probe_0b4638/origin/.git/worktrees/wt_probe"
     },
     "plant_symlinks": {
       "ok": true,
@@ -191,10 +191,10 @@
   "runtime_metadata": {
     "runtime": "task",
     "policy_version": "2026-11-19.1",
-    "rid": "1f1db99fe297471a",
-    "container": "lg-rt-1f1db99fe297471a",
-    "proxy": "lg-rt-egress-1f1db99fe297471a",
-    "network": "lg-rt-net-1f1db99fe297471a",
+    "rid": "8a13102be89349de",
+    "container": "lg-rt-8a13102be89349de",
+    "proxy": "lg-rt-egress-8a13102be89349de",
+    "network": "lg-rt-net-8a13102be89349de",
     "image": "life-graph-claude-driver:a3aa3f4-cli2.1.328",
     "limits": {
       "memory": "512m",
@@ -209,7 +209,7 @@
       "platform.claude.com",
       "claude.ai"
     ],
-    "started_at": "2026-11-19T09:41:02.111862+00:00",
+    "started_at": "2026-11-19T09:47:18.664555+00:00",
     "image_id": "sha256:ff88ae9c287349559d20e80a51647932256ed5c827039cbc651d1369927d2cef",
     "user": "1000:1000",
     "binds": [
@@ -221,8 +221,8 @@
     "egress_image": "life-graph-sandbox-egress:6ce846a",
     "egress_image_id": "sha256:888e2bba495b1950643528007c60f26687f96465d1c0bd5811816b115a1b869a",
     "exit_code": 0,
-    "finished_at": "2026-11-19T09:41:04.666564+00:00",
-    "duration_ms": 2554,
+    "finished_at": "2026-11-19T09:47:21.118565+00:00",
+    "duration_ms": 2454,
     "teardown": {
       "ok": true,
       "errors": []
@@ -234,6 +234,17 @@
     "escaping_symlinks_flagged": [
       "leak_rel",
       "leak_abs"
+    ]
+  },
+  "tool_env_mount": {
+    "readable": true,
+    "write_refused": true,
+    "host_copy_intact": true,
+    "bind": [
+      {
+        "target": "/venv",
+        "read_only": true
+      }
     ]
   },
   "deadline": {
@@ -249,10 +260,10 @@
     "containers_after_caller_killed": 1,
     "sweep": {
       "containers": [
-        "lg-rt-3ba98446b5284986"
+        "lg-rt-ec3e37ac4ad745b0"
       ],
       "networks": [
-        "lg-rt-net-3ba98446b5284986"
+        "lg-rt-net-ec3e37ac4ad745b0"
       ],
       "credentials": 0,
       "errors": []
@@ -266,6 +277,6 @@
   },
   "home_as_workspace": {
     "raised": true,
-    "message": "task runtime policy refused the spec: sandbox spec 'lg-rt-71f3b1dd08b9476e': bind source '/home/raja' is outside the runtime's bind roots (/tmp/lg-tenants, /home/raja/.cache/life-graph/driver-creds, /home/raja/.cache/life-graph/verifier-envs)"
+    "message": "task runtime policy refused the spec: sandbox spec 'lg-rt-2f813b17a94e48d4': bind source '/home/raja' is outside the runtime's bind roots (/tmp/lg-tenants, /home/raja/.cache/life-graph/driver-creds, /home/raja/.cache/life-graph/verifier-envs)"
   }
 }

@@ -206,3 +206,54 @@ def test_driver_and_verifier_images_pin_the_same_tools():
         )
 
     assert pins("docker/claude-driver/Dockerfile") == pins("docker/verifier/Dockerfile")
+
+
+# ── Review follow-ups (PR #267) ───────────────────────────────
+
+
+def test_a_half_built_env_is_refused(cache):
+    partial = cache.parent / "abc123.partial-deadbeef"
+    partial.mkdir()
+    bad = sandbox._bind_violations(Bind(str(partial.resolve()), "/venv", read_only=True))
+    assert any("not a finished cached environment" in b for b in bad)
+
+
+def test_only_a_direct_child_of_the_cache_is_mountable(cache):
+    deeper = cache / "lib"
+    deeper.mkdir()
+    bad = sandbox._bind_violations(Bind(str(deeper.resolve()), "/venv", read_only=True))
+    assert any("not a finished cached environment" in b for b in bad)
+
+
+def test_a_cache_inside_the_scratch_root_is_still_read_only_only(monkeypatch):
+    import shutil
+
+    from life_graph.drivers.dispatcher import tenant_scratch_root
+
+    root = Path(tenant_scratch_root("t1")) / f"lg_dispatch_cachetest_{uuid.uuid4().hex[:6]}"
+    env = root / "k1"
+    env.mkdir(parents=True)
+    monkeypatch.setattr(settings, "verifier_sandbox_cache_dir", str(root))
+    try:
+        bad = sandbox._bind_violations(Bind(str(env.resolve()), "/venv", read_only=False))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    assert any("only be mounted read-only" in b for b in bad)
+
+
+async def test_any_env_build_error_still_runs_the_agent(task_mode, tmp_path, monkeypatch):
+    async def disk_full(*a, **k):
+        raise OSError(28, "No space left on device")
+
+    seen = {}
+
+    async def fake_run(req):
+        seen["req"] = req
+        return task_runtime.RuntimeOutcome(0, '{"result": "ok"}', "", {"runtime": "task"})
+
+    monkeypatch.setattr(sandbox, "prepare_env", disk_full)
+    monkeypatch.setattr(task_runtime.runtime, "run", fake_run)
+    result = await ClaudeCodeDriver(binary="claude").dispatch(_packet(), tmp_path)
+    assert result.success is True
+    assert seen["req"].tool_env is None
+    assert "OSError" in result.metadata["tool_env"]

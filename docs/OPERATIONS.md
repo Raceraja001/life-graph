@@ -525,7 +525,9 @@ The agent's shell can run the project's tests offline (Python projects):
 
 - Before the agent runs, the driver gets the project's cached verifier environment. It is the
   same `sandbox.prepare_env` call, with the same registry `sandbox_setup`, that the verifiers
-  use, so it is built from the project's manifests as they were before the agent touched them.
+  use (usually a cache hit). On a bounce the manifests are those attempt 1 left, which is what
+  the verifiers already build from. A first build adds wall time before the agent starts, but
+  it does not count against the agent's time limit.
 - The task runtime mounts that one directory **read-only** at `/venv`. The agent cannot change
   the environment the verifiers trust, and cannot see other projects' environments.
   `sandbox.readonly_bind_roots()` allows the verifier cache only read-only and never the cache
