@@ -573,8 +573,18 @@ class ProcessManager:
         system_prompt = persona.get("system_prompt")
         from life_graph.connectors.locality import run_is_local
 
+        # Where this run's conversation can end up: off the machine unless a
+        # personal route pinned it to local models (only_models below), or
+        # its model and every model it may fail over to are local.
+        pinned_local = bool(lead_route is not None and lead_route.pinned)
+        cloud_run = not (pinned_local or run_is_local(orchestrator.model))
         # general on a local model needs no note: nothing was taken away.
-        general_cloud = general_cloud and not run_is_local(orchestrator.model)
+        general_cloud = general_cloud and cloud_run
+        # Which runs lose PERSONAL_TOOLS. Off (default): only Jarvis's general
+        # cloud route, as before. On: every cloud run, for every persona, the
+        # rule drivers/local.py applies -- see the setting's docstring
+        # (config/agents.py) for what that costs swe-lead & co.
+        strip_personal = cloud_run if settings.kernel_cloud_strip_personal_tools else general_cloud
         if general_cloud:
             system_prompt = f"{system_prompt or ''}\n\n{lead.GENERAL_NOTE}".strip()
         # Connector data inline is personal data: never on a general cloud run.
@@ -596,7 +606,7 @@ class ProcessManager:
         allow = lead.resolve_run_tools(
             persona,
             tool_override,
-            cloud=general_cloud,
+            cloud=strip_personal,
             temporary=bool(input_data.get("temporary")),
             registry=tool_registry,
         )
@@ -770,9 +780,7 @@ class ProcessManager:
         from life_graph.services.turn_trace import build_trace
 
         # A pinned run may fail over only to local models (only_models above).
-        stayed_local = bool(lead_route is not None and lead_route.pinned) or run_is_local(
-            orchestrator.model
-        )
+        stayed_local = not cloud_run
         out["trace"] = build_trace(
             lead_route.as_record()
             if lead_route is not None
