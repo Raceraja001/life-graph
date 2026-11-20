@@ -44,7 +44,7 @@ from life_graph.connectors.base import (
 from life_graph.connectors.exposure import EXPOSURES
 from life_graph.connectors.models import ConnectorAccount, ConnectorItem
 from life_graph.core.errors import InvalidInputError, NotFoundError
-from life_graph.storage.database import async_session
+from life_graph.storage.database import async_session, end_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -499,6 +499,11 @@ class ConnectorRuntime:
                 session, row, settings.connector_summaries_per_sync
             )
             for item in pending:
+                # Fetching the body and the local-model summary take seconds:
+                # no transaction is held across them (the first item used to
+                # run inside the read of pending_summaries). The per-item
+                # commit below already closes it for the rest.
+                await end_transaction(session)
                 text = sources.get(item.external_id)
                 if text is None:
                     try:

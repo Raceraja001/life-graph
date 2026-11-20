@@ -43,6 +43,7 @@ from sqlalchemy.dialects.postgresql import insert
 from life_graph.config import settings
 from life_graph.connectors.bills import parse_due
 from life_graph.models.assistant import MoneyBudget, MoneyCategoryRule, MoneyTransaction
+from life_graph.storage.database import end_transaction
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -457,6 +458,9 @@ async def store(
         todo = [i for i, (cat, _src) in enumerate(decided) if cat == "uncategorised"]
         todo = todo[:MAX_MODEL_CATEGORISE]
         if todo:
+            # A local-model call: the rules read above must not keep a
+            # transaction open across it (api /money/import + /alerts, /txn).
+            await end_transaction(session)
             guesses = await categorise_with_model(
                 [f"{txns[i].merchant or ''} — {txns[i].description}" for i in todo], client=client
             )
