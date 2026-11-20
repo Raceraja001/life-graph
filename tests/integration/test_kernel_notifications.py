@@ -23,7 +23,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test_notification_tenant",
@@ -210,21 +210,18 @@ class TestListNotifications:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_list_returns_200_or_500(
+    async def test_list_returns_200(
         self,
         client: AsyncClient,
     ):
-        """List endpoint returns 200 or 500 (DB down)."""
+        """List endpoint returns 200 with the list envelope."""
         response = await client.get(
             "/api/v1/kernel/notifications",
         )
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            data = response.json()["data"]
-            assert "notifications" in data
-            assert "total" in data
-            assert "unread_count" in data
+        data = assert_ok(response, 200)["data"]
+        assert "notifications" in data
+        assert "total" in data
+        assert "unread_count" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -232,12 +229,13 @@ class TestListNotifications:
         self,
         client: AsyncClient,
     ):
-        """Filter by priority returns 200 or 500."""
+        """Filter by priority returns only that priority."""
         response = await client.get(
             "/api/v1/kernel/notifications",
             params={"priority": "critical"},
         )
-        assert response.status_code in (200, 500)
+        data = assert_ok(response, 200)["data"]
+        assert all(n["priority"] == "critical" for n in data["notifications"])
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -245,12 +243,12 @@ class TestListNotifications:
         self,
         client: AsyncClient,
     ):
-        """Filter by read state returns 200 or 500."""
+        """Filter by read state returns 200."""
         response = await client.get(
             "/api/v1/kernel/notifications",
             params={"read": "false"},
         )
-        assert response.status_code in (200, 500)
+        assert_ok(response, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -263,7 +261,8 @@ class TestListNotifications:
             "/api/v1/kernel/notifications",
             params={"limit": "5", "offset": "10"},
         )
-        assert response.status_code in (200, 500)
+        data = assert_ok(response, 200)["data"]
+        assert len(data["notifications"]) <= 5
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -281,7 +280,8 @@ class TestListNotifications:
                 "offset": "0",
             },
         )
-        assert response.status_code in (200, 500)
+        data = assert_ok(response, 200)["data"]
+        assert len(data["notifications"]) <= 3
 
 
 # ── Mark Read Endpoint ───────────────────────────────────────
@@ -296,12 +296,12 @@ class TestMarkRead:
         self,
         client: AsyncClient,
     ):
-        """Non-existent notification returns 404 or 500."""
+        """Non-existent notification returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
         response = await client.patch(
             f"/api/v1/kernel/notifications/{fake_id}/read",
         )
-        assert response.status_code in (404, 500)
+        assert response.status_code == 404, response.text
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -313,7 +313,7 @@ class TestMarkRead:
         response = await client.patch(
             "/api/v1/kernel/notifications/not-a-uuid/read",
         )
-        assert response.status_code in (422, 500)
+        assert response.status_code == 422, response.text
 
 
 # ── Mark All Read Endpoint ───────────────────────────────────
@@ -324,19 +324,16 @@ class TestMarkAllRead:
 
     @pytest.mark.asyncio
     @skip_on_db_error
-    async def test_mark_all_read_returns_200_or_500(
+    async def test_mark_all_read_returns_200(
         self,
         client: AsyncClient,
     ):
-        """Mark-all-read returns 200 or 500."""
+        """Mark-all-read returns 200 with the count it marked."""
         response = await client.post(
             "/api/v1/kernel/notifications/read-all",
         )
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            data = response.json()["data"]
-            assert "marked_count" in data
+        data = assert_ok(response, 200)["data"]
+        assert "marked_count" in data
 
 
 # ── Full Flow (create → list → mark-read → verify) ──────────
@@ -360,11 +357,7 @@ class TestNotificationFlow:
         resp = await client.get(
             "/api/v1/kernel/notifications",
         )
-        if resp.status_code == 500:
-            pytest.skip("DB unavailable")
-
-        # If we reach here, we know the endpoint works
-        assert resp.status_code in (200, 500)
+        assert_ok(resp, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -376,10 +369,7 @@ class TestNotificationFlow:
         resp = await client.post(
             "/api/v1/kernel/notifications/read-all",
         )
-        if resp.status_code == 500:
-            pytest.skip("DB unavailable")
-
-        assert resp.status_code in (200, 500)
+        assert_ok(resp, 200)
 
         # Verify unread count
         list_resp = await client.get(
@@ -389,8 +379,7 @@ class TestNotificationFlow:
             # that optimisation and was asserting against the default null.
             params={"read": "false", "include_total": "true"},
         )
-        assert list_resp.status_code == 200
-        data = list_resp.json()["data"]
+        data = assert_ok(list_resp, 200)["data"]
         assert data["total"] == 0
 
 
@@ -451,11 +440,7 @@ class TestExternalAlert:
                 "source": "pulse",
             },
         )
-        if resp.status_code == 500:
-            pytest.skip("DB unavailable")
-
-        assert resp.status_code == 200
-        data = resp.json()["data"]
+        data = assert_ok(resp, 200)["data"]
         assert data["title"] == "[pulse] 2 service(s) down: postgres, redis"
         assert data["priority"] == "critical"
 
@@ -488,10 +473,6 @@ class TestExternalAlert:
             "/api/v1/kernel/alerts/external",
             json={"title": "quota exhausted", "severity": "urgent!!"},
         )
-        if resp.status_code == 500:
-            pytest.skip("DB unavailable")
-
-        assert resp.status_code == 200
-        data = resp.json()["data"]
+        data = assert_ok(resp, 200)["data"]
         assert data["priority"] == "important"
         assert sent["severity"] == "important"

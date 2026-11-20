@@ -4,6 +4,9 @@ Validates that the POST /api/v1/memories/ endpoint:
 - Accepts baseline memory creation payloads (201).
 - Accepts the ``skip_dedup`` field without validation errors.
 - Returns a consistent response shape regardless of skip_dedup.
+
+Every status is asserted exactly; ``skip_on_db_error`` skips when no
+database is reachable, so a 500 is always a failure.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 
 @pytest_asyncio.fixture
@@ -31,12 +34,12 @@ class TestMemoryDeduplication:
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_create_memory_baseline(self, client: AsyncClient):
-        """POST /api/v1/memories/ with minimal payload returns 201 or 500 (no DB)."""
+        """POST /api/v1/memories/ with minimal payload returns 201."""
         r = await client.post(
             "/api/v1/memories/",
             json={"content": "test fact", "source_type": "test"},
         )
-        assert r.status_code in (201, 500), f"Unexpected status {r.status_code}: {r.text}"
+        assert_ok(r, 201)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -46,8 +49,7 @@ class TestMemoryDeduplication:
             "/api/v1/memories/",
             json={"content": "test fact", "source_type": "test", "skip_dedup": True},
         )
-        assert r.status_code in (201, 500), f"Unexpected status {r.status_code}: {r.text}"
-        assert r.status_code != 422, "skip_dedup=true should not cause a validation error"
+        assert_ok(r, 201)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -57,8 +59,7 @@ class TestMemoryDeduplication:
             "/api/v1/memories/",
             json={"content": "test fact", "source_type": "test", "skip_dedup": False},
         )
-        assert r.status_code in (201, 500), f"Unexpected status {r.status_code}: {r.text}"
-        assert r.status_code != 422, "skip_dedup=false should not cause a validation error"
+        assert_ok(r, 201)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -68,7 +69,7 @@ class TestMemoryDeduplication:
             "/api/v1/memories/",
             json={"content": "test fact", "source_type": "test", "skip_dedup": "not_a_bool"},
         )
-        assert r.status_code in (422, 201, 500), f"Unexpected status {r.status_code}"
+        assert r.status_code == 422, r.text
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -78,9 +79,8 @@ class TestMemoryDeduplication:
             "/api/v1/memories/",
             json={"content": "test fact for shape check", "source_type": "test"},
         )
-        if r.status_code == 201:
-            body = r.json()
-            assert isinstance(body, (list, dict)), "Response should be list or dict"
+        body = assert_ok(r, 201)
+        assert isinstance(body, (list, dict)), "Response should be list or dict"
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -94,9 +94,8 @@ class TestMemoryDeduplication:
                 "skip_dedup": True,
             },
         )
-        if r.status_code == 201:
-            body = r.json()
-            assert isinstance(body, (list, dict)), "Response should be list or dict"
+        body = assert_ok(r, 201)
+        assert isinstance(body, (list, dict)), "Response should be list or dict"
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -106,7 +105,7 @@ class TestMemoryDeduplication:
             "/api/v1/memories/",
             json={"source_type": "test", "skip_dedup": True},
         )
-        assert r.status_code in (422, 500), "Missing 'content' should trigger validation error"
+        assert r.status_code == 422, "Missing 'content' should trigger validation error"
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -116,4 +115,4 @@ class TestMemoryDeduplication:
             "/api/v1/memories/",
             json={"content": "", "source_type": "test"},
         )
-        assert r.status_code in (422, 500), "Empty content should trigger validation error"
+        assert r.status_code == 422, "Empty content should trigger validation error"

@@ -10,8 +10,8 @@ verified against real Postgres out of band — tests/conftest.py substitutes a
 fake Vector type, so embeddings can't be inserted under pytest. The scan test
 here therefore only asserts the service runs and returns cleanly.
 
-Defensive per house convention: accept 500 when the DB is unreachable, never
-422 for valid input. See docs/specs/approvals-feed.md.
+Every status is asserted exactly: ``skip_on_db_error`` skips when no
+database is reachable, so a 500 is always a failure. See docs/specs/approvals-feed.md.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from httpx import ASGITransport, AsyncClient
 
 from life_graph.core.tenant import set_tenant_context
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT = "test_merge_tenant"
 SCAN_TENANT = "test_merge_scan_tenant"
@@ -96,9 +96,7 @@ class TestMergeSideEffect:
         approval_id = await _seed_merge_approval(a_id, b_id)
 
         resp = await client.post(f"/api/v1/approvals/{approval_id}/approve")
-        assert resp.status_code in (200, 500), resp.text
-        if resp.status_code == 500:
-            return
+        assert_ok(resp, 200)
 
         a = await _get_memory(a_id)
         b = await _get_memory(b_id)
@@ -114,11 +112,10 @@ class TestMergeSideEffect:
         approval_id = await _seed_merge_approval(a_id, b_id)
 
         resp = await client.post(f"/api/v1/approvals/{approval_id}/reject")
-        assert resp.status_code in (200, 500)
-        if resp.status_code == 200:
-            a = await _get_memory(a_id)
-            b = await _get_memory(b_id)
-            assert a.status == "active" and b.status == "active"
+        assert_ok(resp, 200)
+        a = await _get_memory(a_id)
+        b = await _get_memory(b_id)
+        assert a.status == "active" and b.status == "active"
 
 
 class TestMergeScan:
