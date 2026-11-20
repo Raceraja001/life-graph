@@ -6,6 +6,7 @@ execute_pending — funnels through)."""
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -159,6 +160,8 @@ def _fake_pending_action():
         status="pending",
         kind="command",
         action_command="echo hi",
+        # Pinned at creation, as AutoFixService.process does for every command.
+        before_state={"command_approval": {"sha256": hashlib.sha256(b"echo hi").hexdigest()}},
         instruction=None,
         action_name="restart",
         rollback_command=None,

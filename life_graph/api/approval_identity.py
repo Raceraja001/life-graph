@@ -15,7 +15,9 @@ unverified line in the note (:func:`note_with_claim`).
 With ``approvals_require_owner`` on, :func:`require_owner` refuses anyone but
 the owner (an owner key, a paired phone, or a dev stack with auth off).
 Whatever the setting, :func:`refuse_self_approval` stops a non-owner caller
-from approving an approval for work that same caller asked for.
+from approving an approval for work that same caller asked for, and
+:func:`owner_only` keeps changes to trust, autonomy levels and the like to the
+owner alone.
 """
 
 from __future__ import annotations
@@ -68,6 +70,22 @@ def require_owner(request: Request) -> None:
     """403 unless the caller is the owner — only when the setting is on."""
     if settings.approvals_require_owner and not ingress_for(request).is_owner:
         raise HTTPException(status_code=403, detail=OWNER_REQUIRED)
+
+
+def owner_only(request: Request, what: str) -> None:
+    """403 unless the caller is the owner — whatever ``approvals_require_owner`` says.
+
+    For changes to how much the system may do on its own (trust scores,
+    autonomy levels, safety rules, resuming autonomy, grading shadow runs,
+    running a rollback): unlike deciding one approval, these are the owner's
+    alone from the start, the same as setting a project's host commands
+    (#294). A dev stack with auth off counts as the owner (``owner:local``).
+    """
+    if not ingress_for(request).is_owner:
+        raise HTTPException(
+            status_code=403,
+            detail=f"{what} needs the owner: an owner API key or a paired phone.",
+        )
 
 
 def refuse_self_approval(request: Request, requested_by: str | None) -> None:

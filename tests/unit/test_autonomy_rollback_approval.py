@@ -89,8 +89,9 @@ async def test_the_route_passes_the_owner_as_the_rollback_approver(monkeypatch):
 
     seen = {}
 
-    async def process(tenant_id, request, *, rollback_approved_by=None):
+    async def process(tenant_id, request, *, rollback_approved_by=None, api_caller=None):
         seen["by"] = rollback_approved_by
+        seen["caller"] = api_caller
         raise RuntimeError("stop here")
 
     monkeypatch.setattr(
@@ -101,6 +102,7 @@ async def test_the_route_passes_the_owner_as_the_rollback_approver(monkeypatch):
             _request(rollback_command="echo undo"), fake_request(api_key=OWNER_KEY)
         )
     assert seen["by"] == "owner:api_key"
+    assert seen["caller"].label == "owner" and seen["caller"].is_owner
 
 
 async def test_the_owner_attaches_a_rollback_command_and_it_is_pinned(monkeypatch):
