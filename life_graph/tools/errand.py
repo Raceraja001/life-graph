@@ -421,7 +421,13 @@ def _asking(result: ErrandResult) -> StepResult | None:
 
 
 def approval_notification(
-    tenant_id: str, *, goal: str, errand_id: str, step: StepResult, now: datetime
+    tenant_id: str,
+    *,
+    goal: str,
+    errand_id: str,
+    step: StepResult,
+    now: datetime,
+    requested_by: str | None = None,
 ) -> Any:
     """The card the phone shows, with Approve and Reject on it.
 
@@ -437,10 +443,16 @@ def approval_notification(
     action and not the next plan that ends in a similar-looking click. The
     digest is not the value — nothing the owner typed or the vault holds is
     in this metadata.
+
+    ``requested_by`` is who asked for the errand, as the server saw them
+    (core/task_context.get_requester). ``api/jarvis.py`` refuses an Approve
+    from that same non-owner caller (approval_identity.refuse_self_approval).
+    Left out when nobody authenticated asked (a scheduled job).
     """
     from life_graph.models.db import Notification
 
     origin = step.target_origin or "the page"
+    extra: dict[str, Any] = {"requested_by": requested_by} if requested_by else {}
     return Notification(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -464,6 +476,7 @@ def approval_notification(
             # the plan. The owner is being asked to authorise someone's idea;
             # whose it might have been belongs in the question.
             "tainted": _tainted(),
+            **extra,
         },
         # The phone polls for these, as services/notifications/due.py does.
         is_delivered=True,
@@ -584,7 +597,7 @@ async def run_browser_errand(
         capability_store,
         rules_from_config,
     )
-    from life_graph.core.task_context import get_current_task_context
+    from life_graph.core.task_context import get_current_task_context, get_requester
     from life_graph.core.tenant import get_current_tenant_id, has_tenant_context
     from life_graph.services import browser_errand as be
     from life_graph.storage import database
@@ -668,7 +681,12 @@ async def run_browser_errand(
             if asking is not None:
                 session.add(
                     approval_notification(
-                        tenant_id, goal=goal, errand_id=errand_id, step=asking, now=now
+                        tenant_id,
+                        goal=goal,
+                        errand_id=errand_id,
+                        step=asking,
+                        now=now,
+                        requested_by=get_requester(),
                     )
                 )
             # One commit for both: a one-use secret is spent by the transaction

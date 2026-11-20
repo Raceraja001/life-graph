@@ -47,3 +47,25 @@ def set_task_context(
     _task_context_var.set(
         TaskContext(task_id=task_id, tenant_id=tenant_id, root_task_id=root_task_id, depth=depth)
     )
+
+
+# ── Who asked, as the server saw it ───────────────────────────────────────
+#
+# Set by AuthMiddleware once a request is authenticated, to the same name
+# api/approval_identity.resolver gives the caller ("owner", "phone:<id>",
+# "service-key:<fingerprint>", "owner:local"). Never from a header or body.
+# A kernel task spawned while handling that request inherits it (asyncio
+# copies the context into the tasks it creates), so a tool deep inside the
+# run can stamp who asked for it on an approval card, and the approver cannot
+# be the same caller (api/approval_identity.refuse_self_approval).
+_requester_var: ContextVar[str | None] = ContextVar("requester", default=None)
+
+
+def set_requester(requester: str | None) -> None:
+    """Record the authenticated caller for the current request's coroutine tree."""
+    _requester_var.set(requester)
+
+
+def get_requester() -> str | None:
+    """The authenticated caller that started this work, or None (cron, worker, stdio)."""
+    return _requester_var.get()

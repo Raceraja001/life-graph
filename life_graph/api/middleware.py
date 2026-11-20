@@ -101,6 +101,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             device = await _device_for(request)
             if device is not None:
                 request.state.device_tenant, request.state.device_id = device
+                _record_requester(request)
                 return await call_next(request)
             return JSONResponse(
                 status_code=401,
@@ -112,7 +113,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 ),
             )
 
+        _record_requester(request)
         return await call_next(request)
+
+
+def _record_requester(request: Request) -> None:
+    """Remember who this authenticated request is from (core/task_context.py).
+
+    The server's own view of the caller (api/approval_identity.resolver), so
+    work it starts, such as a browser errand that stops for an approval, can
+    say who asked for it. Exempt paths carry no caller and record nothing.
+    """
+    from life_graph.api.approval_identity import resolver
+    from life_graph.core.task_context import set_requester
+
+    set_requester(None if is_exempt_path(request.url.path) else resolver(request))
 
 
 class TenantMiddleware(BaseHTTPMiddleware):
