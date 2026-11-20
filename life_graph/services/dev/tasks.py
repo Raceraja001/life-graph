@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, or_, select, text
 
+from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
+from life_graph.autonomy.kill_switch import revoke_live_capabilities
 from life_graph.config import settings
 from life_graph.drivers.dispatch_stats import MAX_WIP_PER_PROJECT, MAX_WIP_PER_TENANT
 from life_graph.drivers.execution_guard import recover_interrupted_dispatch
@@ -1494,8 +1496,6 @@ async def request_cancel(
         return state
     if state.get("cancel") == "not_cancellable" and state.get("status") != "cancelled":
         return state
-    from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
-    from life_graph.autonomy.kill_switch import revoke_live_capabilities
 
     try:
         # The count is logged, not returned: the state's shape is a contract

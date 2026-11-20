@@ -33,10 +33,12 @@ ROOT = Path(__file__).resolve().parents[2] / "life_graph"
 # longer import routers. services grew by the helpers moved into it verbatim
 # (services/memory/transitions.py) -- net 1529 -> 1523 on 18b9e4e; 1532 after rebasing onto
 # c626ddd, whose own commits added 9 (api 3, autonomy 2, kernel 4).
+# autonomy 57 -> 53: PR #306 (p2appr) hoisted the autonomy-queue service's
+# model imports to module level.
 BASELINE = {
     "agents": 4,
     "api": 264,
-    "autonomy": 57,
+    "autonomy": 53,
     "cli": 23,
     "cold_start": 6,
     "connectors": 26,

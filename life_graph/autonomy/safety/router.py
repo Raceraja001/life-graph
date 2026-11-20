@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from life_graph.api.approval_identity import owner_only, resolver
 from life_graph.api.responses import success_response
+from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
+from life_graph.autonomy.kill_switch import revoke_live_capabilities
 from life_graph.autonomy.safety.classifier import ActionClassifier
 from life_graph.autonomy.safety.schemas import (
     ClassifyRequest,
@@ -232,11 +234,7 @@ async def pause_kill_switch(
     """
     from datetime import UTC, datetime
 
-    from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
-    from life_graph.autonomy.kill_switch import (
-        invalidate_autonomy_pause_cache,
-        revoke_live_capabilities,
-    )
+    from life_graph.autonomy.kill_switch import invalidate_autonomy_pause_cache
     from life_graph.models.db import TenantConfig
 
     config = await session.get(TenantConfig, tenant_id)

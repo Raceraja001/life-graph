@@ -26,6 +26,9 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 
+from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
+from life_graph.models.db import Approval
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -76,7 +79,6 @@ async def _lock_feed_copies(
     (``payload.execution.state == "started"``, services/approvals.py): the
     feed is deciding that entry, so the queue must not.
     """
-    from life_graph.models.db import Approval
 
     ids = sorted({str(i) for i in entry_ids})
     tenants = sorted(set(tenant_ids))
@@ -126,7 +128,6 @@ async def _close_feed_copies(
     that still races in after this commit is closed by
     :meth:`ApprovalService.reconcile_feed_copies`.
     """
-    from life_graph.models.db import Approval
 
     ids = sorted({str(i) for i in entry_ids})
     tenants = sorted(set(tenant_ids))
@@ -216,7 +217,6 @@ class ApprovalService:
         When it passes, :meth:`check_expirations` tells the owner the entry
         still needs them; nothing is approved on a timer.
         """
-        from life_graph.autonomy.models import ApprovalQueueEntry
 
         auto_approve_minutes = data.pop("auto_approve_minutes", None)
         expires_at = None
@@ -290,7 +290,6 @@ class ApprovalService:
             QueueAlreadyResolvedError: the entry is no longer pending.
             QueueConflictError: the feed is resolving this entry right now.
         """
-        from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
 
         approval_id = str(approval_id)
         now = datetime.now(UTC)
@@ -395,7 +394,6 @@ class ApprovalService:
         the feed is resolving any of them right now, nothing is resolved
         (``QueueConflictError``).
         """
-        from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
 
         now = datetime.now(UTC)
         new_status = "approved" if decision == "approve" else "rejected"
@@ -460,7 +458,6 @@ class ApprovalService:
     @staticmethod
     async def _match_pending(session, tenant_id: str, filter_criteria: dict) -> list:
         """Pending entries of *tenant_id* matching a batch's ids and filters."""
-        from life_graph.autonomy.models import ApprovalQueueEntry
 
         q = select(ApprovalQueueEntry).where(
             ApprovalQueueEntry.tenant_id == tenant_id,
@@ -479,7 +476,6 @@ class ApprovalService:
 
     async def status_of(self, tenant_id: str, approval_id: str) -> str | None:
         """The entry's status, or None when this tenant has no such entry."""
-        from life_graph.autonomy.models import ApprovalQueueEntry
 
         async with self._session_factory() as session:
             return (
@@ -505,8 +501,6 @@ class ApprovalService:
         action under the at-most-once claim and resolves this entry too,
         whereas approving it here alone would clear an action nothing runs.
         """
-        from life_graph.autonomy.models import ApprovalQueueEntry
-        from life_graph.models.db import Approval
 
         ids = sorted({str(i) for i in entry_ids})
         if not ids:
@@ -558,7 +552,6 @@ class ApprovalService:
         which allowlists it by name rather than tolerating unscoped queries
         generally.
         """
-        from life_graph.autonomy.models import ApprovalQueueEntry
 
         now = datetime.now(UTC)
 
@@ -630,7 +623,6 @@ class ApprovalService:
         Intentionally cross-tenant, like :meth:`check_expirations`: a system
         cron with no tenant context (see tests/unit/test_tenant_scoping.py).
         """
-        from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
 
         if max_age_days <= 0:
             return 0
@@ -708,8 +700,6 @@ class ApprovalService:
         Intentionally cross-tenant, like :meth:`check_expirations`: a system
         cron with no tenant context (see tests/unit/test_tenant_scoping.py).
         """
-        from life_graph.autonomy.models import ApprovalQueueEntry, AutoAction
-        from life_graph.models.db import Approval
 
         now = datetime.now(UTC)
         closed = 0
@@ -780,7 +770,6 @@ class ApprovalService:
         JSONB list so each threshold escalates at most once.
         Returns count of entries escalated this pass.
         """
-        from life_graph.autonomy.models import ApprovalQueueEntry
 
         now = datetime.now(UTC)
         escalated_count = 0

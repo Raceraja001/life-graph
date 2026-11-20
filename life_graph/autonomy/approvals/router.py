@@ -33,7 +33,7 @@ from life_graph.autonomy.approvals.schemas import (
     BatchResolveResponse,
     ResolveRequest,
 )
-from life_graph.autonomy.approvals.service import _serialize
+from life_graph.autonomy.approvals.service import QueueConflictError, _serialize
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
 
@@ -114,7 +114,6 @@ async def resolve_approval(approval_id: str, body: ResolveRequest, request: Requ
     require_owner(request)
     tenant_id = get_current_tenant_id()
 
-    from life_graph.autonomy.approvals.service import QueueConflictError
     from life_graph.runtime import get_approval_service
 
     service = get_approval_service()
@@ -163,7 +162,6 @@ async def batch_resolve(body: BatchResolveRequest, request: Request):
         )
     tenant_id = get_current_tenant_id()
 
-    from life_graph.autonomy.approvals.service import QueueConflictError
     from life_graph.runtime import get_approval_service
 
     service = get_approval_service()

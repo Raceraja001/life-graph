@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
 
+from life_graph.autonomy.approvals.service import FEED_STATUS_FOR
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_scoped
 from life_graph.models.db import Approval, Memory, Project
@@ -1315,7 +1316,7 @@ class ApprovalService:
         underlying execution succeeded or failed — a failed-but-completed
         agent_task is still a *resolved* approval.
         """
-        from life_graph.runtime import get_approval_service, get_autofix_service
+        get_approval_service, get_autofix_service = _autonomy_services()
 
         payload = appr.payload or {}
         autonomy_approval_id = payload.get("approval_id")
@@ -1383,7 +1384,7 @@ class ApprovalService:
         a decision that lands in between still ends in a conflict, not a
         wrong report.
         """
-        from life_graph.runtime import get_approval_service
+        get_approval_service, _ = _autonomy_services()
 
         queue_id = (appr.payload or {}).get("approval_id")
         if not queue_id:
@@ -1429,9 +1430,19 @@ def _execution(appr: Any) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _autonomy_services() -> tuple[Any, Any]:
+    """``(get_approval_service, get_autofix_service)`` from ``life_graph.runtime``.
+
+    Imported on use: ``runtime`` wires this service, so a module-level import
+    would be a cycle.
+    """
+    from life_graph.runtime import get_approval_service, get_autofix_service
+
+    return get_approval_service, get_autofix_service
+
+
 def _queue_outcome(queue_status: str) -> str:
     """An ``approval_queue.status`` as the feed's approved/rejected."""
-    from life_graph.autonomy.approvals.service import FEED_STATUS_FOR
 
     return FEED_STATUS_FOR.get(queue_status, "rejected")
 

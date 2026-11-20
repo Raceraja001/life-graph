@@ -19,6 +19,8 @@ import asyncio
 import logging
 import time
 
+from life_graph.autonomy.approvals import capability as _capability
+
 logger = logging.getLogger(__name__)
 
 _CACHE_TTL_SECONDS = 15.0
@@ -37,10 +39,9 @@ async def revoke_live_capabilities(tenant_id: str, task_id: str | None = None) -
     wait on, or fail with, the capability store), then report a failure here
     loudly instead of passing it off as "nothing was live".
     """
-    from life_graph.autonomy.approvals.capability import capability_store
 
     count = await asyncio.to_thread(
-        capability_store.revoke_all, tenant_id=tenant_id, task_id=task_id
+        _capability.capability_store.revoke_all, tenant_id=tenant_id, task_id=task_id
     )
     logger.info(
         "Revoked %d live capabilities for tenant %s%s",
