@@ -1,0 +1,36 @@
+# Advisories the dependency-audit CI job may ignore, one per line:
+#
+#   ADVISORY-ID  PACKAGE  REVIEW-BY(YYYY-MM-DD)  REASON...
+#
+# Every other advisory against uv.lock fails CI. An entry whose REVIEW-BY date
+# has passed ALSO fails CI, so nothing stays ignored by default: on or before
+# that date, re-check whether the blocker is gone (uv lock --upgrade-package
+# <blocker> --dry-run, and the blocker's newest release on PyPI) and either fix
+# it or renew the entry with today's findings. REVIEW-BY is at most 30 days out.
+# IDs may be the CVE or the GHSA alias; pip-audit matches either.
+#
+# Checked 2026-11-20: pr-agent 0.50.0 is its newest release and pins
+# litellm==1.105.1 and opentelemetry-api==1.45.1 exactly. litellm 1.105.1
+# requires filelock<4; litellm 1.110.2 (newest) allows filelock<5, but pr-agent
+# holds litellm back. `uv lock --upgrade-package {litellm,pr-agent,filelock,
+# opentelemetry-api} --dry-run` each report "No lockfile changes". Fix = a
+# pr-agent release that lifts those pins (or dropping/overriding pr-agent,
+# an owner decision).
+
+# filelock 3.32.7 -> fixed in 4.2.1 (4.0.9 for CVE-2026-112936); blocked: litellm 1.105.1 (pinned by pr-agent 0.50.0) requires filelock<4
+CVE-2026-112907  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112908  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112909  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112910  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112911  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112912  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112913  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112915  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112935  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112936  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112938  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112939  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+CVE-2026-112940  filelock  2026-12-18  blocked upstream: pr-agent pins litellm==1.105.1, which requires filelock<4
+
+# opentelemetry-api 1.45.1 -> fixed in 1.45.2; blocked: pr-agent 0.50.0 pins opentelemetry-api==1.45.1
+CVE-2026-126360  opentelemetry-api  2026-12-18  blocked upstream: pr-agent 0.50.0 pins opentelemetry-api==1.45.1
