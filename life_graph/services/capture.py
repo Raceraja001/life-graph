@@ -7,17 +7,20 @@ enters through here, gets deduped, and fans out via EventBus.
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import inspect, select
+from sqlalchemy.exc import IntegrityError
 
 from life_graph.core.events import EventBus, EventType, emit_after_commit
 from life_graph.core.redaction import redact_secrets
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.core.trust import TrustTier, classify_surface, coerce_tier
 from life_graph.models.db import CaptureEvent, Correction
+from life_graph.models.memory import TELEGRAM_MESSAGE_INDEX
 from life_graph.storage.database import async_session
 
 if TYPE_CHECKING:
@@ -57,6 +60,19 @@ def captured_at(properties: dict | None) -> datetime | None:
     if at.tzinfo is None:
         at = at.replace(tzinfo=UTC)
     return min(at, datetime.now(UTC))
+
+
+def _telegram_message_key(surface: str, properties: dict | None) -> tuple[str, str] | None:
+    """(chat_id, message_id) as text for a Telegram capture that has both, else None.
+
+    Text, because that is what the unique index compares (``->>``)."""
+    if surface != "telegram" or not properties:
+        return None
+    chat_id, message_id = properties.get("chat_id"), properties.get("message_id")
+    if chat_id is None or message_id is None:
+        return None
+    # json.dumps for non-strings matches Postgres' ->> rendering of numbers.
+    return tuple(v if isinstance(v, str) else json.dumps(v) for v in (chat_id, message_id))
 
 
 def _duplicate_view(original: CaptureEvent) -> CaptureEvent:
@@ -173,8 +189,26 @@ class CaptureService:
             occurred_at=now,
             properties=properties or {},
         )
-        self.session.add(event)
-        await self.session.flush()
+        message_key = _telegram_message_key(surface, properties)
+        if message_key is None:
+            self.session.add(event)
+            await self.session.flush()
+        else:
+            # A Telegram message is stored once (migration 062's partial unique
+            # index), whatever its content or date: a replayed update outside
+            # the hash window, or racing the original, conflicts here. Inside a
+            # savepoint so the conflict leaves the caller's transaction usable.
+            try:
+                async with self.session.begin_nested():
+                    self.session.add(event)
+                    await self.session.flush()
+            except IntegrityError as exc:
+                if TELEGRAM_MESSAGE_INDEX not in str(exc.orig):
+                    raise
+                original = await self._telegram_original(tenant_id, *message_key)
+                if original is None:  # pragma: no cover - the conflict says it exists
+                    raise
+                return _duplicate_view(original)
 
         if self.event_bus:
             # Deferred to after-commit: this session is the caller's, still in
@@ -193,6 +227,20 @@ class CaptureService:
                 bus=self.event_bus,
             )
         return event
+
+    async def _telegram_original(
+        self, tenant_id: str, chat_id: str, message_id: str
+    ) -> CaptureEvent | None:
+        """The stored capture of one Telegram message, if any."""
+        result = await self.session.execute(
+            select(CaptureEvent).where(
+                CaptureEvent.tenant_id == tenant_id,
+                CaptureEvent.surface == "telegram",
+                CaptureEvent.properties["chat_id"].astext == chat_id,
+                CaptureEvent.properties["message_id"].astext == message_id,
+            )
+        )
+        return result.scalars().first()
 
     # ── Corrections ───────────────────────────────────────────
 

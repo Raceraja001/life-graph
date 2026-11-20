@@ -598,3 +598,101 @@ jobs:
 
       - name: Check the import contracts
         run: .venv/bin/lint-imports --no-cache
+
+  # Audit M18 (2026-11-20): migrations were only ever run forwards, once, on
+  # an empty database, and nothing compared the models with the schema they
+  # build. This job runs the whole chain up, all the way down, and up again
+  # on a throwaway Postgres (the same pgvector + AGE image as the
+  # integration job), then checks the models against the result with
+  # scripts/schema_drift.py: known differences are listed in
+  # alembic/schema_drift_baseline.txt, and any new one -- or any baseline
+  # line that no longer occurs -- fails the job.
+  #
+  # Downgrades 038, 040, 041 and 042 delete rows by design (see the comment
+  # on each); on this empty database there is nothing to lose.
+  migration-safety:
+    name: Migrations (up, down, up) + schema drift
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON_DOWNLOADS: never
+      LIFE_GRAPH_DATABASE_URL: postgresql+asyncpg://life_graph:life_graph_dev@localhost:5432/life_graph
+      LIFE_GRAPH_DATABASE_URL_SYNC: postgresql://life_graph:life_graph_dev@localhost:5432/life_graph
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build Postgres image (pgvector + Apache AGE)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.postgres
+          tags: life-graph-postgres:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start Postgres
+        run: |
+          docker run -d --name life_graph_mig_db \
+            -e POSTGRES_USER=life_graph \
+            -e POSTGRES_PASSWORD=life_graph_dev \
+            -e POSTGRES_DB=life_graph \
+            -p 5432:5432 \
+            -v "${{ github.workspace }}/scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro" \
+            life-graph-postgres:ci \
+            postgres -c shared_preload_libraries=age
+          for _ in $(seq 1 60); do
+            if docker exec life_graph_mig_db pg_isready -U life_graph -d life_graph >/dev/null 2>&1; then
+              echo "postgres ready"; exit 0
+            fi
+            sleep 2
+          done
+          docker logs life_graph_mig_db >&2
+          exit 1
+
+      - uses: actions/setup-python@v5
+        id: py
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.12.14
+
+      - uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-dev-local-nlp-${{ hashFiles('uv.lock') }}
+
+      - name: Install dependencies from uv.lock
+        run: |
+          uv sync --locked --extra dev --extra local-nlp --python "${{ steps.py.outputs.python-path }}"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
+
+      - name: Upgrade to head
+        run: python -m alembic upgrade head
+
+      - name: Downgrade to base
+        run: |
+          python -m alembic downgrade base
+          # Nothing of ours may survive a full downgrade.
+          left=$(docker exec life_graph_mig_db psql -U life_graph -d life_graph -tA -c \
+            "SELECT count(*) FROM alembic_version")
+          test "$left" = "0" || { echo "alembic_version still has $left row(s)"; exit 1; }
+
+      - name: Upgrade to head again
+        run: |
+          python -m alembic upgrade head
+          head=$(python -m alembic heads 2>/dev/null | awk '{print $1}')
+          at=$(docker exec life_graph_mig_db psql -U life_graph -d life_graph -tA -c \
+            "SELECT version_num FROM alembic_version")
+          echo "head=$head database=$at"
+          test "$at" = "$head"
+
+      - name: Model/schema drift
+        run: python scripts/schema_drift.py --check
+
+      - name: Postgres logs on failure
+        if: failure()
+        run: docker logs life_graph_mig_db

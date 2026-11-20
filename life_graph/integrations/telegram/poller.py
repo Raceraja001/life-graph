@@ -124,11 +124,25 @@ class TelegramPoller:
                     updates = await client.get_updates(
                         offset=offset, timeout=settings.telegram_poll_timeout
                     )
+                    lost_lease = False
                     for update in updates:
+                        # Renewed per update, not once per batch (audit M9): a
+                        # batch of slow handlers (LLM replies, voice notes) can
+                        # outlast the 90 s lease, and a standby that took over
+                        # meanwhile would poll and handle the same updates. If
+                        # the lease is gone, stop: its new holder replays from
+                        # the stored offset.
+                        if not await self._acquire_lease():
+                            logger.warning("telegram: lost the poller lease mid-batch, stopping")
+                            self._leading = False
+                            lost_lease = True
+                            break
                         await self._dispatch(update)
                         # After handling, never before: a crash mid-handler
                         # replays the update instead of losing it.
                         await self._store_offset(int(update["update_id"]) + 1)
+                    if lost_lease:
+                        continue
                     await self._stamp(HEARTBEAT_KEY, ttl=LEASE_TTL_SECONDS)
                     if updates:
                         await self._stamp(LAST_UPDATE_KEY)

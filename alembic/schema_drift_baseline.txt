@@ -1,0 +1,197 @@
+# Known model/schema drift, accepted 2026-11-20 (audit M18). One line per
+# alembic autogenerate difference; see scripts/schema_drift.py.
+#
+# Do NOT add lines to make a check pass: new drift means a model and its
+# migration disagree, so fix one of them. When a fix makes a line disappear,
+# delete the line (the check fails until you do, so this list only shrinks).
+add_fk | challenges | ['outcome_prediction_id'] -> life_graph.predictions ondelete=SET NULL
+add_fk | corrections | ['capture_event_id'] -> life_graph.capture_events ondelete=SET NULL
+add_fk | decisions | ['superseded_by'] -> life_graph.decisions ondelete=SET NULL
+add_fk | interview_questions | ['answer_capture_id'] -> life_graph.capture_events ondelete=SET NULL
+add_fk | predictions | ['decision_id'] -> life_graph.decisions ondelete=SET NULL
+add_fk | verification_runs | ['task_id'] -> agent_tasks ondelete=SET NULL
+add_fk | watch_events | ['run_id'] -> watcher_runs ondelete=SET NULL
+add_index | action_safety_rules.uq_asr_tenant_action | action_safety_rules.tenant_id,action_safety_rules.action_name UNIQUE
+add_index | agent_messages.ix_agent_messages_inbox | agent_messages.tenant_id,agent_messages.recipient_agent,agent_messages.status
+add_index | agent_messages.ix_agent_messages_outbox | agent_messages.tenant_id,agent_messages.sender_agent
+add_index | agent_sessions.ix_agent_sessions_tenant | agent_sessions.tenant_id,agent_sessions.created_at
+add_index | agent_tasks.ix_agent_tasks_assigned | agent_tasks.tenant_id,agent_tasks.assigned_agent,agent_tasks.status
+add_index | agent_tasks.ix_agent_tasks_created_desc | agent_tasks.tenant_id,agent_tasks.created_at
+add_index | agent_tasks.ix_agent_tasks_tenant_created | agent_tasks.tenant_id,agent_tasks.created_at
+add_index | audit_log.ix_al_tenant | audit_log.tenant_id,audit_log.created_at
+add_index | auto_actions.ix_aa_created | auto_actions.tenant_id,auto_actions.created_at
+add_index | autonomy_levels.uq_al_tenant_project | autonomy_levels.tenant_id,autonomy_levels.project_id UNIQUE
+add_index | calibration_snapshots.ix_cal_tenant_domain_computed | calibration_snapshots.tenant_id,calibration_snapshots.domain,calibration_snapshots.computed_at
+add_index | capture_events.ix_ce_tenant_occurred | capture_events.tenant_id,capture_events.occurred_at
+add_index | challenges.ix_challenges_tenant_created | challenges.tenant_id,challenges.created_at
+add_index | corrections.ix_cor_tenant_created | corrections.tenant_id,corrections.created_at
+add_index | cross_system_syncs.ix_css_tenant_target | cross_system_syncs.tenant_id,cross_system_syncs.target_system
+add_index | decisions.ix_decisions_tenant_created | decisions.tenant_id,decisions.created_at
+add_index | eval_runs.ix_eval_runs_suite_started | eval_runs.suite_id,eval_runs.started_at
+add_index | eval_runs.ix_eval_runs_trigger_started | eval_runs.trigger,eval_runs.started_at
+add_index | intentions.ix_intentions_status | intentions.status
+add_index | intentions.ix_intentions_trigger_time | intentions.trigger_time
+add_index | intentions.ix_intentions_trigger_type | intentions.trigger_type
+add_index | interview_questions.ix_iq_tenant_status_priority | interview_questions.tenant_id,interview_questions.status,interview_questions.priority
+add_index | knowledge_gaps.ix_knowledge_gaps_query_count | knowledge_gaps.query_count
+add_index | knowledge_gaps.ix_knowledge_gaps_resolved | knowledge_gaps.resolved
+add_index | memories.ix_memories_created_at | memories.created_at
+add_index | memories.ix_memories_importance | memories.importance
+add_index | memories.ix_memories_owner | memories.owner
+add_index | memories.ix_memories_properties | memories.properties
+add_index | memories.ix_memories_status | memories.status
+add_index | memories.ix_memories_tags | memories.tags
+add_index | nightly_run_log.ix_nightly_log_tenant_started | nightly_run_log.tenant_id,nightly_run_log.started_at
+add_index | optimization_runs.ix_opt_runs_task_started | optimization_runs.task_type,optimization_runs.started_at
+add_index | optimization_runs.ix_opt_runs_tenant_started | optimization_runs.tenant_id,optimization_runs.started_at
+add_index | procedures.ix_procedures_confidence | procedures.confidence
+add_index | prompt_versions.ix_prompt_ver_lookup | prompt_versions.tenant_id,prompt_versions.task_type,prompt_versions.version_number
+add_index | sessions.ix_sessions_started_at | sessions.started_at
+add_index | shadow_enrollments.uq_se_tenant_agent | shadow_enrollments.tenant_id,shadow_enrollments.agent_id UNIQUE
+add_index | shared_context.ix_sc_hash | shared_context.tenant_id,shared_context.content_hash
+add_index | tech_radar.ix_tech_radar_tenant_score | tech_radar.tenant_id,tech_radar.score
+add_index | tech_radar.ix_tech_radar_tenant_scraped | tech_radar.tenant_id,tech_radar.scraped_at
+add_index | tech_radar.ix_tech_radar_tenant_source | tech_radar.tenant_id,tech_radar.source,tech_radar.scraped_at
+add_index | trust_scores.ix_ts_score | trust_scores.tenant_id,trust_scores.score
+add_index | trust_scores.uq_ts_tenant_agent_action_project | trust_scores.tenant_id,trust_scores.agent_id,trust_scores.action_type,trust_scores.project_id UNIQUE
+add_index | watch_events.ix_watch_events_tenant_created | watch_events.tenant_id,watch_events.created_at
+add_index | watch_events.ix_watch_events_tenant_severity | watch_events.tenant_id,watch_events.severity,watch_events.created_at
+add_index | watch_events.ix_watch_events_tenant_watcher | watch_events.tenant_id,watch_events.watcher_name,watch_events.created_at
+add_index | watch_events.ix_watch_events_unacked | watch_events.tenant_id,watch_events.created_at
+add_index | watcher_notifications.ix_watcher_notif_tenant_created | watcher_notifications.tenant_id,watcher_notifications.created_at
+add_index | watcher_runs.ix_watcher_runs_failed | watcher_runs.tenant_id,watcher_runs.created_at
+add_index | watcher_runs.ix_watcher_runs_tenant_watcher | watcher_runs.tenant_id,watcher_runs.watcher_name,watcher_runs.created_at
+add_index | workflow_runs.ix_wfr_tenant_created | workflow_runs.tenant_id,workflow_runs.created_at
+add_index | workflow_runs.ix_wfr_workflow | workflow_runs.workflow_id
+modify_comment | memories.extraction_confidence | 'Confidence score from the extraction pipeline (0.0-1.0)' -> None
+modify_comment | memories.extraction_tier | 'Which extraction tier created this: regex, spacy, llm, manual' -> None
+modify_comment | memories.impact_confidence | 'Confidence in impact_score (grows with more data points)' -> None
+modify_comment | memories.impact_score | 'Learned usefulness from session outcome feedback (0.0-1.0)' -> None
+modify_comment | memories.last_reinforced | 'Last time user confirmed this memory is still accurate' -> None
+modify_comment | memories.reinforced_count | 'Number of times user confirmed this memory' -> None
+modify_comment | memory_sessions.role | 'Whether memory was created or recalled in this session' -> None
+modify_comment | memory_sessions.was_useful | 'Per-memory usefulness feedback (v2)' -> None
+modify_comment | sessions.outcome | 'Session result: success, failure, or neutral' -> None
+modify_comment | tenant_configs.autonomy_paused | None -> 'Kill-switch: when true, AutoFixService._run_action refuses to execute any autonomous action for this tenant.'
+modify_nullable | advisor_sessions.confidence | True -> False
+modify_nullable | advisor_sessions.status | True -> False
+modify_nullable | agent_sessions.classification_conf | True -> False
+modify_nullable | agent_sessions.total_cost_usd | True -> False
+modify_nullable | evidence.embedding_model | True -> False
+modify_nullable | evidence.status | True -> False
+modify_nullable | intentions.created_at | True -> False
+modify_nullable | intentions.priority | True -> False
+modify_nullable | intentions.status | True -> False
+modify_nullable | intentions.trigger_type | True -> False
+modify_nullable | knowledge_gaps.first_asked | True -> False
+modify_nullable | knowledge_gaps.last_asked | True -> False
+modify_nullable | knowledge_gaps.query_count | True -> False
+modify_nullable | knowledge_gaps.resolved | True -> False
+modify_nullable | memories.access_count | True -> False
+modify_nullable | memories.confidence | True -> False
+modify_nullable | memories.created_at | True -> False
+modify_nullable | memories.decay_rate | True -> False
+modify_nullable | memories.embedding_model | True -> False
+modify_nullable | memories.importance | True -> False
+modify_nullable | memories.importance_tier | True -> False
+modify_nullable | memories.owner | True -> False
+modify_nullable | memories.properties | True -> False
+modify_nullable | memories.source_type | True -> False
+modify_nullable | memories.status | True -> False
+modify_nullable | memories.trust_score | True -> False
+modify_nullable | memories.updated_at | True -> False
+modify_nullable | memories.valid_from | True -> False
+modify_nullable | memory_sessions.created_at | True -> False
+modify_nullable | preferences.embedding_model | True -> False
+modify_nullable | preferences.last_validated_at | True -> False
+modify_nullable | preferences.source | True -> False
+modify_nullable | preferences.status | True -> False
+modify_nullable | preferences.validated_count | True -> False
+modify_nullable | research_runs.evidence_added | True -> False
+modify_nullable | research_runs.evidence_found | True -> False
+modify_nullable | research_runs.status | True -> False
+modify_nullable | sessions.memories_accessed | True -> False
+modify_nullable | sessions.memories_created | True -> False
+modify_nullable | sessions.started_at | True -> False
+modify_nullable | workflow_steps.depends_on | False -> True
+modify_type | action_safety_rules.tenant_id | TEXT() -> String(length=64)
+modify_type | agent_personas.allowed_tools | ARRAY(TEXT()) -> ARRAY(String())
+modify_type | agent_personas.intent_tags | ARRAY(TEXT()) -> ARRAY(String())
+modify_type | agent_tasks.title | TEXT() -> String(length=200)
+modify_type | approval_queue.tenant_id | TEXT() -> String(length=64)
+modify_type | audit_log.tenant_id | TEXT() -> String(length=64)
+modify_type | auto_actions.tenant_id | TEXT() -> String(length=64)
+modify_type | autonomy_levels.tenant_id | TEXT() -> String(length=64)
+modify_type | procedures.tags | ARRAY(TEXT()) -> ARRAY(String())
+modify_type | tech_radar.tags | ARRAY(TEXT()) -> ARRAY(String())
+modify_type | trust_scores.tenant_id | TEXT() -> String(length=64)
+remove_column | memories.content_tsv | TSVECTOR
+remove_constraint | action_safety_rules.uq_asr_tenant_action | UniqueConstraint['tenant_id', 'action_name']
+remove_constraint | autonomy_levels.uq_al_tenant_project | UniqueConstraint['tenant_id', 'project_id']
+remove_constraint | memory_links.memory_links_source_memory_id_target_memory_id_link_type_key | UniqueConstraint['source_memory_id', 'target_memory_id', 'link_type']
+remove_constraint | shadow_enrollments.uq_se_tenant_agent | UniqueConstraint['tenant_id', 'agent_id']
+remove_constraint | trust_scores.uq_ts_tenant_agent_action_project | UniqueConstraint['tenant_id', 'agent_id', 'action_type', 'project_id']
+remove_fk | challenges | ['outcome_prediction_id'] -> predictions ondelete=SET NULL
+remove_fk | corrections | ['capture_event_id'] -> capture_events ondelete=SET NULL
+remove_fk | decisions | ['superseded_by'] -> decisions ondelete=SET NULL
+remove_fk | interview_questions | ['answer_capture_id'] -> capture_events ondelete=SET NULL
+remove_fk | predictions | ['decision_id'] -> decisions ondelete=SET NULL
+remove_fk | verification_runs | ['task_id'] -> agent_tasks ondelete=SET NULL
+remove_index | agent_messages.ix_agent_messages_inbox | agent_messages.tenant_id,agent_messages.recipient_agent,agent_messages.status,agent_messages.created_at DESC
+remove_index | agent_messages.ix_agent_messages_outbox | agent_messages.tenant_id,agent_messages.sender_agent,agent_messages.created_at DESC
+remove_index | agent_messages.ix_agent_messages_unread | agent_messages.tenant_id,agent_messages.recipient_agent,agent_messages.created_at DESC
+remove_index | agent_sessions.ix_agent_sessions_tenant | agent_sessions.tenant_id,agent_sessions.created_at DESC
+remove_index | agent_tasks.ix_agent_tasks_assigned | agent_tasks.tenant_id,agent_tasks.assigned_agent
+remove_index | agent_tasks.ix_agent_tasks_created_desc | agent_tasks.created_at DESC
+remove_index | agent_tasks.ix_agent_tasks_queued | agent_tasks.status,agent_tasks.priority,agent_tasks.created_at
+remove_index | agent_tasks.ix_agent_tasks_tenant_created | agent_tasks.tenant_id,agent_tasks.created_at DESC
+remove_index | audit_log.ix_al_tenant | audit_log.tenant_id,audit_log.created_at DESC
+remove_index | auto_actions.ix_aa_created | auto_actions.tenant_id,auto_actions.created_at DESC
+remove_index | calibration_snapshots.ix_cal_tenant_domain_computed | calibration_snapshots.tenant_id,calibration_snapshots.domain,calibration_snapshots.computed_at DESC
+remove_index | capture_events.ix_ce_tenant_occurred | capture_events.tenant_id,capture_events.occurred_at DESC
+remove_index | challenges.ix_challenges_tenant_created | challenges.tenant_id,challenges.created_at DESC
+remove_index | corrections.ix_cor_tenant_created | corrections.tenant_id,corrections.created_at DESC
+remove_index | cross_system_syncs.ix_css_retry | cross_system_syncs.tenant_id,cross_system_syncs.next_retry_at
+remove_index | cross_system_syncs.ix_css_tenant_target | cross_system_syncs.tenant_id,cross_system_syncs.target_system,cross_system_syncs.created_at DESC
+remove_index | decisions.ix_decisions_embedding | decisions.embedding
+remove_index | decisions.ix_decisions_tenant_created | decisions.tenant_id,decisions.created_at DESC
+remove_index | entities.ix_entities_canonical | entities.canonical_id
+remove_index | entities.ix_entities_tenant_role | entities.tenant_id,entities.role
+remove_index | eval_runs.ix_eval_runs_suite_started | eval_runs.suite_id,eval_runs.started_at DESC
+remove_index | eval_runs.ix_eval_runs_trigger_started | eval_runs.trigger,eval_runs.started_at DESC
+remove_index | evidence.uq_evidence_source_url | evidence.preference_id,evidence.source_url UNIQUE
+remove_index | intentions.idx_intentions_embedding | intentions.embedding
+remove_index | intentions.idx_intentions_status | intentions.status
+remove_index | intentions.idx_intentions_trigger_time | intentions.trigger_time
+remove_index | interview_questions.ix_iq_tenant_status_priority | interview_questions.tenant_id,interview_questions.status,interview_questions.priority DESC
+remove_index | memories.idx_memories_created_at | memories.created_at DESC
+remove_index | memories.idx_memories_embedding | memories.embedding
+remove_index | memories.idx_memories_importance | memories.importance DESC
+remove_index | memories.idx_memories_last_accessed | memories.last_accessed
+remove_index | memories.idx_memories_properties | memories.properties
+remove_index | memories.idx_memories_status | memories.status
+remove_index | memories.idx_memories_tags | memories.tags
+remove_index | memories.ix_memories_content_tsv | memories.content_tsv
+remove_index | memories.ix_memories_extraction_trace_id | (properties ->> 'extraction_trace_id'::text)
+remove_index | nightly_run_log.ix_nightly_log_tenant_started | nightly_run_log.tenant_id,nightly_run_log.started_at DESC
+remove_index | optimization_runs.ix_opt_runs_task_started | optimization_runs.task_type,optimization_runs.started_at DESC
+remove_index | optimization_runs.ix_opt_runs_tenant_started | optimization_runs.tenant_id,optimization_runs.started_at DESC
+remove_index | procedures.ix_procedures_confidence | procedures.confidence DESC
+remove_index | procedures.ix_procedures_tags | procedures.tags
+remove_index | prompt_versions.ix_prompt_ver_lookup | prompt_versions.tenant_id,prompt_versions.task_type,prompt_versions.version_number DESC
+remove_index | sessions.idx_sessions_embedding | sessions.embedding
+remove_index | sessions.idx_sessions_started | sessions.started_at DESC
+remove_index | shared_context.ix_sc_hash | shared_context.content_hash
+remove_index | tech_radar.ix_tech_radar_tenant_score | tech_radar.tenant_id,tech_radar.score DESC
+remove_index | tech_radar.ix_tech_radar_tenant_scraped | tech_radar.tenant_id,tech_radar.scraped_at DESC
+remove_index | tech_radar.ix_tech_radar_tenant_source | tech_radar.tenant_id,tech_radar.source,tech_radar.scraped_at DESC
+remove_index | trust_scores.ix_ts_score | trust_scores.tenant_id,trust_scores.score DESC
+remove_index | watch_events.ix_watch_events_tenant_created | watch_events.tenant_id,watch_events.created_at DESC
+remove_index | watch_events.ix_watch_events_tenant_severity | watch_events.tenant_id,watch_events.severity,watch_events.created_at DESC
+remove_index | watch_events.ix_watch_events_tenant_watcher | watch_events.tenant_id,watch_events.watcher_name,watch_events.created_at DESC
+remove_index | watch_events.ix_watch_events_unacked | watch_events.tenant_id,watch_events.created_at DESC
+remove_index | watcher_notifications.ix_watcher_notif_tenant_created | watcher_notifications.tenant_id,watcher_notifications.created_at DESC
+remove_index | watcher_runs.ix_watcher_runs_failed | watcher_runs.tenant_id,watcher_runs.created_at DESC
+remove_index | watcher_runs.ix_watcher_runs_tenant_watcher | watcher_runs.tenant_id,watcher_runs.watcher_name,watcher_runs.created_at DESC
+remove_index | workflow_runs.ix_wfr_tenant_created | workflow_runs.tenant_id,workflow_runs.created_at DESC
+remove_index | workflow_runs.ix_wfr_workflow | workflow_runs.workflow_id,workflow_runs.created_at DESC
