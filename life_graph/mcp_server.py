@@ -67,23 +67,42 @@ mcp = FastMCP(
 )
 
 
+def _serving_http() -> bool:
+    """True while handling an MCP request that arrived over HTTP (not stdio)."""
+    from fastmcp.server.dependencies import get_http_request
+
+    try:
+        get_http_request()
+    except RuntimeError:
+        return False
+    return True
+
+
 def _headers(tenant_id: str | None = None) -> dict[str, str]:
     """Build request headers with tenant and optional auth.
 
-    Over HTTP (``/mcp/`` in the API, api/mcp_http.py) the caller's own key and
-    tenant go on to the API, so a call can do what that key can and no more;
-    over stdio there is no request and the environment's key and tenant apply.
+    Over HTTP (``/mcp/`` in the API, api/mcp_http.py, or ``--transport http``)
+    the call goes on to the API exactly as the caller: the credential they
+    presented (``Authorization`` or ``X-API-Key``) and their ``X-Tenant-ID``.
+    The server's own ``LIFE_GRAPH_API_KEY`` is never added there, and the
+    tool's ``tenant_id`` argument (written by the model) is ignored, so a call
+    can do what the caller's key can and no more (audit L9). Over stdio there
+    is no request: the environment's key applies, and ``tenant_id`` picks the
+    tenant as before.
     """
     from fastmcp.server.dependencies import get_http_headers
 
-    caller = get_http_headers(include={"authorization"})
-    h = {
-        "Content-Type": "application/json",
-        "X-Tenant-ID": tenant_id or caller.get("x-tenant-id") or DEFAULT_TENANT,
-    }
-    if caller.get("authorization"):
-        h["Authorization"] = caller["authorization"]
-    elif API_KEY:
+    h = {"Content-Type": "application/json"}
+    if _serving_http():
+        caller = get_http_headers(include={"authorization"})
+        h["X-Tenant-ID"] = caller.get("x-tenant-id") or DEFAULT_TENANT
+        if caller.get("authorization"):
+            h["Authorization"] = caller["authorization"]
+        elif caller.get("x-api-key"):
+            h["X-API-Key"] = caller["x-api-key"]
+        return h
+    h["X-Tenant-ID"] = tenant_id or DEFAULT_TENANT
+    if API_KEY:
         h["Authorization"] = f"Bearer {API_KEY}"
     return h
 
