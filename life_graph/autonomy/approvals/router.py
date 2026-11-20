@@ -1,12 +1,19 @@
-"""FastAPI router for approval queue."""
+"""FastAPI router for approval queue.
+
+Who resolved comes from how the server recognised the caller
+(api/approval_identity.py, shared with the unified ``/approvals`` feed), never
+from ``resolved_by`` in the body; with ``approvals_require_owner`` on, only the
+owner may resolve, singly or in a batch.
+"""
 
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import select
 
+from life_graph.api.approval_identity import note_with_claim, require_owner, resolver
 from life_graph.api.responses import success_response
 from life_graph.autonomy.approvals.schemas import (
     ApprovalResponse,
@@ -56,8 +63,9 @@ async def list_approvals(
 
 
 @router.post("/{approval_id}/resolve", response_model=None)
-async def resolve_approval(approval_id: str, request: ResolveRequest):
+async def resolve_approval(approval_id: str, body: ResolveRequest, request: Request):
     """Resolve (approve/reject) an approval entry."""
+    require_owner(request)
     tenant_id = get_current_tenant_id()
 
     from life_graph.runtime import get_approval_service
@@ -68,23 +76,24 @@ async def resolve_approval(approval_id: str, request: ResolveRequest):
         await service.resolve(
             tenant_id=tenant_id,
             approval_id=approval_id,
-            decision=request.decision,
-            note=request.note,
-            resolved_by=request.resolved_by,
-            also_trust=request.also_trust,
+            decision=body.decision,
+            note=note_with_claim(body.note, body.resolved_by),
+            resolved_by=resolver(request),
+            also_trust=body.also_trust,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
-    resolved_status = "approved" if request.decision == "approve" else "rejected"
+    resolved_status = "approved" if body.decision == "approve" else "rejected"
     return success_response(
         data={"id": approval_id, "status": resolved_status},
     )
 
 
 @router.post("/batch", response_model=None)
-async def batch_resolve(request: BatchResolveRequest):
+async def batch_resolve(body: BatchResolveRequest, request: Request):
     """Batch resolve approvals by filter."""
+    require_owner(request)
     tenant_id = get_current_tenant_id()
 
     from life_graph.runtime import get_approval_service
@@ -94,14 +103,14 @@ async def batch_resolve(request: BatchResolveRequest):
     result = await service.batch_resolve(
         tenant_id=tenant_id,
         filter_criteria={
-            "approval_ids": request.approval_ids,
-            "agent_id": request.agent_id,
-            "project_id": request.project_id,
-            "risk_level": request.risk_level,
+            "approval_ids": body.approval_ids,
+            "agent_id": body.agent_id,
+            "project_id": body.project_id,
+            "risk_level": body.risk_level,
         },
-        decision=request.decision,
-        note=request.note,
-        resolved_by=request.resolved_by,
+        decision=body.decision,
+        note=note_with_claim(body.note, body.resolved_by),
+        resolved_by=resolver(request),
     )
 
     return success_response(

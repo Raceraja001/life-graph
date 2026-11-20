@@ -4,25 +4,34 @@
 `POST /approvals/{id}/approve|reject` resolves one and runs its side-effect.
 
 Who decided (``resolved_by``) comes from how the server recognised the
-caller, never from the request body. With ``approvals_require_owner`` on,
-only the owner (an owner key or a paired phone) may approve or reject.
+caller, never from the request body (api/approval_identity.py, shared with
+the autonomy queue). With ``approvals_require_owner`` on, only the owner (an
+owner key or a paired phone) may approve or reject; whatever the setting, a
+non-owner caller may not approve an approval for a dev task it started.
 
 See docs/specs/approvals-feed.md.
 """
 
 from __future__ import annotations
 
-import hashlib
+import uuid
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from life_graph.api.auth import extract_api_key, ingress_for
+from life_graph.api.approval_identity import (
+    OWNER_REQUIRED,
+    note_with_claim,
+    refuse_self_approval,
+    require_owner,
+    resolver,
+)
 from life_graph.api.responses import success_response
-from life_graph.config import settings
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.models.db import AgentTask, Approval
 from life_graph.services.approvals import (
     ApprovalActionError,
     ApprovalAlreadyResolvedError,
@@ -32,7 +41,7 @@ from life_graph.storage.database import get_session
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
-OWNER_REQUIRED = "Approving or rejecting needs the owner: an owner API key or a paired phone."
+__all__ = ["OWNER_REQUIRED", "ResolveBody", "resolver", "router"]
 
 
 class ResolveBody(BaseModel):
@@ -40,7 +49,7 @@ class ResolveBody(BaseModel):
 
     note: str | None = None
     # Kept for old clients. Not trusted: who decided is the server's to say
-    # (resolver below); a value here is only recorded in the note.
+    # (resolver); a value here is only recorded in the note.
     resolved_by: str | None = None
 
 
@@ -57,50 +66,48 @@ async def list_approvals(
     return success_response(data)
 
 
-def _key_label(request: Request) -> str:
-    """A stable, non-secret name for the service key a caller presented.
-
-    Keys have no names in configuration, so the audit trail gets a short
-    fingerprint: enough to tell two keys apart, useless for recovering one.
-    """
-    key = extract_api_key(request.headers, request.query_params)
-    if not key:
-        return "service-key"
-    return f"service-key:{hashlib.sha256(key.encode()).hexdigest()[:8]}"
-
-
-def resolver(request: Request, body: ResolveBody | None = None) -> str:
-    """Who decided, as the server saw the caller (api/auth.py ``ingress_for``).
-
-    ``phone:<device id>`` for a paired phone, ``owner`` for an owner key
-    (``owner:local`` on a dev stack with auth off), and otherwise the
-    fingerprint of the service key used. ``body.resolved_by`` is never used:
-    any client holding a service key could write the owner's name there.
-    """
-    ingress = ingress_for(request)
-    if ingress.device_id:
-        return f"phone:{ingress.device_id}"
-    if ingress.actor == "owner:api_key":
-        return "owner"
-    if ingress.owner_verified:
-        return ingress.actor  # "owner:local": no credential configured at all
-    return _key_label(request)
-
-
-def _require_owner(request: Request) -> None:
-    """403 unless the caller is the owner — only when the setting is on."""
-    if settings.approvals_require_owner and not ingress_for(request).is_owner:
-        raise HTTPException(status_code=403, detail=OWNER_REQUIRED)
-
-
 def _note(body: ResolveBody | None) -> str | None:
     """The body's note, plus whatever name the client claimed (unverified)."""
     if body is None:
         return None
-    if not body.resolved_by:
-        return body.note
-    claimed = f"(client said: {body.resolved_by})"
-    return f"{body.note}\n{claimed}" if body.note else claimed
+    return note_with_claim(body.note, body.resolved_by)
+
+
+async def _requested_by(session: AsyncSession, tenant_id: str, approval_id: str) -> str | None:
+    """Who asked for the work an approval is about, when that was recorded.
+
+    Dev-task approvals (``driver_plan``, ``driver_pr``, ``driver_merge``,
+    deploys) name their task in ``payload.task_id``; ``POST /drivers/tasks``
+    stamps the starting caller on the task as ``properties.requested_by``. A
+    task fanned out from an approved plan has no stamp of its own and inherits
+    its plan's (``properties.plan_task_id``). None for everything else.
+    """
+    try:
+        appr_id = uuid.UUID(str(approval_id))
+    except ValueError:
+        return None
+    payload = (
+        await session.execute(
+            select(Approval.payload).where(Approval.id == appr_id, Approval.tenant_id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    task_id = (payload or {}).get("task_id")
+    for _ in range(2):  # the task itself, then the plan it came from
+        try:
+            task_uuid = uuid.UUID(str(task_id))
+        except (TypeError, ValueError):
+            return None
+        props = (
+            await session.execute(
+                select(AgentTask.properties).where(
+                    AgentTask.id == task_uuid, AgentTask.tenant_id == tenant_id
+                )
+            )
+        ).scalar_one_or_none() or {}
+        if props.get("requested_by"):
+            return str(props["requested_by"])
+        task_id = props.get("plan_task_id")
+    return None
 
 
 async def _resolve(
@@ -140,6 +147,22 @@ async def _resolve(
     return success_response(result)
 
 
+async def _decide(
+    approval_id: str,
+    decision: str,
+    request: Request,
+    body: ResolveBody | None,
+    tenant_id: str,
+    session: AsyncSession,
+):
+    require_owner(request)
+    if decision == "approve":
+        # Withdrawing one's own request (reject) stays allowed: it can only
+        # stop work, never start it.
+        refuse_self_approval(request, await _requested_by(session, tenant_id, approval_id))
+    return await _resolve(approval_id, decision, body, tenant_id, session, resolver(request))
+
+
 @router.post("/{approval_id}/approve", summary="Approve an item (runs its side-effect)")
 async def approve_approval(
     approval_id: str,
@@ -148,9 +171,7 @@ async def approve_approval(
     tenant_id: str = Depends(get_current_tenant_id),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_owner(request)
-    by = resolver(request, body)
-    return await _resolve(approval_id, "approve", body, tenant_id, session, by)
+    return await _decide(approval_id, "approve", request, body, tenant_id, session)
 
 
 @router.post("/{approval_id}/reject", summary="Reject an item")
@@ -161,6 +182,4 @@ async def reject_approval(
     tenant_id: str = Depends(get_current_tenant_id),
     session: AsyncSession = Depends(get_session),
 ):
-    _require_owner(request)
-    by = resolver(request, body)
-    return await _resolve(approval_id, "reject", body, tenant_id, session, by)
+    return await _decide(approval_id, "reject", request, body, tenant_id, session)

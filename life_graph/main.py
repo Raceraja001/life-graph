@@ -490,6 +490,14 @@ async def lifespan(app: FastAPI):
         capture_processors.subscribe()
         logger.info("Capture spine processors enabled (extraction + decision detection)")
 
+    # Startup — owner-only approvals: warn when turning them on would leave no
+    # way in but Telegram (no owner key, no paired phone). Counts only.
+    with startup_step(report, "approvals_owner_check"):
+        from life_graph.services.owner_enforcement import check_at_startup
+        from life_graph.storage.database import async_session as owner_check_session
+
+        await check_at_startup(owner_check_session)
+
     # Everything beyond the memory engine (docs/modular_memory_service_plan.md):
     # agent tools and drivers, personas, the ARQ pool, delivery handlers, the
     # dev-task runner. Only in the full profile; memory_core serves memory alone.

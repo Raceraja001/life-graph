@@ -173,7 +173,20 @@ async def system(session: AsyncSession, app_state: Any) -> dict[str, Any]:
         "drivers": drivers,
         "ollama": await _ollama(),
         "runtime": await _runtime_health(),
+        "approvals": await _approval_enforcement(session),
     }
+
+
+async def _approval_enforcement(session: AsyncSession) -> dict[str, Any]:
+    """Owner-only approvals: on or off, owner keys and phones (counts only)."""
+    from life_graph.services import owner_enforcement
+
+    try:
+        paired = await owner_enforcement.paired_device_count(session)
+    except Exception as exc:  # noqa: BLE001 - one panel must not break the page
+        logger.warning("paired device count failed: %s", exc)
+        paired = None
+    return owner_enforcement.status(paired)
 
 
 async def _runtime_health() -> dict[str, Any]:

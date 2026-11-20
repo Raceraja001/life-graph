@@ -304,12 +304,16 @@ class DevTaskCreate(BaseModel):
     status_code=status.HTTP_202_ACCEPTED,
     summary="Start a dev task in the background",
 )
-async def create_dev_task(body: DevTaskCreate):
+async def create_dev_task(body: DevTaskCreate, request: Request):
     """Validate, record and start a dev task; poll ``GET /tasks/{id}`` for progress.
 
     Always isolated: the agent works in a worktree, and a verified result is
-    offered back as ``driver_pr`` / ``driver_merge`` approvals.
+    offered back as ``driver_pr`` / ``driver_merge`` approvals. Who asked is
+    recorded as ``properties.requested_by`` (api/approval_identity.py
+    ``resolver``), so a non-owner caller — an agent over MCP — cannot then
+    approve its own task's plan, PR, merge or deploy (api/approvals.py).
     """
+    from life_graph.api.approval_identity import resolver
     from life_graph.api.dependencies import get_persona_service, get_project_registry
     from life_graph.services.dev import tasks as dev_tasks
 
@@ -336,6 +340,7 @@ async def create_dev_task(body: DevTaskCreate):
         verify_chain=["no_diff_in_plan"] if body.plan_only else None,
         start=not body.queue,
         timeout_seconds=body.timeout_seconds,
+        properties={"requested_by": resolver(request)},
     )
     return success_response(data=task)
 

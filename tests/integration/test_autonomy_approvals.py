@@ -101,7 +101,11 @@ class TestApprovalQueue:
         approval = await _get("ApprovalQueueEntry", approval_id)
         action = await _get("AutoAction", action_id)
         assert approval.status == "approved"
-        assert approval.resolved_by == "tester"
+        # Who resolved is the server's view of the caller (api/approval_identity.py),
+        # never the body's claim; the claim survives only as a note.
+        assert approval.resolved_by != "tester"
+        assert approval.resolved_by.startswith(("owner", "service-key"))
+        assert "(client said: tester)" in (approval.resolution_note or "")
         # auto_actions has no 'approved' status; approve clears it back to pending.
         assert action.status == "pending"
 
