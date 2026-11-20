@@ -455,10 +455,43 @@ class ApprovalService:
             project = None
         if project is None:
             return
+        from life_graph.kernel.project_registry import (
+            approved_command,
+            command_sha256,
+            unapproved_commands,
+        )
+
         meta = project.scan_metadata or {}
-        command = meta.get("deploy_command")
-        if not (meta.get("deploy_on_merge") and command):
+        if not (meta.get("deploy_on_merge") and meta.get("deploy_command")):
             return
+        # Only commands the owner approved verbatim (audit 2026-11-19, H2). One
+        # unapproved command of the three files no deploy at all: a deploy
+        # without its configured smoke check or rollback is not what was set.
+        unapproved = [f for f in unapproved_commands(meta) if f != "backup_check_command"]
+        if unapproved:
+            logger.warning(
+                "No deploy filed for project %s: %s not owner-approved",
+                project_id,
+                ", ".join(unapproved),
+            )
+            await event_bus.emit(
+                EventType.APPROVAL_FILED,
+                {
+                    "tenant_id": merge_appr.tenant_id,
+                    "kind": "deploy_command_unapproved",
+                    "title": f"Deploy of {project.name} not filed: command not approved",
+                    "detail": (
+                        f"{', '.join(unapproved)} changed or was set without the owner's"
+                        " approval. Re-save it with the owner key (or a paired phone)"
+                        " to approve it."
+                    ),
+                },
+                source="approvals",
+            )
+            return
+        command = approved_command(meta, "deploy_command")
+        smoke = approved_command(meta, "smoke_command")
+        rollback = approved_command(meta, "rollback_command")
         deploy_payload = {
             "task_id": payload.get("task_id"),
             "driver": payload.get("driver"),
@@ -469,8 +502,19 @@ class ApprovalService:
             "deploy_command": command,
             # Run after a successful deploy (services/approvals.py
             # _post_deploy_checks); operator-set, like deploy_command.
-            "smoke_command": meta.get("smoke_command"),
-            "rollback_command": meta.get("rollback_command"),
+            "smoke_command": smoke,
+            "rollback_command": rollback,
+            # Re-checked against the project when the deploy runs
+            # (_apply_driver_deploy): it may be approved days after filing.
+            "command_sha256": {
+                field: command_sha256(text)
+                for field, text in (
+                    ("deploy_command", command),
+                    ("smoke_command", smoke),
+                    ("rollback_command", rollback),
+                )
+                if text
+            },
         }
         deploy_appr = Approval(
             tenant_id=merge_appr.tenant_id,
@@ -522,6 +566,22 @@ class ApprovalService:
         command = payload.get("deploy_command")
         if not command:
             raise ApprovalActionError("no deploy_command on this approval")
+        # The deploy, smoke and rollback commands this approval carries must
+        # still be the ones the owner approved (audit 2026-11-19, H2); all three
+        # are checked here, before anything runs.
+        from life_graph.kernel.project_registry import pinned_command_mismatch
+
+        project = await self._project_dict(appr.tenant_id, payload.get("project_id"))
+        why = (
+            "its project no longer exists"
+            if project is None
+            else pinned_command_mismatch(project["scan_metadata"], payload)
+        )
+        if why:
+            logger.warning("Refusing deploy approval %s: %s", appr.id, why)
+            raise ApprovalActionError(
+                f"not run: {why}. Reject this approval; the next merge files a new one."
+            )
         try:
             repo = resolve_in_roots(payload.get("repo_path") or "", tool_name="deploy")
         except ToolDeniedError as exc:

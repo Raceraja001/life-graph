@@ -83,14 +83,31 @@ async def test_a_timed_out_deploy_is_stopped_and_stays_retryable(tmp_path, monke
 
     monkeypatch.setattr(approvals, "DEPLOY_TIMEOUT_SECONDS", 1)
     monkeypatch.setattr(_guards, "resolve_in_roots", lambda *_a, **_k: str(tmp_path))
+    from life_graph.kernel.project_registry import approve_commands, command_sha256
+
     pidfile = tmp_path / "pid"
+    command = _command(pidfile)
     appr = SimpleNamespace(
-        payload={"deploy_command": _command(pidfile), "repo_path": str(tmp_path)},
+        id="a1",
+        tenant_id="t1",
+        payload={
+            "deploy_command": command,
+            "repo_path": str(tmp_path),
+            "project_id": "p1",
+            "command_sha256": {"deploy_command": command_sha256(command)},
+        },
         resolution_note=None,
     )
     pid = None
     try:
         service = approvals.ApprovalService(SimpleNamespace())
+        # The owner approved this exact command (H2, audit 2026-11-19).
+        meta = approve_commands({"deploy_command": command}, "owner:test")
+
+        async def project_dict(*_a):
+            return {"scan_metadata": meta}
+
+        monkeypatch.setattr(service, "_project_dict", project_dict)
         with pytest.raises(approvals.ApprovalActionError, match="timed out after 1s"):
             await service._apply_driver_deploy(appr, True)
         pid = await _pid_from(pidfile)
