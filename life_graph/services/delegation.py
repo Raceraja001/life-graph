@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, select
 
+from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
+from life_graph.autonomy.kill_switch import revoke_live_capabilities
 from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import AgentTask
 
@@ -51,6 +53,19 @@ class ParentTaskNotFoundError(ValueError):
 
 class DelegationDepthError(ValueError):
     """Delegating would nest a task deeper than DelegationEngine.MAX_DEPTH."""
+
+
+class CapabilityRevokeError(RuntimeError):
+    """The cancel is committed, but its live capabilities could not be revoked.
+
+    Not a ValueError on purpose: the route must not answer 404 for it.
+    """
+
+    def __init__(self, task: AgentTask, cause: Exception) -> None:
+        super().__init__(
+            f"Task {task.id} is cancelled, but its live capabilities could not be revoked: {cause}"
+        )
+        self.task = task
 
 
 # A task in one of these is finished; anything else (queued, running, or a
@@ -218,6 +233,7 @@ class DelegationEngine:
             # Every open descendant, not just direct children: a grandchild
             # under an already-finished child would otherwise keep running.
             frontier = [task_id]
+            stopped = [task_id]
             while frontier:
                 children = (
                     (
@@ -249,22 +265,31 @@ class DelegationEngine:
                         }
                     )
                     child.status_history = child_history
+                    stopped.append(child.id)
 
             await session.commit()
             await session.refresh(task)
-
-            # TODO(p2final, after #306 merges): a cancelled task (and each
-            # cancelled descendant) must also lose its live capabilities --
-            # call autonomy/kill_switch.revoke_live_capabilities here, as the
-            # kernel cancel path will. #306 was not on master when this was
-            # written; the lead wires it.
 
             await event_bus.emit(
                 EventType.TASK_AGENT_CANCELLED,
                 {"task_id": str(task_id), "tenant_id": tenant_id, "reason": reason},
                 source="delegation",
             )
-            return task
+
+        # Stop first, revoke second (autonomy/kill_switch.py): the cancel is
+        # committed above and stands whatever happens here. A cancelled task,
+        # and each descendant this cancel stopped, must not leave a live
+        # capability (errand mandate) behind. Cancelling an already-cancelled
+        # task revokes again -- that is how a failed revocation is retried.
+        try:
+            for stopped_id in stopped:
+                await revoke_live_capabilities(tenant_id, str(stopped_id))
+        except StoreUnavailableError as exc:
+            logger.error(
+                "Task %s cancelled, but revoking live capabilities failed: %s", task_id, exc
+            )
+            raise CapabilityRevokeError(task, exc) from exc
+        return task
 
     async def get_task_tree(self, root_task_id: uuid.UUID, tenant_id: str) -> dict:
         """Build a recursive task tree from root."""

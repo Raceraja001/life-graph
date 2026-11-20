@@ -16,6 +16,7 @@ from life_graph.models.schemas import (
     AgentTaskUpdate,
 )
 from life_graph.services.delegation import (
+    CapabilityRevokeError,
     DelegationDepthError,
     DelegationEngine,
     ParentTaskNotFoundError,
@@ -115,9 +116,16 @@ async def cancel_task(
     tenant_id: str = Depends(get_current_tenant_id),
     engine: DelegationEngine = Depends(get_delegation_engine),
 ):
-    """Cancel a task and all its descendants."""
+    """Cancel a task and all its descendants, then revoke their live capabilities.
+
+    The cancel is committed first and stands. If the capability store cannot
+    be reached the answer is 503 saying exactly that (as the kill switch
+    does), never a clean 200; calling cancel again retries the revocation.
+    """
     try:
         task = await engine.cancel_task(task_id, tenant_id, reason)
         return success_response(data=AgentTaskResponse.model_validate(task))
+    except CapabilityRevokeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
