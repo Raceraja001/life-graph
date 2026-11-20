@@ -82,6 +82,10 @@ def upgrade() -> None:
     )
 
 
+# DATA-DESTROYING DOWNGRADE (audit M18, 2026-11-20): this deletes
+# every eval case scored fact_set_f1, and the extraction_traces table with all its rows.
+# Nothing brings it back on a later upgrade. CI runs it only on an empty
+# throwaway database; on a real one take a backup first.
 def downgrade() -> None:
     op.execute("DELETE FROM eval_cases WHERE scoring_type = 'fact_set_f1'")
     op.drop_constraint("ck_eval_cases_scoring_type", "eval_cases", type_="check")

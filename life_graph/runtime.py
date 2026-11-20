@@ -16,6 +16,7 @@ and ``app.dependency_overrides`` keys keep working.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.core.router import QueryRouter
@@ -550,3 +551,60 @@ def get_transcript_distiller():
         PARSERS,
         get_resilient_llm(),
     )
+
+
+# ── Shared arq pool ───────────────────────────────────────────
+#
+# Enqueuing a job used to open a fresh arq Redis pool and close it again at
+# each of ten call sites (audit L15): a TCP connect, a handshake and a
+# teardown per enqueue. One pool per process and event loop instead, closed
+# at API shutdown. Keyed on the loop because a pool belongs to the loop it
+# was created on (tests run one loop per test).
+
+if TYPE_CHECKING:
+    import asyncio
+
+    from arq.connections import ArqRedis
+
+_arq_pool: ArqRedis | None = None
+_arq_pool_loop: asyncio.AbstractEventLoop | None = None
+_arq_pool_lock: tuple[asyncio.Lock, asyncio.AbstractEventLoop] | None = None
+
+
+async def get_arq_pool() -> ArqRedis:
+    """The process-wide arq pool for enqueuing jobs, created on first use."""
+    import asyncio
+
+    global _arq_pool, _arq_pool_loop, _arq_pool_lock
+    loop = asyncio.get_running_loop()
+    if _arq_pool is not None and _arq_pool_loop is loop:
+        return _arq_pool
+    if _arq_pool_lock is None or _arq_pool_lock[1] is not loop:
+        _arq_pool_lock = (asyncio.Lock(), loop)
+    async with _arq_pool_lock[0]:
+        if _arq_pool is not None and _arq_pool_loop is loop:
+            return _arq_pool
+        # Looked up at call time so tests can patch arq.create_pool. The
+        # worker settings import stays local: importing life_graph.workers at
+        # module level would make `import life_graph.runtime` load the worker
+        # package (tests/unit/test_runtime_module.py).
+        from arq import create_pool
+
+        from life_graph.workers.settings import parse_redis_settings
+
+        _arq_pool = await create_pool(parse_redis_settings())
+        _arq_pool_loop = loop
+        return _arq_pool
+
+
+async def close_arq_pool() -> None:
+    """Close the shared arq pool (API shutdown). Safe to call when none exists."""
+    global _arq_pool, _arq_pool_loop
+    pool, _arq_pool, _arq_pool_loop = _arq_pool, None, None
+    if pool is not None:
+        try:
+            await pool.close()
+        except Exception:  # noqa: BLE001 - shutdown must carry on
+            import logging
+
+            logging.getLogger(__name__).warning("Closing the arq pool failed", exc_info=True)

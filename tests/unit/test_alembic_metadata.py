@@ -31,22 +31,47 @@ def env_source() -> str:
     return _ENV.read_text(encoding="utf-8")
 
 
-def _metadata_after_env_imports() -> set[str]:
-    """Import exactly what env.py imports, then read the table names."""
-    import importlib
-
+def _env_model_imports() -> list[str]:
+    """The life_graph modules env.py imports, in order."""
+    modules: list[str] = []
     tree = ast.parse(_ENV.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name.startswith("life_graph"):
-                    importlib.import_module(alias.name)
+            modules += [a.name for a in node.names if a.name.startswith("life_graph")]
         elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("life_graph"):
-            importlib.import_module(node.module)
+            modules.append(node.module)
+    return modules
 
-    from life_graph.models.db import Base
 
-    return set(Base.metadata.tables)
+def _metadata_after_env_imports() -> set[str]:
+    """Import exactly what env.py imports, then read the table names.
+
+    In a fresh interpreter. Done in-process (as it was until 2026-11-20) the
+    result also held every table some *earlier* test had imported, and the
+    caller below had just imported the whole package, so it always matched:
+    env.py was missing models.assistant and connectors.models (17 tables)
+    while this test passed.
+    """
+    import json
+    import subprocess
+    import sys
+
+    script = (
+        "import importlib, json\n"
+        f"for m in {_env_model_imports()!r}:\n"
+        "    importlib.import_module(m)\n"
+        "from life_graph.models.db import Base\n"
+        "print(json.dumps(sorted(Base.metadata.tables)))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=_ENV.parents[1],
+        timeout=300,
+    )
+    return set(json.loads(out.stdout.strip().splitlines()[-1]))
 
 
 def _all_mapped_tables() -> set[str]:

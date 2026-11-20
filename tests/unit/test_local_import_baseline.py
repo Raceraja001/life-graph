@@ -33,6 +33,10 @@ ROOT = Path(__file__).resolve().parents[2] / "life_graph"
 # longer import routers. services grew by the helpers moved into it verbatim
 # (services/memory/transitions.py) -- net 1529 -> 1523 on 18b9e4e; 1532 after rebasing onto
 # c626ddd, whose own commits added 9 (api 3, autonomy 2, kernel 4).
+# p2db (shared arq pool): main 47 -> 46, workers 106 -> 104 (per-call
+# create_pool sites removed); runtime 49 -> 50 for get_arq_pool's
+# workers.settings import, which must stay local (test_runtime_module.py:
+# importing runtime may not load the worker/API packages). Net -2.
 BASELINE = {
     "agents": 4,
     "api": 263,
@@ -46,15 +50,15 @@ BASELINE = {
     "integrations": 25,
     "jobs": 5,
     "kernel": 24,
-    "main": 47,
+    "main": 46,
     "mcp_server": 1,
-    "runtime": 49,
+    "runtime": 50,
     "self_improving": 59,
     "services": 610,
     "storage": 7,
     "tools": 101,
     "watchers": 28,
-    "workers": 106,
+    "workers": 104,
 }
 
 

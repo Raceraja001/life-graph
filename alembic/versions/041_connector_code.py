@@ -25,6 +25,10 @@ def upgrade() -> None:
     )
 
 
+# DATA-DESTROYING DOWNGRADE (audit M18, 2026-11-20): this deletes
+# every code item (pull requests, issues) in connector_items.
+# Nothing brings it back on a later upgrade. CI runs it only on an empty
+# throwaway database; on a real one take a backup first.
 def downgrade() -> None:
     op.execute("DELETE FROM connector_items WHERE kind = 'code'")
     op.drop_constraint("ck_connector_items_kind", "connector_items", type_="check")

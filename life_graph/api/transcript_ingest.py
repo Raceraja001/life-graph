@@ -12,11 +12,14 @@ AI preference-extraction feature. See task-5-report.md for details.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import uuid
 
 from fastapi import APIRouter, HTTPException
 from minio.error import S3Error
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.extraction.transcript_parsers import PARSERS
@@ -41,46 +44,71 @@ async def ingest_external_transcript(payload: TranscriptSessionIngest) -> dict:
 
     tenant_id = get_current_tenant_id()
     minio = MinIOStorage()
+    now = _utcnow()
+    staging_key = f"staging/{tenant_id}/{payload.tool}/{payload.session_id}.ndjson"
 
     async with async_session() as session:
-        rows = await session.execute(
-            select(ExternalSession).where(
-                ExternalSession.tenant_id == tenant_id,
-                ExternalSession.tool == payload.tool,
-                ExternalSession.external_id == payload.session_id,
-            )
-        )
-        es = rows.scalars().first()
-        staging_key = f"staging/{tenant_id}/{payload.tool}/{payload.session_id}.ndjson"
-        if es is None:
-            es = ExternalSession(
+        # Upsert, so two first batches for a new session cannot both INSERT
+        # (uq_external_session) and fail one of them.
+        await session.execute(
+            pg_insert(ExternalSession)
+            .values(
+                id=uuid.uuid4(),
                 tenant_id=tenant_id,
                 tool=payload.tool,
                 external_id=payload.session_id,
                 source_path=payload.source_path,
                 raw_key=staging_key,
+                line_count=0,
+                last_turn_index=0,
+                created_at=now,
+                updated_at=now,
             )
-            session.add(es)
-        else:
-            es.source_path = payload.source_path
-            es.updated_at = _utcnow()
+            .on_conflict_do_nothing(index_elements=["tenant_id", "tool", "external_id"])
+        )
+        # Row lock for the whole read-append-write (audit M19). Without it two
+        # concurrent batches for one session both read the same staging object
+        # and line_count, and the later write dropped the other's lines.
+        es = (
+            await session.execute(
+                select(ExternalSession)
+                .where(
+                    ExternalSession.tenant_id == tenant_id,
+                    ExternalSession.tool == payload.tool,
+                    ExternalSession.external_id == payload.session_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one()
+        es.source_path = payload.source_path
+        es.updated_at = now
         # The column is nullable but the insert above is the only writer and
         # always sets it. A row without one (hand-edited) gets the key it
         # would have had, instead of minio.upload(key=None) failing below.
         if not es.raw_key:
             es.raw_key = staging_key
 
-        # Read-append-write the raw staging object (sequential per session).
-        # Only a genuinely-absent staging object (first write for this session)
-        # may fall back to an empty base — any other download failure must
-        # propagate, or a transient outage would silently overwrite previously
-        # staged lines. NoSuchKey = object not written yet; NoSuchBucket = the
-        # bucket doesn't exist yet on a fresh deploy (upload()'s ensure_bucket
-        # creates it on the write below), so both mean "nothing staged yet".
+        # Read-append-write the raw staging object (serialised per session by
+        # the lock above). Only a genuinely-absent staging object (first write
+        # for this session) may fall back to an empty base — any other download
+        # failure must propagate, or a transient outage would silently
+        # overwrite previously staged lines. NoSuchKey = object not written
+        # yet; NoSuchBucket = the bucket doesn't exist yet on a fresh deploy
+        # (upload()'s ensure_bucket creates it on the write below), so both
+        # mean "nothing staged yet".
+        #
+        # The MinIO client is synchronous, so both calls run in a worker
+        # thread instead of stalling the event loop.
+        #
+        # Still O(total size) per batch: the whole object is re-uploaded each
+        # time. Append-only chunk objects would fix that, but the distiller
+        # re-parses the whole transcript by turn index, so it would need a
+        # chunk-listing reader and a migration of existing staging objects;
+        # left for a separate change.
         existing = b""
         if es.raw_key:
             try:
-                existing = minio.download(ARCHIVE_BUCKET, es.raw_key)
+                existing = await asyncio.to_thread(minio.download, ARCHIVE_BUCKET, es.raw_key)
             except S3Error as exc:
                 if exc.code not in ("NoSuchKey", "NoSuchBucket"):
                     raise
@@ -90,7 +118,9 @@ async def ingest_external_transcript(payload: TranscriptSessionIngest) -> dict:
         # This bucket MUST remain private. It can't be truncated after a distill
         # pass today, since the distiller re-parses the whole object and indexes by
         # turn count; a future byte/line-offset marker would allow safe truncation.
-        minio.upload(ARCHIVE_BUCKET, es.raw_key, appended, content_type="application/x-ndjson")
+        await asyncio.to_thread(
+            minio.upload, ARCHIVE_BUCKET, es.raw_key, appended, content_type="application/x-ndjson"
+        )
         es.line_count = (es.line_count or 0) + len(payload.lines)
 
         await session.commit()
@@ -107,15 +137,10 @@ async def ingest_external_transcript(payload: TranscriptSessionIngest) -> dict:
 
     if should_enqueue:
         try:
-            from arq import create_pool
+            from life_graph.runtime import get_arq_pool
 
-            from life_graph.workers.settings import parse_redis_settings
-
-            pool = await create_pool(parse_redis_settings())
-            try:
-                await pool.enqueue_job(DISTILL_JOB, payload.session_id, tenant_id)
-            finally:
-                await pool.close()
+            pool = await get_arq_pool()
+            await pool.enqueue_job(DISTILL_JOB, payload.session_id, tenant_id)
         except Exception:  # pragma: no cover - enqueue best-effort
             logger.exception("Failed to enqueue distill_transcript for %s", payload.session_id)
 

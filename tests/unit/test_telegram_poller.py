@@ -229,6 +229,35 @@ async def test_no_token_means_the_bridge_simply_does_not_start(monkeypatch):
     assert poller.status == "stopped"
 
 
+@pytest.mark.asyncio
+async def test_the_lease_is_renewed_per_update_and_a_lost_lease_stops_the_batch(token, monkeypatch):
+    """Audit M9: the lease was renewed once per batch, so slow handlers could
+    outlast it while a standby took over and handled the same updates. It is
+    now renewed before every update, and a lost lease abandons the rest of
+    the batch (the new holder replays it from the stored offset)."""
+    handled: list[int] = []
+    stored: list[int] = []
+    lease_answers = iter([True, True, True, False])  # loop start, u1, u2, u3 -> lost
+    lease_calls: list[int] = []
+
+    async def lease():
+        lease_calls.append(1)
+        return next(lease_answers, False)
+
+    async def dispatch(update):
+        handled.append(update["update_id"])
+
+    poller = TelegramPoller(client=FakeClient([[_update(1), _update(2), _update(3)]]))
+    monkeypatch.setattr(poller, "_acquire_lease", lease)
+    monkeypatch.setattr(poller, "_load_offset", _async_none)
+    monkeypatch.setattr(poller, "_store_offset", lambda o: _record(stored, o))
+    monkeypatch.setattr(poller, "_dispatch", dispatch)
+
+    await _run_until(poller, lambda: len(lease_calls) >= 5)
+    assert handled == [1, 2], "update 3 came after the lease was lost"
+    assert stored == [2, 3], "the offset stops at the last update actually handled"
+
+
 # ── Helpers ───────────────────────────────────────────────────────
 
 

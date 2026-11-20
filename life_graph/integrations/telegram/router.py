@@ -124,6 +124,12 @@ async def handle_message(msg: dict[str, Any], session: AsyncSession) -> None:
         return
 
     await service.touch(chat_id)
+    # Commit now (audit H7 follow-up). Chat replies, media and most commands
+    # never commit this session, so the binding row stayed locked by the
+    # UPDATE above, idle in transaction, across the agent answer (up to
+    # telegram_ask_timeout_seconds), transcription and OCR, and last_seen_at
+    # was then rolled back when the session closed.
+    await session.commit()
 
     # Past this point the message has a tenant, so give the storage layer one.
     with tenant_scope(tenant_id, "telegram"):

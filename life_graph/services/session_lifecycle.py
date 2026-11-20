@@ -55,7 +55,12 @@ class SessionAlreadyEndedError(SessionCloseError):
     status = 409
 
 
-async def own_session(db: Any, session_id: uuid.UUID) -> Session:
+def _refuse_if_ended(sess: Session, session_id: uuid.UUID) -> None:
+    if sess.ended_at is not None:
+        raise SessionAlreadyEndedError(f"Session {session_id} already ended")
+
+
+async def own_session(db: Any, session_id: uuid.UUID, *, for_update: bool = False) -> Session:
     """Load *session_id* if it belongs to the current tenant.
 
     end/get/heartbeat used ``db.get(Session, id)``, which is a primary-key
@@ -67,12 +72,13 @@ async def own_session(db: Any, session_id: uuid.UUID) -> Session:
     Raises:
         SessionNotFoundError: Missing or another tenant's.
     """
-    sess = await db.scalar(
-        select(Session).where(
-            Session.id == session_id,
-            Session.tenant_id == get_current_tenant_id(),
-        )
+    stmt = select(Session).where(
+        Session.id == session_id,
+        Session.tenant_id == get_current_tenant_id(),
     )
+    if for_update:
+        stmt = stmt.with_for_update()
+    sess = await db.scalar(stmt)
     if sess is None:
         raise SessionNotFoundError(f"Session {session_id} not found")
     return sess
@@ -110,18 +116,31 @@ async def close_session(
     Raises:
         SessionNotFoundError: Missing or another tenant's session.
         SessionAlreadyEndedError: Already ended.
+
+    The summary is generated with no transaction open (audit H7): read and
+    close, ask the model, then reopen, lock the row and write. The "already
+    ended" check is repeated under that lock, so two concurrent ends give one
+    success and one SessionAlreadyEndedError instead of both writing.
     """
     summarize = summarize or generate_summary
+    given = (summary or "").strip()
+
     async with async_session() as db:
         sess = await own_session(db, session_id)
+        _refuse_if_ended(sess, session_id)
+        memory_count = await db.scalar(created_count_stmt(session_id)) or 0
+    # Transaction closed: the LLM call below may take minutes on a local model.
 
-        if sess.ended_at is not None:
-            raise SessionAlreadyEndedError(f"Session {session_id} already ended")
+    generated = None if given else await summarize(sess, memory_count)
 
+    async with async_session() as db:
+        sess = await own_session(db, session_id, for_update=True)
+        _refuse_if_ended(sess, session_id)
+        # Recounted under the lock: memories stored while the summary was
+        # being written still belong to this session.
         memory_count = await db.scalar(created_count_stmt(session_id)) or 0
 
-        given = (summary or "").strip()
-        sess.summary = given or await summarize(sess, memory_count)
+        sess.summary = given or generated
         sess.ended_at = datetime.now(UTC)
         sess.memories_created = memory_count
 

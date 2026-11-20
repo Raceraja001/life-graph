@@ -11,6 +11,8 @@ and its correctness is a database constraint, not a branch.
 
 from __future__ import annotations
 
+import itertools
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select
@@ -72,9 +74,15 @@ async def bound_chat():
     await _purge()
 
 
+# Telegram numbers messages uniquely per chat, and since migration 062 the
+# capture spine stores one capture per (chat, message): two different texts
+# under one id would be a replay, not two messages.
+_MESSAGE_IDS = itertools.count(1)
+
+
 def _msg(text: str, chat_id: int = CHAT, chat_type: str = "private", **extra) -> dict:
     msg = {
-        "message_id": 1,
+        "message_id": next(_MESSAGE_IDS),
         "chat": {"id": chat_id, "type": chat_type},
         "text": text,
     }
@@ -363,6 +371,24 @@ async def test_two_different_messages_are_still_two_captures(bound_chat, replies
         )
 
     assert len(await _events()) == 2
+
+
+@pytest.mark.asyncio
+@skip_on_db_error
+async def test_a_command_commits_last_seen_and_holds_no_transaction(bound_chat, replies):
+    """Audit H7 follow-up: commands, chat replies and media never committed the
+    poller's session, so the binding row stayed locked idle-in-transaction
+    across the slow part (agent answer, transcription) and ``last_seen_at``
+    was rolled back afterwards."""
+    async with async_session() as session:
+        await tg_router.handle_update({"update_id": 90004, "message": _msg("/help")}, session)
+        assert not session.in_transaction(), "the poller session was left mid-transaction"
+
+    async with async_session() as session:
+        seen = await session.scalar(
+            select(TelegramBinding.last_seen_at).where(TelegramBinding.chat_id == CHAT)
+        )
+    assert seen is not None
 
 
 # ── Conversation (docs/specs/assistant-capabilities.md, Phase F) ──
