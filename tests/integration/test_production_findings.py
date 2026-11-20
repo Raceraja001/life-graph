@@ -95,11 +95,18 @@ async def test_a_reported_failure_queues_one_fix_task_and_dedupes_the_repeat(ten
 @pytest.mark.asyncio
 @skip_on_db_error
 async def test_a_failing_smoke_check_rolls_back_and_files_a_fix(tenant, tmp_path):
+    from life_graph.kernel.project_registry import approve_commands, command_sha256
     from life_graph.models.db import Approval
     from life_graph.services.approvals import ApprovalService
     from life_graph.storage.database import async_session
 
-    pid = await _project(tenant, tmp_path)
+    commands = {
+        "deploy_command": "echo deployed > deployed.txt",
+        "smoke_command": "echo smoke broke; exit 3",
+        "rollback_command": "rm deployed.txt && echo rolled",
+    }
+    # The owner saved these commands, so they are approved (H2, audit 2026-11-19).
+    pid = await _project(tenant, tmp_path, **approve_commands(commands, "owner:test"))
     async with async_session() as s:
         appr = Approval(
             tenant_id=tenant,
@@ -112,9 +119,8 @@ async def test_a_failing_smoke_check_rolls_back_and_files_a_fix(tenant, tmp_path
                 "project_id": str(pid),
                 "repo_path": str(tmp_path),
                 "merge_commit": "abc12345",
-                "deploy_command": "echo deployed > deployed.txt",
-                "smoke_command": "echo smoke broke; exit 3",
-                "rollback_command": "rm deployed.txt && echo rolled",
+                **commands,
+                "command_sha256": {k: command_sha256(v) for k, v in commands.items()},
             },
         )
         s.add(appr)
