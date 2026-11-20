@@ -53,6 +53,14 @@ class DelegationDepthError(ValueError):
     """Delegating would nest a task deeper than DelegationEngine.MAX_DEPTH."""
 
 
+# A task in one of these is finished; anything else (queued, running, or a
+# status added later) is still open and must be cancelled with its parent.
+# AgentTask rows start "queued" (models/agents.py): the cascade used to match
+# only pending|running, so a queued child -- every child not yet picked up --
+# survived its parent's cancel and ran anyway.
+TERMINAL_TASK_STATUSES = frozenset({"completed", "failed", "cancelled", "timeout"})
+
+
 class DelegationEngine:
     """Manages hierarchical agent task delegation."""
 
@@ -81,14 +89,18 @@ class DelegationEngine:
                 assigned_agent=data.get("assigned_agent"),
                 created_by_agent=data.get("created_by_agent"),
                 project_id=data.get("project_id"),
-                priority=data.get("priority", "medium"),
+                # low|normal|high|critical (AgentTaskPriority); "medium" was
+                # outside that set and failed the response model's Literal.
+                priority=data.get("priority") or "normal",
                 timeout_seconds=data.get("timeout_seconds", 3600),
                 max_retries=data.get("max_retries", 2),
                 on_child_failure=data.get("on_child_failure", "continue"),
                 deadline=data.get("deadline"),
                 tags=data.get("tags"),
                 properties=data.get("properties", {}),
-                status_history=[{"status": "pending", "at": datetime.now(UTC).isoformat()}],
+                # The row's real first status (the column default), not "pending".
+                status="queued",
+                status_history=[{"status": "queued", "at": datetime.now(UTC).isoformat()}],
             )
 
             parent_id = data.get("parent_task_id")
@@ -159,7 +171,7 @@ class DelegationEngine:
                 parent = await session.get(AgentTask, task.parent_task_id)
                 if parent and parent.on_child_failure == "abort":
                     for s in siblings:
-                        if s.status in ("pending", "running"):
+                        if s.status not in TERMINAL_TASK_STATUSES:
                             s.status = "cancelled"
                             s.cancel_reason = "Parent aborted on child failure"
                     await session.commit()
@@ -203,29 +215,49 @@ class DelegationEngine:
             history.append({"status": "cancelled", "at": now.isoformat(), "reason": reason})
             task.status_history = history
 
-            children = (
-                (
-                    await session.execute(
-                        select(AgentTask).where(
-                            and_(
-                                AgentTask.parent_task_id == task_id,
-                                AgentTask.tenant_id == tenant_id,
-                                AgentTask.status.in_(["pending", "running"]),
+            # Every open descendant, not just direct children: a grandchild
+            # under an already-finished child would otherwise keep running.
+            frontier = [task_id]
+            while frontier:
+                children = (
+                    (
+                        await session.execute(
+                            select(AgentTask).where(
+                                and_(
+                                    AgentTask.parent_task_id.in_(frontier),
+                                    AgentTask.tenant_id == tenant_id,
+                                )
                             )
                         )
                     )
+                    .scalars()
+                    .all()
                 )
-                .scalars()
-                .all()
-            )
-
-            for child in children:
-                child.status = "cancelled"
-                child.cancel_reason = f"Parent {task_id} cancelled"
-                child.completed_at = now
+                frontier = [c.id for c in children]
+                for child in children:
+                    if child.status in TERMINAL_TASK_STATUSES:
+                        continue
+                    child.status = "cancelled"
+                    child.cancel_reason = f"Parent {task_id} cancelled"
+                    child.completed_at = now
+                    child_history = list(child.status_history or [])
+                    child_history.append(
+                        {
+                            "status": "cancelled",
+                            "at": now.isoformat(),
+                            "reason": child.cancel_reason,
+                        }
+                    )
+                    child.status_history = child_history
 
             await session.commit()
             await session.refresh(task)
+
+            # TODO(p2final, after #306 merges): a cancelled task (and each
+            # cancelled descendant) must also lose its live capabilities --
+            # call autonomy/kill_switch.revoke_live_capabilities here, as the
+            # kernel cancel path will. #306 was not on master when this was
+            # written; the lead wires it.
 
             await event_bus.emit(
                 EventType.TASK_AGENT_CANCELLED,
