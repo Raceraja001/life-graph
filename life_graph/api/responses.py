@@ -17,7 +17,7 @@ from __future__ import annotations
 from http import HTTPStatus
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
+from pydantic import BaseModel, Field
 
 # The cursor helpers live in core/pagination.py so the storage layer can
 # decode a cursor without importing the API (audit M12). Re-exported here,
@@ -82,16 +82,7 @@ class Envelope(BaseModel, Generic[T]):
     """
 
     data: T
-    meta: dict[str, Any] | None = None
-
-    # No return annotation on purpose: pydantic would take it as the
-    # serialisation schema and the OpenAPI output would degrade to a bare object.
-    @model_serializer(mode="wrap")
-    def _omit_absent_meta(self, handler: SerializerFunctionWrapHandler):
-        out = handler(self)
-        if isinstance(out, dict) and out.get("meta") is None:
-            out.pop("meta", None)
-        return out
+    meta: dict[str, Any] | None = Field(None, exclude_if=lambda v: v is None)
 
 
 def success_response(
@@ -211,7 +202,7 @@ def http_error_body(
     request_id: str | None = None,
     *,
     code: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """The body for an ``HTTPException``: the error envelope plus ``detail``.
 
     ``{"error": {code, message, request_id}}`` is what api/responses.py has
