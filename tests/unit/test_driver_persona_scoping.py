@@ -368,10 +368,18 @@ async def test_local_driver_empty_allowlist_means_no_tools(fake_orchestrator, tm
 
 
 @pytest.mark.asyncio
-async def test_local_driver_without_allowlist_keeps_default_behavior(fake_orchestrator, tmp_path):
+async def test_local_driver_without_allowlist_keeps_default_behavior(
+    fake_orchestrator, tmp_path, monkeypatch
+):
     """allowed_tools=None => no tools= kwarg at all => the orchestrator resolves
-    the full registry, exactly as before this change."""
-    await LocalDriver().dispatch(_packet(), tmp_path)
+    the full registry, exactly as before this change -- on a model that stays
+    on the machine. (A cloud one loses the personal tools even unscoped:
+    tests/unit/test_resolve_run_tools.py.)"""
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "llm_fallback_chain", "")
+    monkeypatch.setattr(settings, "llm_paid_fallback_model", None)
+    await LocalDriver().dispatch(_packet(persona_model="ollama_chat/qwen3-coder:30b"), tmp_path)
 
     assert "tools" not in fake_orchestrator.calls[0]
 
