@@ -705,7 +705,9 @@ async def decay_trust_scores(ctx: dict) -> dict:
 
 
 async def check_approval_timeouts(ctx: dict) -> dict:
-    """Every 5 minutes: check and auto-approve expired approval entries."""
+    """Every 5 minutes: end passed notify-before windows (handed to the owner,
+    never auto-approved), mark old entries stale, and close feed copies the
+    queue left pending."""
     logger.info("Checking approval timeouts")
 
     from life_graph.config import settings
@@ -715,8 +717,14 @@ async def check_approval_timeouts(ctx: dict) -> dict:
         approval_service = get_approval_service()
         expired = await approval_service.check_expirations()
         stale = await approval_service.expire_stale(settings.autonomy_approval_stale_days)
-        logger.info("Approval timeout check: %d expired, %d stale", expired, stale)
-        return {"expired_count": expired, "stale_count": stale}
+        reconciled = await approval_service.reconcile_feed_copies()
+        logger.info(
+            "Approval timeout check: %d windows passed, %d stale, %d feed copies closed",
+            expired,
+            stale,
+            reconciled,
+        )
+        return {"expired_count": expired, "stale_count": stale, "reconciled_count": reconciled}
     except Exception:
         logger.exception("Approval timeout check failed")
         return {"status": "error"}

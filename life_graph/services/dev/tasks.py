@@ -1479,10 +1479,46 @@ async def request_cancel(
     which stops the agent's process group or container, and writes the final
     ``cancelled`` status. Returns the new state, or None when there is no such
     task for this tenant.
+
+    Either way the task's live capabilities (errand mandates bound to this
+    task id) are revoked once the cancel is recorded: an abandoned task must
+    not leave a mandate someone could still spend. The cancel stands even if
+    that fails; the state then says so (``capabilities_revoked: None`` and
+    ``revoke_error``) instead of looking like a clean cancel. Cancelling an
+    already-cancelled task revokes again (that is how a failed revocation is
+    retried); a task that finished any other way is left alone.
     """
+    pk = uuid.UUID(task_id)
+    state = await _request_cancel(session_factory, tenant_id, task_id, pk)
+    if state is None:
+        return state
+    if state.get("cancel") == "not_cancellable" and state.get("status") != "cancelled":
+        return state
+    from life_graph.autonomy.approvals.durable_store import StoreUnavailableError
+    from life_graph.autonomy.kill_switch import revoke_live_capabilities
+
+    try:
+        # The count is logged, not returned: the state's shape is a contract
+        # (drivers + kernel routes, MCP), and only a failure needs saying.
+        await revoke_live_capabilities(tenant_id, task_id)
+    except StoreUnavailableError as exc:
+        logger.error(
+            "Dev task %s cancelled, but revoking its live capabilities failed: %s", task_id, exc
+        )
+        state["capabilities_revoked"] = None
+        state["revoke_error"] = str(exc)
+    return state
+
+
+async def _request_cancel(
+    session_factory: async_sessionmaker[AsyncSession],
+    tenant_id: str,
+    task_id: str,
+    pk: uuid.UUID,
+) -> dict[str, Any] | None:
+    """:func:`request_cancel` without the capability revocation."""
     from life_graph.services.dev.runner import notify_runner
 
-    pk = uuid.UUID(task_id)
     async with session_factory() as session:
         task = (
             await session.execute(

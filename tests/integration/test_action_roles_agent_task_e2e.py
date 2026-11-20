@@ -391,6 +391,7 @@ async def test_approve_dispatches_agent_task_and_ends_success(monkeypatch):
         decision="approve",
         note=None,
         resolved_by="tester",
+        close_feed=False,
     )
     assert appr.status == "approved"
     assert result["status"] == "approved"

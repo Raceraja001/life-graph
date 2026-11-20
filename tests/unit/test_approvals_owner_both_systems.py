@@ -73,6 +73,13 @@ def queue_calls(monkeypatch):
     calls: list[dict] = []
 
     class _Service:
+        # No entry here has a feed copy, so the router resolves in the queue.
+        async def match_pending(self, tenant_id, filter_criteria):
+            return []
+
+        async def pending_feed_copies(self, tenant_id, entry_ids):
+            return {}
+
         async def resolve(self, **kw):
             calls.append({"op": "resolve", **kw})
 

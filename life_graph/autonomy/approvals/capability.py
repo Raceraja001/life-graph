@@ -650,11 +650,12 @@ class CapabilityStore:
     def revoke_all(self, *, tenant_id: str, task_id: str | None = None) -> int:
         """Revoke a tenant's capabilities (optionally one task's). Returns the count.
 
-        Meant for the kill switch and "stop this task" — a task that is being
-        abandoned should not leave a live mandate behind it — but neither
-        calls it yet: pausing autonomy (autonomy/kill_switch.py) does not
-        revoke capabilities today. With a durable backend, an unreachable
-        database raises ``StoreUnavailableError`` rather than returning 0.
+        Called by the kill switch (``POST /autonomy/safety/kill-switch/pause``)
+        and by cancelling a dev task (services/dev/tasks.py ``request_cancel``),
+        both through autonomy/kill_switch.py ``revoke_live_capabilities``: a
+        task that is being abandoned should not leave a live mandate behind
+        it. With a durable backend, an unreachable database raises
+        ``StoreUnavailableError`` rather than returning 0.
         """
         backend = self._durable
         if backend is not None:

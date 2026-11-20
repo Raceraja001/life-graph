@@ -6,10 +6,16 @@ Deliberately FAIL-CLOSED: unlike the tenant-status cache
 both of which fail OPEN on a DB error so a storage hiccup doesn't block normal
 work, a kill-switch that fails open when it can't reach the DB isn't a
 kill-switch. If we can't confirm autonomy is NOT paused, we treat it as paused.
+
+Pausing also revokes the tenant's live capabilities
+(:func:`revoke_live_capabilities`): a capability is the owner's mandate for an
+errand step (autonomy/approvals/capability.py), and errands do not go through
+``_run_action``, so without this a paused tenant's mandates stayed spendable.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -17,6 +23,32 @@ logger = logging.getLogger(__name__)
 
 _CACHE_TTL_SECONDS = 15.0
 _pause_cache: dict[str, tuple[float, bool]] = {}
+
+
+async def revoke_live_capabilities(tenant_id: str, task_id: str | None = None) -> int:
+    """Revoke the tenant's (or one task's) live capabilities. Returns how many.
+
+    Called when autonomy is paused and when a dev task is cancelled: a stop
+    must not leave a live mandate behind it. The durable store is
+    synchronous, so it runs in a worker thread.
+
+    Raises ``StoreUnavailableError`` when the store cannot be reached — never
+    0 for an outage. Callers stop first and revoke second (the stop must not
+    wait on, or fail with, the capability store), then report a failure here
+    loudly instead of passing it off as "nothing was live".
+    """
+    from life_graph.autonomy.approvals.capability import capability_store
+
+    count = await asyncio.to_thread(
+        capability_store.revoke_all, tenant_id=tenant_id, task_id=task_id
+    )
+    logger.info(
+        "Revoked %d live capabilities for tenant %s%s",
+        count,
+        tenant_id,
+        f" task {task_id}" if task_id else "",
+    )
+    return count
 
 
 def invalidate_autonomy_pause_cache(tenant_id: str) -> None:

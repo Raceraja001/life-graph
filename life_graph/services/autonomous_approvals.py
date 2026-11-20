@@ -100,6 +100,12 @@ class AutonomousApprovalProducer:
                     ).scalar_one_or_none()
                     if approval_entry is None:
                         return
+                    if getattr(approval_entry, "status", "pending") != "pending":
+                        # Decided before this event was handled: a pending copy
+                        # now would be a second, stale decision point. (A copy
+                        # that still slips in is closed by the queue's
+                        # reconcile_feed_copies sweep.)
+                        return
                     tenant_id = approval_entry.tenant_id
 
                     auto_action = (

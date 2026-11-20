@@ -373,7 +373,11 @@ def _batch_service(monkeypatch):
     batch = AsyncMock(return_value={"resolved_count": 0, "resolved_ids": []})
     monkeypatch.setattr(
         "life_graph.runtime.get_approval_service",
-        lambda: SimpleNamespace(batch_resolve=batch),
+        lambda: SimpleNamespace(
+            batch_resolve=batch,
+            match_pending=AsyncMock(return_value=[]),
+            pending_feed_copies=AsyncMock(return_value={}),
+        ),
     )
     return batch
 
@@ -449,17 +453,21 @@ def _real_approval_service(monkeypatch, *results):
 
 
 async def test_a_caller_cannot_resolve_its_own_queue_entry(monkeypatch):
+    from sqlalchemy.sql.dml import Update
+
     from life_graph.autonomy.approvals import router
     from life_graph.autonomy.approvals.schemas import ResolveRequest
 
-    session = _real_approval_service(monkeypatch, _entry(SERVICE_LABEL))
+    # Results in order: the router's feed-copy lookup (none), the service's
+    # feed-copy lock (none), then the entry itself.
+    session = _real_approval_service(monkeypatch, [], [], _entry(SERVICE_LABEL))
     with tenant_scope("t1"), pytest.raises(HTTPException) as exc:
         await router.resolve_approval(
             "q1", ResolveRequest(decision="approve"), fake_request(api_key=SERVICE_KEY)
         )
     assert exc.value.status_code == 403
     assert session.commits == 0
-    assert len(session.statements) == 1  # the lookup; no update
+    assert not [s for s in session.statements if isinstance(s, Update)]  # lookups only
 
 
 @pytest.mark.parametrize(
@@ -476,7 +484,9 @@ async def test_resolving_someone_elses_or_an_unrecorded_entry_is_allowed(
     from life_graph.autonomy.approvals import router
     from life_graph.autonomy.approvals.schemas import ResolveRequest
 
-    session = _real_approval_service(monkeypatch, _entry(requested_by), [], [])
+    # The router's feed-copy lookup, the service's feed-copy lock, the entry,
+    # then the writes.
+    session = _real_approval_service(monkeypatch, [], [], _entry(requested_by), [], [])
     with tenant_scope("t1"):
         await router.resolve_approval(
             "q1", ResolveRequest(decision="approve"), fake_request(**request_kw)

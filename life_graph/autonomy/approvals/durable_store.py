@@ -397,9 +397,9 @@ class DurableCapabilityStore:
     def revoke_all(self, *, tenant_id: str, task_id: str | None = None) -> int:
         """Revoke a tenant's live capabilities (optionally one task's).
 
-        Meant for the kill switch and "stop this task", but not called by
-        either yet (pausing autonomy, autonomy/kill_switch.py, does not revoke
-        capabilities today). Tenant-scoped in the statement, not in the
+        Called by the kill switch's pause and by cancelling a dev task
+        (autonomy/kill_switch.py ``revoke_live_capabilities``). Tenant-scoped
+        in the statement, not in the
         caller: a missing filter here would be a cross-tenant revocation.
 
         Raises :class:`StoreUnavailableError` when the database cannot be
