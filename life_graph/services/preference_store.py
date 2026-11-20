@@ -17,6 +17,7 @@ from life_graph.core.events import EventType, event_bus
 from life_graph.models.db import Preference
 
 if TYPE_CHECKING:
+    import builtins
     import uuid
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -30,6 +31,9 @@ class PreferenceStore:
     """Manage preferences with embedding search, validation tracking,
     and confidence history.
     """
+
+    # Annotations after ``def list`` below spell ``builtins.list``: inside
+    # this class body a bare ``list`` is that method, not the type.
 
     def __init__(
         self,
@@ -233,7 +237,7 @@ class PreferenceStore:
         *,
         limit: int = 10,
         min_similarity: float = 0.3,
-    ) -> list[dict[str, Any]]:
+    ) -> builtins.list[dict[str, Any]]:
         """Search preferences using pgvector cosine similarity."""
         query_embedding = await self._embedding.embed_async(query)
         if not query_embedding:
@@ -261,7 +265,7 @@ class PreferenceStore:
 
     # ── Stale Preferences ────────────────────────────────────
 
-    async def get_stale(self, tenant_id: str, stale_days: int = 90) -> list[Preference]:
+    async def get_stale(self, tenant_id: str, stale_days: int = 90) -> builtins.list[Preference]:
         """Get preferences not validated in N days."""
         cutoff = datetime.now(UTC) - timedelta(days=stale_days)
         stmt = (

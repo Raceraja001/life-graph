@@ -11,6 +11,7 @@ input, not capture).
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
@@ -19,6 +20,9 @@ from life_graph.api.responses import success_response
 from life_graph.core.events import event_bus
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.minio_client import MinIOStorage
+
+if TYPE_CHECKING:
+    from life_graph.services.multimodal import MultiModalService
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +75,15 @@ def _validate_upload(file: UploadFile, data: bytes, allowed_types: set[str], lab
     return filename
 
 
-def _get_multimodal_service():
+_multimodal_service: MultiModalService | None = None
+
+
+def _get_multimodal_service() -> MultiModalService:
     """Lazy-build the MultiModalService singleton."""
+    global _multimodal_service
     from life_graph.services.multimodal import MultiModalService
 
-    if not hasattr(_get_multimodal_service, "_instance"):
+    if _multimodal_service is None:
         try:
             minio = MinIOStorage()
         except ImportError as err:
@@ -83,12 +91,12 @@ def _get_multimodal_service():
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="MinIO client (minio package) is not installed",
             ) from err
-        _get_multimodal_service._instance = MultiModalService(
+        _multimodal_service = MultiModalService(
             minio=minio,
             event_bus=event_bus,
             pipeline=get_extraction_pipeline(),
         )
-    return _get_multimodal_service._instance
+    return _multimodal_service
 
 
 @router.post(

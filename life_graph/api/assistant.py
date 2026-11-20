@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import CursorResult
 
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
@@ -317,10 +320,15 @@ async def delete_budget(category: str) -> dict[str, Any]:
 
     tenant_id = get_current_tenant_id()
     async with async_session() as session:
-        result = await session.execute(
-            delete(MoneyBudget).where(
-                MoneyBudget.tenant_id == tenant_id, MoneyBudget.category == category
-            )
+        # A DELETE returns a CursorResult (rowcount); execute() is typed as
+        # the general Result.
+        result = cast(
+            "CursorResult[Any]",
+            await session.execute(
+                delete(MoneyBudget).where(
+                    MoneyBudget.tenant_id == tenant_id, MoneyBudget.category == category
+                )
+            ),
         )
         await session.commit()
     if not result.rowcount:

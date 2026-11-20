@@ -56,7 +56,7 @@ async def memory_health() -> JSONResponse:
                 else {"status": "missing", "error": "the vector extension is not installed"}
             )
 
-            by_status = dict(
+            by_status: dict[str, int] = dict(
                 (
                     await session.execute(
                         text(
