@@ -19,7 +19,16 @@ import uuid
 from typing import Any
 
 from sqlalchemy import and_, delete, or_, select
+from sqlalchemy.exc import IntegrityError
 
+from life_graph.core.errors import (
+    FOREIGN_KEY_VIOLATION,
+    UNIQUE_VIOLATION,
+    ConflictError,
+    InvalidInputError,
+    NotFoundError,
+    sqlstate,
+)
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.db import Memory, MemoryLink
 from life_graph.storage.database import async_session
@@ -62,14 +71,17 @@ async def create_link(
         The created MemoryLink ORM instance.
 
     Raises:
-        ValueError: If link_type is invalid or source_id == target_id.
+        InvalidInputError: If link_type is invalid or source_id == target_id.
+        ConflictError: If this exact link (source, target, type) already exists.
+        NotFoundError: If either memory does not exist.
+        (All three are ValueErrors — core/errors.py.)
     """
     if link_type not in VALID_LINK_TYPES:
-        raise ValueError(
+        raise InvalidInputError(
             f"Invalid link_type '{link_type}'. Must be one of {sorted(VALID_LINK_TYPES)}"
         )
     if source_id == target_id:
-        raise ValueError("Cannot link a memory to itself")
+        raise InvalidInputError("Cannot link a memory to itself")
 
     async with async_session() as session:
         link = MemoryLink(
@@ -81,7 +93,20 @@ async def create_link(
             tenant_id=tenant_id,
         )
         session.add(link)
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError as exc:
+            # The SQLSTATE decides, not the message text (audit L3):
+            # UNIQUE(source_memory_id, target_memory_id, link_type) from
+            # migration 009, and the two foreign keys to memories.
+            state = sqlstate(exc)
+            if state == UNIQUE_VIOLATION:
+                raise ConflictError(
+                    "Link already exists between these memories with this type"
+                ) from exc
+            if state == FOREIGN_KEY_VIOLATION:
+                raise NotFoundError("Memory not found") from exc
+            raise
         await session.refresh(link)
 
     # Sync to AGE graph (best-effort)

@@ -540,7 +540,12 @@ async def draft_cards(body: DraftIn) -> dict[str, Any]:
             deck=body.deck,
         )
         await session.commit()
-    return success_response(out)
+    # No drafts because the local model failed is not "nothing to study":
+    # say so in meta rather than answering a silent empty list (audit M20).
+    meta = None
+    if out.pop("degraded", False):
+        meta = {"degraded": True, "degraded_reason": out.pop("degraded_reason", None)}
+    return success_response(out, meta=meta)
 
 
 @router.get("/study/drafts")

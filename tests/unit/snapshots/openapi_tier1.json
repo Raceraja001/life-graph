@@ -1,0 +1,2937 @@
+{
+ "paths": {
+  "/api/v1/graph/entities": {
+   "get": {
+    "description": "List all entities in the knowledge graph.\n\nOptionally filter by vertex label (e.g. ``Technology``, ``Person``).\n\nReturns an empty list with ``meta.graph_enabled = false`` when Apache AGE\nis not installed.",
+    "operationId": "list_entities_api_v1_graph_entities_get",
+    "parameters": [
+     {
+      "description": "Filter by vertex label",
+      "in": "query",
+      "name": "label",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Filter by vertex label",
+       "title": "Label"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_list_GraphEntity__"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List all graph entities",
+    "tags": [
+     "graph"
+    ]
+   }
+  },
+  "/api/v1/graph/entity/{name}": {
+   "get": {
+    "description": "Get full details for an entity including graph neighbors and related memories.\n\nThe memories half must answer, or this is a 503. The graph half may fail\nand leave neighbours empty: then ``meta.degraded`` is true and\n``meta.degraded_reasons`` says why, so an empty list is not mistaken for\n\"no neighbours\" (audit M20). Without Apache AGE the graph half is not\nattempted and ``meta.graph_enabled`` is false, as on the other routes.",
+    "operationId": "get_entity_api_v1_graph_entity__name__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "title": "Name",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_EntityContext_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get entity detail with neighbors",
+    "tags": [
+     "graph"
+    ]
+   }
+  },
+  "/api/v1/graph/path": {
+   "get": {
+    "description": "Find a connecting path between two entities in the knowledge graph.\n\nReturns ``found: false`` with ``meta.graph_enabled = false`` when Apache\nAGE is not installed.",
+    "operationId": "find_path_api_v1_graph_path_get",
+    "parameters": [
+     {
+      "description": "Source entity name",
+      "in": "query",
+      "name": "from_name",
+      "required": true,
+      "schema": {
+       "description": "Source entity name",
+       "title": "From Name",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Target entity name",
+      "in": "query",
+      "name": "to_name",
+      "required": true,
+      "schema": {
+       "description": "Target entity name",
+       "title": "To Name",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Source vertex label",
+      "in": "query",
+      "name": "from_label",
+      "required": false,
+      "schema": {
+       "default": "Entity",
+       "description": "Source vertex label",
+       "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+       "title": "From Label",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Target vertex label",
+      "in": "query",
+      "name": "to_label",
+      "required": false,
+      "schema": {
+       "default": "Entity",
+       "description": "Target vertex label",
+       "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+       "title": "To Label",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Maximum path depth",
+      "in": "query",
+      "name": "max_depth",
+      "required": false,
+      "schema": {
+       "default": 5,
+       "description": "Maximum path depth",
+       "maximum": 10,
+       "minimum": 1,
+       "title": "Max Depth",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_GraphPath_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Find path between two entities",
+    "tags": [
+     "graph"
+    ]
+   }
+  },
+  "/api/v1/graph/query": {
+   "post": {
+    "description": "Execute a raw Cypher query against the knowledge graph.\n\n**Admin-level endpoint** \u2014 allows arbitrary read queries.\nWrite operations (CREATE, SET, DELETE, MERGE, REMOVE, DROP) are blocked.\n\nReturns an empty list with ``meta.graph_enabled = false`` when Apache AGE\nis not installed. A malformed query against a working install is still 400.",
+    "operationId": "execute_cypher_api_v1_graph_query_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CypherQuery"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_list_Any__"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Execute a Cypher query",
+    "tags": [
+     "graph"
+    ]
+   }
+  },
+  "/api/v1/graph/search": {
+   "post": {
+    "description": "Run a hybrid search combining graph structure with vector similarity.\n\nThe graph narrows entity scope, then vector search refines\nby semantic similarity.",
+    "operationId": "hybrid_search_api_v1_graph_search_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GraphSearchRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_GraphSearchResult_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Hybrid graph + vector search",
+    "tags": [
+     "graph"
+    ]
+   }
+  },
+  "/api/v1/memories/": {
+   "get": {
+    "description": "List memories with optional status, tag, and importance filters.\n\nSupports both offset and cursor-based pagination. When a cursor is\nprovided, offset is ignored and keyset pagination is used for\nconsistent performance on large datasets.",
+    "operationId": "list_memories_api_v1_memories__get",
+    "parameters": [
+     {
+      "description": "Filter by status",
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Filter by status",
+       "title": "Status"
+      }
+     },
+     {
+      "description": "Comma-separated tags (array overlap)",
+      "in": "query",
+      "name": "tags",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Comma-separated tags (array overlap)",
+       "title": "Tags"
+      }
+     },
+     {
+      "description": "Minimum importance",
+      "in": "query",
+      "name": "min_importance",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maximum": 1.0,
+         "minimum": 0.0,
+         "type": "number"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Minimum importance",
+       "title": "Min Importance"
+      }
+     },
+     {
+      "description": "Max results",
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "description": "Max results",
+       "maximum": 100,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     },
+     {
+      "description": "Pagination offset",
+      "in": "query",
+      "name": "offset",
+      "required": false,
+      "schema": {
+       "default": 0,
+       "description": "Pagination offset",
+       "minimum": 0,
+       "title": "Offset",
+       "type": "integer"
+      }
+     },
+     {
+      "description": "Cursor for keyset pagination",
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Cursor for keyset pagination",
+       "title": "Cursor"
+      }
+     },
+     {
+      "description": "Include total count (may be slow)",
+      "in": "query",
+      "name": "include_total",
+      "required": false,
+      "schema": {
+       "default": false,
+       "description": "Include total count (may be slow)",
+       "title": "Include Total",
+       "type": "boolean"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_list_MemoryResponse__"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List memories with optional filters",
+    "tags": [
+     "memories"
+    ]
+   },
+   "post": {
+    "description": "Create one or more memories.\n\nIf the body contains free-form text, it is routed through the\nfull ingestion pipeline (extraction \u2192 importance scoring \u2192\ncontradiction detection \u2192 storage). Otherwise, the memory is\nstored directly.",
+    "operationId": "create_memory_api_v1_memories__post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MemoryCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "example": {
+         "data": [
+          {
+           "access_count": 3,
+           "content": "User prefers dark mode interfaces",
+           "created_at": "2026-07-05T12:00:00Z",
+           "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+           "importance": 0.75,
+           "source_type": "conversation",
+           "status": "active",
+           "tags": [
+            "preference",
+            "ui"
+           ],
+           "updated_at": "2026-07-05T12:00:00Z"
+          }
+         ]
+        },
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_list_MemoryResponse__"
+        }
+       }
+      },
+      "description": "Memories created from input"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create memories from text or structured input",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/memories/approvals/bulk": {
+   "post": {
+    "description": "Approve/reject memories in batch (distillation review will lean on this).",
+    "operationId": "bulk_approvals_api_v1_memories_approvals_bulk_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BulkApprovalBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_BulkApprovalResult_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Approve/reject memories in batch",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/memories/batch": {
+   "post": {
+    "description": "Fetch several memories by id in one round trip.\n\nThe expand half of progressive disclosure. A caller runs recall or search\nwith ``index_only`` \u2014 a compact ``{id, content, tags, score, status}``\nline per memory \u2014 then comes back here for the few it actually wants.\n\n**This is where surfacing is recorded.** The recall cooldown and the\naccess count (which feed decay and the ``frequency`` ranking signal) fire\non the expand, not on the index: an index-only recall discloses nothing,\nso recording it there would burn a week of cooldown and inflate\n``access_count`` on memories nobody read. Full (non-index) recall still\nrecords at recall time, because there the content *is* in the response.\n\nUnknown or other-tenant ids are silently absent from the result rather\nthan an error \u2014 ``meta.requested`` vs ``meta.found`` tells the caller.",
+    "operationId": "batch_get_memories_api_v1_memories_batch_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MemoryBatchRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_list_MemoryResponse__"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Expand memory ids to full memories (progressive-disclosure step 2)",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/memories/pending/count": {
+   "get": {
+    "description": "Number of memories awaiting approval for this tenant.",
+    "operationId": "pending_count_api_v1_memories_pending_count_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_PendingCount_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Count memories awaiting approval",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/memories/{memory_id}": {
+   "delete": {
+    "description": "Delete a memory and cascade to association tables.",
+    "operationId": "delete_memory_api_v1_memories__memory_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "memory_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Memory Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Delete a memory",
+    "tags": [
+     "memories"
+    ]
+   },
+   "get": {
+    "description": "Retrieve a single memory by its UUID.",
+    "operationId": "get_memory_api_v1_memories__memory_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "memory_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Memory Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_MemoryResponse_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get a memory by ID",
+    "tags": [
+     "memories"
+    ]
+   },
+   "patch": {
+    "description": "Apply a partial update to an existing memory.",
+    "operationId": "update_memory_api_v1_memories__memory_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "memory_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Memory Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MemoryUpdate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_MemoryResponse_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Update a memory",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/memories/{memory_id}/approve": {
+   "post": {
+    "description": "Approve a pending (or rejected) memory \u2014 it becomes active/usable.\n\n``confirm_as_owner_fact`` is the one field here that grants authority, so\nit is checked against the authenticated ingress and not against anything\nin the body: a third party, or an agent posting on behalf of a page it\nread, is refused (403) rather than obeyed.",
+    "operationId": "approve_memory_api_v1_memories__memory_id__approve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "memory_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Memory Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/ApproveBody"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_MemoryResponse_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Approve a memory",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/memories/{memory_id}/deny": {
+   "post": {
+    "description": "Mark a memory as superseded because the user says it is no longer true.\n\nIf a replacement string is provided, creates a new memory that\nsupersedes the old one (with full provenance chain). The old memory\nis kept in the supersession chain for history.",
+    "operationId": "deny_memory_api_v1_memories__memory_id__deny_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "memory_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Memory Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/DenyRequest"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_DenyResult_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Deny a memory \u2014 mark as no longer accurate",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/memories/{memory_id}/reinforce": {
+   "post": {
+    "description": "Confirm that a memory is still accurate.\n\nResets confidence to 0.9, updates last_reinforced timestamp,\nand increments the reinforcement counter. Use this when the\nsystem asks \"is this still true?\" and the user confirms.",
+    "operationId": "reinforce_memory_api_v1_memories__memory_id__reinforce_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "memory_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Memory Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_MemoryResponse_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reinforce a memory \u2014 confirm it is still accurate",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/memories/{memory_id}/reject": {
+   "post": {
+    "description": "Reject a pending memory \u2014 hidden everywhere, re-capture allowed.",
+    "operationId": "reject_memory_api_v1_memories__memory_id__reject_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "memory_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Memory Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_MemoryResponse_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reject a memory",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/memories/{memory_id}/unarchive": {
+   "post": {
+    "description": "Restore an archived memory back to active status.\n\nChanges the memory's status from 'archived' to 'active',\nmaking it available for search and recall again.",
+    "operationId": "unarchive_memory_api_v1_memories__memory_id__unarchive_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "memory_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Memory Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_MemoryResponse_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Unarchive a memory",
+    "tags": [
+     "memories"
+    ]
+   }
+  },
+  "/api/v1/search/": {
+   "post": {
+    "description": "Search memories using configurable strategy.\n\nModes:\n- ``vector``: Pure cosine similarity (fastest, semantic only)\n- ``hybrid``: Vector + BM25 keyword matching (default, best balance)\n- ``tri_hybrid``: Vector + BM25 + graph entity proximity (most comprehensive)",
+    "operationId": "semantic_search_api_v1_search__post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SearchQuery"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_SearchResult_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Search across memories (vector, hybrid, or tri-hybrid)",
+    "tags": [
+     "search"
+    ]
+   }
+  },
+  "/api/v1/search/ask": {
+   "post": {
+    "description": "Ask a natural language question and get a synthesized answer.\n\nRuns semantic search, then passes results to the LLM for synthesis.",
+    "operationId": "ask_brain_api_v1_search_ask_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/life_graph__api__search__AskRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_AskResponse_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Ask a question \u2014 get a synthesized answer from memories",
+    "tags": [
+     "search"
+    ]
+   }
+  },
+  "/api/v1/search/recall": {
+   "post": {
+    "description": "Surface relevant memories, decisions, intentions, and warnings.\n\nRuns the full proactive recall pipeline: retrieve \u2192 rank \u2192 rerank\n\u2192 anti-annoyance filtering \u2192 categorize.\n\nWith ``index_only``, returns a compact index instead of the four\npopulated buckets and records nothing \u2014 no cooldown, no access count.\nExpand what you want via ``POST /api/v1/memories/batch``, which is where\nthat bookkeeping then happens.",
+    "operationId": "session_start_recall_api_v1_search_recall_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RecallRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_RecallContext_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Proactive recall at session start",
+    "tags": [
+     "search"
+    ]
+   }
+  },
+  "/api/v1/search/recall/event": {
+   "post": {
+    "description": "Surface up to 2 relevant memories for a mid-session event.\n\nLighter than session-start recall \u2014 fewer candidates, smaller\nresult set, respects session surface cap.\n\n``index_only`` behaves as it does at session start: compact lines, and\nno surfacing recorded until the caller expands.",
+    "operationId": "mid_session_recall_api_v1_search_recall_event_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MidSessionRecallRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Envelope_Union_list_MemoryResponse___list_dict_str__Any____"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Mid-session event-driven recall",
+    "tags": [
+     "search"
+    ]
+   }
+  }
+ },
+ "schemas": {
+  "ApproveBody": {
+   "description": "Optional extras when keeping a memory.\n\n``confirm_as_owner_fact`` is the owner saying, of a memory that came from\noutside \u2014 a page an agent read, an email, an external MCP write \u2014 \"yes,\nthis is my own fact\": the one way such content reaches the always-loaded\nprofile card (core/evidence.py, learn-only-from-owner). It defaults to\noff, so an ordinary approve keeps a memory usable without ever promoting\noutside text to the owner's word.\n\nSetting it needs an owner-authenticated ingress \u2014 a paired phone's own\ntoken, or a key the deployment named as the owner's. Anyone else asking\nfor it gets 403 rather than a quiet downgrade: a caller that believes it\nis confirming an owner fact should be told it is not.",
+   "properties": {
+    "confirm_as_owner_fact": {
+     "default": false,
+     "title": "Confirm As Owner Fact",
+     "type": "boolean"
+    }
+   },
+   "title": "ApproveBody",
+   "type": "object"
+  },
+  "AskResponse": {
+   "description": "Response with synthesized answer.",
+   "properties": {
+    "abstained": {
+     "default": false,
+     "title": "Abstained",
+     "type": "boolean"
+    },
+    "abstention_reason": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Abstention Reason"
+    },
+    "answer": {
+     "title": "Answer",
+     "type": "string"
+    },
+    "answered": {
+     "default": true,
+     "description": "False when the retrieved memories did not answer the question and the model said so. Search always returns rows and no ranking signal separates a real hit from the closest of a bad lot (see evals/score-separability.md), so this is the only honest 'I don't know' the API offers \u2014 act on it rather than on `score`.",
+     "title": "Answered",
+     "type": "boolean"
+    },
+    "as_of": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "As Of"
+    },
+    "challenge_prompts": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Challenge Prompts",
+     "type": "array"
+    },
+    "claim_evidence": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Claim Evidence",
+     "type": "array"
+    },
+    "domains_covered": {
+     "additionalProperties": {
+      "type": "integer"
+     },
+     "title": "Domains Covered",
+     "type": "object"
+    },
+    "epistemic_status": {
+     "default": "explicitly_stated",
+     "description": "explicitly_stated, inferred, stale, contradicted, or unsupported",
+     "title": "Epistemic Status",
+     "type": "string"
+    },
+    "index": {
+     "default": [],
+     "items": {
+      "$ref": "#/components/schemas/MemoryIndexItem"
+     },
+     "title": "Index",
+     "type": "array"
+    },
+    "knowledge_gaps": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Knowledge Gaps",
+     "type": "array"
+    },
+    "memories": {
+     "default": [],
+     "items": {
+      "$ref": "#/components/schemas/MemoryResponse"
+     },
+     "title": "Memories",
+     "type": "array"
+    },
+    "model": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Model"
+    },
+    "query_time_ms": {
+     "default": 0.0,
+     "title": "Query Time Ms",
+     "type": "number"
+    },
+    "recorded_as_of": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Recorded As Of"
+    },
+    "result_mode": {
+     "default": "full",
+     "title": "Result Mode",
+     "type": "string"
+    },
+    "source_count": {
+     "title": "Source Count",
+     "type": "integer"
+    },
+    "source_lineage": {
+     "description": "Resolved evidence lineage for citations",
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Source Lineage",
+     "type": "array"
+    }
+   },
+   "required": [
+    "answer",
+    "source_count"
+   ],
+   "title": "AskResponse",
+   "type": "object"
+  },
+  "BulkApprovalBody": {
+   "description": "Payload for batch-approving/rejecting pending memories.",
+   "properties": {
+    "approve": {
+     "default": [],
+     "items": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "title": "Approve",
+     "type": "array"
+    },
+    "reject": {
+     "default": [],
+     "items": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "title": "Reject",
+     "type": "array"
+    }
+   },
+   "title": "BulkApprovalBody",
+   "type": "object"
+  },
+  "BulkApprovalResult": {
+   "description": "Outcome of a batch approve/reject: counts, and the ids that failed.",
+   "properties": {
+    "approved": {
+     "title": "Approved",
+     "type": "integer"
+    },
+    "errors": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Errors",
+     "type": "array"
+    },
+    "rejected": {
+     "title": "Rejected",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "approved",
+    "rejected",
+    "errors"
+   ],
+   "title": "BulkApprovalResult",
+   "type": "object"
+  },
+  "CypherQuery": {
+   "description": "Body for executing a raw Cypher query.",
+   "properties": {
+    "columns": {
+     "anyOf": [
+      {
+       "items": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+        "type": "string"
+       },
+       "maxItems": 32,
+       "minItems": 1,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Result column names (default: ['v'])",
+     "title": "Columns"
+    },
+    "cypher": {
+     "description": "Cypher query string",
+     "minLength": 1,
+     "title": "Cypher",
+     "type": "string"
+    },
+    "params": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional query parameters",
+     "title": "Params"
+    }
+   },
+   "required": [
+    "cypher"
+   ],
+   "title": "CypherQuery",
+   "type": "object"
+  },
+  "DenyRequest": {
+   "description": "Payload for denying a memory \u2014 optionally replacing it with a new fact.",
+   "properties": {
+    "replacement": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "New content that replaces the denied memory",
+     "title": "Replacement"
+    }
+   },
+   "title": "DenyRequest",
+   "type": "object"
+  },
+  "DenyResult": {
+   "description": "The denied memory, and the memory that replaces it when one was given.",
+   "properties": {
+    "denied": {
+     "$ref": "#/components/schemas/MemoryResponse"
+    },
+    "replacement": {
+     "anyOf": [
+      {
+       "$ref": "#/components/schemas/MemoryResponse"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "denied"
+   ],
+   "title": "DenyResult",
+   "type": "object"
+  },
+  "EntityContext": {
+   "description": "GET /graph/entity/{name}: the vertex, its neighbours, and memories naming it.",
+   "properties": {
+    "entity": {
+     "additionalProperties": true,
+     "title": "Entity",
+     "type": "object"
+    },
+    "memories": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Memories",
+     "type": "array"
+    },
+    "neighbors": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Neighbors",
+     "type": "array"
+    }
+   },
+   "required": [
+    "entity"
+   ],
+   "title": "EntityContext",
+   "type": "object"
+  },
+  "Envelope_AskResponse_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/AskResponse"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[AskResponse]",
+   "type": "object"
+  },
+  "Envelope_BulkApprovalResult_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/BulkApprovalResult"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[BulkApprovalResult]",
+   "type": "object"
+  },
+  "Envelope_DenyResult_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/DenyResult"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[DenyResult]",
+   "type": "object"
+  },
+  "Envelope_EntityContext_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/EntityContext"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[EntityContext]",
+   "type": "object"
+  },
+  "Envelope_GraphPath_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/GraphPath"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[GraphPath]",
+   "type": "object"
+  },
+  "Envelope_GraphSearchResult_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/GraphSearchResult"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[GraphSearchResult]",
+   "type": "object"
+  },
+  "Envelope_MemoryResponse_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/MemoryResponse"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[MemoryResponse]",
+   "type": "object"
+  },
+  "Envelope_PendingCount_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/PendingCount"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[PendingCount]",
+   "type": "object"
+  },
+  "Envelope_RecallContext_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/RecallContext"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[RecallContext]",
+   "type": "object"
+  },
+  "Envelope_SearchResult_": {
+   "properties": {
+    "data": {
+     "$ref": "#/components/schemas/SearchResult"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[SearchResult]",
+   "type": "object"
+  },
+  "Envelope_Union_list_MemoryResponse___list_dict_str__Any____": {
+   "properties": {
+    "data": {
+     "anyOf": [
+      {
+       "items": {
+        "$ref": "#/components/schemas/MemoryResponse"
+       },
+       "type": "array"
+      },
+      {
+       "items": {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       "type": "array"
+      }
+     ],
+     "title": "Data"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[Union[list[MemoryResponse], list[dict[str, Any]]]]",
+   "type": "object"
+  },
+  "Envelope_list_Any__": {
+   "properties": {
+    "data": {
+     "items": {},
+     "title": "Data",
+     "type": "array"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[list[Any]]",
+   "type": "object"
+  },
+  "Envelope_list_GraphEntity__": {
+   "properties": {
+    "data": {
+     "items": {
+      "$ref": "#/components/schemas/GraphEntity"
+     },
+     "title": "Data",
+     "type": "array"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[list[GraphEntity]]",
+   "type": "object"
+  },
+  "Envelope_list_MemoryResponse__": {
+   "properties": {
+    "data": {
+     "items": {
+      "$ref": "#/components/schemas/MemoryResponse"
+     },
+     "title": "Data",
+     "type": "array"
+    },
+    "meta": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Meta"
+    }
+   },
+   "required": [
+    "data"
+   ],
+   "title": "Envelope[list[MemoryResponse]]",
+   "type": "object"
+  },
+  "GraphEntity": {
+   "description": "Serialised graph entity (vertex).",
+   "properties": {
+    "label": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Label"
+    },
+    "name": {
+     "title": "Name",
+     "type": "string"
+    },
+    "properties": {
+     "additionalProperties": true,
+     "title": "Properties",
+     "type": "object"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "title": "GraphEntity",
+   "type": "object"
+  },
+  "GraphPath": {
+   "description": "GET /graph/path: the path found between two entities, if any.",
+   "properties": {
+    "found": {
+     "title": "Found",
+     "type": "boolean"
+    },
+    "from": {
+     "title": "From",
+     "type": "string"
+    },
+    "path": {
+     "items": {},
+     "title": "Path",
+     "type": "array"
+    },
+    "to": {
+     "title": "To",
+     "type": "string"
+    }
+   },
+   "required": [
+    "from",
+    "to",
+    "found"
+   ],
+   "title": "GraphPath",
+   "type": "object"
+  },
+  "GraphSearchRequest": {
+   "description": "Body for hybrid graph+vector search.",
+   "properties": {
+    "label": {
+     "anyOf": [
+      {
+       "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Filter by entity label",
+     "title": "Label"
+    },
+    "limit": {
+     "default": 10,
+     "description": "Max results",
+     "maximum": 100.0,
+     "minimum": 1.0,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "min_importance": {
+     "anyOf": [
+      {
+       "maximum": 1.0,
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Minimum importance threshold",
+     "title": "Min Importance"
+    },
+    "query": {
+     "description": "Natural language query",
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "GraphSearchRequest",
+   "type": "object"
+  },
+  "GraphSearchResult": {
+   "description": "Results from a hybrid graph+vector search.",
+   "properties": {
+    "entities": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Entities",
+     "type": "array"
+    },
+    "graph_context": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Graph Context",
+     "type": "array"
+    },
+    "memories": {
+     "items": {
+      "additionalProperties": true,
+      "type": "object"
+     },
+     "title": "Memories",
+     "type": "array"
+    }
+   },
+   "title": "GraphSearchResult",
+   "type": "object"
+  },
+  "HTTPValidationError": {
+   "properties": {
+    "detail": {
+     "items": {
+      "$ref": "#/components/schemas/ValidationError"
+     },
+     "title": "Detail",
+     "type": "array"
+    }
+   },
+   "title": "HTTPValidationError",
+   "type": "object"
+  },
+  "IntentionResponse": {
+   "description": "Serialized intention returned by the API.",
+   "properties": {
+    "content": {
+     "title": "Content",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "expires_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Expires At"
+    },
+    "id": {
+     "format": "uuid",
+     "title": "Id",
+     "type": "string"
+    },
+    "priority": {
+     "title": "Priority",
+     "type": "string"
+    },
+    "status": {
+     "title": "Status",
+     "type": "string"
+    },
+    "trigger_type": {
+     "title": "Trigger Type",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "content",
+    "trigger_type",
+    "status",
+    "priority",
+    "created_at"
+   ],
+   "title": "IntentionResponse",
+   "type": "object"
+  },
+  "MemoryBatchRequest": {
+   "description": "Payload for expanding a set of memory ids to full objects.",
+   "properties": {
+    "ids": {
+     "description": "Memory ids to expand (1\u201350)",
+     "items": {
+      "format": "uuid",
+      "type": "string"
+     },
+     "maxItems": 50,
+     "minItems": 1,
+     "title": "Ids",
+     "type": "array"
+    },
+    "record_access": {
+     "default": true,
+     "description": "Whether this expand counts as the memories being surfaced: writes the recall cooldown and increments access_count/last_accessed. On by default \u2014 expanding is the disclosure the bookkeeping is about. Turn it off for inspection that should leave no trace (dashboards, admin tooling).",
+     "title": "Record Access",
+     "type": "boolean"
+    },
+    "session_id": {
+     "anyOf": [
+      {
+       "format": "uuid",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional session this expand belongs to. With record_access on, the returned memories are linked to it as 'recalled' \u2014 the index-mode counterpart of passing session_id to recall, since here is where an index-mode disclosure happens.",
+     "title": "Session Id"
+    }
+   },
+   "required": [
+    "ids"
+   ],
+   "title": "MemoryBatchRequest",
+   "type": "object"
+  },
+  "MemoryCreate": {
+   "description": "Payload for creating a new memory.",
+   "properties": {
+    "content": {
+     "description": "The memory content text",
+     "minLength": 1,
+     "title": "Content",
+     "type": "string"
+    },
+    "importance": {
+     "anyOf": [
+      {
+       "maximum": 1.0,
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Importance score 0\u20131",
+     "title": "Importance"
+    },
+    "properties": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Schema-less JSONB properties",
+     "title": "Properties"
+    },
+    "reasoning": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Why this memory was captured",
+     "title": "Reasoning"
+    },
+    "skip_dedup": {
+     "default": false,
+     "description": "Skip deduplication check on ingest",
+     "title": "Skip Dedup",
+     "type": "boolean"
+    },
+    "source_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "e.g. explicit, inferred, cold_start",
+     "title": "Source Type"
+    },
+    "tags": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Free-form tags for categorization",
+     "title": "Tags"
+    }
+   },
+   "required": [
+    "content"
+   ],
+   "title": "MemoryCreate",
+   "type": "object"
+  },
+  "MemoryIndexItem": {
+   "description": "One line of a progressive-disclosure index.\n\nThe compact half of the recall contract: enough for a model to decide\nwhether it wants a memory, not enough to be the memory. ``content`` is\ntruncated; expand via ``POST /api/v1/memories/batch`` to get the full\n:class:`MemoryResponse`.\n\n``status`` is carried deliberately rather than dropped as bookkeeping \u2014\nit is the only handle callers (and the approval-gate tests) have on\nwhether an item is ``active`` or ``pending``.",
+   "properties": {
+    "content": {
+     "description": "Truncated memory content",
+     "title": "Content",
+     "type": "string"
+    },
+    "id": {
+     "format": "uuid",
+     "title": "Id",
+     "type": "string"
+    },
+    "score": {
+     "default": 0.0,
+     "description": "Ranking / relevance score",
+     "title": "Score",
+     "type": "number"
+    },
+    "status": {
+     "default": "active",
+     "title": "Status",
+     "type": "string"
+    },
+    "tags": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Tags",
+     "type": "array"
+    }
+   },
+   "required": [
+    "id",
+    "content"
+   ],
+   "title": "MemoryIndexItem",
+   "type": "object"
+  },
+  "MemoryResponse": {
+   "description": "Serialized memory returned by the API.",
+   "properties": {
+    "access_count": {
+     "title": "Access Count",
+     "type": "integer"
+    },
+    "confidence": {
+     "title": "Confidence",
+     "type": "number"
+    },
+    "content": {
+     "title": "Content",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "extraction_confidence": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Extraction Confidence"
+    },
+    "extraction_tier": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Extraction Tier"
+    },
+    "id": {
+     "format": "uuid",
+     "title": "Id",
+     "type": "string"
+    },
+    "impact_score": {
+     "default": 0.5,
+     "title": "Impact Score",
+     "type": "number"
+    },
+    "importance": {
+     "title": "Importance",
+     "type": "number"
+    },
+    "last_accessed": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Last Accessed"
+    },
+    "last_reinforced": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Last Reinforced"
+    },
+    "needs_verification": {
+     "default": false,
+     "title": "Needs Verification",
+     "type": "boolean"
+    },
+    "properties": {
+     "additionalProperties": true,
+     "title": "Properties",
+     "type": "object"
+    },
+    "reasoning": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Reasoning"
+    },
+    "reinforced_count": {
+     "default": 0,
+     "title": "Reinforced Count",
+     "type": "integer"
+    },
+    "score": {
+     "anyOf": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Relevance of this memory to the query that returned it, when it came from a search. None on every other path, where there is no query to be relevant to. ORDINAL, NOT CALIBRATED: it is the hybrid ranker's weighted sum of cosine similarity and ts_rank, so it orders results honestly but 0.6 means nothing on its own. Compare scores within one response; derive any threshold from measurement (see evals/) rather than picking a round number.",
+     "title": "Score"
+    },
+    "source_type": {
+     "title": "Source Type",
+     "type": "string"
+    },
+    "status": {
+     "title": "Status",
+     "type": "string"
+    },
+    "superseded_by": {
+     "anyOf": [
+      {
+       "format": "uuid",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Superseded By"
+    },
+    "supersedes": {
+     "anyOf": [
+      {
+       "format": "uuid",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Supersedes"
+    },
+    "tags": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Tags"
+    }
+   },
+   "required": [
+    "id",
+    "content",
+    "importance",
+    "confidence",
+    "source_type",
+    "created_at",
+    "status",
+    "access_count"
+   ],
+   "title": "MemoryResponse",
+   "type": "object"
+  },
+  "MemoryUpdate": {
+   "description": "Payload for updating an existing memory (partial update).",
+   "properties": {
+    "content": {
+     "anyOf": [
+      {
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Content"
+    },
+    "importance": {
+     "anyOf": [
+      {
+       "maximum": 1.0,
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Importance"
+    },
+    "properties": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Properties"
+    },
+    "reasoning": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Reasoning"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Status"
+    },
+    "tags": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "title": "Tags"
+    }
+   },
+   "title": "MemoryUpdate",
+   "type": "object"
+  },
+  "MidSessionRecallRequest": {
+   "description": "Body for mid-session event-driven recall.",
+   "properties": {
+    "context": {
+     "additionalProperties": true,
+     "description": "Current session context",
+     "title": "Context",
+     "type": "object"
+    },
+    "event": {
+     "description": "Event that triggered the recall",
+     "minLength": 1,
+     "title": "Event",
+     "type": "string"
+    },
+    "index_only": {
+     "default": false,
+     "description": "Opt-in: return a compact index (id, truncated content, tags, score, status) instead of full memory objects \u2014 roughly a tenth of the tokens. Off by default so existing callers keep the shape they parse today. Expand the ids you actually want via POST /api/v1/memories/batch, which is also where the recall cooldown and access count are recorded.",
+     "title": "Index Only",
+     "type": "boolean"
+    },
+    "session_id": {
+     "anyOf": [
+      {
+       "format": "uuid",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional: the session (from POST /api/v1/sessions/start) this recall belongs to. Delivered memories are linked to it as 'recalled', which is what outcome-based impact scoring reads when the session ends. Falls back to context['session_id']. In index mode the link is written at the expand step, like the cooldown.",
+     "title": "Session Id"
+    }
+   },
+   "required": [
+    "context",
+    "event"
+   ],
+   "title": "MidSessionRecallRequest",
+   "type": "object"
+  },
+  "PendingCount": {
+   "description": "How many memories await approval.",
+   "properties": {
+    "count": {
+     "title": "Count",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "count"
+   ],
+   "title": "PendingCount",
+   "type": "object"
+  },
+  "RecallContext": {
+   "description": "Bundled proactive recall payload pushed at session start.\n\nGroups memories by purpose so the agent can weigh them appropriately.",
+   "properties": {
+    "decisions": {
+     "description": "Relevant past decisions",
+     "items": {
+      "$ref": "#/components/schemas/MemoryResponse"
+     },
+     "title": "Decisions",
+     "type": "array"
+    },
+    "identity": {
+     "description": "Core identity / preference memories",
+     "items": {
+      "$ref": "#/components/schemas/MemoryResponse"
+     },
+     "title": "Identity",
+     "type": "array"
+    },
+    "index": {
+     "description": "Compact index, highest-scoring first, when index_only was requested. The buckets stay empty in that mode: categorising requires building the full objects the index exists to avoid. Tags carry the same signal the buckets are derived from.",
+     "items": {
+      "$ref": "#/components/schemas/MemoryIndexItem"
+     },
+     "title": "Index",
+     "type": "array"
+    },
+    "intentions": {
+     "description": "Pending intentions matching current context",
+     "items": {
+      "$ref": "#/components/schemas/IntentionResponse"
+     },
+     "title": "Intentions",
+     "type": "array"
+    },
+    "result_mode": {
+     "default": "full",
+     "description": "'full' = the four buckets are populated; 'index' = `index` is",
+     "title": "Result Mode",
+     "type": "string"
+    },
+    "warnings": {
+     "description": "Contradictions, lessons learned, caveats",
+     "items": {
+      "$ref": "#/components/schemas/MemoryResponse"
+     },
+     "title": "Warnings",
+     "type": "array"
+    }
+   },
+   "title": "RecallContext",
+   "type": "object"
+  },
+  "RecallRequest": {
+   "description": "Body for session-start proactive recall.",
+   "properties": {
+    "context": {
+     "additionalProperties": true,
+     "description": "Session context (project, tools, files, etc.)",
+     "title": "Context",
+     "type": "object"
+    },
+    "index_only": {
+     "default": false,
+     "description": "Opt-in: return a compact index (id, truncated content, tags, score, status) instead of full memory objects \u2014 roughly a tenth of the tokens. Off by default so existing callers keep the shape they parse today. Expand the ids you actually want via POST /api/v1/memories/batch, which is also where the recall cooldown and access count are recorded.",
+     "title": "Index Only",
+     "type": "boolean"
+    },
+    "session_id": {
+     "anyOf": [
+      {
+       "format": "uuid",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional: the session (from POST /api/v1/sessions/start) this recall belongs to. Delivered memories are linked to it as 'recalled', which is what outcome-based impact scoring reads when the session ends. Falls back to context['session_id']. In index mode the link is written at the expand step, like the cooldown.",
+     "title": "Session Id"
+    }
+   },
+   "required": [
+    "context"
+   ],
+   "title": "RecallRequest",
+   "type": "object"
+  },
+  "SearchQuery": {
+   "description": "Parameters for a semantic / filtered memory search.",
+   "properties": {
+    "created_after": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Only memories created after this timestamp",
+     "title": "Created After"
+    },
+    "created_before": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Only memories created before this timestamp",
+     "title": "Created Before"
+    },
+    "filters": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional structured filters (status, properties, etc.)",
+     "title": "Filters"
+    },
+    "include_pending": {
+     "default": false,
+     "description": "Opt-in: also include 'pending' (unapproved) memories. Off by default so agent/automation callers (e.g. the MCP search tool) never see unapproved content; the dashboard sets this explicitly to show pending items (badged).",
+     "title": "Include Pending",
+     "type": "boolean"
+    },
+    "include_trail": {
+     "default": false,
+     "description": "Opt-in: also search the raw capture trail and return matching passages in `trail`. Extraction is lossy \u2014 the sentence a fact came from often answers a question the fact no longer can. Off by default so existing callers keep the shape they parse today.",
+     "title": "Include Trail",
+     "type": "boolean"
+    },
+    "index_only": {
+     "default": false,
+     "description": "Opt-in: return a compact index (id, truncated content, tags, score, status) instead of full memory objects, roughly a tenth of the tokens. Off by default so existing callers keep the shape they parse today; a model-facing caller should set it and expand the few ids it actually needs via POST /api/v1/memories/batch.",
+     "title": "Index Only",
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 10,
+     "description": "Max results to return",
+     "maximum": 100.0,
+     "minimum": 1.0,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "min_importance": {
+     "anyOf": [
+      {
+       "maximum": 1.0,
+       "minimum": 0.0,
+       "type": "number"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Minimum importance threshold",
+     "title": "Min Importance"
+    },
+    "query": {
+     "description": "Natural language search query",
+     "minLength": 1,
+     "title": "Query",
+     "type": "string"
+    },
+    "search_mode": {
+     "default": "hybrid",
+     "description": "Search strategy: 'vector' (cosine only), 'hybrid' (vector+BM25), 'tri_hybrid' (vector+BM25+graph), 'judged' (hybrid's candidates kept and ordered by the local relevance judge; may return none when nothing fits)",
+     "title": "Search Mode",
+     "type": "string"
+    },
+    "source_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Filter by source type (e.g. explicit, inferred, chat)",
+     "title": "Source Type"
+    },
+    "status": {
+     "default": "active",
+     "description": "Memory status filter (default: active only)",
+     "title": "Status",
+     "type": "string"
+    },
+    "tags": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Filter by tag overlap",
+     "title": "Tags"
+    }
+   },
+   "required": [
+    "query"
+   ],
+   "title": "SearchQuery",
+   "type": "object"
+  },
+  "SearchResult": {
+   "description": "Results of a memory search, including timing metadata.",
+   "properties": {
+    "index": {
+     "items": {
+      "$ref": "#/components/schemas/MemoryIndexItem"
+     },
+     "title": "Index",
+     "type": "array"
+    },
+    "memories": {
+     "items": {
+      "$ref": "#/components/schemas/MemoryResponse"
+     },
+     "title": "Memories",
+     "type": "array"
+    },
+    "query_time_ms": {
+     "title": "Query Time Ms",
+     "type": "number"
+    },
+    "result_mode": {
+     "default": "full",
+     "title": "Result Mode",
+     "type": "string"
+    },
+    "search_mode": {
+     "default": "vector",
+     "title": "Search Mode",
+     "type": "string"
+    },
+    "total_count": {
+     "title": "Total Count",
+     "type": "integer"
+    },
+    "trail": {
+     "items": {
+      "$ref": "#/components/schemas/TrailPassage"
+     },
+     "title": "Trail",
+     "type": "array"
+    }
+   },
+   "required": [
+    "memories",
+    "total_count",
+    "query_time_ms"
+   ],
+   "title": "SearchResult",
+   "type": "object"
+  },
+  "TrailPassage": {
+   "description": "A verbatim passage from the capture trail, matched lexically.",
+   "properties": {
+    "capture_event_id": {
+     "title": "Capture Event Id",
+     "type": "string"
+    },
+    "created_at": {
+     "format": "date-time",
+     "title": "Created At",
+     "type": "string"
+    },
+    "excerpt": {
+     "title": "Excerpt",
+     "type": "string"
+    },
+    "rank": {
+     "title": "Rank",
+     "type": "number"
+    },
+    "surface": {
+     "title": "Surface",
+     "type": "string"
+    }
+   },
+   "required": [
+    "capture_event_id",
+    "surface",
+    "created_at",
+    "rank",
+    "excerpt"
+   ],
+   "title": "TrailPassage",
+   "type": "object"
+  },
+  "ValidationError": {
+   "properties": {
+    "ctx": {
+     "title": "Context",
+     "type": "object"
+    },
+    "input": {
+     "title": "Input"
+    },
+    "loc": {
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer"
+       }
+      ]
+     },
+     "title": "Location",
+     "type": "array"
+    },
+    "msg": {
+     "title": "Message",
+     "type": "string"
+    },
+    "type": {
+     "title": "Error Type",
+     "type": "string"
+    }
+   },
+   "required": [
+    "loc",
+    "msg",
+    "type"
+   ],
+   "title": "ValidationError",
+   "type": "object"
+  },
+  "life_graph__api__search__AskRequest": {
+   "description": "Body for natural language question.",
+   "properties": {
+    "as_of": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional UTC timestamp to answer as of a historical point in time.",
+     "title": "As Of"
+    },
+    "index_only": {
+     "default": false,
+     "description": "Opt-in: drop the source memories from the response and return a compact index of them instead. `answer` already summarises them, so returning both is near-pure duplication \u2014 the answer IS the disclosure. Off by default to keep the existing response shape.",
+     "title": "Index Only",
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 10,
+     "description": "Max memories to use",
+     "maximum": 50.0,
+     "minimum": 1.0,
+     "title": "Limit",
+     "type": "integer"
+    },
+    "min_confidence": {
+     "default": 0.0,
+     "description": "Minimum memory confidence required; below this, abstain without hallucinating.",
+     "maximum": 1.0,
+     "minimum": 0.0,
+     "title": "Min Confidence",
+     "type": "number"
+    },
+    "question": {
+     "description": "Natural language question",
+     "minLength": 1,
+     "title": "Question",
+     "type": "string"
+    },
+    "recorded_as_of": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional transaction-time timestamp; evaluates memories known/recorded by this point in time.",
+     "title": "Recorded As Of"
+    }
+   },
+   "required": [
+    "question"
+   ],
+   "title": "AskRequest",
+   "type": "object"
+  }
+ }
+}

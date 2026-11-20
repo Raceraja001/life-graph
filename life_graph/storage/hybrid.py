@@ -364,7 +364,27 @@ class HybridQueryEngine:
 
     # ── Entity Context ────────────────────────────────────────
 
-    async def entity_context(self, entity_name: str) -> dict[str, Any]:
+    _ENTITY_LABELS = ("Entity", "Technology", "Person", "Project", "Decision", "Concept", "Domain")
+
+    async def _entity_graph(
+        self, entity_name: str
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        """(vertex, neighbour properties) for *entity_name*; raises on graph errors."""
+        entity: dict[str, Any] | None = None
+        for label in self._ENTITY_LABELS:
+            entity = await self.graph_store.get_vertex(label, entity_name)
+            if entity:
+                break
+        if not entity:
+            return None, []
+        raw_neighbors = await self.graph_store.get_neighbors(
+            vertex_name=entity_name,
+            vertex_label=entity.get("label", "Entity"),
+            depth=2,
+        )
+        return entity, [n.get("properties", {}) for n in raw_neighbors]
+
+    async def entity_context(self, entity_name: str, *, use_graph: bool = True) -> dict[str, Any]:
         """Get full context for a named entity.
 
         Returns graph neighbors, related entities, and memories
@@ -372,90 +392,58 @@ class HybridQueryEngine:
 
         Args:
             entity_name: The name of the entity to look up.
+            use_graph: False when Apache AGE is not installed; the graph half
+                is skipped, not attempted and failed.
 
         Returns:
-            Dict with ``entity``, ``neighbors``, and ``memories``.
+            Dict with ``entity``, ``neighbors``, ``memories`` and ``degraded``:
+            reason codes for parts that failed and were left empty
+            (``"graph_query_failed"``); empty when everything answered.
+
+        Raises:
+            Exception: the memory lookup's error. Both failures used to be
+                swallowed, so a database outage answered 200 with no memories,
+                which reads as "nothing mentions this" (audit M20).
         """
-        # Graph lookup
         entity: dict[str, Any] | None = None
         neighbors: list[dict[str, Any]] = []
+        degraded: list[str] = []
 
-        try:
-            # Try multiple labels
-            for label in [
-                "Entity",
-                "Technology",
-                "Person",
-                "Project",
-                "Decision",
-                "Concept",
-                "Domain",
-            ]:
-                entity = await self.graph_store.get_vertex(label, entity_name)
-                if entity:
-                    break
+        if use_graph:
+            try:
+                entity, neighbors = await self._entity_graph(entity_name)
+            except Exception:
+                logger.warning("Graph lookup failed for entity %s", entity_name, exc_info=True)
+                degraded.append("graph_query_failed")
 
-            if entity:
-                # Get neighbors across all edge types
-                raw_neighbors = await self.graph_store.get_neighbors(
-                    vertex_name=entity_name,
-                    vertex_label=entity.get("label", "Entity"),
-                    depth=2,
-                )
-                neighbors = [n.get("properties", {}) for n in raw_neighbors]
+        # Memory lookup — memories that reference this entity. Not wrapped: a
+        # failure here is the request failing, not a partial answer.
+        def _row(r: Any) -> dict[str, Any]:
+            return {
+                "id": str(r.id),
+                "content": r.content,
+                "tags": r.tags,
+                "importance": r.importance,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
 
-        except Exception:
-            logger.warning(
-                "Graph lookup failed for entity %s",
-                entity_name,
-                exc_info=True,
-            )
+        rows, _has_more = await self.memory_store.list_memories(
+            filters={"tags": [entity_name], "status": "active"},
+            limit=20,
+        )
+        memories = [_row(r) for r in rows]
 
-        # Memory lookup — find memories that reference this entity
-        memories: list[dict[str, Any]] = []
-        try:
-            rows, _has_more = await self.memory_store.list_memories(
-                filters={"tags": [entity_name], "status": "active"},
-                limit=20,
-            )
-            memories = [
-                {
-                    "id": str(r.id),
-                    "content": r.content,
-                    "tags": r.tags,
-                    "importance": r.importance,
-                    "created_at": r.created_at.isoformat() if r.created_at else None,
-                }
-                for r in rows
-            ]
-
-            # Also search by properties.entities
-            prop_rows, _has_more = await self.memory_store.list_memories(
-                filters={"properties": {"entities": [entity_name]}, "status": "active"},
-                limit=20,
-            )
-            seen_ids = {m["id"] for m in memories}
-            for r in prop_rows:
-                if str(r.id) not in seen_ids:
-                    memories.append(
-                        {
-                            "id": str(r.id),
-                            "content": r.content,
-                            "tags": r.tags,
-                            "importance": r.importance,
-                            "created_at": r.created_at.isoformat() if r.created_at else None,
-                        }
-                    )
-
-        except Exception:
-            logger.warning(
-                "Memory lookup failed for entity %s",
-                entity_name,
-                exc_info=True,
-            )
+        # Also search by properties.entities
+        prop_rows, _has_more = await self.memory_store.list_memories(
+            filters={"properties": {"entities": [entity_name]}, "status": "active"},
+            limit=20,
+        )
+        seen_ids = {m["id"] for m in memories}
+        memories.extend(_row(r) for r in prop_rows if str(r.id) not in seen_ids)
 
         return {
             "entity": entity.get("properties", {}) if entity else {"name": entity_name},
             "neighbors": neighbors,
             "memories": memories,
+            "degraded": degraded,
         }

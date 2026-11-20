@@ -14,9 +14,10 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from life_graph.api import admin, agent, graph, identity, intentions, memories, search, sessions
 from life_graph.api.middleware import (
@@ -27,9 +28,10 @@ from life_graph.api.middleware import (
     TenantMiddleware,
 )
 from life_graph.api.multimodal import router as multimodal_router
-from life_graph.api.responses import InvalidCursorError, error_response
+from life_graph.api.responses import InvalidCursorError, error_response, http_error_body
 from life_graph.api.websocket import websocket_endpoint, ws_event_handler
 from life_graph.config import settings
+from life_graph.core.errors import DomainError
 from life_graph.core.events import enable_redis_bridge, event_bus
 from life_graph.core.logging import setup_logging
 from life_graph.core.plugins import PluginManager
@@ -643,12 +645,46 @@ app = FastAPI(
 # ── Global Exception Handlers ────────────────────────────────
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> Response:
+    """Every ``HTTPException`` answers in the documented error envelope (audit M2).
+
+    ``detail`` stays at the top level as well, unchanged, for the clients that
+    read FastAPI's original ``{"detail": ...}`` shape.
+    """
+    if exc.status_code in (204, 304):  # no body allowed, as Starlette's default
+        return Response(status_code=exc.status_code, headers=exc.headers)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=http_error_body(
+            exc.status_code, exc.detail, getattr(request.state, "request_id", None)
+        ),
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(DomainError)
+async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
+    """Domain exceptions (core/errors.py) map to 404/409/400 by type (audit L3)."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=http_error_body(
+            exc.status_code,
+            str(exc),
+            getattr(request.state, "request_id", None),
+            code=exc.code,
+        ),
+    )
+
+
 @app.exception_handler(InvalidCursorError)
 async def invalid_cursor_handler(request: Request, exc: InvalidCursorError) -> JSONResponse:
     """A malformed pagination cursor is client error, not a server fault."""
     return JSONResponse(
         status_code=422,
-        content={"detail": str(exc), "request_id": getattr(request.state, "request_id", None)},
+        content=http_error_body(
+            422, str(exc), getattr(request.state, "request_id", None), code="INVALID_CURSOR"
+        ),
     )
 
 
@@ -659,10 +695,8 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     logger.exception("Unhandled exception [rid=%s]: %s", request_id, exc)
     return JSONResponse(
         status_code=500,
-        content=error_response(
-            code="INTERNAL_ERROR",
-            message="An internal error occurred.",
-            request_id=request_id,
+        content=http_error_body(
+            500, "An internal error occurred.", request_id, code="INTERNAL_ERROR"
         ),
     )
 
@@ -678,15 +712,16 @@ async def validation_exception_handler(
         field = " → ".join(str(loc) for loc in error.get("loc", []))
         details.append({"field": field, "message": error.get("msg", "")})
 
-    return JSONResponse(
-        status_code=422,
-        content=error_response(
-            code="VALIDATION_ERROR",
-            message="Request validation failed.",
-            details=details,
-            request_id=request_id,
-        ),
+    content = error_response(
+        code="VALIDATION_ERROR",
+        message="Request validation failed.",
+        details=details,
+        request_id=request_id,
     )
+    # Same top-level ``detail`` as every other error (a string, so clients
+    # that show ``detail`` show the same message as ``error.message``).
+    content["detail"] = content["error"]["message"]
+    return JSONResponse(status_code=422, content=content)
 
 
 # ── Middleware stack (applied bottom-to-top) ──────────────────────

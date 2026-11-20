@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
+from life_graph.core.errors import NotFoundError
 from life_graph.core.events import EventBus, EventType
 from life_graph.models.db import InterviewQuestion, Prediction
 
@@ -94,7 +95,7 @@ class OutcomeResolver:
         prediction = result.scalars().first()
 
         if not prediction:
-            raise ValueError("Prediction not found")
+            raise NotFoundError("Prediction not found")
 
         if prediction.outcome == "suggested":
             raise ValueError("Prediction is still a suggestion; accept it before resolving it.")

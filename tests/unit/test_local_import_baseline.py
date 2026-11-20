@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[2] / "life_graph"
 # importing runtime may not load the worker/API packages). Net -2.
 BASELINE = {
     "agents": 4,
-    "api": 264,
+    "api": 263,
     "autonomy": 57,
     "cli": 23,
     "cold_start": 6,

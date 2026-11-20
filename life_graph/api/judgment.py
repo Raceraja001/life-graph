@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from life_graph.api.responses import success_response
+from life_graph.core.errors import DomainError
 from life_graph.core.events import event_bus
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.models.schemas import (
@@ -255,7 +256,7 @@ async def accept_prediction(
             domain_tags=body.domain_tags,
         )
     except ValueError as exc:
-        code = 404 if "not found" in str(exc).lower() else 400
+        code = exc.status_code if isinstance(exc, DomainError) else 400
         raise HTTPException(status_code=code, detail=str(exc)) from exc
     return success_response(data=PredictionResponse.model_validate(prediction))
 
@@ -273,7 +274,7 @@ async def dismiss_prediction(
     try:
         await svc.dismiss_suggestion(tenant_id, prediction_id)
     except ValueError as exc:
-        code = 404 if "not found" in str(exc).lower() else 400
+        code = exc.status_code if isinstance(exc, DomainError) else 400
         raise HTTPException(status_code=code, detail=str(exc)) from exc
     return success_response(data={"id": str(prediction_id), "dismissed": True})
 
@@ -311,10 +312,8 @@ async def resolve_prediction(
             )
             await session.commit()
         except ValueError as exc:
-            msg = str(exc)
-            if "not found" in msg.lower():
-                raise HTTPException(status_code=404, detail=msg) from exc
-            raise HTTPException(status_code=400, detail=msg) from exc
+            code = exc.status_code if isinstance(exc, DomainError) else 400
+            raise HTTPException(status_code=code, detail=str(exc)) from exc
 
     await _refresh_calibration(tenant_id)
     return success_response(data=PredictionResponse.model_validate(prediction))
@@ -527,9 +526,7 @@ async def resolve_challenge(
             action_taken=body.action_taken,
         )
     except ValueError as exc:
-        msg = str(exc)
-        if "not found" in msg.lower():
-            raise HTTPException(status_code=404, detail=msg) from exc
-        raise HTTPException(status_code=400, detail=msg) from exc
+        code = exc.status_code if isinstance(exc, DomainError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
 
     return success_response(data=ChallengeResponse.model_validate(challenge))

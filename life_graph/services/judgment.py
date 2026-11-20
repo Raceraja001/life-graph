@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 
+from life_graph.core.errors import NotFoundError
 from life_graph.core.events import Event, EventBus, EventType, event_bus
 from life_graph.models.db import Decision, Prediction
 from life_graph.storage.database import async_session
@@ -675,7 +676,7 @@ class JudgmentService:
         )
         prediction = result.scalars().first()
         if prediction is None:
-            raise ValueError("Prediction not found")
+            raise NotFoundError("Prediction not found")
         return prediction
 
     async def _emit_created(self, prediction: Prediction) -> None:

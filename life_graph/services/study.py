@@ -111,10 +111,27 @@ def schedule(
     return round(ease, 3), interval, reps, today + timedelta(days=interval)
 
 
+#: Why write_cards produced nothing although there was text to study
+#: (``meta.degraded_reason`` / ``degraded_reason`` on the result, audit M20).
+MODEL_UNAVAILABLE = "model_unavailable"
+MODEL_OUTPUT_INVALID = "model_output_invalid"
+
+
 async def write_cards(text: str, *, client=None) -> list[dict[str, str]]:
     """Cards for ``text`` from the local model; [] on failure."""
+    cards, _reason = await write_cards_checked(text, client=client)
+    return cards
+
+
+async def write_cards_checked(text: str, *, client=None) -> tuple[list[dict[str, str]], str | None]:
+    """(cards, failure reason) — the reason is None unless the model failed.
+
+    ``write_cards`` answers [] both for "the notes hold nothing worth a card"
+    and for "the local model is down", and callers reported the second as
+    the first. This tells them apart.
+    """
     if not text.strip():
-        return []
+        return [], None
     if client is None:
         from life_graph.runtime import get_lm_client
 
@@ -130,10 +147,18 @@ async def write_cards(text: str, *, client=None) -> list[dict[str, str]]:
             max_tokens=2000,
             response_format=_SCHEMA,
         )
-        cards = json.loads(raw).get("cards") if raw else None
     except Exception:
         logger.warning("Local flashcard generation failed", exc_info=True)
-        return []
+        return [], MODEL_UNAVAILABLE
+    try:
+        cards = json.loads(raw).get("cards") if raw else None
+    except (ValueError, AttributeError):
+        logger.warning("Local flashcard model returned unparseable output", exc_info=True)
+        return [], MODEL_OUTPUT_INVALID
+    return _clean_cards(cards), None
+
+
+def _clean_cards(cards: Any) -> list[dict[str, str]]:
     out = []
     for c in cards or []:
         if not isinstance(c, dict):
@@ -261,7 +286,7 @@ async def generate(
         source = await memories_about(session, tenant_id, topic)
         if not source:
             return {"written": 0, "added": 0, "note": f"No approved memories mention {topic!r}."}
-    cards = await write_cards(source, client=client)
+    cards, failure = await write_cards_checked(source, client=client)
     added = await add_cards(
         session,
         tenant_id,
@@ -270,7 +295,18 @@ async def generate(
         today=today,
         source_kind="text" if (text or "").strip() else "topic",
     )
-    return {"written": len(cards), "added": added}
+    return _flag_failure({"written": len(cards), "added": added}, failure)
+
+
+def _flag_failure(out: dict[str, Any], failure: str | None) -> dict[str, Any]:
+    """Mark a result whose zero cards mean "the model failed", not "nothing to learn".
+
+    API routes move these two keys into ``meta``; tools and Telegram pass the
+    dict on as it is, so the assistant can say the model is down."""
+    if failure:
+        out["degraded"] = True
+        out["degraded_reason"] = failure
+    return out
 
 
 # ── Drafts: cards the owner checks before they are scheduled ────────────────
@@ -358,7 +394,7 @@ async def draft(
             "drafts": [],
             "note": f"Nothing to study in that {source}.",
         }
-    cards = await write_cards(body, client=client)
+    cards, failure = await write_cards_checked(body, client=client)
     ids = await stage_drafts(
         session,
         tenant_id,
@@ -369,7 +405,10 @@ async def draft(
         source_id=source_id,
     )
     rows = await cards_by_ids(session, tenant_id, ids) if ids else []
-    return {"written": len(cards), "drafted": len(ids), "drafts": [card_dict(c) for c in rows]}
+    return _flag_failure(
+        {"written": len(cards), "drafted": len(ids), "drafts": [card_dict(c) for c in rows]},
+        failure,
+    )
 
 
 async def cards_by_ids(
