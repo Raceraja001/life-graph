@@ -6,8 +6,10 @@ exports the EventBus for pub-sub events and the PluginManager
 for plugin discovery and loading.
 """
 
+from typing import Any
 
-def __getattr__(name):
+
+def __getattr__(name: str) -> Any:
     """Lazy imports to avoid circular import chains."""
     if name == "MemoryManager":
         from life_graph.core.memory_manager import MemoryManager

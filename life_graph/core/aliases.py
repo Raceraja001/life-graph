@@ -21,6 +21,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 #: A person's name as written: 1-3 capitalised words ("Mahalakshmi", "Priya Venkat").
 _NAME = r"[A-Z][a-zA-Z'’\-]+(?: [A-Z][a-zA-Z'’\-]+){0,2}"
@@ -334,16 +338,16 @@ def stems(word: str) -> list[str]:
     return out
 
 
-def base_name(word: str, known) -> str | None:
+def base_name(word: str, known: Iterable[str]) -> str | None:
     """The name in *known* that *word* is a Tamil case form of ("Priyavukku" →
     "Priya"), else None. Same case first, then any case."""
-    known = list(known)
+    names = list(known)
     if not word or " " in word.strip():
         return None
-    lower = {k.lower(): k for k in reversed(known)}
+    lower = {k.lower(): k for k in reversed(names)}
     candidates = stems(word.strip())
     for stem in candidates:
-        if stem in known:
+        if stem in names:
             return stem
     for stem in candidates:
         if stem.lower() in lower:

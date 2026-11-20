@@ -15,9 +15,14 @@ Usage in route decorators::
 
 from __future__ import annotations
 
+from typing import Any
+
+#: What FastAPI's ``responses=`` takes: status code -> OpenAPI response object.
+Responses = dict[int | str, dict[str, Any]]
+
 # ── Memory Responses ────────────────────────────────────────────
 
-MEMORY_EXAMPLE = {
+MEMORY_EXAMPLE: dict[str, Any] = {
     "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "content": "User prefers dark mode interfaces",
     "tags": ["preference", "ui"],
@@ -29,7 +34,7 @@ MEMORY_EXAMPLE = {
     "access_count": 3,
 }
 
-PAGINATED_MEMORIES = {
+PAGINATED_MEMORIES: Responses = {
     200: {
         "description": "Paginated list of memories",
         "content": {
@@ -48,7 +53,7 @@ PAGINATED_MEMORIES = {
     }
 }
 
-MEMORY_DETAIL = {
+MEMORY_DETAIL: Responses = {
     200: {
         "description": "Memory detail",
         "content": {"application/json": {"example": {"data": MEMORY_EXAMPLE}}},
@@ -59,7 +64,7 @@ MEMORY_DETAIL = {
     },
 }
 
-MEMORY_CREATED = {
+MEMORY_CREATED: Responses = {
     201: {
         "description": "Memories created from input",
         "content": {"application/json": {"example": {"data": [MEMORY_EXAMPLE]}}},
@@ -68,7 +73,7 @@ MEMORY_CREATED = {
 
 # ── Search Responses ────────────────────────────────────────────
 
-SEARCH_RESULT = {
+SEARCH_RESULT: Responses = {
     200: {
         "description": "Semantic search results",
         "content": {
@@ -92,7 +97,7 @@ SEARCH_RESULT = {
 
 # ── Webhook Responses ───────────────────────────────────────────
 
-WEBHOOK_EXAMPLE = {
+WEBHOOK_EXAMPLE: dict[str, Any] = {
     "id": "f1e2d3c4-b5a6-7890-fedc-ba0987654321",
     "url": "https://example.com/webhook",
     "events": "*",
@@ -102,7 +107,7 @@ WEBHOOK_EXAMPLE = {
     "failure_count": 0,
 }
 
-WEBHOOK_CREATED = {
+WEBHOOK_CREATED: Responses = {
     201: {
         "description": "Webhook registered",
         "content": {"application/json": {"example": {"data": WEBHOOK_EXAMPLE}}},
@@ -112,7 +117,7 @@ WEBHOOK_CREATED = {
     },
 }
 
-WEBHOOK_LIST = {
+WEBHOOK_LIST: Responses = {
     200: {
         "description": "List of registered webhooks",
         "content": {
@@ -128,7 +133,7 @@ WEBHOOK_LIST = {
 
 # ── Tenant Responses ────────────────────────────────────────────
 
-TENANT_PROVISIONED = {
+TENANT_PROVISIONED: Responses = {
     201: {
         "description": "Tenant provisioned",
         "content": {
@@ -148,7 +153,7 @@ TENANT_PROVISIONED = {
     422: {"description": "Invalid tenant_id or plan"},
 }
 
-TENANT_SUMMARY = {
+TENANT_SUMMARY: Responses = {
     200: {
         "description": "Tenant summary",
         "content": {
@@ -177,7 +182,7 @@ TENANT_SUMMARY = {
 
 # ── Bulk Operation Responses ────────────────────────────────────
 
-BULK_DELETE = {
+BULK_DELETE: Responses = {
     200: {
         "description": "Bulk delete result",
         "content": {
@@ -210,7 +215,7 @@ BULK_DELETE = {
     400: {"description": "No filters provided"},
 }
 
-BULK_IMPORT = {
+BULK_IMPORT: Responses = {
     201: {
         "description": "Bulk import result",
         "content": {
@@ -230,7 +235,7 @@ BULK_IMPORT = {
 
 # ── Health Responses ────────────────────────────────────────────
 
-HEALTH_CHECK = {
+HEALTH_CHECK: Responses = {
     200: {
         "description": "System healthy or degraded",
         "content": {
@@ -296,7 +301,7 @@ HEALTH_CHECK = {
 
 # ── Telegram Bridge Responses ───────────────────────────────────
 
-TELEGRAM_BINDING_EXAMPLE = {
+TELEGRAM_BINDING_EXAMPLE: dict[str, Any] = {
     "id": "9c1e7b3a-2d4f-4a80-9f11-6b0d2e5c8a77",
     "chat_id": 123456789,
     "chat_type": "private",
@@ -305,7 +310,7 @@ TELEGRAM_BINDING_EXAMPLE = {
     "last_seen_at": "2026-08-26T18:40:11Z",
 }
 
-TELEGRAM_PAIR_CREATED = {
+TELEGRAM_PAIR_CREATED: Responses = {
     201: {
         "description": (
             "Pairing code issued. Single-use, expires in ten minutes, and is "
@@ -327,14 +332,14 @@ TELEGRAM_PAIR_CREATED = {
     }
 }
 
-TELEGRAM_BINDING_LIST = {
+TELEGRAM_BINDING_LIST: Responses = {
     200: {
         "description": "Active bindings for this tenant, newest first",
         "content": {"application/json": {"example": {"data": [TELEGRAM_BINDING_EXAMPLE]}}},
     }
 }
 
-TELEGRAM_STATUS = {
+TELEGRAM_STATUS: Responses = {
     200: {
         "description": "Bridge configuration and poller liveness",
         "content": {

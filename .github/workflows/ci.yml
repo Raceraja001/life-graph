@@ -533,3 +533,42 @@ jobs:
           node-version: "20"
       - run: npm install
       - run: npm run build
+
+  # Static types (audit M11). life_graph/core passes every `--strict` check;
+  # life_graph/api passes a baseline (check_untyped_defs, warn_unused_ignores,
+  # no_implicit_optional) and its `--strict` error count may only go down
+  # (.github/mypy-api-strict-baseline.txt). Config: [tool.mypy] in
+  # pyproject.toml. mypy is pinned in the dev extra and comes from uv.lock
+  # like everything else; only the dev extra is synced -- the type check
+  # needs no NLP/torch stack (sentence_transformers is ignore_missing_imports).
+  typecheck:
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        id: py
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.12.14
+
+      - uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py${{ steps.py.outputs.python-version }}-dev-${{ hashFiles('uv.lock') }}
+
+      - name: Install dependencies from uv.lock
+        run: |
+          uv sync --locked --extra dev --python "${{ steps.py.outputs.python-path }}"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
+
+      - name: mypy (core strict, api baseline)
+        run: mypy
+
+      - name: mypy --strict ratchet for life_graph/api
+        run: python scripts/mypy_ratchet.py

@@ -162,7 +162,7 @@ async def get_run(
     """Retrieve a workflow run and all its step run details."""
     from sqlalchemy import select
 
-    from life_graph.models.db import WorkflowRun, WorkflowStepRun
+    from life_graph.models.db import WorkflowRun, WorkflowStep, WorkflowStepRun
     from life_graph.storage.database import async_session
 
     tenant_id = get_current_tenant_id()
@@ -183,13 +183,16 @@ async def get_run(
                 detail=f"Run {run_id} not found",
             )
 
-        # Load step runs
+        # Load step runs. The run link is workflow_run_id and the step key
+        # lives on WorkflowStep: this used to read run_id / step_key /
+        # task_id, which are not columns, and answered 500 for every run.
         step_result = await session.execute(
-            select(WorkflowStepRun)
-            .where(WorkflowStepRun.run_id == run_id)
+            select(WorkflowStepRun, WorkflowStep.step_key)
+            .join(WorkflowStep, WorkflowStep.id == WorkflowStepRun.workflow_step_id)
+            .where(WorkflowStepRun.workflow_run_id == run_id)
             .order_by(WorkflowStepRun.started_at.asc().nullslast())
         )
-        step_runs = step_result.scalars().all()
+        step_runs = step_result.all()
 
     return success_response(
         data={
@@ -200,21 +203,22 @@ async def get_run(
             "triggered_by": run.triggered_by,
             "input_params": run.input_params,
             "output_summary": run.output_summary,
-            "error": run.error,
+            # WorkflowRun has no error column; a recorded reason is in properties.
+            "error": (run.properties or {}).get("error"),
             "started_at": run.started_at.isoformat() if run.started_at else None,
             "completed_at": run.completed_at.isoformat() if run.completed_at else None,
             "steps": [
                 {
                     "id": str(sr.id),
-                    "step_key": sr.step_key,
+                    "step_key": step_key,
                     "status": sr.status,
                     "output": sr.output,
                     "error": sr.error,
-                    "task_id": str(sr.task_id) if sr.task_id else None,
+                    "task_id": str(sr.agent_task_id) if sr.agent_task_id else None,
                     "started_at": sr.started_at.isoformat() if sr.started_at else None,
                     "completed_at": sr.completed_at.isoformat() if sr.completed_at else None,
                 }
-                for sr in step_runs
+                for sr, step_key in step_runs
             ],
         }
     )

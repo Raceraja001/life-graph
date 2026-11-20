@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select, update
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import CursorResult
 
 from life_graph.api.responses import success_response
 from life_graph.api.url_guard import require_public_url
@@ -302,11 +306,16 @@ async def bulk_acknowledge_events(
             if body.severity:
                 query = query.where(WatchEvent.severity == body.severity)
 
-        result = await session.execute(
-            query.values(
-                acknowledged_at=now,
-                acknowledged_by=body.acknowledged_by,
-            )
+        # An UPDATE returns a CursorResult (rowcount); execute() is typed as
+        # the general Result.
+        result = cast(
+            "CursorResult[Any]",
+            await session.execute(
+                query.values(
+                    acknowledged_at=now,
+                    acknowledged_by=body.acknowledged_by,
+                )
+            ),
         )
         await session.commit()
 

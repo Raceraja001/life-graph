@@ -18,12 +18,12 @@ from fastapi import APIRouter, HTTPException
 from minio.error import S3Error
 from sqlalchemy import select
 
-from life_graph.api.dependencies import async_session
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.extraction.transcript_parsers import PARSERS
 from life_graph.models.db import ExternalSession, _utcnow
 from life_graph.models.schemas import TranscriptSessionIngest
 from life_graph.services.transcript_distiller import ARCHIVE_BUCKET
+from life_graph.storage.database import async_session
 from life_graph.storage.minio_client import MinIOStorage
 from life_graph.storage.redis import get_redis
 
@@ -51,18 +51,24 @@ async def ingest_external_transcript(payload: TranscriptSessionIngest) -> dict:
             )
         )
         es = rows.scalars().first()
+        staging_key = f"staging/{tenant_id}/{payload.tool}/{payload.session_id}.ndjson"
         if es is None:
             es = ExternalSession(
                 tenant_id=tenant_id,
                 tool=payload.tool,
                 external_id=payload.session_id,
                 source_path=payload.source_path,
-                raw_key=f"staging/{tenant_id}/{payload.tool}/{payload.session_id}.ndjson",
+                raw_key=staging_key,
             )
             session.add(es)
         else:
             es.source_path = payload.source_path
             es.updated_at = _utcnow()
+        # The column is nullable but the insert above is the only writer and
+        # always sets it. A row without one (hand-edited) gets the key it
+        # would have had, instead of minio.upload(key=None) failing below.
+        if not es.raw_key:
+            es.raw_key = staging_key
 
         # Read-append-write the raw staging object (sequential per session).
         # Only a genuinely-absent staging object (first write for this session)

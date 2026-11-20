@@ -19,7 +19,7 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import any_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
@@ -121,13 +121,15 @@ async def list_skills(
     where = [Memory.tenant_id == get_current_tenant_id(), skill_clause()]
     if status_filter:
         where.append(Memory.status == status_filter)
+    # any_(col) == v renders the same `:v = ANY (memories.tags)` as the
+    # ARRAY comparator's .any(v), which SQLAlchemy 2.1 deprecates.
     if tag:
-        where.append(Memory.tags.any(tag))
+        where.append(any_(Memory.tags) == tag)
     if project:
         # A project is both a tag and (on newer rows) a property; match either.
         where.append(
             or_(
-                Memory.tags.any(project),
+                any_(Memory.tags) == project,
                 Memory.properties["project"].astext == project,
             )
         )

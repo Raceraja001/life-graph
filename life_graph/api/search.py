@@ -825,8 +825,10 @@ async def ask_brain(
             "importance": m.importance,
             "confidence": m.confidence,
             "source_type": m.source_type,
-            "valid_from": str(m.valid_from) if getattr(m, "valid_from", None) else None,
-            "valid_until": str(m.valid_until) if getattr(m, "valid_until", None) else None,
+            # MemoryResponse carries no validity window today, so these are
+            # None; kept so the payload shape does not change if it gains one.
+            "valid_from": str(vf) if (vf := getattr(m, "valid_from", None)) else None,
+            "valid_until": str(vu) if (vu := getattr(m, "valid_until", None)) else None,
             "created_at": str(m.created_at) if m.created_at else "unknown",
         }
         for m in memories
