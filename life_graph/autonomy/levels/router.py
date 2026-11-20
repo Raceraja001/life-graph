@@ -1,11 +1,17 @@
-"""FastAPI router for autonomy levels."""
+"""FastAPI router for autonomy levels.
+
+Setting a level decides what runs without asking (L1-L3 auto-execute), so it
+is the owner's alone (api/approval_identity.py ``owner_only``), and who set it
+is who the server saw calling, not the body's ``set_by``.
+"""
 
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from life_graph.api.approval_identity import note_with_claim, owner_only, resolver
 from life_graph.api.responses import success_response
 from life_graph.autonomy.levels.schemas import (
     LEVEL_DESCRIPTIONS,
@@ -58,8 +64,9 @@ async def get_autonomy_level(project_id: str):
 
 
 @router.post("/{project_id}/set", response_model=None)
-async def set_autonomy_level(project_id: str, request: SetLevelRequest):
-    """Manually set the autonomy level for a project."""
+async def set_autonomy_level(project_id: str, request: SetLevelRequest, http_request: Request):
+    """Manually set the autonomy level for a project (owner only)."""
+    owner_only(http_request, "Setting an autonomy level")
     tenant_id = get_current_tenant_id()
 
     from life_graph.runtime import get_autonomy_level_service
@@ -71,8 +78,8 @@ async def set_autonomy_level(project_id: str, request: SetLevelRequest):
             tenant_id=tenant_id,
             project_id=project_id,
             level=request.level,
-            reason=request.reason,
-            by=request.set_by,
+            reason=note_with_claim(request.reason, request.set_by),
+            by=resolver(http_request),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

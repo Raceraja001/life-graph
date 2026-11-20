@@ -9,6 +9,7 @@ auto-execute path.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -87,6 +88,8 @@ def _fake_pending_action():
         tenant_id="t1",
         status="pending",
         action_command="echo hi",
+        # Pinned at creation, as AutoFixService.process does for every command.
+        before_state={"command_approval": {"sha256": hashlib.sha256(b"echo hi").hexdigest()}},
         action_name="restart",
         rollback_command=None,
         trigger_type="manual",

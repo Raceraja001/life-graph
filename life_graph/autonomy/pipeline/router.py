@@ -25,9 +25,16 @@ async def trigger_auto_action(request: AutoFixRequest, http_request: Request):
     Returns 201 if auto-executed, 202 if queued for approval, 403 if a
     ``rollback_command`` comes from a caller that is not the owner (it is a
     host shell command; audit 2026-11-19, H2).
+
+    Who is acting is the server's to say (api/approval_identity.py
+    ``resolver``), never the body's ``agent_id``: a caller that is not the
+    owner acts as itself, so it cannot borrow another agent's trust, and its
+    action always goes to the approval queue (202) — a non-owner key never
+    runs a host command on its own say, and it cannot approve its own entry.
     """
+    from life_graph.api.approval_identity import resolver
     from life_graph.api.auth import ingress_for
-    from life_graph.autonomy.pipeline.service import RollbackNotApprovedError
+    from life_graph.autonomy.pipeline.service import ApiCaller, RollbackNotApprovedError
 
     tenant_id = get_current_tenant_id()
 
@@ -41,6 +48,7 @@ async def trigger_auto_action(request: AutoFixRequest, http_request: Request):
             tenant_id,
             request,
             rollback_approved_by=ingress.actor if ingress.owner_verified else None,
+            api_caller=ApiCaller(label=resolver(http_request), is_owner=ingress.is_owner),
         )
     except RollbackNotApprovedError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -93,8 +101,11 @@ async def list_auto_actions(
 
 
 @router.post("/{action_id}/rollback", response_model=None)
-async def rollback_action(action_id: str):
-    """Rollback a previously executed auto action."""
+async def rollback_action(action_id: str, http_request: Request):
+    """Rollback a previously executed auto action (owner only: runs a host command)."""
+    from life_graph.api.approval_identity import owner_only
+
+    owner_only(http_request, "Running a rollback")
     tenant_id = get_current_tenant_id()
 
     from life_graph.autonomy.pipeline.service import RollbackNotApprovedError

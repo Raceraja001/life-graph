@@ -13,17 +13,17 @@ path must be completely unaffected — see
 
 from __future__ import annotations
 
+import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from life_graph.drivers.dispatcher import DEFAULT_VERIFY_CHAIN
 from sqlalchemy.sql.dml import Update
 from sqlalchemy.sql.selectable import Select
 
 from life_graph.autonomy.pipeline.executor import ExecutionResult
 from life_graph.autonomy.pipeline.service import DEFAULT_AGENT_TASK_COST_CAP, AutoFixService
 from life_graph.drivers.base import DriverResult
+from life_graph.drivers.dispatcher import DEFAULT_VERIFY_CHAIN
 
 
 @pytest.fixture(autouse=True)
@@ -106,6 +106,12 @@ def make_auto_action(
         kind=kind,
         instruction=instruction,
         action_command=action_command,
+        # Pinned at creation, as AutoFixService.process does for every command.
+        before_state=(
+            {"command_approval": {"sha256": hashlib.sha256(action_command.encode()).hexdigest()}}
+            if action_command
+            else None
+        ),
         action_name="cody_fix" if kind == "agent_task" else "restart",
         agent_id=agent_id,
         project_id=project_id,

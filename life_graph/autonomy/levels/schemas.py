@@ -39,4 +39,9 @@ class SetLevelRequest(BaseModel):
 
     level: int = Field(..., ge=0, le=3)
     reason: str = Field(..., min_length=3, max_length=500)
-    set_by: str = Field(..., description="Who is setting the level")
+    # Optional and not trusted: who set the level is the server's to say
+    # (api/approval_identity.py ``resolver``); a value here is kept in the
+    # reason as an unverified "client said" line.
+    set_by: str | None = Field(
+        None, max_length=128, description="Ignored for identity; recorded as an unverified note"
+    )

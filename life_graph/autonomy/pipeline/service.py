@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -62,20 +63,67 @@ AGENT_TASK_DISPATCH_TIMEOUT_SECONDS = 280
 # a migration. rollback() runs the command only while the pin matches.
 ROLLBACK_APPROVAL_KEY = "rollback_approval"
 
+# The main ``command`` gets the same pin (audit follow-up, batch 2a): its
+# sha256 is recorded in ``before_state[COMMAND_APPROVAL_KEY] = {"sha256",
+# "requested_by", "pinned_at"}`` when the action is created, and
+# ``_run_action`` runs a command only while the pin matches — whether it runs
+# straight away (auto-execute) or after an approval. A command row without a
+# pin (created before this change) is not run; asking again files a new one.
+COMMAND_APPROVAL_KEY = "command_approval"
+
+# Who asked, for an action that came in over HTTP: ``{"requested_by",
+# "claimed_agent_id"}``. ``claimed_agent_id`` is whatever the body named as
+# the agent; it is kept for the record only and never drives trust.
+REQUEST_KEY = "request"
+
+COMMAND_NOT_PINNED = (
+    "Refused: this command is not the one that was pinned when the action was"
+    " created (or it predates command pinning), so it was not run"
+)
+
 
 class RollbackNotApprovedError(PermissionError):
     """A rollback_command without the owner's approval, or edited since."""
 
 
-def _rollback_pin_matches(action) -> bool:
+@dataclass(frozen=True)
+class ApiCaller:
+    """Who called ``POST /autonomy/auto-actions``, as the server saw it.
+
+    ``label`` is api/approval_identity.py ``resolver`` (``owner``,
+    ``phone:<id>``, ``owner:local`` or ``service-key:<fingerprint>``);
+    ``is_owner`` is ``ingress_for(request).is_owner``. Nothing in it comes
+    from the request body.
+
+    In-process producers (services/action_proposal_bridge.py, which files the
+    ops agent's proposals under its own server-set ``agent_id``) do not pass
+    one and keep the classifier's routing unchanged.
+    """
+
+    label: str
+    is_owner: bool
+
+
+def _pin_matches(command: str | None, record) -> bool:
     from hmac import compare_digest
 
     from life_graph.kernel.project_registry import command_sha256
 
-    record = (action.before_state or {}).get(ROLLBACK_APPROVAL_KEY)
-    if not isinstance(record, dict) or not action.rollback_command:
+    if not isinstance(record, dict) or not command:
         return False
-    return compare_digest(str(record.get("sha256") or ""), command_sha256(action.rollback_command))
+    return compare_digest(str(record.get("sha256") or ""), command_sha256(command))
+
+
+def _rollback_pin_matches(action) -> bool:
+    return _pin_matches(
+        action.rollback_command, (action.before_state or {}).get(ROLLBACK_APPROVAL_KEY)
+    )
+
+
+def _command_pin_matches(action) -> bool:
+    return _pin_matches(
+        action.action_command, (action.before_state or {}).get(COMMAND_APPROVAL_KEY)
+    )
 
 
 def _to_response(action) -> AutoActionResponse:
@@ -195,6 +243,7 @@ class AutoFixService:
         request: AutoFixRequest,
         *,
         rollback_approved_by: str | None = None,
+        api_caller: ApiCaller | None = None,
     ) -> AutoFixResponse:
         """Orchestrate: classify → route → execute/queue.
 
@@ -204,7 +253,17 @@ class AutoFixService:
         built per-request rather than injected as a singleton.
 
         A ``rollback_command`` needs *rollback_approved_by*, the owner-verified
-        caller; it is pinned to its exact text.
+        caller; it is pinned to its exact text. The main ``command`` is pinned
+        too, for every caller.
+
+        *api_caller* is set by the HTTP route. For a caller that is not the
+        owner, the acting agent — whose trust the classifier reads and whose
+        shadow enrollment is checked — is the caller's own server-derived
+        label, not the body's ``agent_id`` (kept as ``claimed_agent_id`` in
+        ``before_state``), and the action always waits in the approval queue:
+        no auto-execute, no notify-then-auto-approve. The entry records
+        ``requested_by`` so that caller cannot approve it (audit follow-up,
+        batch 2a). The owner keeps today's routing and may name the agent.
 
         Raises:
             RollbackNotApprovedError: a rollback_command without an owner;
@@ -214,19 +273,32 @@ class AutoFixService:
         from life_graph.autonomy.safety.classifier import ActionClassifier, Recommendation
         from life_graph.kernel.project_registry import command_sha256
 
-        rollback_pin = None
+        before_state: dict = {}
         if request.rollback_command:
             if not rollback_approved_by:
                 raise RollbackNotApprovedError(
                     "rollback_command is a host shell command and can only be set by the"
                     " owner (an owner API key or a paired device)"
                 )
-            rollback_pin = {
-                ROLLBACK_APPROVAL_KEY: {
-                    "sha256": command_sha256(request.rollback_command),
-                    "approved_by": rollback_approved_by,
-                    "approved_at": datetime.now(UTC).isoformat(),
-                }
+            before_state[ROLLBACK_APPROVAL_KEY] = {
+                "sha256": command_sha256(request.rollback_command),
+                "approved_by": rollback_approved_by,
+                "approved_at": datetime.now(UTC).isoformat(),
+            }
+
+        untrusted_caller = api_caller is not None and not api_caller.is_owner
+        requested_by = api_caller.label if api_caller is not None else None
+        agent_id = api_caller.label if untrusted_caller else request.agent_id
+        if api_caller is not None:
+            before_state[REQUEST_KEY] = {
+                "requested_by": requested_by,
+                "claimed_agent_id": request.agent_id,
+            }
+        if request.kind != "agent_task" and request.command:
+            before_state[COMMAND_APPROVAL_KEY] = {
+                "sha256": command_sha256(request.command),
+                "requested_by": requested_by or f"agent:{agent_id}",
+                "pinned_at": datetime.now(UTC).isoformat(),
             }
 
         # 1. Classify (rule match → trust → autonomy level → recommendation)
@@ -234,7 +306,7 @@ class AutoFixService:
             classifier = ActionClassifier(session)
             classification = await classifier.classify(
                 tenant_id=tenant_id,
-                agent_id=request.agent_id,
+                agent_id=agent_id,
                 action_name=request.action_type,
                 action_command=request.command,
                 project_id=request.project_id,
@@ -249,6 +321,10 @@ class AutoFixService:
         # human-approved, regardless of what the classifier recommends.
         if request.kind == "agent_task":
             recommendation = Recommendation.QUEUE_FOR_APPROVAL
+        # A caller that is not the owner never runs anything on its own say:
+        # its host command waits for a human, whatever level or trust says.
+        if untrusted_caller:
+            recommendation = Recommendation.QUEUE_FOR_APPROVAL
 
         # 2. Create the auto_action record (real AutoAction fields)
         action_id = str(uuid.uuid4())
@@ -258,7 +334,7 @@ class AutoFixService:
             auto_action = AutoAction(
                 id=action_id,
                 tenant_id=tenant_id,
-                agent_id=request.agent_id,
+                agent_id=agent_id,
                 project_id=request.project_id,
                 action_name=request.action_type,
                 action_command=request.command,
@@ -266,7 +342,7 @@ class AutoFixService:
                 instruction=request.instruction,
                 rollback_command=request.rollback_command,
                 is_reversible=bool(request.rollback_command),
-                before_state=rollback_pin,
+                before_state=before_state or None,
                 trigger_type="manual",
                 trigger_detail=request.description or request.action_type,
                 risk_level=risk_level,
@@ -283,7 +359,7 @@ class AutoFixService:
         if recommendation == Recommendation.AUTO_EXECUTE:
             # Shadow gate: a NEW actor (no trust record) records a would-have-done
             # instead of acting for real, until it graduates (see core/shadow).
-            shadow = await shadow_service.intercept(tenant_id, request.agent_id)
+            shadow = await shadow_service.intercept(tenant_id, agent_id)
             if shadow.shadow:
                 routing = "shadow_recorded"
                 await self._record_shadow(
@@ -302,10 +378,14 @@ class AutoFixService:
                 )
         elif recommendation == Recommendation.NOTIFY_BEFORE:
             routing = "notify_before"
-            await self._notify_before_execute(tenant_id, auto_action, rule_id)
+            await self._notify_before_execute(
+                tenant_id, auto_action, rule_id, requested_by=requested_by
+            )
         else:
             routing = "queued_for_approval"
-            await self._queue_for_approval(tenant_id, auto_action, rule_id)
+            await self._queue_for_approval(
+                tenant_id, auto_action, rule_id, requested_by=requested_by
+            )
 
         # 4. Refresh and return
         async with self._session_factory() as session:
@@ -397,6 +477,13 @@ class AutoFixService:
 
         if await is_autonomy_paused(tenant_id):
             return await self._blocked_by_kill_switch(tenant_id, auto_action)
+
+        # A host command runs only as the exact text pinned at creation.
+        if auto_action.kind != "agent_task" and not _command_pin_matches(auto_action):
+            logger.warning(
+                "Refusing auto action %s: command does not match its pin", auto_action.id
+            )
+            return await self._record_blocked(tenant_id, auto_action, COMMAND_NOT_PINNED)
 
         lock = self._get_lock(auto_action.project_id)
         started = datetime.now(UTC)
@@ -512,10 +599,15 @@ class AutoFixService:
         and later resuming naturally asks the system to re-earn trust
         instead of silently resuming at the same autonomy level.
         """
+        return await self._record_blocked(
+            tenant_id, auto_action, "Blocked: autonomy kill-switch is paused for this tenant"
+        )
+
+    async def _record_blocked(self, tenant_id: str, auto_action, error_message: str):
+        """Record ``auto_action`` as a failure that never ran, with *error_message*."""
         from life_graph.autonomy.models import AutoAction
 
         status, exit_code = "failure", 1
-        error_message = "Blocked: autonomy kill-switch is paused for this tenant"
         now = datetime.now(UTC)
 
         async with self._session_factory() as session:
@@ -592,6 +684,8 @@ class AutoFixService:
         tenant_id: str,
         auto_action,
         rule,
+        *,
+        requested_by: str | None = None,
     ) -> None:
         """L2 moderate flow: create approval entry but auto-approve after delay."""
         from life_graph.autonomy.models import AutoAction
@@ -608,6 +702,7 @@ class AutoFixService:
                 "trigger_detail": auto_action.trigger_detail,
                 "category": "pipeline",
                 "auto_approve_minutes": 5,
+                "requested_by": requested_by,
             },
         )
 
@@ -638,6 +733,8 @@ class AutoFixService:
         tenant_id: str,
         auto_action,
         rule,
+        *,
+        requested_by: str | None = None,
     ) -> None:
         """Queue the action for human approval."""
         from life_graph.autonomy.models import AutoAction
@@ -655,6 +752,7 @@ class AutoFixService:
                 "trigger_type": auto_action.trigger_type,
                 "trigger_detail": auto_action.trigger_detail,
                 "category": "pipeline",
+                "requested_by": requested_by,
             },
         )
 

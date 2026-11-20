@@ -2,16 +2,22 @@
 
 Endpoints for querying trust scores, manual overrides, and decay.
 Prefix: /autonomy/trust
+
+A manual override decides how much an agent may do on its own, so it is the
+owner's alone (api/approval_identity.py ``owner_only``), and ``override_by``
+is who the server saw calling, not the body's ``by``. Decay only ever lowers
+scores (TrustCalculator.apply_decay), so it stays open to any service key.
 """
 
 from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from life_graph.api.approval_identity import note_with_claim, owner_only, resolver
 from life_graph.api.responses import success_response
 from life_graph.autonomy.models import TrustScore
 from life_graph.autonomy.trust.schemas import TrustOverrideRequest, TrustScoreResponse
@@ -70,10 +76,12 @@ async def get_score(
 @router.post("/override")
 async def override_trust(
     body: TrustOverrideRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     tenant_id: str = Depends(get_current_tenant_id),
 ):
-    """Manually override a trust score."""
+    """Manually override a trust score (owner only)."""
+    owner_only(request, "Overriding a trust score")
     svc = TrustScoreService(session)
     score = await svc.override(
         tenant_id=tenant_id,
@@ -81,8 +89,8 @@ async def override_trust(
         action_type=body.action_type,
         project_id=body.project_id,
         score=body.score,
-        reason=body.reason,
-        by=body.by,
+        reason=note_with_claim(body.reason, body.by),
+        by=resolver(request),
     )
     return success_response(TrustScoreResponse.model_validate(score))
 

@@ -84,7 +84,11 @@ async def _requested_by(session: AsyncSession, tenant_id: str, approval_id: str)
     deploys) name their task in ``payload.task_id``; ``POST /drivers/tasks``
     stamps the starting caller on the task as ``properties.requested_by``. A
     task fanned out from an approved plan has no stamp of its own and inherits
-    its plan's (``properties.plan_task_id``). None for everything else.
+    its plan's (``properties.plan_task_id``). An ``autonomous_action`` row
+    mirrors an autonomy-queue entry (``payload.approval_id``), which records
+    its own ``requested_by`` (migration 061) — without this, a caller that
+    queued a host command through ``POST /autonomy/auto-actions`` could
+    approve it here. None for everything else.
     """
     try:
         appr_id = uuid.UUID(str(approval_id))
@@ -95,6 +99,21 @@ async def _requested_by(session: AsyncSession, tenant_id: str, approval_id: str)
             select(Approval.payload).where(Approval.id == appr_id, Approval.tenant_id == tenant_id)
         )
     ).scalar_one_or_none()
+    # autonomous_action rows (services/autonomous_approvals.py) are the only
+    # payloads that carry an auto_action_id next to the queue's approval_id.
+    queue_id = (payload or {}).get("approval_id")
+    if queue_id and (payload or {}).get("auto_action_id"):
+        from life_graph.autonomy.models import ApprovalQueueEntry
+
+        requested = (
+            await session.execute(
+                select(ApprovalQueueEntry.requested_by).where(
+                    ApprovalQueueEntry.id == str(queue_id),
+                    ApprovalQueueEntry.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        return str(requested) if requested else None
     task_id = (payload or {}).get("task_id")
     for _ in range(2):  # the task itself, then the plan it came from
         try:
