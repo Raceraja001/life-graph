@@ -4,8 +4,11 @@
 row (all NOT NULL columns populated). A brand-new project is L0, so nothing
 auto-executes — safe actions queue for approval, which is DB-only (no shell run).
 
-Defensive per house convention: accept 500 when the DB is unreachable, never
-422 for valid input. See docs/specs/era8-autonomy-reconciliation.md.
+Every status is asserted exactly: ``skip_on_db_error`` skips when no
+database is reachable, so a 500 is always a failure. See
+docs/specs/era8-autonomy-reconciliation.md. The 202 for a new (L0) project is
+today's master behaviour; the autonomy trust-boundary work (server-derived
+agent identity) may change who is recorded, not this routing.
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT = "test_autonomy_pipeline_tenant"
 TENANT_HEADERS = {"X-Tenant-ID": TENANT, "X-User-ID": "autonomy-pipe-user"}
@@ -47,9 +50,8 @@ class TestPipeline:
     @skip_on_db_error
     async def test_trigger_valid_never_422(self, client: AsyncClient):
         resp = await client.post("/api/v1/autonomy/auto-actions", json=_valid_request())
-        # 201 auto-executed, 202 queued/notify, 500 DB down — but never 422 for valid input.
-        assert resp.status_code in (201, 202, 500), resp.text
-        assert resp.status_code != 422
+        # A brand-new project is L0: nothing auto-executes, so it queues (202).
+        assert resp.status_code == 202, resp.text
 
     async def test_trigger_missing_field_is_422(self, client: AsyncClient):
         # Genuinely invalid input (missing required fields) MUST 422.
@@ -59,20 +61,16 @@ class TestPipeline:
     @skip_on_db_error
     async def test_list_never_422(self, client: AsyncClient):
         resp = await client.get("/api/v1/autonomy/auto-actions")
-        assert resp.status_code in (200, 500), resp.text
-        if resp.status_code == 200:
-            body = resp.json()
-            assert isinstance(body["data"], list)
+        body = assert_ok(resp, 200)
+        assert isinstance(body["data"], list)
 
     @skip_on_db_error
     async def test_trigger_then_list_roundtrip(self, client: AsyncClient):
         req = _valid_request()
         created = await client.post("/api/v1/autonomy/auto-actions", json=req)
-        if created.status_code not in (201, 202):
-            return
+        assert_ok(created, 202)
         listing = await client.get(f"/api/v1/autonomy/auto-actions?project_id={req['project_id']}")
-        assert listing.status_code == 200, listing.text
-        rows = listing.json()["data"]
+        rows = assert_ok(listing, 200)["data"]
         assert any(r["action_name"] == req["action_type"] for r in rows)
         # Real fields present, phantom ones gone.
         assert all("action_command" in r for r in rows)

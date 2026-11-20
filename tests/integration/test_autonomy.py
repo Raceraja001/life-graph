@@ -12,8 +12,13 @@ Tests the Autonomy API layer:
 - POST /api/v1/autonomy/levels/{project_id}/set (set autonomy level)
 - GET /api/v1/autonomy/audit (query audit log)
 
-Follows existing test patterns: httpx AsyncClient + ASGITransport,
-defensive assertions accepting 500 if DB unreachable.
+Follows existing test patterns: httpx AsyncClient + ASGITransport. Every
+status is asserted exactly; ``skip_on_db_error`` skips when no database is
+reachable, so a 500 is always a failure.
+
+The trust override and manual level-set expectations (200 for an
+unauthenticated dev-mode caller) are today's master behaviour; the autonomy
+trust-boundary work (owner-only override/levels) may change them.
 """
 
 from __future__ import annotations
@@ -25,7 +30,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 # Fresh tenant per run. Several rows here are unique-constrained on
 # (tenant_id, <semantic value>) — task_type, channel_type, action_name —
@@ -64,26 +69,17 @@ class TestSafetyRules:
                 "description": "Auto-fix lint errors with eslint",
             },
         )
-        assert response.status_code in (200, 201, 500), (
-            f"Expected 200/201/500, got {response.status_code}: {response.text}"
-        )
-
-        if response.status_code in (200, 201):
-            body = response.json()
-            data = body.get("data", body)
-            assert "id" in data or "action_name" in data
+        data = assert_ok(response, 201)["data"]
+        assert "id" in data
+        assert data["action_name"] == "fix_lint"
 
     @pytest.mark.asyncio
     @skip_on_db_error
     async def test_list_safety_rules(self, client: AsyncClient):
         """GET /api/v1/autonomy/safety/rules — list safety rules."""
         response = await client.get("/api/v1/autonomy/safety/rules")
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            data = body.get("data", body)
-            assert isinstance(data, list)
+        data = assert_ok(response, 200)["data"]
+        assert isinstance(data, list)
 
 
 class TestSafetyClassification:
@@ -94,7 +90,7 @@ class TestSafetyClassification:
     async def test_classify_safe_action(self, client: AsyncClient):
         """POST /api/v1/autonomy/safety/classify — classify a safe action."""
         # First create a rule
-        await client.post(
+        created = await client.post(
             "/api/v1/autonomy/safety/rules",
             json={
                 "action_name": "test",
@@ -102,6 +98,7 @@ class TestSafetyClassification:
                 "risk_level": "safe",
             },
         )
+        assert_ok(created, 201)
 
         response = await client.post(
             "/api/v1/autonomy/safety/classify",
@@ -111,12 +108,8 @@ class TestSafetyClassification:
                 "action_command": "echo hello",
             },
         )
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            data = body.get("data", body)
-            assert "risk_level" in data
+        data = assert_ok(response, 200)["data"]
+        assert "risk_level" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -130,15 +123,11 @@ class TestSafetyClassification:
                 "action_command": "rm -rf /",
             },
         )
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            data = body.get("data", body)
-            risk = data.get("risk_level", "")
-            assert risk in ("high", "dangerous", "unknown"), (
-                f"Expected high/dangerous for 'rm -rf /', got {risk}"
-            )
+        data = assert_ok(response, 200)["data"]
+        risk = data.get("risk_level", "")
+        assert risk in ("high", "dangerous", "unknown"), (
+            f"Expected high/dangerous for 'rm -rf /', got {risk}"
+        )
 
 
 class TestTrustScores:
@@ -149,12 +138,8 @@ class TestTrustScores:
     async def test_get_trust_scores(self, client: AsyncClient):
         """GET /api/v1/autonomy/trust/scores — list trust scores."""
         response = await client.get("/api/v1/autonomy/trust/scores")
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            data = body.get("data", body)
-            assert isinstance(data, list)
+        data = assert_ok(response, 200)["data"]
+        assert isinstance(data, list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -170,7 +155,9 @@ class TestTrustScores:
                 "by": "admin",
             },
         )
-        assert response.status_code in (200, 500)
+        # Master behaviour: any caller may override. The owner-only trust
+        # boundary (parallel batch) may turn this into a 403 for non-owners.
+        assert_ok(response, 200)
 
 
 class TestApprovals:
@@ -184,12 +171,8 @@ class TestApprovals:
             "/api/v1/autonomy/approvals",
             params={"status": "pending"},
         )
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            data = body.get("data", body)
-            assert isinstance(data, list)
+        data = assert_ok(response, 200)["data"]
+        assert isinstance(data, list)
 
 
 class TestAutonomyLevels:
@@ -200,13 +183,9 @@ class TestAutonomyLevels:
     async def test_get_autonomy_level(self, client: AsyncClient):
         """GET /api/v1/autonomy/levels/{project_id} — get level (creates L0 default)."""
         response = await client.get("/api/v1/autonomy/levels/test-project-001")
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            data = body.get("data", body)
-            assert data.get("current_level") == 0
-            assert data.get("level_name") == "Ask Everything"
+        data = assert_ok(response, 200)["data"]
+        assert data.get("current_level") == 0
+        assert data.get("level_name") == "Ask Everything"
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -220,29 +199,27 @@ class TestAutonomyLevels:
                 "set_by": "admin",
             },
         )
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            data = body.get("data", body)
-            assert data.get("level") == 2
-            assert data.get("level_name") == "Notify Before"
-            # The write answers with the same full record the read returns, so a
-            # client does not have to re-fetch to learn the counters. Parsing
-            # this as an autonomy level used to fail on the missing keys.
-            assert data.get("current_level") == 2
-            for field in (
-                "id",
-                "tenant_id",
-                "project_id",
-                "safe_count",
-                "moderate_count",
-                "failure_count",
-                "promotion_eligible",
-                "created_at",
-                "updated_at",
-            ):
-                assert field in data, f"set response is missing {field}"
+        # Master behaviour: any caller may set a level. The owner-only trust
+        # boundary (parallel batch) may turn this into a 403 for non-owners.
+        data = assert_ok(response, 200)["data"]
+        assert data.get("level") == 2
+        assert data.get("level_name") == "Notify Before"
+        # The write answers with the same full record the read returns, so a
+        # client does not have to re-fetch to learn the counters. Parsing
+        # this as an autonomy level used to fail on the missing keys.
+        assert data.get("current_level") == 2
+        for field in (
+            "id",
+            "tenant_id",
+            "project_id",
+            "safe_count",
+            "moderate_count",
+            "failure_count",
+            "promotion_eligible",
+            "created_at",
+            "updated_at",
+        ):
+            assert field in data, f"set response is missing {field}"
 
 
 class TestAuditLog:
@@ -253,9 +230,5 @@ class TestAuditLog:
     async def test_query_audit_log(self, client: AsyncClient):
         """GET /api/v1/autonomy/audit — query returns 200 with list."""
         response = await client.get("/api/v1/autonomy/audit")
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            data = body.get("data", body)
-            assert isinstance(data, list)
+        data = assert_ok(response, 200)["data"]
+        assert isinstance(data, list)
