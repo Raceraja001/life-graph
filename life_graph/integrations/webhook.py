@@ -23,6 +23,7 @@ import hashlib
 import hmac
 import json
 import logging
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -73,8 +74,15 @@ async def deliver_webhook(
     webhook_id: str,
     event_type: str,
     payload: dict[str, Any],
+    delivery_id: str | None = None,
 ) -> dict[str, Any]:
     """ARQ task: deliver a single webhook notification.
+
+    Every attempt of one delivery carries the same ``X-Webhook-Delivery``
+    header (and ``delivery_id`` in the body), generated when the job is
+    enqueued, so a receiver can drop a retry it already processed (audit
+    L11). A job queued before that existed falls back to ARQ's own job id,
+    which is also stable across its retries.
 
     Constructs a signed JSON payload and POSTs it to the webhook URL.
     On success, resets the failure counter and records the delivery time.
@@ -89,6 +97,7 @@ async def deliver_webhook(
         webhook_id: UUID of the :class:`TenantWebhook` to deliver to.
         event_type: String event type (e.g. ``"memory:created"``).
         payload: Event payload dictionary.
+        delivery_id: Stable id of this delivery across retries.
 
     Returns:
         Dict with ``status`` (``"delivered"`` or ``"skipped"``) and
@@ -111,6 +120,8 @@ async def deliver_webhook(
             logger.warning("Webhook %s not delivered, URL refused: %s", webhook.id, exc)
             return {"status": "skipped", "reason": "url not allowed"}
 
+        delivery_id = delivery_id or str(ctx.get("job_id") or uuid.uuid4())
+
         # Build the signed envelope
         body = json.dumps(
             {
@@ -118,6 +129,7 @@ async def deliver_webhook(
                 "payload": payload,
                 "timestamp": datetime.now(UTC).isoformat(),
                 "webhook_id": str(webhook.id),
+                "delivery_id": delivery_id,
             },
             default=str,
         ).encode()
@@ -136,6 +148,7 @@ async def deliver_webhook(
                         "Content-Type": "application/json",
                         "X-Webhook-Signature": signature,
                         "X-Event-Type": event_type,
+                        "X-Webhook-Delivery": delivery_id,
                     },
                 )
                 resp.raise_for_status()
@@ -277,6 +290,7 @@ class WebhookEventHandler:
                     str(webhook.id),
                     event_str,
                     event.payload,
+                    delivery_id=str(uuid.uuid4()),
                 )
                 logger.debug(
                     "Enqueued webhook delivery: webhook=%s event=%s",
