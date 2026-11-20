@@ -4,8 +4,8 @@ Ingest auto-supersedes contradictions and (additively) queues a
 kind='contradiction' approval. Approving confirms it (no-op); rejecting UNDOES
 the supersede — restoring the old memory to active and clearing the chain.
 
-Defensive per house convention: accept 500 when the DB is unreachable, never
-422 for valid input. See docs/specs/approvals-feed.md.
+Every status is asserted exactly: ``skip_on_db_error`` skips when no
+database is reachable, so a 500 is always a failure. See docs/specs/approvals-feed.md.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT = "test_contradiction_tenant"
 TENANT_HEADERS = {"X-Tenant-ID": TENANT, "X-User-ID": "contra-test-user"}
@@ -103,9 +103,7 @@ class TestContradictionSideEffect:
         approval_id = await _seed_contradiction_approval(old_id, new_id)
 
         resp = await client.post(f"/api/v1/approvals/{approval_id}/reject")
-        assert resp.status_code in (200, 500), resp.text
-        if resp.status_code == 500:
-            return
+        assert_ok(resp, 200)
 
         old = await _get_memory(old_id)
         new = await _get_memory(new_id)
@@ -119,7 +117,6 @@ class TestContradictionSideEffect:
         approval_id = await _seed_contradiction_approval(old_id, new_id)
 
         resp = await client.post(f"/api/v1/approvals/{approval_id}/approve")
-        assert resp.status_code in (200, 500)
-        if resp.status_code == 200:
-            old = await _get_memory(old_id)
-            assert old.status == "superseded"  # confirm — unchanged
+        assert_ok(resp, 200)
+        old = await _get_memory(old_id)
+        assert old.status == "superseded"  # confirm — unchanged

@@ -8,8 +8,9 @@ Tests the Preference API layer:
 - DELETE /api/v1/preferences/{id} (soft delete)
 - Inferred confidence cap at 0.7
 
-Follows existing test patterns: httpx AsyncClient + ASGITransport,
-defensive assertions accepting 500 if DB unreachable.
+Follows existing test patterns: httpx AsyncClient + ASGITransport. Every
+status is asserted exactly; ``skip_on_db_error`` skips when no database is
+reachable, so a 500 is always a failure.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test-preferences-tenant",
@@ -57,17 +58,12 @@ class TestCreatePreference:
                 "category": "infrastructure",
             },
         )
-        assert response.status_code in (201, 500), (
-            f"Expected 201 or 500, got {response.status_code}: {response.text}"
-        )
-
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert data["topic"] == "ORM"
-            assert data["choice"] == "SQLAlchemy"
-            assert data["confidence"] == 0.9
-            assert "id" in data
-            assert "created_at" in data
+        data = assert_ok(response, 201)["data"]
+        assert data["topic"] == "ORM"
+        assert data["choice"] == "SQLAlchemy"
+        assert data["confidence"] == 0.9
+        assert "id" in data
+        assert "created_at" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -77,7 +73,7 @@ class TestCreatePreference:
             "/api/v1/preferences/",
             json={"choice": "pytest"},
         )
-        assert response.status_code in (422, 500)
+        assert response.status_code == 422, response.text
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -92,13 +88,10 @@ class TestCreatePreference:
                 "source": "inferred",
             },
         )
-        assert response.status_code in (201, 500)
-
-        if response.status_code == 201:
-            data = response.json()["data"]
-            assert data["confidence"] <= 0.7, (
-                f"Inferred confidence should be capped at 0.7, got {data['confidence']}"
-            )
+        data = assert_ok(response, 201)["data"]
+        assert data["confidence"] <= 0.7, (
+            f"Inferred confidence should be capped at 0.7, got {data['confidence']}"
+        )
 
 
 class TestListPreferences:
@@ -109,12 +102,9 @@ class TestListPreferences:
     async def test_list_preferences_returns_200(self, client: AsyncClient):
         """Listing preferences returns 200 with data array."""
         response = await client.get("/api/v1/preferences/")
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = assert_ok(response, 200)
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -127,7 +117,8 @@ class TestListPreferences:
             "/api/v1/preferences/",
             params={"category": "infrastructure"},
         )
-        assert response.status_code in (200, 500)
+        body = assert_ok(response, 200)
+        assert all(p["category"] == "infrastructure" for p in body["data"])
 
 
 class TestSearchPreferences:
@@ -144,12 +135,9 @@ class TestSearchPreferences:
                 "limit": 5,
             },
         )
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = assert_ok(response, 200)
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
 
 class TestUpdatePreference:
@@ -168,10 +156,7 @@ class TestUpdatePreference:
                 "confidence": 0.8,
             },
         )
-        if create_resp.status_code != 201:
-            pytest.skip("DB unavailable — cannot test update")
-
-        pref_id = create_resp.json()["data"]["id"]
+        pref_id = assert_ok(create_resp, 201)["data"]["id"]
 
         # Update
         resp = await client.patch(
@@ -181,11 +166,8 @@ class TestUpdatePreference:
                 "reason": "Considering alternatives",
             },
         )
-        assert resp.status_code in (200, 500)
-
-        if resp.status_code == 200:
-            data = resp.json()["data"]
-            assert data["confidence"] == 0.6
+        data = assert_ok(resp, 200)["data"]
+        assert data["confidence"] == 0.6
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -196,7 +178,7 @@ class TestUpdatePreference:
             f"/api/v1/preferences/{fake_id}",
             json={"confidence": 0.5},
         )
-        assert resp.status_code in (404, 500)
+        assert resp.status_code == 404, resp.text
 
 
 class TestDeletePreference:
@@ -214,13 +196,10 @@ class TestDeletePreference:
                 "confidence": 0.5,
             },
         )
-        if create_resp.status_code != 201:
-            pytest.skip("DB unavailable — cannot test delete")
-
-        pref_id = create_resp.json()["data"]["id"]
+        pref_id = assert_ok(create_resp, 201)["data"]["id"]
 
         resp = await client.delete(f"/api/v1/preferences/{pref_id}")
-        assert resp.status_code in (204, 500)
+        assert resp.status_code == 204, resp.text
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -228,4 +207,4 @@ class TestDeletePreference:
         """Deleting a non-existent preference returns 404."""
         fake_id = "00000000-0000-0000-0000-000000000000"
         resp = await client.delete(f"/api/v1/preferences/{fake_id}")
-        assert resp.status_code in (404, 500)
+        assert resp.status_code == 404, resp.text
