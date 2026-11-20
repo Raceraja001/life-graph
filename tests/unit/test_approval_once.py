@@ -172,6 +172,29 @@ async def test_no_transaction_is_left_open_holding_the_lock_through_the_effect(e
     assert session.events == ["lock", "commit", "flush"]
 
 
+async def test_on_postgres_the_effects_own_transaction_is_exempt_from_the_idle_timeout(effects):
+    """The deploy's pinned-command check reads the project, then the deploy
+    may run 600 s: that later transaction (no row lock) is exempted so the
+    outcome can still be recorded. The claim's own transaction is not."""
+    db = _Db(_row("driver_deploy"))
+    session = db.session()
+    session.get_bind = lambda *_a, **_k: SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+    async def execute(stmt, *_a, **_k):
+        session.events.append(str(stmt))
+
+    session.execute = execute
+
+    await ApprovalService(session).resolve("t", str(db.row.id), "approve")
+
+    assert session.events == [
+        "lock",
+        "commit",
+        "SET LOCAL idle_in_transaction_session_timeout = 0",
+        "flush",
+    ]
+
+
 @pytest.mark.parametrize("kind", ["promotion", "merge", "archive", "contradiction", "entity_alias"])
 async def test_kinds_that_only_touch_this_transaction_take_no_claim(kind, monkeypatch):
     async def noop(*_a, **_k):

@@ -157,14 +157,14 @@ async def test_the_api_answers_409_while_the_item_is_being_resolved(monkeypatch)
     assert info.value.detail == "Approval already being resolved"
 
 
-# ── No idle-timeout exemption any more ───────────────────────────────────
+# ── The locking transaction is not exempt from the idle timeout ──────────
 #
-# #278 exempted the claimed transaction from the engine's 600 s
+# #278 exempted the locked transaction from the engine's 600 s
 # idle-in-transaction timeout (SET LOCAL ... = 0) because a deploy ran while
 # it held the row lock. Since P0 (2026-11-20) the kinds with long side effects
-# commit an execution claim first and run outside that transaction
-# (tests/unit/test_approval_once.py), and the other kinds only touch rows in
-# the same short transaction: nothing needs the exemption.
+# commit an execution claim first, and only the effect's own later
+# transaction (no row lock) is exempt (tests/unit/test_approval_once.py). The
+# other kinds only touch rows in one short transaction: no exemption.
 
 
 class _BoundSession(_Session):

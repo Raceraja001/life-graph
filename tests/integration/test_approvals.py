@@ -268,10 +268,11 @@ class TestApprovedActionsRunAtMostOnce:
     async def test_the_side_effect_runs_with_the_claim_committed_and_no_lock_held(
         self, monkeypatch
     ):
-        """No transaction holds the row through a deploy (#278 needed an
-        idle-timeout exemption for that): another connection can lock the row
-        at once, and already sees the claim."""
-        from sqlalchemy import select
+        """No transaction holds the row lock through a deploy: another
+        connection can lock the row at once, and already sees the claim. The
+        effect's own transaction (it reads before the command runs) is exempt
+        from the idle timeout, so a slow deploy can still record its outcome."""
+        from sqlalchemy import select, text
 
         from life_graph.models.db import Approval
         from life_graph.services.approvals import ApprovalService
@@ -289,6 +290,9 @@ class TestApprovedActionsRunAtMostOnce:
                 ).scalar_one()
                 seen["state"] = row.payload["execution"]["state"]
                 await other.rollback()
+            seen["idle"] = (
+                await self.session.execute(text("SHOW idle_in_transaction_session_timeout"))
+            ).scalar()
 
         monkeypatch.setattr(ApprovalService, "_apply_driver_deploy", look)
 
@@ -296,7 +300,7 @@ class TestApprovedActionsRunAtMostOnce:
             await ApprovalService(session).resolve(TENANT, approval_id, "approve")
             await session.commit()
 
-        assert seen == {"state": "started"}
+        assert seen == {"state": "started", "idle": "0"}
 
     @skip_on_db_error
     async def test_a_manual_approve_during_an_auto_merge_retry_is_refused(

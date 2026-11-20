@@ -276,9 +276,11 @@ class ApprovalService:
         1. Write ``payload["execution"] = {state: "started", ...}`` and commit:
            the row lock goes with that commit, and from then on any other
            resolve, the auto-merge sweep or a retried request sees the claim
-           and stays away. No transaction is held open while a deploy runs, so
-           the idle-in-transaction timeout no longer needs an exemption.
-        2. Run the side effect.
+           and stays away.
+        2. Run the side effect. Its transaction holds no row lock, but it may
+           read before a long command (the deploy's pinned-command check) and
+           then idle through it, so it is exempt from the idle timeout: else a
+           slow but successful deploy could not record its outcome.
         3. Success: status approved + claim "done", flushed; the caller commits.
            ApprovalActionError: "failed"; anything else: "unknown"; each
            committed here (the effect's own partial session changes are
@@ -288,6 +290,7 @@ class ApprovalService:
         claim = _new_claim(appr, resolved_by)
         appr.payload = {**(appr.payload or {}), "execution": claim}
         await self.session.commit()
+        await _exempt_from_idle_timeout(self.session)
 
         appr.resolution_note = note  # handlers append their outcome to it
         try:
@@ -1335,6 +1338,33 @@ class ApprovalService:
                 )
 
 
+async def _exempt_from_idle_timeout(session: Any) -> None:
+    """``SET LOCAL idle_in_transaction_session_timeout = 0`` on Postgres.
+
+    The engine sets that timeout (storage/database.py, 600 s by default) so a
+    forgotten transaction cannot pin a connection. A claimed side effect may
+    read (the deploy's pinned-command check) and then idle through a command
+    of up to ``DEPLOY_TIMEOUT_SECONDS`` plus smoke and rollback; without this
+    the server closed the connection and the outcome could not be recorded.
+    Since P0 this transaction starts after the claim is committed and holds
+    no row lock. ``LOCAL`` scopes it to this transaction only.
+
+    A no-op on any other dialect, and for test doubles with no bind.
+    """
+    get_bind = getattr(session, "get_bind", None)
+    if get_bind is None:
+        return
+    try:
+        dialect = get_bind().dialect.name
+    except Exception:  # noqa: BLE001 - unbound session: nothing to configure
+        return
+    if dialect != "postgresql":
+        return
+    from sqlalchemy import text
+
+    await session.execute(text("SET LOCAL idle_in_transaction_session_timeout = 0"))
+
+
 def _execution(appr: Any) -> dict:
     """The execution claim on *appr* (``payload["execution"]``), or ``{}``."""
     value = (getattr(appr, "payload", None) or {}).get("execution")
@@ -1544,6 +1574,7 @@ async def retry_auto_merges(session_factory, max_age_days: int = 7) -> dict[str,
             claim = _new_claim(appr, "auto: retry_auto_merges")
             appr.payload = {**(appr.payload or {}), "execution": claim}
             await session.commit()  # the claim is durable; the row lock is released
+            await _exempt_from_idle_timeout(session)  # gh may take minutes
             payload = appr.payload or {}
             tried += 1
             svc = ApprovalService(session)

@@ -115,21 +115,32 @@ async def test_the_sync_job_retries_first_and_survives_a_failure(monkeypatch):
 
 
 async def test_the_claim_is_committed_before_the_merge_runs(monkeypatch):
-    """P0: the merge no longer runs inside the locked transaction (which needed
-    an idle-timeout exemption); the claim is committed first, so the lock is
-    gone and the claim is durable while gh runs."""
+    """P0: the merge no longer runs inside the locked transaction; the claim is
+    committed first, so the lock is gone and the claim is durable while gh
+    runs. Only the merge's own transaction (no row lock) is exempt from the
+    idle timeout on Postgres."""
     green = _merge_appr(auto_merge=True, green=True)
-    session = FakeSession([green], green)
+
+    class _PgSession(FakeSession):
+        def get_bind(self, *_a, **_k):
+            return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+    session = _PgSession([green], green, None)
     seen = {}
 
     async def fake(self, appr, *_a):
         seen["commits_before_merge"] = session.commits
         seen["state"] = appr.payload["execution"]["state"]
+        seen["last_statement"] = str(session.statements[-1])
         appr.status = "approved"
 
     monkeypatch.setattr(approvals.ApprovalService, "maybe_auto_merge", fake)
 
     await approvals.retry_auto_merges(session_factory(session))
 
-    assert seen == {"commits_before_merge": 1, "state": "started"}
-    assert all("SET LOCAL" not in str(s) for s in session.statements)
+    assert seen == {
+        "commits_before_merge": 1,
+        "state": "started",
+        "last_statement": "SET LOCAL idle_in_transaction_session_timeout = 0",
+    }
+    assert "FOR UPDATE SKIP LOCKED" in sql(session.statements[1])
