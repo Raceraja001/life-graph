@@ -126,12 +126,8 @@ class _FakeSessionWithKeylessRow(_FakeSession):
 
     def __init__(self) -> None:
         super().__init__()
+        # Served by _FakeSession.execute (the row the locked SELECT returns).
         self.row = SimpleNamespace(raw_key=None, source_path=None, updated_at=None, line_count=3)
-
-    async def execute(self, _stmt):
-        scalars = MagicMock()
-        scalars.first.return_value = self.row
-        return SimpleNamespace(scalars=lambda: scalars)
 
 
 @pytest.mark.asyncio

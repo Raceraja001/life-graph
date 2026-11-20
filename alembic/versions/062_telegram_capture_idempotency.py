@@ -26,15 +26,14 @@
    check runs without blocking writes for its whole length.
 
 Revision ID: 062
-Revises: 060
+Revises: 061
 Create Date: 2026-11-20
 """
 
 from alembic import op
 
 revision = "062"
-# NOTE: re-point to "061" when 061 (approval_queue.requested_by) is on master.
-down_revision = "060"
+down_revision = "061"
 branch_labels = None
 depends_on = None
 

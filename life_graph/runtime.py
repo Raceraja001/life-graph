@@ -16,6 +16,7 @@ and ``app.dependency_overrides`` keys keep working.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from life_graph.core.memory_manager import MemoryManager
 from life_graph.core.router import QueryRouter
@@ -560,12 +561,17 @@ def get_transcript_distiller():
 # at API shutdown. Keyed on the loop because a pool belongs to the loop it
 # was created on (tests run one loop per test).
 
-_arq_pool = None
-_arq_pool_loop = None
-_arq_pool_lock = None
+if TYPE_CHECKING:
+    import asyncio
+
+    from arq.connections import ArqRedis
+
+_arq_pool: ArqRedis | None = None
+_arq_pool_loop: asyncio.AbstractEventLoop | None = None
+_arq_pool_lock: tuple[asyncio.Lock, asyncio.AbstractEventLoop] | None = None
 
 
-async def get_arq_pool():
+async def get_arq_pool() -> ArqRedis:
     """The process-wide arq pool for enqueuing jobs, created on first use."""
     import asyncio
 
