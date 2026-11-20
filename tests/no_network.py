@@ -12,7 +12,12 @@ Postgres, Redis or model server and skip when it isn't there.
 
 from __future__ import annotations
 
+import os
 import socket
+
+# litellm downloads its model price map at import time; offline that import
+# half-fails (circular-import errors under xdist). Use the bundled copy.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 _real_getaddrinfo = socket.getaddrinfo
 _real_connect = socket.socket.connect
