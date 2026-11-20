@@ -101,6 +101,10 @@ class CoreSettings(BaseModel):
 
     # ── Observability ──────────────────────────────────
     metrics_enabled: bool = True
+    # GET /metrics is public by default (a Prometheus scraper on the box holds
+    # no key). True makes it need a service key like any other route
+    # (api/auth.py verify_service_key); a scraper then sends it as a bearer token.
+    metrics_require_key: bool = False
 
     # ── Startup Seeding ─────────────────────────────────
     # Which tenants get the built-in personas, ambient jobs and safety rules at

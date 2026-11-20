@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from life_graph.config import settings
+from life_graph.core.utils import set_overlap_ratio as _set_overlap_ratio
 
 logger = logging.getLogger(__name__)
 
@@ -127,19 +128,6 @@ def inert_signals(scored: list[dict[str, Any]]) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 # Context similarity helpers
 # ---------------------------------------------------------------------------
-
-
-def _set_overlap_ratio(a: set[str], b: set[str]) -> float:
-    """Compute overlap ratio between two sets.
-
-    Returns 0.0 when both sets are empty.
-    """
-    if not a and not b:
-        return 0.0
-    max_size = max(len(a), len(b))
-    if max_size == 0:
-        return 0.0
-    return len(a & b) / max_size
 
 
 def context_similarity(

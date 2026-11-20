@@ -11,7 +11,8 @@ HTTP status the routes always answered (404 missing, 409 invalid move).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from life_graph.core.events import EventType, event_bus
 from life_graph.core.tenant import get_current_tenant_id
@@ -95,10 +96,17 @@ async def transition(
     *,
     confirm_as_owner_fact: bool = False,
     actor: str | None = None,
+    decided_by: str | None = None,
 ) -> Memory:
     """Move a memory between pending/rejected/active, emitting the matching event.
 
-    Idempotent when already in the target status.
+    Idempotent when already in the target status (nothing is written then).
+
+    ``decided_by`` is who approved or rejected it as the server saw the caller
+    (api/approval_identity.resolver); when given, a transition that happens
+    records it in ``properties.review`` ({action, by, at}), written
+    server-side. ``review`` is in ``core.evidence.SERVER_ONLY_PROPS``, so a
+    client patch can neither forge nor rewrite it. Never from a request body.
 
     Raises:
         MemoryTransitionError: 404 if missing; 409 if the requested
@@ -110,6 +118,14 @@ async def transition(
     from life_graph.services import profile_card
 
     profile_card.invalidate(row.tenant_id)  # Keep or Drop changes what the card holds
+
+    def reviewed(props: dict[str, Any] | None) -> dict[str, Any] | None:
+        """*props* plus the review stamp, or None when nobody is named."""
+        if not decided_by:
+            return None
+        stamp = {"action": action, "by": decided_by, "at": datetime.now(UTC).isoformat()}
+        return {**(props or {}), "review": stamp}
+
     if action == "approve":
         if row.status == "active":
             return row  # idempotent
@@ -136,8 +152,13 @@ async def transition(
             )
             updated = await store.update(
                 memory_id,
-                MemoryUpdate(status="active", properties=confirmed),
+                MemoryUpdate(status="active", properties=reviewed(confirmed) or confirmed),
                 server_side=True,
+            )
+        elif (stamped := reviewed(row.properties)) is not None:
+            # Server-built from the stored properties, so server_side is right.
+            updated = await store.update(
+                memory_id, MemoryUpdate(status="active", properties=stamped), server_side=True
             )
         else:
             updated = await store.update(memory_id, MemoryUpdate(status="active"))
@@ -157,7 +178,12 @@ async def transition(
         return row  # idempotent
     if row.status != "pending":
         raise MemoryTransitionError(409, f"Cannot reject a {row.status} memory")
-    updated = await store.update(memory_id, MemoryUpdate(status="rejected"))
+    if (stamped := reviewed(row.properties)) is not None:
+        updated = await store.update(
+            memory_id, MemoryUpdate(status="rejected", properties=stamped), server_side=True
+        )
+    else:
+        updated = await store.update(memory_id, MemoryUpdate(status="rejected"))
     await settle_contradictions(memory_id, approved=False)
     try:
         await event_bus.emit(

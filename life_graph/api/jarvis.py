@@ -69,6 +69,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
+from life_graph.api.approval_identity import refuse_self_approval, require_owner, resolver
 from life_graph.api.responses import success_response
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services.lead import LEAD
@@ -1053,23 +1054,28 @@ async def pending_memories(limit: int = 50):
     )
 
 
-async def _review(memory_id: uuid.UUID, action: str) -> dict:
-    """Approve or reject through the dashboard's own transition (events, contradictions)."""
+async def _review(memory_id: uuid.UUID, action: str, request: Request) -> dict:
+    """Approve or reject through the dashboard's own transition (events, contradictions).
+
+    Decided like any approval (api/approval_identity.py): owner only when
+    ``approvals_require_owner`` is on, and who decided is recorded.
+    """
     from life_graph.api.dependencies import get_store
     from life_graph.api.memories import _transition
 
-    row = await _transition(memory_id, action, get_store())
+    require_owner(request)
+    row = await _transition(memory_id, action, get_store(), decided_by=resolver(request))
     return {"id": str(row.id), "status": row.status}
 
 
 @router.post("/memories/{memory_id}/approve", summary="Keep a memory")
-async def approve_memory(memory_id: uuid.UUID):
-    return success_response(data=await _review(memory_id, "approve"))
+async def approve_memory(memory_id: uuid.UUID, request: Request):
+    return success_response(data=await _review(memory_id, "approve", request))
 
 
 @router.post("/memories/{memory_id}/reject", summary="Drop a memory")
-async def reject_memory(memory_id: uuid.UUID):
-    return success_response(data=await _review(memory_id, "reject"))
+async def reject_memory(memory_id: uuid.UUID, request: Request):
+    return success_response(data=await _review(memory_id, "reject", request))
 
 
 @router.post("/memories/{memory_id}/undo", summary="Take back a memory Jarvis just saved")
@@ -1308,7 +1314,6 @@ async def notification_action(notification_id: str, body: NotificationAction, re
     asked for itself, and who decided is recorded from the server's view of
     the caller (``action.by``), never from the body.
     """
-    from life_graph.api.approval_identity import refuse_self_approval, require_owner, resolver
     from life_graph.connectors.tools import user_tz
     from life_graph.services.notifications import actions as na
 

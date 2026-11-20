@@ -72,7 +72,9 @@ OWNER_KINDS = frozenset({SAID, DOCUMENT})
 #: ``properties`` keys that are server-side provenance: a caller that could
 #: write them could promote its own text to the owner's word. Kept out of
 #: every client-supplied patch (:func:`merge_client_properties`).
-SERVER_ONLY_PROPS = ("evidence", "owner_confirmed", "lineage")
+#: ``review`` is who approved or rejected a pending memory (api/memories.py
+#: ``_transition``): an audit record, so a patch must not rewrite it either.
+SERVER_ONLY_PROPS = ("evidence", "owner_confirmed", "lineage", "review")
 
 #: Where in ``properties`` an explicit owner confirmation is recorded.
 OWNER_CONFIRMED = "owner_confirmed"

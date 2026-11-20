@@ -15,8 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from life_graph.services.memory.retrieval import EARLY_EXIT_CONFIDENCE, EARLY_EXIT_ENTAILMENT
-from life_graph.services.memory_benchmark import (
+from life_graph.evals.memory_benchmark import (
     ADAPTIVE_ARM,
     BASELINE_ARM,
     BENCHMARK_METHODS,
@@ -31,6 +30,7 @@ from life_graph.services.memory_benchmark import (
     run_memory_benchmark,
     sweep_confidence_floors,
 )
+from life_graph.services.memory.retrieval import EARLY_EXIT_CONFIDENCE, EARLY_EXIT_ENTAILMENT
 from scripts.eval_memory_benchmark import verify_report
 
 

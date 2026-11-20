@@ -858,8 +858,11 @@ async def test_an_ordinary_approve_is_open_to_any_caller_and_confirms_nothing(au
 
     update = store.update.await_args.args[1]
     assert update.status == "active"
-    assert update.properties is None
-    assert store.update.await_args.kwargs.get("server_side") is not True
+    # No owner confirmation; the only thing added is who approved (the
+    # server-side review stamp, api/memories.py _transition).
+    assert ev.OWNER_CONFIRMED not in update.properties
+    assert set(update.properties) - set(row.properties) == {"review"}
+    assert update.properties["review"]["action"] == "approve"
 
 
 @pytest.mark.asyncio
@@ -934,7 +937,7 @@ def test_a_confirmation_record_cannot_be_asserted_by_a_properties_patch():
     assert "lineage" not in merged
     assert ev.may_state_as_owner_truth("mcp", "external", merged) is False
     # The keys the boundary protects, named once so the list cannot quietly shrink.
-    assert ev.SERVER_ONLY_PROPS == ("evidence", "owner_confirmed", "lineage")
+    assert ev.SERVER_ONLY_PROPS == ("evidence", "owner_confirmed", "lineage", "review")
 
 
 # ── Authority: a hostile payload cannot write its own permission slip ────

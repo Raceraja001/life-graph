@@ -31,7 +31,7 @@ Life Graph is a multi-tenant SaaS backend that stores, scores, searches, and evo
 │               Middleware Stack (5 layers)                │
 │  RequestID → Auth → Tenant → RateLimit → Logging        │
 ├─────────────────────────────────────────────────────────┤
-│                   Service Layer (12)                     │
+│        Service Layer (runtime.py providers)              │
 │  MemoryManager · RecallEngine · ContradictionDetector    │
 │  IdentityService · IntentionService · EmbeddingService   │
 │  SynthesisService · MultiModalService · LMStudioClient   │
@@ -47,6 +47,10 @@ Life Graph is a multi-tenant SaaS backend that stores, scores, searches, and evo
 ```
 
 **Tech Stack:** Python 3.11+ · FastAPI · PostgreSQL + pgvector · Apache AGE · Redis · ARQ · spaCy · MinIO · Prometheus
+
+The diagram names examples, not the full set. How many routes, services, tables
+and jobs exist right now is in the generated [docs/STATE.md](docs/STATE.md)
+(last verified 2026-11-20).
 
 ---
 

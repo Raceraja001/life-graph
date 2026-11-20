@@ -9,13 +9,10 @@ from __future__ import annotations
 
 import calendar
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
-
-def _utcnow() -> datetime:
-    """Return the current UTC timestamp (timezone-aware)."""
-    return datetime.now(UTC)
+from life_graph.core.utils import utcnow as _utcnow
 
 
 def _end_of_day(dt: datetime) -> datetime:

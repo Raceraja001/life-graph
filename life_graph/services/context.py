@@ -11,6 +11,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from life_graph.core.utils import set_overlap_ratio as _set_overlap_ratio
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,19 +76,6 @@ class ContextFingerprint:
             and not self.git_branch
             and not self.topics
         )
-
-
-def _set_overlap_ratio(a: set[str], b: set[str]) -> float:
-    """Compute overlap ratio between two sets.
-
-    Returns intersection / max(len(a), len(b)), or 0.0 when both empty.
-    """
-    if not a and not b:
-        return 0.0
-    max_size = max(len(a), len(b))
-    if max_size == 0:
-        return 0.0
-    return len(a & b) / max_size
 
 
 class ContextBuilder:

@@ -8,21 +8,16 @@ and assesses confidence in query results.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, update
 
 from life_graph.core.tenant import get_current_tenant_id
+from life_graph.core.utils import utcnow as _utcnow
 from life_graph.models.db import KnowledgeGap
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-
-def _utcnow() -> datetime:
-    """Return the current UTC timestamp (timezone-aware)."""
-    return datetime.now(UTC)
 
 
 # ── Confidence thresholds ─────────────────────────────────────────────────

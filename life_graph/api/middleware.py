@@ -18,12 +18,14 @@ from typing import TYPE_CHECKING
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
+from life_graph.api.approval_identity import resolver
 from life_graph.api.auth import is_exempt_path, verify_service_key
 from life_graph.api.device_access import device_may_call, route_path
 from life_graph.api.responses import http_error_body
 from life_graph.config import settings
 from life_graph.core.metrics import route_label, track_request
 from life_graph.core.rate_limit import check_rate_limit
+from life_graph.core.task_context import set_requester
 from life_graph.core.tenant import set_tenant_context
 
 if TYPE_CHECKING:
@@ -101,6 +103,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             device = await _device_for(request)
             if device is not None:
                 request.state.device_tenant, request.state.device_id = device
+                _record_requester(request)
                 return await call_next(request)
             return JSONResponse(
                 status_code=401,
@@ -112,7 +115,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 ),
             )
 
+        _record_requester(request)
         return await call_next(request)
+
+
+def _record_requester(request: Request) -> None:
+    """Remember who this authenticated request is from (core/task_context.py).
+
+    The server's own view of the caller (api/approval_identity.resolver), so
+    work it starts, such as a browser errand that stops for an approval, can
+    say who asked for it. Exempt paths carry no caller and record nothing.
+    """
+    set_requester(None if is_exempt_path(request.url.path) else resolver(request))
 
 
 class TenantMiddleware(BaseHTTPMiddleware):

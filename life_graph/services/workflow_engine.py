@@ -18,20 +18,15 @@ import logging
 import re
 import uuid
 from collections import defaultdict, deque
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 
 from life_graph.core.events import EventType, event_bus
+from life_graph.core.utils import utcnow as _utcnow
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow() -> datetime:
-    """Return the current UTC timestamp (timezone-aware)."""
-    return datetime.now(UTC)
 
 
 # ── Condition Evaluator ──────────────────────────────────────────

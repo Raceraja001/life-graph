@@ -15,6 +15,7 @@ import uuid
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
+from life_graph.api.approval_identity import require_owner, resolver
 from life_graph.api.auth import ingress_for
 from life_graph.api.dependencies import get_memory_manager, get_recall_engine, get_store
 from life_graph.api.openapi_examples import MEMORY_CREATED
@@ -273,11 +274,14 @@ async def _transition(
     *,
     confirm_as_owner_fact: bool = False,
     actor: str | None = None,
+    decided_by: str | None = None,
 ) -> Memory:
     """``transitions.transition``, with its errors as the routes' HTTP errors.
 
     Idempotent when already in the target status; 404 if missing; 409 if the
     requested transition isn't valid from the memory's current status.
+    ``decided_by`` (api/approval_identity.resolver) is stamped as
+    ``properties.review``.
     """
     try:
         return await transitions.transition(
@@ -286,6 +290,7 @@ async def _transition(
             store,
             confirm_as_owner_fact=confirm_as_owner_fact,
             actor=actor,
+            decided_by=decided_by,
         )
     except transitions.MemoryTransitionError as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from None
@@ -308,21 +313,26 @@ async def pending_count(store: PostgresMemoryStore = Depends(get_store)):
     response_model=Envelope[BulkApprovalResult],
 )
 async def bulk_approvals(
+    request: Request,
     body: BulkApprovalBody,
     store: PostgresMemoryStore = Depends(get_store),
 ):
     """Approve/reject memories in batch (distillation review will lean on this)."""
+    # Owner only when approvals_require_owner is on; who decided is recorded on
+    # each memory (properties.review), as for the single routes.
+    require_owner(request)
+    by = resolver(request)
     approved = rejected = 0
     errors: list[str] = []
     for mid in body.approve:
         try:
-            await _transition(mid, "approve", store)
+            await _transition(mid, "approve", store, decided_by=by)
             approved += 1
         except HTTPException:
             errors.append(str(mid))
     for mid in body.reject:
         try:
-            await _transition(mid, "reject", store)
+            await _transition(mid, "reject", store, decided_by=by)
             rejected += 1
         except HTTPException:
             errors.append(str(mid))
@@ -347,6 +357,10 @@ async def approve_memory(
     in the body: a third party, or an agent posting on behalf of a page it
     read, is refused (403) rather than obeyed.
     """
+    # With approvals_require_owner on, only the owner may approve at all
+    # (api/approval_identity.require_owner). Who approved is recorded in
+    # properties.review from the server's view of the caller.
+    require_owner(request)
     confirm = bool(body and body.confirm_as_owner_fact)
     actor: str | None = None
     if confirm:
@@ -366,6 +380,7 @@ async def approve_memory(
         store,
         confirm_as_owner_fact=confirm,
         actor=actor,
+        decided_by=resolver(request),
     )
     return success_response(data=MemoryResponse.model_validate(row))
 
@@ -376,11 +391,15 @@ async def approve_memory(
     response_model=Envelope[MemoryResponse],
 )
 async def reject_memory(
+    request: Request,
     memory_id: uuid.UUID,
     store: PostgresMemoryStore = Depends(get_store),
 ):
     """Reject a pending memory — hidden everywhere, re-capture allowed."""
-    row = await _transition(memory_id, "reject", store)
+    # Owner only when approvals_require_owner is on; who rejected is recorded
+    # in properties.review.
+    require_owner(request)
+    row = await _transition(memory_id, "reject", store, decided_by=resolver(request))
     return success_response(data=MemoryResponse.model_validate(row))
 
 

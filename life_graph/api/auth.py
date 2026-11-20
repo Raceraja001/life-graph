@@ -51,6 +51,11 @@ def is_exempt_path(path: str) -> bool:
     return any(path == prefix or path.startswith(prefix + "/") for prefix in AUTH_EXEMPT_PREFIXES)
 
 
+def _is_metrics_path(path: str) -> bool:
+    """``/metrics`` (or below it), the one exempt path a setting can close."""
+    return path == "/metrics" or path.startswith("/metrics/")
+
+
 def _key_in(candidate: str, keys: list[str]) -> bool:
     """Constant-time membership test for an API key.
 
@@ -107,8 +112,9 @@ def verify_service_key(request: Request) -> str | None:
     Raises:
         HTTPException: 401 if the key is invalid.
     """
-    # Skip auth for exempt routes
-    if is_exempt_path(request.url.path):
+    # Skip auth for exempt routes (/metrics too, unless metrics_require_key)
+    path = request.url.path
+    if is_exempt_path(path) and not (settings.metrics_require_key and _is_metrics_path(path)):
         return None
 
     # Dev mode with no keys configured at all — neither the service-key list

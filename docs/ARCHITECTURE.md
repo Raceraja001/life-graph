@@ -3,6 +3,12 @@
 > **Brain-inspired memory microservice for AI agents.**
 > FastAPI backend · Multi-tenant SaaS · Python 3.11+
 
+> **Last verified: 2026-11-20.** This page explains the design; it does not
+> count things. Route, table, job, event and setting counts are in the
+> generated [docs/STATE.md](STATE.md) (`python scripts/gen_state.py`), which is
+> current by construction. The router and service lists below are examples,
+> not the full set.
+
 ---
 
 ## Table of Contents
@@ -30,7 +36,7 @@ Life Graph gives AI agents a **persistent, structured memory** that mirrors how 
 | **Type**            | Memory microservice (REST + WebSocket)      |
 | **Runtime**         | Python 3.11+ / FastAPI + Uvicorn (async)    |
 | **Tenancy**         | Multi-tenant SaaS (free / pro / enterprise) |
-| **API Surface**     | 45 endpoints across 9 route files + WS      |
+| **API Surface**     | REST + WS; route count in docs/STATE.md     |
 | **LLM Philosophy**  | Advisor, not authority — 85 % rule-based    |
 | **License**         | Proprietary                                 |
 
@@ -41,14 +47,14 @@ Life Graph gives AI agents a **persistent, structured memory** that mirrors how 
 | Layer               | Technology                                          | Role                                           |
 |---------------------|-----------------------------------------------------|-------------------------------------------------|
 | **API**             | FastAPI + Uvicorn                                   | Async HTTP/WS server                            |
-| **Database**        | PostgreSQL + pgvector                               | Relational storage + 768-dim vector search       |
+| **Database**        | PostgreSQL + pgvector                               | Relational storage + 1024-dim vector search      |
 | **Graph**           | Apache AGE (PostgreSQL extension)                   | Knowledge graph via Cypher queries               |
 | **Cache / Queue**   | Redis                                               | Rate limiting, pub/sub, ARQ job queue            |
 | **Object Storage**  | MinIO (S3-compatible)                               | Voice, image, and document files                 |
 | **NLP**             | spaCy                                               | NER, dependency parsing                          |
-| **Embeddings**      | sentence-transformers                               | 768-dimensional semantic embeddings              |
+| **Embeddings**      | sentence-transformers                               | 1024-dim embeddings (BAAI/bge-m3)                |
 | **LLM Routing**     | LiteLLM                                             | Routes to LM Studio (local) or OpenRouter/Gemini |
-| **Background Jobs** | ARQ (Redis-backed)                                  | 2 nightly crons + async bulk tasks               |
+| **Background Jobs** | ARQ (Redis-backed)                                  | Cron jobs (count in docs/STATE.md) + async tasks |
 | **Observability**   | Prometheus + structured JSON logging                | Metrics, tracing, audit                          |
 
 ---
@@ -177,7 +183,7 @@ graph TB
 | **MemoryManager**      | Core orchestrator — coordinates ingestion, recall, and updates        |
 | **RecallEngine**       | Proactive context retrieval with anti-annoyance filtering             |
 | **ContradictionDetector** | Detects and resolves conflicting memories                          |
-| **EmbeddingService**   | Generates 768-dim vectors via sentence-transformers                   |
+| **EmbeddingService**   | Generates 1024-dim vectors via sentence-transformers                   |
 | **IdentityService**    | Maintains the evolving identity model (traits, preferences, beliefs)  |
 | **IntentionService**   | Tracks goals, plans, and their progress                               |
 | **SynthesisService**   | Produces summaries and distillations from memory clusters             |
@@ -226,7 +232,7 @@ Input Text
 
 | Signal            | Weight | Description                                         |
 |-------------------|--------|-----------------------------------------------------|
-| Semantic similarity | 0.35 | Cosine distance in 768-dim embedding space          |
+| Semantic similarity | 0.35 | Cosine distance in 1024-dim embedding space          |
 | Recency            | 0.20 | Exponential decay from creation time                |
 | Importance         | 0.20 | The memory's importance score                       |
 | Access frequency   | 0.10 | How often this memory has been recalled             |
@@ -244,7 +250,7 @@ Input Text
 flowchart LR
     A["📝 Raw Text"] --> B["🔍 Extract<br/>Regex → spaCy → LLM"]
     B --> C["⚖️ Score<br/>Rule-based importance"]
-    C --> D["🧮 Embed<br/>768-dim vector"]
+    C --> D["🧮 Embed<br/>1024-dim vector"]
     D --> E["🔁 Dedup<br/>Cosine similarity > 0.95"]
     E --> F["⚡ Contradict<br/>Conflict detection"]
     F --> G["💾 Store<br/>Postgres + Graph + Events"]
@@ -262,7 +268,7 @@ flowchart LR
 |-----------------|-----------------------------|------------------------------------------------------------------------------|
 | **Extract**     | `extraction/`               | Entities, relations, dates, and metadata pulled via 3-tier cascade           |
 | **Score**       | `scoring/`                  | Additive/subtractive signals assign importance tier (0.0 – 1.0)             |
-| **Embed**       | `EmbeddingService`          | Text → 768-dim vector via sentence-transformers                              |
+| **Embed**       | `EmbeddingService`          | Text → 1024-dim vector via sentence-transformers                              |
 | **Dedup**       | `PostgresMemoryStore`       | Cosine similarity check; memories > 0.95 similarity are merged               |
 | **Contradict**  | `ContradictionDetector`     | Cross-references existing memories; flags or auto-resolves conflicts         |
 | **Store**       | `PostgresMemoryStore` + `GraphStore` | Memory row inserted, graph edges created, `MEMORY_CREATED` event emitted |
@@ -349,7 +355,7 @@ erDiagram
         uuid tenant_id FK
         text content
         jsonb properties
-        vector embedding "768-dim"
+        vector embedding "1024-dim"
         float importance_score
         text importance_tier
         timestamp created_at
