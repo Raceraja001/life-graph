@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[2] / "life_graph"
 # c626ddd, whose own commits added 9 (api 3, autonomy 2, kernel 4).
 BASELINE = {
     "agents": 4,
-    "api": 264,
+    "api": 263,
     "autonomy": 57,
     "cli": 23,
     "cold_start": 6,
