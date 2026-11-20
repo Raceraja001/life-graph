@@ -39,9 +39,11 @@ ROOT = Path(__file__).resolve().parents[2] / "life_graph"
 # create_pool sites removed); runtime 49 -> 50 for get_arq_pool's
 # workers.settings import, which must stay local (test_runtime_module.py:
 # importing runtime may not load the worker/API packages). Net -2.
+# p2-small-items: api 263 -> 262, api/jarvis.py's approval_identity import
+# hoisted to module level.
 BASELINE = {
     "agents": 4,
-    "api": 263,
+    "api": 262,
     "autonomy": 53,
     "cli": 23,
     "cold_start": 6,

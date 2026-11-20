@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from life_graph.api.responses import success_response
+from life_graph.config import settings
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.storage.database import async_session
 
@@ -202,8 +203,6 @@ async def dispatch_task(body: DispatchRequest):
     Off unless ``LIFE_GRAPH_DRIVERS_DISPATCH_ENDPOINT=true`` (404 otherwise):
     it bypasses the runner's lock, limits and budget (audit L5).
     """
-    from life_graph.config import settings
-
     if not settings.drivers_dispatch_endpoint:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
     tenant_id = get_current_tenant_id()

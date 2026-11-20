@@ -20,6 +20,8 @@ import os
 import sys
 from typing import TYPE_CHECKING, Any
 
+from life_graph.config import settings as app_settings
+
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
@@ -98,8 +100,6 @@ def check_auth_exposure(settings: Any = None, bind_host: str | None = None) -> N
         bind_host: Where the API listens (defaults to :func:`detect_bind_host`).
     """
     if settings is None:
-        from life_graph.config import settings as app_settings
-
         settings = app_settings
     if _has_api_keys(settings):
         return
