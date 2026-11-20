@@ -8,7 +8,7 @@
 >
 > This file deliberately contains **no rationale** — for why any of it exists, read [CHARTER.md](../CHARTER.md).
 
-Generated `2026-11-20 09:26 UTC` from `master` @ `e1b5f0f`
+Generated `2026-11-20 09:35 UTC` from `master` @ `a01c7b5`
 
 ---
 
@@ -23,10 +23,10 @@ Generated `2026-11-20 09:26 UTC` from `master` @ `e1b5f0f`
 | Built-in personas | **13** |
 | Agent tools | **15** |
 | Scheduled jobs | **35** |
-| Config settings | **325** (prefix `LIFE_GRAPH_`) |
-| Test functions | **5536** in 568 files |
+| Config settings | **327** (prefix `LIFE_GRAPH_`) |
+| Test functions | **5571** in 575 files |
 | Dashboard pages | **23** |
-| Python | 574 files, 146,503 lines |
+| Python | 577 files, 146,762 lines |
 
 ---
 
@@ -1004,6 +1004,7 @@ Each spec in `docs/specs/` checked against the code that would implement it.
 | `money-checkin-and-app-health` | Unclassified | — |
 | `natural-language-queries` | Built | `life_graph/api/search.py` |
 | `night-shift-report` | Unclassified | — |
+| `notifications` | Unclassified | — |
 | `os-kernel` | Built | `life_graph/kernel/process_manager.py` |
 | `personal-model-tuning` | Spec'd, not built | — |
 | `personal-roles` | Built | `life_graph/kernel/ambient.py` |
@@ -1032,16 +1033,16 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 
 | Suite | Files | Functions |
 |---|---:|---:|
-| `tests/unit/` | 444 | 4618 |
+| `tests/unit/` | 451 | 4653 |
 | `tests/integration/` | 123 | 906 |
 | `tests/ (root)` | 1 | 12 |
-| **total** | **568** | **5536** |
+| **total** | **575** | **5571** |
 
 ---
 
 ## Configuration
 
-325 settings, all overridable by environment variable.
+327 settings, all overridable by environment variable.
 
 | Environment variable | Default |
 |---|---|
@@ -1068,6 +1069,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_LANGFUSE_SECRET_KEY` | `''` |
 | `LIFE_GRAPH_LANGFUSE_HOST` | `'http://localhost:3001'` |
 | `LIFE_GRAPH_METRICS_ENABLED` | `True` |
+| `LIFE_GRAPH_METRICS_REQUIRE_KEY` | `False` |
 | `LIFE_GRAPH_SEED_TENANTS` | `'default'` |
 | `LIFE_GRAPH_PLAN_LIMITS` | `{'free': {'requests_per_min': 60, 'max_memories': 1000, '…` |
 | `LIFE_GRAPH_DATABASE_URL` | `'postgresql+asyncpg://life_graph:life_graph@localhost:543…` |
@@ -1198,6 +1200,7 @@ Counts `def test_*` declarations. pytest collects more cases than this — `@pyt
 | `LIFE_GRAPH_TECH_WATCH_MAX_PAGES` | `6` |
 | `LIFE_GRAPH_TECH_WATCH_DIGEST_PER_TOPIC` | `6` |
 | `LIFE_GRAPH_DRIVER_LAND_VERIFIED_WORK` | `True` |
+| `LIFE_GRAPH_DRIVERS_DISPATCH_ENDPOINT` | `False` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_BIN` | `'claude'` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_TIMEOUT_SECONDS` | `1200` |
 | `LIFE_GRAPH_DRIVER_CLAUDE_CODE_AUTH` | `'oauth'` |
