@@ -7,7 +7,9 @@ Tests the Advisor API layer:
 - POST /api/v1/advisor/sessions/{id}/choose (record choice)
 
 LLM calls are mocked via litellm to avoid real API costs.
-Follows existing test patterns: httpx AsyncClient + ASGITransport.
+Follows existing test patterns: httpx AsyncClient + ASGITransport. Every
+status is asserted exactly; ``skip_on_db_error`` skips when no database is
+reachable, so a 500 is always a failure.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test-advisor-tenant",
@@ -87,16 +89,15 @@ class TestAskAdvisor:
             "/api/v1/advisor/ask",
             json={"question": "Should I use FastAPI or Django for my new API?"},
         )
-        assert response.status_code in (200, 500), (
-            f"Expected 200 or 500, got {response.status_code}: {response.text}"
-        )
-
-        if response.status_code == 200:
-            data = response.json()["data"]
-            assert "session_id" in data
-            assert "question" in data
-            assert "responses" in data
-            assert "consensus_score" in data
+        data = assert_ok(response, 200)["data"]
+        assert "session_id" in data
+        assert "question" in data
+        assert "responses" in data
+        assert "consensus_score" in data
+        # The answers came from the fake, not a real provider.
+        assert mock_acompletion.await_count >= 1
+        assert data["responses"]
+        assert all(r["recommendation"] == "Use FastAPI" for r in data["responses"])
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -106,7 +107,7 @@ class TestAskAdvisor:
             "/api/v1/advisor/ask",
             json={},
         )
-        assert response.status_code in (422, 500)
+        assert response.status_code == 422, response.text
 
 
 class TestListSessions:
@@ -117,11 +118,8 @@ class TestListSessions:
     async def test_list_sessions_returns_200(self, client: AsyncClient):
         """Listing advisor sessions returns 200."""
         response = await client.get("/api/v1/advisor/sessions")
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            body = response.json()
-            assert "data" in body
+        body = assert_ok(response, 200)
+        assert "data" in body
 
 
 class TestGetSession:
@@ -138,7 +136,7 @@ class TestGetSession:
         response = await client.get(
             f"/api/v1/advisor/sessions/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert response.status_code == 404, response.text
 
 
 class TestChooseRecommendation:
@@ -160,10 +158,7 @@ class TestChooseRecommendation:
             "/api/v1/advisor/ask",
             json={"question": "Which database should I use?"},
         )
-        if ask_resp.status_code != 200:
-            pytest.skip("DB unavailable — cannot test choose")
-
-        session_id = ask_resp.json()["data"]["session_id"]
+        session_id = assert_ok(ask_resp, 200)["data"]["session_id"]
 
         # Choose a model
         choose_resp = await client.post(
@@ -173,7 +168,7 @@ class TestChooseRecommendation:
                 "notes": "Best reasoning",
             },
         )
-        assert choose_resp.status_code in (200, 500)
+        assert_ok(choose_resp, 200)
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -187,4 +182,4 @@ class TestChooseRecommendation:
             f"/api/v1/advisor/sessions/{fake_id}/choose",
             json={"chosen_model": "gpt-4o-mini"},
         )
-        assert response.status_code in (404, 500)
+        assert response.status_code == 404, response.text

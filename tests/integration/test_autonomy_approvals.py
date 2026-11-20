@@ -4,8 +4,11 @@ The queue (`approval_queue` table / `ApprovalQueueEntry`) was rebuilt against it
 real model. Resolving an entry flips its status and updates the linked
 `AutoAction` (reverse FK `AutoAction.approval_id`).
 
-Defensive per house convention: accept 500 when the DB is unreachable, never
-422 for valid input. See docs/specs/era8-autonomy-reconciliation.md.
+Every status is asserted exactly: ``skip_on_db_error`` skips when no
+database is reachable, so a 500 is always a failure. See
+docs/specs/era8-autonomy-reconciliation.md. The statuses below are today's
+master behaviour for a dev-mode (owner) caller; the autonomy trust-boundary
+work may add 403s for non-owners but should not change these.
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT = "test_autonomy_approvals_tenant"
 TENANT_HEADERS = {"X-Tenant-ID": TENANT, "X-User-ID": "autonomy-test-user"}
@@ -80,11 +83,9 @@ class TestApprovalQueue:
     @skip_on_db_error
     async def test_list_never_422(self, client: AsyncClient):
         resp = await client.get("/api/v1/autonomy/approvals")
-        assert resp.status_code in (200, 500), resp.text
-        if resp.status_code == 200:
-            body = resp.json()
-            assert "data" in body
-            assert isinstance(body["data"], list)
+        body = assert_ok(resp, 200)
+        assert "data" in body
+        assert isinstance(body["data"], list)
 
     @skip_on_db_error
     async def test_resolve_approve_updates_linked_action(self, client: AsyncClient):
@@ -94,9 +95,7 @@ class TestApprovalQueue:
             f"/api/v1/autonomy/approvals/{approval_id}/resolve",
             json={"decision": "approve", "resolved_by": "tester"},
         )
-        assert resp.status_code in (200, 500), resp.text
-        if resp.status_code != 200:
-            return
+        assert_ok(resp, 200)
 
         approval = await _get("ApprovalQueueEntry", approval_id)
         action = await _get("AutoAction", action_id)
@@ -117,9 +116,7 @@ class TestApprovalQueue:
             f"/api/v1/autonomy/approvals/{approval_id}/resolve",
             json={"decision": "reject", "resolved_by": "tester", "note": "no"},
         )
-        assert resp.status_code in (200, 500), resp.text
-        if resp.status_code != 200:
-            return
+        assert_ok(resp, 200)
 
         approval = await _get("ApprovalQueueEntry", approval_id)
         action = await _get("AutoAction", action_id)
@@ -135,14 +132,13 @@ class TestApprovalQueue:
             f"/api/v1/autonomy/approvals/{approval_id}/resolve",
             json={"decision": "approve", "resolved_by": "tester"},
         )
-        if first.status_code != 200:
-            return
+        assert_ok(first, 200)
         again = await client.post(
             f"/api/v1/autonomy/approvals/{approval_id}/resolve",
             json={"decision": "approve", "resolved_by": "tester"},
         )
         # Already-resolved → ValueError → 404 (never a double side-effect).
-        assert again.status_code in (404, 409, 500), again.text
+        assert again.status_code == 404, again.text
 
     @skip_on_db_error
     async def test_resolve_missing_returns_404(self, client: AsyncClient):
@@ -150,4 +146,4 @@ class TestApprovalQueue:
             f"/api/v1/autonomy/approvals/{uuid.uuid4()}/resolve",
             json={"decision": "approve", "resolved_by": "tester"},
         )
-        assert resp.status_code in (404, 500), resp.text
+        assert resp.status_code == 404, resp.text

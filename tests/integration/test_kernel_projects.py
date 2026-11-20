@@ -21,7 +21,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from life_graph.main import app
-from tests.integration.conftest import skip_on_db_error
+from tests.integration.conftest import assert_ok, skip_on_db_error
 
 TENANT_HEADERS = {
     "X-Tenant-ID": "test_project_tenant",
@@ -255,7 +255,7 @@ class TestRegisterProject:
                 "path": "/nonexistent/path/xyz",
             },
         )
-        assert response.status_code in (400, 500)
+        assert response.status_code == 400, response.text
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -268,7 +268,7 @@ class TestRegisterProject:
             "/api/v1/kernel/projects",
             json={"path": str(Path.cwd())},
         )
-        assert response.status_code in (422, 500)
+        assert response.status_code == 422, response.text
 
 
 # ── List Projects Endpoint ───────────────────────────────────
@@ -287,12 +287,9 @@ class TestListProjects:
         response = await client.get(
             "/api/v1/kernel/projects",
         )
-        assert response.status_code in (200, 500)
-
-        if response.status_code == 200:
-            data = response.json()["data"]
-            assert "projects" in data
-            assert "total" in data
+        data = assert_ok(response, 200)["data"]
+        assert "projects" in data
+        assert "total" in data
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -305,7 +302,8 @@ class TestListProjects:
             "/api/v1/kernel/projects",
             params={"language": "python"},
         )
-        assert response.status_code in (200, 500)
+        data = assert_ok(response, 200)["data"]
+        assert all(p["language"] == "python" for p in data["projects"])
 
 
 # ── Get Project Detail ───────────────────────────────────────
@@ -325,7 +323,7 @@ class TestGetProject:
         response = await client.get(
             f"/api/v1/kernel/projects/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert response.status_code == 404, response.text
 
     @pytest.mark.asyncio
     @skip_on_db_error
@@ -337,7 +335,7 @@ class TestGetProject:
         response = await client.get(
             "/api/v1/kernel/projects/not-a-uuid",
         )
-        assert response.status_code in (422, 500)
+        assert response.status_code == 422, response.text
 
 
 # ── Delete Project ───────────────────────────────────────────
@@ -357,7 +355,7 @@ class TestDeleteProject:
         response = await client.delete(
             f"/api/v1/kernel/projects/{fake_id}",
         )
-        assert response.status_code in (404, 500)
+        assert response.status_code == 404, response.text
 
 
 # ── Scan Project ─────────────────────────────────────────────
@@ -377,7 +375,7 @@ class TestScanProject:
         response = await client.post(
             f"/api/v1/kernel/projects/{fake_id}/scan",
         )
-        assert response.status_code in (404, 500)
+        assert response.status_code == 404, response.text
 
 
 # ── Registration guards and user settings ────────────────────
