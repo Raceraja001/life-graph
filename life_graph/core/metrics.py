@@ -18,6 +18,8 @@ Usage:
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 try:
     from prometheus_client import (
@@ -84,7 +86,7 @@ UNMATCHED_ROUTE = "unmatched"
 _KNOWN_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 
 
-def route_label(scope: dict) -> str:
+def route_label(scope: Mapping[str, Any]) -> str:
     """The metric label for a request: its matched route template.
 
     ``/api/v1/memories/{memory_id}`` rather than the raw path, and a mount's

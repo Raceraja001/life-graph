@@ -122,6 +122,8 @@ async def get_scoped(
     if record is None or not hasattr(model, "tenant_id"):
         return record
     expected = tenant_id if tenant_id is not None else get_current_tenant_id()
-    if record.tenant_id != expected:
+    # T is any model; the hasattr above is what guarantees the column.
+    record_tenant: object = getattr(record, "tenant_id")  # noqa: B009
+    if record_tenant != expected:
         raise LookupError(f"{model.__name__} {pk} not found")
     return record

@@ -1,0 +1,7 @@
+# Errors `mypy --strict` reports in life_graph/api (scripts/mypy_ratchet.py).
+# CI fails when the count goes above this number. Only ever lower it: after
+# annotating code, run `python scripts/mypy_ratchet.py --update` and commit.
+# A mypy version bump (pyproject.toml, dev extra) may re-record it in its own PR.
+# Recorded 2026-11-20 with mypy 2.4.1; api.admin/jarvis/kernel are excluded
+# (ignore_errors in pyproject.toml) and not counted.
+273

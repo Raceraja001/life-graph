@@ -433,7 +433,9 @@ class MemoryManager:
         # pool fetched above (active memories only — candidates also include
         # "pending", which is dedup-only).
         contradictions: list[Contradiction] = []
-        if candidates:
+        # candidates is only ever filled when an embedding exists (above); the
+        # `embedding is not None` just carries that to the type checker.
+        if candidates and embedding is not None:
             active_candidates = [m for m, _ in candidates if m.status == "active"][:10]
             contradictions = await self._contradiction_detector.check_candidates(
                 fact.content,
@@ -820,8 +822,8 @@ class MemoryManager:
             if not hasattr(self, "_embed_model"):
                 self._embed_model = SentenceTransformer(settings.embedding_model)
 
-            vector = self._embed_model.encode(text).tolist()
-            return vector
+            encoded: list[float] = self._embed_model.encode(text).tolist()
+            return encoded
         except ImportError:
             logger.debug("sentence-transformers not available, skipping embedding")
             return None
@@ -830,7 +832,7 @@ class MemoryManager:
             return None
 
 
-def _end_of_day(day: str | None):
+def _end_of_day(day: str | None) -> datetime | None:
     """End of *day* (YYYY-MM-DD) in the owner's timezone, as an aware datetime, or None.
 
     A fact "true until Friday" is still true all of Friday.

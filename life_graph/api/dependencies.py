@@ -12,7 +12,14 @@ New code outside ``life_graph/api/`` should import ``life_graph.runtime``.
 """
 
 import sys
+from typing import TYPE_CHECKING
 
 from life_graph import runtime as _runtime
+
+if TYPE_CHECKING:
+    # For the type checker only, which cannot follow the sys.modules swap
+    # below: it sees this module's names as runtime's. Never executed, so
+    # there is still exactly one module object at run time.
+    from life_graph.runtime import *  # noqa: F403
 
 sys.modules[__name__] = _runtime
