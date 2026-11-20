@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 # ── Memory ────────────────────────────────────────────────────────────────────
 
@@ -554,6 +554,15 @@ class ResearchTrigger(BaseModel):
 # ── Agent Tasks ───────────────────────────────────────────────────────────────
 
 
+# The values models/agents.py AgentTask documents and the kernel writes
+# (process_manager, delegation, tools/delegate.py). "pending" is accepted too:
+# older rows and some readers (services/dev) still use it.
+AgentTaskStatus = Literal[
+    "queued", "pending", "running", "completed", "failed", "cancelled", "timeout"
+]
+AgentTaskPriority = Literal["low", "normal", "high", "critical"]
+
+
 class AgentTaskCreate(BaseModel):
     """Payload for creating an agent task."""
 
@@ -564,13 +573,14 @@ class AgentTaskCreate(BaseModel):
     task_type: str = Field("general", max_length=30, description="Task type category")
     instructions: str | None = Field(None, description="Execution instructions for the agent")
     assigned_agent: str | None = Field(None, max_length=64, description="Agent assigned to execute")
-    priority: str = Field("normal", description="low|normal|high|critical")
+    priority: AgentTaskPriority = Field("normal", description="low|normal|high|critical")
     input: dict[str, Any] | None = Field(None, description="Task input payload")
     parent_task_id: uuid.UUID | None = Field(None, description="Parent task if subtask")
     root_task_id: uuid.UUID | None = Field(None, description="Root of task tree")
     on_child_failure: str = Field("continue", max_length=20, description="continue|abort|retry")
-    timeout_seconds: int = Field(300, ge=1, description="Timeout in seconds")
-    max_retries: int = Field(2, ge=0, description="Maximum retry attempts")
+    # Upper bounds match the kernel's TaskCreate (api/kernel.py).
+    timeout_seconds: int = Field(300, ge=1, le=3600, description="Timeout in seconds")
+    max_retries: int = Field(2, ge=0, le=5, description="Maximum retry attempts")
     deadline: datetime | None = Field(None, description="Hard deadline for task completion")
     project_id: uuid.UUID | None = Field(None, description="Associated project")
     session_id: uuid.UUID | None = Field(None, description="Associated session")
@@ -585,8 +595,8 @@ class AgentTaskCreate(BaseModel):
 class AgentTaskUpdate(BaseModel):
     """Partial update for an agent task."""
 
-    status: str | None = Field(None, description="New status")
-    priority: str | None = Field(None, description="Updated priority")
+    status: AgentTaskStatus | None = Field(None, description="New status")
+    priority: AgentTaskPriority | None = Field(None, description="Updated priority")
     assigned_agent: str | None = Field(None, max_length=64, description="Reassign to agent")
     title: str | None = Field(None, max_length=200, description="Updated title")
     description: str | None = Field(None, description="Updated description")
@@ -730,6 +740,60 @@ class CrossSystemSyncCreate(BaseModel):
     endpoint_url: str | None = Field(None, description="Target endpoint URL")
     request_payload: dict[str, Any] | None = Field(None, description="Request payload")
     properties: dict[str, Any] | None = Field(None, description="Extensible properties")
+
+
+# Bounds for POST /internal/sync/analytics (audit M10). The endpoint took a bare
+# dict, so importance=5, a megabyte of content or a million items all reached
+# the memories table.
+ANALYTICS_MAX_ITEMS = 500
+ANALYTICS_MAX_CONTENT_CHARS = 20_000
+ANALYTICS_MAX_PROPERTIES_BYTES = 16_384
+
+
+class AnalyticsItem(BaseModel):
+    """One analytics observation from an external system, stored as a memory.
+
+    Field names are the ones the endpoint always read (content, source,
+    importance, properties, tags), so an existing sender stays compatible;
+    unknown keys are ignored as before.
+    """
+
+    content: str = Field(..., min_length=1, max_length=ANALYTICS_MAX_CONTENT_CHARS)
+    source: str = Field("uzhavu", min_length=1, max_length=128)
+    importance: float = Field(0.5, ge=0.0, le=1.0)
+    properties: dict[str, Any] = Field(default_factory=dict)
+    tags: list[Annotated[str, StringConstraints(min_length=1, max_length=64)]] | None = Field(
+        None, max_length=32
+    )
+
+    @field_validator("content", "source")
+    @classmethod
+    def _no_nul(cls, value: str) -> str:
+        # PostgreSQL text cannot store NUL; without this the whole batch 500s.
+        if "\x00" in value:
+            raise ValueError("must not contain NUL characters")
+        return value
+
+    @field_validator("properties")
+    @classmethod
+    def _properties_bounded(cls, value: dict[str, Any]) -> dict[str, Any]:
+        import json
+
+        try:
+            dumped = json.dumps(value, default=str)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("properties must be JSON-serialisable") from exc
+        if len(dumped) > ANALYTICS_MAX_PROPERTIES_BYTES:
+            raise ValueError(f"properties must be at most {ANALYTICS_MAX_PROPERTIES_BYTES} bytes")
+        if "\\u0000" in dumped:  # JSONB refuses NUL as well
+            raise ValueError("properties must not contain NUL characters")
+        return value
+
+
+class AnalyticsBatch(BaseModel):
+    """Body of POST /internal/sync/analytics: ``{"items": [...]}``."""
+
+    items: list[AnalyticsItem] = Field(default_factory=list, max_length=ANALYTICS_MAX_ITEMS)
 
 
 class CrossSystemSyncResponse(BaseModel):
@@ -936,7 +1000,9 @@ class CorrectionCreate(BaseModel):
     """Payload for recording a user correction."""
 
     capture_event_id: uuid.UUID | None = None
-    kind: str = Field(..., description="edit|override|reject|approve")
+    kind: Literal["edit", "override", "reject", "approve"] = Field(
+        ..., description="edit|override|reject|approve"
+    )
     original: str | None = None
     corrected: str | None = None
     diff_summary: str | None = None

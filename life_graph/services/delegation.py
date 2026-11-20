@@ -23,6 +23,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# What PATCH /agent-tasks/{id} may change: the fields of AgentTaskUpdate
+# (models/schemas.py), which are all AgentTask columns. Anything else in the
+# dict is ignored rather than written.
+UPDATABLE_TASK_FIELDS = frozenset(
+    {
+        "status",
+        "priority",
+        "assigned_agent",
+        "title",
+        "description",
+        "instructions",
+        "result",
+        "error",
+        "cancel_reason",
+        "on_child_failure",
+        "deadline",
+        "properties",
+        "tags",
+    }
+)
+
+
 class ParentTaskNotFoundError(ValueError):
     """The parent_task_id names no task of this tenant."""
 
@@ -264,6 +286,12 @@ class DelegationEngine:
 
             now = datetime.now(UTC)
             for key, value in data.items():
+                if key not in UPDATABLE_TASK_FIELDS:
+                    # tenant_id, id, root/parent ids, cost and timing columns are
+                    # never a caller's to set (audit M10): setattr took any key
+                    # the model happened to have.
+                    logger.warning("update_task ignored non-updatable field %r", key)
+                    continue
                 if key == "status" and value != task.status:
                     history = list(task.status_history or [])
                     history.append({"status": value, "at": now.isoformat()})
@@ -272,8 +300,7 @@ class DelegationEngine:
                         task.started_at = now
                     elif value in ("completed", "failed"):
                         task.completed_at = now
-                if hasattr(task, key):
-                    setattr(task, key, value)
+                setattr(task, key, value)
 
             await session.commit()
             await session.refresh(task)
