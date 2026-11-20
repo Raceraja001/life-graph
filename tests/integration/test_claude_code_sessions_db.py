@@ -30,14 +30,14 @@ OTHER = f"ccs_other_{uuid.uuid4().hex[:8]}"
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch):
     """No model and no background consolidation: both are exercised elsewhere."""
-    from life_graph.api import sessions as sessions_api
+    from life_graph.services import session_lifecycle
 
     lm = SimpleNamespace(
         chat=AsyncMock(side_effect=AssertionError("cloud-capable chat must not be used")),
         chat_local_only=AsyncMock(return_value="Worked on the memory layer."),
     )
     monkeypatch.setattr("life_graph.api.dependencies.get_lm_client", lambda: lm)
-    monkeypatch.setattr(sessions_api, "_run_micro_consolidation", AsyncMock())
+    monkeypatch.setattr(session_lifecycle, "run_micro_consolidation", AsyncMock())
     return lm
 
 

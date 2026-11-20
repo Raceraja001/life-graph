@@ -14,11 +14,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.dialects import postgresql
 
 from life_graph.core.tenant import get_current_tenant_id
 from life_graph.services import claude_code_sessions as ccs
+from life_graph.services.session_lifecycle import SessionAlreadyEndedError
 
 
 def _sql(stmt) -> str:
@@ -294,7 +294,7 @@ class TestSummarize:
 class TestCloseDue:
     @pytest.fixture
     def wired(self, monkeypatch):
-        from life_graph.api import sessions as sessions_api
+        from life_graph.services import session_lifecycle
 
         due = [(uuid.uuid4(), "acme"), (uuid.uuid4(), "other")]
         db = _FakeDB(
@@ -314,8 +314,8 @@ class TestCloseDue:
         close = AsyncMock(side_effect=_close)
         consolidate = AsyncMock()
         monkeypatch.setattr(ccs, "summarize", _summarize)
-        monkeypatch.setattr(sessions_api, "close_session", close)
-        monkeypatch.setattr(sessions_api, "_run_micro_consolidation", consolidate)
+        monkeypatch.setattr(session_lifecycle, "close_session", close)
+        monkeypatch.setattr(session_lifecycle, "run_micro_consolidation", consolidate)
         return SimpleNamespace(
             due=due, close=close, consolidate=consolidate, seen_tenants=seen_tenants
         )
@@ -340,7 +340,7 @@ class TestCloseDue:
     async def test_one_already_ended_is_skipped_and_the_rest_go_on(self, wired):
         async def _close(session_id, **kwargs):
             if session_id == wired.due[0][0]:
-                raise HTTPException(status_code=409, detail="already ended")
+                raise SessionAlreadyEndedError("already ended")
             return SimpleNamespace(id=session_id)
 
         wired.close.side_effect = _close
