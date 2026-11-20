@@ -163,16 +163,29 @@ async def list_entities(
     summary="Get entity detail with neighbors",
 )
 async def get_entity(name: str):
-    """Get full details for an entity including graph neighbors and related memories."""
+    """Get full details for an entity including graph neighbors and related memories.
+
+    The memories half must answer, or this is a 503. The graph half may fail
+    and leave neighbours empty: then ``meta.degraded`` is true and
+    ``meta.degraded_reasons`` says why, so an empty list is not mistaken for
+    "no neighbours" (audit M20). Without Apache AGE the graph half is not
+    attempted and ``meta.graph_enabled`` is false, as on the other routes.
+    """
     engine = _get_hybrid_engine()
+    graph_on = await graph_available()
     try:
-        return success_response(data=await engine.entity_context(name))
+        context = await engine.entity_context(name, use_graph=graph_on)
     except Exception as exc:
         logger.exception("Failed to get entity context for %s", name)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Graph query failed. See the server log (X-Request-ID).",
         ) from exc
+    reasons = context.pop("degraded", [])
+    meta: dict[str, Any] = {} if graph_on else dict(_GRAPH_OFF_META)
+    if reasons:
+        meta.update(degraded=True, degraded_reasons=reasons)
+    return success_response(data=context, meta=meta or None)
 
 
 @router.post(
