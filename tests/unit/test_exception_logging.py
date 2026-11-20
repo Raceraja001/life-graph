@@ -9,7 +9,6 @@ network, LLM or subprocess error.
 from __future__ import annotations
 
 import logging
-import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -121,28 +120,8 @@ async def test_runner_lock_check_failure_is_logged(caplog):
     assert warnings and warnings[0].exc_info is not None
 
 
-# ── verifiers: a git failure made every diff verifier see no files ──
-
-
-def test_changed_files_git_failure_is_logged(caplog, monkeypatch, tmp_path):
-    from life_graph.services.dev import verifiers
-
-    def no_git(*a, **k):
-        raise FileNotFoundError("git")
-
-    monkeypatch.setattr(verifiers.subprocess, "run", no_git)
-    with caplog.at_level(logging.WARNING, logger="life_graph.services.dev.verifiers"):
-        assert verifiers._changed_files(tmp_path) == []
-    warnings = _records(caplog, logging.WARNING)
-    assert warnings and warnings[0].exc_info is not None
-
-
-def test_changed_files_still_lists_files_when_git_works(tmp_path):
-    from life_graph.services.dev import verifiers
-
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    (tmp_path / "new.py").write_text("x = 1\n")
-    assert verifiers._changed_files(tmp_path) == [tmp_path / "new.py"]
+# (verifiers._changed_files: a git failure now fails closed, see
+# tests/unit/test_diff_fail_closed.py)
 
 
 # ── server health: the disk projection returned "" with no trace ──

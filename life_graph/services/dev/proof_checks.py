@@ -38,6 +38,8 @@ from life_graph.services.dev.verifiers import (
     _changed_files,
     _is_test_path,
     _local_modules,
+    diff_base,
+    git_diff_query,
 )
 
 DIFF_COVERAGE_MIN = 0.8
@@ -89,7 +91,8 @@ def changed_lines(workdir: Path, rel: str) -> set[int]:
         except OSError:
             return set()
         return set(range(1, n + 1))
-    _, diff = _git_out(workdir, "diff", "--no-color", "-U0", "HEAD", "--", rel)
+    # Strict: an empty answer here would mean "no changed lines to cover".
+    diff = git_diff_query(workdir, "diff", "--no-color", "-U0", diff_base(workdir), "--", rel)
     lines: set[int] = set()
     for row in diff.splitlines():
         m = _HUNK_RE.match(row)
