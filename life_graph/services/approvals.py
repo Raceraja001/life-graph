@@ -536,7 +536,10 @@ class ApprovalService:
         """
         from life_graph.services.dev.github_pr import merge_approval_fields
 
-        fields = merge_approval_fields(pr_approval.payload or {})
+        # Never the PR approval's execution claim: that is its own attempt, and
+        # a copy would leave the new merge approval "being applied" for good.
+        pr_payload = {k: v for k, v in (pr_approval.payload or {}).items() if k != "execution"}
+        fields = merge_approval_fields(pr_payload)
         merge = Approval(
             tenant_id=pr_approval.tenant_id,
             kind="driver_merge",

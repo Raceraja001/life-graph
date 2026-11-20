@@ -463,6 +463,27 @@ async def test_rerunning_a_merge_that_already_went_through_completes(monkeypatch
     assert db.committed["payload"]["execution"]["state"] == "done"
 
 
+def test_the_merge_approval_filed_by_a_pr_approve_does_not_inherit_its_claim():
+    """Found by CI: merge_approval_fields copies the PR payload, so the new
+    driver_merge row was born with the PR's "started" claim and every approve
+    of it answered 409 "being applied"."""
+    pr = _row(
+        "driver_pr",
+        {
+            "task_id": "t1",
+            "branch": "lg/task-1",
+            "pr_url": "https://github.com/o/r/pull/1",
+            "execution": {"state": "started", "attempt_id": "x"},
+        },
+    )
+    session = FakeSession()
+
+    merge = ApprovalService(session).file_merge_approval(pr)
+
+    assert "execution" not in (merge.payload or {})
+    assert merge.payload["pr_url"] == "https://github.com/o/r/pull/1"
+
+
 # ── API and Telegram ─────────────────────────────────────────────────────
 
 
