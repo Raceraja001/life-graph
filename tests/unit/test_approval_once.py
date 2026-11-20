@@ -533,6 +533,131 @@ async def test_the_api_passes_retry_and_answers_409_for_needs_retry(monkeypatch)
     assert seen["retry"] is True
 
 
+async def test_a_retried_deploy_still_passes_the_pinned_command_check_first(monkeypatch):
+    """#294's hash re-check runs on the retry/recovery path too: a retry goes
+    through the same _apply_driver_deploy, so an unpinned command never runs."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    ran = []
+
+    async def no_shell(*a, **_k):
+        ran.append(a)
+        raise AssertionError("the command must not run")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_shell", no_shell)
+    monkeypatch.setattr(
+        ApprovalService,
+        "_project_dict",
+        AsyncMock(return_value={"id": "p1", "name": "p", "path": "/x", "scan_metadata": {}}),
+    )
+    db = _Db(
+        _row(
+            "driver_deploy",
+            {
+                "project_id": "p1",
+                "deploy_command": "echo deployed",
+                "execution": {"state": "failed", "attempt": 1, "started_at": "2026-11-20"},
+            },
+        )
+    )
+
+    with pytest.raises(ApprovalActionError, match="approval pin"):
+        await _approve(db, retry=True)
+
+    assert ran == []
+    execution = db.committed["payload"]["execution"]
+    assert execution["state"] == "failed" and execution["attempt"] == 2
+    assert db.committed["status"] == "pending"
+
+
+def _http_request(key: str):
+    from starlette.requests import Request
+
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/approvals/x/approve",
+            "headers": [(b"authorization", f"Bearer {key}".encode())],
+            "query_string": b"",
+        }
+    )
+
+
+@pytest.fixture
+def identity(monkeypatch):
+    """#295's identity setup: one owner key, one plain service key."""
+    from life_graph.api import approvals as api
+    from life_graph.config import settings
+
+    monkeypatch.setattr(settings, "api_key", None)
+    monkeypatch.setattr(settings, "service_api_keys", "svc-key-0123456789,owner-key-0123456789")
+    monkeypatch.setattr(settings, "owner_api_keys", "owner-key-0123456789")
+    calls = []
+
+    async def fake_resolve(self, *_a, **kw):
+        calls.append(kw)
+        return {"id": "x", "kind": "driver_deploy", "status": "approved", "title": "x"}
+
+    async def no_emit(*_a, **_k):
+        return None
+
+    monkeypatch.setattr(ApprovalService, "resolve", fake_resolve)
+    monkeypatch.setattr(api.event_bus, "emit", no_emit)
+    return api, settings, calls
+
+
+async def test_a_retry_needs_the_owner_exactly_like_an_approve(identity, monkeypatch):
+    """retry: true re-runs a deploy, so it goes through the same
+    require_owner gate as approve (it is only a field on /approve)."""
+    from fastapi import HTTPException
+
+    api, settings, calls = identity
+    monkeypatch.setattr(settings, "approvals_require_owner", True)
+
+    async def nobody_asked(*_a):
+        return None
+
+    monkeypatch.setattr(api, "_requested_by", nobody_asked)
+    with pytest.raises(HTTPException) as info:
+        await api.approve_approval(
+            str(uuid.uuid4()),
+            _http_request("svc-key-0123456789"),
+            api.ResolveBody(retry=True),
+            "t",
+            FakeSession(),
+        )
+    assert info.value.status_code == 403 and calls == []
+
+    await api.approve_approval(
+        str(uuid.uuid4()),
+        _http_request("owner-key-0123456789"),
+        api.ResolveBody(retry=True),
+        "t",
+        FakeSession(),
+    )
+    assert calls == [{"note": None, "resolved_by": "owner", "retry": True}]
+
+
+async def test_a_retry_of_ones_own_request_is_refused_like_an_approve(identity, monkeypatch):
+    from fastapi import HTTPException
+
+    api, _settings, calls = identity
+    request = _http_request("svc-key-0123456789")
+    me = api.resolver(request)
+
+    async def asked_by_me(*_a):
+        return me
+
+    monkeypatch.setattr(api, "_requested_by", asked_by_me)
+    with pytest.raises(HTTPException) as info:
+        await api.approve_approval(
+            str(uuid.uuid4()), request, api.ResolveBody(retry=True), "t", FakeSession()
+        )
+    assert info.value.status_code == 403 and calls == []
+
+
 async def test_telegram_reports_a_failed_side_effect_instead_of_crashing(monkeypatch):
     from life_graph.integrations.telegram import commands
 
